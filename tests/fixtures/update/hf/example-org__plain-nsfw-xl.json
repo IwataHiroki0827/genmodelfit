@@ -1,0 +1,24 @@
+{
+ "id": "example-org/plain-nsfw-xl",
+ "tags": [
+  "not-for-all-audiences"
+ ],
+ "pipeline_tag": "text-to-image",
+ "downloads": 4000,
+ "likes": 1,
+ "gated": false,
+ "cardData": {
+  "license": "other"
+ },
+ "siblings": [
+  {
+   "rfilename": "model.safetensors",
+   "size": 6000000000,
+   "lfs": {
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size": 6000000000
+   }
+  }
+ ],
+ "_comment": "synthetic"
+}

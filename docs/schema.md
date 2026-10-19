@@ -79,10 +79,13 @@ Fit levels / 段階:
 
 `id`, `name`, `modality`, `tasks`, `source`, `files` (ModelFile[]), `template` (Template \| null), `params_b`,
 `precision`, `license`, `license_url`, `base_model`, `content`, `content_evidence` (str[]: why it is marked
-uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage`, `total_size_bytes`.
+uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage`, `downloads` / `likes`
+(int \| null: Hugging Face counters, set for `source: huggingface`), `total_size_bytes`.
 
 ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), `repo_id`, `license`,
-`license_name`, `gated` (bool \| null = unknown), `role` (`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`).
+`license_name`, `gated` (bool \| null = unknown), `role` (`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`),
+`license_from` (the HF repo the license was read from; the upstream repo for repackaged files),
+`repo_license` (the hosting repo's own label when it differs from the upstream one).
 
 Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `requires_custom_nodes`, `usage`,
 `date`, `size_bytes`.
@@ -96,8 +99,30 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 ## Database file (`db.json`)
 
 ```json
-{"schema_version": 1, "generated_at": "…", "sources": {…}, "models": [ModelEntry, …]}
+{"schema_version": 1, "generated_at": "2026-10-20T03:17:00Z", "sources": {…}, "models": [ModelEntry, …]}
 ```
+
+`generated_at` is always an aware UTC ISO-8601 string ending in `Z`.
+`downloads`, `likes`, `license_from` and `repo_license` were added without changing `schema_version`
+(optional fields; older readers ignore unknown keys).
+
+`sources` (written by `genmodelfit update`, see docs/sources.md):
+
+| key | meaning |
+|---|---|
+| `comfyui-templates` | `templates_total`, `local`, `skipped` (by reason: `api` / `not_open_source` / `no_size` / `category`), `loaded`, `failed` |
+| `huggingface` | `repos` (API calls), `failed`, `rate_limited` (429 waits), `failures` (first 20) |
+| `huggingface-search` | `queries`, `candidates`, `added`, `skipped` (by reason), `excluded` |
+| `civitai` | why it is not used |
+| `size_check` | `templates`, `equal`, `within_10pct` (index `size` vs the sum of the files) |
+| `counts` | `models`, `modality`, `content`, `source` |
+| `excluded` | number of models dropped by the exclusion rule (names are not kept) |
+| `warnings` | str[] |
+
+## update
+
+`genmodelfit update --json` prints the envelope with `output` (path written) and `sources` (above).
+On failure it prints `error` and exits 1; the previous cache is left untouched.
 
 Measurements live in `measurements.json` (`{"measurements": [Measurement, …]}`), bundled plus
 `<cache>/measurements/*.json`.

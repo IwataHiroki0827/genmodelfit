@@ -1,0 +1,36 @@
+{
+ "id": "stabilityai/stable-audio-open-1.0",
+ "tags": [
+  "stable-audio-tools",
+  "diffusers",
+  "safetensors",
+  "text-to-audio",
+  "en",
+  "arxiv:2407.14358",
+  "license:other",
+  "region:us"
+ ],
+ "pipeline_tag": "text-to-audio",
+ "library_name": "stable-audio-tools",
+ "downloads": 20703,
+ "likes": 1785,
+ "gated": "auto",
+ "lastModified": "2025-06-19T21:53:23.000Z",
+ "cardData": {
+  "license": "other",
+  "license_name": "stable-audio-community",
+  "license_link": "LICENSE"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "3d885b931f93cf475e68acc8ab41473b057ef2a5",
+   "size": 8342
+  },
+  {
+   "rfilename": "model_index.json",
+   "blobId": "a2e08e9778cc18fdc1c039092f5912abd687d3af",
+   "size": 498
+  }
+ ]
+}

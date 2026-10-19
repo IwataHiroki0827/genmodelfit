@@ -1,0 +1,136 @@
+{
+ "id": "AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
+ "tags": [
+  "gguf",
+  "atomic-chat",
+  "qwen",
+  "qwen-image",
+  "qwen3-vl",
+  "text-encoder",
+  "stable-diffusion.cpp",
+  "abliteration",
+  "refusal-direction",
+  "text-to-image",
+  "base_model:Qwen/Qwen3-VL-8B-Instruct",
+  "base_model:finetune:Qwen/Qwen3-VL-8B-Instruct",
+  "license:apache-2.0",
+  "endpoints_compatible",
+  "region:us",
+  "imatrix",
+  "conversational"
+ ],
+ "pipeline_tag": "text-to-image",
+ "library_name": "gguf",
+ "downloads": 407270,
+ "likes": 566,
+ "gated": false,
+ "lastModified": "2026-10-13T20:02:46.000Z",
+ "cardData": {
+  "license": "apache-2.0",
+  "base_model": [
+   "Qwen/Qwen3-VL-8B-Instruct"
+  ]
+ },
+ "siblings": [
+  {
+   "rfilename": ".gitattributes",
+   "blobId": "cc39fbe244a7e4ee936f12f10e32fa728e12af0c",
+   "size": 3179
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-AD-Q2_K.gguf",
+   "blobId": "3e470669b176b105de67cd88896c568934419f5c",
+   "size": 3336289216,
+   "lfs": {
+    "sha256": "e42dac4f385fc49e5812721ff930e2417fbcc9fd148c01a78c8492ebbe54dd2a",
+    "size": 3336289216,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-AD-Q3_K.gguf",
+   "blobId": "7248bc2385453f132e56ce369f99f8762b3320e4",
+   "size": 4184140736,
+   "lfs": {
+    "sha256": "e6bd367602ef37ac08f4b0e0915d716b734c8c8c8957864cc81a50314715a3df",
+    "size": 4184140736,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-AD-Q4_K.gguf",
+   "blobId": "e24aecaa5b58980a311a617b0bb1543ed9f59522",
+   "size": 5287517120,
+   "lfs": {
+    "sha256": "8123f36d2b3e562deef164dffdae33bdb1d152797ad10bb630827eaa7bce795d",
+    "size": 5287517120,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-AD-Q5_K.gguf",
+   "blobId": "f85cf1a2b6aeb1457977551f5fb48dc3f821f834",
+   "size": 6281292736,
+   "lfs": {
+    "sha256": "ea5473082841c6a0eda38d2d42d784ca5bc6f3a2e8cf648e305ea4da6373525b",
+    "size": 6281292736,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-AD-Q6_K.gguf",
+   "blobId": "b1dd5cfbafc810b901f6bb50a7950766c087d425",
+   "size": 7490550720,
+   "lfs": {
+    "sha256": "f30f66b0fa833d3ce95c522271fc96182cc2c72a1e577d9b3444633b201b334d",
+    "size": 7490550720,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-BF16.gguf",
+   "blobId": "838ea6d3007be1b46b44e784a25ec75de44b01ae",
+   "size": 16388045536,
+   "lfs": {
+    "sha256": "af8502723461ba196d3b486c93b198e4163ce20c39a64916cce52f14bf5cafe3",
+    "size": 16388045536,
+    "pointerSize": 136
+   }
+  },
+  {
+   "rfilename": "Qwen-Image-2.1-Turbo-Uncensored-Q8_0.gguf",
+   "blobId": "329818bf4894c29a9410cb1edf93fbc6fb0a4d26",
+   "size": 8709520096,
+   "lfs": {
+    "sha256": "f8f9f6276b726db5291f4a5343089612cb5fd08aa81e8f0791dc66d2c03d07ca",
+    "size": 8709520096,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "README.md",
+   "blobId": "68366d30d98dc609c814f22d45d8ea5808e165be",
+   "size": 12027
+  },
+  {
+   "rfilename": "mmproj-Qwen-Image-2.1-Turbo-Uncensored-BF16.gguf",
+   "blobId": "0b8b7d6a8573e95c97ece77ab4b4d2863e9a8428",
+   "size": 1162568928,
+   "lfs": {
+    "sha256": "5cc50e36ab57d7467e7016113525cc699e4c34c3eff7cd7b98d2ecfdba8ab720",
+    "size": 1162568928,
+    "pointerSize": 135
+   }
+  },
+  {
+   "rfilename": "mmproj-Qwen-Image-2.1-Turbo-Uncensored-F16.gguf",
+   "blobId": "06afd579f26d533134ad5ff06dcc22c9da8644da",
+   "size": 1159029984,
+   "lfs": {
+    "sha256": "d9870a1f168db3d814596216aaf35702154147b443572c7939acca1802621ac6",
+    "size": 1159029984,
+    "pointerSize": 135
+   }
+  }
+ ]
+}

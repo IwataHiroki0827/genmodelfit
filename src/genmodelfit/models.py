@@ -37,6 +37,8 @@ class ModelFile:
     license_name: str | None = None  # license が other のときの名前(例: flux-1-dev-non-commercial-license)
     gated: bool | None = None  # 利用申請が要るか(None=不明)
     role: str | None = None  # main / text_encoder / vae / clip_vision / lora / other
+    license_from: str | None = None  # license を取った HF リポジトリ(再配布なら本家)
+    repo_license: str | None = None  # 置き場所のリポジトリの表記が本家と違うとき、その表記
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
@@ -83,6 +85,8 @@ class ModelEntry:
     discovered_from: list[str] = field(default_factory=list)  # どこから拾ったか(URL)
     updated: str | None = None
     homepage: str | None = None
+    downloads: int | None = None  # HF の直近 30 日のダウンロード数(source が huggingface のとき)
+    likes: int | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
