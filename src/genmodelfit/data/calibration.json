@@ -1,0 +1,205 @@
+{
+ "source": "calibration.json",
+ "date": "2026-10-20",
+ "method": "全部載せの VRAM = overhead + 重み + 作業用メモリ。5 係数を相対誤差の 2 乗和(張り付いた実測は片側) + 事前値への罰(重み 0.0001)で、範囲付きの座標降下により最小化。精度は leave-one-out",
+ "n": 9,
+ "n_censored": 3,
+ "coefficients": {
+  "overhead_gb": 0.8037,
+  "act_image_gb_per_mp": 0.381,
+  "act_video_gb_per_mp": 9.8461,
+  "act_audio_gb_per_min": 0.0,
+  "act_3d_gb": 0.6131
+ },
+ "prior": {
+  "overhead_gb": 0.6,
+  "act_image_gb_per_mp": 0.5,
+  "act_video_gb_per_mp": 2.4,
+  "act_audio_gb_per_min": 1.0,
+  "act_3d_gb": 2.0
+ },
+ "bounds": {
+  "overhead_gb": [
+   0.3,
+   1.5
+  ],
+  "act_image_gb_per_mp": [
+   0.0,
+   4.0
+  ],
+  "act_video_gb_per_mp": [
+   0.0,
+   30.0
+  ],
+  "act_audio_gb_per_min": [
+   0.0,
+   5.0
+  ],
+  "act_3d_gb": [
+   0.0,
+   4.0
+  ]
+ },
+ "fixed": {
+  "weight_factor": 1.0,
+  "act_video_ref_frames": 49,
+  "act_video_frame_exponent": 0.5,
+  "offload_fraction": 0.4,
+  "ram_extra_gb": 3.0,
+  "good_margin": 0.9
+ },
+ "loo": [
+  {
+   "model_id": "image_z_image_turbo_int8",
+   "settings": {
+    "width": 768,
+    "height": 768,
+    "steps": 6
+   },
+   "note": null,
+   "measured_gb": 13.2,
+   "censored": false,
+   "fit_predicted_gb": 13.2,
+   "loo_predicted_gb": 13.2,
+   "loo_error_pct": -0.0,
+   "weights_only_error_pct": -7.8,
+   "loo_ok": null
+  },
+  {
+   "model_id": "image_z_image_turbo",
+   "settings": {
+    "width": 768,
+    "height": 768,
+    "steps": 6
+   },
+   "note": null,
+   "measured_gb": 15.0,
+   "censored": true,
+   "fit_predicted_gb": 21.72,
+   "loo_predicted_gb": 21.72,
+   "loo_error_pct": 44.8,
+   "weights_only_error_pct": 37.9,
+   "loo_ok": true
+  },
+  {
+   "model_id": "image_sdxl_simple",
+   "settings": {
+    "width": 832,
+    "height": 832,
+    "steps": 15
+   },
+   "note": null,
+   "measured_gb": 8.0,
+   "censored": false,
+   "fit_predicted_gb": 8.01,
+   "loo_predicted_gb": 8.02,
+   "loo_error_pct": 0.3,
+   "weights_only_error_pct": -13.3,
+   "loo_ok": null
+  },
+  {
+   "model_id": "text_to_video_wan",
+   "settings": {
+    "width": 512,
+    "height": 512,
+    "frames": 49,
+    "steps": 20
+   },
+   "note": "解像度は長辺 512px。縦横比は記録が無いので正方形と仮定",
+   "measured_gb": 13.3,
+   "censored": false,
+   "fit_predicted_gb": 13.21,
+   "loo_predicted_gb": 11.04,
+   "loo_error_pct": -17.0,
+   "weights_only_error_pct": -26.1,
+   "loo_ok": null
+  },
+  {
+   "model_id": "video_wan2_2_5B_ti2v",
+   "settings": {
+    "width": 640,
+    "height": 640,
+    "frames": 73,
+    "steps": 12
+   },
+   "note": "解像度は長辺 640px。縦横比は記録が無いので正方形と仮定",
+   "measured_gb": 15.8,
+   "censored": true,
+   "fit_predicted_gb": 23.87,
+   "loo_predicted_gb": 23.87,
+   "loo_error_pct": 51.1,
+   "weights_only_error_pct": 14.8,
+   "loo_ok": true
+  },
+  {
+   "model_id": "video_wan2_2_5B_ti2v",
+   "settings": {
+    "width": 640,
+    "height": 640,
+    "frames": 73,
+    "steps": 12
+   },
+   "note": "文章から動画。画像から動画より 0.8 GB 少ない",
+   "measured_gb": 15.0,
+   "censored": true,
+   "fit_predicted_gb": 23.87,
+   "loo_predicted_gb": 23.87,
+   "loo_error_pct": 59.1,
+   "weights_only_error_pct": 21.0,
+   "loo_ok": true
+  },
+  {
+   "model_id": "audio_ace_step_1_5_checkpoint",
+   "settings": {
+    "seconds": 20,
+    "steps": 8
+   },
+   "note": null,
+   "measured_gb": 10.8,
+   "censored": false,
+   "fit_predicted_gb": 10.84,
+   "loo_predicted_gb": 11.4,
+   "loo_error_pct": 5.5,
+   "weights_only_error_pct": -7.1,
+   "loo_ok": null
+  },
+  {
+   "model_id": "3d_hunyuan3d_image_to_model",
+   "settings": {
+    "steps": 15
+   },
+   "note": null,
+   "measured_gb": 6.7,
+   "censored": false,
+   "fit_predicted_gb": 6.79,
+   "loo_predicted_gb": 6.96,
+   "loo_error_pct": 4.0,
+   "weights_only_error_pct": -19.8,
+   "loo_ok": null
+  },
+  {
+   "model_id": "3d_hunyuan3d-v2.1",
+   "settings": {
+    "steps": 20
+   },
+   "note": null,
+   "measured_gb": 9.4,
+   "censored": false,
+   "fit_predicted_gb": 9.23,
+   "loo_predicted_gb": 9.14,
+   "loo_error_pct": -2.8,
+   "weights_only_error_pct": -16.9,
+   "loo_ok": null
+  }
+ ],
+ "summary": {
+  "target_abs_pct": 20.0,
+  "n_point": 6,
+  "n_censored": 3,
+  "mean_abs_pct": 4.9,
+  "max_abs_pct": 17.0,
+  "weights_only_mean_abs_pct": 15.2,
+  "censored_ok": 3,
+  "target_met": true
+ }
+}

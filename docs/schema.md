@@ -52,22 +52,41 @@ Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when 
 
 | key | type | meaning |
 |---|---|---|
-| `vram_gb` | float | peak VRAM when everything stays on the GPU |
-| `vram_offload_gb` | float | peak VRAM when parts are offloaded to RAM |
-| `ram_gb` | float | system RAM needed |
+| `vram_gb` | float | peak VRAM when everything stays on the GPU / 全部載せ |
+| `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE) / 順に載せ替え |
+| `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM) / 逃がす |
+| `ram_gb` | float | system RAM needed (3 GB + all weights). Shortage is always `too_tight` |
 | `disk_gb` | float \| null | download size |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` |
 | `fit` | str | the four levels below |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` |
 | `reasons` | str[] | human-readable reasons (Japanese) |
+| `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
+| `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
+
+When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
+used as is); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
+A measurement is used as `basis: "measured"` only when width / height / frames / seconds / precision match;
+other settings are shifted by it and stay `estimated`. How measurements and coefficients are used: `docs/accuracy.md`.
+
+Limits / 限界 (all values are the largest that give `perfect` or `good`, other settings unchanged; `null` = even the
+smallest tried value does not reach `good`):
+
+| key | type | meaning |
+|---|---|---|
+| `level` | str | always `good` |
+| `max_side_px` | int \| null | image / video: long side in px, keeping the aspect ratio (searched 256–2048 for image, 256–1280 for video, step 32) |
+| `max_frames` | int \| null | video: frames at the judged resolution (4n+1, up to 241) |
+| `max_seconds` | int \| null | music / sfx / tts: length in seconds (step 5, up to 600) |
+| `at_cap` | str[] | keys that reached the end of the searched range (the real limit is higher) |
 
 Fit levels / 段階:
 
 | level | meaning |
 |---|---|
 | `perfect` | everything fits in VRAM with ≥10% headroom / 余裕をもって全部載る |
-| `good` | everything fits, little headroom / 全部載るが余裕は少ない |
+| `good` | everything fits with little headroom, or fits when parts are swapped stage by stage / 全部載る(余裕は少ない)、または順に載せ替えれば載る |
 | `marginal` | runs only by offloading to RAM, or on CPU; slow / 逃がせば動く・遅い |
 | `too_tight` | does not run (VRAM or RAM) / 動かない |
 
