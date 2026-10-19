@@ -490,7 +490,8 @@ def components(entry: ModelEntry) -> Parts:
     p = Parts()
     files, notes = select_files(entry)
     p.notes.extend(notes)
-    # 本体のファイルが一覧に無い一式(#2 が files_complete=False を付ける)は、ファイルの合計では小さく出るので、
+    # 本体のファイルが一覧に無い一式(#2 が files_complete=False を付ける)は、
+    # ファイルの合計では小さく出るので、
     # テンプレートの大きさ(size_floor_bytes)を下限にして一般的な割合で分ける。下限も無ければ判定しない
     if getattr(entry, "files_complete", True) is False:
         listed = sum(f.size_bytes for f in files if _size_ok(f))
