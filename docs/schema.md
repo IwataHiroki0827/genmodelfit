@@ -151,7 +151,7 @@ ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), 
 `license_from` (the repo the license was read from: the upstream repo for repackaged files, the table's upstream for
 known components; a repo id, never a path), `repo_license` (the hosting repo's own label when it differs from the
 upstream one), `license_url`, `license_path` (str[]: the derivation path that was checked — hosting repo → base_model … →
-deciding repo), `license_evidence` (str[]: `license_unverified: …`, `component:<key>`, `family:<key>`),
+deciding repo), `license_evidence` (str[]: `license_unverified: …`, `component:<key>`, `family:<key>`, `upstream_gated: <repo>` — the component's upstream requires accepting terms),
 `head_status` (int \| null: status of an anonymous HEAD without following redirects, recorded by `update`;
 null = not checked), `head_checked_at` (UTC ISO-8601 of that HEAD).
 The estimator decides a file's part from `directory` first, then `role`, then the Hugging Face folder / known file

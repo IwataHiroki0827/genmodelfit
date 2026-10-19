@@ -476,6 +476,6 @@ def test_bundled_snapshot_is_an_update_result():
     hf = [m for m in db.models if m.source == "huggingface"]
     assert hf and all(m.id.startswith("hf:") and m.files and m.discovered_from for m in hf)
     # ライセンスの決め方の版と、一式のそろい具合
-    assert db.sources.get("license_policy") == 2 and db.sources.get("partial") is False
+    assert db.sources.get("license_policy") == 3 and db.sources.get("partial") is False
     assert all(m.files_complete is not None for m in db.models)
     assert all(m.size_floor_bytes for m in db.models if m.files_complete is False and m.template)
