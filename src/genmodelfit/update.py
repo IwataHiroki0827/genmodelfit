@@ -57,7 +57,7 @@ COMFYUI_RELEASES_PAGE = "https://github.com/Comfy-Org/ComfyUI/releases"
 MAX_FAIL_RATIO = 0.30
 # ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
 # (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
-LICENSE_POLICY = 2
+LICENSE_POLICY = 3
 # 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
 COMPLETE_RATIO = 0.5
 # sources.counts.license_tier の名前(hf.license_tier の段階)
@@ -1149,7 +1149,12 @@ def run_heads_only(
     if stats["urls"] and stats["unchecked"] == stats["urls"]:
         return _fail(args, "HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)")
     db.sources["head_check"] = stats
+    prev_comfy = db.sources.get("comfyui") if isinstance(db.sources.get("comfyui"), dict) else None
     db.sources["comfyui"], warn = latest_comfyui(fetch)
+    if warn and prev_comfy and prev_comfy.get("latest_release"):
+        # 取れなかったときは前に記録した版を残す(None で上書きすると gate の版の条件が全部保留になる)
+        db.sources["comfyui"] = prev_comfy
+        warn = f"{warn}(前に記録した {prev_comfy['latest_release']} を残しました)"
     warnings = [w for w in db.sources.get("warnings", []) if not w.startswith("ComfyUI の最新の版")]
     db.sources["warnings"] = warnings + ([warn] if warn else [])
     db.save(out_path)

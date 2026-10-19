@@ -252,7 +252,7 @@ def _policy(args: argparse.Namespace):
     cached = getattr(args, "_gate_policy", None)
     if cached is not None:
         return cached
-    from .gate import DEFAULT_LICENSE_ALLOWLIST, GatePolicy, load_allowlist
+    from .gate import DEFAULT_LICENSE_ALLOWLIST, DEFAULT_MAX_HEAD_AGE_DAYS, GatePolicy, load_allowlist
 
     allow = DEFAULT_LICENSE_ALLOWLIST
     if getattr(args, "license_allowlist", None):
@@ -263,6 +263,7 @@ def _policy(args: argparse.Namespace):
         license_allowlist=allow,
         comfyui_version=getattr(args, "comfyui_version", None),
         allow_uncensored=bool(getattr(args, "allow_uncensored_auto", False)),
+        max_head_age_days=getattr(args, "max_head_age_days", DEFAULT_MAX_HEAD_AGE_DAYS),
     )
     args._gate_policy = policy  # fit では全モデルで使うので、許可リストのファイルを読むのは 1 回だけ
     return policy
@@ -280,6 +281,28 @@ def _attach_gate(fits, args, db: Database | None = None) -> None:
 
 
 # --- 引数 ---------------------------------------------------------------------------------------
+
+
+def _positive_int(v: str) -> int:
+    try:
+        n = int(v)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"整数ではありません: {v}") from None
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"1 以上を指定してください: {v}")
+    return n
+
+
+def _head_age(v: str) -> int | None:
+    if v.strip().lower() == "none":
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"日数(整数)か none を指定してください: {v}") from None
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"0 以上を指定してください: {v}")
+    return n
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     filt.add_argument("--height", type=int)
     filt.add_argument("--frames", type=int, help="動画のコマ数")
     filt.add_argument("--length", type=float, metavar="SEC", help="音声の長さ(秒)")
-    filt.add_argument("--limit", "-n", type=int)
+    filt.add_argument("--limit", "-n", type=_positive_int, help="出す件数(1 以上)")
 
     gate = argparse.ArgumentParser(add_help=False)
     gate.add_argument(
@@ -314,7 +337,16 @@ def build_parser() -> argparse.ArgumentParser:
         "既定は docs/gate.md",
     )
     gate.add_argument(
-        "--comfyui-version", metavar="VER", help="使う ComfyUI の版(既定は update が記録した最新の版)"
+        "--comfyui-version",
+        metavar="VER",
+        help="使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース)",
+    )
+    gate.add_argument(
+        "--max-head-age-days",
+        type=_head_age,
+        default=30,
+        metavar="DAYS",
+        help="HEAD の確認をこの日数まで信じる(既定 30。none で期限なし)",
     )
     gate.add_argument(
         "--allow-uncensored-auto", action="store_true", help="無検閲のモデルも自動のおすすめに出してよい"

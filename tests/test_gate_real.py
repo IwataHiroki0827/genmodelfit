@@ -77,6 +77,43 @@ CASES = [
         "license",
         {"license", "official_workflow", "custom_nodes", "comfyui_version", "content"},
     ),
+    # --- #14 のレビューで見つかった、auto を間違えていたもの(回帰のテスト) ---
+    # DINOv3: other / dinov3-license、gated(manual)
+    #   https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m
+    #   Comfy-Org/Pixal3D の dino_v3_L_naf_fp32 に本家 TencentARC/Pixal3D の mit が付いていた
+    ("3d_pixal3d_multi_views", False, "license", {"license", "gated"}),
+    ("3d_pixal3d_trellis2_image_to_model", False, "license", {"license", "gated"}),
+    #   VAST-AI/TripoSplat(表記 mit)の dino_v3_vit_h
+    ("3d_triposplat_image_to_gaussian_splat", False, "license", {"license", "gated"}),
+    # SDPose: カードは mit https://huggingface.co/teemosliang/SDPose-Wholebody だが
+    #   「U-Net backbone initialized with Stable Diffusion v2 weights」。同じリポジトリの rt_detr_v4 は
+    #   RT-DETRv4(https://github.com/RT-DETRs/RT-DETRv4。重みのライセンスの記載なし)
+    ("utility_sdpose_ood_image_to_pose", False, "license", {"license"}),
+    ("utility_sdpose_multi_person", False, "license", {"license"}),
+    ("utility_sdpose_multi_person_video", False, "license", {"license"}),
+    ("utility_sdpose_ood_video_to_pose_map", False, "license", {"license"}),
+    # Lotus: カードは apache-2.0 https://huggingface.co/jingheya/lotus-depth-d-v1-1 だが、
+    #   https://github.com/EnVision-Research/Lotus は stabilityai/stable-diffusion-2-base から学習する
+    ("image_lotus_depth_v1_1", False, "license", {"license"}),
+    #   Qwen-Image の InstantX ControlNet(apache-2.0)の前処理に Lotus を使う
+    ("image_qwen_image_instantx_controlnet", False, "license", {"license"}),
+    # NetaYume Lumina: 一式のファイルはテキストエンコーダ Gemma 2 2B を含む(Gemma 利用規約)
+    #   https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0 のカード
+    #   「Text Encoder: Pre-trained Gemma-2-2b」
+    ("image_netayume_lumina_t2i", False, "license", {"license"}),
+    # --- 間違えやすい形で、正しく auto のもの(人が確かめた) ---
+    # 置き場所と別の系統の部品を含むが、部品の本家を確かめたもの: JoyAI-Image-Edit
+    #   本体 apache-2.0 https://huggingface.co/jdopensource/JoyAI-Image-Edit-Plus-Diffusers 、
+    #   テキストエンコーダは Qwen3-VL-8B を元にしたもの(Qwen3-VL は apache-2.0
+    #   https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct)、VAE は Wan2.1(apache-2.0)
+    ("image_joyai_image_edit", True, None, set()),
+    # 名前は SD の Marigold だが、v2 は Qwen-Image-Edit-2509 から作った apache-2.0
+    #   https://huggingface.co/huawei-bayerlab/marigold-v2-0
+    #   (base_model: Qwen/Qwen-Image-Edit-2509、apache-2.0)
+    ("image_marigold_v2_depth_estimation", True, None, set()),
+    # Image Tools: SeedVR2 3B のアップスケール。apache-2.0 https://huggingface.co/ByteDance-Seed/SeedVR2-7B
+    #   (カード「SeedVR and SeedVR2 are licensed under the Apache 2.0」)
+    ("utility_seedvr2_3b_int8_upscale_image", True, None, set()),
 ]
 
 
