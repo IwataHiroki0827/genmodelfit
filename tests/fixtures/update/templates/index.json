@@ -1,0 +1,314 @@
+[
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Image",
+  "type": "image",
+  "templates": [
+   {
+    "name": "api_nano_banana_2_1_t2i",
+    "title": "Nano Banana 2.1: Text to Image",
+    "description": "Generate images from text prompts using Nano Banana 2.1, Google's fast Gemini-based image model, delivering one finished image with no input files required. Ide",
+    "mediaType": "image",
+    "tags": [
+     "Text to Image",
+     "API",
+     "Image"
+    ],
+    "models": [
+     "Nano Banana"
+    ],
+    "date": "2026-10-06",
+    "openSource": false,
+    "size": 0,
+    "usage": 4064,
+    "minComfyUIVersion": "0.39.1",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 3,
+       "nodeType": "SaveImageAdvanced",
+       "file": "api_nano_banana_2_1_t2i.png",
+       "mediaType": "image"
+      }
+     ]
+    }
+   },
+   {
+    "name": "image_z_image_turbo",
+    "title": "Z-Image-Turbo: Text to Image",
+    "description": "An Efficient Image Generation Foundation Model with Single-Stream Diffusion Transformer, supports English & Chinese.",
+    "mediaType": "image",
+    "tags": [
+     "Image",
+     "Text to Image"
+    ],
+    "models": [
+     "Z-Image-Turbo"
+    ],
+    "date": "2025-11-27",
+    "openSource": true,
+    "size": 20830591386,
+    "usage": 14744,
+    "minComfyUIVersion": "0.11.0",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 9,
+       "nodeType": "SaveImage",
+       "file": "image_z_image_turbo.png",
+       "mediaType": "image"
+      }
+     ]
+    }
+   },
+   {
+    "name": "image_z_image_turbo_int8",
+    "title": "Z-Image-Turbo Int8: Text to Image",
+    "description": "Generate photorealistic images using the Z-Image-Turbo int8 model, a distilled 6B-parameter variant optimized for sub-second inference through efficient 8-step ",
+    "mediaType": "image",
+    "tags": [
+     "Text to Image",
+     "Int8"
+    ],
+    "models": [
+     "Z-Image-Turbo"
+    ],
+    "date": "2026-07-04",
+    "openSource": true,
+    "size": 12133282611,
+    "usage": 306,
+    "minComfyUIVersion": "0.11.0",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 9,
+       "nodeType": "SaveImage",
+       "file": "image_z_image_turbo_int8.png",
+       "mediaType": "image"
+      }
+     ]
+    }
+   },
+   {
+    "name": "image_closed_weights_example",
+    "title": "Closed weights (synthetic)",
+    "tags": [
+     "Text to Image"
+    ],
+    "openSource": false,
+    "size": 1000,
+    "usage": 1,
+    "date": "2026-01-01",
+    "mediaType": "image",
+    "description": "synthetic: openSource false"
+   },
+   {
+    "name": "image_missing_json_example",
+    "title": "Missing JSON (synthetic)",
+    "tags": [
+     "Text to Image"
+    ],
+    "size": 1000,
+    "usage": 1,
+    "date": "2026-01-01",
+    "mediaType": "image",
+    "description": "synthetic: the template JSON is not in the fixtures"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Audio",
+  "type": "audio",
+  "templates": [
+   {
+    "name": "audio_ace_step_1_5_checkpoint",
+    "title": "ACE-Step 1.5 Music Generation AIO",
+    "description": "Input style tags and lyrics to generate a full song. The workflow uses the ACE-Step 1.5 model to produce commercial-grade music in under 10 seconds on consumer ",
+    "mediaType": "audio",
+    "tags": [
+     "Audio",
+     "Music",
+     "Text to Audio"
+    ],
+    "models": [
+     "ACE-Step"
+    ],
+    "date": "2026-02-03",
+    "openSource": true,
+    "size": 10737418240,
+    "usage": 86,
+    "minComfyUIVersion": "0.12.0"
+   },
+   {
+    "name": "audio-chatterbox_tts",
+    "title": "Chatter Box: Voice Cloning with TTS",
+    "description": "Upload a short voice clip and input text to generate new speech in the cloned voice.",
+    "mediaType": "audio",
+    "tags": [
+     "Audio",
+     "Voice Cloning"
+    ],
+    "models": [
+     "Chatter Box"
+    ],
+    "date": "2026-01-22",
+    "openSource": true,
+    "size": 0,
+    "usage": 101,
+    "minComfyUIVersion": "0.3.35",
+    "requiresCustomNodes": [
+     "comfyui_fill-chatterbox"
+    ],
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 6,
+       "nodeType": "LoadAudio",
+       "file": "chatterbox_input_target_voice.mp3",
+       "mediaType": "audio"
+      }
+     ]
+    }
+   },
+   {
+    "name": "audio_stable_audio_example",
+    "title": "Stable Audio 1.0: Text to Audio",
+    "description": "Generate audio from text prompts using Stable Audio.",
+    "mediaType": "image",
+    "tags": [
+     "Audio",
+     "Text to Audio"
+    ],
+    "models": [
+     "Stability",
+     "Stable Audio"
+    ],
+    "date": "2025-03-01",
+    "openSource": true,
+    "size": 5690831667,
+    "usage": 30,
+    "minComfyUIVersion": "0.3.35"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "3D Model",
+  "type": "3d",
+  "templates": [
+   {
+    "name": "3d_hunyuan3d_image_to_model",
+    "title": "HY 3D 2.0",
+    "description": "Generate 3D models from single images using Hunyuan3D 2.0.",
+    "mediaType": "image",
+    "tags": [
+     "Image to 3D",
+     "3D"
+    ],
+    "models": [
+     "Hunyuan3D",
+     "Tencent"
+    ],
+    "date": "2025-03-01",
+    "size": 4928474972,
+    "usage": 33,
+    "minComfyUIVersion": "0.3.28",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 56,
+       "nodeType": "LoadImage",
+       "file": "3d_hunyuan3d_image_to_model_input_image.png",
+       "mediaType": "image"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "LLM",
+  "type": "llm",
+  "templates": [
+   {
+    "name": "llm_qwen3_text_gen",
+    "title": "Qwen3.0: Text Generation",
+    "description": "Input a text prompt to generate detailed, reasoned responses using the Qwen3-4B-Thinking model.",
+    "mediaType": "image",
+    "tags": [
+     "Text Generation"
+    ],
+    "models": [
+     "Qwen 3.0"
+    ],
+    "date": "2026-02-23",
+    "openSource": true,
+    "size": 8053063680,
+    "usage": 20,
+    "minComfyUIVersion": "0.15.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Applied",
+  "title": "Character & Fashion",
+  "type": "image",
+  "templates": [
+   {
+    "name": "templates-wan2_1_infinitetalk_music",
+    "title": "Audio-Driven Character Lip Sync Video",
+    "description": "Upload a character image and an audio file. Generate a lip-sync video where the character's mouth movements match the provided audio track.",
+    "mediaType": "image",
+    "tags": [
+     "Audio to Video",
+     "Lip Sync",
+     "Video"
+    ],
+    "models": [
+     "Wan2.1 InfiniteTalk"
+    ],
+    "date": "2026-02-19",
+    "openSource": true,
+    "size": 10737418240,
+    "usage": 372,
+    "minComfyUIVersion": "0.3.42",
+    "requiresCustomNodes": [
+     "ComfyUI-WanVideoWrapper",
+     "audio-separation-nodes-comfyui",
+     "comfyui-kjnodes"
+    ],
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 125,
+       "nodeType": "LoadAudio",
+       "file": "wan2_1_infinitetalk_audio.mp3",
+       "mediaType": "audio"
+      },
+      {
+       "nodeId": 284,
+       "nodeType": "LoadImage",
+       "file": "wan2_1_infinitetalk_first_frame.png",
+       "mediaType": "image"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 325,
+       "nodeType": "SaveVideo",
+       "file": "templates-wan2_1_infinitetalk_music.mp4",
+       "mediaType": "video"
+      }
+     ]
+    }
+   }
+  ]
+ }
+]

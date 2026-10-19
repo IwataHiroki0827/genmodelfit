@@ -441,7 +441,14 @@ def test_comfyui_directory_dedupes_same_part_only():
 
 
 def test_bundled_seed_sizes_unchanged_by_dedupe(db):
-    for m in db.models:
+    seed = {
+        x.model_id for x in db.measurements
+    }  # 実測のある 8 件(テンプレートが別案のファイルを並べる一式は対象外)
+    for m in (x for x in db.models if x.id in seed):
+        if getattr(m, "files_complete", True) is False:  # 本体の無い一式はテンプレートの大きさを下限に使う
+            continue
+        if any(not x.size_bytes for x in m.files):  # 大きさが一部しか無い一式はテンプレートの大きさを使う
+            continue
         files = [x for x in m.files if x.size_bytes]
         # 全部入りの内訳の割合は丸めてあるので、合計は 0.2% ほどずれる
         assert components(m).total == pytest.approx(sum(x.size_bytes for x in files) / GIB, rel=0.003), m.id
