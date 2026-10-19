@@ -50,6 +50,8 @@ def _auto_cell(gate: dict[str, Any] | None) -> Text:
 
 def _need(e, vram: float) -> tuple[float | None, str]:
     """判定の根拠にした VRAM と印。* = メインメモリへ逃がす、~ = 部品を順に載せ替える。"""
+    if getattr(e, "unknown_size", False):
+        return None, "?"
     if e.run_mode == "cpu":
         return None, "cpu"
     if e.run_mode == "offload" or e.fit == "too_tight":  # 動かないときは「最低これだけ要る」を出す
@@ -126,8 +128,8 @@ def print_fit_table(fits, title: str = "", system=None, console: Console | None 
         return
     con.print(build_table(fits, vram, width=con.width, title=head))
     notes = [
-        "VRAM = GB needed (~ = parts loaded one at a time, * = offload to RAM)",
-        "Room = this PC's VRAM minus need",
+        "VRAM = GiB needed (~ = parts loaded one at a time, * = offload to RAM)",
+        "Room = this PC's VRAM minus need (GiB)",
     ]
     if any(f.model.content == "uncensored" for f in fits):
         notes.append("[U] = uncensored")

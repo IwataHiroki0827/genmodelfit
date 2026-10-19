@@ -96,3 +96,12 @@ def test_sequential_and_too_tight_show_the_figure_used():
     out = render([seq, tight])
     assert "7.2~" in out and "+0.8" in out
     assert "9.7*" in out and "-1.7" in out
+
+
+def test_unknown_size_shows_question_mark():
+    f = fit("nosize", "too_tight", mode="none")
+    f.estimate.unknown_size = True
+    f.estimate.vram_gb = f.estimate.vram_offload_gb = 0.0
+    out = render([f])
+    row = next(line for line in out.splitlines() if "nosize" in line)
+    assert " ? " in row + " " and "0.0" not in row
