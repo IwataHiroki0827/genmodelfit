@@ -187,6 +187,10 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 
 def cmd_update(args: argparse.Namespace) -> int:
+    if getattr(args, "from_release", False):
+        from .remote import run_from_release
+
+        return run_from_release(args)
     try:
         from .update import run_update
     except ImportError as e:  # #2 で実装
@@ -271,6 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--skip-hf", action="store_true", help="Hugging Face を見ない")
     sp.add_argument("--skip-head", action="store_true", help="URL の HEAD 確認を飛ばす")
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
+    sp.add_argument(
+        "--from-release",
+        action="store_true",
+        help="配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)",
+    )
     sp.set_defaults(func=cmd_update)
 
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")

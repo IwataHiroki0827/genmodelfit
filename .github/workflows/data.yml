@@ -1,0 +1,54 @@
+name: Data
+
+# 一覧(db.json)を上流から作り直し、署名して、ローリングの Release(data-latest)に置く。
+# v* のタグではないので PyPI への公開は動かない。使う側は `genmodelfit update --from-release`。
+# 手順と鍵の扱いは docs/release.md。
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 毎日 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-latest
+  cancel-in-progress: false
+
+jobs:
+  publish-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e .
+      - name: update が使えるか確かめる
+        run: |
+          uv run --no-sync python - <<'PY'
+          import importlib.util, sys
+          if importlib.util.find_spec("genmodelfit.update") is None:
+              sys.exit("error: genmodelfit.update がまだありません(Issue #2 で入ります)。それまでこのワークフローは動かせません")
+          PY
+      - name: 一覧を作る
+        run: uv run --no-sync genmodelfit update --output dist-data/db.json
+      - name: 署名する
+        env:
+          GENMODELFIT_SIGNING_KEY: ${{ secrets.GENMODELFIT_SIGNING_KEY }}
+        run: |
+          uv run --no-sync python -m genmodelfit.signing sign dist-data/db.json
+          uv run --no-sync python -m genmodelfit.signing verify dist-data/db.json
+      - name: data-latest に置く
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view data-latest --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create data-latest --repo "${GITHUB_REPOSITORY}" --prerelease \
+              --title "data-latest" --notes "署名つきのモデル一覧(毎日更新)。genmodelfit update --from-release が取り込む。"
+          fi
+          gh release upload data-latest dist-data/db.json dist-data/db.json.sig --clobber --repo "${GITHUB_REPOSITORY}"
