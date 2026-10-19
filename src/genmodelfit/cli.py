@@ -247,6 +247,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def _policy(args: argparse.Namespace):
+    cached = getattr(args, "_gate_policy", None)
+    if cached is not None:
+        return cached
     from .gate import DEFAULT_LICENSE_ALLOWLIST, GatePolicy, load_allowlist
 
     allow = DEFAULT_LICENSE_ALLOWLIST
@@ -254,11 +257,13 @@ def _policy(args: argparse.Namespace):
         allow = load_allowlist(args.license_allowlist)
         if not allow:
             raise CliError("--license-allowlist が空です")
-    return GatePolicy(
+    policy = GatePolicy(
         license_allowlist=allow,
         comfyui_version=getattr(args, "comfyui_version", None),
         allow_uncensored=bool(getattr(args, "allow_uncensored_auto", False)),
     )
+    args._gate_policy = policy  # fit では全モデルで使うので、許可リストのファイルを読むのは 1 回だけ
+    return policy
 
 
 def _gate_for(model, args, db: Database | None = None) -> dict[str, Any] | None:
