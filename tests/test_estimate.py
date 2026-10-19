@@ -576,3 +576,41 @@ def test_curated_ram_16gb_is_never_the_reason_for_too_tight(db, model_id, which,
     roomy = estimate(db.get(model_id), pc(vram, ram=64), None, db.measurements)
     if roomy.fit != "too_tight":
         assert e.fit != "too_tight"
+
+
+def test_incomplete_entry_uses_size_floor_not_listed_files():
+    """#2 が本体の無い一式に files_complete=False と size_floor_bytes を付ける。小さく見せない。"""
+    from genmodelfit.models import ModelEntry, ModelFile, Template
+
+    e = ModelEntry(
+        id="inc",
+        name="inc",
+        modality="video",
+        files=[
+            ModelFile(
+                name="clip_vision_h.safetensors",
+                size_bytes=1_300_000_000,
+                directory="clip_vision",
+                role="clip_vision",
+            )
+        ],
+        template=Template(name="inc", size_bytes=20_400_000_000),
+    )
+    e.files_complete = False
+    e.size_floor_bytes = 20_400_000_000
+    from genmodelfit.estimate import estimate as est
+    from genmodelfit.models import Gpu, SystemInfo
+
+    pc4 = SystemInfo(
+        os="t",
+        cpu="t",
+        cpu_cores=8,
+        ram_total_gb=32,
+        ram_available_gb=32,
+        gpus=[Gpu(name="g", vendor="nvidia", vram_total_gb=4, backend="cuda")],
+    )
+    r = est(e, pc4)
+    assert r.fit != "perfect" and r.vram_gb > 10
+    e.size_floor_bytes = None
+    e.template = None
+    assert est(e, pc4).unknown_size

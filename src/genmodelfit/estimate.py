@@ -490,6 +490,25 @@ def components(entry: ModelEntry) -> Parts:
     p = Parts()
     files, notes = select_files(entry)
     p.notes.extend(notes)
+    # 本体のファイルが一覧に無い一式(#2 が files_complete=False を付ける)は、ファイルの合計では小さく出るので、
+    # テンプレートの大きさ(size_floor_bytes)を下限にして一般的な割合で分ける。下限も無ければ判定しない
+    if getattr(entry, "files_complete", True) is False:
+        listed = sum(f.size_bytes for f in files if _size_ok(f))
+        floor = (
+            getattr(entry, "size_floor_bytes", None)
+            or (entry.template.size_bytes if entry.template else 0)
+            or 0
+        )
+        size = max(listed, floor)
+        if floor <= 0:
+            p.unknown = True
+            p.notes.append(UNKNOWN_SIZE_REASON + "(本体のファイルが一覧に無く、全体の大きさも無い)")
+            return p
+        main, enc, vae = GENERIC_SPLIT
+        p.denoise, p.encode, p.decode = size * main / GIB, size * enc / GIB, size * vae / GIB
+        p.files_gb = size / GIB
+        p.notes.append("本体のファイルが一覧に無いので、テンプレートの大きさを下限にして一般的な割合で分けた")
+        return p
     if not files or not all(_size_ok(f) for f in files):
         size = _fallback_size(entry, p)
         if size <= 0:
