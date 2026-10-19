@@ -137,10 +137,10 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str) -> None:
+def _print_fits(fits, title: str, system: SystemInfo | None = None) -> None:
     from .table import print_fit_table
 
-    print_fit_table(fits, title=title)
+    print_fit_table(fits, title=title, system=system)
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
@@ -174,7 +174,7 @@ def cmd_recommend(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    _print_fits(fits, "Recommended")
+    _print_fits(fits, "Recommended", s)
     return 0
 
 
@@ -196,7 +196,7 @@ def cmd_fit(args: argparse.Namespace) -> int:
     if args.json:
         _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
         return 0
-    _print_fits(fits, "All models")
+    _print_fits(fits, "All models", s)
     return 0
 
 
