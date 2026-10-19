@@ -136,4 +136,7 @@ def print_fit_table(fits, title: str = "", system=None, console: Console | None 
     if system is not None:
         g = system.best_gpu
         gpu = f"{g.name} {g.vram_total_gb:g} GB" if g else "no GPU (CPU only)"
-        con.print(Text(f"PC: {gpu}, RAM {system.ram_total_gb:.0f} GB", style="dim"))
+        if "vram" in system.overrides:
+            gpu = f"assumed {system.vram_gb:g} GB VRAM (--vram)"
+        ram = f"RAM {system.ram_total_gb:.0f} GB" + (" (--ram)" if "ram" in system.overrides else "")
+        con.print(Text(f"PC: {gpu}, {ram}", style="dim"))
