@@ -209,6 +209,9 @@ class Estimate:
     run_mode: str  # gpu / offload / cpu / none
     reasons: list[str] = field(default_factory=list)
     measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
+    vram_sequential_gb: float | None = None  # 部品を段ごとに載せ替えたときの最大 VRAM
+    settings: dict[str, Any] | None = None  # 判定に使った設定(省いた項目は既定や実測の設定で埋めたもの)
+    limits: dict[str, Any] | None = None  # この PC で good 以上になる最大の設定(info で出す)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

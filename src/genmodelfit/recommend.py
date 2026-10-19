@@ -61,6 +61,7 @@ def evaluate(
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     models: Iterable[ModelEntry] | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     c = coefficients or load_coefficients()
     out: list[Fit] = []
@@ -69,7 +70,7 @@ def evaluate(
             continue
         if content != "all" and m.content != content:
             continue
-        e = estimate(m, system, settings, db.measurements, c)
+        e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
         out.append(Fit(m, e, score(m, e)))
     out.sort(key=lambda f: (-f.score, f.model.id))
     return out
@@ -85,12 +86,19 @@ def recommend(
     limit: int | None = 10,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
     fits = [
         f
         for f in evaluate(
-            db, system, modality=modality, content=content, settings=settings, coefficients=coefficients
+            db,
+            system,
+            modality=modality,
+            content=content,
+            settings=settings,
+            coefficients=coefficients,
+            with_limits=with_limits,
         )
         if f.estimate.fit in allowed
     ]
