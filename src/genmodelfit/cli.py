@@ -95,7 +95,7 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         modality=args.modality,
         content=args.content,
         min_fit=args.min_fit,
-        limit=args.limit,
+        limit=args.limit if args.limit is not None else 10,
         settings=_settings(args),
     )
     _attach_gate(fits, args)
@@ -111,7 +111,7 @@ def cmd_recommend(args: argparse.Namespace) -> int:
                     "modality": args.modality,
                     "content": args.content,
                     "min_fit": args.min_fit,
-                    "limit": args.limit,
+                    "limit": args.limit if args.limit is not None else 10,
                 },
                 models=[f.to_dict() for f in fits],
             )
@@ -256,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("recommend", parents=[common, filt], help="おすすめ順に出す")
     sp.add_argument("--min-fit", choices=FIT_LEVELS[:3], default="marginal")
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
-    sp.set_defaults(func=cmd_recommend, limit=10)
+    sp.set_defaults(func=cmd_recommend)  # 既定の 10 件は cmd_recommend で決める(親の引数は fit と共有なので)
 
     sp = sub.add_parser("fit", parents=[common, filt], help="すべてのモデルの判定を表で出す")
     sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ")

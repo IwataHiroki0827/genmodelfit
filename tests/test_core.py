@@ -110,3 +110,11 @@ def test_cli_system_and_info(capsys):
 def test_cli_text_output(capsys):
     assert cli.main(["fit", "--vram", "8", "--no-cache"]) == 0
     assert "image_sdxl_simple" in capsys.readouterr().out
+
+
+def test_fit_is_not_cut_by_recommend_default(capsys):
+    from genmodelfit.cli import build_parser
+
+    p = build_parser()
+    assert p.parse_args(["fit"]).limit is None
+    assert p.parse_args(["recommend"]).limit is None  # 既定の 10 件は cmd_recommend の中で決める
