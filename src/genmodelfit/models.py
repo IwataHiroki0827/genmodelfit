@@ -39,6 +39,15 @@ class ModelFile:
     license_name: str | None = None  # license が other のときの名前(例: flux-1-dev-non-commercial-license)
     gated: bool | None = None  # 利用申請が要るか(None=不明)
     role: str | None = None  # main / text_encoder / vae / clip_vision / lora / other
+    license_from: str | None = None  # license を取った HF リポジトリ(再配布なら本家)
+    license_url: str | None = None  # license の原文・記載の場所
+    repo_license: str | None = None  # 置き場所のリポジトリの表記が本家と違うとき、その表記
+    # ライセンスを決めた道(置き場所 → base_model … → 決め手。部品の表・系統の表で決めたときは表の本家)
+    license_path: list[str] = field(default_factory=list)
+    # 決め方の根拠。"license_unverified: …"(確かめられず不明にした)、"component:<表の名前>"、"family:<系統>"
+    license_evidence: list[str] = field(default_factory=list)
+    head_status: int | None = None  # 匿名の HEAD(転送を追わない)の応答コード(None=未確認)
+    head_checked_at: str | None = None  # その HEAD を送った日時(UTC, ISO 8601)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
@@ -85,6 +94,16 @@ class ModelEntry:
     discovered_from: list[str] = field(default_factory=list)  # どこから拾ったか(URL)
     updated: str | None = None
     homepage: str | None = None
+    downloads: int | None = None  # HF の直近 30 日のダウンロード数(source が huggingface のとき)
+    likes: int | None = None
+    license_name: str | None = None  # license が other のときの名前(一番厳しいファイルのもの)
+    # 不明にした理由など(ファイルの license_evidence のうち license_unverified をまとめたもの)
+    license_evidence: list[str] = field(default_factory=list)
+    # ファイルの一覧で一式がそろっているか。False: 本体が無い・合計が index の size の半分未満・
+    # GGUF の本体だけ(テキストエンコーダ・VAE が無い)。None は判定していない(古いデータ)。docs/schema.md
+    files_complete: bool | None = None
+    # 一式の大きさの下限(files_complete が False のとき、index の size)。見積もりはこれより小さく見ない
+    size_floor_bytes: int | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
@@ -92,6 +111,15 @@ class ModelEntry:
         if sizes:
             return sum(sizes)
         return self.template.size_bytes if self.template else None
+
+    @property
+    def estimate_size_bytes(self) -> int | None:
+        """見積もりに使う大きさ。ファイルの合計が size_floor_bytes より小さければ下限を使う
+        (一式が欠けた一覧を小さく見せない)。"""
+        total = self.total_size_bytes
+        if self.size_floor_bytes and (total or 0) < self.size_floor_bytes:
+            return self.size_floor_bytes
+        return total
 
     @property
     def largest_file_bytes(self) -> int | None:
@@ -206,14 +234,18 @@ class Estimate:
     """1 モデル × 1 設定 × 1 PC の見積もりと判定。"""
 
     vram_gb: float  # 全部を GPU に載せたときの最大 VRAM
-    vram_offload_gb: float  # 逃がしたとき(最大の部品だけ載る)の最大 VRAM
-    ram_gb: float  # メインメモリの目安
+    vram_offload_gb: float  # 重みの一部(offload_fraction 以外)をメインメモリに逃がしたときの最大 VRAM
+    ram_gb: float  # 判定した動かし方で要るメインメモリ(GiB)
     disk_gb: float | None
     basis: str  # measured / estimated
     fit: str  # FIT_LEVELS
     run_mode: str  # gpu / offload / cpu / none
     reasons: list[str] = field(default_factory=list)
     measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
+    vram_sequential_gb: float | None = None  # 部品を段ごとに載せ替えたときの最大 VRAM
+    settings: dict[str, Any] | None = None  # 判定に使った設定(省いた項目は既定や実測の設定で埋めたもの)
+    limits: dict[str, Any] | None = None  # この PC で good 以上になる最大の設定(info で出す)
+    unknown_size: bool = False  # 重みの大きさが分からず判定できない(fit は too_tight、VRAM の値は 0)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

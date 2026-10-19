@@ -16,7 +16,7 @@ def pc(vram: float, ram: float = 32.0) -> SystemInfo:
 
 
 def entry(sizes_gb: list[float], modality: str = "image") -> ModelEntry:
-    files = [ModelFile(name=f"f{i}", size_bytes=int(s * 1e9)) for i, s in enumerate(sizes_gb)]
+    files = [ModelFile(name=f"f{i}", size_bytes=int(s * 2**30)) for i, s in enumerate(sizes_gb)]
     return ModelEntry(id="x", name="x", modality=modality, files=files)
 
 
@@ -83,7 +83,8 @@ def test_recommend_order_and_filters():
     assert fits and all(f.model.modality == "image" for f in fits)
     order = [("perfect", "good", "marginal").index(f.estimate.fit) for f in fits]
     assert order == sorted(order)
-    assert gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db) == []
+    unc = gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db)
+    assert all(f.model.content == "uncensored" and f.model.content_evidence for f in unc)
 
 
 def test_cli_json(capsys):
@@ -110,3 +111,11 @@ def test_cli_system_and_info(capsys):
 def test_cli_text_output(capsys):
     assert cli.main(["fit", "--vram", "8", "--no-cache"]) == 0
     assert "image_sdxl_simple" in capsys.readouterr().out
+
+
+def test_fit_is_not_cut_by_recommend_default(capsys):
+    from genmodelfit.cli import build_parser
+
+    p = build_parser()
+    assert p.parse_args(["fit"]).limit is None
+    assert p.parse_args(["recommend"]).limit is None  # 既定の 10 件は cmd_recommend の中で決める

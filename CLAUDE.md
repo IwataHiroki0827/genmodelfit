@@ -24,7 +24,9 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
-.venv\Scripts\genmodelfit system | recommend --json | fit | info <id> | update | bench <template>
+.venv\Scripts\genmodelfit system | recommend --json | fit | info <id> | update | bench <template> | gate
+.venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
+.venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
 ```
 
 ネットワークに触るテストは `GENMODELFIT_NETWORK_TESTS=1` のときだけ動く(既定では飛ばす)。
@@ -35,6 +37,8 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 - 一覧のモデル ID: 公式テンプレート由来はテンプレート名そのまま(例 `image_z_image_turbo_int8`)、
   Hugging Face 由来は `hf:<owner>/<repo>`
 - 同梱のデータ: `src/genmodelfit/data/db.json`(一覧)、`measurements.json`(実測)、`calibration.json`(係数)
+- **実測や、実測のあるモデルのファイル情報を変えたら `python -m genmodelfit.calibrate` で合わせ直し、
+  出た表で docs/accuracy.md を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
 - キャッシュ: platformdirs の user_cache_dir(`GENMODELFIT_CACHE_DIR` で変えられる)
 
 ## 共用マシン
