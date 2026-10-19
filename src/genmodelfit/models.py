@@ -1,0 +1,214 @@
+"""データの形(スキーマ)。JSON との相互変換もここで行う。docs/schema.md と必ず一致させる。"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any
+
+SCHEMA_VERSION = 1
+
+# 生成の種類。music=音楽、sfx=効果音、tts=読み上げ
+MODALITIES = ("image", "video", "music", "sfx", "tts", "3d")
+# 内容の印。uncensored=無検閲(安全フィルタを外した、または成人向けの出力を想定したモデル)
+CONTENT_LEVELS = ("sfw", "uncensored")
+# 適合の段階(良い順)
+FIT_LEVELS = ("perfect", "good", "marginal", "too_tight")
+# 推定の根拠
+BASIS = ("measured", "estimated")
+
+
+def _from_dict(cls, data: dict[str, Any]):
+    """未知のキーは捨てる(新しい版のデータを古い版でも読めるように)。"""
+    names = {f.name for f in fields(cls)}
+    return cls(**{k: v for k, v in data.items() if k in names})
+
+
+@dataclass
+class ModelFile:
+    """モデルを構成する 1 ファイル(本体・テキストエンコーダ・VAE など)。"""
+
+    name: str
+    url: str | None = None
+    sha256: str | None = None
+    size_bytes: int | None = None
+    directory: str | None = None  # ComfyUI の置き場所(diffusion_models / text_encoders / vae など)
+    repo_id: str | None = None  # Hugging Face のリポジトリ(URL から求めたもの)
+    license: str | None = None  # このファイルのライセンス(SPDX 風。不明は None、独自は "other")
+    license_name: str | None = None  # license が other のときの名前(例: flux-1-dev-non-commercial-license)
+    gated: bool | None = None  # 利用申請が要るか(None=不明)
+    role: str | None = None  # main / text_encoder / vae / clip_vision / lora / other
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ModelFile:
+        return _from_dict(cls, d)
+
+
+@dataclass
+class Template:
+    """ComfyUI 公式テンプレートの情報(source が comfyui-template のとき)。"""
+
+    name: str
+    title: str | None = None
+    category: str | None = None
+    min_comfyui_version: str | None = None
+    open_source: bool | None = None
+    requires_custom_nodes: list[str] = field(default_factory=list)
+    usage: int | None = None
+    date: str | None = None
+    size_bytes: int | None = None  # index.json の size
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Template:
+        return _from_dict(cls, d)
+
+
+@dataclass
+class ModelEntry:
+    """一覧の 1 件。1 つのワークフロー(または 1 つの HF リポジトリ)で使うモデル一式。"""
+
+    id: str
+    name: str
+    modality: str
+    tasks: list[str] = field(default_factory=list)  # t2i / i2i / t2v / i2v / t2a / tts / t23d / i23d など
+    source: str = "comfyui-template"  # comfyui-template / huggingface / manual
+    files: list[ModelFile] = field(default_factory=list)
+    template: Template | None = None
+    params_b: float | None = None  # 本体のパラメータ数(十億)
+    precision: str | None = None  # fp32 / bf16 / fp16 / fp8 / int8 / nf4 / gguf-q4 など
+    license: str | None = None  # モデル一式のライセンス(最も厳しいもの)
+    license_url: str | None = None
+    base_model: str | None = None
+    content: str = "sfw"
+    content_evidence: list[str] = field(default_factory=list)  # 無検閲と判断した根拠
+    discovered_from: list[str] = field(default_factory=list)  # どこから拾ったか(URL)
+    updated: str | None = None
+    homepage: str | None = None
+
+    @property
+    def total_size_bytes(self) -> int | None:
+        sizes = [f.size_bytes for f in self.files if f.size_bytes]
+        if sizes:
+            return sum(sizes)
+        return self.template.size_bytes if self.template else None
+
+    @property
+    def largest_file_bytes(self) -> int | None:
+        sizes = [f.size_bytes for f in self.files if f.size_bytes]
+        return max(sizes) if sizes else None
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["total_size_bytes"] = self.total_size_bytes
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ModelEntry:
+        e = _from_dict(cls, d)
+        e.files = [ModelFile.from_dict(f) if isinstance(f, dict) else f for f in (d.get("files") or [])]
+        t = d.get("template")
+        e.template = Template.from_dict(t) if isinstance(t, dict) else t
+        return e
+
+
+@dataclass
+class Settings:
+    """生成の設定。種類ごとに使う項目が違う(画像は width/height、動画は frames も、音声は seconds)。"""
+
+    width: int | None = None
+    height: int | None = None
+    frames: int | None = None
+    seconds: float | None = None
+    steps: int | None = None
+    precision: str | None = None
+    batch: int = 1
+
+    @property
+    def megapixels(self) -> float | None:
+        if self.width and self.height:
+            return self.width * self.height / 1_000_000
+        return None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Settings:
+        return _from_dict(cls, d)
+
+
+@dataclass
+class Measurement:
+    """実機での実測 1 件。"""
+
+    model_id: str
+    gpu_name: str
+    gpu_vram_gb: float
+    peak_vram_gb: float
+    settings: Settings = field(default_factory=Settings)
+    peak_ram_gb: float | None = None
+    seconds: float | None = None
+    driver: str | None = None
+    comfyui_version: str | None = None
+    offload: str | None = None  # none / dynamic / lowvram など(ComfyUI の動き)
+    source: str = ""  # 誰がどこで測ったか
+    date: str | None = None
+    note: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Measurement:
+        m = _from_dict(cls, d)
+        s = d.get("settings")
+        m.settings = Settings.from_dict(s) if isinstance(s, dict) else (s or Settings())
+        return m
+
+
+@dataclass
+class Gpu:
+    name: str
+    vendor: str  # nvidia / amd / intel / apple / unknown
+    vram_total_gb: float
+    vram_free_gb: float | None = None
+    driver: str | None = None
+    backend: str = "none"  # cuda / none(v0.1 は NVIDIA の CUDA だけを数える)
+
+
+@dataclass
+class SystemInfo:
+    os: str
+    cpu: str
+    cpu_cores: int
+    ram_total_gb: float
+    ram_available_gb: float
+    gpus: list[Gpu] = field(default_factory=list)
+    disk_free_gb: float | None = None
+    overrides: list[str] = field(default_factory=list)  # --vram などで上書きした項目
+
+    @property
+    def best_gpu(self) -> Gpu | None:
+        usable = [g for g in self.gpus if g.backend == "cuda"]
+        return max(usable, key=lambda g: g.vram_total_gb) if usable else None
+
+    @property
+    def vram_gb(self) -> float:
+        g = self.best_gpu
+        return g.vram_total_gb if g else 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["best_gpu"] = asdict(self.best_gpu) if self.best_gpu else None
+        return d
+
+
+@dataclass
+class Estimate:
+    """1 モデル × 1 設定 × 1 PC の見積もりと判定。"""
+
+    vram_gb: float  # 全部を GPU に載せたときの最大 VRAM
+    vram_offload_gb: float  # 逃がしたとき(最大の部品だけ載る)の最大 VRAM
+    ram_gb: float  # メインメモリの目安
+    disk_gb: float | None
+    basis: str  # measured / estimated
+    fit: str  # FIT_LEVELS
+    run_mode: str  # gpu / offload / cpu / none
+    reasons: list[str] = field(default_factory=list)
+    measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+      - name: Test
+        run: uv run --no-sync pytest -q
+      - name: CLI smoke
+        run: |
+          uv run --no-sync genmodelfit system --json --vram 8 --ram 32
+          uv run --no-sync genmodelfit recommend --json --vram 8 --ram 32 --no-cache -n 3
+          uv run --no-sync genmodelfit fit --vram 16 --ram 32 --no-cache
