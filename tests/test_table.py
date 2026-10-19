@@ -86,3 +86,13 @@ def test_cli_table_real_db(capsys):
     out = capsys.readouterr().out
     assert "image_sdxl_simple" in out and "PC: " in out
     assert all(m.id in out for m in load(use_cache=False).models)
+
+
+def test_sequential_and_too_tight_show_the_figure_used():
+    seq = fit("seq")
+    seq.estimate.vram_gb, seq.estimate.vram_sequential_gb = 13.2, 7.2
+    tight = fit("tight", "too_tight", mode="none")
+    tight.estimate.vram_gb, tight.estimate.vram_offload_gb = 23.9, 9.7
+    out = render([seq, tight])
+    assert "7.2~" in out and "+0.8" in out
+    assert "9.7*" in out and "-1.7" in out

@@ -48,18 +48,29 @@ def _auto_cell(gate: dict[str, Any] | None) -> Text:
     return Text("held:" + (failed[0] if failed else "?"), style="yellow")
 
 
-def _need_cell(e) -> str:
-    if e.run_mode == "offload":
-        return f"{e.vram_offload_gb:.1f}*"
+def _need(e, vram: float) -> tuple[float | None, str]:
+    """判定の根拠にした VRAM と印。* = メインメモリへ逃がす、~ = 部品を順に載せ替える。"""
     if e.run_mode == "cpu":
-        return "cpu"
-    return f"{e.vram_gb:.1f}"
+        return None, "cpu"
+    if e.run_mode == "offload" or e.fit == "too_tight":  # 動かないときは「最低これだけ要る」を出す
+        return e.vram_offload_gb, "*"
+    seq = getattr(e, "vram_sequential_gb", None)
+    if e.run_mode == "gpu" and vram and e.vram_gb > vram and seq is not None and seq <= vram:
+        return seq, "~"
+    return e.vram_gb, ""
+
+
+def _need_cell(e, vram: float) -> str:
+    need, mark = _need(e, vram)
+    return mark if need is None else f"{need:.1f}{mark}"
 
 
 def _headroom_cell(e, vram: float) -> Text:
     if vram <= 0:
         return Text("-", style="dim")
-    need = e.vram_offload_gb if e.run_mode == "offload" else e.vram_gb
+    need, _ = _need(e, vram)
+    if need is None:
+        return Text("-", style="dim")
     diff = vram - need
     style = "green" if diff >= vram * 0.1 else ("yellow" if diff >= 0 else "red")
     return Text(f"{diff:+.1f}", style=style)
@@ -96,7 +107,7 @@ def build_table(fits: Sequence, vram_gb: float, width: int = MAX_WIDTH, title: s
             Text(LEVEL_LABEL.get(e.fit, e.fit), style=LEVEL_STYLE.get(e.fit, "")),
             name,
             MODALITY_LABEL.get(m.modality, m.modality),
-            _need_cell(e),
+            _need_cell(e, vram_gb),
             _headroom_cell(e, vram_gb),
             Text("measured", style="bold") if e.basis == "measured" else Text("est.", style="dim"),
         ]
@@ -114,7 +125,10 @@ def print_fit_table(fits, title: str = "", system=None, console: Console | None 
         con.print(f"{head}: (該当なし)" if head else "(該当なし)")
         return
     con.print(build_table(fits, vram, width=con.width, title=head))
-    notes = ["VRAM = GB needed (* = with offload to RAM)", "Room = this PC's VRAM minus need"]
+    notes = [
+        "VRAM = GB needed (~ = parts loaded one at a time, * = offload to RAM)",
+        "Room = this PC's VRAM minus need",
+    ]
     if any(f.model.content == "uncensored" for f in fits):
         notes.append("[U] = uncensored")
     for n in notes:
