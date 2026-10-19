@@ -853,7 +853,8 @@ def test_cli_bench_default_path_is_read_back(capsys):
         for m in load_measurements()
         if m.gpu_name == "NVIDIA GeForce RTX 3070" and m.source.startswith("genmodelfit")
     ]
-    assert ms and ms[0].model_id == "image_sdxl_simple"  # キャッシュに保存した実測が推定に使われる
+    # 同梱にも RTX 3070 の実測(2026-10-19)があるので、キャッシュに保存した分を探す
+    assert any(m.model_id == "image_sdxl_simple" for m in ms)  # キャッシュに保存した実測が推定に使われる
 
 
 def _cached_bench_files() -> list[Path]:

@@ -347,6 +347,19 @@ def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
                     warnings.append(f"ノード {n.id}({n.type})の入力 {i.name} の元がありません")
                 continue
             inputs[i.name] = r[1]
+        # テンプレートが作られた後に足された必須の入力欄は、値が入っていない。画面(frontend)と同じく
+        # 部品の定義の既定値で埋める(例: ComfyUI 0.40 の MoGeInference の refine_steps)
+        required = (info.get("input") or {}).get("required") or {}
+        for name, spec in required.items():
+            if name in inputs or not isinstance(spec, list) or not spec:
+                continue
+            typ, opts = spec[0], (spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {})
+            if _is_widget(typ, opts) and "default" in opts:
+                inputs[name] = opts["default"]
+                warnings.append(
+                    f"ノード {n.id}({n.type})の入力 {name} はテンプレートに値が無いので"
+                    f"既定値 {opts['default']!r} を使った"
+                )
         api[n.id] = {"class_type": n.type, "inputs": inputs, "_meta": {"title": n.title or n.type}}
     if missing:
         names = ", ".join(sorted(set(missing)))
