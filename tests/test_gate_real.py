@@ -2,7 +2,7 @@
 
 同梱の一覧(src/genmodelfit/data/db.json。HEAD の結果つき)を読む。ライセンスは一覧の値ではなく、
 2026-10-20 に各モデルカード(HF の cardData / LICENSE)を人が読んで確かめたものを根拠に、期待する結果を書いた。
-一覧の値がカードと違うものは、その旨を注に書いた(#13 で直す)。
+一覧の値がカードと違ったものは、その旨を注に書いた(#13 のレビューで直ったものを含む)。
 
 期待する結果の書き方: auto=True なら保留の理由は無い。False なら held_by の先頭(表の held:<id>)と、
 落ちるべき条件の全部を書く。
@@ -55,26 +55,27 @@ CASES = [
     # HiDream-I1 Full: 本体は mit https://huggingface.co/HiDream-ai/HiDream-I1-Full だが、
     #   テキストエンコーダ llama_3.1_8b_instruct は Llama 3.1 Community License
     #   https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
-    #   (一覧では再配布 Comfy-Org/HiDream-I1_ComfyUI の表記 mit になっている = #13 に報告)
+    #   (#13 の修正前の一覧では再配布 Comfy-Org/HiDream-I1_ComfyUI の表記 mit だった。今は llama3.1)
     ("hidream_i1_full", False, "license", {"license"}),
     # MiniMax Music 3: 再配布 https://huggingface.co/Comfy-Org/MiniMax-Music-3 の表記は apache-2.0 だが、
     #   本家 https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE は
     #   MiniMax-Music3 COMMUNITY LICENSE
     #   (商用の画面に名前の表示、年の売上 2,000 万ドル超は許可が要る、AUP)
-    #   (一覧では apache-2.0 になっている = #13 に報告)
+    #   (#13 の修正前の一覧では再配布側の apache-2.0 だった。今は本家に記載が無いため null)
     ("audio_minimax_music_3", False, "license", {"license"}),
     # Qwen-Image 2512(apache-2.0 https://huggingface.co/Qwen/Qwen-Image-2512)と
     #   360 度の LoRA(mit https://huggingface.co/ProGamerGov/qwen-360-diffusion)。ライセンスは通るが
     #   テンプレートがカスタムノード(comfyui_essentials・seedvr2_videoupscaler)を要る
     ("templates_text_prompt_to_360hdr.app", False, "custom_nodes", {"custom_nodes"}),
-    # HF の無検閲のモデル。カードの表記は mit https://huggingface.co/Heartsync/NSFW-Uncensored
-    #   (構成は SDXL。SDXL の派生なら本当は openrail++ のはずで、カードの表記は疑わしい)。
-    #   公式テンプレートでなく、無検閲なので保留
+    # HF の無検閲のモデル。カードの表記は mit https://huggingface.co/Heartsync/NSFW-Uncensored だが、
+    #   構成(unet + text_encoder_2)は SDXL で base_model の記載が無い。SDXL の派生なら openrail++ のはずで、
+    #   カードの表記は確かめられない(#13 の一覧は license=null・license_unverified)。
+    #   ライセンスでも、公式テンプレートでないことでも、無検閲でも保留
     (
         "hf:Heartsync/NSFW-Uncensored",
         False,
-        "official_workflow",
-        {"official_workflow", "custom_nodes", "comfyui_version", "content"},
+        "license",
+        {"license", "official_workflow", "custom_nodes", "comfyui_version", "content"},
     ),
 ]
 

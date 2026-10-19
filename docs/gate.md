@@ -99,15 +99,18 @@ gate は一覧を書き換えずに、判定の中で次の順に読む:
 
 3. それ以外は一覧の値(本家から読んだもの)
 
-この読み方で保留になった例(2026-10-20 の一覧):
+`update`(#13)も部品の表・系統の表・base_model をたどってライセンスを決め、確かめられないものは `null` にする。
+gate のこの読み方は、一覧の決め方が漏らしたときの二重の守り。#13 の修正前の一覧では、次のものがこの読み方で
+初めて保留になっていた(今の一覧では update の側で正しく決まっている):
 
 - `hidream_i1_*`: 本体は MIT だが、テキストエンコーダ `llama_3.1_8b_instruct_fp8_scaled` は Llama 3.1 の規約
-  (一覧では再配布側の表記 mit)
+  (一覧では再配布側の表記 mit だった)
 - `audio_minimax_music_3`: 再配布 Comfy-Org/MiniMax-Music-3 の表記は apache-2.0 だが、本家の LICENSE は
   MiniMax-Music3 COMMUNITY LICENSE(商用の画面に名前を出す・年の売上 2,000 万ドル超は許可が要る・AUP)。
   本家のカードに `license:` の記載が無いため、一覧は再配布側の表記になっていた
-- ERNIE-Image・MOSS-Image・Mage-Flow・Boogu・Wan-Animate-2・Wan-Dancer など: 再配布側の表記だけで、
-  部品(`ministral-3-3b`・`qwen3vl_*`・`flux2-vae` など)の本家を確かめられない
+
+今の一覧で、この読み方が一覧の値と違う結果を出すのは、すでに保留のもの(`gemma_2_2b`・`t5gemma`・
+`llava_llama3` など、不明や other を Gemma / Llama の規約と読む)だけ。
 
 ## URL の確かめ方(`url_reachable`)
 
@@ -125,7 +128,7 @@ gate は一覧を書き換えずに、判定の中で次の順に読む:
 | gated のリポジトリ | 401 | なし |
 | 無いファイル | 404 | なし |
 
-このため 200・302・307 を「取れる」とみなす。一覧の 522 URL(2026-10-20)は 302 が 493・307 が 6・401 が 23。
+このため 200・302・307 を「取れる」とみなす。一覧の 520 URL(2026-10-20)は 302 が 491・307 が 6・401 が 23。
 HEAD は HF の "resolvers" の枠(応答の `ratelimit-policy: "fixed window";"resolvers";q=3000;w=300`。
 API の 500 回 / 5 分とは別)で数えられるので、1 回の update で使い切ることは無い。
 
