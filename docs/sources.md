@@ -105,7 +105,7 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 
 一覧はソース非公開の商用アプリ(AI生成キット)の自動のおすすめに使う。**寛容の側に間違えることが一番悪い**ので、
 確かめられないとき・表記が食い違うときは `license: null`(不明)にし、`license_evidence` に
-`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 2)を上げる。
+`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 3)を上げる。
 
 ### 段階(`hf.license_tier`。一式は一番厳しいもの)
 
@@ -122,11 +122,16 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 
 ### 1 ファイルの決め方(`hf.HfClient.resolve_file`)
 
+0. **本家を確かめられない部品**(`hf.UNVERIFIED_COMPONENTS`): どのリポジトリの中にあっても不明
+   (`rt_detr_v4`。下の「部品の表」の後)
 1. **部品の表**(`hf.COMPONENTS`): 再配布(持ち主が `Comfy-Org` / `comfyanonymous` / `Kijai`)の中の、ファイル名で本家が
    決まる部品(テキストエンコーダ・VAE など)は、表の本家のライセンス。再配布のリポジトリの表記や base_model は
    本体のものなので部品には当てない(HiDream の `llama_3.1_8b_instruct` が mit になっていた)。載せたのは、本家の
-   ライセンスを HF の API で確かめ、複数の再配布で sha256 が同じ(手を加えていない写し)と確かめたものだけ。
-   再配布以外の持ち主の同名のファイルには当てない(改変されていることがある)
+   ライセンスを HF の API で確かめ、複数の再配布で sha256 が同じ(手を加えていない写し)と確かめたもの
+   (#14 で足した行は、本家のカードを確かめたもの)。寛容な行は再配布以外の持ち主の同名のファイルには当てない
+   (改変されていることがある)。**寛容でない行・本家が申請を求める行(DINOv3・SAM 3・Llama・Gemma 3 など)は、
+   どのリポジトリの中にあっても当てる**(改変しても規約は軽くならない。VAST-AI/TripoSplat の `dino_v3_vit_h` が
+   mit になっていた)。申請を求める行は `license_evidence` に `upstream_gated: <本家>` を残し、gate の `gated` が保留にする
 2. **再配布の本体**: `cardData.base_model`(と `base_model:…` のタグ)から、ファイルに対応する本家を選ぶ
    - 1 つならそれ。複数なら、ファイル名と語(英数字の塊。精度・形式の語と、`14b` `720p` `v2` のような大きさ・版の語は
      除く)が一番多く重なるもの(同点は全部を見て一番厳しいもの)
@@ -142,6 +147,16 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
    が、名前で Qwen-Image-2.1(qwen-research)と分かる)。当たった系統は `license_evidence` に `family:<名前>`
 5. **HF で見つけた無検閲のモデル**で、base_model も系統も分からなければ不明(無検閲化は元のモデルの派生なので、
    本人の表記だけでは確かめられない)。無検閲でないもの(読み上げなど)は本人の表記
+
+3 と 4 の間で、さらに次の 2 つを見る(#14 のレビュー):
+
+- **元のライセンスを読めない系統**(`hf.LINEAGES`): 名前(4 と同じ)が SDPose・Lotus・Stable Diffusion 2 なら不明
+  (下の「元のライセンスを読めない系統」)
+- **別の系統の部品**(`hf.FOREIGN_MARKERS`): ファイル名に別のモデルの印(dino・sam・siglip・clip・t5・qwen・llama・
+  gemma・mistral・glm・birefnet・depth-anything・moge・detr・flux・wan・trellis・hunyuan・stable-diffusion・lumina・
+  ltx・cogvideo・whisper・wav2vec)があり、その印が置き場所のリポジトリ・ライセンスを読んだ道の名前に出てこなければ、
+  ファイル名そのものに部品の表か系統の表の行が当たるときだけ通す(部品の表の行なら、置き場所の表記より厳しいか
+  同じときはその本家のライセンス)。当たらなければ不明。リポジトリの表記を、中に同梱された別のモデルの部品に付けない
 
 ファイルには `license` / `license_name` / `license_url`、`license_from`(ライセンスを読んだリポジトリ。部品の表なら表の本家)、
 `license_path`(たどった道: 置き場所 → base_model … → 決め手)、`license_evidence`、`repo_license`(置き場所の表記が
@@ -171,6 +186,24 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 | `wan2.2_vae` | [Wan-AI/Wan2.2-TI2V-5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B) | apache-2.0 | |
 | `qwen_image_vae` | [Qwen/Qwen-Image](https://huggingface.co/Qwen/Qwen-Image) | apache-2.0 | 5 か所で同じ |
 | `RealESRGAN_x4plus*` | xinntao/Real-ESRGAN([GitHub の LICENSE](https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE)) | bsd-3-clause | |
+| `dino_v3*`・`dinov3*`(どこでも。申請が要る) | [facebook/dinov3-vitl16-pretrain-lvd1689m](https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m)(gated: manual。[原文](https://ai.meta.com/resources/models-and-libraries/dinov3-license)) | other(dinov3-license) | (本家のカード) |
+| `sam3*`(どこでも。申請が要る) | [facebook/sam3](https://huggingface.co/facebook/sam3)(gated: manual) | other | (本家のカード) |
+| `depth_anything_v2_vit{b,l,g}`(どこでも) | [depth-anything/Depth-Anything-V2-Large](https://huggingface.co/depth-anything/Depth-Anything-V2-Large) | cc-by-nc-4.0 | (本家のカード) |
+| `depth_anything_v2_vits` | [depth-anything/Depth-Anything-V2-Small](https://huggingface.co/depth-anything/Depth-Anything-V2-Small) | apache-2.0 | (本家のカード) |
+| Lumina 2 系の一式(`lumina_2.safetensors`・`…all_in_one`)(どこでも) | Gemma 2 2B を含む([neta-art/Neta-Lumina](https://huggingface.co/neta-art/Neta-Lumina)・[NetaYume のカード](https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0)) | gemma | (カード) |
+| `dinov2*` | [facebook/dinov2-large](https://huggingface.co/facebook/dinov2-large) | apache-2.0 | (本家のカード) |
+| `sam_vit_*`・`sam2*_hiera*` | [facebook/sam-vit-huge](https://huggingface.co/facebook/sam-vit-huge)・[facebook/sam2.1-hiera-large](https://huggingface.co/facebook/sam2.1-hiera-large) | apache-2.0 | (本家のカード) |
+| `siglip*` | [google/siglip-so400m-patch14-384](https://huggingface.co/google/siglip-so400m-patch14-384)・[google/siglip2-so400m-patch16-512](https://huggingface.co/google/siglip2-so400m-patch16-512) | apache-2.0 | (本家のカード) |
+| `birefnet` | [ZhengPeng7/BiRefNet](https://huggingface.co/ZhengPeng7/BiRefNet) | mit | (本家のカード) |
+| `moge_1_vitl*`・`moge_2_vitl_normal*` | [Ruicheng/moge-vitl](https://huggingface.co/Ruicheng/moge-vitl)・[Ruicheng/moge-2-vitl-normal](https://huggingface.co/Ruicheng/moge-2-vitl-normal) | mit | (本家のカード) |
+| `trellis_2_{shape,texture}_vae*` | [microsoft/TRELLIS.2-4B](https://huggingface.co/microsoft/TRELLIS.2-4B) | mit | (本家のカード。Pixal3D はこれを土台にしている) |
+| `qwen_{0.6b,1.7b,4b}_ace15` | [ACE-Step/Ace-Step1.5](https://huggingface.co/ACE-Step/Ace-Step1.5)(Qwen3-Embedding-0.6B と 5Hz の LM を含む。元の [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)・[Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) は apache-2.0) | mit | (本家のカード) |
+
+本家を確かめられない部品(`hf.UNVERIFIED_COMPONENTS`。どこにあっても不明):
+
+| ファイル名 | 理由 |
+|---|---|
+| `rt_detr_v4*` | RT-DETRv4(https://github.com/RT-DETRs/RT-DETRv4)。コードは Apache-2.0 だが、重みは DINOv3 を教師にした蒸留で作られ、重みのライセンスの記載が無い。Comfy-Org/SDPose の中にあるが SDPose の一部ではない(Comfy-Org/SDPose の README が本家を別に挙げる) |
 
 表に入れなかったもの(確かめきれず、置き場所の表記のまま。どれも置き場所の表記のほうが厳しい): Qwen-Image-2.1 の
 `qwen3vl_8b_int8_convrot`(写しが 1 か所だけ)、FLUX.2 dev の `mistral_3_small_flux2_*`、Stable Audio 3 の `t5gemma_b_b_ul2`、
@@ -201,6 +234,16 @@ NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Ma
 | hidream | HiDream(本体の DiT だけ。テキストエンコーダは部品の表) | mit | https://huggingface.co/HiDream-ai/HiDream-I1-Full |
 | z-image | Z-Image・z_image | apache-2.0 | https://huggingface.co/Tongyi-MAI/Z-Image-Turbo |
 | chroma | Chroma | apache-2.0 | https://huggingface.co/lodestones/Chroma |
+| marigold-v1 | marigold(v2 を除く) | openrail++ | https://huggingface.co/prs-eth/marigold-depth-v1-1(v2 の huawei-bayerlab/marigold-v2-0 は Qwen-Image-Edit-2509 から作った apache-2.0) |
+| qwen3-vl | Qwen3-VL・qwen3vl | apache-2.0 | https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct ・ -4B ・ -2B ・ -32B |
+
+### 元のライセンスを読めない系統(`hf.LINEAGES`。名前が出たら不明)
+
+| 系統 | 名前の例 | 根拠 |
+|---|---|---|
+| sdpose | SDPose・sdpose_wholebody | https://huggingface.co/teemosliang/SDPose-Wholebody のカード「U-Net backbone initialized with Stable Diffusion v2 weights」(表記は mit) |
+| lotus | lotus-depth・lotus-normal | https://github.com/EnVision-Research/Lotus の学習の設定が stabilityai/stable-diffusion-2-base から始める(表記は apache-2.0) |
+| sd2 | sd2・sd21・stable-diffusion-2 | 元の stabilityai/stable-diffusion-2・-2-base は 2026-10-20 に匿名で読めない(401)。写しの表記は openrail++ |
 
 系統の表は「少なくともこれだけ厳しい」という下限で、ライセンスを決めるのには使わない(寛容な系統に当たっても、
 派生の表記が確かめられたことにはならない。例: Wan の系統でも Wan-Dancer は本家が読めないので不明)。

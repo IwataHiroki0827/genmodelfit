@@ -308,16 +308,35 @@ class KnownLicense:
     license_name: str | None
     source: str  # license_from に入れる名前(HF のリポジトリ。HF に記載が無いものは GitHub のリポジトリ)
     url: str
+    gated: bool = False  # 本家が利用申請(規約への同意)を求める(置き場所が gated でなくても保留にする)
+
+    @property
+    def everywhere(self) -> bool:
+        """どの持ち主のリポジトリの中にあっても当てる行(寛容でない・申請が要る)。改変しても規約は軽くならない。"""
+        return self.gated or license_tier(self.license, self.license_name) > TIER_PERMISSIVE
 
 
-def _k(key: str, pat: str, lic: str, name: str | None, source: str, url: str | None = None) -> KnownLicense:
-    return KnownLicense(key, re.compile(pat, re.IGNORECASE), lic, name, source, url or f"{HF}/{source}")
+def _k(
+    key: str,
+    pat: str,
+    lic: str,
+    name: str | None,
+    source: str,
+    url: str | None = None,
+    *,
+    gated: bool = False,
+) -> KnownLicense:
+    return KnownLicense(
+        key, re.compile(pat, re.IGNORECASE), lic, name, source, url or f"{HF}/{source}", gated
+    )
 
 
 # 部品の表: 再配布(Comfy-Org など)の中の、ファイル名で本家が決まる部品(テキストエンコーダ・VAE など)。
 # 再配布のリポジトリの表記や base_model は本体のものなので、部品には当てない(Llama 3.1 が mit になるなど)。
 # 載せるのは、本家のライセンスを確かめ、複数の再配布で sha256 が同じ(=手を加えていない写し)と確かめたもの。
-# 当てるのは再配布のリポジトリの中のファイルだけ(ほかの持ち主の同名のファイルは改変されていることがある)。
+# 寛容な行を当てるのは再配布のリポジトリの中のファイルだけ(ほかの持ち主の同名のファイルは改変されている
+# ことがある)。寛容でない行・本家が申請を求める行(everywhere)は、どのリポジトリの中にあっても当てる
+# (DINOv3 が VAST-AI/TripoSplat の中で mit になっていた。#14 のレビュー)。
 COMPONENTS: tuple[KnownLicense, ...] = (
     # https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct (license: llama3.1)
     _k(
@@ -455,6 +474,118 @@ COMPONENTS: tuple[KnownLicense, ...] = (
         "xinntao/Real-ESRGAN",
         "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE",
     ),
+    # --- 2026-10-20 に足したもの(#14 のレビュー: リポジトリの表記が、中の別の部品に付いていた) ---
+    # DINOv3。https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m (other: dinov3-license。
+    # gated: manual)。原文 https://ai.meta.com/resources/models-and-libraries/dinov3-license は、
+    # 配るときに規約の写しと「Built with DINOv3」の表示を求め、用途(軍事など)を制限する
+    _k(
+        "dinov3",
+        r"dino[\W_]?v3",
+        "other",
+        "dinov3-license",
+        "facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+        gated=True,
+    ),
+    # SAM 3 / 3.1。https://huggingface.co/facebook/sam3 (other。gated: manual)
+    _k("sam3", r"(^|[^a-z0-9])sam[\W_]?3(?!\d)", "other", "sam-license", "facebook/sam3", gated=True),
+    # Depth Anything V2 の Base / Large / Giant は非商用。
+    # https://huggingface.co/depth-anything/Depth-Anything-V2-Large (cc-by-nc-4.0)。Small は下の apache-2.0
+    _k(
+        "depth-anything-v2-nc",
+        r"depth[\W_]?anything[\W_]?v2[\W_]*(vit)?[blg]",
+        "cc-by-nc-4.0",
+        None,
+        "depth-anything/Depth-Anything-V2-Large",
+    ),
+    # Lumina Image 2.0 系の一式のファイル(all in one)は、テキストエンコーダ Gemma 2 2B を含む
+    # (https://huggingface.co/neta-art/Neta-Lumina の Text Encoder/gemma_2_2b_fp16.safetensors、
+    # https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0 のカード
+    # 「Text Encoder: Pre-trained Gemma-2-2b」)。
+    # Gemma 2 は Gemma 利用規約 https://ai.google.dev/gemma/terms
+    _k(
+        "lumina2-all-in-one",
+        r"(lumina|neta).*(all[\W_]?in[\W_]?one|aio)|^lumina_2\.safetensors$",
+        "gemma",
+        None,
+        "google/gemma-2-2b",
+        "https://ai.google.dev/gemma/terms",
+    ),
+    # https://huggingface.co/depth-anything/Depth-Anything-V2-Small (apache-2.0)
+    _k(
+        "depth-anything-v2-small",
+        r"depth[\W_]?anything[\W_]?v2[\W_]*(vit)?s",
+        "apache-2.0",
+        None,
+        "depth-anything/Depth-Anything-V2-Small",
+    ),
+    # https://huggingface.co/facebook/dinov2-large (apache-2.0)
+    _k("dinov2", r"dino[\W_]?v2", "apache-2.0", None, "facebook/dinov2-large"),
+    # SAM / SAM 2 / SAM 2.1。https://huggingface.co/facebook/sam-vit-huge ・
+    # facebook/sam2.1-hiera-large (apache-2.0)
+    _k(
+        "sam-sam2",
+        r"(^|[^a-z0-9])sam(2(\.1)?[\W_]*hiera|[\W_]vit[\W_]?[hlb])",
+        "apache-2.0",
+        None,
+        "facebook/sam2.1-hiera-large",
+    ),
+    # https://huggingface.co/google/siglip-so400m-patch14-384 ・
+    # google/siglip2-so400m-patch16-512 (apache-2.0)
+    _k("siglip", r"(^|[^a-z0-9])siglip2?[\W_]", "apache-2.0", None, "google/siglip-so400m-patch14-384"),
+    # https://huggingface.co/ZhengPeng7/BiRefNet (mit)
+    _k("birefnet", r"^birefnet(_fp16|_fp32|_bf16)?\.safetensors$", "mit", None, "ZhengPeng7/BiRefNet"),
+    # MoGe。https://huggingface.co/Ruicheng/moge-vitl ・ Ruicheng/moge-2-vitl-normal (mit)
+    _k("moge-1", r"^moge_1_vitl", "mit", None, "Ruicheng/moge-vitl"),
+    _k("moge-2-vitl-normal", r"^moge_2_vitl_normal", "mit", None, "Ruicheng/moge-2-vitl-normal"),
+    # TRELLIS.2 の VAE。https://huggingface.co/microsoft/TRELLIS.2-4B (mit)。Pixal3D はこれを土台にしている
+    _k("trellis2-vae", r"^trellis_2_(shape|texture)_vae", "mit", None, "microsoft/TRELLIS.2-4B"),
+    # ACE-Step 1.5 の文章側の部品(Qwen3-Embedding-0.6B と、Qwen3 から作った 5Hz の LM)。
+    # https://huggingface.co/ACE-Step/Ace-Step1.5 (mit。リポジトリに Qwen3-Embedding-0.6B/・
+    # acestep-5Hz-lm-1.7B/ がある)。
+    # 元の Qwen3 は apache-2.0(https://huggingface.co/Qwen/Qwen3-Embedding-0.6B ・ Qwen/Qwen3-1.7B)
+    _k("ace-step-1.5-lm", r"^qwen_(0\.6b|1\.7b|4b)_ace15", "mit", None, "ACE-Step/Ace-Step1.5"),
+)
+
+# 本家を確かめられない部品(ファイル名で分かるが、重みのライセンスを読めないもの)。
+# どのリポジトリの中でも不明にする
+UNVERIFIED_COMPONENTS: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    # RT-DETRv4(https://github.com/RT-DETRs/RT-DETRv4)。Comfy-Org/SDPose の中にあるが SDPose の一部ではない
+    (
+        "rt-detr-v4",
+        re.compile(r"rt[\W_]?detr[\W_]?v4", re.IGNORECASE),
+        "RT-DETRv4 の重み(https://github.com/RT-DETRs/RT-DETRv4。コードは Apache-2.0 だが、重みは DINOv3 を"
+        "教師にした蒸留で、重みのライセンスの記載が無い)",
+    ),
+)
+
+# 系統は分かるが、元のライセンスの原文を今は読めないもの(名前に出たら不明にする)。
+# Stable Diffusion 2 の元(stabilityai/stable-diffusion-2・-2-base)は 2026-10-20 に匿名で読めない(401)。
+# 写し https://huggingface.co/sd2-community/stable-diffusion-2-base の表記は openrail++(用途の制限つき)
+LINEAGES: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    # https://huggingface.co/teemosliang/SDPose-Wholebody のカード:
+    # 「U-Net backbone initialized with Stable Diffusion v2 weights」。表記は mit
+    (
+        "sdpose",
+        re.compile(r"sd[\W_]?pose", re.IGNORECASE),
+        "SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)",
+    ),
+    # https://github.com/EnVision-Research/Lotus の学習の設定は
+    # stabilityai/stable-diffusion-2-base から始める。
+    # https://huggingface.co/jingheya/lotus-depth-d-v1-1 の表記は apache-2.0
+    (
+        "lotus",
+        re.compile(r"(?<![a-z0-9])lotus[\W_]*(depth|normal|[dg][\W_]v)", re.IGNORECASE),
+        "Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)",
+    ),
+    (
+        "sd2",
+        re.compile(
+            r"(?<![a-z0-9])(sd[\W_]?2([\W_.]?[01])?(?![\d.])|stable[\W_]*diffusion[\W_]*v?2(?![\d.]))",
+            re.IGNORECASE,
+        ),
+        "Stable Diffusion 2 の系統(元の規約の原文を確かめられない)",
+    ),
 )
 
 # 系統の表: 名前(リポジトリ名・ファイル名・たどった base_model)で分かる元のモデル。派生(微調整・量子化・
@@ -579,12 +710,83 @@ FAMILIES: tuple[KnownLicense, ...] = (
     _k("z-image", _F + r"z[\W_]?image", "apache-2.0", None, "Tongyi-MAI/Z-Image-Turbo"),
     # https://huggingface.co/lodestones/Chroma (apache-2.0)
     _k("chroma", _F + r"chroma(?![a-z])", "apache-2.0", None, "lodestones/Chroma"),
+    # Marigold v1(Stable Diffusion 2 から)。https://huggingface.co/prs-eth/marigold-depth-v1-1 (openrail++)。
+    # v2(huawei-bayerlab/marigold-v2-0)は Qwen-Image-Edit-2509 から作った apache-2.0 なので当てない
+    _k("marigold-v1", _F + r"marigold(?![\W_]*v?2)", "openrail++", None, "prs-eth/marigold-depth-v1-1"),
+    # https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct ・ -4B ・ -2B ・ -32B (apache-2.0)
+    _k("qwen3-vl", _F + r"qwen[\W_]*3[\W_]*vl", "apache-2.0", None, "Qwen/Qwen3-VL-8B-Instruct"),
 )
 
 
 def component_for(filename: str) -> KnownLicense | None:
     base = filename.rsplit("/", 1)[-1]
     return next((c for c in COMPONENTS if c.pattern.search(base)), None)
+
+
+def unverified_component_for(filename: str) -> tuple[str, str] | None:
+    """本家を確かめられない部品なら (表の名前, 理由)。"""
+    base = filename.rsplit("/", 1)[-1]
+    return next(((k, why) for k, pat, why in UNVERIFIED_COMPONENTS if pat.search(base)), None)
+
+
+def lineage_for(names: Iterable[str]) -> tuple[str, str] | None:
+    """元のライセンスを読めない系統(LINEAGES)の名前が出ていれば (系統, 理由)。"""
+    text = "\n".join(n.lower() for n in names if n)
+    return next(((k, why) for k, pat, why in LINEAGES if pat.search(text)), None)
+
+
+# 別のモデル(系統)の部品だと分かる名前の印。ファイル名にこれが出て、置き場所のリポジトリ・ライセンスを読んだ
+# リポジトリの名前に出ていなければ「別の系統の部品」とみなし、部品の表か系統の表の行(本家を確かめたもの)が
+# ファイル名に当たらない限り、ライセンスは不明にする(リポジトリの表記を中の別の部品に付けない。#14 のレビュー)
+FOREIGN_MARKERS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (k, re.compile(p, re.IGNORECASE))
+    for k, p in (
+        ("dino", r"dino"),
+        ("sam", r"(^|[^a-z0-9])sam(?![a-z])"),
+        ("siglip", r"sig(lip|clip)"),
+        ("clip", r"(?<![a-z])clip(?![a-z])"),
+        ("t5", r"(?<![a-z0-9])u?m?t5(?![0-9])"),
+        ("qwen", r"qwen"),
+        ("llama", r"llama|llava"),
+        ("gemma", r"gemma"),
+        ("mistral", r"mistral"),
+        ("glm", r"(?<![a-z])glm"),
+        ("birefnet", r"birefnet"),
+        ("depth-anything", r"depth[\W_]?anything"),
+        ("moge", r"(?<![a-z])moge(?![a-z])"),
+        ("detr", r"detr"),
+        ("flux", r"flux"),
+        ("wan", r"(?<![a-z])wan(?![a-z])"),
+        ("trellis", r"trellis"),
+        ("hunyuan", r"hunyuan"),
+        ("stable-diffusion", r"stable[\W_]*diffusion|(?<![a-z0-9])sd[\W_]?(xl|1|2|3)"),
+        ("lumina", r"lumina"),
+        ("ltx", r"(?<![a-z])ltx"),
+        ("cogvideo", r"cogvideo"),
+        ("whisper", r"whisper"),
+        ("wav2vec", r"wav2vec"),
+    )
+)
+
+
+def foreign_marker(filename: str, own_names: Iterable[str]) -> str | None:
+    """ファイル名が、置き場所・ライセンスの出どころ(own_names)と別の系統の部品を示すなら、その印の名前。"""
+    base = filename.rsplit("/", 1)[-1]
+    own = "\n".join(n for n in own_names if n)
+    for key, pat in FOREIGN_MARKERS:
+        if pat.search(base) and not pat.search(own):
+            return key
+    return None
+
+
+def verified_row_for(filename: str) -> KnownLicense | None:
+    """ファイル名そのものに当たる、本家を確かめた行(部品の表、無ければ系統の表で一番厳しいもの)。"""
+    base = filename.rsplit("/", 1)[-1]
+    comp = component_for(base)
+    if comp:
+        return comp
+    fams = families_for([base])
+    return max(fams, key=lambda f: license_tier(f.license, f.license_name)) if fams else None
 
 
 def families_for(names: Iterable[str]) -> list[KnownLicense]:
@@ -602,6 +804,8 @@ def license_label(lic: str | None, name: str | None = None) -> str:
 
 MAX_HOPS = 12  # base_model をたどる段数の上限(版を重ねた系統は長い。超えたら確かめられない = 不明)
 UNVERIFIED = "license_unverified"  # license_evidence の印(ライセンスを確かめられず不明にした)
+# license_evidence の印: 本家が利用申請(規約への同意)を求める(置き場所が gated でなくても gate は保留にする)
+UPSTREAM_GATED = "upstream_gated"
 
 
 @dataclass
@@ -787,17 +991,14 @@ class HfClient:
         """1 ファイルのライセンス(docs/sources.md の「ライセンス」の順)。"""
         base = path.rsplit("/", 1)[-1]
         rid = info.repo_id
+        # 1. 本家を確かめられない部品・寛容でない部品は、どのリポジトリの中にあっても先に決める
+        unv = unverified_component_for(base)
+        if unv:
+            return _unknown([rid], f"{base} は {unv[1]}", rid)
+        comp = component_for(base)
+        if comp and (comp.everywhere or is_repackager(rid)):
+            return _component(rid, comp)
         if is_repackager(rid):
-            comp = component_for(base)
-            if comp:
-                return Resolved(
-                    comp.license,
-                    comp.license_name,
-                    comp.source,
-                    comp.url,
-                    [rid, comp.source],
-                    [f"component:{comp.key}"],
-                )
             ups = choose_bases(upstream_candidates(info), path)
             if not ups:
                 return _unknown([rid], f"再配布 {rid} の {base} の本家が分かりません", rid)
@@ -817,6 +1018,25 @@ class HfClient:
             names = [rid.split("/", 1)[-1], path, *res.path[1:]]
         if res.license is None:
             return res
+        # 2. 元のライセンスを読めない系統(Stable Diffusion 2 から作ったものなど)
+        lin = lineage_for(names)
+        if lin:
+            return _unknown(res.path, f"系統 {lin[0]}: {lin[1]}", res.source)
+        # 3. 別の系統の部品(リポジトリの表記を、中の別のモデルの部品に付けない)
+        fk = foreign_marker(base, [rid, *res.path])
+        if fk:
+            row = verified_row_for(base)
+            if row is None:
+                why = (
+                    f"{base} は {rid} の本体と別の系統({fk})の部品とみえ、本家のライセンスを確かめた表に無い"
+                )
+                return _unknown(res.path, why, res.source)
+            if row in COMPONENTS:
+                # 本家を確かめた部品。置き場所の表記と比べて厳しいほう
+                if license_tier(row.license, row.license_name) >= res.tier:
+                    return _component(rid, row)
+                res.evidence.append(f"component:{row.key}")
+        # 4. 系統の表(名前で分かる元のモデル)より寛容な表記は不明
         fams = families_for(names)
         res.families = [f.key for f in fams]
         if fams:
@@ -832,6 +1052,13 @@ class HfClient:
             # 無検閲化は元のモデルの派生。元(base_model)も系統も分からなければ、表記を確かめられない
             return _unknown(res.path, f"{rid} の元のモデル(base_model)も系統も分かりません", rid)
         return res
+
+
+def _component(rid: str, comp: KnownLicense) -> Resolved:
+    ev = [f"component:{comp.key}"]
+    if comp.gated:
+        ev.append(f"{UPSTREAM_GATED}: {comp.source}")
+    return Resolved(comp.license, comp.license_name, comp.source, comp.url, [rid, comp.source], ev)
 
 
 # --- HF のリポジトリから、使うファイルを選ぶ -----------------------------------------------------
