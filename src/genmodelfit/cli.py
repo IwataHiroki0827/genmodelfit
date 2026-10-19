@@ -283,6 +283,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--length", type=float, metavar="SEC")
     sp.add_argument("--steps", type=int)
     sp.add_argument("--output", metavar="PATH", help="結果の JSON の書き出し先")
+    sp.add_argument("--resolution", metavar="WxH", help="幅と高さ(例: 768x768)。--width/--height と同じ")
+    sp.add_argument(
+        "--set", action="append", metavar="NAME=VALUE", help="入力を名前で変える(例: octree_resolution=192)"
+    )
+    sp.add_argument("--no-free", action="store_true", help="開始前にモデルを解放しない(読み込み済みで測る)")
+    sp.add_argument("--timeout", type=float, metavar="SEC", help="待つ時間の上限(既定 1800 秒)")
+    sp.add_argument("--force", action="store_true", help="GPU が使われていても測る")
+    sp.add_argument("--source", help="誰がどこで測ったか(結果の source に入る)")
+    sp.add_argument("--note", help="結果の note に足す文")
     sp.set_defaults(func=cmd_bench)
     return p
 
