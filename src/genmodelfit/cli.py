@@ -278,7 +278,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--from-release",
         action="store_true",
-        help="配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)",
+        help="配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)。"
+        "--output があればそこへ書く",
+    )
+    sp.add_argument(
+        "--force",
+        action="store_true",
+        help="(--from-release)前に取り込んだ一覧より古くても取り込む",
     )
     sp.set_defaults(func=cmd_update)
 

@@ -1,7 +1,9 @@
 """データの署名(Ed25519)。
 
-配る一覧(db.json)に署名(db.json.sig)を付け、取り込む側が埋め込みの公開鍵で確かめる。
-署名の鍵(秘密鍵)は GitHub Actions のシークレット `GENMODELFIT_SIGNING_KEY` にだけ置く(docs/release.md)。
+配る一覧(db.json)に署名(db.json.sig)を付け、取り込む側が同梱の公開鍵で確かめる。
+信じる公開鍵は `data/signing_keys/*.pub`(複数可。どれか 1 つで署名が合えば通す。
+鍵を替えるときに新旧を並べるため)。秘密鍵は GitHub の environment `data-signing` のシークレット
+`GENMODELFIT_SIGNING_KEY` にだけ置く(docs/release.md)。
 
 コマンド(配る側の CI が使う):
     python -m genmodelfit.signing sign <ファイル> [--key-env 環境変数名]   # <ファイル>.sig を書く
@@ -27,15 +29,20 @@ class SigningError(ValueError):
     pass
 
 
-def embedded_public_key_pem() -> bytes:
-    return resources.files("genmodelfit.data").joinpath("signing_key.pub").read_bytes()
+KeyLike = bytes | str | Ed25519PublicKey
 
 
-def load_public_key(key: bytes | str | Ed25519PublicKey | None = None) -> Ed25519PublicKey:
-    """公開鍵を読む。None なら同梱の鍵。PEM か、素の 32 バイトを受け付ける。"""
+def embedded_public_keys_pem() -> list[bytes]:
+    """同梱の信じる公開鍵(`data/signing_keys/*.pub`、名前の順)。"""
+    d = resources.files("genmodelfit.data").joinpath("signing_keys")
+    return [p.read_bytes() for p in sorted(d.iterdir(), key=lambda p: p.name) if p.name.endswith(".pub")]
+
+
+def load_public_key(key: KeyLike) -> Ed25519PublicKey:
+    """公開鍵を読む。PEM か、素の 32 バイトを受け付ける。"""
     if isinstance(key, Ed25519PublicKey):
         return key
-    raw = embedded_public_key_pem() if key is None else key.encode() if isinstance(key, str) else key
+    raw = key.encode() if isinstance(key, str) else key
     try:
         if not raw.lstrip().startswith(b"-----BEGIN"):
             return Ed25519PublicKey.from_public_bytes(raw)
@@ -63,13 +70,34 @@ def sign(data: bytes, private_key_pem: bytes | str) -> bytes:
     return load_private_key(private_key_pem).sign(data)
 
 
-def verify(data: bytes, sig: bytes, public_key: bytes | str | Ed25519PublicKey | None = None) -> bool:
-    """署名が正しければ True。壊れた署名・別の鍵・改ざんは False(例外は出さない)。"""
+def trusted_public_keys() -> list[Ed25519PublicKey]:
+    """同梱の信じる公開鍵をすべて読む。1 つも無い・読めないときは SigningError。"""
+    keys = [load_public_key(k) for k in embedded_public_keys_pem()]
+    if not keys:
+        raise SigningError("同梱の公開鍵がありません")
+    return keys
+
+
+def verify(data: bytes, sig: bytes, public_key: KeyLike | list[KeyLike] | None = None) -> bool:
+    """署名が正しければ True。壊れた署名・別の鍵・改ざんは False(例外は出さない)。
+
+    public_key を省くと同梱の信じる鍵を使い、どれか 1 つで合えば True。リストを渡したときも同じ。
+    """
     try:
-        load_public_key(public_key).verify(sig, data)
-    except (InvalidSignature, SigningError):
+        if public_key is None:
+            keys = trusted_public_keys()
+        else:
+            items = public_key if isinstance(public_key, list) else [public_key]
+            keys = [load_public_key(k) for k in items]
+    except SigningError:
         return False
-    return True
+    for k in keys:
+        try:
+            k.verify(sig, data)
+        except InvalidSignature:
+            continue
+        return True
+    return False
 
 
 def encode_sig(sig: bytes) -> str:
@@ -91,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("file")
     sp.add_argument("--key-env", default="GENMODELFIT_SIGNING_KEY", help="秘密鍵(PEM)を入れた環境変数")
     sp.add_argument("--key-file", help="環境変数の代わりに鍵のファイルを使う")
-    vp = sub.add_parser("verify", help="同梱の公開鍵で確かめる")
+    vp = sub.add_parser("verify", help="同梱の信じる公開鍵で確かめる")
     vp.add_argument("file")
     vp.add_argument("sig", nargs="?")
     args = p.parse_args(argv)
