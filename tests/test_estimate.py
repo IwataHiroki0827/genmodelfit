@@ -3,17 +3,22 @@ import json
 import pytest
 
 from genmodelfit import cli
-from genmodelfit.calibrate import calibrate
-from genmodelfit.db import bundled_text, load
+from genmodelfit.calibrate import build_rows, calibrate
+from genmodelfit.db import Database, bundled_text, load
 from genmodelfit.estimate import (
+    GIB,
+    UNKNOWN_SIZE_REASON,
     Coefficients,
+    _role_of,
     components,
     estimate,
     is_censored,
     limits_for,
     load_coefficients,
+    norm_precision,
 )
 from genmodelfit.models import Gpu, Measurement, ModelEntry, ModelFile, Settings, SystemInfo, Template
+from genmodelfit.recommend import evaluate, recommend
 
 
 def pc(vram: float, ram: float = 32.0) -> SystemInfo:
@@ -22,7 +27,7 @@ def pc(vram: float, ram: float = 32.0) -> SystemInfo:
 
 
 def f(name: str, gb: float, directory: str | None = None, role: str | None = None) -> ModelFile:
-    return ModelFile(name=name, size_bytes=int(gb * 1e9), directory=directory, role=role)
+    return ModelFile(name=name, size_bytes=int(gb * GIB), directory=directory, role=role)
 
 
 @pytest.fixture(autouse=True)
@@ -40,10 +45,10 @@ def db():
 
 def test_split_sdxl_checkpoint(db):
     p = components(db.get("image_sdxl_simple"))
-    assert p.denoise == pytest.approx(5.13, abs=0.02)  # UNet
-    assert p.encode == pytest.approx(1.64, abs=0.02)  # CLIP-L + bigG
-    assert p.decode == pytest.approx(0.17, abs=0.01)
-    assert p.total == pytest.approx(6.94, abs=0.01)
+    assert p.denoise == pytest.approx(4.78, abs=0.02)  # UNet(GiB)
+    assert p.encode == pytest.approx(1.53, abs=0.02)  # CLIP-L + bigG
+    assert p.decode == pytest.approx(0.16, abs=0.01)
+    assert p.total == pytest.approx(6938078334 / GIB, abs=0.001)
     assert any("SDXL" in n for n in p.notes)
 
 
@@ -86,20 +91,18 @@ def test_split_hf_names_without_directory():
 
 
 def test_no_files_falls_back_to_template_size():
-    e = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", size_bytes=int(8e9)))
+    e = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", size_bytes=8 * GIB))
     p = components(e)
     assert p.total == pytest.approx(8.0) and p.denoise == pytest.approx(6.0)
     est = estimate(e, pc(16), coefficients=Coefficients())
     assert est.basis == "estimated" and est.fit in ("perfect", "good")
-    empty = ModelEntry(id="z", name="z", modality="image")
-    assert estimate(empty, pc(8), coefficients=Coefficients()).fit == "perfect"
 
 
 def test_precision_override_scales_main_only(db):
     e = db.get("image_z_image_turbo")  # 本体 bf16 12.3 GB
     base = estimate(e, pc(16), Settings(width=1024, height=1024), coefficients=Coefficients())
     fp8 = estimate(e, pc(16), Settings(width=1024, height=1024, precision="fp8"), coefficients=Coefficients())
-    assert base.vram_gb - fp8.vram_gb == pytest.approx(12.31 / 2, abs=0.02)
+    assert base.vram_gb - fp8.vram_gb == pytest.approx(12309866400 / GIB / 2, abs=0.02)
     assert any("bf16 → fp8" in r for r in fp8.reasons)
     # 精度を変えたら実測(bf16)は使わない
     fp8m = estimate(e, pc(16), Settings(width=768, height=768, precision="fp8"), db.measurements)
@@ -131,11 +134,23 @@ def test_levels_full_sequential_offload():
     assert estimate(e, pc(4), s, coefficients=c).fit == "too_tight"
 
 
-def test_ram_is_hard_limit_even_when_vram_is_plenty():
-    e = big_model()  # 重み 20 GB + 固定分
-    assert estimate(e, pc(48, ram=64), coefficients=Coefficients()).fit == "perfect"
-    tight = estimate(e, pc(48, ram=16), coefficients=Coefficients())
-    assert tight.fit == "too_tight" and "メモリ不足" in tight.reasons[0]
+def test_ram_depends_on_run_mode():
+    c = Coefficients()
+    e = big_model()  # 本体 12 + エンコーダ 8 GiB
+    assert estimate(e, pc(48, ram=64), coefficients=c).fit == "perfect"
+    # 全部 GPU に載るなら、メインメモリは固定分 + いちばん大きい部品(3 + 12 = 15)で足りる
+    gpu16 = estimate(e, pc(48, ram=16), coefficients=c)
+    assert gpu16.fit == "perfect" and gpu16.ram_gb == pytest.approx(15.0)
+    # 少し足りない(1.5 倍以内)→ marginal(仮想メモリで遅い)
+    soft = estimate(e, pc(48, ram=12), coefficients=c)
+    assert soft.fit == "marginal" and soft.run_mode == "gpu" and any("仮想メモリ" in r for r in soft.reasons)
+    # 1.5 倍を超える → too_tight
+    hard = estimate(e, pc(48, ram=8), coefficients=c)
+    assert hard.fit == "too_tight" and "メモリ不足" in hard.reasons[0]
+    # 逃がすときは全部品(3 + 20 = 23)。16 GB では足りないが 1.5 倍以内なので marginal のまま
+    off = estimate(e, pc(8, ram=16), coefficients=c)
+    assert off.fit == "marginal" and off.run_mode == "offload" and off.ram_gb == pytest.approx(23.0)
+    assert estimate(e, pc(8, ram=12), coefficients=c).fit == "too_tight"
 
 
 # --- 実測の扱い ----------------------------------------------------------------------------------
@@ -279,3 +294,285 @@ def test_cli_info_shows_limits(capsys):
     data = json.loads(capsys.readouterr().out)
     wan = next(m for m in data["models"] if m["id"] == "text_to_video_wan")
     assert wan["estimate"]["limits"]["max_side_px"] and wan["estimate"]["vram_sequential_gb"]
+
+
+# --- レビューでの指摘への対応(PR #10) -----------------------------------------------------------
+
+
+def test_unknown_size_is_not_judged_as_fitting(db):
+    c = Coefficients()
+    cases = [
+        ModelEntry(id="a", name="a", modality="image"),  # ファイルもテンプレートの大きさも無い
+        ModelEntry(
+            id="b", name="b", modality="tts", files=[ModelFile(name="m.safetensors", size_bytes=None)]
+        ),
+        ModelEntry(id="c", name="c", modality="image", files=[ModelFile(name="m.safetensors", size_bytes=0)]),
+        ModelEntry(
+            id="d", name="d", modality="image", files=[ModelFile(name="m.safetensors", size_bytes=-5)]
+        ),
+        ModelEntry(  # 一部だけ分からない
+            id="e",
+            name="e",
+            modality="image",
+            files=[
+                f("dit.safetensors", 4, "diffusion_models"),
+                ModelFile(name="te.safetensors", directory="text_encoders"),
+            ],
+        ),
+    ]
+    for e in cases:
+        for vram in (0, 8, 48):  # GPU 無し(CPU)でも「小さい」とみなさない
+            est = estimate(e, pc(vram), coefficients=c, with_limits=True)
+            assert est.unknown_size and est.fit == "too_tight" and est.run_mode == "none", (e.id, vram)
+            assert est.basis == "estimated" and est.reasons[0] == UNKNOWN_SIZE_REASON
+            assert est.limits is None and est.measured_on is None
+    # テンプレートの大きさがあればそれを使う(大きさが分かる)
+    t = ModelEntry(
+        id="t",
+        name="t",
+        modality="image",
+        files=[ModelFile(name="m.safetensors")],
+        template=Template(name="t", size_bytes=2 * GIB),
+    )
+    assert not estimate(t, pc(8), coefficients=c).unknown_size
+    # recommend には出さない。fit / info には出す
+    d = Database(models=[cases[0], db.get("image_sdxl_simple")])
+    assert [x.model.id for x in recommend(d, pc(16), limit=None)] == ["image_sdxl_simple"]
+    assert {x.model.id for x in evaluate(d, pc(16))} == {"a", "image_sdxl_simple"}
+
+
+def hf(*names_gb) -> ModelEntry:
+    return ModelEntry(
+        id="hf:x/y",
+        name="y",
+        modality="image",
+        source="huggingface",
+        files=[ModelFile(name=n, size_bytes=int(g * GIB)) for n, g in names_gb],
+    )
+
+
+def test_hf_listing_counts_one_variant_per_component():
+    # stabilityai/stable-diffusion-xl-base-1.0 の並び(主なもの)。全部足すと 80 GiB を超える
+    sdxl = hf(
+        ("sd_xl_base_1.0.safetensors", 6.46),
+        ("sd_xl_base_1.0_0.9vae.safetensors", 6.46),
+        ("sd_xl_offset_example-lora_1.0.safetensors", 0.05),
+        ("unet/diffusion_pytorch_model.safetensors", 9.6),
+        ("unet/diffusion_pytorch_model.fp16.safetensors", 4.8),
+        ("unet/openvino_model.bin", 9.6),
+        ("unet/diffusion_flax_model.msgpack", 9.6),
+        ("text_encoder/model.safetensors", 0.46),
+        ("text_encoder/model.fp16.safetensors", 0.23),
+        ("text_encoder/pytorch_model.bin", 0.46),
+        ("text_encoder_2/model.safetensors", 2.6),
+        ("text_encoder_2/model.fp16.safetensors", 1.3),
+        ("vae/diffusion_pytorch_model.safetensors", 0.31),
+        ("vae/diffusion_pytorch_model.fp16.safetensors", 0.16),
+        ("vae_1_0/diffusion_pytorch_model.safetensors", 0.31),
+        ("onnx/unet/model.onnx_data", 9.6),
+        ("model_index.json", 0.0001),
+    )
+    p = components(sdxl)
+    # 全部入りと分かっている単一ファイル 1 つ + LoRA だけ
+    assert p.total == pytest.approx(6.46 + 0.05, abs=0.01)
+    assert any("単一ファイルだけ" in n for n in p.notes)
+    # diffusers 形式だけ: 部品ごとに fp16 の safetensors を 1 組、分割は全部数える
+    diffusers = hf(
+        ("transformer/diffusion_pytorch_model-00001-of-00002.safetensors", 5),
+        ("transformer/diffusion_pytorch_model-00002-of-00002.safetensors", 3),
+        ("transformer/diffusion_pytorch_model.bin", 8),
+        ("text_encoder/model.fp16.safetensors", 2),
+        ("text_encoder/model.safetensors", 4),
+        ("text_encoder/pytorch_model.fp16.bin", 2),
+        ("vae/diffusion_pytorch_model.safetensors", 0.2),
+        ("vae/diffusion_pytorch_model.ckpt", 0.2),
+    )
+    p = components(diffusers)
+    assert (p.denoise, p.encode, p.decode) == pytest.approx((8, 2, 0.2))
+    # 本体だけの単一ファイル + diffusers のエンコーダ(FLUX のような並び): エンコーダは数え落とさない
+    flux = hf(
+        ("flux1-dev.safetensors", 22.2),
+        ("transformer/diffusion_pytorch_model-00001-of-00003.safetensors", 9.3),
+        ("transformer/diffusion_pytorch_model-00002-of-00003.safetensors", 9.3),
+        ("transformer/diffusion_pytorch_model-00003-of-00003.safetensors", 3.6),
+        ("text_encoder/model.safetensors", 0.23),
+        ("text_encoder_2/model-00001-of-00002.safetensors", 4.6),
+        ("text_encoder_2/model-00002-of-00002.safetensors", 4.2),
+        ("ae.safetensors", 0.31),
+        ("vae/diffusion_pytorch_model.safetensors", 0.31),
+    )
+    p = components(flux)
+    assert p.denoise == pytest.approx(22.2) and p.encode == pytest.approx(0.23 + 8.8)
+    assert p.decode == pytest.approx(0.31)
+    # GGUF の量子化が並ぶもの: 1 つだけ(q8 を優先)
+    gguf = hf(("flux1-dev-Q4_K_S.gguf", 6.8), ("flux1-dev-Q8_0.gguf", 12.7), ("flux1-dev-Q5_K_M.gguf", 8.4))
+    assert components(gguf).total == pytest.approx(12.7)
+
+
+def test_comfyui_directory_dedupes_same_part_only():
+    e = ModelEntry(
+        id="x",
+        name="x",
+        modality="image",
+        files=[
+            f("flux1-dev.safetensors", 22, "diffusion_models"),
+            f("t5xxl_fp16.safetensors", 9.1, "text_encoders"),
+            f("t5xxl_fp8_e4m3fn.safetensors", 4.6, "text_encoders"),  # 同じ部品の別精度
+            f("clip_l.safetensors", 0.23, "text_encoders"),  # 別の部品
+            f("ae.safetensors", 0.31, "vae"),
+        ],
+    )
+    p = components(e)
+    assert p.encode == pytest.approx(9.1 + 0.23)
+    assert any("別の形式・精度" in n for n in p.notes)
+    # 名前の違う本体(高ノイズ用・低ノイズ用)はフォルダの外でも両方数える
+    two = hf(("wan2.2_high_noise_14B.safetensors", 13), ("wan2.2_low_noise_14B.safetensors", 13))
+    assert components(two).total == pytest.approx(26)
+    # ComfyUI 風のフォルダ(text_encoders/)の中は名前ごとに別の部品。同じ名前の別精度は 1 つ
+    sd35 = hf(
+        ("sd3.5_large.safetensors", 15),
+        ("text_encoders/clip_g.safetensors", 1.3),
+        ("text_encoders/clip_l.safetensors", 0.23),
+        ("text_encoders/t5xxl_fp16.safetensors", 9.1),
+        ("text_encoders/t5xxl_fp8_e4m3fn.safetensors", 4.6),
+    )
+    p = components(sd35)
+    assert p.denoise == pytest.approx(15) and p.encode == pytest.approx(1.3 + 0.23 + 9.1)
+
+
+def test_bundled_seed_sizes_unchanged_by_dedupe(db):
+    for m in db.models:
+        files = [x for x in m.files if x.size_bytes]
+        # 全部入りの内訳の割合は丸めてあるので、合計は 0.2% ほどずれる
+        assert components(m).total == pytest.approx(sum(x.size_bytes for x in files) / GIB, rel=0.003), m.id
+
+
+def test_role_inference_uses_directory_and_known_encoder_names():
+    assert _role_of(ModelFile(name="qwen_image_fp8_e4m3fn.safetensors")) == "main"
+    assert _role_of(ModelFile(name="qwen_2.5_vl_7b_fp8_scaled.safetensors")) == "text_encoder"
+    assert _role_of(ModelFile(name="qwen_3_4b.safetensors")) == "text_encoder"
+    assert _role_of(ModelFile(name="umt5_xxl_fp8_e4m3fn_scaled.safetensors")) == "text_encoder"
+    assert _role_of(ModelFile(name="clip_l.safetensors")) == "text_encoder"
+    assert _role_of(ModelFile(name="gemma_3_12B_it.safetensors")) == "text_encoder"
+    # 置き場所が名前より先
+    assert _role_of(ModelFile(name="qwen_3_4b.safetensors", directory="diffusion_models")) == "main"
+    assert _role_of(ModelFile(name="x.safetensors", directory="controlnet")) == "controlnet"
+    # HF のフォルダ名
+    assert _role_of(ModelFile(name="transformer/model.safetensors")) == "main"
+    assert _role_of(ModelFile(name="text_encoder_2/model.safetensors")) == "text_encoder"
+    assert _role_of(ModelFile(name="image_encoder/model.safetensors")) == "clip_vision"
+    # 本体と同時に載る部品(ControlNet・model_patches・LoRA)は生成の段に入る
+    e = ModelEntry(
+        id="x",
+        name="x",
+        modality="image",
+        files=[
+            f("qwen_image_fp8_e4m3fn.safetensors", 19),
+            f("qwen_2.5_vl_7b_fp8_scaled.safetensors", 8.7),
+            f("cn.safetensors", 3, "controlnet"),
+            f("patch.safetensors", 2, "model_patches"),
+            f("style.safetensors", 0.5, "loras"),
+            f("qwen_image_vae.safetensors", 0.24),
+        ],
+    )
+    p = components(e)
+    assert p.denoise == pytest.approx(19 + 3 + 2 + 0.5) and p.encode == pytest.approx(8.7)
+    assert p.decode == pytest.approx(0.24)
+
+
+def test_precision_is_case_insensitive(db):
+    assert norm_precision("BF16") == "bf16" and norm_precision("float16") == "fp16"
+    assert norm_precision("GGUF-Q4_K_M") == "q4" and norm_precision(" FP8 ") == "fp8"
+    e = db.get("image_z_image_turbo")
+    s = Settings(width=1024, height=1024)
+    c = Coefficients()
+    lower = estimate(e, pc(16), Settings(width=1024, height=1024, precision="fp8"), coefficients=c)
+    upper = estimate(e, pc(16), Settings(width=1024, height=1024, precision="FP8"), coefficients=c)
+    assert upper.vram_gb == lower.vram_gb < estimate(e, pc(16), s, coefficients=c).vram_gb
+    # 元と同じ精度(大文字でも)を指定しても実測はそのまま使う
+    same = estimate(e, pc(16), Settings(width=768, height=768, precision="BF16"), db.measurements)
+    assert same.basis == "measured"
+
+
+def test_batch_and_precision_must_match_for_measured(db):
+    e = db.get("image_z_image_turbo_int8")
+    one = estimate(e, pc(16), Settings(width=768, height=768), db.measurements)
+    four = estimate(e, pc(16), Settings(width=768, height=768, batch=4), db.measurements)
+    assert one.basis == "measured" and four.basis == "estimated" and four.vram_gb > one.vram_gb
+    other = estimate(e, pc(16), Settings(width=768, height=768, precision="fp8"), db.measurements)
+    assert other.basis == "estimated"
+
+
+def test_failed_or_nonstandard_measurements_are_ignored():
+    e = ModelEntry(
+        id="m12", name="m12", modality="image", files=[f("dit.safetensors", 12, "diffusion_models")]
+    )
+    s = Settings(width=1024, height=1024)
+    oom = Measurement(
+        model_id="m12", gpu_name="g", gpu_vram_gb=8, peak_vram_gb=7.6, settings=s, outcome="oom"
+    )
+    est = estimate(e, pc(8), s, [oom])
+    assert est.basis == "estimated" and est.measured_on is None and est.fit not in ("perfect", "good")
+    custom = Measurement(
+        model_id="m12", gpu_name="g", gpu_vram_gb=8, peak_vram_gb=7.6, settings=s, standard=False
+    )
+    assert estimate(e, pc(8), s, [custom]).basis == "estimated"
+    ok = Measurement(model_id="m12", gpu_name="g", gpu_vram_gb=16, peak_vram_gb=13.0, settings=s)
+    assert estimate(e, pc(16), s, [ok]).basis == "measured"
+    # 合わせ直しにも使わない
+    rows = build_rows(Database(models=[e], measurements=[oom, custom, ok]))
+    assert [r.m.peak_vram_gb for r in rows] == [13.0]
+
+
+def test_negative_settings_are_ignored_and_cli_rejects_them(db, capsys):
+    e = db.get("image_sdxl_simple")
+    bad = estimate(e, pc(16), Settings(width=-5, height=0, batch=0), coefficients=Coefficients())
+    good = estimate(e, pc(16), None, coefficients=Coefficients())
+    assert bad.vram_gb == good.vram_gb and bad.settings["batch"] == 1
+    for argv in (
+        ["fit", "--width", "0"],
+        ["fit", "--height", "-1"],
+        ["fit", "--frames", "0"],
+        ["fit", "--length", "-3"],
+        ["fit", "--vram", "-8"],
+        ["fit", "--ram", "0"],
+    ):
+        with pytest.raises(SystemExit) as ex:
+            cli.main([*argv, "--no-cache"])
+        assert ex.value.code == 2, argv
+    capsys.readouterr()
+
+
+def test_cpu_judgment_does_not_claim_gpu_measurement(capsys):
+    assert cli.main(["info", "image_sdxl_simple", "--json", "--vram", "0", "--ram", "32", "--no-cache"]) == 0
+    est = json.loads(capsys.readouterr().out)["estimate"]
+    assert est["basis"] == "estimated" and est["measured_on"] is None
+    assert any("GPU が無いので" in r for r in est["reasons"])
+
+
+def test_sizes_are_gib():
+    e = ModelEntry(id="x", name="x", modality="image", files=[f("dit.safetensors", 1, "diffusion_models")])
+    assert components(e).total == pytest.approx(1.0)
+    assert json.loads(bundled_text("measurements.json"))["unit"] == "GiB"
+
+
+def test_accuracy_summary_only_claims_evaluable_modalities():
+    sm = json.loads(bundled_text("calibration.json"))["summary"]
+    assert sm["evaluable_modalities"] == ["3d", "image"] and sm["n_evaluable"] == 4
+    assert sm["by_modality"]["video"]["target_met"] is None
+    assert sm["by_modality"]["music"]["target_met"] is None
+    assert sm["censored_trivial"] == sm["n_censored"] == 3  # 張り付きは情報を持たない
+
+
+# 人が決めた目安: 8 モデルとも最低メモリ 16 GB(AI生成キットのカタログ)。
+# メモリ 16 GB を理由に too_tight にしない
+@pytest.mark.parametrize("model_id", sorted(CURATED))
+@pytest.mark.parametrize("which", [0, 1])
+@pytest.mark.parametrize("ram", [16, 15.3])  # 15.x GiB と出る 16 GB 搭載のノート PC も
+def test_curated_ram_16gb_is_never_the_reason_for_too_tight(db, model_id, which, ram):
+    vram = CURATED[model_id][which]
+    e = estimate(db.get(model_id), pc(vram, ram=ram), None, db.measurements)
+    assert not any("メモリ不足" in r for r in e.reasons), e.reasons
+    roomy = estimate(db.get(model_id), pc(vram, ram=64), None, db.measurements)
+    if roomy.fit != "too_tight":
+        assert e.fit != "too_tight"

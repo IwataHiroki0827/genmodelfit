@@ -3,6 +3,10 @@
 `schema_version`: **1**. The source of truth is `src/genmodelfit/models.py`; this page must match it.
 正本は `src/genmodelfit/models.py`。形を変えたら `SCHEMA_VERSION` とこのページを直す。
 
+**Units / 単位**: every `*_gb` value is **GiB** (2^30 bytes): file sizes are bytes / 2^30, VRAM is nvidia-smi MiB / 1024,
+RAM is psutil bytes / 2^30. Measurements are assumed to be GiB too (`unit` in `measurements.json`).
+`*_gb` はすべて GiB。CLI の表示の「GB」も GiB。
+
 ## Common envelope / すべてのコマンドに共通
 
 Every command with `--json` prints one object:
@@ -40,7 +44,7 @@ Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when 
 | `content` | str | `sfw` or `uncensored` (see README) |
 | `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
-| `total_size_gb` | float \| null | download size (decimal GB) |
+| `total_size_gb` | float \| null | size of all listed files (GiB) |
 | `score` | float | 0–100, used for ordering |
 | `fit` | str | `perfect` / `good` / `marginal` / `too_tight` |
 | `estimate` | Estimate | |
@@ -55,20 +59,24 @@ Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when 
 | `vram_gb` | float | peak VRAM when everything stays on the GPU / 全部載せ |
 | `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE) / 順に載せ替え |
 | `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM) / 逃がす |
-| `ram_gb` | float | system RAM needed (3 GB + all weights). Shortage is always `too_tight` |
-| `disk_gb` | float \| null | download size |
+| `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short by up to 1.5× → `marginal` (page file, slow); more → `too_tight` |
+| `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present |
-| `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` |
+| `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` |
 | `reasons` | str[] | human-readable reasons (Japanese) |
 | `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
+| `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `too_tight`, `run_mode` `none`, VRAM / RAM values are 0, `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these |
 
 When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
 used as is); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
-A measurement is used as `basis: "measured"` only when width / height / frames / seconds / precision match;
-other settings are shifted by it and stay `estimated`. How measurements and coefficients are used: `docs/accuracy.md`.
+A measurement is used as `basis: "measured"` only when width / height / frames / seconds / batch / precision match
+(precision compared case-insensitively; a measurement without precision means the model's own precision) and a GPU is
+present; other settings are shifted by it and stay `estimated`. Measurements with `outcome` other than `ok` or with
+`standard: false` are ignored. Note that `fit` therefore compares measured models at their measured settings with other
+models at the defaults; pass `--width` etc. to compare at the same settings. How measurements and coefficients are used: `docs/accuracy.md`.
 
 Limits / 限界 (all values are the largest that give `perfect` or `good`, other settings unchanged; `null` = even the
 smallest tried value does not reach `good`):
@@ -87,8 +95,8 @@ Fit levels / 段階:
 |---|---|
 | `perfect` | everything fits in VRAM with ≥10% headroom / 余裕をもって全部載る |
 | `good` | everything fits with little headroom, or fits when parts are swapped stage by stage / 全部載る(余裕は少ない)、または順に載せ替えれば載る |
-| `marginal` | runs only by offloading to RAM, or on CPU; slow / 逃がせば動く・遅い |
-| `too_tight` | does not run (VRAM or RAM) / 動かない |
+| `marginal` | runs only by offloading to RAM, on CPU, or with a small RAM shortfall (page file); slow / 逃がせば動く・CPU・メモリが少し足りない。遅い |
+| `too_tight` | does not run (VRAM, or RAM short by more than 1.5×), **or cannot be judged because the size is unknown** (`unknown_size: true`) / 動かない、または大きさが分からず判定できない |
 
 ## info
 
@@ -102,6 +110,8 @@ uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage
 
 ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), `repo_id`, `license`,
 `license_name`, `gated` (bool \| null = unknown), `role` (`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`).
+The estimator decides a file's part from `directory` first, then `role`, then the Hugging Face folder / known file
+names, and counts one variant per part (`docs/accuracy.md`, 「ファイルの数え方」).
 
 Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `requires_custom_nodes`, `usage`,
 `date`, `size_bytes`.
@@ -110,7 +120,9 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
-`comfyui_version`, `offload`, `source`, `date`, `note`.
+`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome` (`ok` / `oom` / `error`, default `ok`),
+`standard` (bool, default true; false when a custom workflow or extra overrides were used). Only `outcome: "ok"` and
+`standard: true` measurements are used for estimates and calibration.
 
 ## Database file (`db.json`)
 
@@ -118,5 +130,5 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 {"schema_version": 1, "generated_at": "…", "sources": {…}, "models": [ModelEntry, …]}
 ```
 
-Measurements live in `measurements.json` (`{"measurements": [Measurement, …]}`), bundled plus
+Measurements live in `measurements.json` (`{"unit": "GiB", "unit_note": "…", "measurements": [Measurement, …]}`), bundled plus
 `<cache>/measurements/*.json`.

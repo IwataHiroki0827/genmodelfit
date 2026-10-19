@@ -5,11 +5,11 @@
  "n": 9,
  "n_censored": 3,
  "coefficients": {
-  "overhead_gb": 0.8037,
-  "act_image_gb_per_mp": 0.381,
-  "act_video_gb_per_mp": 9.8461,
-  "act_audio_gb_per_min": 0.0,
-  "act_3d_gb": 0.6131
+  "overhead_gb": 1.4675,
+  "act_image_gb_per_mp": 0.2348,
+  "act_video_gb_per_mp": 9.8867,
+  "act_audio_gb_per_min": 0.0576,
+  "act_3d_gb": 0.3748
  },
  "prior": {
   "overhead_gb": 0.6,
@@ -51,6 +51,7 @@
  "loo": [
   {
    "model_id": "image_z_image_turbo_int8",
+   "modality": "image",
    "settings": {
     "width": 768,
     "height": 768,
@@ -59,14 +60,16 @@
    "note": null,
    "measured_gb": 13.2,
    "censored": false,
-   "fit_predicted_gb": 13.2,
-   "loo_predicted_gb": 13.2,
-   "loo_error_pct": -0.0,
-   "weights_only_error_pct": -7.8,
-   "loo_ok": null
+   "fit_predicted_gb": 12.94,
+   "loo_predicted_gb": 12.85,
+   "loo_error_pct": -2.7,
+   "weights_only_error_pct": -14.1,
+   "loo_ok": null,
+   "censored_trivial": false
   },
   {
    "model_id": "image_z_image_turbo",
+   "modality": "image",
    "settings": {
     "width": 768,
     "height": 768,
@@ -75,14 +78,16 @@
    "note": null,
    "measured_gb": 15.0,
    "censored": true,
-   "fit_predicted_gb": 21.72,
-   "loo_predicted_gb": 21.72,
-   "loo_error_pct": 44.8,
-   "weights_only_error_pct": 37.9,
-   "loo_ok": true
+   "fit_predicted_gb": 20.88,
+   "loo_predicted_gb": 20.88,
+   "loo_error_pct": 39.2,
+   "weights_only_error_pct": 28.5,
+   "loo_ok": true,
+   "censored_trivial": true
   },
   {
    "model_id": "image_sdxl_simple",
+   "modality": "image",
    "settings": {
     "width": 832,
     "height": 832,
@@ -91,14 +96,16 @@
    "note": null,
    "measured_gb": 8.0,
    "censored": false,
-   "fit_predicted_gb": 8.01,
-   "loo_predicted_gb": 8.02,
-   "loo_error_pct": 0.3,
-   "weights_only_error_pct": -13.3,
-   "loo_ok": null
+   "fit_predicted_gb": 8.09,
+   "loo_predicted_gb": 8.38,
+   "loo_error_pct": 4.7,
+   "weights_only_error_pct": -19.2,
+   "loo_ok": null,
+   "censored_trivial": false
   },
   {
    "model_id": "text_to_video_wan",
+   "modality": "video",
    "settings": {
     "width": 512,
     "height": 512,
@@ -109,13 +116,15 @@
    "measured_gb": 13.3,
    "censored": false,
    "fit_predicted_gb": 13.21,
-   "loo_predicted_gb": 11.04,
-   "loo_error_pct": -17.0,
-   "weights_only_error_pct": -26.1,
-   "loo_ok": null
+   "loo_predicted_gb": 11.01,
+   "loo_error_pct": -17.2,
+   "weights_only_error_pct": -31.2,
+   "loo_ok": null,
+   "censored_trivial": false
   },
   {
    "model_id": "video_wan2_2_5B_ti2v",
+   "modality": "video",
    "settings": {
     "width": 640,
     "height": 640,
@@ -125,14 +134,16 @@
    "note": "解像度は長辺 640px。縦横比は記録が無いので正方形と仮定",
    "measured_gb": 15.8,
    "censored": true,
-   "fit_predicted_gb": 23.87,
-   "loo_predicted_gb": 23.87,
-   "loo_error_pct": 51.1,
-   "weights_only_error_pct": 14.8,
-   "loo_ok": true
+   "fit_predicted_gb": 23.31,
+   "loo_predicted_gb": 23.31,
+   "loo_error_pct": 47.5,
+   "weights_only_error_pct": 7.0,
+   "loo_ok": true,
+   "censored_trivial": true
   },
   {
    "model_id": "video_wan2_2_5B_ti2v",
+   "modality": "video",
    "settings": {
     "width": 640,
     "height": 640,
@@ -142,14 +153,16 @@
    "note": "文章から動画。画像から動画より 0.8 GB 少ない",
    "measured_gb": 15.0,
    "censored": true,
-   "fit_predicted_gb": 23.87,
-   "loo_predicted_gb": 23.87,
-   "loo_error_pct": 59.1,
-   "weights_only_error_pct": 21.0,
-   "loo_ok": true
+   "fit_predicted_gb": 23.31,
+   "loo_predicted_gb": 23.31,
+   "loo_error_pct": 55.4,
+   "weights_only_error_pct": 12.7,
+   "loo_ok": true,
+   "censored_trivial": true
   },
   {
    "model_id": "audio_ace_step_1_5_checkpoint",
+   "modality": "music",
    "settings": {
     "seconds": 20,
     "steps": 8
@@ -157,49 +170,88 @@
    "note": null,
    "measured_gb": 10.8,
    "censored": false,
-   "fit_predicted_gb": 10.84,
-   "loo_predicted_gb": 11.4,
-   "loo_error_pct": 5.5,
-   "weights_only_error_pct": -7.1,
-   "loo_ok": null
+   "fit_predicted_gb": 10.83,
+   "loo_predicted_gb": 11.18,
+   "loo_error_pct": 3.5,
+   "weights_only_error_pct": -13.5,
+   "loo_ok": null,
+   "censored_trivial": false
   },
   {
    "model_id": "3d_hunyuan3d_image_to_model",
+   "modality": "3d",
    "settings": {
     "steps": 15
    },
    "note": null,
    "measured_gb": 6.7,
    "censored": false,
-   "fit_predicted_gb": 6.79,
-   "loo_predicted_gb": 6.96,
-   "loo_error_pct": 4.0,
-   "weights_only_error_pct": -19.8,
-   "loo_ok": null
+   "fit_predicted_gb": 6.85,
+   "loo_predicted_gb": 7.13,
+   "loo_error_pct": 6.5,
+   "weights_only_error_pct": -25.3,
+   "loo_ok": null,
+   "censored_trivial": false
   },
   {
    "model_id": "3d_hunyuan3d-v2.1",
+   "modality": "3d",
    "settings": {
     "steps": 20
    },
    "note": null,
    "measured_gb": 9.4,
    "censored": false,
-   "fit_predicted_gb": 9.23,
-   "loo_predicted_gb": 9.14,
-   "loo_error_pct": -2.8,
-   "weights_only_error_pct": -16.9,
-   "loo_ok": null
+   "fit_predicted_gb": 9.12,
+   "loo_predicted_gb": 8.97,
+   "loo_error_pct": -4.5,
+   "weights_only_error_pct": -22.6,
+   "loo_ok": null,
+   "censored_trivial": false
   }
  ],
  "summary": {
   "target_abs_pct": 20.0,
   "n_point": 6,
   "n_censored": 3,
-  "mean_abs_pct": 4.9,
-  "max_abs_pct": 17.0,
-  "weights_only_mean_abs_pct": 15.2,
+  "mean_abs_pct": 6.5,
+  "max_abs_pct": 17.2,
+  "weights_only_mean_abs_pct": 21.0,
   "censored_ok": 3,
-  "target_met": true
+  "censored_trivial": 3,
+  "n_evaluable": 4,
+  "evaluable_modalities": [
+   "3d",
+   "image"
+  ],
+  "evaluable_mean_abs_pct": 4.6,
+  "evaluable_max_abs_pct": 6.5,
+  "target_met": true,
+  "by_modality": {
+   "3d": {
+    "n_point": 2,
+    "n_censored": 0,
+    "max_abs_pct": 6.5,
+    "target_met": true
+   },
+   "image": {
+    "n_point": 2,
+    "n_censored": 1,
+    "max_abs_pct": 4.7,
+    "target_met": true
+   },
+   "music": {
+    "n_point": 1,
+    "n_censored": 0,
+    "max_abs_pct": 3.5,
+    "target_met": null
+   },
+   "video": {
+    "n_point": 1,
+    "n_censored": 2,
+    "max_abs_pct": 17.2,
+    "target_met": null
+   }
+  }
  }
 }

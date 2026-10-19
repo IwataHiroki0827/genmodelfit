@@ -13,7 +13,7 @@ from typing import Any
 from . import __version__
 from .db import Database, DatabaseError
 from .db import load as load_db
-from .estimate import estimate, load_coefficients
+from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
 from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Settings, SystemInfo
 from .recommend import evaluate, recommend
@@ -21,6 +21,36 @@ from .recommend import evaluate, recommend
 
 class CliError(RuntimeError):
     pass
+
+
+def _positive_int(text: str) -> int:
+    try:
+        v = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"整数を指定してください: {text}") from None
+    if v <= 0:
+        raise argparse.ArgumentTypeError(f"1 以上を指定してください: {text}")
+    return v
+
+
+def _positive_float(text: str) -> float:
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"数を指定してください: {text}") from None
+    if not v > 0 or v == float("inf"):
+        raise argparse.ArgumentTypeError(f"0 より大きい値を指定してください: {text}")
+    return v
+
+
+def _non_negative_float(text: str) -> float:
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"数を指定してください: {text}") from None
+    if not v >= 0 or v == float("inf"):
+        raise argparse.ArgumentTypeError(f"0 以上を指定してください: {text}")
+    return v
 
 
 def _out(obj: Any) -> None:
@@ -200,17 +230,20 @@ def cmd_info(args: argparse.Namespace) -> int:
     print(f"{m.name}  [{m.id}]")
     print(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
     print(f"  license:  {m.license or 'unknown'}  source: {m.source}")
-    size = (m.total_size_bytes or 0) / 1e9
-    print(f"  size:     {size:.2f} GB in {len(m.files)} file(s)")
+    counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
+    print(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
     for f in m.files:
-        fs = f"{(f.size_bytes or 0) / 1e9:.2f} GB" if f.size_bytes else "?"
+        fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
         print(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
     print(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
-    print(
-        f"  VRAM:     {e.vram_gb:.1f} GB all-in-GPU{seq} / {e.vram_offload_gb:.1f} GB with offload;"
-        f" RAM {e.ram_gb:.1f} GB"
-    )
+    if e.unknown_size:
+        print("  VRAM:     unknown (weight sizes are not known)")
+    else:
+        print(
+            f"  VRAM:     {e.vram_gb:.1f} GB all-in-GPU{seq} / {e.vram_offload_gb:.1f} GB with offload;"
+            f" RAM {e.ram_gb:.1f} GB"
+        )
     if e.limits:
         print(f"  limits:   {format_limits(e.limits)}")
     for r in e.reasons:
@@ -261,8 +294,10 @@ def _attach_gate(fits, args) -> None:
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="JSON で出す")
-    common.add_argument("--vram", type=float, metavar="GB", help="GPU の VRAM を上書きする(例: 8)")
-    common.add_argument("--ram", type=float, metavar="GB", help="メインメモリを上書きする(例: 32)")
+    common.add_argument(
+        "--vram", type=_non_negative_float, metavar="GB", help="GPU の VRAM を上書きする(例: 8)"
+    )
+    common.add_argument("--ram", type=_positive_float, metavar="GB", help="メインメモリを上書きする(例: 32)")
     common.add_argument("--db", metavar="PATH", help="一覧のファイルを指定する")
     common.add_argument(
         "--no-cache", action="store_true", help="update で取った一覧を使わず、同梱のデータを使う"
@@ -276,10 +311,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         help="sfw / uncensored(無検閲)で絞る。既定は all",
     )
-    filt.add_argument("--width", type=int)
-    filt.add_argument("--height", type=int)
-    filt.add_argument("--frames", type=int, help="動画のコマ数")
-    filt.add_argument("--length", type=float, metavar="SEC", help="音声の長さ(秒)")
+    filt.add_argument("--width", type=_positive_int)
+    filt.add_argument("--height", type=_positive_int)
+    filt.add_argument("--frames", type=_positive_int, help="動画のコマ数")
+    filt.add_argument("--length", type=_positive_float, metavar="SEC", help="音声の長さ(秒)")
     filt.add_argument("--precision", help="本体の精度を換算する(例: fp8。元の精度が分かるときだけ)")
     filt.add_argument("--limit", "-n", type=int)
     filt.add_argument(
@@ -318,11 +353,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("template", help="テンプレート名(モデルの ID)")
     sp.add_argument("--url", default="http://127.0.0.1:8188", help="ComfyUI の URL")
     sp.add_argument("--workflow", metavar="PATH", help="API 形式のワークフロー(省略時はテンプレートから作る)")
-    sp.add_argument("--width", type=int)
-    sp.add_argument("--height", type=int)
-    sp.add_argument("--frames", type=int)
-    sp.add_argument("--length", type=float, metavar="SEC")
-    sp.add_argument("--steps", type=int)
+    sp.add_argument("--width", type=_positive_int)
+    sp.add_argument("--height", type=_positive_int)
+    sp.add_argument("--frames", type=_positive_int)
+    sp.add_argument("--length", type=_positive_float, metavar="SEC")
+    sp.add_argument("--steps", type=_positive_int)
     sp.add_argument("--output", metavar="PATH", help="結果の JSON の書き出し先")
     sp.set_defaults(func=cmd_bench)
     return p

@@ -28,6 +28,7 @@ from .estimate import (
     components,
     is_censored,
     settings_for,
+    usable,
 )
 from .models import Measurement
 
@@ -52,6 +53,7 @@ class Row:
     weights_gb: float
     features: dict[str, float]  # overhead_gb は常に 1
     censored: bool
+    modality: str = ""
 
     def predict(self, theta: dict[str, float]) -> float:
         return self.weights_gb + sum(theta[k] * v for k, v in self.features.items())
@@ -62,11 +64,14 @@ def build_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
     rows = []
     for m in db.measurements:
         e = db.get(m.model_id)
-        if e is None:
+        if e is None or not usable(m):  # OOM・エラー・標準でない設定の実測は使わない
+            continue
+        parts = components(e)
+        if parts.unknown:
             continue
         s = settings_for(e, m.settings)
         feats = {"overhead_gb": 1.0, **activation_features(e.modality, s, c)}
-        rows.append(Row(m, components(e).total * c.weight_factor, feats, is_censored(m)))
+        rows.append(Row(m, parts.total * c.weight_factor, feats, is_censored(m), e.modality))
     return rows
 
 
@@ -124,6 +129,7 @@ def leave_one_out(rows: list[Row]) -> list[dict]:
         out.append(
             {
                 "model_id": r.m.model_id,
+                "modality": r.modality,
                 "settings": {k: v for k, v in vars(r.m.settings).items() if v is not None and k != "batch"},
                 "note": r.m.note,
                 "measured_gb": y,
@@ -133,17 +139,33 @@ def leave_one_out(rows: list[Row]) -> list[dict]:
                 "loo_error_pct": round((pred - y) / y * 100, 1),
                 # 比べる基準: 重み(ファイルの大きさ)だけで当てたときの誤差
                 "weights_only_error_pct": round((r.weights_gb - y) / y * 100, 1),
-                # 張り付いた実測は「予測 ≥ 実測」なら当たり
+                # 張り付いた実測は「予測 ≥ 実測」なら当たり。ただし重みだけで実測を超えるものは
+                # 外れようがない(作業用メモリ・固定分は 0 以上)ので、情報を持たない
                 "loo_ok": (pred >= y) if r.censored else None,
+                "censored_trivial": bool(r.censored and r.weights_gb >= y),
             }
         )
     return out
 
 
 def summarize(loo: list[dict], target_pct: float = 20.0) -> dict:
-    errs = [abs(x["loo_error_pct"]) for x in loo if not x["censored"]]
-    base = [abs(x["weights_only_error_pct"]) for x in loo if not x["censored"]]
+    """LOO の要約。目標の判定(target_met)は、張り付いていない実測が 2 件以上ある種類だけで行う
+    (1 件しか無い種類はその 1 件を外すと係数が事前値に戻り、知らないモデルを当てる力を測れない)。
+    該当が無ければ None。張り付いた実測は判定に使わない。"""
+    pts = [x for x in loo if not x["censored"]]
+    errs = [abs(x["loo_error_pct"]) for x in pts]
+    base = [abs(x["weights_only_error_pct"]) for x in pts]
     cens = [x for x in loo if x["censored"]]
+    by: dict[str, dict] = {}
+    for mod in sorted({x["modality"] for x in loo}):
+        e = [abs(x["loo_error_pct"]) for x in pts if x["modality"] == mod]
+        by[mod] = {
+            "n_point": len(e),
+            "n_censored": sum(1 for x in cens if x["modality"] == mod),
+            "max_abs_pct": round(max(e), 1) if e else None,
+            "target_met": (max(e) <= target_pct) if len(e) >= 2 else None,
+        }
+    ev = [abs(x["loo_error_pct"]) for x in pts if by[x["modality"]]["n_point"] >= 2]
     return {
         "target_abs_pct": target_pct,
         "n_point": len(errs),
@@ -152,7 +174,13 @@ def summarize(loo: list[dict], target_pct: float = 20.0) -> dict:
         "max_abs_pct": round(max(errs), 1) if errs else None,
         "weights_only_mean_abs_pct": round(sum(base) / len(base), 1) if base else None,
         "censored_ok": sum(1 for x in cens if x["loo_ok"]),
-        "target_met": bool(errs) and max(errs) <= target_pct and all(x["loo_ok"] for x in cens),
+        "censored_trivial": sum(1 for x in cens if x["censored_trivial"]),
+        "n_evaluable": len(ev),
+        "evaluable_modalities": [k for k, v in by.items() if v["n_point"] >= 2],
+        "evaluable_mean_abs_pct": round(sum(ev) / len(ev), 1) if ev else None,
+        "evaluable_max_abs_pct": round(max(ev), 1) if ev else None,
+        "target_met": (max(ev) <= target_pct) if ev else None,
+        "by_modality": by,
     }
 
 
@@ -207,11 +235,12 @@ def markdown_table(result: dict) -> str:
             bits.append(f"{s['seconds']:g} 秒")
         if "文章から" in (x.get("note") or ""):
             bits.append("文章から")
-        err = (
-            f"張り付き({'≥ 実測で当たり' if x['loo_ok'] else '実測より小さい: 外れ'})"
-            if x["censored"]
-            else f"{x['loo_error_pct']:+.1f}%"
-        )
+        if x["censored"] and x.get("censored_trivial"):
+            err = "張り付き(重みだけで実測を超えるので情報なし)"
+        elif x["censored"]:
+            err = f"張り付き({'≥ 実測で当たり' if x['loo_ok'] else '実測より小さい: 外れ'})"
+        else:
+            err = f"{x['loo_error_pct']:+.1f}%"
         lines.append(
             f"| {x['model_id']} | {'・'.join(bits) or '-'} | {x['measured_gb']:.1f} |"
             f" {x['fit_predicted_gb']:.2f} | {x['loo_predicted_gb']:.2f} | {err} |"
@@ -219,11 +248,24 @@ def markdown_table(result: dict) -> str:
         )
     sm = result["summary"]
     lines.append("")
+    by = sm["by_modality"]
+    ev = "・".join(f"{k} {by[k]['n_point']}" for k in sm["evaluable_modalities"])
+    one = "・".join(k for k, v in by.items() if v["n_point"] < 2)
+    if sm["n_evaluable"]:
+        lines.append(
+            f"評価できたのは {sm['n_evaluable']} 件({ev})、LOO の最大誤差 {sm['evaluable_max_abs_pct']}%"
+            f"(平均 {sm['evaluable_mean_abs_pct']}%)。目標 ±{sm['target_abs_pct']:g}% の範囲に"
+            f"{'入った' if sm['target_met'] else '入らなかった'}。"
+        )
+    else:
+        lines.append("評価できた実測はない(種類ごとに張り付いていない実測が 2 件以上要る)。")
+    if one:
+        lines.append(f"{one} は張り付いていない実測が 1 件以下のため評価できない(target_met は null)。")
     lines.append(
-        f"張り付いていない {sm['n_point']} 件: 平均絶対誤差 {sm['mean_abs_pct']}%、最大 {sm['max_abs_pct']}%"
-        f"(重みだけなら平均 {sm['weights_only_mean_abs_pct']}%)。"
-        f" 張り付いた {sm['n_censored']} 件のうち {sm['censored_ok']} 件で予測 ≥ 実測。"
-        f" 目標 ±{sm['target_abs_pct']:g}%: {'達成' if sm['target_met'] else '未達'}"
+        f"張り付いた {sm['n_censored']} 件のうち {sm['censored_trivial']} 件は"
+        "重みだけで実測を超え、情報を持たない。"
+        f" 参考: 張り付いていない全 {sm['n_point']} 件の LOO 平均絶対誤差 {sm['mean_abs_pct']}%、"
+        f"最大 {sm['max_abs_pct']}%(重みだけなら平均 {sm['weights_only_mean_abs_pct']}%)"
     )
     return "\n".join(lines)
 
@@ -242,7 +284,9 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     result = calibrate(date=args.date)
     if not args.dry_run:
-        args.output.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n"
+        )
         print(f"wrote {args.output}")
     print(json.dumps(result["coefficients"], ensure_ascii=False))
     print(markdown_table(result))

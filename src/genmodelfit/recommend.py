@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .db import Database
-from .estimate import Coefficients, estimate, load_coefficients
+from .estimate import GIB, Coefficients, estimate, load_coefficients
 from .models import FIT_LEVELS, Estimate, ModelEntry, Settings, SystemInfo
 
 
@@ -29,7 +29,7 @@ class Fit:
             "content": m.content,
             "license": m.license,
             "source": m.source,
-            "total_size_gb": round((m.total_size_bytes or 0) / 1e9, 2) or None,
+            "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,
             "score": round(self.score, 1),
             "fit": self.estimate.fit,
             "estimate": self.estimate.to_dict(),
@@ -100,6 +100,6 @@ def recommend(
             coefficients=coefficients,
             with_limits=with_limits,
         )
-        if f.estimate.fit in allowed
+        if f.estimate.fit in allowed and not f.estimate.unknown_size  # 大きさが分からないものは出さない
     ]
     return fits[:limit] if limit else fits
