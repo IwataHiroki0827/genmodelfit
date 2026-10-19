@@ -89,18 +89,20 @@ def _print_fits(fits, title: str) -> None:
 
 def cmd_recommend(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
+    limit = args.limit if args.limit is not None else 10
     fits = recommend(
         db,
         s,
         modality=args.modality,
         content=args.content,
         min_fit=args.min_fit,
-        limit=args.limit if args.limit is not None else 10,
+        limit=None if args.auto_only else limit,  # --auto-only は保留を除いてから件数を絞る
         settings=_settings(args),
     )
     _attach_gate(fits, args, db)
     if args.auto_only:
         fits = [f for f in fits if f.gate and f.gate.get("auto")]
+        fits = fits[:limit] if limit else fits
     if args.json:
         _out(
             _envelope(

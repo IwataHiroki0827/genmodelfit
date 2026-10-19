@@ -451,6 +451,9 @@ def test_cli_recommend_auto_only_and_info(small_db, capsys):
     assert [m["id"] for m in out["models"]] == ["ok"] and out["filters"]["auto_only"] is True
     assert cli.main(["recommend", "--auto-only", "--allow-uncensored-auto", *base]) == 0
     assert {m["id"] for m in json.loads(capsys.readouterr().out)["models"]} == {"ok", "unc"}
+    # 件数の上限は保留を除いたあとにかかる(上位が保留ばかりでも auto のものが出る)
+    assert cli.main(["recommend", "--auto-only", "-n", "1", *base]) == 0
+    assert [m["id"] for m in json.loads(capsys.readouterr().out)["models"]] == ["ok"]
     assert cli.main(["info", "nc", *base]) == 0
     gate = json.loads(capsys.readouterr().out)["gate"]
     assert gate["auto"] is False and gate["held_by"] == ["license"]
