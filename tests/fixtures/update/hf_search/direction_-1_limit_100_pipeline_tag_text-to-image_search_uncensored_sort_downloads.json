@@ -1,0 +1,58 @@
+[
+ {
+  "_id": "6ac916b8a58766dba416dd3f",
+  "id": "AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
+  "likes": 566,
+  "private": false,
+  "downloads": 407270,
+  "tags": [
+   "gguf",
+   "atomic-chat",
+   "qwen",
+   "qwen-image",
+   "qwen3-vl",
+   "text-encoder",
+   "stable-diffusion.cpp",
+   "abliteration",
+   "refusal-direction",
+   "text-to-image",
+   "base_model:Qwen/Qwen3-VL-8B-Instruct",
+   "base_model:finetune:Qwen/Qwen3-VL-8B-Instruct",
+   "license:apache-2.0",
+   "endpoints_compatible",
+   "region:us",
+   "imatrix",
+   "conversational"
+  ],
+  "pipeline_tag": "text-to-image",
+  "library_name": "gguf",
+  "createdAt": "2026-10-09T16:30:48.000Z",
+  "modelId": "AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF"
+ },
+ {
+  "_id": "6aba7e15cf9c7d4948694775",
+  "id": "Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1",
+  "likes": 566,
+  "private": false,
+  "downloads": 260678,
+  "tags": [
+   "diffusion-single-file",
+   "text-to-image",
+   "qwen-image",
+   "comfyui",
+   "int8",
+   "photorealistic",
+   "uncensored",
+   "nsfw",
+   "not-for-all-audiences",
+   "base_model:Qwen/Qwen-Image-2.1",
+   "base_model:merge:Qwen/Qwen-Image-2.1",
+   "license:other",
+   "region:us"
+  ],
+  "pipeline_tag": "text-to-image",
+  "library_name": "diffusion-single-file",
+  "createdAt": "2026-09-28T14:47:49.000Z",
+  "modelId": "Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1"
+ }
+]

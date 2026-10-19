@@ -1,0 +1,31 @@
+{
+ "id": "ComfyUI-Wiki/t5-base",
+ "tags": [
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "downloads": 0,
+ "likes": 1,
+ "gated": false,
+ "lastModified": "2025-07-13T15:27:52.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "7b95401dc46245ac339fc25059d4a56d90b4cde5",
+   "size": 31
+  },
+  {
+   "rfilename": "t5-base.safetensors",
+   "blobId": "50a2854a8aa815c30fbd428d1855563aab5874aa",
+   "size": 891646390,
+   "lfs": {
+    "sha256": "a90903540cc02cbeb7ff9f823f1a80eb778c7e22426a0e620b01c77a5ec8f5b4",
+    "size": 891646390,
+    "pointerSize": 134
+   }
+  }
+ ]
+}

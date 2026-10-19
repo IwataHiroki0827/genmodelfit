@@ -1,0 +1,34 @@
+{
+ "id": "ACE-Step/Ace-Step1.5",
+ "tags": [
+  "transformers",
+  "diffusers",
+  "safetensors",
+  "acestep",
+  "feature-extraction",
+  "audio",
+  "music",
+  "text2music",
+  "text-to-audio",
+  "custom_code",
+  "arxiv:2602.00744",
+  "license:mit",
+  "region:us"
+ ],
+ "pipeline_tag": "text-to-audio",
+ "library_name": "transformers",
+ "downloads": 77950,
+ "likes": 909,
+ "gated": false,
+ "lastModified": "2026-02-03T11:37:37.000Z",
+ "cardData": {
+  "license": "mit"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "a3115cec283fbdc2d500aa50fdffac3c87e6689a",
+   "size": 5496
+  }
+ ]
+}

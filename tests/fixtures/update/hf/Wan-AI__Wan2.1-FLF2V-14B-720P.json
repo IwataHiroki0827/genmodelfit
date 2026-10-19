@@ -1,0 +1,28 @@
+{
+ "id": "Wan-AI/Wan2.1-FLF2V-14B-720P",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "flf2v",
+  "arxiv:2503.20314",
+  "arxiv:2309.14509",
+  "arxiv:2310.01889",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "library_name": "diffusers",
+ "downloads": 14481,
+ "likes": 229,
+ "gated": false,
+ "lastModified": "2025-04-17T14:13:10.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "67f426d305d9e0022c79f6f6abd9910dfe602817",
+   "size": 35121
+  }
+ ]
+}

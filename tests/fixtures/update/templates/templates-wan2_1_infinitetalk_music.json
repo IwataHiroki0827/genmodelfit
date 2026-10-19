@@ -1,0 +1,107 @@
+{
+ "nodes": [
+  {
+   "id": 263,
+   "type": "Note"
+  },
+  {
+   "id": 125,
+   "type": "LoadAudio"
+  },
+  {
+   "id": 330,
+   "type": "4ead6474-b183-4d45-9177-88b3f5721800"
+  },
+  {
+   "id": 325,
+   "type": "SaveVideo"
+  },
+  {
+   "id": 284,
+   "type": "LoadImage"
+  }
+ ],
+ "definitions": {
+  "subgraphs": [
+   {
+    "id": "4ead6474-b183-4d45-9177-88b3f5721800",
+    "name": "Audio to Video (Wan2.1 Infinitalk)",
+    "nodes": [
+     {
+      "id": 332,
+      "type": "WanVideoTextEncodeCached"
+     },
+     {
+      "id": 335,
+      "type": "AudioSeparation"
+     },
+     {
+      "id": 342,
+      "type": "WanVideoClipVisionEncode"
+     },
+     {
+      "id": 343,
+      "type": "WanVideoLoraSelect"
+     },
+     {
+      "id": 344,
+      "type": "MultiTalkModelLoader"
+     },
+     {
+      "id": 345,
+      "type": "CLIPVisionLoader",
+      "properties": {
+       "models": [
+        {
+         "name": "clip_vision_h.safetensors",
+         "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors",
+         "directory": "clip_vision"
+        }
+       ]
+      }
+     },
+     {
+      "id": 346,
+      "type": "WanVideoModelLoader"
+     },
+     {
+      "id": 347,
+      "type": "WanVideoVAELoader"
+     },
+     {
+      "id": 340,
+      "type": "ImageResizeKJv2"
+     },
+     {
+      "id": 341,
+      "type": "GetImageSizeAndCount"
+     },
+     {
+      "id": 337,
+      "type": "MultiTalkWav2VecEmbeds"
+     },
+     {
+      "id": 336,
+      "type": "DownloadAndLoadWav2VecModel"
+     },
+     {
+      "id": 339,
+      "type": "WanVideoImageToVideoMultiTalk"
+     },
+     {
+      "id": 333,
+      "type": "WanVideoSampler"
+     },
+     {
+      "id": 331,
+      "type": "WanVideoDecode"
+     },
+     {
+      "id": 334,
+      "type": "CreateVideo"
+     }
+    ]
+   }
+  ]
+ }
+}

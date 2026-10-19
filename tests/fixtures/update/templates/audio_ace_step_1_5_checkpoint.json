@@ -1,0 +1,57 @@
+{
+ "nodes": [
+  {
+   "id": 97,
+   "type": "CheckpointLoaderSimple",
+   "properties": {
+    "models": [
+     {
+      "name": "ace_step_1.5_turbo_aio.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors",
+      "directory": "checkpoints"
+     }
+    ]
+   }
+  },
+  {
+   "id": 94,
+   "type": "TextEncodeAceStepAudio1.5"
+  },
+  {
+   "id": 78,
+   "type": "ModelSamplingAuraFlow"
+  },
+  {
+   "id": 18,
+   "type": "VAEDecodeAudio"
+  },
+  {
+   "id": 98,
+   "type": "EmptyAceStep1.5LatentAudio"
+  },
+  {
+   "id": 3,
+   "type": "KSampler"
+  },
+  {
+   "id": 99,
+   "type": "PrimitiveNode"
+  },
+  {
+   "id": 47,
+   "type": "ConditioningZeroOut"
+  },
+  {
+   "id": 102,
+   "type": "PrimitiveNode"
+  },
+  {
+   "id": 105,
+   "type": "MarkdownNote"
+  },
+  {
+   "id": 106,
+   "type": "SaveAudioAdvanced"
+  }
+ ]
+}
