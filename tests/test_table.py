@@ -85,7 +85,9 @@ def test_cli_table_real_db(capsys):
     assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "image_sdxl_simple" in out and "PC: " in out
-    assert all(m.id in out for m in load(use_cache=False).models)
+    n = len(load(use_cache=False).models)  # 長い ID は省略記号で詰めるので、行数で確かめる
+    rows = [x for x in out.splitlines() if x.split(" ", 1)[0] in ("Perfect", "Good", "Marginal", "Too")]
+    assert len(rows) == n
 
 
 def test_sequential_and_too_tight_show_the_figure_used():
@@ -105,3 +107,58 @@ def test_unknown_size_shows_question_mark():
     out = render([f])
     row = next(line for line in out.splitlines() if "nosize" in line)
     assert " ? " in row + " " and "0.0" not in row
+
+
+def test_ram_limited_rows_say_ram_not_vram_headroom():
+    f = fit("ramcut", "too_tight", mode="none")
+    f.estimate.vram_gb, f.estimate.vram_offload_gb, f.estimate.ram_gb = 7.0, 4.0, 40.0
+    row = next(x for x in render([f], system=pc(12)).splitlines() if "ramcut" in x)
+    assert "RAM" in row and "+5.0" not in row and "7.0" in row
+
+
+def test_no_gpu_too_tight_says_gpu():
+    f = fit("needgpu", "too_tight", mode="none")
+    nogpu = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[])
+    row = next(x for x in render([f], system=nogpu).splitlines() if "needgpu" in x)
+    assert " GPU " in row + " " and "*" not in row
+
+
+def test_room_never_negative_zero_and_matches_shown_values():
+    f = fit("zero", "too_tight", mode="none")
+    f.estimate.vram_offload_gb = 8.04
+    out = render([f])
+    assert "-0.0" not in out and "+0.0" in out
+
+
+def test_middle_ellipsis_and_distinct_names():
+    from genmodelfit.table import distinct_names, middle_ellipsis
+
+    assert middle_ellipsis("abcdefghij", 10) == "abcdefghij"
+    s = middle_ellipsis("utility_seedvr2_7b_int8_upscale_image", 20)
+    assert len(s) == 20 and s.startswith("utility") and s.endswith("image") and "…" in s
+    names = ["utility_seedvr2_7b_int8_upscale_image", "utility_seedvr2_3b_int8_upscale_image"]
+    shown = distinct_names(names, 20)
+    assert len(set(shown.values())) == 2 and all(len(v) <= 20 for v in shown.values())
+
+
+def test_held_label_is_short():
+    gate = {"auto": False, "checks": [{"id": "official_workflow", "passed": False}]}
+    assert "held:workflow" in render([fit("w", gate=gate)])
+    assert "held " in render([fit("w2", gate={"auto": False, "checks": []})]) + " "
+
+
+def test_recommend_excludes_tools_unless_asked(capsys):
+    import json
+
+    from genmodelfit.recommend import is_tool
+
+    assert cli.main(["recommend", "--json", "--vram", "24", "--no-cache", "-n", "1000"]) == 0
+    db = load(use_cache=False)
+    ids = {m["id"] for m in json.loads(capsys.readouterr().out)["models"]}
+    tools = {m.id for m in db.models if is_tool(m)}
+    assert tools and not (ids & tools)
+    assert (
+        cli.main(["recommend", "--json", "--vram", "24", "--no-cache", "-n", "1000", "--include-tools"]) == 0
+    )
+    ids2 = {m["id"] for m in json.loads(capsys.readouterr().out)["models"]}
+    assert ids2 & tools

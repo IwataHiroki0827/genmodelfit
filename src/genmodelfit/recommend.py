@@ -82,6 +82,14 @@ def evaluate(
     return out
 
 
+# 「つくる」モデルではない補助ツールの作業(recommend は既定で外す。fit・info には出る)
+TOOL_TASKS = frozenset({"tool", "estimate", "matting", "upscale", "interp", "segment"})
+
+
+def is_tool(m: ModelEntry) -> bool:
+    return bool(m.tasks) and all(t in TOOL_TASKS for t in m.tasks)
+
+
 def recommend(
     db: Database,
     system: SystemInfo,
