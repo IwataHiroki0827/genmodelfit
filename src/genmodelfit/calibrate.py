@@ -59,12 +59,19 @@ class Row:
         return self.weights_gb + sum(theta[k] * v for k, v in self.features.items())
 
 
+# 係数を合わせる実測の測り方。v0.1 は記録の無い RTX 5080 の 9 件(None)で合わせる。
+# bench の torch_reserved の実測は docs/accuracy.md で照合として別に示す
+CALIBRATION_METRIC: str | None = None
+
+
 def build_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
     c = c or Coefficients()
     rows = []
     for m in db.measurements:
         e = db.get(m.model_id)
         if e is None or not usable(m):  # OOM・エラー・標準でない設定の実測は使わない
+            continue
+        if getattr(m, "vram_metric", None) != CALIBRATION_METRIC:  # 測り方が違う値は混ぜない(照合だけに使う)
             continue
         parts = components(e)
         if parts.unknown:

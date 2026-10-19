@@ -183,6 +183,10 @@ class Measurement:
     # 以下は後から足した項目(無い古い行は ok・標準として読む)
     outcome: str = "ok"  # OUTCOMES。ok 以外は「動く」根拠に使わない
     standard: bool = True  # 公式テンプレートのまま(幅・高さ・フレーム数・長さ・ステップ数だけ変えた)か
+    # peak_vram_gb の測り方。torch_reserved = ComfyUI のプロセスの torch の確保量の最大
+    # (bench。CUDA の文脈は含まない)。
+    # None = 記録が無い(AI生成キットで測った RTX 5080 の 9 件)。測り方が違う値どうしで係数を合わせない
+    vram_metric: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:

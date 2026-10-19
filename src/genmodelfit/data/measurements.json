@@ -2,35 +2,193 @@
  "unit": "GiB",
  "unit_note": "gpu_vram_gb / peak_vram_gb / peak_ram_gb は GiB(2^30 バイト)とみなす。ComfyUI と nvidia-smi は MiB(2^20)で数えるので、その値を 1024 で割ったものと仮定した。AI生成キットの記録に単位の明記は無い",
  "measurements": [
-  {"model_id": "image_z_image_turbo_int8", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 13.2,
-   "settings": {"width": 768, "height": 768, "steps": 6}, "seconds": 40, "offload": "dynamic",
-   "source": "AI生成キット(laxshmate/local_model_ai_gen_kit)の実機検証、「はやい」画質・エンジン起動込みの時間", "date": null},
-  {"model_id": "image_z_image_turbo", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 15.0,
-   "settings": {"width": 768, "height": 768, "steps": 6}, "seconds": 22, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(bf16)", "date": null},
-  {"model_id": "image_sdxl_simple", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 8.0,
-   "settings": {"width": 832, "height": 832, "steps": 15}, "seconds": 18, "offload": "dynamic",
-   "source": "AI生成キットの実機検証", "date": null},
-  {"model_id": "text_to_video_wan", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 13.3,
-   "settings": {"width": 512, "height": 512, "frames": 49, "steps": 20}, "seconds": 44, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(Wan2.1 1.3B、3 秒 16fps)", "date": null,
-   "note": "解像度は長辺 512px。縦横比は記録が無いので正方形と仮定"},
-  {"model_id": "video_wan2_2_5B_ti2v", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 15.8,
-   "settings": {"width": 640, "height": 640, "frames": 73, "steps": 12}, "seconds": 56, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(画像から動画、3 秒 24fps)", "date": null,
-   "note": "解像度は長辺 640px。縦横比は記録が無いので正方形と仮定"},
-  {"model_id": "video_wan2_2_5B_ti2v", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 15.0,
-   "settings": {"width": 640, "height": 640, "frames": 73, "steps": 12}, "seconds": 49, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(文章から動画、3 秒 24fps)", "date": null,
-   "note": "文章から動画。画像から動画より 0.8 GB 少ない"},
-  {"model_id": "audio_ace_step_1_5_checkpoint", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 10.8,
-   "settings": {"seconds": 20, "steps": 8}, "seconds": 16, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(20 秒・歌詞付き)", "date": null},
-  {"model_id": "3d_hunyuan3d_image_to_model", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 6.7,
-   "settings": {"steps": 15}, "seconds": 25, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(Hunyuan3D 2.0、octree 192)", "date": null},
-  {"model_id": "3d_hunyuan3d-v2.1", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 9.4,
-   "settings": {"steps": 20}, "seconds": 30, "offload": "dynamic",
-   "source": "AI生成キットの実機検証(Hunyuan3D 2.1、octree 192)", "date": null}
+  {
+   "model_id": "image_z_image_turbo_int8",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 13.2,
+   "settings": {
+    "width": 768,
+    "height": 768,
+    "steps": 6
+   },
+   "seconds": 40,
+   "offload": "dynamic",
+   "source": "AI生成キット(laxshmate/local_model_ai_gen_kit)の実機検証、「はやい」画質・エンジン起動込みの時間",
+   "date": null
+  },
+  {
+   "model_id": "image_z_image_turbo",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 15.0,
+   "settings": {
+    "width": 768,
+    "height": 768,
+    "steps": 6
+   },
+   "seconds": 22,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(bf16)",
+   "date": null
+  },
+  {
+   "model_id": "image_sdxl_simple",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 8.0,
+   "settings": {
+    "width": 832,
+    "height": 832,
+    "steps": 15
+   },
+   "seconds": 18,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証",
+   "date": null
+  },
+  {
+   "model_id": "text_to_video_wan",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 13.3,
+   "settings": {
+    "width": 512,
+    "height": 512,
+    "frames": 49,
+    "steps": 20
+   },
+   "seconds": 44,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(Wan2.1 1.3B、3 秒 16fps)",
+   "date": null,
+   "note": "解像度は長辺 512px。縦横比は記録が無いので正方形と仮定"
+  },
+  {
+   "model_id": "video_wan2_2_5B_ti2v",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 15.8,
+   "settings": {
+    "width": 640,
+    "height": 640,
+    "frames": 73,
+    "steps": 12
+   },
+   "seconds": 56,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(画像から動画、3 秒 24fps)",
+   "date": null,
+   "note": "解像度は長辺 640px。縦横比は記録が無いので正方形と仮定"
+  },
+  {
+   "model_id": "video_wan2_2_5B_ti2v",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 15.0,
+   "settings": {
+    "width": 640,
+    "height": 640,
+    "frames": 73,
+    "steps": 12
+   },
+   "seconds": 49,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(文章から動画、3 秒 24fps)",
+   "date": null,
+   "note": "文章から動画。画像から動画より 0.8 GB 少ない"
+  },
+  {
+   "model_id": "audio_ace_step_1_5_checkpoint",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 10.8,
+   "settings": {
+    "seconds": 20,
+    "steps": 8
+   },
+   "seconds": 16,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(20 秒・歌詞付き)",
+   "date": null
+  },
+  {
+   "model_id": "3d_hunyuan3d_image_to_model",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 6.7,
+   "settings": {
+    "steps": 15
+   },
+   "seconds": 25,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(Hunyuan3D 2.0、octree 192)",
+   "date": null
+  },
+  {
+   "model_id": "3d_hunyuan3d-v2.1",
+   "gpu_name": "NVIDIA GeForce RTX 5080",
+   "gpu_vram_gb": 16,
+   "peak_vram_gb": 9.4,
+   "settings": {
+    "steps": 20
+   },
+   "seconds": 30,
+   "offload": "dynamic",
+   "source": "AI生成キットの実機検証(Hunyuan3D 2.1、octree 192)",
+   "date": null
+  },
+  {
+   "model_id": "utility_birefnet_remove_background",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "peak_vram_gb": 1.25,
+   "settings": {
+    "width": null,
+    "height": null,
+    "frames": null,
+    "seconds": null,
+    "steps": null,
+    "precision": null,
+    "batch": 1
+   },
+   "peak_ram_gb": 2.06,
+   "seconds": 2.1,
+   "driver": "566.03",
+   "comfyui_version": "0.40.0",
+   "offload": "dynamic",
+   "source": "genmodelfit bench, RTX 3070 8GB, ComfyUI 0.40.0 (AI生成キットのエンジン)",
+   "date": "2026-10-19",
+   "note": "GPU 全体(nvidia-smi)の増分 3.55 GB(開始前 3.86 GB 使用、最大 7.41 GB)。/system_stats の GPU 全体の増分 0.91 GB。開始前に /free でモデルを解放。ComfyUI の実行時間 1.89 秒。計測 11 回",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved"
+  },
+  {
+   "model_id": "3d_moge_perspective_to_mesh",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "peak_vram_gb": 0.72,
+   "settings": {
+    "width": null,
+    "height": null,
+    "frames": null,
+    "seconds": null,
+    "steps": null,
+    "precision": "fp16",
+    "batch": 4
+   },
+   "peak_ram_gb": 4.05,
+   "seconds": 3.6,
+   "driver": "566.03",
+   "comfyui_version": "0.40.0",
+   "offload": "dynamic",
+   "source": "genmodelfit bench, RTX 3070 8GB, ComfyUI 0.40.0 (AI生成キットのエンジン)",
+   "date": "2026-10-19",
+   "note": "GPU 全体(nvidia-smi)の増分 1.97 GB(開始前 3.83 GB 使用、最大 5.80 GB)。/system_stats の GPU 全体の増分 1.11 GB。開始前に /free でモデルを解放(解放前 torch 0.03 GB、解放後 0.03 GB)。ComfyUI の実行時間 3.45 秒。計測 17 回",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved"
+  }
  ]
 }

@@ -897,6 +897,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=print) -> 
         note="。".join(note_parts),
         outcome=outcome,
         standard=not nonstandard,
+        vram_metric="torch_reserved",
     )
     return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
 
