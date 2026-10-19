@@ -50,7 +50,8 @@ genmodelfit update --from-release
 
 ```python
 from genmodelfit.remote import update_from_release
-db = update_from_release()   # 失敗したら RemoteError(DatabaseError の仲間)
+
+db = update_from_release()  # 失敗したら RemoteError(DatabaseError の仲間)
 ```
 
 取り込みの手順は、取得 → 同梱の公開鍵で署名を確認 → `schema_version` を確認 → 手元より古くないか確認 → キャッシュを原子的に置き換え。
