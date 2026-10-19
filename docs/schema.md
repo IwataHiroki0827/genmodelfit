@@ -10,7 +10,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `info` / `update` / `bench` |
+| `command` | str | `system` / `recommend` / `fit` / `info` / `update` / `bench` / `gate` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides) |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts) |
 | `error` | str | only on failure (exit code 1) |
@@ -44,9 +44,9 @@ Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when 
 | `score` | float | 0–100, used for ordering |
 | `fit` | str | `perfect` / `good` / `marginal` / `too_tight` |
 | `estimate` | Estimate | |
-| `gate` | Gate \| null | can it be auto-recommended (Issue #3) |
+| `gate` | Gate | can it be auto-recommended (docs/gate.md) |
 
-`recommend` also returns `filters`. `recommend` drops `too_tight`; `fit` keeps everything.
+`recommend` also returns `filters` (`modality`, `content`, `min_fit`, `limit`, `auto_only`). `recommend` drops `too_tight`; `fit` keeps everything.
 
 ## Estimate
 
@@ -70,6 +70,26 @@ Fit levels / 段階:
 | `good` | everything fits, little headroom / 全部載るが余裕は少ない |
 | `marginal` | runs only by offloading to RAM, or on CPU; slow / 逃がせば動く・遅い |
 | `too_tight` | does not run (VRAM or RAM) / 動かない |
+
+## Gate
+
+Computed every time (never stored in `db.json`). Details and the default license allowlist: docs/gate.md.
+
+| key | type | meaning |
+|---|---|---|
+| `auto` | bool | true only when every check passed |
+| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is the table's `held:<id>`) |
+| `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
+| `checks` | Check[] | always the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known` |
+
+Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for people; wording may change).
+
+## gate
+
+`genmodelfit gate --json`: `policy` (`license_allowlist`, `comfyui_version`, `allow_uncensored`),
+`filters` (`modality`, `only_auto`, `only_held`), `summary` (`models`, `auto`, `held`,
+`failing` = models failing each check, `first_failing` = models whose first failed check is that one),
+`models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
 
 ## info
 
@@ -104,7 +124,9 @@ ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), 
 `license_from` (the repo the license was read from: the upstream repo for repackaged files, the table's upstream for
 known components; a repo id, never a path), `repo_license` (the hosting repo's own label when it differs from the
 upstream one), `license_url`, `license_path` (str[]: the derivation path that was checked — hosting repo → base_model … →
-deciding repo), `license_evidence` (str[]: `license_unverified: …`, `component:<key>`, `family:<key>`).
+deciding repo), `license_evidence` (str[]: `license_unverified: …`, `component:<key>`, `family:<key>`),
+`head_status` (int \| null: status of an anonymous HEAD without following redirects, recorded by `update`;
+null = not checked), `head_checked_at` (UTC ISO-8601 of that HEAD).
 
 Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `requires_custom_nodes`, `usage`,
 `date`, `size_bytes`.
@@ -124,7 +146,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 `generated_at` is always an aware UTC ISO-8601 string ending in `Z`.
 `downloads`, `likes`, `license_from`, `repo_license`, and (PR #13 review) `ModelEntry.license_name` /
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
-`license_evidence` were added without changing `schema_version` (optional fields; older readers ignore unknown keys).
+`license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at` were added without changing `schema_version` (optional fields; older readers ignore unknown keys).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
 
 `sources` (written by `genmodelfit update`, see docs/sources.md):
@@ -140,6 +162,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `civitai` | why it is not used |
 | `size_check` | `templates`, `equal`, `within_10pct` (index `size` vs the sum of the files) |
 | `counts` | `models`, `modality`, `content`, `source`, `license` (null = unknown), `license_tier`, `files_complete_false` |
+| `head_check` | `checked_at`, `urls` (unique HF URLs sent a HEAD), `status` (count per status code), `unchecked` (no answer), `not_sent` (files on other hosts, per host) |
+| `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |
 
@@ -147,6 +171,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 
 `genmodelfit update --json` prints the envelope with `output` (path written) and `sources` (above).
 On failure it prints `error` and exits 1; the previous cache is left untouched.
+`update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
+version, and writes it back (`--output`, default the cache).
 
 Measurements live in `measurements.json` (`{"measurements": [Measurement, …]}`), bundled plus
 `<cache>/measurements/*.json`.

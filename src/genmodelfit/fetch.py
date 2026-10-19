@@ -3,7 +3,7 @@
 - HttpFetcher: 実際の取得。User-Agent を名乗り、429 / 503 は Retry-After を守って待ち、失敗は数回やり直す
 - DirFetcher: 試験用。URL を決まった規則でファイル名に直し、フォルダから読む(`update --offline-sources DIR`)
 
-どちらも get_json / get_text / head_size を持つ(update は Fetcher の形だけを使う)。
+どちらも get_json / get_text / head_size / head_status を持つ(update は Fetcher の形だけを使う)。
 """
 
 from __future__ import annotations
@@ -57,6 +57,8 @@ class Fetcher(Protocol):
 
     def head_size(self, url: str) -> int | None: ...
 
+    def head_status(self, url: str) -> int | None: ...
+
 
 def _retry_after(resp: requests.Response, attempt: int) -> float:
     value = resp.headers.get("Retry-After", "")
@@ -100,7 +102,9 @@ class HttpFetcher:
                 return
             self._sleep(wait)
 
-    def _request(self, method: str, url: str) -> requests.Response:
+    def _request(
+        self, method: str, url: str, *, redirects: bool = True, raise_4xx: bool = True
+    ) -> requests.Response:
         last: Exception | None = None
         host = urlsplit(url).netloc
         attempt = limited = 0
@@ -111,7 +115,7 @@ class HttpFetcher:
             with self._lock:
                 self.requests += 1
             try:
-                resp = self._session().request(method, url, timeout=self._timeout, allow_redirects=True)
+                resp = self._session().request(method, url, timeout=self._timeout, allow_redirects=redirects)
             except (requests.ConnectionError, requests.Timeout) as e:
                 last = e
                 self._sleep(float(2**attempt))
@@ -138,7 +142,7 @@ class HttpFetcher:
                 self._sleep(_retry_after(resp, attempt))
                 attempt += 1
                 continue
-            if resp.status_code >= 400:
+            if resp.status_code >= 400 and raise_4xx:
                 raise FetchError(url, f"HTTP {resp.status_code}", resp.status_code)
             return resp
         if isinstance(last, FetchError):
@@ -171,6 +175,11 @@ class HttpFetcher:
                 return int(v)
         return None
 
+    def head_status(self, url: str) -> int | None:
+        """匿名の HEAD の応答コード。転送は追わない(HF は 302 / 307 を返す)。4xx もそのまま返す。
+        429・5xx は待ってやり直し、それでも駄目なら FetchError。"""
+        return self._request("HEAD", url, redirects=False, raise_4xx=False).status_code
+
 
 # --- 試験用: URL ↔ ファイル ---------------------------------------------------------------------
 
@@ -201,9 +210,12 @@ def url_to_relpath(url: str) -> str:
 class DirFetcher:
     """フォルダに置いたファイルを上流の代わりに返す。無いファイルは 404 と同じ扱い。"""
 
-    def __init__(self, root: str | Path, *, sizes: dict[str, int] | None = None):
+    def __init__(
+        self, root: str | Path, *, sizes: dict[str, int] | None = None, statuses: dict[str, int] | None = None
+    ):
         self.root = Path(root)
         self.sizes = sizes or {}
+        self.statuses = statuses or {}
         self.requests = 0
 
     def _path(self, url: str) -> Path:
@@ -225,6 +237,9 @@ class DirFetcher:
 
     def head_size(self, url: str) -> int | None:
         return self.sizes.get(url)
+
+    def head_status(self, url: str) -> int | None:
+        return self.statuses.get(url)
 
 
 class RecordingFetcher:
@@ -251,3 +266,6 @@ class RecordingFetcher:
 
     def head_size(self, url: str) -> int | None:
         return self.inner.head_size(url)
+
+    def head_status(self, url: str) -> int | None:
+        return self.inner.head_status(url)

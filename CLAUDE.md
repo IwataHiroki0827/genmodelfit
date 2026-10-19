@@ -24,7 +24,8 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
-.venv\Scripts\genmodelfit system | recommend --json | fit | info <id> | update | bench <template>
+.venv\Scripts\genmodelfit system | recommend --json | fit | info <id> | update | bench <template> | gate
+.venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
 ```
 
 ネットワークに触るテストは `GENMODELFIT_NETWORK_TESTS=1` のときだけ動く(既定では飛ばす)。

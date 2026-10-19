@@ -44,6 +44,8 @@ class ModelFile:
     license_path: list[str] = field(default_factory=list)
     # 決め方の根拠。"license_unverified: …"(確かめられず不明にした)、"component:<表の名前>"、"family:<系統>"
     license_evidence: list[str] = field(default_factory=list)
+    head_status: int | None = None  # 匿名の HEAD(転送を追わない)の応答コード(None=未確認)
+    head_checked_at: str | None = None  # その HEAD を送った日時(UTC, ISO 8601)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:

@@ -15,6 +15,8 @@
 | Hugging Face Hub API | `https://huggingface.co/api/models/{repo_id}?blobs=true`(版が main 以外なら `/revision/{rev}`) | HF の利用規約(公開 API を匿名で) | `cardData.license` / `license_name` / `license_link`(無ければ `license:` タグ)、`gated`、`siblings[].size` と `lfs.sha256`、`cardData.base_model`、`downloads`、`likes`、`lastModified`、`tags` |
 | Hugging Face の検索 | `https://huggingface.co/api/models?filter=…&pipeline_tag=…&search=…&sort=downloads&direction=-1&limit=100` | 同上 | 無検閲のモデル、テンプレートに無い読み上げ・効果音のモデルの候補 |
 | モデルカード | `https://huggingface.co/{repo_id}/raw/main/README.md` | 同上 | 除外の判定にだけ使う(保存しない) |
+| ファイルの URL(HEAD) | テンプレートなどに書かれた `https://huggingface.co/…/resolve/…` | 同上 | 匿名の HEAD(転送を追わない)の応答コードだけ(`files[].head_status`。docs/gate.md) |
+| ComfyUI の最新のリリース | `https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest` | GitHub の公開 API(認証なし、1 回) | `tag_name`(`sources.comfyui.latest_release`。gate の版の比較に使う) |
 
 使わないもの: willitrunai.com などのサイトのデータ(CLAUDE.md)、Civitai(下)。
 
