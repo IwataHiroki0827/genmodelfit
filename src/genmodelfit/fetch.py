@@ -13,9 +13,10 @@ import json
 import re
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 import requests
 
@@ -176,9 +177,40 @@ class HttpFetcher:
         return None
 
     def head_status(self, url: str) -> int | None:
-        """匿名の HEAD の応答コード。転送は追わない(HF は 302 / 307 を返す)。4xx もそのまま返す。
-        429・5xx は待ってやり直し、それでも駄目なら FetchError。"""
-        return self._request("HEAD", url, redirects=False, raise_4xx=False).status_code
+        """匿名の HEAD の応答コード。4xx もそのまま返す。
+        429・5xx は待ってやり直し、それでも駄目なら FetchError。
+
+        転送は基本的に追わない(LFS は 302 で CDN へ、LFS でない小さいファイルは 307 で
+        /api/resolve-cache へ)。ただし 307 で転送先が /api/resolve-cache でないもの(リポジトリの名前が
+        変わったもの)は、無いファイルでも 307 を返すので、転送先に 1 回だけ HEAD を送ってその応答を返す。
+        その先がまた別の転送なら None(未確認)。
+        """
+        resp = self._request("HEAD", url, redirects=False, raise_4xx=False)
+        return follow_rename(url, resp.status_code, resp.headers.get("location"), self._hop)
+
+    def _hop(self, url: str) -> tuple[int, str | None]:
+        resp = self._request("HEAD", url, redirects=False, raise_4xx=False)
+        return resp.status_code, resp.headers.get("location")
+
+
+def is_resolve_cache(location: str | None) -> bool:
+    """HF の LFS でないファイルの転送先(/api/resolve-cache/…)か。"""
+    return bool(location) and urlsplit(location).path.startswith("/api/resolve-cache/")
+
+
+def follow_rename(
+    url: str, status: int, location: str | None, hop: Callable[[str], tuple[int, str | None]]
+) -> int | None:
+    """307 の転送先が /api/resolve-cache でなければ 1 回だけ追う(Fetcher.head_status の規則)。"""
+    if status != 307 or is_resolve_cache(location):
+        return status
+    if not location:
+        return None
+    nxt = urljoin(url, location)
+    status2, location2 = hop(nxt)
+    if status2 in (301, 302, 303, 307, 308) and not (status2 == 302 or is_resolve_cache(location2)):
+        return None
+    return status2
 
 
 # --- 試験用: URL ↔ ファイル ---------------------------------------------------------------------

@@ -147,7 +147,14 @@ def test_restricted_components_override_repo_label():
     for name in ("gemma_2_2b_fp16.safetensors", "gemma_3_12B_it.safetensors", "t5gemma_b_b_ul2.safetensors"):
         assert resolve_file_license(_file(name, license="apache-2.0")).license == "gemma"
     # Gemma 4 は Apache-2.0(https://ai.google.dev/gemma/docs/gemma_4_license)なので当てない
-    assert resolve_file_license(_file("gemma4_e4b_it_fp8_scaled.safetensors")).license == "apache-2.0"
+    g4 = _file(
+        "gemma4_e4b_it_fp8_scaled.safetensors",
+        repo_id="Comfy-Org/gemma-4",
+        license_from="google/gemma-4-E4B-it",
+    )
+    assert resolve_file_license(g4).license == "apache-2.0"
+    # ただし Gemma と関係の無いリポジトリの中にあると、別の系統の部品として確かめられない
+    assert resolve_file_license(_file("gemma4_e4b_it_fp8_scaled.safetensors")).license is None
 
 
 def test_repackager_label_alone_is_unverified():
