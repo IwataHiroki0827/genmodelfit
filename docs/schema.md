@@ -93,6 +93,28 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
 `comfyui_version`, `offload`, `source`, `date`, `note`.
 
+## bench
+
+`genmodelfit bench <template> --json` prints the envelope (without `system` / `database`) plus:
+
+| key | type | meaning |
+|---|---|---|
+| `measurement` | Measurement | the result (also saved to `saved_to`) |
+| `saved_to` | str | where the JSON was written (`--output`, default `<cache>/measurements/<model>_<gpu>_<UTC>.json`) |
+| `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
+| `warnings` | str[] | settings that could not be applied, uploaded inputs, … (Japanese) |
+| `failed` | str | only when the run ran out of memory (exit code 1; the measurement is still saved with `offload: "oom"`) |
+
+How bench fills Measurement / 測り方:
+
+- `peak_vram_gb`: max of `/system_stats` `devices[0].torch_vram_total` polled every 0.2 s (the ComfyUI process,
+  without the CUDA context). The GPU-wide `nvidia-smi` delta from the pre-run baseline goes to `note`.
+- `peak_ram_gb`: max resident memory of the process listening on the port (and its children); null when remote.
+- `seconds`: wall time from submit to completion, including model loading (models are unloaded with `/free` first
+  unless `--no-free`).
+- `offload`: read from the ComfyUI log: `dynamic` / `partial` / `none` / `oom`, or null when unknown.
+- The saved file is `{"measurements": [Measurement]}` and holds no paths, user names or prompts.
+
 ## Database file (`db.json`)
 
 ```json
