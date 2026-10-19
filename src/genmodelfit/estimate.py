@@ -101,7 +101,10 @@ def _settings_match(a: Settings, b: Settings) -> bool:
 def pick_measurement(
     measurements: Iterable[Measurement], entry: ModelEntry, s: Settings
 ) -> Measurement | None:
-    cands = [m for m in measurements if m.model_id == entry.id]
+    # 失敗した実測(OOM など)と、標準でない条件の実測は「動く」根拠にしない
+    cands = [
+        m for m in measurements if m.model_id == entry.id and m.outcome == "ok" and m.standard is not False
+    ]
     same = [m for m in cands if _settings_match(m.settings, s) or _settings_match(s, m.settings)]
     return max(same, key=lambda m: m.peak_vram_gb) if same else None
 

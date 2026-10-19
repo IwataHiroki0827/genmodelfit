@@ -275,21 +275,43 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")
     sp.add_argument("template", help="テンプレート名(モデルの ID)")
-    sp.add_argument("--url", default="http://127.0.0.1:8188", help="ComfyUI の URL")
+    sp.add_argument(
+        "--url", required=True, help="測りに使う ComfyUI の URL(例 http://127.0.0.1:8188。既定は持たない)"
+    )
     sp.add_argument("--workflow", metavar="PATH", help="API 形式のワークフロー(省略時はテンプレートから作る)")
     sp.add_argument("--width", type=int)
     sp.add_argument("--height", type=int)
     sp.add_argument("--frames", type=int)
     sp.add_argument("--length", type=float, metavar="SEC")
     sp.add_argument("--steps", type=int)
-    sp.add_argument("--output", metavar="PATH", help="結果の JSON の書き出し先")
+    sp.add_argument(
+        "--output", metavar="PATH", help="結果の JSON の書き出し先(失敗・標準でない結果もここへ書く)"
+    )
+    sp.add_argument(
+        "--save-failed",
+        action="store_true",
+        help="失敗(OOM など)の結果もキャッシュに保存する(既定は表示だけ)",
+    )
+    sp.add_argument(
+        "--save-nonstandard",
+        action="store_true",
+        help="標準でない条件(--workflow・--set・一部だけ実行など)の結果もキャッシュに保存する",
+    )
     sp.add_argument("--resolution", metavar="WxH", help="幅と高さ(例: 768x768)。--width/--height と同じ")
     sp.add_argument(
         "--set", action="append", metavar="NAME=VALUE", help="入力を名前で変える(例: octree_resolution=192)"
     )
-    sp.add_argument("--no-free", action="store_true", help="開始前にモデルを解放しない(読み込み済みで測る)")
-    sp.add_argument("--timeout", type=float, metavar="SEC", help="待つ時間の上限(既定 1800 秒)")
-    sp.add_argument("--force", action="store_true", help="GPU が使われていても測る")
+    sp.add_argument(
+        "--free",
+        action="store_true",
+        help="開始前に /free でその ComfyUI のモデルを解放する(自分だけが使う ComfyUI のときに)",
+    )
+    sp.add_argument(
+        "--timeout", type=float, metavar="SEC", help="待つ時間の上限(0 より大きい秒数。既定 1800)"
+    )
+    sp.add_argument(
+        "--force", action="store_true", help="GPU が使われている・GPU の空きを確かめられないときも測る"
+    )
     sp.add_argument("--source", help="誰がどこで測ったか(結果の source に入る)")
     sp.add_argument("--note", help="結果の note に足す文")
     sp.set_defaults(func=cmd_bench)

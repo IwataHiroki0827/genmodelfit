@@ -33,6 +33,10 @@ SUBGRAPH_IN = -10
 SUBGRAPH_OUT = -20
 
 
+# モデルのファイルとみなす拡張子(選択肢の値がこれで終わるなら「モデルのファイルが無い」と出す)
+MODEL_FILE_EXT = re.compile(r"\.(safetensors|sft|ckpt|pt|pth|bin|gguf|onnx)$", re.I)
+
+
 class WorkflowError(ValueError):
     """ワークフローを変換・実行できない理由(利用者に見せる文)。"""
 
@@ -246,6 +250,7 @@ def map_widgets(info: dict[str, Any], values: Any) -> dict[str, Any]:
             if (
                 (opts.get("control_after_generate") or name in ("seed", "noise_seed"))
                 and idx < len(values)
+                and isinstance(values[idx], str)
                 and values[idx] in CONTROL_VALUES
             ):
                 idx += 1
@@ -266,6 +271,18 @@ class Conversion:
 
 def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
     """画面用の形式(テンプレート)を API 形式に直す。直せないときは WorkflowError。"""
+    try:
+        return _ui_to_api(ui, object_info)
+    except WorkflowError:
+        raise
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError, RecursionError) as e:
+        raise WorkflowError(
+            f"ワークフローを API 形式に直せませんでした(想定していない形です: {type(e).__name__})。"
+            "ComfyUI の「API 形式で書き出し」で保存した JSON を --workflow で渡してください"
+        ) from e
+
+
+def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
     if not isinstance(ui, dict) or not isinstance(ui.get("nodes"), list):
         raise WorkflowError("ワークフローの形が違います(nodes がありません)")
     defs = {
@@ -297,6 +314,11 @@ def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
             return None
         if node.mode == MODE_BYPASS:  # 素通し: 同じ型の入力をそのまま出す
             want = node.output_types[src[1]] if src[1] < len(node.output_types) else None
+            # 画面(ComfyUI の frontend)と同じく、出力と同じ番号の入力を先に見て、だめなら最初の同じ型
+            if src[1] < len(node.inputs):
+                same = node.inputs[src[1]]
+                if same.src is not None and same.type == want:
+                    return resolve(same.src, depth + 1)
             for i in node.inputs:
                 if i.src is not None and i.type == want:
                     return resolve(i.src, depth + 1)
@@ -341,6 +363,31 @@ def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
 # --- 確認 -------------------------------------------------------------------------------------
 
 
+def output_nodes(api: dict[str, dict[str, Any]], object_info: dict[str, Any]) -> set[str]:
+    """保存・出力のノード(/object_info の output_node)。"""
+    return {nid for nid, n in api.items() if (object_info.get(n.get("class_type")) or {}).get("output_node")}
+
+
+def reachable_nodes(api: dict[str, dict[str, Any]], object_info: dict[str, Any]) -> set[str]:
+    """出力のノードから、つながりを逆にたどって届くノード(実際に実行されるもの)。
+
+    出力のノードが分からないときは全部のノードを返す。
+    """
+    todo = list(output_nodes(api, object_info))
+    if not todo:
+        return set(api)
+    seen: set[str] = set()
+    while todo:
+        nid = todo.pop()
+        if nid in seen or nid not in api:
+            continue
+        seen.add(nid)
+        for v in (api[nid].get("inputs") or {}).values():
+            if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (str, int)):
+                todo.append(str(v[0]))
+    return seen
+
+
 def check_inputs(api: dict[str, dict[str, Any]], object_info: dict[str, Any]) -> list[str]:
     """選択肢の入力(モデルのファイル名など)がサーバーにあるか。足りないものを文で返す。
 
@@ -357,7 +404,7 @@ def check_inputs(api: dict[str, dict[str, Any]], object_info: dict[str, Any]) ->
             if choices is None or val is None or isinstance(val, list):
                 continue
             if val not in choices:
-                kind = "モデルのファイル" if name.endswith("_name") or name == "ckpt_name" else "選択肢"
+                kind = "モデルのファイル" if isinstance(val, str) and MODEL_FILE_EXT.search(val) else "選択肢"
                 problems.append(
                     f"{kind}がサーバーにありません: ノード {nid}({node['class_type']})の {name}={val}"
                 )
