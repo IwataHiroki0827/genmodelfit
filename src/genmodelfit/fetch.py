@@ -26,6 +26,7 @@ TIMEOUT = (10, 60)  # (接続, 読み込み) 秒
 MAX_ATTEMPTS = 4  # 接続の失敗・5xx のやり直し
 MAX_RATE_LIMITED = 30  # 429 のやり直し(HF の匿名の上限は 5 分あたり 500 回。待てば通るので多めに待つ)
 MAX_RETRY_AFTER = 300.0
+RATE_LIMIT_BUDGET = 900.0  # 429 で待つ時間の合計の上限(秒)。超えたら RateLimitExhausted で止める
 
 
 class FetchError(RuntimeError):
@@ -43,6 +44,10 @@ class FetchError(RuntimeError):
 
 class NetworkError(FetchError):
     """ネットワークにつながらない(名前解決・接続・時間切れ)。"""
+
+
+class RateLimitExhausted(FetchError):
+    """429(上限)で待った時間の合計が、決めた上限(rate_limit_budget)を超えた。"""
 
 
 class Fetcher(Protocol):
@@ -64,8 +69,13 @@ def _retry_after(resp: requests.Response, attempt: int) -> float:
 class HttpFetcher:
     """requests で取る。スレッドから同時に呼んでよい(セッションはスレッドごと)。"""
 
-    def __init__(self, *, sleep=time.sleep, clock=time.monotonic, timeout=TIMEOUT):
+    def __init__(
+        self, *, sleep=time.sleep, clock=time.monotonic, timeout=TIMEOUT, rate_limit_budget=RATE_LIMIT_BUDGET
+    ):
         self._local = threading.local()
+        self.rate_limit_budget = float(rate_limit_budget)
+        self.rate_limit_waited = 0.0  # 429 で全スレッドを止めた時間の合計(秒。重なりは 1 回と数える)
+        self.budget_exhausted = False
         self._sleep = sleep
         self._clock = clock
         self._timeout = timeout
@@ -95,6 +105,8 @@ class HttpFetcher:
         host = urlsplit(url).netloc
         attempt = limited = 0
         while attempt < MAX_ATTEMPTS:
+            if self.budget_exhausted:
+                raise RateLimitExhausted(url, self._budget_message(), 429)
             self._wait_turn(host)
             with self._lock:
                 self.requests += 1
@@ -110,8 +122,15 @@ class HttpFetcher:
                 limited += 1
                 with self._lock:
                     self.rate_limited += 1
-                    until = self._clock() + _retry_after(resp, 1) + 1.0
+                    now = self._clock()
+                    until = now + _retry_after(resp, 1) + 1.0
+                    before = max(self._pause_until.get(host, 0.0), now)
+                    self.rate_limit_waited += max(0.0, until - before)
                     self._pause_until[host] = max(self._pause_until.get(host, 0.0), until)
+                    if self.rate_limit_waited > self.rate_limit_budget:
+                        self.budget_exhausted = True
+                if self.budget_exhausted:
+                    raise RateLimitExhausted(url, self._budget_message(), 429)
                 last = FetchError(url, "HTTP 429", 429)
                 continue
             if resp.status_code in (429, 500, 502, 503, 504):
@@ -125,6 +144,12 @@ class HttpFetcher:
         if isinstance(last, FetchError):
             raise last
         raise NetworkError(url, f"つながりません({type(last).__name__})")
+
+    def _budget_message(self) -> str:
+        return (
+            f"上限(HTTP 429)で待つ時間の合計が {self.rate_limit_budget:.0f} 秒を超えました"
+            "(--rate-limit-budget で変えられます)"
+        )
 
     def get_json(self, url: str) -> Any:
         resp = self._request("GET", url)

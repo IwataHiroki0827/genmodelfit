@@ -87,9 +87,12 @@ def activation_gb(entry: ModelEntry, s: Settings, c: Coefficients) -> float:
 
 
 def _main_bytes(entry: ModelEntry) -> tuple[float, float]:
-    """(全ファイルの合計, 最大のファイル) をバイトで返す。ファイルが無ければテンプレートの size を使う。"""
-    total = entry.total_size_bytes or 0
-    largest = entry.largest_file_bytes or total
+    """(全ファイルの合計, 最大のファイル) をバイトで返す。ファイルが無ければテンプレートの size を使う。
+    一式が欠けた一覧(size_floor_bytes)は下限より小さく見ず、足りない分は本体(最大のファイル)に足す。"""
+    total = entry.estimate_size_bytes or 0
+    listed = entry.total_size_bytes or 0
+    largest = (entry.largest_file_bytes or 0) + max(0, total - listed) if entry.files else total
+    largest = largest or total
     return float(total), float(largest)
 
 
@@ -138,7 +141,7 @@ def estimate(
         offload = min(full, max(full * ratio, c.overhead_gb))
         if m.peak_ram_gb:
             ram = max(ram, m.peak_ram_gb)
-    disk = (entry.total_size_bytes or 0) / GB or None
+    disk = (entry.estimate_size_bytes or 0) / GB or None
     fit, mode, reasons = judge(full, offload, ram, system, c, entry)
     return Estimate(
         vram_gb=round(full, 2),
@@ -163,7 +166,7 @@ def judge(
         reasons.append(f"メモリ不足: 約 {ram:.1f} GB 必要(この PC は {ram_total:.1f} GB)")
         return "too_tight", "none", reasons
     if vram <= 0:
-        small = (entry.total_size_bytes or 0) <= 2 * GB
+        small = (entry.estimate_size_bytes or 0) <= 2 * GB
         if small and entry.modality in ("tts", "sfx", "music", "image"):
             reasons.append("GPU なし: CPU で動く見込み(遅い)")
             return "marginal", "cpu", reasons

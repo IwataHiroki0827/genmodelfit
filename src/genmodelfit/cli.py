@@ -271,6 +271,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--skip-hf", action="store_true", help="Hugging Face を見ない")
     sp.add_argument("--skip-head", action="store_true", help="URL の HEAD 確認を飛ばす")
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
+    sp.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="一部(テンプレート・Hugging Face)を取得できなくても書き出す(sources.partial が true になる)",
+    )
+    sp.add_argument(
+        "--rate-limit-budget",
+        type=float,
+        metavar="SEC",
+        help="Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める",
+    )
     sp.set_defaults(func=cmd_update)
 
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")

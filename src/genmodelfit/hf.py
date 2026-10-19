@@ -1,10 +1,13 @@
 """Hugging Face Hub API から、ライセンス・利用申請(gated)・ファイルの大きさ・sha256 を取る。
 
 - 1 リポジトリにつき `GET /api/models/{repo_id}?blobs=true` を 1 回だけ呼ぶ(結果はこの実行の中で使い回す)
-- Comfy-Org などの再配布リポジトリは、ライセンスが本家と違うことがある。`cardData.base_model` をたどって
-  本家のライセンスをファイルに記録し、再配布側の表記は `repo_license` に残す(docs/sources.md)
-- 一式のライセンスは「最も厳しいもの」:
-  不明(None) > other > 制限付き(openrail・非商用など)> 寛容(apache-2.0・mit など)
+- ライセンスは「寛容の側に間違えない」ことを最優先にする(使う側はソース非公開の商用アプリ)。
+  分からないとき・食い違うときは不明(None)にする。規則は docs/sources.md の「ライセンス」:
+  1. 部品の表(COMPONENTS。テキストエンコーダ・VAE など、ファイル名で本家が決まるもの)
+  2. 再配布(Comfy-Org など)は、ファイルに対応する本家を base_model から選ぶ(選べなければ不明)
+  3. base_model を N 段までたどり、上流の一番厳しいものより寛容な表記は不明にする
+  4. 系統の表(FAMILIES。名前で分かる元のモデル)より寛容な表記も不明にする
+- 一式のライセンスは「最も厳しいもの」(license_tier の段階)
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Callable, Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote, unquote, urlencode, urlsplit
@@ -21,7 +24,8 @@ from .fetch import Fetcher, FetchError, NetworkError
 
 HF = "https://huggingface.co"
 
-# 寛容なライセンス(商用で使え、配布物のソースを公開しなくてよいもの)。HF の license タグの表記
+# 寛容なライセンス(商用で使え、配布物のソースを公開しなくてよく、表示の義務も軽いもの)。
+# HF の license タグの表記
 PERMISSIVE = {
     "apache-2.0",
     "mit",
@@ -33,18 +37,15 @@ PERMISSIVE = {
     "zlib",
     "unlicense",
     "cc0-1.0",
-    "cc-by-2.0",
-    "cc-by-2.5",
-    "cc-by-3.0",
-    "cc-by-4.0",
     "pddl",
-    "odc-by",
     "bsl-1.0",
     "afl-3.0",
     "ecl-2.0",
     "postgresql",
     "wtfpl",
 }
+# 表示(クレジット)の義務だけがあるもの
+ATTRIBUTION = {"cc-by-2.0", "cc-by-2.5", "cc-by-3.0", "cc-by-4.0", "odc-by"}
 
 # 再配布(リパッケージ)をしている持ち主。ここのリポジトリは base_model をたどって本家のライセンスを見る
 REPACKAGERS = ("Comfy-Org", "comfyanonymous", "Kijai")
@@ -54,6 +55,8 @@ REPACKAGED_UPSTREAM: dict[str, list[str]] = {
     # OpenCLIP ViT-bigG/14(SDXL の clip_vision)。HF の laion のリポジトリは license: mit
     "comfyanonymous/clip_vision_g": ["laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"],
 }
+
+_BASE_KINDS = {"finetune", "quantized", "adapter", "merge"}
 
 WEIGHT_EXT = (".safetensors", ".gguf", ".ckpt", ".bin", ".pth", ".pt", ".sft")
 
@@ -133,22 +136,58 @@ def normalize_license(value: Any) -> str | None:
     return None if v in ("unknown", "none", "n/a", "unlicensed") else v
 
 
-def license_rank(lic: str | None) -> int:
-    """大きいほど厳しい。不明 4 / other 3 / 制限付き 2 / 寛容 1。"""
+# ライセンスの段階(大きいほど厳しい)。docs/sources.md に同じ表
+TIER_UNKNOWN = 6  # 不明(None)
+TIER_NONCOMMERCIAL = 5  # 非商用・研究用(cc-by-nc*・*non-commercial*・qwen-research・flux-1-dev など)
+TIER_OTHER = (
+    4  # 独自・利用者数などの条件付き(other・tencent-hunyuan-community・gpl など、下に当たらないもの全部)
+)
+TIER_USE_RESTRICTED = 3  # 用途の制限付き(openrail 系・llama・gemma)
+TIER_ATTRIBUTION = 2  # 表示の義務(cc-by-4.0 など)
+TIER_PERMISSIVE = 1  # 寛容(apache-2.0・mit・bsd など)
+
+_NONCOMMERCIAL = re.compile(
+    r"(?<![a-z0-9])nc(?![a-z0-9])|non[-_ ]?commercial|research|flux-1-dev|nscl", re.IGNORECASE
+)
+_USE_RESTRICTED = re.compile(
+    r"^(openrail[\w+.-]*|creativeml-openrail-m|bigscience[\w.-]*|llama[\d.]*|gemma)$"
+)
+
+
+def license_tier(lic: str | None, name: str | None = None) -> int:
+    """ライセンスの段階(TIER_*)。other は license_name(独自ライセンスの名前)も見る。"""
     if lic is None:
-        return 4
-    if lic == "other":
-        return 3
+        return TIER_UNKNOWN
+    text = f"{lic} {name or ''}".lower()
+    if _NONCOMMERCIAL.search(text):
+        return TIER_NONCOMMERCIAL
     if lic in PERMISSIVE:
-        return 1
-    return 2
+        return TIER_PERMISSIVE
+    if lic in ATTRIBUTION:
+        return TIER_ATTRIBUTION
+    if _USE_RESTRICTED.match(lic):
+        return TIER_USE_RESTRICTED
+    return TIER_OTHER
 
 
-def strictest(licenses: Iterable[str | None]) -> str | None:
+def license_rank(lic: str | None, name: str | None = None) -> int:
+    """license_tier と同じ(大きいほど厳しい)。"""
+    return license_tier(lic, name)
+
+
+LicenseLike = str | None | tuple[str | None, str | None]
+
+
+def _pair(x: LicenseLike) -> tuple[str | None, str | None]:
+    return x if isinstance(x, tuple) else (x, None)
+
+
+def strictest(licenses: Iterable[LicenseLike]) -> Any:
+    """一番厳しいもの。要素は license か (license, license_name)。空なら None(不明)。"""
     items = list(licenses)
     if not items:
         return None
-    return max(items, key=lambda x: (license_rank(x), x or ""))
+    return max(items, key=lambda x: (license_tier(*_pair(x)), str(_pair(x)[0] or ""), str(_pair(x)[1] or "")))
 
 
 @dataclass
@@ -179,6 +218,14 @@ class RepoInfo:
                     break
         base = card.get("base_model")
         bases = [base] if isinstance(base, str) else [b for b in (base or []) if isinstance(b, str)]
+        # タグの base_model:<repo> / base_model:finetune:<repo> / base_model:quantized:<repo> なども見る
+        for t in data.get("tags") or []:
+            if isinstance(t, str) and t.startswith("base_model:"):
+                rest = t.split(":", 1)[1]
+                kind, _, repo = rest.partition(":")
+                b = repo if repo and kind in _BASE_KINDS else rest
+                if "/" in b and b not in bases:
+                    bases.append(b)
         gated = data.get("gated")
         files: dict[str, tuple[int | None, str | None]] = {}
         for s in data.get("siblings") or []:
@@ -220,12 +267,18 @@ class RepoInfo:
 
 def _tokens(text: str) -> set[str]:
     toks = re.split(r"[^a-z0-9]+", text.lower())
-    return {t for t in toks if t and t not in _GENERIC_TOKENS and not t.isdigit()}
+    return {
+        t for t in toks if t and t not in _GENERIC_TOKENS and not t.isdigit() and not _SIZE_TOKEN.match(t)
+    }
+
+
+# 大きさ・版だけを表す語(14b・720p・v2 など)は、どの本家かの手がかりにしない
+_SIZE_TOKEN = re.compile(r"^(\d+(\.\d+)?[bmkp]|v\d+|rank\d+)$")
 
 
 def choose_bases(bases: list[str], filename: str) -> list[str]:
     """再配布のファイルが、どの本家から来たか。1 つなら確定。複数なら名前の重なりで選ぶ(同点は全部)。
-    どれとも重ならなければ空(再配布側の表記を使う)。"""
+    どれとも重ならなければ空(本家が分からない = ライセンスは不明)。大きさの語(14b など)は数えない。"""
     if len(bases) <= 1:
         return list(bases)
     ft = _tokens(filename.rsplit("/", 1)[-1])
@@ -242,7 +295,313 @@ def upstream_candidates(info: RepoInfo) -> list[str]:
     return info.base_models or REPACKAGED_UPSTREAM.get(info.repo_id, [])
 
 
+# --- ライセンスの表 ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class KnownLicense:
+    """手で確かめたライセンス(2026-10-20 に HF の API・モデルカードで確認。コメントの URL が確かめた場所)。"""
+
+    key: str
+    pattern: re.Pattern[str]
+    license: str
+    license_name: str | None
+    source: str  # license_from に入れる名前(HF のリポジトリ。HF に記載が無いものは GitHub のリポジトリ)
+    url: str
+
+
+def _k(key: str, pat: str, lic: str, name: str | None, source: str, url: str | None = None) -> KnownLicense:
+    return KnownLicense(key, re.compile(pat, re.IGNORECASE), lic, name, source, url or f"{HF}/{source}")
+
+
+# 部品の表: 再配布(Comfy-Org など)の中の、ファイル名で本家が決まる部品(テキストエンコーダ・VAE など)。
+# 再配布のリポジトリの表記や base_model は本体のものなので、部品には当てない(Llama 3.1 が mit になるなど)。
+# 載せるのは、本家のライセンスを確かめ、複数の再配布で sha256 が同じ(=手を加えていない写し)と確かめたもの。
+# 当てるのは再配布のリポジトリの中のファイルだけ(ほかの持ち主の同名のファイルは改変されていることがある)。
+COMPONENTS: tuple[KnownLicense, ...] = (
+    # https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct (license: llama3.1)
+    _k(
+        "llama-3.1-8b-instruct",
+        r"^llama_3\.1_8b_instruct\w*\.safetensors$",
+        "llama3.1",
+        None,
+        "meta-llama/Llama-3.1-8B-Instruct",
+    ),
+    # https://huggingface.co/google/t5-v1_1-xxl (apache-2.0)
+    _k(
+        "t5-v1_1-xxl",
+        r"^t5xxl_(fp16|bf16|fp32|fp8_e4m3fn|fp8_e4m3fn_scaled)\.safetensors$",
+        "apache-2.0",
+        None,
+        "google/t5-v1_1-xxl",
+    ),
+    # https://huggingface.co/google/umt5-xxl (apache-2.0)。Kijai の umt5-xxl-enc はエンコーダだけを抜いたもの
+    _k(
+        "umt5-xxl",
+        r"^umt5[_-]xxl[_-](fp16|bf16|fp32|fp8_e4m3fn|fp8_e4m3fn_scaled|enc[_-]bf16|enc[_-]fp8_e4m3fn)\.safetensors$",
+        "apache-2.0",
+        None,
+        "google/umt5-xxl",
+    ),
+    # OpenAI CLIP ViT-L/14。HF の openai/clip-vit-large-patch14 には license の記載が無いので、
+    # GitHub の LICENSE(MIT)
+    _k(
+        "clip-vit-large-patch14",
+        r"^clip_l\.safetensors$",
+        "mit",
+        None,
+        "openai/clip-vit-large-patch14",
+        "https://github.com/openai/CLIP/blob/main/LICENSE",
+    ),
+    # https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k (mit)
+    _k(
+        "clip-vit-bigg-14",
+        r"^(clip_g|clip_vision_g)\.safetensors$",
+        "mit",
+        None,
+        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
+    ),
+    # https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K (mit)
+    _k(
+        "clip-vit-h-14",
+        r"^(clip_vision_h|clip-vit-h-14-laion2b-s32b-b79k)\.safetensors$",
+        "mit",
+        None,
+        "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+    ),
+    # https://huggingface.co/google/siglip-so400m-patch14-384 (apache-2.0)
+    _k(
+        "siglip-so400m",
+        r"^sigclip_vision_patch14_384\.safetensors$",
+        "apache-2.0",
+        None,
+        "google/siglip-so400m-patch14-384",
+    ),
+    # https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct (apache-2.0)。
+    # Qwen-Image と HunyuanVideo 1.5 で sha256 が同じ
+    _k(
+        "qwen2.5-vl-7b",
+        r"^qwen_2\.5_vl_7b_fp8_scaled\.safetensors$",
+        "apache-2.0",
+        None,
+        "Qwen/Qwen2.5-VL-7B-Instruct",
+    ),
+    # OmniGen2 の Qwen2.5-VL-3B(fp16 で 7.5 GB)。
+    # https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct (other: qwen-research)
+    _k(
+        "qwen2.5-vl-3b",
+        r"^qwen_2\.5_vl_fp16\.safetensors$",
+        "other",
+        "qwen-research",
+        "Qwen/Qwen2.5-VL-3B-Instruct",
+    ),
+    # https://huggingface.co/Qwen/Qwen3-4B (apache-2.0)。FLUX.2 klein 4B と Z-Image で sha256 が同じ
+    _k("qwen3-4b", r"^qwen_3_4b(_fp8_mixed)?\.safetensors$", "apache-2.0", None, "Qwen/Qwen3-4B"),
+    # https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct (apache-2.0)。Comfy-Org/Qwen3-VL と sha256 が同じもの
+    _k(
+        "qwen3-vl-8b",
+        r"^qwen3vl_8b_fp8_scaled\.safetensors$",
+        "apache-2.0",
+        None,
+        "Qwen/Qwen3-VL-8B-Instruct",
+    ),
+    # https://huggingface.co/google/gemma-3-12b-it (license: gemma)
+    _k(
+        "gemma-3-12b-it",
+        r"^gemma_3_12b_it(_fp8_scaled|_fp4_mixed|_bf16)?\.safetensors$",
+        "gemma",
+        None,
+        "google/gemma-3-12b-it",
+    ),
+    # https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-english (apache-2.0。Wan2.2-S2V が使うもの)
+    _k(
+        "wav2vec2-large-xlsr-53-english",
+        r"^wav2vec2_large_english(_fp16)?\.safetensors$",
+        "apache-2.0",
+        None,
+        "jonatasgrosman/wav2vec2-large-xlsr-53-english",
+    ),
+    # FLUX.1 の VAE。https://huggingface.co/black-forest-labs/FLUX.1-schnell (apache-2.0)。
+    # HiDream・Lumina 2・Z-Image の ae.safetensors は sha256 が同じ
+    _k("flux1-vae", r"^ae\.safetensors$", "apache-2.0", None, "black-forest-labs/FLUX.1-schnell"),
+    # https://huggingface.co/black-forest-labs/FLUX.2-VAE (apache-2.0)。
+    # flux2-dev・ERNIE・Lens で sha256 が同じ
+    _k("flux2-vae", r"^flux2-vae\.safetensors$", "apache-2.0", None, "black-forest-labs/FLUX.2-VAE"),
+    # https://huggingface.co/black-forest-labs/FLUX.2-small-decoder (apache-2.0)
+    _k(
+        "flux2-small-decoder",
+        r"^flux2-vae_small\.safetensors$",
+        "apache-2.0",
+        None,
+        "black-forest-labs/FLUX.2-small-decoder",
+    ),
+    # Wan の VAE。https://huggingface.co/Wan-AI/Wan2.1-T2V-14B ・ Wan-AI/Wan2.2-TI2V-5B (apache-2.0)
+    _k(
+        "wan2.1-vae",
+        r"^(wan_2\.1_vae|wan2_1_vae_(bf16|fp16|fp32))\.safetensors$",
+        "apache-2.0",
+        None,
+        "Wan-AI/Wan2.1-T2V-14B",
+    ),
+    _k("wan2.2-vae", r"^wan2\.2_vae\.safetensors$", "apache-2.0", None, "Wan-AI/Wan2.2-TI2V-5B"),
+    # https://huggingface.co/Qwen/Qwen-Image (apache-2.0)。5 つのリポジトリで sha256 が同じ
+    _k("qwen-image-vae", r"^qwen_image_vae\.safetensors$", "apache-2.0", None, "Qwen/Qwen-Image"),
+    # Real-ESRGAN。https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE (BSD 3-Clause)
+    _k(
+        "real-esrgan",
+        r"^realesrgan_x4plus(_anime_6b)?\.(safetensors|pth)$",
+        "bsd-3-clause",
+        None,
+        "xinntao/Real-ESRGAN",
+        "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE",
+    ),
+)
+
+# 系統の表: 名前(リポジトリ名・ファイル名・たどった base_model)で分かる元のモデル。派生(微調整・量子化・
+# 無検閲化)のライセンスは元より寛容にならないので、表記がこれより寛容なら不明にする。
+_F = r"(?<![a-z0-9])"
+FAMILIES: tuple[KnownLicense, ...] = (
+    # https://huggingface.co/black-forest-labs/FLUX.1-dev (other: flux-1-dev-non-commercial-license)。
+    # Krea-dev・Kontext-dev・Fill-dev なども同じライセンス
+    _k(
+        "flux.1-dev",
+        _F + r"flux[\W_]*1?[\W_]*((krea|kontext|fill|canny|depth|redux)[\W_]*)?dev(?![a-z])",
+        "other",
+        "flux-1-dev-non-commercial-license",
+        "black-forest-labs/FLUX.1-dev",
+    ),
+    # https://huggingface.co/black-forest-labs/FLUX.1-schnell (apache-2.0)
+    _k(
+        "flux.1-schnell",
+        _F + r"flux[\W_]*1?[\W_]*schnell",
+        "apache-2.0",
+        None,
+        "black-forest-labs/FLUX.1-schnell",
+    ),
+    # https://huggingface.co/black-forest-labs/FLUX.2-dev (other: flux-non-commercial-license)
+    _k(
+        "flux.2-dev",
+        _F + r"flux[\W_]*2[\W_]*dev(?![a-z])",
+        "other",
+        "flux-non-commercial-license",
+        "black-forest-labs/FLUX.2-dev",
+    ),
+    # https://huggingface.co/black-forest-labs/FLUX.2-klein-9B (other: flux-non-commercial-license)
+    _k(
+        "flux.2-klein-9b",
+        _F + r"klein[\W_]*(base[\W_]*)?9b",
+        "other",
+        "flux-non-commercial-license",
+        "black-forest-labs/FLUX.2-klein-9B",
+    ),
+    # https://huggingface.co/black-forest-labs/FLUX.2-klein-4B (apache-2.0)
+    _k(
+        "flux.2-klein-4b",
+        _F + r"klein[\W_]*(base[\W_]*)?4b",
+        "apache-2.0",
+        None,
+        "black-forest-labs/FLUX.2-klein-4B",
+    ),
+    # https://huggingface.co/Qwen/Qwen-Image-2.1 (other: qwen-research)
+    _k(
+        "qwen-image-2.1",
+        _F + r"qwen[\W_]*image[\W_]*2[\W_]*1(?!\d)",
+        "other",
+        "qwen-research",
+        "Qwen/Qwen-Image-2.1",
+    ),
+    # https://huggingface.co/Qwen/Qwen-Image (apache-2.0)。Edit・2512 なども apache-2.0
+    _k("qwen-image", _F + r"qwen[\W_]*image", "apache-2.0", None, "Qwen/Qwen-Image"),
+    # https://huggingface.co/krea/Krea-2-Turbo (other: krea-2-community-license)
+    _k("krea-2", _F + r"krea[\W_]*2(?![\d.])", "other", "krea-2-community-license", "krea/Krea-2-Turbo"),
+    # https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0 (openrail++)
+    _k(
+        "sdxl",
+        _F + r"(sd[\W_]?xl|stable[\W_]*diffusion[\W_]*xl)",
+        "openrail++",
+        None,
+        "stabilityai/stable-diffusion-xl-base-1.0",
+    ),
+    # https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5 (creativeml-openrail-m)
+    _k(
+        "sd1.5",
+        _F + r"(sd[\W_]?1[\W_.]?5(?!\d)|stable[\W_]*diffusion[\W_]*v?1[\W_.]?5(?!\d))",
+        "creativeml-openrail-m",
+        None,
+        "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    ),
+    # https://huggingface.co/stabilityai/stable-diffusion-3.5-large (other: stabilityai-ai-community)
+    _k(
+        "sd3.5",
+        _F + r"(sd[\W_]?3[\W_.]?5|stable[\W_]*diffusion[\W_]*3[\W_.]?5)",
+        "other",
+        "stabilityai-ai-community",
+        "stabilityai/stable-diffusion-3.5-large",
+    ),
+    # https://huggingface.co/OnomaAIResearch/Illustrious-xl-early-release-v0 ・ https://huggingface.co/Laxhar/noobai-XL-1.1
+    # (other: fair-ai-public-license-1.0-sd)
+    _k(
+        "illustrious-noobai",
+        _F + r"(illustrious|noob[\W_]?ai)",
+        "other",
+        "fair-ai-public-license-1.0-sd",
+        "OnomaAIResearch/Illustrious-xl-early-release-v0",
+        "https://freedevproject.org/faipl-1.0-sd/",
+    ),
+    # https://huggingface.co/tencent/HunyuanVideo ・ tencent/Hunyuan3D-2 ・ tencent/HunyuanVideo-1.5
+    # (other: tencent-hunyuan-community)
+    _k("hunyuan", r"hunyuan", "other", "tencent-hunyuan-community", "tencent/HunyuanVideo"),
+    # https://huggingface.co/stabilityai/stable-audio-open-1.0 ・ stabilityai/stable-audio-3-medium-base
+    # (other: stable-audio-community)
+    _k(
+        "stable-audio",
+        _F + r"stable[\W_]*audio",
+        "other",
+        "stable-audio-community",
+        "stabilityai/stable-audio-open-1.0",
+    ),
+    # https://huggingface.co/Lightricks/LTX-2 (other: ltx-2-community-license-agreement。LTX-2.x も同じ系統)
+    _k(
+        "ltx-2",
+        _F + r"ltx[\W_]*v?[\W_]*2(?![\db])",
+        "other",
+        "ltx-2-community-license-agreement",
+        "Lightricks/LTX-2",
+    ),
+    # https://huggingface.co/Lightricks/LTX-Video (other。名前の記載なし)
+    _k("ltx-video", _F + r"(ltx[\W_]*video|ltxv(?!\d))", "other", None, "Lightricks/LTX-Video"),
+    # https://huggingface.co/Wan-AI/Wan2.1-T2V-14B ・ Wan-AI/Wan2.2-T2V-A14B (apache-2.0)
+    _k("wan", _F + r"wan[\W_]*2[\W_.]*[12](?!\d)", "apache-2.0", None, "Wan-AI/Wan2.1-T2V-14B"),
+    # https://huggingface.co/HiDream-ai/HiDream-I1-Full (mit)。
+    # 本体の DiT だけ。テキストエンコーダ(Llama 3.1 など)は部品の表で別に見る
+    _k("hidream", r"hidream", "mit", None, "HiDream-ai/HiDream-I1-Full"),
+    # https://huggingface.co/Tongyi-MAI/Z-Image-Turbo (apache-2.0)
+    _k("z-image", _F + r"z[\W_]?image", "apache-2.0", None, "Tongyi-MAI/Z-Image-Turbo"),
+    # https://huggingface.co/lodestones/Chroma (apache-2.0)
+    _k("chroma", _F + r"chroma(?![a-z])", "apache-2.0", None, "lodestones/Chroma"),
+)
+
+
+def component_for(filename: str) -> KnownLicense | None:
+    base = filename.rsplit("/", 1)[-1]
+    return next((c for c in COMPONENTS if c.pattern.search(base)), None)
+
+
+def families_for(names: Iterable[str]) -> list[KnownLicense]:
+    text = "\n".join(n.lower() for n in names if n)
+    return [f for f in FAMILIES if f.pattern.search(text)]
+
+
+def license_label(lic: str | None, name: str | None = None) -> str:
+    if lic is None:
+        return "不明"
+    return f"{lic}({name})" if name else lic
+
+
 # --- 取得 --------------------------------------------------------------------------------------
+
+MAX_HOPS = 12  # base_model をたどる段数の上限(版を重ねた系統は長い。超えたら確かめられない = 不明)
+UNVERIFIED = "license_unverified"  # license_evidence の印(ライセンスを確かめられず不明にした)
 
 
 @dataclass
@@ -250,50 +609,106 @@ class Failure:
     repo_id: str
     message: str
     network: bool
+    status: int | None = None
+
+    @property
+    def transient(self) -> bool:
+        """待てば取れるかもしれない失敗(ネットワーク・429・5xx)。401/403/404 は不明として扱い、数えない。"""
+        return self.network or self.status is None or self.status == 429 or self.status >= 500
+
+
+@dataclass
+class Resolved:
+    """ライセンスを決めた結果。license が None なら不明(evidence に理由)。"""
+
+    license: str | None
+    license_name: str | None = None
+    source: str | None = None  # license_from(ライセンスを読んだリポジトリ)
+    url: str | None = None  # license_url
+    path: list[str] = field(default_factory=list)  # たどった道(置き場所 → base_model … → 決め手)
+    evidence: list[str] = field(default_factory=list)
+    families: list[str] = field(default_factory=list)
+
+    @property
+    def tier(self) -> int:
+        return license_tier(self.license, self.license_name)
+
+
+def _unknown(path: list[str], why: str, source: str | None = None) -> Resolved:
+    return Resolved(
+        None, None, source or (path[-1] if path else None), None, list(path), [f"{UNVERIFIED}: {why}"]
+    )
+
+
+def _worst(items: list[Resolved]) -> Resolved:
+    return max(items, key=lambda r: (r.tier, r.source or ""))
 
 
 class HfClient:
-    """リポジトリの情報を取って覚えておく。スレッドから同時に呼んでよい。"""
+    """リポジトリの情報を取って覚えておく。スレッドから同時に呼んでよい(同じリポジトリは 1 回だけ取る)。"""
 
     def __init__(self, fetch: Fetcher, *, workers: int = 8):
         self.fetch = fetch
         self.workers = max(1, min(8, workers))  # 上流に優しく: 同時に 8 本まで
         self._repos: dict[tuple[str, str], RepoInfo | None] = {}
         self._readmes: dict[str, str] = {}
+        self._inflight: dict[tuple[str, Any], Future[Any]] = {}
         self._lock = threading.Lock()
         self.failures: list[Failure] = []
 
+    def _once(self, kind: str, cache: dict[Any, Any], key: Any, load: Callable[[], Any]) -> Any:
+        """cache に無ければ load() を 1 回だけ呼ぶ(同じ key を同時に頼まれたら、先の呼び出しの結果を待つ)。"""
+        with self._lock:
+            if key in cache:
+                return cache[key]
+            fut = self._inflight.get((kind, key))
+            owner = fut is None
+            if owner:
+                fut = Future()
+                self._inflight[(kind, key)] = fut
+        assert fut is not None
+        if not owner:
+            return fut.result()
+        value = None
+        try:
+            value = load()
+        finally:
+            with self._lock:
+                cache[key] = value
+                self._inflight.pop((kind, key), None)
+            fut.set_result(value)
+        return value
+
     def repo(self, repo_id: str, revision: str = "main") -> RepoInfo | None:
         key = (repo_id, revision or "main")
+
+        def load() -> RepoInfo | None:
+            try:
+                data = self.fetch.get_json(api_url(*key))
+                info = RepoInfo.from_api(data) if isinstance(data, dict) else None
+                if info is None:
+                    raise FetchError(api_url(*key), "形が違います")
+                info.repo_id = info.repo_id or repo_id
+                return info
+            except FetchError as e:
+                with self._lock:
+                    self.failures.append(Failure(repo_id, str(e), isinstance(e, NetworkError), e.status))
+                return None
+
+        return self._once("repo", self._repos, key, load)
+
+    def failed(self, repo_id: str) -> Failure | None:
         with self._lock:
-            if key in self._repos:
-                return self._repos[key]
-        info: RepoInfo | None
-        try:
-            data = self.fetch.get_json(api_url(*key))
-            info = RepoInfo.from_api(data) if isinstance(data, dict) else None
-            if info is None:
-                raise FetchError(api_url(*key), "形が違います")
-            info.repo_id = info.repo_id or repo_id
-        except FetchError as e:
-            info = None
-            with self._lock:
-                self.failures.append(Failure(repo_id, str(e), isinstance(e, NetworkError)))
-        with self._lock:
-            self._repos[key] = info
-        return info
+            return next((f for f in self.failures if f.repo_id == repo_id), None)
 
     def readme(self, repo_id: str) -> str:
-        with self._lock:
-            if repo_id in self._readmes:
-                return self._readmes[repo_id]
-        try:
-            text = self.fetch.get_text(readme_url(repo_id))
-        except FetchError:
-            text = ""
-        with self._lock:
-            self._readmes[repo_id] = text
-        return text
+        def load() -> str:
+            try:
+                return self.fetch.get_text(readme_url(repo_id))
+            except FetchError:
+                return ""
+
+        return self._once("readme", self._readmes, repo_id, load)
 
     def map(self, func: Callable[[Any], Any], items: Iterable[Any]) -> list[Any]:
         items = list(items)
@@ -303,8 +718,26 @@ class HfClient:
             return list(ex.map(func, items))
 
     def prefetch(self, keys: Iterable[tuple[str, str]]) -> None:
-        todo = sorted({k for k in keys if k not in self._repos})
+        with self._lock:
+            todo = sorted({k for k in keys if k not in self._repos})
         self.map(lambda k: self.repo(*k), todo)
+
+    def prefetch_chains(self, repo_ids: Iterable[str]) -> None:
+        """base_model の道を、段ごとにまとめて先に取る(MAX_HOPS 段まで)。"""
+        level = set(repo_ids)
+        seen: set[str] = set()
+        for _ in range(MAX_HOPS + 1):
+            level -= seen
+            if not level:
+                return
+            self.prefetch((r, "main") for r in level)
+            seen |= level
+            nxt: set[str] = set()
+            for r in level:
+                info = self.repo(r)
+                if info:
+                    nxt |= set(info.base_models)
+            level = nxt
 
     def search(self, url: str) -> list[dict[str, Any]]:
         data = self.fetch.get_json(url)
@@ -312,16 +745,93 @@ class HfClient:
             raise FetchError(url, "検索の結果が一覧ではありません")
         return [d for d in data if isinstance(d, dict) and d.get("id")]
 
-    def file_license(self, info: RepoInfo, path: str) -> tuple[str | None, str | None, RepoInfo]:
-        """(license, license_name, ライセンスを取ったリポジトリ)。再配布なら本家をたどる。"""
-        if is_repackager(info.repo_id):
-            picked = choose_bases(upstream_candidates(info), path)
-            # 本家にライセンスの記載が無いときは、再配布側の表記を使う(どちらも無ければ不明のまま)
-            ups = [u for u in (self.repo(b) for b in picked) if u is not None and u.license is not None]
-            if ups:
-                src = max(ups, key=lambda u: (license_rank(u.license), u.repo_id))
-                return src.license, src.license_name, src
-        return info.license, info.license_name, info
+    # --- ライセンス -------------------------------------------------------------------------
+
+    def resolve_repo(self, repo_id: str, depth: int = 0, seen: frozenset[str] = frozenset()) -> Resolved:
+        """リポジトリのライセンスを、base_model の道ごと確かめる(resolve_info)。読めなければ不明。"""
+        info = self.repo(repo_id)
+        if info is None:
+            f = self.failed(repo_id)
+            why = f"{repo_id} を読めません" + (f"(HTTP {f.status})" if f and f.status else "")
+            return _unknown([repo_id], why)
+        return self.resolve_info(info, depth, seen)
+
+    def resolve_info(self, info: RepoInfo, depth: int = 0, seen: frozenset[str] = frozenset()) -> Resolved:
+        """- 記載が無い → 不明
+        - base_model のどれかが不明 → 不明
+        - 自分の表記が、base_model の一番厳しいものより寛容 → 不明(派生は元より寛容にならない)
+        - それ以外は自分の表記(同じか、より厳しい)
+        """
+        rid = info.repo_id
+        if info.license is None:
+            return _unknown([rid], f"{rid} にライセンスの記載がありません")
+        own = Resolved(info.license, info.license_name, rid, info.license_url(), [rid])
+        bases = [b for b in info.base_models if b != rid and b not in seen]
+        if not bases:
+            return own
+        if depth >= MAX_HOPS:
+            return _unknown([rid], f"base_model が {MAX_HOPS} 段を超えるので確かめきれません")
+        worst = _worst([self.resolve_repo(b, depth + 1, seen | {rid}) for b in bases])
+        own.path = [rid, *worst.path]
+        if worst.license is None:
+            return Resolved(None, None, worst.source, None, own.path, list(worst.evidence))
+        if own.tier < worst.tier:
+            why = (
+                f"{rid} の表記 {license_label(own.license, own.license_name)} は、元の {worst.source} の "
+                f"{license_label(worst.license, worst.license_name)} より寛容です"
+            )
+            return _unknown(own.path, why, worst.source)
+        return own
+
+    def resolve_file(self, info: RepoInfo, path: str, *, discovered_uncensored: bool = False) -> Resolved:
+        """1 ファイルのライセンス(docs/sources.md の「ライセンス」の順)。"""
+        base = path.rsplit("/", 1)[-1]
+        rid = info.repo_id
+        if is_repackager(rid):
+            comp = component_for(base)
+            if comp:
+                return Resolved(
+                    comp.license,
+                    comp.license_name,
+                    comp.source,
+                    comp.url,
+                    [rid, comp.source],
+                    [f"component:{comp.key}"],
+                )
+            ups = choose_bases(upstream_candidates(info), path)
+            if not ups:
+                return _unknown([rid], f"再配布 {rid} の {base} の本家が分かりません", rid)
+            worst = _worst([self.resolve_repo(u, 1) for u in ups])
+            res = Resolved(
+                worst.license,
+                worst.license_name,
+                worst.source,
+                worst.url,
+                [rid, *worst.path],
+                list(worst.evidence),
+            )
+            names = [base, *worst.path]
+        else:
+            r = self.resolve_info(info)
+            res = Resolved(r.license, r.license_name, r.source, r.url, list(r.path), list(r.evidence))
+            names = [rid.split("/", 1)[-1], path, *res.path[1:]]
+        if res.license is None:
+            return res
+        fams = families_for(names)
+        res.families = [f.key for f in fams]
+        if fams:
+            fw = max(fams, key=lambda f: (license_tier(f.license, f.license_name), f.key))
+            if res.tier < license_tier(fw.license, fw.license_name):
+                why = (
+                    f"{license_label(res.license, res.license_name)} は、系統 {fw.key} の "
+                    f"{license_label(fw.license, fw.license_name)}({fw.url})より寛容です"
+                )
+                return _unknown(res.path, why, fw.source)
+            res.evidence.append(f"family:{fw.key}")
+        elif discovered_uncensored and len(res.path) <= 1:
+            # 無検閲化は元のモデルの派生。元(base_model)も系統も分からなければ、表記を確かめられない
+            return _unknown(res.path, f"{rid} の元のモデル(base_model)も系統も分かりません", rid)
+        return res
 
 
 # --- HF のリポジトリから、使うファイルを選ぶ -----------------------------------------------------

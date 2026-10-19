@@ -109,7 +109,7 @@ def test_cli_system_and_info(capsys):
 
 
 def test_cli_text_output(capsys):
-    assert cli.main(["fit", "--vram", "8", "--no-cache", "-m", "image", "-n", "1000"]) == 0
+    assert cli.main(["fit", "--vram", "8", "--no-cache"]) == 0
     assert "image_sdxl_simple" in capsys.readouterr().out
 
 

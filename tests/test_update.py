@@ -145,16 +145,31 @@ def test_license_strictest_rule():
     assert strictest(["mit", "other", "openrail"]) == "other"
     assert strictest(["mit", None, "other"]) is None
     assert strictest([]) is None
+    # 段階は名前の順ではない: 非商用 > other > 用途の制限 > 表示 > 寛容
+    assert strictest(["cc-by-nc-4.0", "openrail++"]) == "cc-by-nc-4.0"
+    assert strictest(["openrail++", "cc-by-nc-sa-4.0", "other"]) == "cc-by-nc-sa-4.0"
+    assert strictest(["cc-by-4.0", "mit"]) == "cc-by-4.0"
+    assert strictest(["llama3.1", "apache-2.0"]) == "llama3.1"
+    # other は license_name も見る(非商用の独自ライセンスは、条件付きの独自ライセンスより厳しい)
+    nc = ("other", "flux-1-dev-non-commercial-license")
+    assert strictest([("other", "tencent-hunyuan-community"), nc]) == nc
+    assert (
+        strictest([("other", "qwen-research"), ("other", "krea-2-community-license")])[1] == "qwen-research"
+    )
 
 
 def test_choose_bases():
     bases = ["Wan-AI/Wan2.1-T2V-1.3B", "Wan-AI/Wan2.1-I2V-14B-720P", "Wan-AI/Wan2.1-VACE-14B"]
     assert choose_bases(bases, "split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors") == [bases[0]]
-    assert choose_bases(bases, "umt5_xxl_fp8_e4m3fn_scaled.safetensors") == []  # 分からなければ再配布側の表記
+    assert choose_bases(bases, "umt5_xxl_fp8_e4m3fn_scaled.safetensors") == []  # 分からなければ不明
     assert choose_bases(["only/one"], "anything.safetensors") == ["only/one"]
+    # 大きさの語(14B)だけの重なりでは選ばない(Kijai の CausVid の LoRA を VACE と取り違えていた)
+    vace = ["Wan-AI/Wan2.1-VACE-14B", "Wan-AI/Wan2.1-VACE-1.3B"]
+    assert choose_bases(vace, "Wan21_CausVid_14B_T2V_lora_rank32.safetensors") == []
 
 
-def test_file_license_falls_back_when_upstream_has_none():
+def test_file_license_is_unknown_when_upstream_has_none():
+    # 本家にライセンスの記載が無いとき、再配布側の表記は使わない(確かめられないので不明)
     class F:
         def get_json(self, url):
             if "upstream" in url:
@@ -163,8 +178,8 @@ def test_file_license_falls_back_when_upstream_has_none():
 
     c = HfClient(F())
     info = RepoInfo(repo_id="Comfy-Org/thing", license="apache-2.0", base_models=["x/upstream"])
-    lic, _name, src = c.file_license(info, "a.safetensors")
-    assert lic == "apache-2.0" and src.repo_id == "Comfy-Org/thing"
+    res = c.resolve_file(info, "a.safetensors")
+    assert res.license is None and res.evidence[0].startswith("license_unverified")
 
 
 def test_uncensored_from_hf_search(built):
@@ -321,7 +336,8 @@ def test_safety_card_disclaimers_are_not_hits():
     # 性的な語と同じ文になければ数えない(作例のプロンプトなど)
     assert safety.blocked_terms([], "A tiny boat with a child passing by.", uncensored=True) == []
     assert safety.blocked_terms([], "Generates nude photos of kids.", uncensored=True) == ["kids"]
-    assert safety.blocked_terms([], "Generates nude photos of kids.", uncensored=False) == []
+    # 説明文の「性的な語 + 未成年の語」は、無検閲の印が無いモデルにも当てる
+    assert safety.blocked_terms([], "Generates nude photos of kids.", uncensored=False) == ["kids"]
     assert safety.blocked_terms([], "Trained on lolicon art.", uncensored=False) == ["lolicon"]
 
 
@@ -386,11 +402,15 @@ def test_too_many_template_failures(tmp_path):
 
 def test_cli_update_writes_output(tmp_path, capsys):
     out = tmp_path / "db.json"
-    assert (
-        cli.main(["update", "--json", "--offline-sources", str(FIX), "--skip-head", "--output", str(out)])
-        == 0
-    )
+    args = ["update", "--json", "--offline-sources", str(FIX), "--skip-head", "--output", str(out)]
+    # フィクスチャはテンプレート 1 件の JSON が無い(一部が欠けた)ので、--allow-partial が無ければ書かない
+    assert cli.main(args) == 1
+    err = json.loads(capsys.readouterr().out)["error"]
+    assert "--allow-partial" in err and "templates_failed=1" in err
+    assert not out.exists()
+    assert cli.main([*args, "--allow-partial"]) == 0
     env = json.loads(capsys.readouterr().out)
+    assert env["sources"]["partial"] is True and env["sources"]["partial_counts"]["templates_failed"] == 1
     assert env["command"] == "update" and env["output"] == str(out)
     counts = env["sources"]["counts"]
     assert counts["models"] == env["database"]["models"] and counts["content"]["uncensored"] >= 2
@@ -455,3 +475,7 @@ def test_bundled_snapshot_is_an_update_result():
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", db.generated_at)
     hf = [m for m in db.models if m.source == "huggingface"]
     assert hf and all(m.id.startswith("hf:") and m.files and m.discovered_from for m in hf)
+    # ライセンスの決め方の版と、一式のそろい具合
+    assert db.sources.get("license_policy") == 2 and db.sources.get("partial") is False
+    assert all(m.files_complete is not None for m in db.models)
+    assert all(m.size_floor_bytes for m in db.models if m.files_complete is False and m.template)

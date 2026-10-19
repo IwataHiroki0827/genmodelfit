@@ -23,18 +23,22 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from . import __version__, safety
 from .db import Database, bundled_text, cached_db_path, parse_db
-from .fetch import DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
+from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
 from .hf import (
+    UNVERIFIED,
     HfClient,
     RepoInfo,
+    Resolved,
     choose_bases,
+    families_for,
     guess_params_b,
     guess_precision,
     is_repackager,
-    license_rank,
+    license_tier,
     parse_hf_url,
     search_url,
     select_weight_files,
@@ -48,6 +52,20 @@ INDEX_PAGE = "https://github.com/Comfy-Org/workflow_templates/blob/main/template
 
 # テンプレートの失敗がこの割合を超えたら、上流の形が変わったとみなして止める
 MAX_FAIL_RATIO = 0.30
+# ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
+# (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
+LICENSE_POLICY = 2
+# 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
+COMPLETE_RATIO = 0.5
+# sources.counts.license_tier の名前(hf.license_tier の段階)
+_TIER_NAMES = {
+    6: "unknown",
+    5: "non_commercial",
+    4: "other",
+    3: "use_restricted",
+    2: "attribution",
+    1: "permissive",
+}
 
 # --- テンプレートの分類 ---------------------------------------------------------------------------
 
@@ -206,13 +224,19 @@ def template_modality(category: str | None, t: dict[str, Any]) -> str | None:
     return "image"
 
 
-def template_tasks(t: dict[str, Any], modality: str) -> list[str]:
+# 道具の分類(Image Tools / Video Tools)で、当てはまるタグが無いときの task(生成ではない処理)
+TOOL_CATEGORIES = {"Image Tools", "Video Tools"}
+
+
+def template_tasks(t: dict[str, Any], modality: str, category: str | None = None) -> list[str]:
     out: list[str] = []
     for tag in t.get("tags") or []:
         task = TAG_TASKS.get(str(tag).lower())
         if task and task not in out:
             out.append(task)
     if not out:
+        if category in TOOL_CATEGORIES:
+            return ["tool"]  # Depth・Pose Map など表に無いタグの道具を、t2i / t2v と言わない
         out = [{"image": "t2i", "video": "t2v", "3d": "i23d", "tts": "tts"}.get(modality, "t2a")]
     return out
 
@@ -269,7 +293,7 @@ def template_entry(
         id=t["name"],
         name=t.get("title") or t["name"],
         modality=modality,
-        tasks=template_tasks(t, modality),
+        tasks=template_tasks(t, modality, category),
         source="comfyui-template",
         files=files,
         template=Template(
@@ -304,27 +328,41 @@ def _hf_keys(entries: list[ModelEntry]) -> set[tuple[str, str]]:
 
 
 def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *, head: bool) -> None:
-    """ファイルに大きさ・sha256・ライセンス・gated を入れ、一式のライセンスを決める。"""
+    """ファイルに大きさ・sha256・ライセンス・gated を入れ、一式のライセンスと一式のそろい具合を決める。"""
     keys = _hf_keys(entries)
     client.prefetch(keys)
-    # 再配布リポジトリの本家も先にまとめて取る
-    bases: set[tuple[str, str]] = set()
+    # ライセンスの道(再配布の本家と、base_model を MAX_HOPS 段まで)も先にまとめて取る
+    chain: set[str] = set()
     for e in entries:
         for f in e.files:
             p = parse_hf_url(f.url)
             info = client.repo(p[0], p[1]) if p else None
-            if info and is_repackager(info.repo_id):
-                bases |= {(b, "main") for b in choose_bases(upstream_candidates(info), p[2])}
-    client.prefetch(bases)
+            if info is None:
+                continue
+            if is_repackager(info.repo_id):
+                chain |= set(choose_bases(upstream_candidates(info), p[2]))
+            else:
+                chain |= set(info.base_models)
+    client.prefetch_chains(chain)
 
     missing: list[ModelFile] = []
     for e in entries:
         for f in e.files:
             p = parse_hf_url(f.url)
             if not p:
+                host = urlsplit(f.url).netloc if f.url else "URL なし"
+                set_file_license(
+                    f,
+                    Resolved(None, path=[], evidence=[f"{UNVERIFIED}: Hugging Face 以外のファイル({host})"]),
+                )
                 continue
             info = client.repo(p[0], p[1])
             if info is None:
+                fail = client.failed(p[0])
+                why = f"{p[0]} を読めません" + (f"(HTTP {fail.status})" if fail and fail.status else "")
+                set_file_license(
+                    f, Resolved(None, source=p[0], path=[p[0]], evidence=[f"{UNVERIFIED}: {why}"])
+                )
                 continue
             size, sha = info.files.get(p[2], (None, None))
             f.size_bytes = size or f.size_bytes
@@ -342,31 +380,74 @@ def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *,
         with ThreadPoolExecutor(client.workers) as ex:
             list(ex.map(_head, missing))
     for e in entries:
-        set_entry_license(e, client)
+        set_entry_license(e)
+        set_completeness(e)
 
 
-def apply_license(f: ModelFile, info: RepoInfo, client: HfClient, path: str) -> None:
-    lic, name, src = client.file_license(info, path)
-    f.license, f.license_name = lic, name
-    if src.repo_id != info.repo_id:
-        f.license_from = src.repo_id
+def set_file_license(f: ModelFile, res: Resolved) -> None:
+    f.license, f.license_name = res.license, res.license_name
+    f.license_from = res.source
+    f.license_url = res.url
+    f.license_path = list(res.path)
+    f.license_evidence = list(res.evidence)
+
+
+def apply_license(
+    f: ModelFile, info: RepoInfo, client: HfClient, path: str, *, discovered_uncensored: bool = False
+) -> Resolved:
+    res = client.resolve_file(info, path, discovered_uncensored=discovered_uncensored)
+    set_file_license(f, res)
+    f.license_url = res.url
+    if res.source and res.source != info.repo_id:
         f.repo_license = info.license if info.license != "other" else (info.license_name or "other")
-    else:
-        f.license_from = info.repo_id
+    return res
 
 
-def set_entry_license(e: ModelEntry, client: HfClient) -> None:
-    core = [f for f in e.files if f.role in ("main", "text_encoder", "vae")] or e.files
-    if not core:
-        e.license, e.license_url = None, None
+def set_entry_license(e: ModelEntry) -> None:
+    """一式のライセンスは、すべてのファイル(LoRA・アップスケーラ・clip_vision なども)の中で一番厳しいもの。
+    ファイルが無ければ不明。"""
+    if not e.files:
+        e.license, e.license_name, e.license_url = None, None, None
+        e.license_evidence = [f"{UNVERIFIED}: 使うファイルが分かりません"]
         return
-    worst = max(core, key=lambda f: (license_rank(f.license), f.name))
-    e.license = worst.license
-    src = client.repo(worst.license_from) if worst.license_from else None
-    e.license_url = src.license_url() if src else None
+    worst = max(e.files, key=lambda f: (license_tier(f.license, f.license_name), f.license or "", f.name))
+    e.license, e.license_name = worst.license, worst.license_name
+    e.license_url = worst.license_url if worst.license else None
+    ev: list[str] = []
+    for f in e.files:
+        for x in f.license_evidence:
+            if x.startswith(UNVERIFIED) and x not in ev:
+                ev.append(f"{x}({f.name.rsplit('/', 1)[-1]})")
+    e.license_evidence = ev[:10]
     mains = [f for f in e.files if f.role == "main" and f.license_from]
-    if mains and e.base_model is None:
-        e.base_model = mains[0].license_from if mains[0].license_from != mains[0].repo_id else None
+    if mains and e.base_model is None and mains[0].repo_id and mains[0].license_from != mains[0].repo_id:
+        e.base_model = mains[0].license_from
+
+
+def set_completeness(e: ModelEntry) -> None:
+    """files_complete と size_floor_bytes(docs/schema.md)。
+
+    False: 本体(role main。diffusion_models / unet / checkpoints)が無い、ファイルの合計が index の size の
+    半分未満、または本体が GGUF だけでテキストエンコーダ・VAE が無い(HF のリポジトリ)。
+    False のとき、テンプレートの index の size を size_floor_bytes に入れる(見積もりが小さく見ないように)。
+    """
+    reasons = []
+    if not any(f.role == "main" for f in e.files):
+        reasons.append("no_main")
+    total = sum(f.size_bytes or 0 for f in e.files)
+    index_size = e.template.size_bytes if e.template else None
+    if index_size and total < index_size * COMPLETE_RATIO:
+        reasons.append("small_vs_index")
+    mains = [f for f in e.files if f.role == "main"]
+    if (
+        e.source == "huggingface"
+        and mains
+        and all(f.name.lower().endswith(".gguf") for f in mains)
+        and not any(f.role in ("text_encoder", "vae") for f in e.files)
+    ):
+        reasons.append("gguf_without_encoder")
+    e.files_complete = not reasons
+    e.size_floor_bytes = index_size if reasons and index_size else None
 
 
 def mark_template_content(e: ModelEntry, t: dict[str, Any], client: HfClient) -> None:
@@ -545,6 +626,9 @@ def discover_hf(
     shortlist = [c for key, cs in picked.items() for c in cs[: cap(key) * 2]]
     progress(f"Hugging Face: 候補 {len(shortlist)} 件を確かめています")
     client.prefetch((c.repo_id, "main") for c in shortlist)
+    client.prefetch_chains(
+        b for c in shortlist for b in ((client.repo(c.repo_id) or RepoInfo(repo_id="")).base_models)
+    )
     client.map(client.readme, [c.repo_id for c in shortlist])
 
     out: list[ModelEntry] = []
@@ -565,9 +649,13 @@ def discover_hf(
         ):
             excluded += 1
             continue
-        entry = hf_entry(c, info)
+        entry = hf_entry(c, info, client)
         if entry is None:
             skipped["no_weights"] += 1
+            continue
+        # 同じ重みの写し(持ち主違い・名前違い)は、ダウンロード数の多い先のものだけ(shortlist は多い順)
+        if is_duplicate(entry, out):
+            skipped["duplicate_weights"] += 1
             continue
         count[key] += 1
         out.append(entry)
@@ -579,13 +667,16 @@ def discover_hf(
             "added": len(out),
             "skipped": dict(sorted(skipped.items())),
             "excluded": excluded,
+            "failed_queries": len(warnings),
             "warnings": warnings,
         }
     )
     return out
 
 
-def hf_entry(c: Candidate, info: RepoInfo) -> ModelEntry | None:
+def hf_entry(c: Candidate, info: RepoInfo, client: HfClient | None = None) -> ModelEntry | None:
+    """HF のリポジトリ 1 つを一覧の 1 件にする。ライセンスはファイルごとに確かめる(hf.HfClient.resolve_file:
+    base_model の道・系統の表。無検閲化したもので元が分からなければ不明)。"""
     chosen = select_weight_files(info)
     main_bytes = sum(info.files[p][0] or 0 for p, r in chosen if r == "main")
     if main_bytes < MIN_MAIN_BYTES:
@@ -593,22 +684,25 @@ def hf_entry(c: Candidate, info: RepoInfo) -> ModelEntry | None:
     files = []
     for path, role in chosen:
         size, sha = info.files.get(path, (None, None))
-        files.append(
-            ModelFile(
-                name=path,
-                url=f"https://huggingface.co/{info.repo_id}/resolve/main/{path}",
-                sha256=sha,
-                size_bytes=size,
-                repo_id=info.repo_id,
-                license=info.license,
-                license_name=info.license_name,
-                license_from=info.repo_id,
-                gated=info.gated,
-                role=role,
-            )
+        f = ModelFile(
+            name=path,
+            url=f"https://huggingface.co/{info.repo_id}/resolve/main/{path}",
+            sha256=sha,
+            size_bytes=size,
+            repo_id=info.repo_id,
+            gated=info.gated,
+            role=role,
         )
+        if client is not None:
+            apply_license(f, info, client, path, discovered_uncensored=c.uncensored)
+        else:
+            set_file_license(
+                f,
+                Resolved(None, source=info.repo_id, path=[info.repo_id], evidence=[f"{UNVERIFIED}: 未確認"]),
+            )
+        files.append(f)
     main = next((f for f in files if f.role == "main"), files[0])
-    return ModelEntry(
+    e = ModelEntry(
         id=f"hf:{info.repo_id}",
         name=info.repo_id.split("/", 1)[1],
         modality=c.modality,
@@ -617,8 +711,6 @@ def hf_entry(c: Candidate, info: RepoInfo) -> ModelEntry | None:
         files=files,
         params_b=guess_params_b(main.name, info.repo_id.split("/", 1)[1]),
         precision=guess_precision(main.name),
-        license=info.license,
-        license_url=info.license_url(),
         base_model=info.base_models[0] if info.base_models else None,
         content="uncensored" if c.uncensored else "sfw",
         content_evidence=list(c.evidence),
@@ -628,6 +720,39 @@ def hf_entry(c: Candidate, info: RepoInfo) -> ModelEntry | None:
         downloads=info.downloads if info.downloads is not None else c.downloads,
         likes=info.likes if info.likes is not None else c.likes,
     )
+    set_entry_license(e)
+    set_completeness(e)
+    return e
+
+
+def lineage(e: ModelEntry) -> set[str]:
+    """元のモデルの手がかり(たどった base_model と、名前で当たった系統)。写しの判定に使う。"""
+    out: set[str] = set()
+    for f in e.files:
+        out |= {p for p in f.license_path if p != f.repo_id}
+        out |= {x.split(":", 1)[1] for x in f.license_evidence if x.startswith("family:")}
+    if e.base_model:
+        out.add(e.base_model)
+    # ライセンスが不明でも系統は名前で分かる(リポジトリ名・ファイル名)
+    out |= {f.key for f in families_for([e.id, *(f.name for f in e.files)])}
+    return out
+
+
+def is_duplicate(e: ModelEntry, kept: list[ModelEntry]) -> bool:
+    """同じ重みの写し: sha256 の組が同じ、または元のモデルが重なり合計の大きさが ±1% 以内。"""
+    shas = {f.sha256 for f in e.files if f.sha256}
+    size = e.total_size_bytes or 0
+    lin = lineage(e)
+    for k in kept:
+        if k.modality != e.modality:
+            continue
+        kshas = {f.sha256 for f in k.files if f.sha256}
+        if shas and shas == kshas:
+            return True
+        ksize = k.total_size_bytes or 0
+        if lin & lineage(k) and size and ksize and abs(size - ksize) <= 0.01 * max(size, ksize):
+            return True
+    return False
 
 
 # --- 全体 ----------------------------------------------------------------------------------------
@@ -638,6 +763,11 @@ def _silent(_msg: str) -> None:
 
 
 def _previous_db() -> Database | None:
+    """前の一覧: キャッシュ(前回の update の結果)があればそれ、無ければ同梱の一覧。"""
+    cp = cached_db_path()
+    if cp.exists():
+        with contextlib.suppress(OSError, ValueError):
+            return parse_db(json.loads(cp.read_text(encoding="utf-8")), "cache")
     try:
         return parse_db(json.loads(bundled_text("db.json")), "bundled")
     except (OSError, ValueError):
@@ -674,7 +804,9 @@ def build_database(
     """上流から一覧を作る。書き出しはしない(run_update が書く)。
 
     fetch: 取得の仕方(既定は HttpFetcher)。試験では DirFetcher などを渡す。
-    previous: 実測のあるモデルが上流から消えたとき、ここから引き継ぐ(既定は同梱の一覧)。
+    previous: 前の一覧(既定はキャッシュ、無ければ同梱の一覧)。実測のあるモデルが上流から消えたときと、
+        一部が取れなかったとき(sources.partial)の、取れなかった分を引き継ぐ。後者は同じ LICENSE_POLICY で
+        作った一覧からだけ(古い決め方の寛容すぎるライセンスを持ち込まない)。
     carry_over: False なら引き継がない(試験用)。
     """
     fetch = fetch or HttpFetcher()
@@ -712,9 +844,11 @@ def build_database(
     entries: list[ModelEntry] = []
     tmpl_by_id: dict[str, dict[str, Any]] = {}
     failed: list[str] = []
+    failed_names: list[str] = []
     for item, (models, err) in zip(chosen, client.map(_load, chosen), strict=False):
         if err:
             failed.append(err)
+            failed_names.append(item[1]["name"])
             continue
         e = template_entry(item[0], item[1], item[2], models)
         entries.append(e)
@@ -770,8 +904,46 @@ def build_database(
         excluded += hf_stats.get("excluded", 0)
         warnings += hf_stats.pop("warnings", [])
 
-    # 実測のあるモデルは、上流から消えても前の一覧から引き継ぐ(実測が宙に浮かないように)
     prev = (previous if previous is not None else _previous_db()) if carry_over else None
+
+    # 一部が取れなかった(テンプレートの JSON・HF の一時的な失敗・429 の待ち時間の上限・検索の失敗)
+    transient = {f.repo_id for f in client.failures if f.transient}
+    affected = {
+        e.id
+        for e in entries
+        if any(f.repo_id in transient or set(f.license_path) & transient for f in e.files)
+    }
+    carried = 0
+    if (
+        prev is not None
+        and prev.sources.get("license_policy") == LICENSE_POLICY
+        and (affected or failed_names)
+    ):
+        prev_by_id = {m.id: m for m in prev.models}
+        for i, e in enumerate(entries):
+            if e.id in affected and e.id in prev_by_id:
+                entries[i] = prev_by_id[e.id]
+                carried += 1
+                warnings.append(f"一部を取得できなかったため前の一覧の値を使いました: {e.id}")
+        have = {e.id for e in entries}
+        for name in failed_names:
+            if name in prev_by_id and name not in have:
+                entries.append(prev_by_id[name])
+                carried += 1
+                warnings.append(f"テンプレートを読めなかったため前の一覧から引き継ぎました: {name}")
+    budget = bool(getattr(fetch, "budget_exhausted", False))
+    stats["partial"] = bool(failed or transient or hf_stats.get("failed_queries") or budget)
+    stats["partial_counts"] = {
+        "templates_failed": len(failed),
+        "hf_repos_failed_transient": len(transient),
+        "entries_affected": len(affected),
+        "hf_search_failed": int(hf_stats.get("failed_queries", 0)),
+        "rate_limit_budget_exhausted": budget,
+        "carried_over": carried,
+    }
+    stats["license_policy"] = LICENSE_POLICY
+
+    # 実測のあるモデルは、上流から消えても前の一覧から引き継ぐ(実測が宙に浮かないように)
     if prev is not None:
         from .db import load_measurements
 
@@ -788,6 +960,7 @@ def build_database(
             "repos": len({k for k in client._repos}),
             "failed": len(client.failures),
             "rate_limited": getattr(fetch, "rate_limited", 0),
+            "rate_limit_waited_s": round(float(getattr(fetch, "rate_limit_waited", 0.0)), 1),
             "failures": [f"{f.repo_id}: {f.message}" for f in client.failures[:20]],
         }
     if hf_stats:
@@ -805,6 +978,11 @@ def build_database(
         "modality": dict(sorted(Counter(e.modality for e in entries).items())),
         "content": dict(sorted(Counter(e.content for e in entries).items())),
         "source": dict(sorted(Counter(e.source for e in entries).items())),
+        "license": dict(sorted(Counter(e.license or "null" for e in entries).items())),
+        "license_tier": dict(
+            sorted(Counter(_TIER_NAMES[license_tier(e.license, e.license_name)] for e in entries).items())
+        ),
+        "files_complete_false": sum(1 for e in entries if e.files_complete is False),
     }
     stats["excluded"] = excluded
     stats["warnings"] = warnings
@@ -833,7 +1011,12 @@ def run_update(args: argparse.Namespace) -> int:
             print(msg, file=sys.stderr, flush=True)
 
     src = getattr(args, "offline_sources", None)
-    fetch: Fetcher = DirFetcher(src) if src else HttpFetcher()
+    budget = getattr(args, "rate_limit_budget", None)
+    fetch: Fetcher = (
+        DirFetcher(src)
+        if src
+        else HttpFetcher(rate_limit_budget=RATE_LIMIT_BUDGET if budget is None else budget)
+    )
     try:
         db = build_database(
             fetch,
@@ -847,6 +1030,15 @@ def run_update(args: argparse.Namespace) -> int:
         )
     except (UpdateError, FetchError) as e:
         return _fail(args, f"更新できませんでした(前の一覧はそのまま使えます): {e}")
+    if db.sources.get("partial") and not getattr(args, "allow_partial", False):
+        pc = db.sources["partial_counts"]
+        detail = ", ".join(f"{k}={v}" for k, v in pc.items() if v)
+        hint = "時間をおいてやり直すか、" if pc["rate_limit_budget_exhausted"] else ""
+        return _fail(
+            args,
+            f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
+            f"{hint}欠けたままでよければ --allow-partial を付けてください",
+        )
     db.save(out_path)
     counts = db.sources["counts"]
     if quiet:
@@ -860,7 +1052,12 @@ def run_update(args: argparse.Namespace) -> int:
     print(f"  種類: {mods}")
     print("  内容: " + ", ".join(f"{k} {v}" for k, v in counts["content"].items()))
     print("  出どころ: " + ", ".join(f"{k} {v}" for k, v in counts["source"].items()))
+    print("  ライセンス: " + ", ".join(f"{k} {v}" for k, v in counts["license_tier"].items()))
+    print(f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件")
     print(f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件")
+    if db.sources.get("partial"):
+        pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
+        print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
     return 0
 
 
