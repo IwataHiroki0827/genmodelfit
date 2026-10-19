@@ -1,0 +1,31 @@
+{
+ "id": "Wan-AI/Wan2.1-I2V-14B-720P",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "i2v",
+  "video",
+  "video genration",
+  "image-to-video",
+  "en",
+  "zh",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "pipeline_tag": "image-to-video",
+ "library_name": "diffusers",
+ "downloads": 46142,
+ "likes": 614,
+ "gated": false,
+ "lastModified": "2025-02-26T14:35:45.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "007d881e4603c366278c2f2f026255d1fd4f49c4",
+   "size": 16149
+  }
+ ]
+}

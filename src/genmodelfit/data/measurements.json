@@ -1,4 +1,6 @@
 {
+ "unit": "GiB",
+ "unit_note": "gpu_vram_gb / peak_vram_gb / peak_ram_gb は GiB(2^30 バイト)とみなす。ComfyUI と nvidia-smi は MiB(2^20)で数えるので、その値を 1024 で割ったものと仮定した。AI生成キットの記録に単位の明記は無い",
  "measurements": [
   {"model_id": "image_z_image_turbo_int8", "gpu_name": "NVIDIA GeForce RTX 5080", "gpu_vram_gb": 16, "peak_vram_gb": 13.2,
    "settings": {"width": 768, "height": 768, "steps": 6}, "seconds": 40, "offload": "dynamic",

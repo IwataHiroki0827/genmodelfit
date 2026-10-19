@@ -1,4 +1,7 @@
-"""おすすめ順に並べる。並べ方: 段階(perfect が先)→ 実測を優先 → 人気(使われた回数)→ 新しさ。"""
+"""おすすめ順に並べる。
+
+並べ方: 段階(perfect が先)→ 実測を優先 → 人気(使われた回数・HF のダウンロード数)→ 新しさ。
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .db import Database
-from .estimate import Coefficients, estimate, load_coefficients
+from .estimate import GIB, Coefficients, estimate, load_coefficients
 from .models import FIT_LEVELS, Estimate, ModelEntry, Settings, SystemInfo
 
 
@@ -29,7 +32,7 @@ class Fit:
             "content": m.content,
             "license": m.license,
             "source": m.source,
-            "total_size_gb": round((m.total_size_bytes or 0) / 1e9, 2) or None,
+            "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,
             "score": round(self.score, 1),
             "fit": self.estimate.fit,
             "estimate": self.estimate.to_dict(),
@@ -44,6 +47,8 @@ def score(m: ModelEntry, e: Estimate) -> float:
     """0〜100。段階が大半を決め、同じ段階の中を人気・新しさ・実測で並べる。"""
     level = {"perfect": 70, "good": 55, "marginal": 30, "too_tight": 0}[e.fit]
     usage = (m.template.usage or 0) if m.template else 0
+    if not m.template and m.downloads:
+        usage = m.downloads / 100  # HF のダウンロード数を、テンプレートの使用回数と同じくらいの目盛りに直す
     pop = min(15.0, 3 * math.log10(1 + usage))
     date = (m.template.date if m.template else None) or m.updated or ""
     year = int(date[:4]) if date[:4].isdigit() else 2023
@@ -61,6 +66,7 @@ def evaluate(
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     models: Iterable[ModelEntry] | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     c = coefficients or load_coefficients()
     out: list[Fit] = []
@@ -69,10 +75,19 @@ def evaluate(
             continue
         if content != "all" and m.content != content:
             continue
-        e = estimate(m, system, settings, db.measurements, c)
+        e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
         out.append(Fit(m, e, score(m, e)))
-    out.sort(key=lambda f: (-f.score, f.model.id))
+    # 段階を最優先にする(実測や人気の加点で、下の段階が上に来ないように)
+    out.sort(key=lambda f: (FIT_LEVELS.index(f.estimate.fit), -f.score, f.model.id))
     return out
+
+
+# 「つくる」モデルではない補助ツールの作業(recommend は既定で外す。fit・info には出る)
+TOOL_TASKS = frozenset({"tool", "estimate", "matting", "upscale", "interp", "segment"})
+
+
+def is_tool(m: ModelEntry) -> bool:
+    return bool(m.tasks) and all(t in TOOL_TASKS for t in m.tasks)
 
 
 def recommend(
@@ -85,13 +100,20 @@ def recommend(
     limit: int | None = 10,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
     fits = [
         f
         for f in evaluate(
-            db, system, modality=modality, content=content, settings=settings, coefficients=coefficients
+            db,
+            system,
+            modality=modality,
+            content=content,
+            settings=settings,
+            coefficients=coefficients,
+            with_limits=with_limits,
         )
-        if f.estimate.fit in allowed
+        if f.estimate.fit in allowed and not f.estimate.unknown_size  # 大きさが分からないものは出さない
     ]
     return fits[:limit] if limit else fits

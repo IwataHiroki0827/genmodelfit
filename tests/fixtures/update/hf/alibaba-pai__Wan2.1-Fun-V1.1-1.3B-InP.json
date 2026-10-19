@@ -1,0 +1,32 @@
+{
+ "id": "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP",
+ "tags": [
+  "videox_fun",
+  "diffusers",
+  "safetensors",
+  "i2v",
+  "video",
+  "video-generation",
+  "text-to-video",
+  "en",
+  "zh",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "pipeline_tag": "text-to-video",
+ "library_name": "videox_fun",
+ "downloads": 13394,
+ "likes": 12,
+ "gated": false,
+ "lastModified": "2025-12-11T02:24:38.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "fb6cab1b2d2544aab51e2ea4c22a209267e92f4e",
+   "size": 19054
+  }
+ ]
+}

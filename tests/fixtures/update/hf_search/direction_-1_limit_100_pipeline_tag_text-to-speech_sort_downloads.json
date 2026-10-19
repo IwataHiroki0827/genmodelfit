@@ -1,0 +1,23 @@
+[
+ {
+  "_id": "676ca1388118866906abbd7c",
+  "id": "hexgrad/Kokoro-82M",
+  "likes": 7280,
+  "private": false,
+  "downloads": 10533404,
+  "tags": [
+   "text-to-speech",
+   "en",
+   "arxiv:2306.07691",
+   "arxiv:2203.02395",
+   "base_model:yl4579/StyleTTS2-LJSpeech",
+   "base_model:finetune:yl4579/StyleTTS2-LJSpeech",
+   "doi:10.57967/hf/4329",
+   "license:apache-2.0",
+   "region:us"
+  ],
+  "pipeline_tag": "text-to-speech",
+  "createdAt": "2024-12-26T00:20:08.000Z",
+  "modelId": "hexgrad/Kokoro-82M"
+ }
+]

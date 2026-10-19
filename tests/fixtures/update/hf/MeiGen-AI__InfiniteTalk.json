@@ -1,0 +1,25 @@
+{
+ "id": "MeiGen-AI/InfiniteTalk",
+ "tags": [
+  "infinitetalk",
+  "en",
+  "zh",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "library_name": "infinitetalk",
+ "downloads": 49027,
+ "likes": 245,
+ "gated": false,
+ "lastModified": "2025-09-04T08:01:03.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "e083870a1835c15d29eb020142bba7f0e2660075",
+   "size": 2781
+  }
+ ]
+}

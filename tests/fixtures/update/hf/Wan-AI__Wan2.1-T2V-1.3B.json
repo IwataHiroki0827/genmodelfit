@@ -1,0 +1,31 @@
+{
+ "id": "Wan-AI/Wan2.1-T2V-1.3B",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "t2v",
+  "video",
+  "video-generation",
+  "text-to-video",
+  "en",
+  "zh",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "pipeline_tag": "text-to-video",
+ "library_name": "diffusers",
+ "downloads": 63375,
+ "likes": 636,
+ "gated": false,
+ "lastModified": "2025-03-01T09:31:33.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "fbbf7c13900d37f3179c546d09372aeb52e0fae1",
+   "size": 16913
+  }
+ ]
+}

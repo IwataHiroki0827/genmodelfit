@@ -1,0 +1,61 @@
+{
+ "nodes": [
+  {
+   "id": 3,
+   "type": "KSampler"
+  },
+  {
+   "id": 82,
+   "type": "SaveGLB"
+  },
+  {
+   "id": 81,
+   "type": "VoxelToMesh"
+  },
+  {
+   "id": 56,
+   "type": "LoadImage"
+  },
+  {
+   "id": 51,
+   "type": "CLIPVisionEncode"
+  },
+  {
+   "id": 66,
+   "type": "EmptyLatentHunyuan3Dv2"
+  },
+  {
+   "id": 54,
+   "type": "ImageOnlyCheckpointLoader",
+   "properties": {
+    "models": [
+     {
+      "name": "hunyuan3d-dit-v2_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2_fp16.safetensors",
+      "directory": "checkpoints"
+     }
+    ]
+   }
+  },
+  {
+   "id": 70,
+   "type": "ModelSamplingAuraFlow"
+  },
+  {
+   "id": 80,
+   "type": "Hunyuan3Dv2Conditioning"
+  },
+  {
+   "id": 61,
+   "type": "VAEDecodeHunyuan3D"
+  },
+  {
+   "id": 89,
+   "type": "MarkdownNote"
+  },
+  {
+   "id": 77,
+   "type": "MarkdownNote"
+  }
+ ]
+}
