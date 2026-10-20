@@ -866,17 +866,41 @@ def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, ram_tota
 def _judge(
     n: Need, system: SystemInfo, c: Coefficients, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
-    """(段階, 動かし方, 理由, その動かし方で要るメインメモリ)。"""
+    """(段階, 動かし方, 理由, その動かし方で要るメインメモリ)。
+
+    GPU に載らない(逃がしても足りない・メモリが足りない)ときは、GPU が無いときの判定(CPU)とも比べて
+    良いほうを取る。小さな GPU を足すと、CPU で動くものまで動かない判定になるのを防ぐ
+    (VRAM を増やして段階が下がらない)。"""
+    vram = system.vram_gb
+    if vram <= 0:
+        return _judge_cpu(n, system, entry, weights_gb)
+    gpu = _judge_gpu(n, system, c)
+    if gpu[0] != "too_tight":
+        return gpu
+    cpu = _judge_cpu(n, system, entry, weights_gb)
+    if cpu[0] != "too_tight":
+        return cpu[0], cpu[1], [*cpu[2], f"GPU では動かない: {gpu[2][0]}"], cpu[3]
+    return gpu
+
+
+def _judge_cpu(
+    n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
+) -> tuple[str, str, list[str], float]:
+    """GPU を使わない判定(小さく CPU で動く種類だけ marginal)。"""
+    ram_total = system.ram_total_gb
+    w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
+    if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
+        why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
+        fit, mode, reasons = _ram_check(
+            "marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, ram_total
+        )
+        return fit, mode, reasons, n.ram
+    return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
+
+
+def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, list[str], float]:
     vram = system.vram_gb
     ram_total = system.ram_total_gb
-    if vram <= 0:
-        w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
-        if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
-            fit, mode, reasons = _ram_check(
-                "marginal", "cpu", ["GPU なし: CPU で動く見込み(遅い)"], n.ram, ram_total
-            )
-            return fit, mode, reasons, n.ram
-        return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
     if n.full <= vram * c.good_margin:
         fit, mode, reasons = "perfect", "gpu", [f"VRAM {n.full:.1f} / {vram:.1f} GB: 余裕をもって全部載る"]
     elif n.full <= vram:

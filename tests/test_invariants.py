@@ -14,7 +14,20 @@ from genmodelfit import cli, load_db
 from genmodelfit.models import FIT_LEVELS, Gpu, SystemInfo
 from genmodelfit.recommend import evaluate, recommend
 
-VRAMS = [0, 4, 6, 8, 12, 16, 24, 32]  # 0 = GPU なし(CPU のみ)
+VRAMS = [
+    0,
+    0.5,
+    1,
+    2,
+    3,
+    4,
+    6,
+    8,
+    12,
+    16,
+    24,
+    32,
+]  # 0 = GPU なし(CPU のみ)。小さな GPU でも CPU より悪くならない
 RAMS = [16, 32, 64]
 
 
