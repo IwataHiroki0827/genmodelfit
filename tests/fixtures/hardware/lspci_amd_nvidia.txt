@@ -1,0 +1,6 @@
+0000:00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Starship/Matisse Root Complex [1022:1480]
+0000:01:00.0 VGA compatible controller [0300]: NVIDIA Corporation GA104 [GeForce RTX 3070] [10de:2484] (rev a1)
+0000:01:00.1 Audio device [0403]: NVIDIA Corporation GA104 High Definition Audio Controller [10de:228b] (rev a1)
+0000:0b:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Navi 32 [Radeon RX 7700 XT / 7800 XT] [1002:747e] (rev c8)
+0000:0c:00.0 Display controller [0380]: Advanced Micro Devices, Inc. [AMD/ATI] Raphael [1002:164e] (rev c1)
+0000:0d:00.0 3D controller [0302]: Intel Corporation DG2 [Arc A770] [8086:56a0] (rev 08)

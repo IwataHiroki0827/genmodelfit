@@ -61,7 +61,45 @@ def _out(obj: Any) -> None:
 
 
 def _system(args: argparse.Namespace) -> SystemInfo:
-    return detect(disk_path=getattr(args, "disk_path", None), vram_gb=args.vram, ram_gb=args.ram)
+    return detect(
+        disk_path=getattr(args, "disk_path", None),
+        vram_gb=args.vram,
+        ram_gb=args.ram,
+        other_gpus=True if getattr(args, "all_gpus", False) else None,
+    )
+
+
+def _wrapped(text: str, first: str = "  - ", rest: str = "    ", width: int = 100) -> list[str]:
+    """全角を 2 桁で数えて width 桁に折り返す(system の注意の文は長い日本語になる)。"""
+    from rich.cells import cell_len
+
+    lines, cur, prefix = [], "", first
+    for ch in text:
+        if cell_len(prefix + cur + ch) > width:
+            lines.append(prefix + cur)
+            cur, prefix = "", rest
+        cur += ch
+    lines.append(prefix + cur)
+    return lines
+
+
+def _swap_line(s: SystemInfo) -> str | None:
+    """仮想メモリの 1 行(Windows はページファイルとコミット、Linux はスワップ)。分からなければ None。"""
+    if s.swap_auto is None and s.swap_total_gb is None and s.commit_limit_gb is None:
+        return None
+    label = "Pagefile" if s.commit_limit_gb is not None or s.os.startswith("Windows") else "Swap"
+    if s.swap_max_gb == 0 and s.swap_auto is False:
+        text = "none"
+    elif s.swap_auto:
+        now = f"{s.swap_total_gb:.1f} GB now, " if s.swap_total_gb is not None else ""
+        text = f"{now}system managed (grows)"
+    elif s.swap_max_gb is not None:
+        text = f"up to {s.swap_max_gb:.1f} GB"
+    else:
+        text = f"{s.swap_total_gb:.1f} GB now" if s.swap_total_gb is not None else "unknown"
+    if s.commit_limit_gb is not None and s.commit_used_gb is not None:
+        text += f"; commit {s.commit_used_gb:.1f} / {s.commit_limit_gb:.1f} GB in use"
+    return f"{label}: {text}"
 
 
 def _db(args: argparse.Namespace) -> Database:
@@ -128,15 +166,55 @@ def cmd_system(args: argparse.Namespace) -> int:
     print(f"OS:   {s.os}")
     print(f"CPU:  {s.cpu} ({s.cpu_cores} threads)")
     print(f"RAM:  {s.ram_total_gb:.1f} GB (available {s.ram_available_gb:.1f} GB)")
+    swap = _swap_line(s)
+    if swap:
+        print(swap)
     if s.disk_free_gb is not None:
         print(f"Disk: {s.disk_free_gb:.1f} GB free")
     if not s.gpus:
         print("GPU:  none detected (CPU only)")
+    elif s.best_gpu is None:
+        print("GPU:  no usable NVIDIA GPU (judged as CPU only; see notes)")
     for i, g in enumerate(s.gpus, 1):
-        free = f", {g.vram_free_gb:.1f} GB free" if g.vram_free_gb is not None else ""
-        print(f"GPU {i}: {g.name} ({g.vram_total_gb:.1f} GB VRAM{free}, driver {g.driver}, {g.backend})")
+        mem = []
+        if g.vram_free_gb is not None:
+            mem.append(f"{g.vram_free_gb:.1f} GB free")
+        if g.vram_used_gb is not None:
+            mem.append(f"{g.vram_used_gb:.1f} GB used by other apps")
+        extra = "".join(f", {m}" for m in mem)
+        print(f"GPU {i}: {g.name} ({g.vram_total_gb:.1f} GB VRAM{extra})")
+        cc = (
+            f"compute capability {g.compute_capability}"
+            if g.compute_capability
+            else "compute capability unknown"
+        )
+        if g.compute_capability_source == "name":
+            cc += " (guessed from the name)"
+        arch = f" ({g.arch})" if g.arch else ""
+        use = (
+            "used for judging"
+            if g is s.best_gpu
+            else ("not used" if g.backend != "cuda" else "not the largest")
+        )
+        print(f"       {cc}{arch}, driver {g.driver or 'unknown'}, {g.backend}: {use}")
+        if g.torch_cuda:
+            print(f"       PyTorch CUDA builds that run here: {', '.join(g.torch_cuda)}")
+        if g.compute_dtype:
+            yes = {True: "yes", False: "no", None: "unknown"}
+            print(f"       ComfyUI precision: {g.compute_dtype} (bf16 {yes[g.bf16]}, fp8 {yes[g.fp8]})")
+    if s.other_gpus_checked:
+        print("Display adapters (informational, not used for judging):")
+        if not s.other_gpus:
+            print("  (none found)")
+        for a in s.other_gpus:
+            vram = f", {a.vram_gb:.1f} GB ({a.vram_source})" if a.vram_gb else ""
+            print("\n".join(_wrapped(f"{a.name} [{a.vendor}{vram}]")))
     if s.overrides:
         print(f"(overridden: {', '.join(s.overrides)})")
+    if s.notes:
+        print("Notes:")
+        for n in s.notes:
+            print("\n".join(_wrapped(n)))
     return 0
 
 
@@ -887,6 +965,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("system", parents=[common], help="この PC の GPU・メモリ・空きを出す")
     sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
+    sp.add_argument(
+        "--all-gpus",
+        action="store_true",
+        help="NVIDIA 以外も含めて画面の部品(GPU)をすべて出す(Windows は約 1 秒かかる。判定には使わない)",
+    )
     sp.set_defaults(func=cmd_system)
 
     sel = argparse.ArgumentParser(add_help=False)

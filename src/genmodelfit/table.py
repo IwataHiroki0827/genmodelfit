@@ -290,6 +290,8 @@ def pc_line(system) -> str:
     if g:
         free = f" ({g.vram_free_gb:.1f} free)" if g.vram_free_gb is not None else ""
         gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
+    elif system.gpus:
+        gpu = f"no usable GPU ({system.gpus[0].name}: see `genmodelfit system`) (CPU only)"
     else:
         gpu = "no GPU (CPU only)"
     if "vram" in system.overrides:

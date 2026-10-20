@@ -26,8 +26,32 @@ SYSTEM = {
     "best_gpu",
     "disk_free_gb",
     "overrides",
+    "swap_total_gb",
+    "swap_max_gb",
+    "swap_auto",
+    "commit_limit_gb",
+    "commit_used_gb",
+    "other_gpus",
+    "other_gpus_checked",
+    "notes",
 }
-GPU = {"name", "vendor", "vram_total_gb", "vram_free_gb", "driver", "backend"}
+GPU = {
+    "name",
+    "vendor",
+    "vram_total_gb",
+    "vram_free_gb",
+    "driver",
+    "backend",
+    "vram_used_gb",
+    "compute_capability",
+    "compute_capability_source",
+    "arch",
+    "torch_cuda",
+    "compute_dtype",
+    "bf16",
+    "fp8",
+    "notes",
+}
 DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {
     "id",
@@ -80,6 +104,7 @@ ESTIMATE = {
     "reasons",
     "settings",
     "limits",
+    "vram_free_short",
     "unknown_size",
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる

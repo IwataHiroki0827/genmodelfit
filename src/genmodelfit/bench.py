@@ -39,7 +39,7 @@ import requests
 
 from . import __version__
 from .db import cache_dir
-from .hardware import _nvidia_smi
+from .hardware import find_nvidia_smi as _nvidia_smi
 from .models import Measurement
 from .workflow import (
     FRAME_KEYS,

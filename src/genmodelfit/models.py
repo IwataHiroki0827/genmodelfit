@@ -200,12 +200,39 @@ class Measurement:
 
 @dataclass
 class Gpu:
+    """nvidia-smi で確かめた GPU。判定に使うのは backend が cuda のものだけ(docs/hardware.md)。"""
+
     name: str
     vendor: str  # nvidia / amd / intel / apple / unknown
     vram_total_gb: float
-    vram_free_gb: float | None = None
+    vram_free_gb: float | None = None  # 今の空き(nvidia-smi の memory.free)。上書きしたときは None
     driver: str | None = None
-    backend: str = "none"  # cuda / none(v0.1 は NVIDIA の CUDA だけを数える)
+    backend: str = (
+        "none"  # cuda / none(v0.1 は NVIDIA の CUDA だけを数える。動かない世代・古いドライバは none)
+    )
+    vram_used_gb: float | None = None  # 今ほかのアプリ(画面・ブラウザなど)が使っている量(memory.used)
+    compute_capability: str | None = None  # 例 "8.6"。None は分からない
+    compute_capability_source: str | None = None  # nvidia-smi / name(GPU 名の表から推した)/ None
+    arch: str | None = None  # kepler / maxwell / pascal / volta / turing / ampere / ada / hopper / blackwell
+    # 今の PyTorch(docs/hardware.md の版)の CUDA 版のうち、この GPU とドライバで動くもの(新しい順)。参考の情報
+    torch_cuda: list[str] = field(default_factory=list)
+    # ComfyUI がこの GPU で選ぶ計算の精度(fp16 / bf16 / fp32)と、bf16・fp8 の計算に対応するか。
+    # None は分からない
+    compute_dtype: str | None = None
+    bf16: bool | None = None
+    fp8: bool | None = None
+    notes: list[str] = field(default_factory=list)  # backend が none の理由・注意
+
+
+@dataclass
+class Adapter:
+    """NVIDIA 以外も含めて見つけた画面の部品(GPU)。知らせるためだけに使い、判定には使わない。"""
+
+    name: str
+    vendor: str  # nvidia / amd / intel / unknown
+    vram_gb: float | None = None  # 表示用(Windows はレジストリの qwMemorySize、Linux の AMD は sysfs)
+    vram_source: str | None = None  # registry / wmi / sysfs / None
+    source: str = ""  # wmi / lspci
 
 
 @dataclass
@@ -218,6 +245,18 @@ class SystemInfo:
     gpus: list[Gpu] = field(default_factory=list)
     disk_free_gb: float | None = None
     overrides: list[str] = field(default_factory=list)  # --vram などで上書きした項目
+    # 仮想メモリ。swap_total_gb は今のページファイル(Windows)・スワップ(Linux)の大きさ。
+    # swap_max_gb は伸びる上限(固定の大きさのページファイル・Linux のスワップ)。None は分からない・
+    # システム管理で伸びる(swap_auto=True)。判定の「少し足りなければ仮想メモリで遅い」はこれで決める
+    swap_total_gb: float | None = None
+    swap_max_gb: float | None = None
+    swap_auto: bool | None = None
+    # Windows のコミット(物理メモリ + ページファイル)の今の上限と、今使っている量
+    commit_limit_gb: float | None = None
+    commit_used_gb: float | None = None
+    other_gpus: list[Adapter] = field(default_factory=list)  # NVIDIA 以外も含めた画面の部品(知らせるだけ)
+    other_gpus_checked: bool = False  # other_gpus を調べたか(NVIDIA の GPU があれば既定では調べない)
+    notes: list[str] = field(default_factory=list)  # 検出で分かったこと・分からなかった理由
 
     @property
     def best_gpu(self) -> Gpu | None:
@@ -252,6 +291,9 @@ class Estimate:
     settings: dict[str, Any] | None = None  # 判定に使った設定(省いた項目は既定や実測の設定で埋めたもの)
     limits: dict[str, Any] | None = None  # この PC で good 以上になる最大の設定(info で出す)
     unknown_size: bool = False  # 重みの大きさが分からず判定できない(fit は too_tight、VRAM の値は 0)
+    # GPU で動く判定だが、今の空き VRAM(nvidia-smi の memory.free)では足りない(ほかのアプリを閉じれば動く)。
+    # 段階は総量で決めるので、これは知らせるだけ
+    vram_free_short: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
