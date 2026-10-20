@@ -161,13 +161,26 @@
   "file_headers": {
    "files": 358,
    "urls": 229,
-   "from_cache": 217,
-   "fetched": 0,
-   "failed": 0,
-   "skipped_offline": 12,
-   "errors": [],
-   "checked_at": "2026-10-20T14:15:14Z",
-   "precision_unknown": 9
+   "from_cache": 212,
+   "fetched": 17,
+   "failed": 12,
+   "skipped_offline": 0,
+   "errors": [
+    "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+    "https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.s",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+    "https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf: FetchError: HTTP 401: https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors"
+   ],
+   "checked_at": "2026-10-20T13:38:01Z",
+   "precision_unknown": 10
   },
   "repo_precision": {
    "files": 8,
@@ -191,7 +204,8 @@
     "hf_api": 4,
     "unknown": 10,
     "workflow": 8
-   }
+   },
+   "note": "2026-10-20T14:15:14Z に大きさの照合を足してキャッシュから計算し直した(取得は 2026-10-20T13:38:05Z の実行)"
   }
  },
  "models": [
