@@ -691,3 +691,18 @@ def test_system_text(monkeypatch, capsys):
     assert "Pagefile: 35.0 GB now, system managed (grows); commit 60.0 / 67.0 GB in use" in out
     assert "3.6 GB used by other apps" in out and "Notes:" in out
     assert "Display adapters" not in out  # NVIDIA があれば既定では調べない
+
+
+def test_linux_nvidia_without_nvidia_smi_is_noted(monkeypatch):
+    _patch_nvidia(monkeypatch, None)
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (parse_lspci(fx("lspci_amd_nvidia.txt")), []))
+    s = detect(memory=MEM)
+    assert s.best_gpu is None
+    assert any("NVIDIA GeForce RTX 3070 があるが、nvidia-smi で確かめられない" in n for n in s.notes)
+
+
+def test_crlf_and_lf_outputs_read_the_same():
+    text = fx("nvsmi_multi.csv")
+    lf = parse_nvidia_smi(text.replace("\r\n", "\n"), QUERY)
+    crlf = parse_nvidia_smi(text.replace("\r\n", "\n").replace("\n", "\r\n"), QUERY)
+    assert lf == crlf and len(lf) == 2

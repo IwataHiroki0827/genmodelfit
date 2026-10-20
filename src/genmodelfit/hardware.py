@@ -824,6 +824,13 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
     notes = []
     for a in adapters:
         if a.vendor == "nvidia":
+            if (
+                not judged_gpu and a.source == "lspci"
+            ):  # Windows はドライバの無いときの注意を WMI の読みで出す
+                notes.append(
+                    f"{a.name} があるが、nvidia-smi で確かめられないので CPU として判定した"
+                    "(NVIDIA のドライバを入れると GPU で判定できる)"
+                )
             continue
         vram = f"(VRAM {a.vram_gb:g} GB)" if a.vram_gb else ""
         label = {"amd": "AMD", "intel": "Intel"}.get(a.vendor, "NVIDIA 以外")
