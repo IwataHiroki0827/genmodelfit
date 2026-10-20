@@ -25,7 +25,7 @@
    "rate_limit_budget_exhausted": false,
    "carried_over": 0
   },
-  "license_policy": 3,
+  "license_policy": 4,
   "huggingface": {
    "api": "https://huggingface.co/api/models/{repo_id}?blobs=true",
    "repos": 527,
@@ -1354,19 +1354,21 @@
      "size_bytes": 16584415576,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "tencent/HunyuanImage-2.1",
-     "license_url": null,
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
      "repo_license": "tencent-hunyuan-community",
      "license_path": [
       "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-      "tencent/HunyuanImage-2.1"
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
      ],
      "license_evidence": [
-      "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -1466,8 +1468,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
    "base_model": "tencent/HunyuanVideo-1.5",
    "content": "sfw",
    "content_evidence": [],
@@ -1479,10 +1481,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": null,
@@ -1532,19 +1532,21 @@
      "size_bytes": 16584415576,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "tencent/HunyuanImage-2.1",
-     "license_url": null,
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
      "repo_license": "tencent-hunyuan-community",
      "license_path": [
       "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-      "tencent/HunyuanImage-2.1"
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
      ],
      "license_evidence": [
-      "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -1618,8 +1620,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
    "base_model": "tencent/HunyuanVideo-1.5",
    "content": "sfw",
    "content_evidence": [],
@@ -1631,10 +1633,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": null,
@@ -4685,19 +4685,20 @@
      "size_bytes": 1192135096,
      "directory": "text_encoders",
      "repo_id": "circlestone-labs/Anima",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "circlestone-labs/Anima",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-0.6B-Base",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
      "repo_license": null,
      "license_path": [
       "circlestone-labs/Anima",
-      "nvidia/Cosmos-Predict2-2B-Text2Image"
+      "Qwen/Qwen3-0.6B-Base"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:anima-qwen3-0.6b-base",
+      "sha256 が https://huggingface.co/Qwen/Qwen3-0.6B-Base の model.safetensors と同じ(cd2a5120…、1,192,135,096 バイト)。Qwen/Qwen3-0.6B-Base の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -4810,7 +4811,6 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
     "license_unverified: circlestone-labs/Anima-Official-LoRAs にライセンスの記載がありません(anima-turbo-lora-v0.2.safetensors)"
    ],
    "files_complete": true,
@@ -4836,19 +4836,20 @@
      "size_bytes": 1192135096,
      "directory": "text_encoders",
      "repo_id": "circlestone-labs/Anima",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "circlestone-labs/Anima",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-0.6B-Base",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
      "repo_license": null,
      "license_path": [
       "circlestone-labs/Anima",
-      "nvidia/Cosmos-Predict2-2B-Text2Image"
+      "Qwen/Qwen3-0.6B-Base"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:anima-qwen3-0.6b-base",
+      "sha256 が https://huggingface.co/Qwen/Qwen3-0.6B-Base の model.safetensors と同じ(cd2a5120…、1,192,135,096 バイト)。Qwen/Qwen3-0.6B-Base の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -4987,7 +4988,6 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
     "license_unverified: circlestone-labs/Anima-Official-LoRAs にライセンスの記載がありません(anima-turbo-lora-v0.2.safetensors)"
    ],
    "files_complete": true,
@@ -5013,19 +5013,20 @@
      "size_bytes": 1192135096,
      "directory": "text_encoders",
      "repo_id": "circlestone-labs/Anima",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "circlestone-labs/Anima",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-0.6B-Base",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
      "repo_license": null,
      "license_path": [
       "circlestone-labs/Anima",
-      "nvidia/Cosmos-Predict2-2B-Text2Image"
+      "Qwen/Qwen3-0.6B-Base"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:anima-qwen3-0.6b-base",
+      "sha256 が https://huggingface.co/Qwen/Qwen3-0.6B-Base の model.safetensors と同じ(cd2a5120…、1,192,135,096 バイト)。Qwen/Qwen3-0.6B-Base の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -5188,7 +5189,6 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
     "license_unverified: circlestone-labs/Anima-Official-LoRAs にライセンスの記載がありません(anima-turbo-lora-v0.2.safetensors)"
    ],
    "files_complete": true,
@@ -5214,19 +5214,20 @@
      "size_bytes": 1192135096,
      "directory": "text_encoders",
      "repo_id": "circlestone-labs/Anima",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "circlestone-labs/Anima",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-0.6B-Base",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
      "repo_license": null,
      "license_path": [
       "circlestone-labs/Anima",
-      "nvidia/Cosmos-Predict2-2B-Text2Image"
+      "Qwen/Qwen3-0.6B-Base"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:anima-qwen3-0.6b-base",
+      "sha256 が https://huggingface.co/Qwen/Qwen3-0.6B-Base の model.safetensors と同じ(cd2a5120…、1,192,135,096 バイト)。Qwen/Qwen3-0.6B-Base の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -5365,7 +5366,6 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
     "license_unverified: circlestone-labs/Anima-Official-LoRAs にライセンスの記載がありません(anima-turbo-lora-v0.2.safetensors)"
    ],
    "files_complete": true,
@@ -5391,19 +5391,20 @@
      "size_bytes": 1192135096,
      "directory": "text_encoders",
      "repo_id": "circlestone-labs/Anima",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "circlestone-labs/Anima",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-0.6B-Base",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-Base",
      "repo_license": null,
      "license_path": [
       "circlestone-labs/Anima",
-      "nvidia/Cosmos-Predict2-2B-Text2Image"
+      "Qwen/Qwen3-0.6B-Base"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:anima-qwen3-0.6b-base",
+      "sha256 が https://huggingface.co/Qwen/Qwen3-0.6B-Base の model.safetensors と同じ(cd2a5120…、1,192,135,096 バイト)。Qwen/Qwen3-0.6B-Base の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -5476,8 +5477,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/circlestone-labs/Anima/blob/main/LICENSE.md",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -5489,10 +5490,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)"
-   ],
+   "license_name": "circlestone-labs-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "anima",
@@ -6157,18 +6156,20 @@
      "size_bytes": 32789892720,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "nvidia-open-model-license",
      "gated": false,
      "role": "main",
-     "license_from": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-     "license_url": null,
+     "license_from": "nvidia/ChronoEdit-14B-Diffusers",
+     "license_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Wan_2.2_ComfyUI_Repackaged"
+      "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "nvidia/ChronoEdit-14B-Diffusers"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Wan_2.2_ComfyUI_Repackaged の chrono_edit_14B_fp16.safetensors の本家が分かりません"
+      "license_source:chronoedit-14b",
+      "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged の README が元に nvidia/ChronoEdit-14B-Diffusers を挙げる。元のカードは cardData が apache-2.0 だが、本文に「Governing Terms: Use of this model is governed by the NVIDIA Open Model License Agreement. Additional Information: Apache License Version 2.0」(apache-2.0 だけではないので、厳しいほうの NVIDIA Open Model License で持つ)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -6240,9 +6241,9 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "other",
+   "license_url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/",
+   "base_model": "nvidia/ChronoEdit-14B-Diffusers",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -6253,10 +6254,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Wan_2.2_ComfyUI_Repackaged の chrono_edit_14B_fp16.safetensors の本家が分かりません(chrono_edit_14B_fp16.safetensors)"
-   ],
+   "license_name": "nvidia-open-model-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -6304,18 +6303,20 @@
      "size_bytes": 7717637511,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/ERNIE-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/ERNIE-Image",
-     "license_url": null,
+     "license_from": "baidu/ERNIE-Image",
+     "license_url": "https://huggingface.co/baidu/ERNIE-Image",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/ERNIE-Image"
+      "Comfy-Org/ERNIE-Image",
+      "baidu/ERNIE-Image"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません"
+      "license_source:ernie-image-ministral-3-3b",
+      "https://huggingface.co/Comfy-Org/ERNIE-Image の README が元に baidu/ERNIE-Image を挙げる。baidu/ERNIE-Image(cardData apache-2.0)の text_encoder/config.json は Mistral3Model・ministral3(26 層・hidden 3072 = Ministral 3 3B)。元の https://huggingface.co/mistralai/Ministral-3-3B-Base-2512・-Instruct-2512・-Reasoning-2512 の license はどれも apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -6387,8 +6388,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/baidu/ERNIE-Image",
    "base_model": "baidu/ERNIE-Image-Turbo",
    "content": "sfw",
    "content_evidence": [],
@@ -6401,9 +6402,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません(ministral-3-3b.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ernie",
@@ -6451,18 +6450,20 @@
      "size_bytes": 7717637511,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/ERNIE-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/ERNIE-Image",
-     "license_url": null,
+     "license_from": "baidu/ERNIE-Image",
+     "license_url": "https://huggingface.co/baidu/ERNIE-Image",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/ERNIE-Image"
+      "Comfy-Org/ERNIE-Image",
+      "baidu/ERNIE-Image"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません"
+      "license_source:ernie-image-ministral-3-3b",
+      "https://huggingface.co/Comfy-Org/ERNIE-Image の README が元に baidu/ERNIE-Image を挙げる。baidu/ERNIE-Image(cardData apache-2.0)の text_encoder/config.json は Mistral3Model・ministral3(26 層・hidden 3072 = Ministral 3 3B)。元の https://huggingface.co/mistralai/Ministral-3-3B-Base-2512・-Instruct-2512・-Reasoning-2512 の license はどれも apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -6534,8 +6535,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/baidu/ERNIE-Image",
    "base_model": "baidu/ERNIE-Image-Turbo",
    "content": "sfw",
    "content_evidence": [],
@@ -6548,9 +6549,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません(ministral-3-3b.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ernie",
@@ -6950,18 +6949,21 @@
      "size_bytes": 35584897447,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-dev",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/flux2-dev",
-     "license_url": null,
+     "license_from": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+     "license_url": "https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/flux2-dev"
+      "Comfy-Org/flux2-dev",
+      "black-forest-labs/FLUX.2-dev",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません"
+      "license_source:flux2-dev-mistral-small-3.2",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/text_encoder.py の Mistral3SmallEmbedder が model_spec=\"mistralai/Mistral-Small-3.2-24B-Instruct-2506\" を from_pretrained で読む(手を加えない)。https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506 の license は apache-2.0(ComfyUI のファイルは使う層だけに減らしたもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -6975,18 +6977,20 @@
      "size_bytes": 2760814880,
      "directory": "loras",
      "repo_id": "ByteZSzn/Flux.2-Turbo-ComfyUI",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-dev-non-commercial-license",
      "gated": false,
      "role": "lora",
-     "license_from": "ByteZSzn/Flux.2-Turbo-ComfyUI",
-     "license_url": null,
+     "license_from": "fal/FLUX.2-dev-Turbo",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-dev/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "ByteZSzn/Flux.2-Turbo-ComfyUI"
+      "ByteZSzn/Flux.2-Turbo-ComfyUI",
+      "fal/FLUX.2-dev-Turbo"
      ],
      "license_evidence": [
-      "license_unverified: ByteZSzn/Flux.2-Turbo-ComfyUI にライセンスの記載がありません"
+      "license_source:flux2-dev-turbo-lora-fal",
+      "sha256 が https://huggingface.co/fal/FLUX.2-dev-Turbo の comfy/Flux_2-Turbo-LoRA_comfyui.safetensors と同じ(011487390b…)。fal/FLUX.2-dev-Turbo のカードは other(flux-dev-non-commercial-license)と「This model inherits the FLUX [dev] Non-Commercial License from the base model」(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -7034,8 +7038,8 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-dev",
    "base_model": "black-forest-labs/FLUX.2-dev",
    "content": "sfw",
    "content_evidence": [],
@@ -7047,11 +7051,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません(mistral_3_small_flux2_bf16.safetensors)",
-    "license_unverified: ByteZSzn/Flux.2-Turbo-ComfyUI にライセンスの記載がありません(Flux_2-Turbo-LoRA_comfyui.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -7128,18 +7129,21 @@
      "size_bytes": 18034640095,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-dev",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/flux2-dev",
-     "license_url": null,
+     "license_from": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+     "license_url": "https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/flux2-dev"
+      "Comfy-Org/flux2-dev",
+      "black-forest-labs/FLUX.2-dev",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_fp8.safetensors の本家が分かりません"
+      "license_source:flux2-dev-mistral-small-3.2",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/text_encoder.py の Mistral3SmallEmbedder が model_spec=\"mistralai/Mistral-Small-3.2-24B-Instruct-2506\" を from_pretrained で読む(手を加えない)。https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506 の license は apache-2.0(ComfyUI のファイルは使う層だけに減らしたもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -7201,7 +7205,6 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_fp8.safetensors の本家が分かりません(mistral_3_small_flux2_fp8.safetensors)",
     "license_unverified: 再配布 Comfy-Org/flux2-dev の Flux2TurboComfyv2.safetensors の本家が分かりません(Flux2TurboComfyv2.safetensors)"
    ],
    "files_complete": true,
@@ -7252,19 +7255,21 @@
      "size_bytes": 8664848742,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-klein-9B",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.2-klein-9B",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-8B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-8B",
      "repo_license": "flux-non-commercial-license",
      "license_path": [
-      "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-      "black-forest-labs/FLUX.2-klein-9B"
+      "Comfy-Org/flux2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-9B",
+      "Qwen/Qwen3-8B"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux2-klein-9b-qwen3-8b",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/util.py の flux.2-klein-9b が load_qwen3_embedder(variant=\"8B\")、text_encoder.py が Qwen/Qwen3-8B-FP8 を from_pretrained で読む(手を加えない)。qwen_3_8b.safetensors の大きさ 16,381,517,176 バイトは Qwen/Qwen3-8B の 5 つの分割の合計 16,381,516,776 バイト + ヘッダ。https://huggingface.co/Qwen/Qwen3-8B・Qwen/Qwen3-8B-FP8 の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -7312,8 +7317,8 @@
    },
    "params_b": 9.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-kv-fp8",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -7325,10 +7330,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -7620,19 +7623,21 @@
      "size_bytes": 8664848742,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-klein-9B",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.2-klein-9B",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-8B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-8B",
      "repo_license": "flux-non-commercial-license",
      "license_path": [
-      "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-      "black-forest-labs/FLUX.2-klein-9B"
+      "Comfy-Org/flux2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-9B",
+      "Qwen/Qwen3-8B"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux2-klein-9b-qwen3-8b",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/util.py の flux.2-klein-9b が load_qwen3_embedder(variant=\"8B\")、text_encoder.py が Qwen/Qwen3-8B-FP8 を from_pretrained で読む(手を加えない)。qwen_3_8b.safetensors の大きさ 16,381,517,176 バイトは Qwen/Qwen3-8B の 5 つの分割の合計 16,381,516,776 バイト + ヘッダ。https://huggingface.co/Qwen/Qwen3-8B・Qwen/Qwen3-8B-FP8 の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -7677,8 +7682,8 @@
    },
    "params_b": 9.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -7690,10 +7695,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -7742,19 +7745,21 @@
      "size_bytes": 8664848742,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-klein-9B",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.2-klein-9B",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-8B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-8B",
      "repo_license": "flux-non-commercial-license",
      "license_path": [
-      "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-      "black-forest-labs/FLUX.2-klein-9B"
+      "Comfy-Org/flux2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-9B",
+      "Qwen/Qwen3-8B"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux2-klein-9b-qwen3-8b",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/util.py の flux.2-klein-9b が load_qwen3_embedder(variant=\"8B\")、text_encoder.py が Qwen/Qwen3-8B-FP8 を from_pretrained で読む(手を加えない)。qwen_3_8b.safetensors の大きさ 16,381,517,176 バイトは Qwen/Qwen3-8B の 5 つの分割の合計 16,381,516,776 バイト + ヘッダ。https://huggingface.co/Qwen/Qwen3-8B・Qwen/Qwen3-8B-FP8 の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -7799,8 +7804,8 @@
    },
    "params_b": 9.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -7812,10 +7817,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -8012,18 +8015,21 @@
      "size_bytes": 35584897447,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-dev",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/flux2-dev",
-     "license_url": null,
+     "license_from": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+     "license_url": "https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/flux2-dev"
+      "Comfy-Org/flux2-dev",
+      "black-forest-labs/FLUX.2-dev",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません"
+      "license_source:flux2-dev-mistral-small-3.2",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/text_encoder.py の Mistral3SmallEmbedder が model_spec=\"mistralai/Mistral-Small-3.2-24B-Instruct-2506\" を from_pretrained で読む(手を加えない)。https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506 の license は apache-2.0(ComfyUI のファイルは使う層だけに減らしたもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8037,18 +8043,20 @@
      "size_bytes": 2760814880,
      "directory": "loras",
      "repo_id": "ByteZSzn/Flux.2-Turbo-ComfyUI",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-dev-non-commercial-license",
      "gated": false,
      "role": "lora",
-     "license_from": "ByteZSzn/Flux.2-Turbo-ComfyUI",
-     "license_url": null,
+     "license_from": "fal/FLUX.2-dev-Turbo",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-dev/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "ByteZSzn/Flux.2-Turbo-ComfyUI"
+      "ByteZSzn/Flux.2-Turbo-ComfyUI",
+      "fal/FLUX.2-dev-Turbo"
      ],
      "license_evidence": [
-      "license_unverified: ByteZSzn/Flux.2-Turbo-ComfyUI にライセンスの記載がありません"
+      "license_source:flux2-dev-turbo-lora-fal",
+      "sha256 が https://huggingface.co/fal/FLUX.2-dev-Turbo の comfy/Flux_2-Turbo-LoRA_comfyui.safetensors と同じ(011487390b…)。fal/FLUX.2-dev-Turbo のカードは other(flux-dev-non-commercial-license)と「This model inherits the FLUX [dev] Non-Commercial License from the base model」(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8096,8 +8104,8 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-dev",
    "base_model": "black-forest-labs/FLUX.2-dev",
    "content": "sfw",
    "content_evidence": [],
@@ -8109,11 +8117,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません(mistral_3_small_flux2_bf16.safetensors)",
-    "license_unverified: ByteZSzn/Flux.2-Turbo-ComfyUI にライセンスの記載がありません(Flux_2-Turbo-LoRA_comfyui.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -8162,19 +8167,21 @@
      "size_bytes": 8664848742,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/flux2-klein-9B",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.2-klein-9B",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-8B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-8B",
      "repo_license": "flux-non-commercial-license",
      "license_path": [
-      "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-      "black-forest-labs/FLUX.2-klein-9B"
+      "Comfy-Org/flux2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-9B",
+      "Qwen/Qwen3-8B"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux2-klein-9b-qwen3-8b",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/util.py の flux.2-klein-9b が load_qwen3_embedder(variant=\"8B\")、text_encoder.py が Qwen/Qwen3-8B-FP8 を from_pretrained で読む(手を加えない)。qwen_3_8b.safetensors の大きさ 16,381,517,176 バイトは Qwen/Qwen3-8B の 5 つの分割の合計 16,381,516,776 バイト + ヘッダ。https://huggingface.co/Qwen/Qwen3-8B・Qwen/Qwen3-8B-FP8 の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8219,8 +8226,8 @@
    },
    "params_b": 9.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -8232,10 +8239,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -8333,19 +8338,20 @@
      "size_bytes": 6724090780,
      "directory": "text_encoders",
      "repo_id": "black-forest-labs/flux-3-image-klein-comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-kommunity-license",
      "gated": true,
      "role": "text_encoder",
      "license_from": "black-forest-labs/flux-3-image-klein-comfy",
-     "license_url": null,
+     "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
      "repo_license": null,
      "license_path": [
       "black-forest-labs/flux-3-image-klein-comfy",
-      "black-forest-labs/flux-3-image-klein-base"
+      "black-forest-labs/flux-3-image-klein-comfy"
      ],
      "license_evidence": [
-      "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux3-klein-prompt-upsampler",
+      "本家 Black Forest Labs 自身のリポジトリ https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy の中のファイルで、その cardData は other(flux-kommunity-license、LICENSE.md)。元の Qwen3.5-9B (apache-2.0)より厳しいので、リポジトリのライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 401,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8367,8 +8373,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -8380,10 +8386,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
-   ],
+   "license_name": "flux-kommunity-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux3",
@@ -8407,19 +8411,20 @@
      "size_bytes": 6724090780,
      "directory": "text_encoders",
      "repo_id": "black-forest-labs/flux-3-image-klein-comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-kommunity-license",
      "gated": true,
      "role": "text_encoder",
      "license_from": "black-forest-labs/flux-3-image-klein-comfy",
-     "license_url": null,
+     "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
      "repo_license": null,
      "license_path": [
       "black-forest-labs/flux-3-image-klein-comfy",
-      "black-forest-labs/flux-3-image-klein-base"
+      "black-forest-labs/flux-3-image-klein-comfy"
      ],
      "license_evidence": [
-      "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux3-klein-prompt-upsampler",
+      "本家 Black Forest Labs 自身のリポジトリ https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy の中のファイルで、その cardData は other(flux-kommunity-license、LICENSE.md)。元の Qwen3.5-9B (apache-2.0)より厳しいので、リポジトリのライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 401,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8515,8 +8520,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -8528,10 +8533,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
-   ],
+   "license_name": "flux-kommunity-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux3",
@@ -8605,19 +8608,20 @@
      "size_bytes": 6724090780,
      "directory": "text_encoders",
      "repo_id": "black-forest-labs/flux-3-image-klein-comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-kommunity-license",
      "gated": true,
      "role": "text_encoder",
      "license_from": "black-forest-labs/flux-3-image-klein-comfy",
-     "license_url": null,
+     "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
      "repo_license": null,
      "license_path": [
       "black-forest-labs/flux-3-image-klein-comfy",
-      "black-forest-labs/flux-3-image-klein-base"
+      "black-forest-labs/flux-3-image-klein-comfy"
      ],
      "license_evidence": [
-      "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux3-klein-prompt-upsampler",
+      "本家 Black Forest Labs 自身のリポジトリ https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy の中のファイルで、その cardData は other(flux-kommunity-license、LICENSE.md)。元の Qwen3.5-9B (apache-2.0)より厳しいので、リポジトリのライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 401,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8663,8 +8667,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -8676,10 +8680,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
-   ],
+   "license_name": "flux-kommunity-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux3",
@@ -8703,19 +8705,20 @@
      "size_bytes": 6724090780,
      "directory": "text_encoders",
      "repo_id": "black-forest-labs/flux-3-image-klein-comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "flux-kommunity-license",
      "gated": true,
      "role": "text_encoder",
      "license_from": "black-forest-labs/flux-3-image-klein-comfy",
-     "license_url": null,
+     "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
      "repo_license": null,
      "license_path": [
       "black-forest-labs/flux-3-image-klein-comfy",
-      "black-forest-labs/flux-3-image-klein-base"
+      "black-forest-labs/flux-3-image-klein-comfy"
      ],
      "license_evidence": [
-      "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux3-klein-prompt-upsampler",
+      "本家 Black Forest Labs 自身のリポジトリ https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy の中のファイルで、その cardData は other(flux-kommunity-license、LICENSE.md)。元の Qwen3.5-9B (apache-2.0)より厳しいので、リポジトリのライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 401,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -8811,8 +8814,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/blob/main/LICENSE.md",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -8824,10 +8827,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
-   ],
+   "license_name": "flux-kommunity-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux3",
@@ -9639,18 +9640,20 @@
      "size_bytes": 5242467968,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "krea/Krea-2-Turbo",
+     "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "krea/Krea-2-Turbo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません"
+      "license_source:krea-2-qwen3-vl-4b",
+      "https://huggingface.co/Comfy-Org/Krea-2 の元 https://huggingface.co/krea/Krea-2-Turbo(cardData other(krea-2-community-license))がtext_encoder/model.safetensors(8,875,715,136 バイト。ComfyUI の bf16 は 8,875,719,384 バイト)を自分のライセンスで配る。元の Qwen3-VL(apache-2.0)より厳しいので Krea 2 のライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -9690,18 +9693,20 @@
      "size_bytes": 457111760,
      "directory": "loras",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "lora",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "ostris/krea2_turbo_style_reference",
+     "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "ostris/krea2_turbo_style_reference"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_style_reference.safetensors の本家が分かりません"
+      "license_source:krea-2-style-reference-lora",
+      "sha256 が https://huggingface.co/ostris/krea2_turbo_style_reference の krea2_style_reference.safetensors と同じ(f50df5a9…)。そのカードは other(krea-2-community-license、base_model krea/Krea-2-Turbo)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -9723,8 +9728,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
    "base_model": "krea/Krea-2-Turbo",
    "content": "sfw",
    "content_evidence": [],
@@ -9736,11 +9741,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_style_reference.safetensors の本家が分かりません(krea2_style_reference.safetensors)"
-   ],
+   "license_name": "krea-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "krea2",
@@ -9791,18 +9793,20 @@
      "size_bytes": 5242467968,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "krea/Krea-2-Turbo",
+     "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "krea/Krea-2-Turbo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません"
+      "license_source:krea-2-qwen3-vl-4b",
+      "https://huggingface.co/Comfy-Org/Krea-2 の元 https://huggingface.co/krea/Krea-2-Turbo(cardData other(krea-2-community-license))がtext_encoder/model.safetensors(8,875,715,136 バイト。ComfyUI の bf16 は 8,875,719,384 バイト)を自分のライセンスで配る。元の Qwen3-VL(apache-2.0)より厳しいので Krea 2 のライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -9842,18 +9846,20 @@
      "size_bytes": 469291992,
      "directory": "loras",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "lora",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "krea/Krea-2-LoRA-darkbrush",
+     "license_url": "https://huggingface.co/krea/Krea-2-LoRA-impressionist/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "krea/Krea-2-LoRA-darkbrush"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_darkbrush.safetensors の本家が分かりません"
+      "license_source:krea-2-darkbrush-lora",
+      "https://huggingface.co/Comfy-Org/Krea-2 の README の「Original LoRA repositories」に krea/Krea-2-LoRA-darkbrush。その darkbrush.safetensors と大きさ(469,291,992 バイト)・重みの名前・形・型が同じ。krea/Krea-2-LoRA-darkbrush のカードは other(krea-2-community-license)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -9875,8 +9881,8 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
    "base_model": "krea/Krea-2-Turbo",
    "content": "sfw",
    "content_evidence": [],
@@ -9888,11 +9894,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_darkbrush.safetensors の本家が分かりません(krea2_darkbrush.safetensors)"
-   ],
+   "license_name": "krea-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "krea2",
@@ -9943,18 +9946,20 @@
      "size_bytes": 5242467968,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "krea/Krea-2-Turbo",
+     "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "krea/Krea-2-Turbo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません"
+      "license_source:krea-2-qwen3-vl-4b",
+      "https://huggingface.co/Comfy-Org/Krea-2 の元 https://huggingface.co/krea/Krea-2-Turbo(cardData other(krea-2-community-license))がtext_encoder/model.safetensors(8,875,715,136 バイト。ComfyUI の bf16 は 8,875,719,384 バイト)を自分のライセンスで配る。元の Qwen3-VL(apache-2.0)より厳しいので Krea 2 のライセンスで持つ(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -9994,18 +9999,20 @@
      "size_bytes": 469291992,
      "directory": "loras",
      "repo_id": "Comfy-Org/Krea-2",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "krea-2-community-license",
      "gated": false,
      "role": "lora",
-     "license_from": "Comfy-Org/Krea-2",
-     "license_url": null,
+     "license_from": "krea/Krea-2-LoRA-darkbrush",
+     "license_url": "https://huggingface.co/krea/Krea-2-LoRA-impressionist/blob/main/LICENSE.pdf",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Krea-2"
+      "Comfy-Org/Krea-2",
+      "krea/Krea-2-LoRA-darkbrush"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_darkbrush.safetensors の本家が分かりません"
+      "license_source:krea-2-darkbrush-lora",
+      "https://huggingface.co/Comfy-Org/Krea-2 の README の「Original LoRA repositories」に krea/Krea-2-LoRA-darkbrush。その darkbrush.safetensors と大きさ(469,291,992 バイト)・重みの名前・形・型が同じ。krea/Krea-2-LoRA-darkbrush のカードは other(krea-2-community-license)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -10027,8 +10034,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE.pdf",
    "base_model": "krea/Krea-2-Turbo",
    "content": "sfw",
    "content_evidence": [],
@@ -10040,11 +10047,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/Krea-2 の krea2_darkbrush.safetensors の本家が分かりません(krea2_darkbrush.safetensors)"
-   ],
+   "license_name": "krea-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "krea2",
@@ -11920,18 +11924,21 @@
      "size_bytes": 7343591088,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/MOSS-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/MOSS-Image",
-     "license_url": null,
+     "license_from": "OpenMOSS-Team/MOSS-Image-Base",
+     "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/MOSS-Image"
+      "Comfy-Org/MOSS-Image",
+      "Qwen/Qwen3.5-9B",
+      "OpenMOSS-Team/MOSS-Image-Base"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません"
+      "license_source:moss-image-qwen3.5-9b",
+      "https://huggingface.co/Comfy-Org/MOSS-Image の cardData の base_model は OpenMOSS-Team/MOSS-Image-Base・-SFT。MOSS-Image-Base(cardData apache-2.0、LICENSE は Apache License 2.0 の本文)の text_encoder は Qwen3_5Model(32 層・hidden 4096 = Qwen3.5-9B)。https://huggingface.co/Qwen/Qwen3.5-9B の license も apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -11979,8 +11986,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
    "base_model": "OpenMOSS-Team/MOSS-Image-Base",
    "content": "sfw",
    "content_evidence": [],
@@ -11993,9 +12000,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "moss_image",
@@ -12043,18 +12048,21 @@
      "size_bytes": 7343591088,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/MOSS-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/MOSS-Image",
-     "license_url": null,
+     "license_from": "OpenMOSS-Team/MOSS-Image-Base",
+     "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/MOSS-Image"
+      "Comfy-Org/MOSS-Image",
+      "Qwen/Qwen3.5-9B",
+      "OpenMOSS-Team/MOSS-Image-Base"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません"
+      "license_source:moss-image-qwen3.5-9b",
+      "https://huggingface.co/Comfy-Org/MOSS-Image の cardData の base_model は OpenMOSS-Team/MOSS-Image-Base・-SFT。MOSS-Image-Base(cardData apache-2.0、LICENSE は Apache License 2.0 の本文)の text_encoder は Qwen3_5Model(32 層・hidden 4096 = Qwen3.5-9B)。https://huggingface.co/Qwen/Qwen3.5-9B の license も apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -12102,8 +12110,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
    "base_model": "OpenMOSS-Team/MOSS-Image-Base",
    "content": "sfw",
    "content_evidence": [],
@@ -12116,9 +12124,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "moss_image",
@@ -12167,18 +12173,21 @@
      "size_bytes": 7343591088,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/MOSS-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/MOSS-Image",
-     "license_url": null,
+     "license_from": "OpenMOSS-Team/MOSS-Image-Base",
+     "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/MOSS-Image"
+      "Comfy-Org/MOSS-Image",
+      "Qwen/Qwen3.5-9B",
+      "OpenMOSS-Team/MOSS-Image-Base"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません"
+      "license_source:moss-image-qwen3.5-9b",
+      "https://huggingface.co/Comfy-Org/MOSS-Image の cardData の base_model は OpenMOSS-Team/MOSS-Image-Base・-SFT。MOSS-Image-Base(cardData apache-2.0、LICENSE は Apache License 2.0 の本文)の text_encoder は Qwen3_5Model(32 層・hidden 4096 = Qwen3.5-9B)。https://huggingface.co/Qwen/Qwen3.5-9B の license も apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -12226,8 +12235,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
    "base_model": "OpenMOSS-Team/MOSS-Image-SFT",
    "content": "sfw",
    "content_evidence": [],
@@ -12240,9 +12249,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "moss_image",
@@ -12290,18 +12297,21 @@
      "size_bytes": 7343591088,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/MOSS-Image",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/MOSS-Image",
-     "license_url": null,
+     "license_from": "OpenMOSS-Team/MOSS-Image-Base",
+     "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/MOSS-Image"
+      "Comfy-Org/MOSS-Image",
+      "Qwen/Qwen3.5-9B",
+      "OpenMOSS-Team/MOSS-Image-Base"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません"
+      "license_source:moss-image-qwen3.5-9b",
+      "https://huggingface.co/Comfy-Org/MOSS-Image の cardData の base_model は OpenMOSS-Team/MOSS-Image-Base・-SFT。MOSS-Image-Base(cardData apache-2.0、LICENSE は Apache License 2.0 の本文)の text_encoder は Qwen3_5Model(32 層・hidden 4096 = Qwen3.5-9B)。https://huggingface.co/Qwen/Qwen3.5-9B の license も apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -12349,8 +12359,8 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base/blob/main/LICENSE",
    "base_model": "OpenMOSS-Team/MOSS-Image-Base",
    "content": "sfw",
    "content_evidence": [],
@@ -12363,9 +12373,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "moss_image",
@@ -12511,19 +12519,22 @@
      "size_bytes": 7765267250,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/NewBie-image-Exp0.1_repackaged",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "NewBie-AI/NewBie-image-Exp0.1",
-     "license_url": null,
+     "license_from": "google/gemma-3-4b-it",
+     "license_url": "https://huggingface.co/google/gemma-3-4b-it",
      "repo_license": "newbie-nc-1.0",
      "license_path": [
       "Comfy-Org/NewBie-image-Exp0.1_repackaged",
-      "NewBie-AI/NewBie-image-Exp0.1"
+      "NewBie-AI/NewBie-image-Exp0.1",
+      "google/gemma-3-4b-it"
      ],
      "license_evidence": [
-      "license_unverified: gemma_3_4b_it_bf16.safetensors は Comfy-Org/NewBie-image-Exp0.1_repackaged の本体と別の系統(gemma)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:newbie-gemma-3-4b-it",
+      "元の https://huggingface.co/NewBie-AI/NewBie-image-Exp0.1 のカード「We use Gemma3-4B-it as the primary text encoder」と https://huggingface.co/google/gemma-3-4b-it へのリンク。google/gemma-3-4b-it は license: gemma(gated: manual)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)",
+      "upstream_gated: google/gemma-3-4b-it"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -12537,19 +12548,21 @@
      "size_bytes": 1121730691,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/NewBie-image-Exp0.1_repackaged",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "NewBie-AI/NewBie-image-Exp0.1",
-     "license_url": null,
+     "license_from": "jinaai/jina-clip-v2",
+     "license_url": "https://huggingface.co/jinaai/jina-clip-v2",
      "repo_license": "newbie-nc-1.0",
      "license_path": [
       "Comfy-Org/NewBie-image-Exp0.1_repackaged",
-      "NewBie-AI/NewBie-image-Exp0.1"
+      "NewBie-AI/NewBie-image-Exp0.1",
+      "jinaai/jina-clip-v2"
      ],
      "license_evidence": [
-      "license_unverified: jina_clip_v2_bf16.safetensors は Comfy-Org/NewBie-image-Exp0.1_repackaged の本体と別の系統(clip)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:newbie-jina-clip-v2",
+      "元の https://huggingface.co/NewBie-AI/NewBie-image-Exp0.1 のカード「We also extract pooled text features from Jina CLIP v2」と https://huggingface.co/jinaai/jina-clip-v2 へのリンク。jinaai/jina-clip-v2 の cardData は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -12571,8 +12584,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/NewBie-AI/NewBie-image-Exp0.1/blob/main/LICENSE.md",
    "base_model": "NewBie-AI/NewBie-image-Exp0.1",
    "content": "sfw",
    "content_evidence": [],
@@ -12584,11 +12597,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: gemma_3_4b_it_bf16.safetensors は Comfy-Org/NewBie-image-Exp0.1_repackaged の本体と別の系統(gemma)の部品とみえ、本家のライセンスを確かめた表に無い(gemma_3_4b_it_bf16.safetensors)",
-    "license_unverified: jina_clip_v2_bf16.safetensors は Comfy-Org/NewBie-image-Exp0.1_repackaged の本体と別の系統(clip)の部品とみえ、本家のライセンスを確かめた表に無い(jina_clip_v2_bf16.safetensors)"
-   ],
+   "license_name": "newbie-nc-1.0",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "lumina2",
@@ -12978,18 +12988,22 @@
      "size_bytes": 5232958571,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/PixelDiT",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/PixelDiT",
-     "license_url": null,
+     "license_from": "google/gemma-2-2b-it",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/PixelDiT"
+      "Comfy-Org/PixelDiT",
+      "nvidia/PixelDiT-1300M-1024px",
+      "google/gemma-2-2b-it"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_bf16.safetensors の本家が分かりません"
+      "license_source:pixeldit-gemma-2-2b-it",
+      "元の https://huggingface.co/nvidia/PixelDiT-1300M-1024px のカード「Text encoder: Gemma-2-2B-IT」。google/gemma-2-2b-it は license: gemma(gated: manual)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)",
+      "upstream_gated: google/gemma-2-2b-it"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -13035,8 +13049,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/nvidia/PixelDiT-1300M-1024px/blob/main/LICENSE",
    "base_model": "nvidia/PixelDiT-1300M-1024px",
    "content": "sfw",
    "content_evidence": [],
@@ -13048,10 +13062,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_bf16.safetensors の本家が分かりません(gemma_2_2b_it_elm_bf16.safetensors)"
-   ],
+   "license_name": "nsclv1",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "pixeldit",
@@ -18988,19 +19000,21 @@
      "size_bytes": 16381517176,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.2-klein-9B",
-     "license_url": null,
+     "license_from": "Qwen/Qwen3-8B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3-8B",
      "repo_license": "flux-non-commercial-license",
      "license_path": [
       "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
-      "black-forest-labs/FLUX.2-klein-9B"
+      "black-forest-labs/FLUX.2-klein-9B",
+      "Qwen/Qwen3-8B"
      ],
      "license_evidence": [
-      "license_unverified: qwen_3_8b.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:flux2-klein-9b-qwen3-8b",
+      "FLUX.2 の公式のコード https://github.com/black-forest-labs/flux2/blob/50fe5162777813d869182b139e83b10743caef15/src/flux2/util.py の flux.2-klein-9b が load_qwen3_embedder(variant=\"8B\")、text_encoder.py が Qwen/Qwen3-8B-FP8 を from_pretrained で読む(手を加えない)。qwen_3_8b.safetensors の大きさ 16,381,517,176 バイトは Qwen/Qwen3-8B の 5 つの分割の合計 16,381,516,776 バイト + ヘッダ。https://huggingface.co/Qwen/Qwen3-8B・Qwen/Qwen3-8B-FP8 の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -19052,8 +19066,8 @@
    },
    "params_b": 9.0,
    "precision": null,
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -19065,10 +19079,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_3_8b.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b.safetensors)"
-   ],
+   "license_name": "flux-non-commercial-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "flux2",
@@ -20068,18 +20080,20 @@
      "size_bytes": 2664858464,
      "directory": "model_patches",
      "repo_id": "Kijai/SUPIR_pruned",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "supir-non-commercial",
      "gated": false,
      "role": "other",
-     "license_from": "Kijai/SUPIR_pruned",
-     "license_url": null,
+     "license_from": "Fanghua-Yu/SUPIR",
+     "license_url": "https://github.com/Fanghua-Yu/SUPIR#non-commercial-use-only-declaration",
      "repo_license": null,
      "license_path": [
-      "Kijai/SUPIR_pruned"
+      "Kijai/SUPIR_pruned",
+      "Fanghua-Yu/SUPIR"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/SUPIR_pruned の SUPIR-v0Q_fp16.safetensors の本家が分かりません"
+      "license_source:supir",
+      "SUPIR の公式 https://github.com/Fanghua-Yu/SUPIR の README「Non-Commercial Use Only Declaration: The SUPIR (\"Software\") is made available for use, reproduction, and distribution strictly for non-commercial purposes」。SUPIR-v0Q / v0F はその公式の重み(Kijai/SUPIR_pruned はそれを減らしたもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -20128,8 +20142,8 @@
    },
    "params_b": null,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Fanghua-Yu/SUPIR#non-commercial-use-only-declaration",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -20141,10 +20155,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/SUPIR_pruned の SUPIR-v0Q_fp16.safetensors の本家が分かりません(SUPIR-v0Q_fp16.safetensors)"
-   ],
+   "license_name": "supir-non-commercial",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "sd",
@@ -20310,18 +20322,22 @@
      "size_bytes": 2618902308,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/PixelDiT",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/PixelDiT",
-     "license_url": null,
+     "license_from": "google/gemma-2-2b-it",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/PixelDiT"
+      "Comfy-Org/PixelDiT",
+      "nvidia/PixelDiT-1300M-1024px",
+      "google/gemma-2-2b-it"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_fp8_scaled.safetensors の本家が分かりません"
+      "license_source:pixeldit-gemma-2-2b-it",
+      "元の https://huggingface.co/nvidia/PixelDiT-1300M-1024px のカード「Text encoder: Gemma-2-2B-IT」。google/gemma-2-2b-it は license: gemma(gated: manual)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)",
+      "upstream_gated: google/gemma-2-2b-it"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -20335,19 +20351,20 @@
      "size_bytes": 2724747428,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/PixelDiT",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "nsclv1",
      "gated": false,
      "role": "main",
      "license_from": "nvidia/PiD",
-     "license_url": null,
+     "license_url": "https://huggingface.co/nvidia/PixelDiT-1300M-1024px/blob/main/LICENSE",
      "repo_license": "nsclv1",
      "license_path": [
       "Comfy-Org/PixelDiT",
       "nvidia/PiD"
      ],
      "license_evidence": [
-      "license_unverified: nvidia/PiD にライセンスの記載がありません"
+      "license_source:nvidia-pid",
+      "https://huggingface.co/Comfy-Org/PixelDiT の cardData の base_model に nvidia/PiD。nvidia/PiD のカード「This model is released under the NSCLv1 License. The work and any derivative works may only be used for non-commercial (research or evaluation) purposes」(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -20447,8 +20464,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/nvidia/PixelDiT-1300M-1024px/blob/main/LICENSE",
    "base_model": "nvidia/PiD",
    "content": "sfw",
    "content_evidence": [],
@@ -20460,11 +20477,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_fp8_scaled.safetensors の本家が分かりません(gemma_2_2b_it_elm_fp8_scaled.safetensors)",
-    "license_unverified: nvidia/PiD にライセンスの記載がありません(pid_flux1_1024_to_4096_4step_bf16.safetensors)"
-   ],
+   "license_name": "nsclv1",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "zimage",
@@ -21109,18 +21123,20 @@
      "size_bytes": 630697104,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-t2v-14b-v2-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/distill_models/distill_model.safetensors」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-T2V-14B、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -21194,8 +21210,8 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ByteDance/Bernini-R",
    "base_model": "ByteDance/Bernini-R",
    "content": "sfw",
    "content_evidence": [],
@@ -21208,9 +21224,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -22302,19 +22316,20 @@
      "size_bytes": 4914197682,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/MiniMax-Music-3",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
      "gated": false,
      "role": "main",
      "license_from": "MiniMaxAI/MiniMax-Music3",
-     "license_url": null,
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/MiniMax-Music-3",
       "MiniMaxAI/MiniMax-Music3"
      ],
      "license_evidence": [
-      "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません"
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -22328,19 +22343,20 @@
      "size_bytes": 9196611886,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/MiniMax-Music-3",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
      "gated": false,
      "role": "text_encoder",
      "license_from": "MiniMaxAI/MiniMax-Music3",
-     "license_url": null,
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/MiniMax-Music-3",
       "MiniMaxAI/MiniMax-Music3"
      ],
      "license_evidence": [
-      "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません"
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -22354,19 +22370,20 @@
      "size_bytes": 216696128,
      "directory": "vae",
      "repo_id": "Comfy-Org/MiniMax-Music-3",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
      "gated": false,
      "role": "vae",
      "license_from": "MiniMaxAI/MiniMax-Music3",
-     "license_url": null,
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/MiniMax-Music-3",
       "MiniMaxAI/MiniMax-Music3"
      ],
      "license_evidence": [
-      "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません"
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -22388,8 +22405,8 @@
    },
    "params_b": null,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
    "base_model": "MiniMaxAI/MiniMax-Music3",
    "content": "sfw",
    "content_evidence": [],
@@ -22401,12 +22418,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません(minimax_music3_dit_fp16.safetensors)",
-    "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません(minimax_music3_text_encoder_pruned_int8_convrot.safetensors)",
-    "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません(minimax_music3_dav.safetensors)"
-   ],
+   "license_name": "minimax-music3-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "minimax_music3",
@@ -22481,18 +22494,21 @@
      "size_bytes": 1187264003,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/stable-audio-3",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/stable-audio-3",
-     "license_url": null,
+     "license_from": "google/t5gemma-b-b-ul2",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/stable-audio-3"
+      "Comfy-Org/stable-audio-3",
+      "google/t5gemma-b-b-ul2"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません"
+      "license_source:stable-audio-3-t5gemma",
+      "Stability AI の公式 https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。google/t5gemma-b-b-ul2 は license: gemma(gated: manual)(2026-10-20 に確認)",
+      "upstream_gated: google/t5gemma-b-b-ul2"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -22514,8 +22530,8 @@
    },
    "params_b": null,
    "precision": "fp32",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
    "base_model": "stabilityai/stable-audio-3-medium-base",
    "content": "sfw",
    "content_evidence": [],
@@ -22527,10 +22543,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません(t5gemma_b_b_ul2.safetensors)"
-   ],
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "stable_audio",
@@ -22605,18 +22619,21 @@
      "size_bytes": 1187264003,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/stable-audio-3",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Comfy-Org/stable-audio-3",
-     "license_url": null,
+     "license_from": "google/t5gemma-b-b-ul2",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/stable-audio-3"
+      "Comfy-Org/stable-audio-3",
+      "google/t5gemma-b-b-ul2"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません"
+      "license_source:stable-audio-3-t5gemma",
+      "Stability AI の公式 https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。google/t5gemma-b-b-ul2 は license: gemma(gated: manual)(2026-10-20 に確認)",
+      "upstream_gated: google/t5gemma-b-b-ul2"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -22638,8 +22655,8 @@
    },
    "params_b": null,
    "precision": "fp32",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
    "base_model": "stabilityai/stable-audio-3-medium-base",
    "content": "sfw",
    "content_evidence": [],
@@ -22651,10 +22668,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません(t5gemma_b_b_ul2.safetensors)"
-   ],
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "stable_audio",
@@ -22989,18 +23004,20 @@
      "size_bytes": 25642131432,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
      "gated": false,
      "role": "main",
-     "license_from": "Comfy-Org/HunyuanVideo_repackaged",
-     "license_url": null,
+     "license_from": "tencent/HunyuanVideo",
+     "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/HunyuanVideo_repackaged"
+      "Comfy-Org/HunyuanVideo_repackaged",
+      "tencent/HunyuanVideo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の hunyuan_video_t2v_720p_bf16.safetensors の本家が分かりません"
+      "license_source:hunyuan-video",
+      "Comfy-Org/HunyuanVideo_repackaged の README「Original model repository: https://huggingface.co/tencent/HunyuanVideo」、Kijai/HunyuanVideo_comfy の README「Safetensors and fp8 version of HunhuanVideo models: https://huggingface.co/tencent/HunyuanVideo」。元の cardData は other(tencent-hunyuan-community)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -23014,18 +23031,20 @@
      "size_bytes": 492984198,
      "directory": "vae",
      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
      "gated": false,
      "role": "vae",
-     "license_from": "Comfy-Org/HunyuanVideo_repackaged",
-     "license_url": null,
+     "license_from": "tencent/HunyuanVideo",
+     "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/HunyuanVideo_repackaged"
+      "Comfy-Org/HunyuanVideo_repackaged",
+      "tencent/HunyuanVideo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の hunyuan_video_vae_bf16.safetensors の本家が分かりません"
+      "license_source:hunyuan-video",
+      "Comfy-Org/HunyuanVideo_repackaged の README「Original model repository: https://huggingface.co/tencent/HunyuanVideo」、Kijai/HunyuanVideo_comfy の README「Safetensors and fp8 version of HunhuanVideo models: https://huggingface.co/tencent/HunyuanVideo」。元の cardData は other(tencent-hunyuan-community)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -23049,7 +23068,7 @@
    "precision": "bf16",
    "license": null,
    "license_url": null,
-   "base_model": null,
+   "base_model": "tencent/HunyuanVideo",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -23062,9 +23081,7 @@
    "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の llava_llama3_fp8_scaled.safetensors の本家が分かりません(llava_llama3_fp8_scaled.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の hunyuan_video_t2v_720p_bf16.safetensors の本家が分かりません(hunyuan_video_t2v_720p_bf16.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の hunyuan_video_vae_bf16.safetensors の本家が分かりません(hunyuan_video_vae_bf16.safetensors)"
+    "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の llava_llama3_fp8_scaled.safetensors の本家が分かりません(llava_llama3_fp8_scaled.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
@@ -23433,18 +23450,20 @@
      "size_bytes": 316822496,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors の本家が分かりません"
+      "license_source:lightx2v-t2v-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CFG and Step distill 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill」。その cardData の license は apache-2.0、LICENSE.txt は Apache License 2.0 の本文。元の Wan2.1-T2V-14B も apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -23573,8 +23592,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -23587,9 +23606,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors の本家が分かりません(Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -23790,22 +23807,20 @@
      "size_bytes": 628203616,
      "directory": "loras",
      "repo_id": "Comfy-Org/ltx-2",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "google/gemma-3-12b",
-     "license_url": null,
+     "license_from": "mlabonne/gemma-3-12b-it-abliterated",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": "ltx-2-community-license-agreement",
      "license_path": [
       "Comfy-Org/ltx-2",
-      "mlabonne/gemma-3-12b-it-abliterated",
-      "google/gemma-3-12b-it",
-      "google/gemma-3-12b-pt",
-      "google/gemma-3-12b"
+      "mlabonne/gemma-3-12b-it-abliterated"
      ],
      "license_evidence": [
-      "license_unverified: google/gemma-3-12b を読めません(HTTP 401)"
+      "license_source:gemma-3-12b-abliterated-lora",
+      "https://huggingface.co/Comfy-Org/ltx-2 の cardData の base_model に mlabonne/gemma-3-12b-it-abliterated と google/gemma-3-12b-it。mlabonne/gemma-3-12b-it-abliterated は license: gemma(元は google/gemma-3-12b-it)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -23827,8 +23842,8 @@
    },
    "params_b": 22.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -23840,10 +23855,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -24851,18 +24864,20 @@
      "size_bytes": 1436672440,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan2.2-Animate-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "Wan-AI/Wan2.2-Animate-14B"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません"
+      "license_source:wan2.2-animate-relight-lora",
+      "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B の relighting_lora/adapter_model.safetensors と、safetensors のヘッダで 960 個の重みの形がすべて同じ(名前を PEFT から ComfyUI の形に、F32 を F16 にしたもの)。Wan-AI/Wan2.2-Animate-14B の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -24980,18 +24995,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -25017,8 +25034,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -25031,10 +25048,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません(WanAnimate_relight_lora_fp16.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -26168,18 +26182,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -26271,18 +26287,20 @@
      "size_bytes": 16402832658,
      "directory": "diffusion_models",
      "repo_id": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license_url": null,
+     "license_from": "Ruihang/Wan-Move-14B-480P",
+     "license_url": "https://huggingface.co/Ruihang/Wan-Move-14B-480P",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy_fp8_scaled"
+      "Kijai/WanVideo_comfy_fp8_scaled",
+      "Ruihang/Wan-Move-14B-480P"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません"
+      "license_source:wan-move-14b",
+      "公式の https://github.com/ali-vilab/Wan-Move の README が ComfyUI 用にこの Kijai のフォルダを挙げ、重みは https://huggingface.co/Ruihang/Wan-Move-14B-480P。そのカードは license: apache-2.0 と「The models in this repository are licensed under the Apache 2.0 License」(Wan2.1 の上に作ったもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -26308,9 +26326,9 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+   "base_model": "Ruihang/Wan-Move-14B-480P",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -26322,10 +26340,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません(Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 77202037146,
    "comfy_family": "wan",
@@ -26401,18 +26416,20 @@
      "size_bytes": 204551064,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -26467,8 +26484,8 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -26481,9 +26498,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -26533,18 +26548,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -26650,8 +26667,8 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -26664,9 +26681,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -27753,19 +27768,21 @@
      "size_bytes": 431221142,
      "directory": "vae",
      "repo_id": "Comfy-Org/void-model",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "vae",
-     "license_from": "netflix/void-model",
-     "license_url": null,
+     "license_from": "zai-org/CogVideoX-2b",
+     "license_url": "https://huggingface.co/zai-org/CogVideoX-2b",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/void-model",
-      "netflix/void-model"
+      "alibaba-pai/CogVideoX-Fun-V1.5-5b-InP",
+      "zai-org/CogVideoX-2b"
      ],
      "license_evidence": [
-      "license_unverified: cogvideox_vae.safetensors は Comfy-Org/void-model の本体と別の系統(cogvideo)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:cogvideox-vae",
+      "sha256 が https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.5-5b-InP の vae/diffusion_pytorch_model.safetensors と同じ(bd47d57a…)。その README「CogVideoX-2B 模型 (包括其对应的Transformers模块，VAE模块) 根据 Apache 2.0 协议许可证发布」、元の https://huggingface.co/zai-org/CogVideoX-2b のカード「The CogVideoX-2B model (including its corresponding Transformers module and VAE module) is released under the Apache 2.0 License」(CogVideoX-2b と -5b の VAE は sha256 が同じ a410e48d…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -27859,8 +27876,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/facebook/sam3",
    "base_model": "facebook/sam3",
    "content": "sfw",
    "content_evidence": [],
@@ -27872,10 +27889,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: cogvideox_vae.safetensors は Comfy-Org/void-model の本体と別の系統(cogvideo)の部品とみえ、本家のライセンスを確かめた表に無い(cogvideox_vae.safetensors)"
-   ],
+   "license_name": "sam-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "cogvideox",
@@ -28037,18 +28052,20 @@
      "size_bytes": 630697104,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-t2v-14b-v2-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/distill_models/distill_model.safetensors」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-T2V-14B、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -28122,8 +28139,8 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ByteDance/Bernini-R",
    "base_model": "ByteDance/Bernini-R",
    "content": "sfw",
    "content_evidence": [],
@@ -28136,9 +28153,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -28197,19 +28212,21 @@
      "size_bytes": 16584415576,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "tencent/HunyuanImage-2.1",
-     "license_url": null,
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
      "repo_license": "tencent-hunyuan-community",
      "license_path": [
       "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-      "tencent/HunyuanImage-2.1"
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
      ],
      "license_evidence": [
-      "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -28309,8 +28326,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
    "base_model": "tencent/HunyuanVideo-1.5",
    "content": "sfw",
    "content_evidence": [],
@@ -28322,10 +28339,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": null,
@@ -28375,19 +28390,21 @@
      "size_bytes": 16584415576,
      "directory": "text_encoders",
      "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "text_encoder",
-     "license_from": "tencent/HunyuanImage-2.1",
-     "license_url": null,
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
      "repo_license": "tencent-hunyuan-community",
      "license_path": [
       "Comfy-Org/HunyuanImage_2.1_ComfyUI",
-      "tencent/HunyuanImage-2.1"
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
      ],
      "license_evidence": [
-      "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -28487,8 +28504,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
    "base_model": "tencent/HunyuanVideo-1.5",
    "content": "sfw",
    "content_evidence": [],
@@ -28500,10 +28517,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": null,
@@ -28992,18 +29007,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -29041,19 +29058,20 @@
      "size_bytes": 3087130976,
      "directory": "audio_encoders",
      "repo_id": "Comfy-Org/HuMo_ComfyUI",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "other",
-     "license_from": "bytedance-research/HuMo",
-     "license_url": null,
+     "license_from": "openai/whisper-large-v3",
+     "license_url": "https://huggingface.co/openai/whisper-large-v3",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/HuMo_ComfyUI",
-      "bytedance-research/HuMo"
+      "openai/whisper-large-v3"
      ],
      "license_evidence": [
-      "license_unverified: whisper_large_v3_fp16.safetensors は Comfy-Org/HuMo_ComfyUI の本体と別の系統(whisper)の部品とみえ、本家のライセンスを確かめた表に無い"
+      "license_source:whisper-large-v3",
+      "sha256 が https://huggingface.co/openai/whisper-large-v3 の model.safetensors と同じ(a8e94b85…)。openai/whisper-large-v3 の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -29075,8 +29093,8 @@
    },
    "params_b": 17.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/openai/whisper-large-v3",
    "base_model": "bytedance-research/HuMo",
    "content": "sfw",
    "content_evidence": [],
@@ -29089,10 +29107,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
-    "license_unverified: whisper_large_v3_fp16.safetensors は Comfy-Org/HuMo_ComfyUI の本体と別の系統(whisper)の部品とみえ、本家のライセンスを確かめた表に無い(whisper_large_v3_fp16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -29570,18 +29585,20 @@
      "size_bytes": 492986478,
      "directory": "vae",
      "repo_id": "Kijai/HunyuanVideo_comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
      "gated": false,
      "role": "vae",
-     "license_from": "Kijai/HunyuanVideo_comfy",
-     "license_url": null,
+     "license_from": "tencent/HunyuanVideo",
+     "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Kijai/HunyuanVideo_comfy"
+      "Kijai/HunyuanVideo_comfy",
+      "tencent/HunyuanVideo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません"
+      "license_source:hunyuan-video",
+      "Comfy-Org/HunyuanVideo_repackaged の README「Original model repository: https://huggingface.co/tencent/HunyuanVideo」、Kijai/HunyuanVideo_comfy の README「Safetensors and fp8 version of HunhuanVideo models: https://huggingface.co/tencent/HunyuanVideo」。元の cardData は other(tencent-hunyuan-community)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -29655,8 +29672,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -29668,10 +29685,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません(hunyuan_video_vae_bf16.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "kandinsky5",
@@ -29747,18 +29762,20 @@
      "size_bytes": 492986478,
      "directory": "vae",
      "repo_id": "Kijai/HunyuanVideo_comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
      "gated": false,
      "role": "vae",
-     "license_from": "Kijai/HunyuanVideo_comfy",
-     "license_url": null,
+     "license_from": "tencent/HunyuanVideo",
+     "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Kijai/HunyuanVideo_comfy"
+      "Kijai/HunyuanVideo_comfy",
+      "tencent/HunyuanVideo"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません"
+      "license_source:hunyuan-video",
+      "Comfy-Org/HunyuanVideo_repackaged の README「Original model repository: https://huggingface.co/tencent/HunyuanVideo」、Kijai/HunyuanVideo_comfy の README「Safetensors and fp8 version of HunhuanVideo models: https://huggingface.co/tencent/HunyuanVideo」。元の cardData は other(tencent-hunyuan-community)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -29803,8 +29820,8 @@
    },
    "params_b": null,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/HunyuanVideo/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -29816,10 +29833,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません(hunyuan_video_vae_bf16.safetensors)"
-   ],
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "kandinsky5",
@@ -30043,22 +30058,20 @@
      "size_bytes": 628203616,
      "directory": "loras",
      "repo_id": "Comfy-Org/ltx-2",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "google/gemma-3-12b",
-     "license_url": null,
+     "license_from": "mlabonne/gemma-3-12b-it-abliterated",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": "ltx-2-community-license-agreement",
      "license_path": [
       "Comfy-Org/ltx-2",
-      "mlabonne/gemma-3-12b-it-abliterated",
-      "google/gemma-3-12b-it",
-      "google/gemma-3-12b-pt",
-      "google/gemma-3-12b"
+      "mlabonne/gemma-3-12b-it-abliterated"
      ],
      "license_evidence": [
-      "license_unverified: google/gemma-3-12b を読めません(HTTP 401)"
+      "license_source:gemma-3-12b-abliterated-lora",
+      "https://huggingface.co/Comfy-Org/ltx-2 の cardData の base_model に mlabonne/gemma-3-12b-it-abliterated と google/gemma-3-12b-it。mlabonne/gemma-3-12b-it-abliterated は license: gemma(元は google/gemma-3-12b-it)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -30080,8 +30093,8 @@
    },
    "params_b": 22.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -30093,10 +30106,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -30224,22 +30235,20 @@
      "size_bytes": 628203616,
      "directory": "loras",
      "repo_id": "Comfy-Org/ltx-2",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "google/gemma-3-12b",
-     "license_url": null,
+     "license_from": "mlabonne/gemma-3-12b-it-abliterated",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": "ltx-2-community-license-agreement",
      "license_path": [
       "Comfy-Org/ltx-2",
-      "mlabonne/gemma-3-12b-it-abliterated",
-      "google/gemma-3-12b-it",
-      "google/gemma-3-12b-pt",
-      "google/gemma-3-12b"
+      "mlabonne/gemma-3-12b-it-abliterated"
      ],
      "license_evidence": [
-      "license_unverified: google/gemma-3-12b を読めません(HTTP 401)"
+      "license_source:gemma-3-12b-abliterated-lora",
+      "https://huggingface.co/Comfy-Org/ltx-2 の cardData の base_model に mlabonne/gemma-3-12b-it-abliterated と google/gemma-3-12b-it。mlabonne/gemma-3-12b-it-abliterated は license: gemma(元は google/gemma-3-12b-it)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -30261,8 +30270,8 @@
    },
    "params_b": 22.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -30274,10 +30283,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -30378,22 +30385,20 @@
      "size_bytes": 628203616,
      "directory": "loras",
      "repo_id": "Comfy-Org/ltx-2",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "google/gemma-3-12b",
-     "license_url": null,
+     "license_from": "mlabonne/gemma-3-12b-it-abliterated",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": "ltx-2-community-license-agreement",
      "license_path": [
       "Comfy-Org/ltx-2",
-      "mlabonne/gemma-3-12b-it-abliterated",
-      "google/gemma-3-12b-it",
-      "google/gemma-3-12b-pt",
-      "google/gemma-3-12b"
+      "mlabonne/gemma-3-12b-it-abliterated"
      ],
      "license_evidence": [
-      "license_unverified: google/gemma-3-12b を読めません(HTTP 401)"
+      "license_source:gemma-3-12b-abliterated-lora",
+      "https://huggingface.co/Comfy-Org/ltx-2 の cardData の base_model に mlabonne/gemma-3-12b-it-abliterated と google/gemma-3-12b-it。mlabonne/gemma-3-12b-it-abliterated は license: gemma(元は google/gemma-3-12b-it)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -30441,8 +30446,8 @@
    },
    "params_b": 22.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -30454,10 +30459,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -30761,22 +30764,20 @@
      "size_bytes": 628203616,
      "directory": "loras",
      "repo_id": "Comfy-Org/ltx-2",
-     "license": null,
+     "license": "gemma",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "google/gemma-3-12b",
-     "license_url": null,
+     "license_from": "mlabonne/gemma-3-12b-it-abliterated",
+     "license_url": "https://ai.google.dev/gemma/terms",
      "repo_license": "ltx-2-community-license-agreement",
      "license_path": [
       "Comfy-Org/ltx-2",
-      "mlabonne/gemma-3-12b-it-abliterated",
-      "google/gemma-3-12b-it",
-      "google/gemma-3-12b-pt",
-      "google/gemma-3-12b"
+      "mlabonne/gemma-3-12b-it-abliterated"
      ],
      "license_evidence": [
-      "license_unverified: google/gemma-3-12b を読めません(HTTP 401)"
+      "license_source:gemma-3-12b-abliterated-lora",
+      "https://huggingface.co/Comfy-Org/ltx-2 の cardData の base_model に mlabonne/gemma-3-12b-it-abliterated と google/gemma-3-12b-it。mlabonne/gemma-3-12b-it-abliterated は license: gemma(元は google/gemma-3-12b-it)。Gemma 利用規約は派生(Model Derivatives)にもかかる(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -30798,8 +30799,8 @@
    },
    "params_b": 22.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
    "content": "sfw",
    "content_evidence": [],
@@ -30811,10 +30812,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -33113,18 +33112,20 @@
      "size_bytes": 37759394560,
      "directory": "diffusion_models",
      "repo_id": "Kijai/LTXV2_comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "ltx-2-community-license-agreement",
      "gated": false,
      "role": "main",
-     "license_from": "Kijai/LTXV2_comfy",
-     "license_url": null,
+     "license_from": "Lightricks/LTX-2",
+     "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Kijai/LTXV2_comfy"
+      "Kijai/LTXV2_comfy",
+      "Lightricks/LTX-2"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/LTXV2_comfy の ltx-2-19b-distilled_transformer_only_bf16.safetensors の本家が分かりません"
+      "license_source:ltx-2-kijai",
+      "https://huggingface.co/Kijai/LTXV2_comfy の cardData は other(ltx-2-community-license-agreement)、README に「Dev and distill embeddings_connector weights are extracted from their respective original models」。元の https://huggingface.co/Lightricks/LTX-2(ltx-2-19b-distilled / -dev を置く)の cardData も同じ(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -33164,18 +33165,20 @@
      "size_bytes": 2862983784,
      "directory": "text_encoders",
      "repo_id": "Kijai/LTXV2_comfy",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "ltx-2-community-license-agreement",
      "gated": false,
      "role": "text_encoder",
-     "license_from": "Kijai/LTXV2_comfy",
-     "license_url": null,
+     "license_from": "Lightricks/LTX-2",
+     "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
      "repo_license": null,
      "license_path": [
-      "Kijai/LTXV2_comfy"
+      "Kijai/LTXV2_comfy",
+      "Lightricks/LTX-2"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/LTXV2_comfy の ltx-2-19b-embeddings_connector_distill_bf16.safetensors の本家が分かりません"
+      "license_source:ltx-2-kijai",
+      "https://huggingface.co/Kijai/LTXV2_comfy の cardData は other(ltx-2-community-license-agreement)、README に「Dev and distill embeddings_connector weights are extracted from their respective original models」。元の https://huggingface.co/Lightricks/LTX-2(ltx-2-19b-distilled / -dev を置く)の cardData も同じ(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -33199,9 +33202,9 @@
    },
    "params_b": 19.0,
    "precision": "bf16",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "other",
+   "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
+   "base_model": "Lightricks/LTX-2",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -33212,11 +33215,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/LTXV2_comfy の ltx-2-19b-distilled_transformer_only_bf16.safetensors の本家が分かりません(ltx-2-19b-distilled_transformer_only_bf16.safetensors)",
-    "license_unverified: 再配布 Kijai/LTXV2_comfy の ltx-2-19b-embeddings_connector_distill_bf16.safetensors の本家が分かりません(ltx-2-19b-embeddings_connector_distill_bf16.safetensors)"
-   ],
+   "license_name": "ltx-2-community-license-agreement",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "ltxv",
@@ -34468,18 +34468,20 @@
      "size_bytes": 630697104,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-t2v-14b-v2-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v/blob/main/distill_models/distill_model.safetensors」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-T2V-14B、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -34501,8 +34503,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/htdong/Wan-Alpha",
    "base_model": "Wan-AI/Wan2.1-T2V-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -34515,9 +34517,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -34841,18 +34841,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -35031,8 +35033,8 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/facebook/sam3",
    "base_model": "zai-org/SCAIL-2",
    "content": "sfw",
    "content_evidence": [],
@@ -35044,10 +35046,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_name": "sam-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -35071,18 +35071,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -35261,8 +35263,8 @@
    },
    "params_b": 14.0,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://huggingface.co/facebook/sam3",
    "base_model": "zai-org/SCAIL-2",
    "content": "sfw",
    "content_evidence": [],
@@ -35274,10 +35276,8 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_name": "sam-license",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -35430,18 +35430,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -35463,8 +35465,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/TencentGameMate/chinese-wav2vec2-base",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -35477,9 +35479,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -35503,18 +35503,20 @@
      "size_bytes": 1436672440,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan2.2-Animate-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "Wan-AI/Wan2.2-Animate-14B"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません"
+      "license_source:wan2.2-animate-relight-lora",
+      "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B の relighting_lora/adapter_model.safetensors と、safetensors のヘッダで 960 個の重みの形がすべて同じ(名前を PEFT から ComfyUI の形に、F32 を F16 にしたもの)。Wan-AI/Wan2.2-Animate-14B の cardData の license は apache-2.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -35606,18 +35608,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -35669,8 +35673,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -35683,10 +35687,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません(WanAnimate_relight_lora_fp16.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -37528,18 +37529,20 @@
      "size_bytes": 16653175528,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/Wan-Animate-2",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Comfy-Org/Wan-Animate-2",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan2.2-Animate-2-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Wan-Animate-2"
+      "Comfy-Org/Wan-Animate-2",
+      "Wan-AI/Wan2.2-Animate-2-14B"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_int8_convrot.safetensors の本家が分かりません"
+      "license_source:wan-animate-2",
+      "https://huggingface.co/Comfy-Org/Wan-Animate-2 の README「Original model repository: https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B」。元のカードは license: apache-2.0 と「This project is licensed under the Apache License 2.0」(wan_animate_2_bf16 と wan_animate_2_bf16_distillation の重みを置いている)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -37553,18 +37556,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Comfy-Org/Wan-Animate-2",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Comfy-Org/Wan-Animate-2",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Wan-Animate-2"
+      "Comfy-Org/Wan-Animate-2",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -37664,9 +37669,9 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+   "base_model": "Wan-AI/Wan2.2-Animate-2-14B",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -37678,10 +37683,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_int8_convrot.safetensors の本家が分かりません(wan_animate_2_int8_convrot.safetensors)",
-    "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -37705,18 +37707,20 @@
      "size_bytes": 16653175528,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/Wan-Animate-2",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Comfy-Org/Wan-Animate-2",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan2.2-Animate-2-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B",
      "repo_license": null,
      "license_path": [
-      "Comfy-Org/Wan-Animate-2"
+      "Comfy-Org/Wan-Animate-2",
+      "Wan-AI/Wan2.2-Animate-2-14B"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_distill_int8_convrot.safetensors の本家が分かりません"
+      "license_source:wan-animate-2",
+      "https://huggingface.co/Comfy-Org/Wan-Animate-2 の README「Original model repository: https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B」。元のカードは license: apache-2.0 と「This project is licensed under the Apache License 2.0」(wan_animate_2_bf16 と wan_animate_2_bf16_distillation の重みを置いている)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -37816,9 +37820,9 @@
    },
    "params_b": null,
    "precision": "int8",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+   "base_model": "Wan-AI/Wan2.2-Animate-2-14B",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -37830,9 +37834,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_distill_int8_convrot.safetensors の本家が分かりません(wan_animate_2_distill_int8_convrot.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -38006,19 +38008,20 @@
      "size_bytes": 18342596856,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/Wan-Dancer",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Wan-AI/Wan2.2-Dancer-14B",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan-Dancer-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan-Dancer-14B",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/Wan-Dancer",
-      "Wan-AI/Wan2.2-Dancer-14B"
+      "Wan-AI/Wan-Dancer-14B"
      ],
      "license_evidence": [
-      "license_unverified: Wan-AI/Wan2.2-Dancer-14B を読めません(HTTP 401)"
+      "license_source:wan-dancer-14b",
+      "公式の https://github.com/Wan-Video/Wan-Dancer の README の「HF Model」が https://huggingface.co/Wan-AI/Wan-Dancer-14B(global_model・local_model を置く)。そのカードは license: apache-2.0 と「This project is licensed under the Apache 2.0 License」(Comfy-Org/Wan-Dancer の base_model Wan-AI/Wan2.2-Dancer-14B は匿名で読めない)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38032,18 +38035,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38057,19 +38062,20 @@
      "size_bytes": 18342596856,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/Wan-Dancer",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Wan-AI/Wan2.2-Dancer-14B",
-     "license_url": null,
+     "license_from": "Wan-AI/Wan-Dancer-14B",
+     "license_url": "https://huggingface.co/Wan-AI/Wan-Dancer-14B",
      "repo_license": "apache-2.0",
      "license_path": [
       "Comfy-Org/Wan-Dancer",
-      "Wan-AI/Wan2.2-Dancer-14B"
+      "Wan-AI/Wan-Dancer-14B"
      ],
      "license_evidence": [
-      "license_unverified: Wan-AI/Wan2.2-Dancer-14B を読めません(HTTP 401)"
+      "license_source:wan-dancer-14b",
+      "公式の https://github.com/Wan-Video/Wan-Dancer の README の「HF Model」が https://huggingface.co/Wan-AI/Wan-Dancer-14B(global_model・local_model を置く)。そのカードは license: apache-2.0 と「This project is licensed under the Apache 2.0 License」(Comfy-Org/Wan-Dancer の base_model Wan-AI/Wan2.2-Dancer-14B は匿名で読めない)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38169,8 +38175,8 @@
    },
    "params_b": 14.0,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
    "base_model": "Wan-AI/Wan2.2-Dancer-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -38183,11 +38189,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: Wan-AI/Wan2.2-Dancer-14B を読めません(HTTP 401)(wan2.2_dancer_14b_global_fp8_scaled.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
-    "license_unverified: Wan-AI/Wan2.2-Dancer-14B を読めません(HTTP 401)(wan2.2_dancer_14b_local_fp8_scaled.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -38246,18 +38248,20 @@
      "size_bytes": 91233416,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "tianweiy/CausVid",
+     "license_url": "https://huggingface.co/tianweiy/CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "tianweiy/CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-1.3b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid 1.3B: https://huggingface.co/tianweiy/CausVid」と CausVid の LoRA は CausVid の微調整からの抽出とある。tianweiy/CausVid の cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38375,18 +38379,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38408,8 +38414,8 @@
    },
    "params_b": 1.3,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/tianweiy/CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -38422,10 +38428,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -38501,18 +38504,20 @@
      "size_bytes": 91233416,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "tianweiy/CausVid",
+     "license_url": "https://huggingface.co/tianweiy/CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "tianweiy/CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-1.3b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid 1.3B: https://huggingface.co/tianweiy/CausVid」と CausVid の LoRA は CausVid の微調整からの抽出とある。tianweiy/CausVid の cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38578,18 +38583,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38637,8 +38644,8 @@
    },
    "params_b": 1.3,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/tianweiy/CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -38651,10 +38658,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -38756,18 +38760,20 @@
      "size_bytes": 91233416,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "tianweiy/CausVid",
+     "license_url": "https://huggingface.co/tianweiy/CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "tianweiy/CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-1.3b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid 1.3B: https://huggingface.co/tianweiy/CausVid」と CausVid の LoRA は CausVid の微調整からの抽出とある。tianweiy/CausVid の cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38833,18 +38839,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -38866,8 +38874,8 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/tianweiy/CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -38880,10 +38888,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -38959,18 +38964,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39018,8 +39025,8 @@
    },
    "params_b": 14.0,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/Wan-AI/Wan2.1-T2V-14B",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -39032,9 +39039,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -39085,18 +39090,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39196,8 +39203,8 @@
    },
    "params_b": null,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
    "base_model": "facebook/sam3",
    "content": "sfw",
    "content_evidence": [],
@@ -39210,9 +39217,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -39262,18 +39267,20 @@
      "size_bytes": 91233416,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "tianweiy/CausVid",
+     "license_url": "https://huggingface.co/tianweiy/CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "tianweiy/CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-1.3b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid 1.3B: https://huggingface.co/tianweiy/CausVid」と CausVid の LoRA は CausVid の微調整からの抽出とある。tianweiy/CausVid の cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39391,18 +39398,20 @@
      "size_bytes": 319116504,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "cc-by-nc-4.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-T2V-14B-CausVid",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-T2V-14B-CausVid"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません"
+      "license_source:causvid-14b-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/README.md に「CausVid LoRAs are experimental extractions from the CausVid finetunes」と「CausVid 14B: https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid」。その cardData の license は cc-by-nc-4.0(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39424,8 +39433,8 @@
    },
    "params_b": 1.3,
    "precision": "fp16",
-   "license": null,
-   "license_url": null,
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/tianweiy/CausVid",
    "base_model": "Wan-AI/Wan2.1-VACE-14B",
    "content": "sfw",
    "content_evidence": [],
@@ -39438,10 +39447,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -39466,18 +39472,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39569,18 +39577,20 @@
      "size_bytes": 16402832658,
      "directory": "diffusion_models",
      "repo_id": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license_url": null,
+     "license_from": "Ruihang/Wan-Move-14B-480P",
+     "license_url": "https://huggingface.co/Ruihang/Wan-Move-14B-480P",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy_fp8_scaled"
+      "Kijai/WanVideo_comfy_fp8_scaled",
+      "Ruihang/Wan-Move-14B-480P"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません"
+      "license_source:wan-move-14b",
+      "公式の https://github.com/ali-vilab/Wan-Move の README が ComfyUI 用にこの Kijai のフォルダを挙げ、重みは https://huggingface.co/Ruihang/Wan-Move-14B-480P。そのカードは license: apache-2.0 と「The models in this repository are licensed under the Apache 2.0 License」(Wan2.1 の上に作ったもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39602,9 +39612,9 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+   "base_model": "Ruihang/Wan-Move-14B-480P",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -39616,10 +39626,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません(Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -39644,18 +39651,20 @@
      "size_bytes": 738005744,
      "directory": "loras",
      "repo_id": "Kijai/WanVideo_comfy",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "lora",
-     "license_from": "Kijai/WanVideo_comfy",
-     "license_url": null,
+     "license_from": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+     "license_url": "https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/blob/main/LICENSE.txt",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy"
+      "Kijai/WanVideo_comfy",
+      "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません"
+      "license_source:lightx2v-i2v-480p-lora",
+      "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md に「Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models」。その cardData の license は apache-2.0(base_model は Wan-AI/Wan2.1-I2V-14B-480P、apache-2.0)、LICENSE.txt は Apache License 2.0 の本文。Comfy-Org/Wan-Animate-2 の同じ名前のファイルは Kijai のものと sha256 が同じ(85c4a61c…)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39747,18 +39756,20 @@
      "size_bytes": 16402832658,
      "directory": "diffusion_models",
      "repo_id": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license": null,
+     "license": "apache-2.0",
      "license_name": null,
      "gated": false,
      "role": "main",
-     "license_from": "Kijai/WanVideo_comfy_fp8_scaled",
-     "license_url": null,
+     "license_from": "Ruihang/Wan-Move-14B-480P",
+     "license_url": "https://huggingface.co/Ruihang/Wan-Move-14B-480P",
      "repo_license": null,
      "license_path": [
-      "Kijai/WanVideo_comfy_fp8_scaled"
+      "Kijai/WanVideo_comfy_fp8_scaled",
+      "Ruihang/Wan-Move-14B-480P"
      ],
      "license_evidence": [
-      "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません"
+      "license_source:wan-move-14b",
+      "公式の https://github.com/ali-vilab/Wan-Move の README が ComfyUI 用にこの Kijai のフォルダを挙げ、重みは https://huggingface.co/Ruihang/Wan-Move-14B-480P。そのカードは license: apache-2.0 と「The models in this repository are licensed under the Apache 2.0 License」(Wan2.1 の上に作ったもの)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -39782,9 +39793,9 @@
    },
    "params_b": null,
    "precision": "fp8",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
+   "license": "mit",
+   "license_url": "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+   "base_model": "Ruihang/Wan-Move-14B-480P",
    "content": "sfw",
    "content_evidence": [],
    "discovered_from": [
@@ -39796,10 +39807,7 @@
    "likes": null,
    "downloads_all_time": null,
    "license_name": null,
-   "license_evidence": [
-    "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
-    "license_unverified: 再配布 Kijai/WanVideo_comfy_fp8_scaled の Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors の本家が分かりません(Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors)"
-   ],
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": "wan",
@@ -42737,18 +42745,20 @@
      "size_bytes": 2450344112,
      "directory": null,
      "repo_id": "k2-fsa/OmniVoice",
-     "license": null,
-     "license_name": null,
+     "license": "other",
+     "license_name": "cc-by-nc",
      "gated": false,
      "role": "main",
      "license_from": "k2-fsa/OmniVoice",
-     "license_url": null,
+     "license_url": "https://github.com/k2-fsa/OmniVoice#license",
      "repo_license": null,
      "license_path": [
+      "k2-fsa/OmniVoice",
       "k2-fsa/OmniVoice"
      ],
      "license_evidence": [
-      "license_unverified: k2-fsa/OmniVoice にライセンスの記載がありません"
+      "license_source:omnivoice",
+      "公式の https://github.com/k2-fsa/OmniVoice の README「Our code is released under the Apache 2.0 License. The pre-trained model is licensed under the CC-BY-NC due to constraints from its training data (e.g., Emilia)」(版の記載なし。HF のカードにはライセンスの記載が無い)(2026-10-20 に確認)"
      ],
      "head_status": 302,
      "head_checked_at": "2026-10-20T10:33:07Z",
@@ -42759,8 +42769,8 @@
    "template": null,
    "params_b": null,
    "precision": "fp32",
-   "license": null,
-   "license_url": null,
+   "license": "other",
+   "license_url": "https://github.com/k2-fsa/OmniVoice#license",
    "base_model": "Qwen/Qwen3-0.6B",
    "content": "sfw",
    "content_evidence": [],
@@ -42772,10 +42782,8 @@
    "downloads": 1799588,
    "likes": 1564,
    "downloads_all_time": 10403122,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: k2-fsa/OmniVoice にライセンスの記載がありません(model.safetensors)"
-   ],
+   "license_name": "cc-by-nc",
+   "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
    "comfy_family": null,

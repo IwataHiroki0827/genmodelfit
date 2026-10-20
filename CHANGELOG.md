@@ -14,6 +14,11 @@ RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直�
 
 ### Changed
 
+- License tracing (#28): a hand-checked source table (`license_sources.py`) maps files in repackaging repos
+  (Comfy-Org, Kijai, …) to their original models, using primary sources only (original model card / LICENSE,
+  official GitHub, sha256). `update` applies it to files it could not resolve; `apply_license_sources(db)` applies it
+  offline. VOID (netflix/void-model) is now unknown (fine-tuned from a CogVideoX-licensed model). `LICENSE_POLICY` 4.
+  ライセンスの出どころの表を足した(再配布のファイル → 元のモデル。一次資料だけで確かめたもの)。
 - **Wan 2.2 14B and other workflows that run several diffusion models one sampler after another** (high_noise →
   low_noise): the swapped (`GPU~`) and offload estimates count one model (+ its LoRA) at a time, because ComfyUI
   unloads the unused model before loading the next one (`load_models_gpu` → `free_memory`, ComfyUI commit

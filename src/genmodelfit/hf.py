@@ -582,6 +582,15 @@ LINEAGES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         re.compile(r"(?<![a-z0-9])lotus[\W_]*(depth|normal|[dg][\W_]v)", re.IGNORECASE),
         "Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)",
     ),
+    # https://huggingface.co/netflix/void-model のカード「VOID is built on CogVideoX-Fun-V1.5-5b-InP」。
+    # https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.5-5b-InP の LICENSE は The CogVideoX License
+    # (5B の Transformer。商用は登録が要り、月 100 万アクセスの上限)。VOID の表記は apache-2.0(#28)
+    (
+        "void-model",
+        re.compile(r"(?<![a-z0-9])void[\W_]*(model|pass[\W_]*\d)", re.IGNORECASE),
+        "VOID は CogVideoX-Fun-V1.5-5b-InP(Transformer は CogVideoX License)から微調整している"
+        "(カードの apache-2.0 は元の規約より寛容でありうる)",
+    ),
     (
         "sd2",
         re.compile(

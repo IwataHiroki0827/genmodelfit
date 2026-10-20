@@ -110,7 +110,7 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 
 一覧はソース非公開の商用アプリ(AI生成キット)の自動のおすすめに使う。**寛容の側に間違えることが一番悪い**ので、
 確かめられないとき・表記が食い違うときは `license: null`(不明)にし、`license_evidence` に
-`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 3)を上げる。
+`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 4。#28 で出どころの表と VOID の系統を足して上げた)を上げる。
 
 ### 段階(`hf.license_tier`。一式は一番厳しいもの)
 
@@ -166,6 +166,8 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 ファイルには `license` / `license_name` / `license_url`、`license_from`(ライセンスを読んだリポジトリ。部品の表なら表の本家)、
 `license_path`(たどった道: 置き場所 → base_model … → 決め手)、`license_evidence`、`repo_license`(置き場所の表記が
 決め手と違うときの置き場所の表記)を入れる。HF 以外のファイル(Civitai など)は不明。
+
+上の決め方で不明になったファイルには、最後に**出どころの表**(`license_sources.SOURCES`。下の「出どころの表」)を当てる。
 
 ### 部品の表(2026-10-20 に確認。再配布の中のファイルだけに当てる)
 
@@ -249,9 +251,88 @@ NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Ma
 | sdpose | SDPose・sdpose_wholebody | https://huggingface.co/teemosliang/SDPose-Wholebody のカード「U-Net backbone initialized with Stable Diffusion v2 weights」(表記は mit) |
 | lotus | lotus-depth・lotus-normal | https://github.com/EnVision-Research/Lotus の学習の設定が stabilityai/stable-diffusion-2-base から始める(表記は apache-2.0) |
 | sd2 | sd2・sd21・stable-diffusion-2 | 元の stabilityai/stable-diffusion-2・-2-base は 2026-10-20 に匿名で読めない(401)。写しの表記は openrail++ |
+| void-model | void_pass1・netflix/void-model | https://huggingface.co/netflix/void-model のカード「VOID is built on CogVideoX-Fun-V1.5-5b-InP」。元の https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.5-5b-InP の LICENSE は The CogVideoX License(5B の Transformer。商用は登録・月 100 万アクセスの上限)。VOID の表記は apache-2.0(#28) |
 
 系統の表は「少なくともこれだけ厳しい」という下限で、ライセンスを決めるのには使わない(寛容な系統に当たっても、
-派生の表記が確かめられたことにはならない。例: Wan の系統でも Wan-Dancer は本家が読めないので不明)。
+派生の表記が確かめられたことにはならない。例: Wan の系統でも、Comfy-Org/Wan-Dancer の base_model(Wan-AI/Wan2.2-Dancer-14B)は
+読めないので自動では不明。本当の本家 Wan-AI/Wan-Dancer-14B は下の出どころの表で確かめた)。
+
+### 出どころの表(`license_sources.SOURCES`。#28、2026-10-20 に確認)
+
+再配布のリポジトリ(Comfy-Org・Kijai など)は base_model を書いていない・ファイルと合わない base_model を書いている
+ことが多く、上の決め方では不明になる(2026-10-20 の同梱の一覧で、無検閲を除く 299 項目のうち 113 項目)。そこで、
+不明になったファイルについて、人が**一次資料**で出どころをたどり、確かめられたものだけを表にした。
+
+たどり方の決まり(寛容の側に間違えない):
+
+1. 一次資料は、元のモデルの HF のカード(cardData の license と本文)・LICENSE・公式の GitHub の LICENSE と README・
+   公式のコードだけ。再配布の README は「元はどれか」を知る手がかりにだけ使い、そこに書いてあるライセンスは使わない
+   (例: Comfy-Org/Lens の README は FLUX.2-dev を apache-2.0 と書いているが、本当は非商用)
+2. 「この置き場所のこのファイルは、この元の重み」と次のどれかで確かめる: sha256 が元のファイルと同じ / 公式の README・
+   コードが置き場所かファイルを名指しする / 公式のコードが元のリポジトリから手を加えずに読む / safetensors のヘッダ
+   (Range 要求で読む)で重みの名前・形が元と同じ / 再配布の README が元を挙げ、大きさが合う
+3. 元のライセンスは書いてあるとおり。カードの cardData と本文が食い違うときは厳しいほう(ChronoEdit は cardData が
+   apache-2.0 だが、本文が NVIDIA Open Model License)。独自のライセンスは `other` と名前で持つ
+4. 派生(LoRA・抽出・量子化)は、元の元(base_model)のライセンスより寛容にならないことを確かめる。元より寛容な表記しか
+   無いもの(USO・ObjectRemovalFluxFill・LTX-2.3-Transition・MiniMax-H3 Turbo)・LoRA の置き場所にライセンスの記載が
+   無いもの(Anima の公式 LoRA・ByteZSzn の Flux2TurboComfyv2)は表に入れない(不明のまま)
+5. 寛容なライセンスの行は、根拠の文にそのライセンス(apache-2.0 / Apache License 2.0 など)が書いてあるものだけ
+   (tests/test_license_sources.py が検査)
+6. 行は「置き場所のリポジトリ」と「ファイル名」の組で当てる。同じ名前でも別の置き場所のファイルには当てない。
+   本家を確かめられない部品・元を読めない系統の名前のファイルには当てない
+
+当てたファイルには `license_from`(元)・`license_url`・`license_path`(置き場所 → … → 元)と、`license_evidence` に
+`license_source:<行>` と根拠の文(URL・書いてあること・確かめた日)を入れる。`update` は自動で決めたあと不明のものに
+だけ当てる。同梱の一覧には、ネットに触らずに `license_sources.apply_license_sources(db)` で当てられる。
+`python -m genmodelfit.license_sources` は、当てたときに不明・auto の項目が何件変わるかを出す(一覧は書き換えない)。
+
+| 置き場所 | ファイル名 | ライセンス | 元(一次資料) | 確かめ方 |
+|---|---|---|---|---|
+| Kijai/WanVideo_comfy | `Wan21_CausVid_14B_T2V_lora_rank*` | cc-by-nc-4.0 | [lightx2v/Wan2.1-T2V-14B-CausVid](https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid) | Kijai の README「CausVid LoRAs are experimental extractions from the CausVid finetunes」と元のリンク |
+| Kijai/WanVideo_comfy | `Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank*` | cc-by-nc-4.0 | [tianweiy/CausVid](https://huggingface.co/tianweiy/CausVid) | 同上(「CausVid 1.3B」) |
+| Kijai/WanVideo_comfy | `Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank*` | apache-2.0 | [lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill](https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill)(LICENSE.txt は Apache 2.0) | Kijai の README「CFG and Step distill 14B」 |
+| Kijai/WanVideo_comfy・Comfy-Org/Wan-Animate-2 | `lightx2v_I2V_14B_480p_cfg_step_distill_rank*_bf16` | apache-2.0 | [lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v](https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v) | Kijai の Lightx2v/README.md「Extracted from …/distill_models」。Comfy-Org の写しは sha256 が同じ |
+| Kijai/WanVideo_comfy | `lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank*_bf16` | apache-2.0 | [lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v](https://huggingface.co/lightx2v/Wan2.1-T2V-14B-StepDistill-CfgDistill-Lightx2v) | Kijai の Lightx2v/README.md「Extracted from …/distill_model.safetensors」 |
+| Kijai/WanVideo_comfy | `WanAnimate_relight_lora_fp16` | apache-2.0 | [Wan-AI/Wan2.2-Animate-14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B) の relighting_lora | ヘッダで 960 個の重みの形が同じ(名前の付け方と F32→F16 だけ違う) |
+| Kijai/WanVideo_comfy_fp8_scaled | `Wan21-WanMove_fp8_scaled_e4m3fn_KJ` | apache-2.0 | [Ruihang/Wan-Move-14B-480P](https://huggingface.co/Ruihang/Wan-Move-14B-480P) | 公式 https://github.com/ali-vilab/Wan-Move の README が Kijai のこのフォルダを挙げる |
+| Comfy-Org/Wan-Animate-2 | `wan_animate_2(_distill)_*` | apache-2.0 | [Wan-AI/Wan2.2-Animate-2-14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B) | 再配布の README の元 |
+| Comfy-Org/MiniMax-Music-3 | `minimax_music3_*` | other(minimax-music3-community-license) | [MiniMaxAI/MiniMax-Music3 の LICENSE](https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE)(UI への表示・年 2,000 万ドル超は許可) | 再配布の README の元 |
+| Comfy-Org/HunyuanVideo_repackaged・Kijai/HunyuanVideo_comfy | `hunyuan_video_t2v_720p_*`・`hunyuan_video_vae_*` | other(tencent-hunyuan-community) | [tencent/HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo) | 再配布の README の元 |
+| Comfy-Org/NewBie-image-Exp0.1_repackaged | `gemma_3_4b_it_*` | gemma(元は申請が要る) | [google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it) | 元の NewBie-AI/NewBie-image-Exp0.1 のカード「We use Gemma3-4B-it as the primary text encoder」 |
+| Comfy-Org/NewBie-image-Exp0.1_repackaged | `jina_clip_v2_*` | cc-by-nc-4.0 | [jinaai/jina-clip-v2](https://huggingface.co/jinaai/jina-clip-v2) | 同じカード「Jina CLIP v2」 |
+| Kijai/LTXV2_comfy | `ltx-2-19b-*_transformer_only_*`・`ltx-2-19b-embeddings_connector_*` | other(ltx-2-community-license-agreement) | [Lightricks/LTX-2](https://huggingface.co/Lightricks/LTX-2) | Kijai の README「extracted from their respective original models」 |
+| Comfy-Org/ltx-2 | `gemma-3-12b-it-abliterated_lora_rank*` | gemma | [mlabonne/gemma-3-12b-it-abliterated](https://huggingface.co/mlabonne/gemma-3-12b-it-abliterated) | 再配布の cardData の base_model |
+| Comfy-Org/HunyuanImage_2.1_ComfyUI | `qwen_2.5_vl_7b` | apache-2.0 | [Qwen/Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | 公式 https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md が `hf download Qwen/Qwen2.5-VL-7B-Instruct` |
+| circlestone-labs/Anima | `qwen_3_06b_base` | apache-2.0 | [Qwen/Qwen3-0.6B-Base](https://huggingface.co/Qwen/Qwen3-0.6B-Base) | sha256 が同じ |
+| Comfy-Org/Wan_2.2_ComfyUI_Repackaged | `chrono_edit_14B_*` | other(nvidia-open-model-license) | [nvidia/ChronoEdit-14B-Diffusers](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers)(本文「Governing Terms: … NVIDIA Open Model License Agreement」) | 再配布の README の元 |
+| Comfy-Org/ERNIE-Image | `ministral-3-3b` | apache-2.0 | [baidu/ERNIE-Image](https://huggingface.co/baidu/ERNIE-Image) の text_encoder(Ministral 3 3B。mistralai の Ministral-3-3B は全部 apache-2.0) | 再配布の README の元・text_encoder/config.json |
+| ByteZSzn/Flux.2-Turbo-ComfyUI・Comfy-Org/flux2-dev | `Flux_2-Turbo-LoRA_comfyui` | other(flux-dev-non-commercial-license) | [fal/FLUX.2-dev-Turbo](https://huggingface.co/fal/FLUX.2-dev-Turbo) | sha256 が fal の comfy/ のファイルと同じ |
+| Comfy-Org/flux2-dev | `mistral_3_small_flux2_*` | apache-2.0 | [mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506) | 公式のコード black-forest-labs/flux2 の text_encoder.py(コミット 50fe516)がこれをそのまま読む |
+| Comfy-Org/flux2-klein-9B・Comfy-Org/vae-text-encorder-for-flux-klein-9b | `qwen_3_8b*` | apache-2.0 | [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) | 公式のコード util.py の klein-9b が Qwen3-8B を読む。大きさが分割の合計と合う |
+| black-forest-labs/flux-3-image-klein-comfy | `qwen3.5_9b_flux3_prompt_upsampler_*` | other(flux-kommunity-license) | 置き場所(BFL 自身)の cardData | 本家自身のリポジトリ。元の Qwen3.5(apache-2.0)より厳しい |
+| Comfy-Org/MOSS-Image | `qwen3.5_9b_*` | apache-2.0 | [OpenMOSS-Team/MOSS-Image-Base](https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base) の text_encoder(Qwen3.5-9B。Qwen/Qwen3.5-9B も apache-2.0) | 再配布の base_model・text_encoder/config.json |
+| Kijai/SUPIR_pruned | `SUPIR-v0[QF]_*` | other(supir-non-commercial) | https://github.com/Fanghua-Yu/SUPIR の「Non-Commercial Use Only Declaration」 | 公式の重みの名前 |
+| Comfy-Org/stable-audio-3 | `t5gemma_b_b_ul2` | gemma(元は申請が要る) | [google/t5gemma-b-b-ul2](https://huggingface.co/google/t5gemma-b-b-ul2) | 公式 Stability-AI/stable-audio-tools の docs/conditioning.md |
+| Comfy-Org/void-model | `cogvideox_vae` | apache-2.0 | [zai-org/CogVideoX-2b](https://huggingface.co/zai-org/CogVideoX-2b)「including its corresponding Transformers module and VAE module … Apache 2.0」 | sha256 が alibaba-pai/CogVideoX-Fun-V1.5-5b-InP の VAE と同じ。2b と 5b の VAE は同じ |
+| Comfy-Org/HuMo_ComfyUI | `whisper_large_v3_fp16` | apache-2.0 | [openai/whisper-large-v3](https://huggingface.co/openai/whisper-large-v3) | sha256 が同じ |
+| Comfy-Org/PixelDiT | `gemma_2_2b_it_elm_*` | gemma(元は申請が要る) | [google/gemma-2-2b-it](https://huggingface.co/google/gemma-2-2b-it) | 元の nvidia/PixelDiT-1300M-1024px のカード「Text encoder: Gemma-2-2B-IT」 |
+| Comfy-Org/PixelDiT | `pid_flux1_*` | other(nsclv1) | [nvidia/PiD](https://huggingface.co/nvidia/PiD)(非商用) | 再配布の base_model |
+| Comfy-Org/Wan-Dancer | `wan2.2_dancer_14b_{global,local}_*` | apache-2.0 | [Wan-AI/Wan-Dancer-14B](https://huggingface.co/Wan-AI/Wan-Dancer-14B) | 公式 https://github.com/Wan-Video/Wan-Dancer の README の HF のリンク |
+| Comfy-Org/Krea-2 | `krea2_style_reference` | other(krea-2-community-license) | [ostris/krea2_turbo_style_reference](https://huggingface.co/ostris/krea2_turbo_style_reference) | sha256 が同じ |
+| Comfy-Org/Krea-2 | `krea2_darkbrush` | other(krea-2-community-license) | [krea/Krea-2-LoRA-darkbrush](https://huggingface.co/krea/Krea-2-LoRA-darkbrush) | 再配布の README の元。大きさ・ヘッダが同じ |
+| Comfy-Org/Krea-2 | `qwen3vl_4b_*` | other(krea-2-community-license) | [krea/Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) の text_encoder | 元が同じ大きさのテキストエンコーダを自分のライセンスで配る(Qwen3-VL の apache-2.0 より厳しい) |
+| k2-fsa/OmniVoice | `model.safetensors` | other(cc-by-nc。版の記載なし) | https://github.com/k2-fsa/OmniVoice の README「The pre-trained model is licensed under the CC-BY-NC」 | 公式の README |
+
+確かめきれず不明のままにしたもの: Comfy-Org/Mage-Flow(本家 microsoft/Mage-Flow が 401、GitHub も無い)、Comfy-Org/Lens
+(microsoft/Lens が 401。GitHub は MIT だが重みの記載が無い。gpt-oss も microsoft/Lens の text_encoder から読むので
+openai/gpt-oss-20b そのままとは言えない)、FILM の `film_net_fp16`(重みは GitHub の外で、重みのライセンスの記載が無い)、
+HunyuanVideo の `llava_llama3_*`(xtuner/llava-llama-3-8b にライセンスの記載が無い)、ByteZSzn の `Flux2TurboComfyv2`、
+Anima の公式 LoRA、lightx2v/Minimax-h3-Turbo、Kokoro(元の StyleTTS2-LJSpeech に記載が無い)、SDPose・Lotus・
+RT-DETRv4(上の系統・部品)、Civitai のファイル。
+
+表を同梱の一覧(2026-10-20)に当てると、無検閲を除く 299 項目のライセンス不明は 113 → 46(ファイルは 75 → 29)、
+auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 16 項目は、すべてのファイルのライセンスを人が確かめた
+(tests/test_license_sources.py の `JUSTIFIED_AUTO`。ここに無い項目が auto になったら試験が落ちる)。
 
 ### 一式のライセンス
 
