@@ -1198,6 +1198,12 @@ def build_database(
             # 毎週の更新の PR で増減が見えるように(#30)
             "unauthorized": sorted({f.repo_id for f in client.failures if f.status == 401}),
         }
+        from .repo_precision import split_unauthorized
+
+        # 401 のうち、無いと確かめたもの(匿名では非公開と見分けられない。repo_precision.KNOWN_MISSING)
+        stats["huggingface"]["unauthorized_missing"] = split_unauthorized(
+            stats["huggingface"]["unauthorized"]
+        )[1]
     if hf_stats:
         stats["huggingface-search"] = hf_stats
     stats["civitai"] = "使っていません(利用規約。docs/sources.md)"
@@ -1389,6 +1395,7 @@ def inspect_database(
         say("前に読めなかった(401)リポジトリを確かめ直しています")
         hf["unauthorized_recheck"] = recheck_unauthorized(unauthorized_repos(hf), fetch.get_json)
         hf["unauthorized"] = list(hf["unauthorized_recheck"]["unauthorized"])
+        hf["unauthorized_missing"] = list(hf["unauthorized_recheck"]["missing"])
     db.save(out_path)
     return db
 

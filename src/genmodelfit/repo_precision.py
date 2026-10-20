@@ -6,6 +6,8 @@
 
 1. Hub API(`/api/models/<repo>`)の `safetensors.parameters`(dtype ごとの要素の数。リポジトリの .safetensors の
    合計)。一つの dtype が 9 割以上なら、その dtype を本体の精度とみなす(本体が .safetensors のときだけ)。
+   ただし要素の数 × 1 要素のバイト数の合計が、この項目の本体の safetensors(同じリポジトリの分割も足す)の
+   大きさと 5% 以内で合うときだけ(リポジトリに別の重みも並ぶと、集計が本体を表さない)。
    gated のリポジトリでも匿名で読める(ファイルの見出しは 401 で読めない)
 2. 本体と同じフォルダの `config.json` の `torch_dtype` / `dtype`(API のファイルの一覧にあって、gated でない
    ときだけ取る。重みの見出しと違い、小さい JSON を 1 回取るだけ)
@@ -34,6 +36,9 @@ HF = "https://huggingface.co"
 CACHE_FILE = "repo_precision.json"
 DELAY_S = 0.3  # 要求の間に空ける秒数
 DOMINANT_SHARE = 0.9  # API の dtype の合計のうち、この割合以上を占める dtype だけを使う
+# API の要素の数 × 1 要素のバイト数と、本体の safetensors の大きさの合計の差がこの割合以内のときだけ使う
+# (リポジトリに別の重みも並ぶと、集計が本体の精度を表さないので)
+SIZE_TOLERANCE = 0.05
 ST_EXTS = (".safetensors", ".sft")
 # config.json の torch_dtype / dtype → 精度
 CONFIG_DTYPES = {
@@ -60,6 +65,28 @@ def api_url(repo_id: str, revision: str = "main") -> str:
 
 def config_url(repo_id: str, revision: str, path: str) -> str:
     return f"{HF}/{repo_id}/resolve/{quote(revision or 'main', safe='')}/{quote(path)}"
+
+
+def api_bytes(parameters: Any) -> int | None:
+    """API の safetensors.parameters の、要素の数 × 1 要素のバイト数の合計(およそのファイルの大きさ)。"""
+    from .headers import ST_DTYPES
+
+    if not isinstance(parameters, dict):
+        return None
+    total = 0.0
+    for k, v in parameters.items():
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            total += v * ST_DTYPES.get(str(k).upper(), (1, None))[0]
+    return int(total) or None
+
+
+def size_matches(parameters: Any, file_bytes: int | None) -> bool:
+    """API の集計の大きさが、本体の safetensors の大きさ(file_bytes)と SIZE_TOLERANCE 以内で合うか。
+    大きさが分からなければ合わないとみなす(決めない)。"""
+    want = api_bytes(parameters)
+    if not want or not file_bytes:
+        return False
+    return abs(want - file_bytes) <= file_bytes * SIZE_TOLERANCE
 
 
 def dominant_dtype(parameters: Any) -> str | None:
@@ -142,6 +169,8 @@ class RepoPrecisionStats:
     unknown: int = 0  # どちらでも決まらないファイル
     skipped_offline: int = 0
     unauthorized: list[str] = field(default_factory=list)  # API が 401 のリポジトリ
+    # API の dtype は一つに決まるが、集計の大きさが本体の大きさと合わず使わなかったリポジトリ
+    size_mismatch: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -154,6 +183,25 @@ class RepoPrecisionStats:
 def target_files(entries: Iterable[ModelEntry]) -> list[ModelFile]:
     """リポジトリから精度を読むファイル: 本体(一番大きいもの)が Hugging Face にあり、見出しも名前も精度を
     示さないもの。"""
+    return [f for _e, f in _targets(entries)]
+
+
+def repo_main_bytes(e: ModelEntry, f: ModelFile) -> int | None:
+    """f と同じリポジトリにある、この項目の本体の safetensors の大きさの合計(分割されたものも足す)。"""
+    from .estimate import _role_of
+
+    sizes = [
+        g.size_bytes
+        for g in e.files
+        if g.repo_id == f.repo_id
+        and (g is f or _role_of(g) == "main")
+        and g.name.lower().endswith(ST_EXTS)
+        and g.size_bytes
+    ]
+    return sum(sizes) or None
+
+
+def _targets(entries: Iterable[ModelEntry]) -> list[tuple[ModelEntry, ModelFile]]:
     from .groups import main_files
     from .hf import guess_precision, parse_hf_url
 
@@ -165,7 +213,7 @@ def target_files(entries: Iterable[ModelEntry]) -> list[ModelFile]:
         f = mains[0]
         if not parse_hf_url(f.url) or f.header_precision or guess_precision(f.name):
             continue
-        out.append(f)
+        out.append((e, f))
     return out
 
 
@@ -185,8 +233,8 @@ def inspect_repos(
     offline=True か get_json が無いときはキャッシュだけを使う。"""
     from .hf import parse_hf_url
 
-    files = target_files(entries)
-    stats = RepoPrecisionStats(files=len(files))
+    targets = _targets(entries)
+    stats = RepoPrecisionStats(files=len(targets))
     offline = offline or get_json is None
     sent = 0
     done: set[str] = set()  # この回で既に問い合わせた API・config.json(失敗しても同じ回では送り直さない)
@@ -244,7 +292,7 @@ def inspect_repos(
         return row
 
     repos: set[str] = set()
-    for f in files:
+    for e, f in targets:
         repo, rev, path = parse_hf_url(f.url)  # type: ignore[misc]
         repos.add(repo)
         before = stats.fetched
@@ -256,9 +304,13 @@ def inspect_repos(
         elif api.get("status") == 401 and repo not in stats.unauthorized:
             stats.unauthorized.append(repo)
         if api and api.get("status") == 200:
+            params = api.get("parameters")
             if path.lower().endswith(ST_EXTS):
-                prec = dominant_dtype(api.get("parameters"))
-                source = "hf_api" if prec else None
+                if size_matches(params, repo_main_bytes(e, f)):
+                    prec = dominant_dtype(params)
+                    source = "hf_api" if prec else None
+                elif dominant_dtype(params):
+                    stats.size_mismatch.append(repo)
             if not prec:
                 folder = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
                 cfg = f"{folder}config.json"
@@ -279,6 +331,21 @@ def inspect_repos(
     return stats
 
 
+# 匿名の API は、非公開のリポジトリにも、無いリポジトリにも 401 を返す(2026-10-20 に、無い名前
+# this-org-zzz/does-not-exist-123 でも 401 を確かめた)。匿名では見分けられないので、無いと確かめたものだけを
+# 表に書く(リポジトリ → 確かめた方法)。毎週の更新の PR で「非公開で、公開を待つもの」と分けて見られるように
+KNOWN_MISSING = {
+    "google/gemma-3-12b": "Google の公開の一覧(api/models?author=google&search=gemma-3-12b、2026-10-20)は "
+    "gemma-3-12b-it・gemma-3-12b-pt と QAT 版だけ。名前の誤り(-it / -pt の付け忘れ)",
+}
+
+
+def split_unauthorized(repos: Iterable[str]) -> tuple[list[str], list[str]]:
+    """401 のリポジトリを (非公開か無い, 無いと確かめた) に分ける。"""
+    rs = sorted(set(repos))
+    return [r for r in rs if r not in KNOWN_MISSING], [r for r in rs if r in KNOWN_MISSING]
+
+
 def recheck_unauthorized(
     repos: Iterable[str],
     get_json: Getter,
@@ -287,7 +354,8 @@ def recheck_unauthorized(
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """前に API が 401 だったリポジトリ(非公開・消えた)を匿名で確かめ直す。
-    返す値: {"unauthorized": まだ読めない, "readable": 読めるようになった,
+    返す値: {"unauthorized": まだ読めない(全部), "private_or_missing": そのうち KNOWN_MISSING でないもの,
+    "missing": そのうち無いと確かめたもの, "readable": 読めるようになった,
     "failed": ほかの理由で確かめられない, "checked_at"}。
     読めるようになったものは、次の `update`(作り直し)でライセンス・ファイルが入る。"""
     still: list[str] = []
@@ -301,4 +369,12 @@ def recheck_unauthorized(
             readable.append(repo)
         except Exception as e:
             (still if _status(e) == 401 else failed).append(repo)
-    return {"unauthorized": still, "readable": readable, "failed": failed, "checked_at": _now()}
+    private, missing = split_unauthorized(still)
+    return {
+        "unauthorized": still,
+        "private_or_missing": private,
+        "missing": missing,
+        "readable": readable,
+        "failed": failed,
+        "checked_at": _now(),
+    }

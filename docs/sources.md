@@ -109,7 +109,8 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 1. `header`: 本体のファイルの見出し(safetensors の JSON・GGUF の頭。Range 要求で読む。`headers.py`)
 2. `filename`: 本体のファイル名(nvfp4 / fp4 / nf4 / fp8 / int8 / int4 / bf16 / fp16 / fp32 / gguf-<量子化>)
 3. `hf_api` / `config`: 本体を置いた HF のリポジトリ(`repo_precision.py`)。Hub API(`/api/models/<repo>`、匿名)の
-   `safetensors.parameters` で一つの dtype が 9 割以上ならそれ(gated でも読める。見出しは 401 で読めない)。
+   `safetensors.parameters` で一つの dtype が 9 割以上、かつ要素の数 × 1 要素のバイト数がこの項目の本体の
+   safetensors(同じリポジトリの分割も足す)の大きさと 5% 以内で合えばそれ(gated でも読める。見出しは 401 で読めない)。
    無ければ本体と同じフォルダの `config.json` の `torch_dtype` / `dtype`(API の一覧にあって gated でないときだけ取る)。
    1 つずつ順に、間を 0.3 秒空けて送り、429 は Retry-After を守る。結果は `<cache>/repo_precision.json`
 4. `workflow`: 公式テンプレートの本体の読み込みノード(`workflow.loader_precision`)。UNETLoader の `weight_dtype`・
@@ -117,12 +118,13 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
    (GIMM-VFI の `fp32`、WanVideo の `base_precision` など)。`default`・`auto` は何も言わない。LoRA・CLIP・VAE の
    読み込みノードは見ない。カスタムノードが自分で重みを取るテンプレート(ファイルの一覧が無いもの)にも使える
 
-2026-10-20 の同梱の一覧では、無検閲を除く精度の不明は 25 → 9 件(見出し 3・Hub API 5・ワークフロー 8)。残る 9 件:
+2026-10-20 の同梱の一覧では、無検閲を除く精度の不明は 25 → 10 件(見出し 3・Hub API 4・ワークフロー 8)。残る 10 件:
 Civitai のチェックポイント(realismByStableYogi。名前に精度が無く、HF ではないので見出しも読まない)の 2 件、
 読み込みノードが精度を言わないテンプレート 4 件(LivePortrait は `auto`、AnimateDiff の Purz は本体の一覧が無く
 チェックポイントの名前に精度が無い、Lineart・OpenPose は前処理のノードが重みを自分で取る)、
 .pth / .ckpt の HF のモデル 3 件(Kokoro・MeloTTS は config.json に dtype が無い、tts-hifigan は config.json が無い。
-Hub API の safetensors の集計は .safetensors だけ)。
+Hub API の safetensors の集計は .safetensors だけ)、csm-1b(Hub API は F32 で 62.1 億バイトぶんだが、本体の
+2 つの分割の合計は 71.3 億バイトで合わない)。
 
 パラメータ数(params_b)はファイル名・題の `14B` `1.3B` のような表記から推す(無ければ null)。
 
@@ -353,12 +355,13 @@ NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Ma
 | Comfy-Org/Krea-2 | `krea2_darkbrush` | other(krea-2-community-license) | [krea/Krea-2-LoRA-darkbrush](https://huggingface.co/krea/Krea-2-LoRA-darkbrush) | 再配布の README の元。大きさ・ヘッダが同じ |
 | Comfy-Org/Krea-2 | `qwen3vl_4b_*` | other(krea-2-community-license) | [krea/Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) の text_encoder | 元が同じ大きさのテキストエンコーダを自分のライセンスで配る(Qwen3-VL の apache-2.0 より厳しい) |
 | k2-fsa/OmniVoice | `model.safetensors` | other(cc-by-nc。版の記載なし) | https://github.com/k2-fsa/OmniVoice の README「The pre-trained model is licensed under the CC-BY-NC」 | 公式の README |
+| circlestone-labs/Anima-Official-LoRAs | `anima-*`(`anima-turbo-lora-v0.2` など) | other(circlestone-labs-non-commercial-v1.0) | [LICENSE.md](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md)(2026-05-26 のコミット c221e431c8) | 見出し「CircleStone Labs Non-Commercial License v1.0」、2.b「for Non-Commercial Purposes」だけ。カードのメタデータは空(#30 で確認) |
 
 確かめきれず不明のままにしたもの: Comfy-Org/Mage-Flow(本家 microsoft/Mage-Flow が 401、GitHub も無い)、Comfy-Org/Lens
 (microsoft/Lens が 401。GitHub は MIT だが重みの記載が無い。gpt-oss も microsoft/Lens の text_encoder から読むので
 openai/gpt-oss-20b そのままとは言えない)、FILM の `film_net_fp16`(重みは GitHub の外で、重みのライセンスの記載が無い)、
 HunyuanVideo の `llava_llama3_*`(xtuner/llava-llama-3-8b にライセンスの記載が無い)、ByteZSzn の `Flux2TurboComfyv2`、
-Anima の公式 LoRA、lightx2v/Minimax-h3-Turbo、Kokoro(元の StyleTTS2-LJSpeech に記載が無い)、SDPose・Lotus・
+lightx2v/Minimax-h3-Turbo、Kokoro(元の StyleTTS2-LJSpeech に記載が無い)、SDPose・Lotus・
 RT-DETRv4(上の系統・部品)、Civitai のファイル。
 本家の持ち主への記載のお願いの下書きは docs/license_requests.md(出すのはオーナーの確認の後)。
 
@@ -366,7 +369,12 @@ RT-DETRv4(上の系統・部品)、Civitai のファイル。
 `sources.huggingface.unauthorized` に並べる。`update --inspect-only` はそのリポジトリにもう一度 API を送り、
 `sources.huggingface.unauthorized_recheck`(`unauthorized` / `readable` / `failed`)に書く。毎週の更新(#19)の PR の
 差分で、Mage-Flow・Lens などが公開されたら分かる(読めるようになったものは、次の作り直しでライセンスが入る)。
-2026-10-20 の時点: Wan-AI/Wan2.2-Dancer-14B、google/gemma-3-12b、microsoft/Lens、microsoft/Mage-Flow。
+匿名の API は、非公開のリポジトリにも無いリポジトリにも 401 を返す(無い名前 this-org-zzz/does-not-exist-123 でも 401)
+ので匿名では見分けられない。無いと確かめた名前だけを `repo_precision.KNOWN_MISSING` に書き、
+`unauthorized_missing`(確かめ直しでは `missing`)に分ける。
+2026-10-20 の時点: 非公開か無い = Wan-AI/Wan2.2-Dancer-14B、microsoft/Lens、microsoft/Mage-Flow。無い = google/gemma-3-12b
+(Google の公開の一覧は gemma-3-12b-it・-pt と QAT 版だけ。-it / -pt の付け忘れの名前。どのカードの base_model から来たかは
+記録が無い)。
 
 表を同梱の一覧(2026-10-20)に当てると、無検閲を除く 299 項目のライセンス不明は 113 → 46(ファイルは 75 → 29)、
 auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 16 項目は、すべてのファイルのライセンスを人が確かめた

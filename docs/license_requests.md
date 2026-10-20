@@ -15,8 +15,7 @@
 
 | 本家 | 足りないもの | 影響する項目(無検閲を除く) |
 |---|---|---|
-| [circlestone-labs/Anima-Official-LoRAs](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs) | モデルカードにライセンスが無い(`anima-turbo-lora-v0.2.safetensors`) | Anima の公式テンプレート 4 件(base v1、LLLite の any / depth / inpainting) |
-| [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo) | モデルカードにライセンスが無い | MiniMax H3 の i2v・続き・t2v の 3 件 |
+| [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo) | README は「Model assets are governed by the repository license」と書くが、リポジトリにライセンス(メタデータ・LICENSE)が無い | MiniMax H3 の i2v・続き・t2v の 3 件 |
 | [yl4579/StyleTTS2-LJSpeech](https://huggingface.co/yl4579/StyleTTS2-LJSpeech) | ライセンスが無い。Kokoro-82M(apache-2.0)の base_model なので、Kokoro も不明になる | 読み上げ Kokoro-82M |
 | [xtuner/llava-llama-3-8b](https://huggingface.co/xtuner/llava-llama-3-8b) | ライセンスが無い(Llama 3 から作った重み)。HunyuanVideo のテキストエンコーダ `llava_llama3_*` の元 | HunyuanVideo の文章から動画 1 件 |
 | [ByteZSzn/Flux.2-Turbo-ComfyUI](https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI) | ライセンスが無い(`Flux2TurboComfyv2`。FLUX.2 [dev] の LoRA) | FLUX.2 fp8 の 1 件 |
@@ -25,25 +24,16 @@
 
 ### 下書き(英語)
 
-**circlestone-labs/Anima-Official-LoRAs**
-
-> Title: License for the LoRA weights
->
-> Hello, and thank you for releasing the official Anima LoRAs. The model card does not state a license for the
-> weights (e.g. `anima-turbo-lora-v0.2.safetensors`). ComfyUI's official Anima templates use this file, and tools
-> that check model licenses before recommending them (such as genmodelfit) currently have to treat it as
-> "license unknown", so it is hidden from users. Could you add a `license:` entry to the model card (or a LICENSE
-> file) saying which terms apply — for example the same license as the Anima base model? Thank you!
-
 **lightx2v/Minimax-h3-Turbo**
 
 > Title: License for the Turbo weights
 >
-> Hello, and thank you for the Minimax-h3-Turbo release. The model card does not mention a license for these
-> weights. ComfyUI's official MiniMax H3 templates (image-to-video, continuation, text-to-video) download
+> Hello, and thank you for the Minimax-h3-Turbo release. The README says "Model assets are governed by the
+> repository license", but the repository has no license in its metadata and no LICENSE file. ComfyUI's official
+> MiniMax H3 templates (image-to-video, continuation, text-to-video) download
 > `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` from this repo, and license-aware tools have to treat
-> it as "license unknown". Could you state the license in the model card metadata (`license:`), e.g. whether it
-> follows the base MiniMax H3 model's terms? Thank you very much.
+> it as "license unknown". Could you add the repository license (a LICENSE file and `license:` in the card
+> metadata), e.g. stating whether it follows the base MiniMax H3 model's terms? Thank you very much.
 
 **yl4579/StyleTTS2-LJSpeech**
 
@@ -100,7 +90,7 @@
 | [jingheya/lotus-depth-d-v1-1](https://huggingface.co/jingheya/lotus-depth-d-v1-1) | apache-2.0 | Stable Diffusion 2 base(CreativeML Open RAIL++-M) | Lotus の深度を使う 5 件(Lotus Depth・FLUX の深度 LoRA・Qwen Image ControlNet・SD3.5 Large の深度・LTX-2 の深度から動画) |
 | [teemosliang/SDPose-Wholebody](https://huggingface.co/teemosliang/SDPose-Wholebody) | mit | Stable Diffusion 2 の U-Net(CreativeML Open RAIL++-M) | SDPose の 4 件と MiniMax H3 の ControlNet 1 件 |
 | [netflix/void-model](https://huggingface.co/netflix/void-model) | apache-2.0 | CogVideoX-Fun-V1.5-5b-InP(Transformer は CogVideoX License) | VOID の動画の消去 1 件 |
-| [joyfox/LTX-2.3-Transition-LORA](https://huggingface.co/joyfox/LTX-2.3-Transition-LORA) | apache-2.0 | Lightricks/LTX-2.3(LTX-2 Community License) | LTX-2.3 の場面転換 1 件 |
+| [joyfox/LTX-2.3-Transition-LORA](https://huggingface.co/joyfox/LTX-2.3-Transition-LORA) | apache-2.0 | Lightricks/LTX-2.3(LTX-2 Community License) | LTX-2.3 Style Transition 1 件(ComfyUI の公式ではなく、利用者 shane のテンプレート) |
 | [lrzjason/ObjectRemovalFluxFill](https://huggingface.co/lrzjason/ObjectRemovalFluxFill) | mit | FLUX.1 Fill [dev](FLUX.1 [dev] Non-Commercial License) | FLUX.1 Fill dev OneReward 1 件 |
 | [bytedance-research/USO](https://huggingface.co/bytedance-research/USO) | apache-2.0 | FLUX.1 [dev](FLUX.1 [dev] Non-Commercial License) | FLUX.1 dev USO 1 件 |
 | [Jmica/Drama-3-GGUF](https://huggingface.co/Jmica/Drama-3-GGUF) | other(fish-audio-community-license-v1.0) | fishaudio/drama-3(fish-audio-research-license) | 読み上げ Drama-3 GGUF |
@@ -142,8 +132,8 @@
 >
 > Hello, and thanks for the transition LoRA. The card says apache-2.0, but the LoRA is trained on Lightricks/LTX-2.3,
 > which is under the LTX-2 Community License Agreement. Could you clarify whether the LTX-2 Community License also
-> applies to this LoRA (and update the `license:` metadata if so)? ComfyUI's official style-transition template uses
-> it. Thank you!
+> applies to this LoRA (and update the `license:` metadata if so)? A community "LTX-2.3 Style Transition" template
+> in ComfyUI's template library uses it. Thank you!
 
 **lrzjason/ObjectRemovalFluxFill**
 
@@ -172,6 +162,24 @@
 > original LICENSE and align the `license_name` here, so tools that compare the two can show the right terms?
 > Thank you!
 
+## B2. ライセンスはあるが、カードのメタデータが空
+
+ライセンスの原文はあるので、genmodelfit は表(`license_sources.py` の `anima-official-loras`)で決めている。
+自動で読めるように、メタデータだけをお願いする(出さなくても困らない。優先度は低い)。
+
+| 本家 | 状態 | 影響 |
+|---|---|---|
+| [circlestone-labs/Anima-Official-LoRAs](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs) | [LICENSE.md](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md)(CircleStone Labs Non-Commercial License v1.0、2026-05-26 に追加)はあるが、カードの `license:` が空 | 表で other(circlestone-labs-non-commercial-v1.0)に決めた。非商用なので自動のおすすめには出ない |
+
+**circlestone-labs/Anima-Official-LoRAs**
+
+> Title: Add license metadata to the model card
+>
+> Hello, and thank you for the official Anima LoRAs and for adding LICENSE.md. The model card's metadata has no
+> `license:` entry yet, so tools that read the Hub metadata show the LoRAs as "license unknown" until someone adds
+> the license by hand. Could you add `license: other`, `license_name: circlestone-labs-non-commercial-v1.0` and
+> `license_link: LICENSE.md` to the README front matter? Thank you!
+
 ## C. 匿名で読めない(401)リポジトリ — 公開されたら確かめ直す
 
 非公開(または消えた)ので、依頼は出せない。毎週の更新(#19)で公開されたかを確かめる:
@@ -184,7 +192,7 @@
 | [microsoft/Mage-Flow](https://huggingface.co/microsoft/Mage-Flow) | Comfy-Org/Mage-Flow の本家。Mage-Flow の 4 件(t2i・turbo・edit・edit turbo)のライセンス不明。GitHub も見つからない | 401 |
 | [microsoft/Lens](https://huggingface.co/microsoft/Lens) | Comfy-Org/Lens の本家。Lens・Lens Turbo の 2 件(gpt-oss のテキストエンコーダも)。GitHub のコードは MIT だが重みの記載が無い | 401 |
 | [Wan-AI/Wan2.2-Dancer-14B](https://huggingface.co/Wan-AI/Wan2.2-Dancer-14B) | 出どころの表で Wan-AI/Wan-Dancer-14B(apache-2.0)から決めているので、ライセンス不明には効かない | 401 |
-| [google/gemma-3-12b](https://huggingface.co/google/gemma-3-12b) | 系統をたどる途中の名前。ライセンス不明には効かない | 401 |
+| google/gemma-3-12b | **無い名前**(Google の公開の一覧は gemma-3-12b-it・-pt と QAT 版だけ。匿名の API は無い名前にも 401 を返す)。`unauthorized_missing` に分けた。ライセンス不明には効かない | 401(無い) |
 
 ## D. 下書きを作らないもの
 

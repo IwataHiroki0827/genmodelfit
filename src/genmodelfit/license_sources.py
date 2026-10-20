@@ -608,6 +608,22 @@ SOURCES: tuple[LicenseSource, ...] = (
         "training data (e.g., Emilia)」(版の記載なし。HF のカードにはライセンスの記載が無い)",
         url="https://github.com/k2-fsa/OmniVoice#license",
     ),
+    # --- circlestone-labs(Anima の公式 LoRA。#30 の確認で LICENSE.md があると分かった) ------------
+    _s(
+        "anima-official-loras",
+        "circlestone-labs/Anima-Official-LoRAs",
+        r"anima-[\w.-]+\.safetensors",
+        "other",
+        "circlestone-labs-non-commercial-v1.0",
+        "circlestone-labs/Anima-Official-LoRAs",
+        f"{HF}/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md"
+        "(2026-05-26 のコミット c221e431c8 で追加)"
+        "の見出し「CircleStone Labs Non-Commercial License v1.0」、2.b「You may only access, use, "
+        "Distribute, or create Derivatives of the CircleStone Model or Derivatives "
+        "for Non-Commercial Purposes」。"
+        "カードのメタデータ(license:)は空",
+        url=f"{HF}/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md",
+    ),
 )
 
 

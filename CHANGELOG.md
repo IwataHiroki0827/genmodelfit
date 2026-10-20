@@ -7,10 +7,31 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.1.2] - Unreleased
+## [0.2.0] - Unreleased
 
-Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30).
-表の「?」「-」を減らし、使い分けをそろえた版。
+Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30). The JSON output changes in a way that
+can break apps (below), so this is a minor release under 0.x semver (owner's decision).
+表の「?」「-」を減らし、使い分けをそろえた版。JSON の形が変わるので 0.2.0 にした(オーナーの判断)。
+
+### Breaking (JSON)
+
+These only concern models whose weight size is unknown (`estimate.unknown_size: true`, `fit_level: "unknown"`):
+
+- `run_mode` (top level and `estimate.run_mode`) is now **`"unknown"`** (was `"none"`). `"none"` now only means
+  "does not run" (`fit_level: "too_tight"`). `run_mode_label` is `"?"` (was `"-"`).
+- `estimate.vram_gb`, `estimate.vram_offload_gb`, `estimate.ram_gb` and `estimate.vram_sequential_gb` are **`null`**
+  (were `0.0`). The Python `Estimate` attributes stay `0.0`; only `Estimate.to_dict()` / `--json` change.
+- `memory_available_gb` is now this PC's VRAM (or RAM) instead of `null` (the available amount is known;
+  `memory_required_gb` / `utilization_pct` stay `null`).
+
+Migration / 移行:
+
+- Code that treated `run_mode == "none"` as "cannot use" should also handle `"unknown"` (or check
+  `fit_level` / `estimate.unknown_size` first, as before).
+- Code that summed or compared `estimate.vram_gb` / `ram_gb` must skip `null` (it was a meaningless `0.0` before).
+- `fit_label` / `fit_level` and `schema_version` (1) are unchanged; the db.json fields added below are optional.
+大きさが分からないモデルだけ: run_mode は unknown、estimate の VRAM / RAM は null、memory_available_gb は
+この PC の量。run_mode の none を「使えない」と見ていたコードは unknown も扱う。
 
 ### Changed
 
@@ -19,29 +40,34 @@ Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30).
   size is unknown are `?` (Mode `-` stays for "does not run", VRAM `-` for CPU, Mem% `-` without a GPU). A new
   legend line explains both marks.
   「?」は分からない、「-」は当てはまらない。精度が分からないときは「?」(前は「-」)。
-- JSON: a model whose size is unknown has `run_mode: "unknown"` (was `"none"`, which now only means "does not run")
-  and `run_mode_label: "?"`; its `estimate.vram_gb` / `vram_offload_gb` / `ram_gb` / `vram_sequential_gb` are `null`
-  (were `0.0`; the Python attributes stay `0.0` with `unknown_size`).
-  大きさが分からないときの run_mode は unknown、VRAM・RAM の値は null。
+- License table: `circlestone-labs/Anima-Official-LoRAs` has a `LICENSE.md` (CircleStone Labs Non-Commercial License
+  v1.0, added 2026-05-26) although its card metadata is empty; the table now sets the LoRAs to
+  `other` (`circlestone-labs-non-commercial-v1.0`). The four Anima templates are no longer "license unknown" (still not
+  auto-recommended: non-commercial). Bundled list: license unknown 47 → 43 entries (no uncensored), 60 → 56 in all.
+  Anima の公式 LoRA は LICENSE.md(非商用)があったので表で決めた。
 
 ### Added
 
 - **Precision from more sources**, never overriding a precision read from the file header
-  (`ModelEntry.precision_source`: `header` / `filename` / `hf_api` / `config` / `workflow`, optional, schema 1):
-  - `hf_api`: the Hub API's `safetensors.parameters` when one dtype holds ≥ 90 % (readable anonymously even for
-    gated repos whose file headers return 401);
+  (`ModelEntry.precision_source`: `header` / `filename` / `hf_api` / `config` / `workflow`, optional, schema 1;
+  also `precision_source` in `models[]` and `workflows[]` of `recommend` / `fit` / `search --json`):
+  - `hf_api`: the Hub API's `safetensors.parameters` when one dtype holds ≥ 90 % **and** element count × bytes is
+    within 5 % of the entry's main safetensors size in that repo (readable anonymously even for gated repos whose
+    file headers return 401);
   - `config`: `torch_dtype` / `dtype` of the `config.json` next to the main file (only when listed and not gated);
   - `workflow`: the official template's main loader node (`UNETLoader` `weight_dtype`, `WanVideoModelLoader`
     `quantization`, the loaded file name, `precision` widgets, …; `workflow.loader_precision`).
   New optional fields `ModelFile.repo_precision` / `repo_precision_source` and `ModelEntry.workflow_precision`.
   Tool weights whose role is not `main` (BiRefNet, Depth Anything 3) now get their header read too.
-  Bundled list (no uncensored): precision unknown 25 → 9 (header 3, Hub API 5, workflow 8; the rest are listed
-  in docs/sources.md with the reason).
+  Bundled list (no uncensored): precision unknown 25 → 10 (header 3, Hub API 4, workflow 8; csm-1b stays unknown
+  because the Hub API total does not match its files; the rest are listed in docs/sources.md with the reason).
   精度をリポジトリ(Hub API・config.json)とテンプレートの読み込みノードからも読み、出どころを残す。
-- `sources.repo_precision` (counts per source, `unauthorized`), `sources.huggingface.unauthorized` (repos whose
-  Hub API returns 401: private or removed) and, after `update --inspect-only`, `unauthorized_recheck`
-  (`unauthorized` / `readable` / `failed`), so the weekly update (#19) shows when Mage-Flow or Lens become public.
-  401 のリポジトリを記録し、`--inspect-only` で確かめ直す。
+- `sources.repo_precision` (counts per source, `unauthorized`, `size_mismatch`), `sources.huggingface.unauthorized`
+  (repos whose Hub API returns 401 — anonymous 401 is the same for private and missing repos),
+  `unauthorized_missing` (the ones confirmed not to exist, `repo_precision.KNOWN_MISSING`: `google/gemma-3-12b`) and,
+  after `update --inspect-only`, `unauthorized_recheck` (`unauthorized` / `private_or_missing` / `missing` /
+  `readable` / `failed`), so the weekly update (#19) shows when Mage-Flow or Lens become public.
+  401 のリポジトリを記録し、`--inspect-only` で確かめ直す。無いと確かめた名前は分ける。
 - `docs/license_requests.md`: drafts of polite requests to upstream owners whose weights have no stated license or
   a license that conflicts with their base model (not posted; to be sent only after the owner's review).
   ライセンスの記載の依頼の下書き(まだ出さない)。

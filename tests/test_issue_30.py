@@ -1,4 +1,4 @@
-"""0.1.2(Issue #30): 「?」(分からない)と「-」(当てはまらない)の使い分け・精度をワークフローと
+"""0.2.0(Issue #30): 「?」(分からない)と「-」(当てはまらない)の使い分け・精度をワークフローと
 リポジトリ(Hub API・config.json)から読む・精度の出どころ・401 のリポジトリの記録。"""
 
 from __future__ import annotations
@@ -103,6 +103,8 @@ def test_json_unknown_size_run_mode(capsys):
     d = judge(m, pc(24, 128), db).to_dict()
     assert d["fit_level"] == "unknown" and d["run_mode"] == "unknown" and d["run_mode_label"] == "?"
     assert d["memory_required_gb"] is None and d["ram_required_gb"] is None
+    assert d["memory_available_gb"] == 24.0 and d["memory_kind"] == "vram"  # ある量は分かる
+    assert "precision_source" in d and all("precision_source" in w for w in d["workflows"])
     assert d["estimate"]["vram_gb"] is None and d["estimate"]["ram_gb"] is None
     assert cli.main(["fit", "--json", "--vram", "8", "--ram", "16", "--all", "--fit", "all"]) == 0
     for row in json.loads(capsys.readouterr().out)["models"]:
@@ -223,30 +225,36 @@ def _hf_entry(repo: str, path: str) -> ModelEntry:
 
 def test_inspect_repos_api_config_401_and_cache(tmp_path):
     gated = _hf_entry("org/gated", "model.safetensors")
+    gated.files[0].size_bytes = 40  # F32 × 10 要素
+    mixed = _hf_entry("org/mixed", "model.safetensors")
     pth = _hf_entry("org/pth", "sub/model.pth")
     private = _hf_entry("org/private", "model.safetensors")
     named = _hf_entry("org/named", "model_fp16.safetensors")  # 名前で分かるものは問い合わせない
     hub = FakeHub(
         {
             f"{HF}/api/models/org/gated": {"gated": "auto", "safetensors": {"parameters": {"F32": 10}}},
+            # 集計の大きさ(10 億 × 2 バイト)が本体(10 バイト)と合わない → 使わない
+            f"{HF}/api/models/org/mixed": {"safetensors": {"parameters": {"BF16": 10**9}}},
             f"{HF}/api/models/org/pth": {"siblings": [{"rfilename": "sub/config.json"}]},
             f"{HF}/org/pth/resolve/main/sub/config.json": {"torch_dtype": "bfloat16"},
             f"{HF}/api/models/org/private": 401,
         }
     )
     cache = RepoPrecisionCache(tmp_path / "repo_precision.json")
-    stats = inspect_repos([gated, pth, private, named], hub.get_json, cache, delay=0)
-    for e in (gated, pth, private, named):
+    stats = inspect_repos([gated, pth, private, named, mixed], hub.get_json, cache, delay=0)
+    for e in (gated, pth, private, named, mixed):
         set_precision(e)
+    assert mixed.precision is None and stats.size_mismatch == ["org/mixed"]
     assert (gated.precision, gated.precision_source) == ("fp32", "hf_api")
     assert (pth.precision, pth.precision_source) == ("bf16", "config")
     assert private.precision is None and stats.unauthorized == ["org/private"]
     assert (named.precision, named.precision_source) == ("fp16", "filename")
     assert not any("org/named" in c for c in hub.calls)
-    assert (stats.files, stats.hf_api, stats.config, stats.unknown) == (3, 1, 1, 1)
+    assert (stats.files, stats.hf_api, stats.config, stats.unknown) == (4, 1, 1, 2)
     cache.save()
     # オフラインはキャッシュだけ(読めたものは同じ答え、401 は分からないまま)
     again = [_hf_entry("org/gated", "model.safetensors"), _hf_entry("org/pth", "sub/model.pth")]
+    again[0].files[0].size_bytes = 40
     s2 = inspect_repos(again, None, RepoPrecisionCache(tmp_path / "repo_precision.json"), offline=True)
     assert [f.files[0].repo_precision for f in again] == ["fp32", "bf16"] and s2.fetched == 0
 
@@ -260,8 +268,10 @@ def test_inspect_repos_does_not_fetch_config_of_gated_repo(tmp_path):
 
 def test_recheck_unauthorized_and_old_failures():
     hub = FakeHub({f"{HF}/api/models/a/open": {}, f"{HF}/api/models/a/closed": 401})
-    r = recheck_unauthorized(["a/closed", "a/open"], hub.get_json, delay=0)
-    assert r["unauthorized"] == ["a/closed"] and r["readable"] == ["a/open"]
+    hub.routes[f"{HF}/api/models/google/gemma-3-12b"] = 401
+    r = recheck_unauthorized(["a/closed", "a/open", "google/gemma-3-12b"], hub.get_json, delay=0)
+    assert r["unauthorized"] == ["a/closed", "google/gemma-3-12b"] and r["readable"] == ["a/open"]
+    assert r["private_or_missing"] == ["a/closed"] and r["missing"] == ["google/gemma-3-12b"]
     old = {"failures": ["x/y: HTTP 401: https://…", "z/w: HTTP 404: https://…"]}
     assert unauthorized_repos(old) == ["x/y"]
     assert unauthorized_repos({"unauthorized": ["b/c"], "failures": old["failures"]}) == ["b/c"]

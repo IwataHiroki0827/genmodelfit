@@ -145,7 +145,7 @@ Table columns (all commands): `Type | Status | Score | Model | Use | Prec | VRAM
 when the terminal is narrow, Disk, Mem%, License, Auto, Prec, Use are dropped in that order (Type, Status, Score and
 Model never). `search` shows every fit level by default (`--fit` narrows).
 
-**Unknown and not applicable / 「?」と「-」** (0.1.2, #30). In the table, `info` and the legend, `?` means the value
+**Unknown and not applicable / 「?」と「-」** (0.2.0, #30). In the table, `info` and the legend, `?` means the value
 is **unknown** and `-` means it **does not apply**:
 
 | column / line | `?` (unknown) | `-` (not applicable) |
@@ -164,6 +164,11 @@ JSON: an unknown **value** is `null` (`precision`, `license`, `memory_required_g
 `estimate` VRAM / RAM figures when `unknown_size`); an unknown or not-applicable **state** is a documented enum value
 (`fit_level: "unknown"`, `run_mode: "unknown"` vs `"none"`), with the labels `?` / `-` in `fit_label` /
 `run_mode_label`. 分からない値は null、状態は決まった値(unknown / none)で分ける。
+`memory_available_gb` is this PC's VRAM (RAM for CPU) even when the size is unknown, because that amount is known.
+
+**Breaking in 0.2.0** (JSON, size-unknown models only): `run_mode` `"none"` → `"unknown"`, `run_mode_label` `-` →
+`?`, `estimate.vram_gb` / `vram_offload_gb` / `ram_gb` / `vram_sequential_gb` `0.0` → `null`, `memory_available_gb`
+`null` → the PC's amount. See CHANGELOG.md「Breaking (JSON)」for migration. `schema_version` stays 1.
 
 `recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
 `-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
@@ -240,14 +245,16 @@ After the per-entry key, the whole list is looked at (`groups.build_index`):
 
 Precision (`ModelEntry.precision`) is read from the main file used for the key (`groups.model_precision_source`;
 `update` uses the same function). The first source that tells wins, and it is kept in `ModelEntry.precision_source`
-(#30, 0.1.2):
+(#30, 0.2.0):
 
 1. `header`: the file's `header_precision` when it was read. The name wins (`filename`) for packed formats the header
    cannot tell (`w4a8`, `nvfp4`, `mxfp4`, `fp4`, `nf4`, `int4`) and for GGUF files whose name states the quantization;
 2. `filename`: the file name, e.g. `w4a8` for the 10Eros W4A8 file;
 3. `hf_api` / `config`: `ModelFile.repo_precision`, read from the hosting Hugging Face repo when neither the header nor
    the name tells (`repo_precision.py`): the Hub API's `safetensors.parameters` when one dtype holds ≥ 90 % of the
-   parameters (safetensors main files only; readable for gated repos), else `torch_dtype` / `dtype` of the
+   parameters **and** element count × bytes per element is within 5 % of the entry's main safetensors files in that
+   repo (shards added; a repo with other weights beside the main one does not describe it; safetensors main files only;
+   readable for gated repos), else `torch_dtype` / `dtype` of the
    `config.json` in the main file's folder (only when the API lists it and the repo is not gated);
 4. `workflow`: `ModelEntry.workflow_precision`, inferred from the official template's main loader node
    (`workflow.loader_precision`): the node that loads the main file (or, for templates without a file list, the
@@ -338,14 +345,14 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
 | `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`), or `unknown` when the size is unknown and nothing was judged (0.1.1; until 0.1.0 these were `too_tight`) |
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
-| `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.1.2 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
+| `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped stage by stage) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) / `?` (size unknown) |
 | `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `marginal`), `cpu` (at most `marginal`); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100 (below) |
 | `score_components` | object | `fit`, `headroom`, `readiness`, `basis`, `popularity`, each 0–100 |
 | `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
 | `memory_required_gb` | float \| null | the figure the level was judged on: VRAM for all-in / swapping / offload (the table's VRAM column); RAM for CPU. When a GPU is needed but missing: the minimum VRAM. null when the size is unknown |
-| `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing |
+| `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing. Also set when the size is unknown (0.2.0; was null) |
 | `utilization_pct` | float \| null | `memory_required_gb / memory_available_gb × 100` (the table's Mem%) |
 | `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
 | `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
@@ -359,11 +366,12 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
 | `files_count` | int | download files listed |
 | `use` | str | the use shown (Uses below) |
-| `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = unknown, shown as `?`, ranked like full precision). Where it came from: `ModelEntry.precision_source` (`info --json` `model`, or `full`) |
+| `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = unknown, shown as `?`, ranked like full precision). Where it came from: `precision_source` (next row) |
+| `precision_source` | str \| null | `header` / `filename` / `hf_api` / `config` / `workflow` (`ModelEntry.precision_source`, see "Models"); null = unknown (0.2.0) |
 | `group_key` | str | the model this entry belongs to (Models below) |
 | `model_name` | str | the model's display name (unique over the list; `info` accepts it) |
 | `variants` | object[] | per precision, the best entry that passed the filters: `{precision, workflow_id, memory_required_gb, fit_level, auto, disk_size_gb}`, best precision first (always includes this entry) |
-| `workflows` | object[] | **all** other entries of the same model, also those filtered out: `{id, name, tasks, use, precision, fit_level, memory_required_gb, disk_size_gb, auto, matched}` (`matched`: passed the current filters), best first |
+| `workflows` | object[] | **all** other entries of the same model, also those filtered out: `{id, name, tasks, use, precision, precision_source, fit_level, memory_required_gb, disk_size_gb, auto, matched}` (`matched`: passed the current filters), best first |
 | `estimate` | Estimate | full estimate (below; `limits` with `--limits`) |
 | `gate` | Gate | full gate result (below) |
 
@@ -401,7 +409,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
-| `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.1.2; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these; `fit` / `search` list them last |
+| `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these; `fit` / `search` list them last |
 
 When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
 used as is); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
@@ -504,8 +512,8 @@ uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage
 `license_name` (the name of an `other` license, from the strictest file), `license_evidence` (str[]: why the license is
 unknown — entries start with `license_unverified:`), `files_complete`, `size_floor_bytes` (below),
 `workflow_precision` (str \| null: precision inferred from the template's main loader node, see "Models" above;
-optional, 0.1.2), `precision_source` (str \| null: `header` / `filename` / `hf_api` / `config` / `workflow`, where
-`precision` came from; null = unknown or older data; optional, 0.1.2).
+optional, 0.2.0), `precision_source` (str \| null: `header` / `filename` / `hf_api` / `config` / `workflow`, where
+`precision` came from; null = unknown or older data; optional, 0.2.0).
 
 **License contract**: `license` is the strictest license over **all** files (LoRAs, upscalers and clip_vision included).
 `null` means unknown and must be treated as "not allowed". A license is never more permissive than what could be verified
@@ -548,8 +556,8 @@ from the file's own header — safetensors: the dtype holding most bytes, `F32`�
 `update` / `update --inspect-only` for Hugging Face main weight files only (`headers.py`; ranged GET of the first 8 bytes
 and the JSON header, or of the first MiB(s) of a GGUF, never the weights), null = not read. Main files are the
 `main` role plus what `groups.main_files` treats as the main file (the largest non-encoder / non-VAE file when no
-file has the `main` role, e.g. BiRefNet; 0.1.2).
-`repo_precision` / `repo_precision_source` (str \| null, optional, 0.1.2): precision read from the hosting repo
+file has the `main` role, e.g. BiRefNet; 0.2.0).
+`repo_precision` / `repo_precision_source` (str \| null, optional, 0.2.0): precision read from the hosting repo
 (`hf_api` or `config`, see "Models"), set only for the largest main file when its header and name tell nothing.
 The estimator decides a file's part from `directory` first, then `role`, then the Hugging Face folder / known file
 names, and counts one variant per part (`docs/accuracy.md`, 「ファイルの数え方」).
@@ -619,7 +627,7 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | key | meaning |
 |---|---|
 | `comfyui-templates` | `templates_total`, `local`, `skipped` (by reason: `api` / `not_open_source` / `no_size` / `category`), `loaded`, `failed` |
-| `huggingface` | `repos` (API calls), `failed`, `rate_limited` (429 waits), `rate_limit_waited_s`, `failures` (first 20), `unauthorized` (repo ids whose Hub API answered 401 — private or removed; their licenses stay unknown; 0.1.2). After `update --inspect-only`: `unauthorized_recheck` = `{unauthorized, readable, failed, checked_at}` (those repos asked again; `readable` ones get their license on the next full `update`) |
+| `huggingface` | `repos` (API calls), `failed`, `rate_limited` (429 waits), `rate_limit_waited_s`, `failures` (first 20), `unauthorized` (repo ids whose Hub API answered 401 — the anonymous API answers 401 both for private and for missing repos; their licenses stay unknown; 0.2.0), `unauthorized_missing` (the subset confirmed not to exist, `repo_precision.KNOWN_MISSING`). After `update --inspect-only`: `unauthorized_recheck` = `{unauthorized, private_or_missing, missing, readable, failed, checked_at}` (those repos asked again; `readable` ones get their license on the next full `update`) |
 | `huggingface-search` | `queries`, `candidates`, `added`, `skipped` (by reason, incl. `duplicate_weights`), `excluded`, `failed_queries` |
 | `partial` | bool: some upstream data could not be fetched (then `update` exits 1 unless `--allow-partial`) |
 | `partial_counts` | `templates_failed`, `hf_repos_failed_transient`, `entries_affected`, `hf_search_failed`, `rate_limit_budget_exhausted`, `carried_over` |
@@ -630,7 +638,7 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `head_check` | `checked_at`, `urls` (unique HF URLs sent a HEAD), `status` (count per status code), `unchecked` (no answer), `not_sent` (files on other hosts, per host) |
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
 | `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
-| `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
+| `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |

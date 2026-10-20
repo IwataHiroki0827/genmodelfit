@@ -717,9 +717,13 @@ def cmd_update(args: argparse.Namespace) -> int:
                 f"(調べた本体 {rp.get('files', 0)} 件)"
             )
         print(f"  精度が分からない項目: {rp.get('precision_unknown', fh['precision_unknown'])} 件")
-        unauth = (db.sources.get("huggingface") or {}).get("unauthorized")
+        hf = db.sources.get("huggingface") or {}
+        missing = set(hf.get("unauthorized_missing") or [])
+        unauth = [r for r in hf.get("unauthorized") or [] if r not in missing]
         if unauth:
-            print(f"  匿名で読めない(401)リポジトリ: {', '.join(unauth)}")
+            print(f"  匿名で読めない(401。非公開か無い)リポジトリ: {', '.join(unauth)}")
+        if missing:
+            print(f"  401 のうち無いと確かめたもの: {', '.join(sorted(missing))}")
         return 0
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]

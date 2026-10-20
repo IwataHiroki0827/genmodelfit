@@ -278,7 +278,7 @@ def _tts_gguf_unknown() -> ModelEntry:
 def test_unknown_size_is_unknown_not_too_tight(db):
     m = _tts_gguf_unknown()
     e = estimate(m, pc(24))
-    assert e.unknown_size and e.fit == FIT_UNKNOWN and e.run_mode == "unknown"  # 0.1.2 から none と分けた
+    assert e.unknown_size and e.fit == FIT_UNKNOWN and e.run_mode == "unknown"  # 0.2.0 から none と分けた
     from genmodelfit.recommend import judge
 
     f = judge(m, pc(24), db)

@@ -174,6 +174,12 @@ CASES = [
     ("Comfy-Org/Krea-2", "krea2_darkbrush.safetensors", *KREA),
     ("Comfy-Org/Krea-2", "qwen3vl_4b_fp8_scaled.safetensors", *KREA),
     ("k2-fsa/OmniVoice", "model.safetensors", "other", "cc-by-nc"),
+    (
+        "circlestone-labs/Anima-Official-LoRAs",
+        "anima-turbo-lora-v0.2.safetensors",
+        "other",
+        "circlestone-labs-non-commercial-v1.0",
+    ),
 ]
 
 # 表に当たらない(不明のまま)ことを確かめたもの。(置き場所, ファイル名)。理由は注に書く
@@ -193,8 +199,6 @@ NOT_COVERED = [
     ("Comfy-Org/flux2-dev", "Flux2TurboComfyv2.safetensors"),
     # Mistral の FLUX.2 [dev] 用でも、置き場所が違えば当てない
     ("Comfy-Org/flux2-klein-9B", "mistral_3_small_flux2_bf16.safetensors"),
-    # LoRA の置き場所にライセンスの記載が無い
-    ("circlestone-labs/Anima-Official-LoRAs", "anima-turbo-lora-v0.2.safetensors"),
     # lightx2v の GitHub は Apache-2.0 だが、重みは MiniMax-H3(独自のライセンス)の派生
     ("lightx2v/Minimax-h3-Turbo", "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"),
     # HunyuanVideo のテキストエンコーダ(xtuner/llava-llama-3-8b にライセンスの記載が無い)
