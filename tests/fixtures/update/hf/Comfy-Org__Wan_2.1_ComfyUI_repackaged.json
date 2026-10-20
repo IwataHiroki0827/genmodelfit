@@ -1,0 +1,52 @@
+{
+ "id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+ "tags": [
+  "diffusion-single-file",
+  "comfyui",
+  "base_model:MAGREF-Video/MAGREF",
+  "base_model:finetune:MAGREF-Video/MAGREF",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "library_name": "diffusion-single-file",
+ "downloads": 4310116,
+ "likes": 1013,
+ "gated": false,
+ "lastModified": "2026-09-23T05:56:18.000Z",
+ "cardData": {
+  "license": "apache-2.0",
+  "base_model": [
+   "Wan-AI/Wan2.1-FLF2V-14B-720P",
+   "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-Control-Camera",
+   "alibaba-pai/Wan2.1-Fun-V1.1-14B-Control-Camera",
+   "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-Control",
+   "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP",
+   "Wan-AI/Wan2.1-I2V-14B-480P",
+   "Wan-AI/Wan2.1-I2V-14B-720P",
+   "MAGREF-Video/MAGREF",
+   "Wan-AI/Wan2.1-T2V-1.3B",
+   "Wan-AI/Wan2.1-T2V-14B",
+   "Wan-AI/Wan2.1-VACE-1.3B",
+   "Wan-AI/Wan2.1-VACE-14B",
+   "htdong/Wan-Alpha",
+   "MeiGen-AI/InfiniteTalk"
+  ]
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "f3043ac37a38107b57e81c1831e112122ddd8f37",
+   "size": 5616
+  },
+  {
+   "rfilename": "split_files/clip_vision/clip_vision_h.safetensors",
+   "blobId": "0451a9fda3873d0db8725fcea14e5660e1793f83",
+   "size": 1264219396,
+   "lfs": {
+    "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
+    "size": 1264219396,
+    "pointerSize": 135
+   }
+  }
+ ]
+}

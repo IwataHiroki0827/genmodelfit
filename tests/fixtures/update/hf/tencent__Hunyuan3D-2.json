@@ -1,0 +1,34 @@
+{
+ "id": "tencent/Hunyuan3D-2",
+ "tags": [
+  "hunyuan3d-2",
+  "diffusers",
+  "safetensors",
+  "image-to-3d",
+  "text-to-3d",
+  "en",
+  "zh",
+  "arxiv:2501.12202",
+  "arxiv:2411.02293",
+  "license:other",
+  "region:us"
+ ],
+ "pipeline_tag": "image-to-3d",
+ "library_name": "hunyuan3d-2",
+ "downloads": 149644,
+ "likes": 1850,
+ "gated": false,
+ "lastModified": "2025-10-17T10:09:17.000Z",
+ "cardData": {
+  "license": "other",
+  "license_name": "tencent-hunyuan-community",
+  "license_link": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "14c038461baa7c92663ea92766c7d37a33d04f3b",
+   "size": 9518
+  }
+ ]
+}

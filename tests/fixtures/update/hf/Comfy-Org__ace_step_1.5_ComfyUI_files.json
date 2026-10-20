@@ -1,0 +1,39 @@
+{
+ "id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+ "tags": [
+  "diffusion-single-file",
+  "comfyui",
+  "base_model:ACE-Step/Ace-Step1.5",
+  "base_model:finetune:ACE-Step/Ace-Step1.5",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "library_name": "diffusion-single-file",
+ "downloads": 581549,
+ "likes": 178,
+ "gated": false,
+ "lastModified": "2026-09-23T08:00:33.000Z",
+ "cardData": {
+  "license": "apache-2.0",
+  "base_model": [
+   "ACE-Step/Ace-Step1.5"
+  ]
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "4c311ef806b909c4e233490ab89a2159aa016d8c",
+   "size": 5471
+  },
+  {
+   "rfilename": "checkpoints/ace_step_1.5_turbo_aio.safetensors",
+   "blobId": "db2ae74ffa68604baa5b69f2db653ae10efc9aae",
+   "size": 10025478736,
+   "lfs": {
+    "sha256": "67b0f43aa5c51c840bd0228e6a935d8ff416ec87e5df2fc0637da17a561252bc",
+    "size": 10025478736,
+    "pointerSize": 136
+   }
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "id": "Wan-AI/Wan2.1-I2V-14B-480P",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "i2v",
+  "video",
+  "video-generation",
+  "image-to-video",
+  "en",
+  "zh",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "pipeline_tag": "image-to-video",
+ "library_name": "diffusers",
+ "downloads": 157630,
+ "likes": 241,
+ "gated": false,
+ "lastModified": "2025-02-26T14:34:56.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "0d0e3e7634995de76f8758a5751b5bac8f132922",
+   "size": 16029
+  }
+ ]
+}

@@ -1,0 +1,41 @@
+{
+ "id": "Comfy-Org/stable-audio-open-1.0_repackaged",
+ "tags": [
+  "diffusion-single-file",
+  "comfyui",
+  "base_model:stabilityai/stable-audio-open-1.0",
+  "base_model:finetune:stabilityai/stable-audio-open-1.0",
+  "license:other",
+  "region:us"
+ ],
+ "library_name": "diffusion-single-file",
+ "downloads": 27227,
+ "likes": 15,
+ "gated": false,
+ "lastModified": "2026-09-23T07:17:42.000Z",
+ "cardData": {
+  "license": "other",
+  "license_name": "stable-audio-community",
+  "license_link": "https://huggingface.co/Comfy-Org/stable-audio-open-1.0_repackaged/blob/main/LICENSE.md",
+  "base_model": [
+   "stabilityai/stable-audio-open-1.0"
+  ]
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "59355712df9c1e7cd0dfb7628743b546c5819bb5",
+   "size": 1916
+  },
+  {
+   "rfilename": "stable-audio-open-1.0.safetensors",
+   "blobId": "f4de2b79dd09452ad8ea9683c091a496b838e78b",
+   "size": 4853889016,
+   "lfs": {
+    "sha256": "7b20458a071231aaf32613b6fbc7945f28f34dbba4f295bb49bad56f5f66b57e",
+    "size": 4853889016,
+    "pointerSize": 135
+   }
+  }
+ ]
+}

@@ -83,7 +83,8 @@ def test_recommend_order_and_filters():
     assert fits and all(f.model.modality == "image" for f in fits)
     order = [("perfect", "good", "marginal").index(f.estimate.fit) for f in fits]
     assert order == sorted(order)
-    assert gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db) == []
+    unc = gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db)
+    assert all(f.model.content == "uncensored" and f.model.content_evidence for f in unc)
 
 
 def test_cli_json(capsys):

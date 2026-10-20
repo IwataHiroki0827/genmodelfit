@@ -1,0 +1,36 @@
+{
+ "id": "Wan-AI/Wan2.1-VACE-14B",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "vace",
+  "video generation",
+  "video-to-video editing",
+  "refernce-to-video",
+  "image-to-video",
+  "en",
+  "zh",
+  "arxiv:2503.20314",
+  "arxiv:2503.07598",
+  "arxiv:2309.14509",
+  "arxiv:2310.01889",
+  "license:apache-2.0",
+  "region:us"
+ ],
+ "pipeline_tag": "image-to-video",
+ "library_name": "diffusers",
+ "downloads": 110939,
+ "likes": 521,
+ "gated": false,
+ "lastModified": "2025-05-19T03:16:32.000Z",
+ "cardData": {
+  "license": "apache-2.0"
+ },
+ "siblings": [
+  {
+   "rfilename": "README.md",
+   "blobId": "ecb8cb95edfe06022839144e0d965780482f2321",
+   "size": 40485
+  }
+ ]
+}
