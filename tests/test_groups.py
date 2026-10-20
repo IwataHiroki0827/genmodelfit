@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 
 import pytest
@@ -465,8 +466,10 @@ def test_sha_merge_needs_the_whole_set_of_main_weights():
     a = entry("a", ("x_low.safetensors", "1" * 64), ("x_high.safetensors", "2" * 64))
     b = entry("b", ("y_low.safetensors", "1" * 64), ("y_high.safetensors", "3" * 64))  # 1 つだけ同じ
     c = entry("c", ("z_low.safetensors", "1" * 64), ("z_high.safetensors", "2" * 64))  # 組が同じ
-    k = build_index([a, b, c]).key_of
+    d = entry("d", ("w_low.safetensors", "1" * 64), ("w_high.safetensors", None))  # sha256 の無い本体がある
+    k = build_index([a, b, c, d]).key_of
     assert k["a"] == k["c"] != k["b"]
+    assert k["d"] != k["a"]
 
 
 def test_row_score_comes_from_the_same_use_and_level(db):
@@ -510,7 +513,7 @@ def test_display_names_of_utility_titles(db):
     idx = build_index(db.models)
     by_id = {mid: idx.name_of[k] for mid, k in idx.key_of.items()}
     assert by_id["utility_seedvr2_7b_int8_upscale_image"] == "SeedVR2 7B"
-    assert by_id["video_wan_vace_inpainting"] == "Wan2.1 VACE 14B"
+    assert by_id["video_wan_vace_inpainting"] == "Wan 2.1 VACE 14B"
     assert by_id["audio_ace_step_1_m2m_editing"] == "ACE Step v1 3.5B"
     assert by_id["hf:TenStrip/LTX2.3-10Eros"] == "LTX2.3-10Eros 1.5"  # 精度・包み方の語は入れない
     assert "F16" not in by_id["wan2.1_flf2v_720_f16"] and "Turbo" in by_id["image_krea2_turbo_t2i"]
@@ -521,3 +524,46 @@ def test_w4a8_is_four_bit():
     from genmodelfit.hf import guess_precision
 
     assert guess_precision("10Eros_v1.5_bf16_w4a8_audioint8.safetensors") == "w4a8"
+
+
+def test_file_less_templates_join_or_say_files_unknown(db):
+    idx = build_index(db.models)
+    k = idx.key_of
+    # 「Frame Interpolation: FILM」はファイルの一覧が無いが、FILM のモデル 1 つだけに当たるので寄せる
+    assert k["utility-frame_interpolation-film"] == k["utility_video_frame_interpolation"]
+    assert idx.name_of[k["utility-frame_interpolation-film"]] == "FILM"
+    # SeedVR2 は 3B と 7B の 2 つに当たるので寄せず、ファイルが分からないと書く
+    assert idx.name_of[k["utility_seedvr2_image_upscale"]] == "SeedVR2 (files unknown)"
+    names = list(idx.name_of.values())
+    # ID を名前に出さない
+    assert not [n for n in names if re.search(r"utility[_-]|templates?[_-]|\[[a-z0-9_.-]+\]$", n)]
+
+
+def test_name_rules_and_overrides(db):
+    from genmodelfit.groups import NAME_OVERRIDES
+
+    idx = build_index(db.models)
+    by_id = {mid: idx.name_of[k] for mid, k in idx.key_of.items()}
+    assert (
+        by_id["3d_moge_perspective_to_mesh"] == "MoGe 2 (3D)"
+        and by_id["utility_moge_depth_estimation"] == "MoGe 2 (image)"
+    )
+    assert by_id["utility_moge3_geometry_estimation"] == "MoGe 3"
+    assert {
+        by_id["utility_sam3d_body"],
+        by_id["utility_image_segment_sam3"],
+        by_id["utility_video_segment_sam3"],
+    } == {"SAM 3.1 (3D)", "SAM 3.1 (image)", "SAM 3.1 (video)"}
+    assert by_id["video_minimax_h3_i2v"] == "MiniMax H3 (first/last frame)"
+    assert by_id["video_minimax_h3_r2v"] == "MiniMax H3 (reference)"
+    assert (
+        by_id["image_moss_image_t2i"] == "MOSS-Image SFT"
+        and by_id["hf:hexgrad/Kokoro-82M"] == "Kokoro-82M v1.0"
+    )
+    assert (
+        by_id["video-wan21_scail"] == "Wan 2.1 SCAIL"
+        and by_id["image_qwen_image_edit_2511"] == "Qwen Image Edit 2511"
+    )
+    for mid, name in NAME_OVERRIDES.items():  # 上書きの表の ID が一覧にあり、その名前になっている
+        assert by_id[mid] == name, mid
+    assert len({n.lower() for n in idx.name_of.values()}) == len(idx.name_of)
