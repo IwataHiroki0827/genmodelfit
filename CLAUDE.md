@@ -73,7 +73,9 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
   世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
 - NVIDIA 以外の GPU(WMI・レジストリ・lspci)は知らせるだけで**判定に使わない**。NVIDIA の GPU があるときは既定で調べない
   (PowerShell の起動に約 1 秒)。`system --all-gpus` で調べる
-- 精度の直しは ComfyUI のコード(should_use_fp16 など)で確かなところだけ。VRAM の量で変わる動き(fp32・fp16 に広げる)は
+- 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
+  系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す
+  (`families.assign`。tests/test_hardware.py が一致を検査)。VRAM の量で変わる動き(fp32・fp16 に広げる)は
   見積もりに入れず注意だけにする(入れると VRAM を増やして段階が下がる)。ComfyUI の版を上げたら名前の一覧と分岐を読み直す
 - 段階は VRAM の総量で決め、今の空きが足りなければ `vram_free_short` と理由で知らせるだけ
 - PC 名・ユーザ名・GPU の UUID・PCI の差し場所や個体の ID を読まない・出さない

@@ -71,8 +71,8 @@ Gpu:
 | `compute_capability_source` | str \| null | `nvidia-smi` / `name` (guessed from the GPU name when nvidia-smi is too old) |
 | `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell` (`fermi` / `unknown`) |
 | `torch_cuda` | str[] | PyTorch CUDA builds (`cu132` … `cu126`) that run on this GPU with this driver, newest first. Informational |
-| `compute_dtype` | str \| null | what ComfyUI computes in on this GPU by default: `fp16` / `bf16` / `fp32` (fp32 doubles working memory) |
-| `bf16`, `fp8` | bool \| null | bf16 / fp8 compute support as ComfyUI sees it |
+| `compute_dtype` | str \| null | what ComfyUI computes in on this GPU by default: `fp16` / `bf16` / `fp32` (fp32 doubles working memory). null when `backend` is `none` or the generation is unknown |
+| `bf16`, `fp8` | bool \| null | bf16 / fp8 compute support as ComfyUI sees it (null as above). Without bf16, model families that ComfyUI never runs in fp16 compute in fp32 (`docs/hardware.md`) |
 | `notes` | str[] | reasons and cautions for this GPU |
 
 Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `unknown`), `vram_gb` (Windows: registry
@@ -421,6 +421,12 @@ upstream (docs/sources.md「ライセンス」).
 
 `size_floor_bytes` is the template's index `size` when `files_complete` is false (null for Hugging Face entries, which
 have no index size).
+
+`comfy_family` / `comfy_vae` (str \| null, optional; added in #21 — older files without them still load): the ComfyUI
+model family and VAE kind (keys of `families.FAMILIES` / `families.VAES`), set by `update` from the main / VAE file
+names. Used only to decide whether ComfyUI computes in fp32 on GPUs without bf16 (`docs/hardware.md`, 「系統の表」).
+null = unknown (the estimate is not changed; a reason says so on GPUs without bf16). When null, the estimator derives
+them from the file names again.
 
 ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), `repo_id`, `license`,
 `license_name`, `gated` (bool \| null = unknown), `role` (`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`),

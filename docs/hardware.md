@@ -37,7 +37,15 @@ WMI の PNPDeviceID は、型番を表す前半(`PCI\VEN_xxxx&DEV_xxxx&SUBSYS_�
   (https://developer.nvidia.com/cuda-gpus 、https://developer.nvidia.com/cuda-legacy-gpus)に合わせた。
   例: 「NVIDIA TITAN X」は Pascal(6.1)、「GeForce GTX TITAN X」は Maxwell(5.2)、Quadro K620 / K1200 / K2200 は Maxwell(5.0)、
   ノート用の RTX 2050 は Ampere(8.6)。名前から推した値は `compute_capability_source: "name"`。
+- 終了コードが 0 でなくても、読める行は使う(1 枚だけ「Unable to determine the device handle … Unknown Error」で
+  読めないときなど)。読めなかった枚数を notes に書く(エラーの文言は PCI の差し場所を含むので写さない)。
 - 複数の GPU: ComfyUI は 1 枚で動くので、判定に使えるもの(backend `cuda`)のうち VRAM が最大の 1 枚を使う。
+  ComfyUI は既定で CUDA の 0 番(`get_torch_device` → `torch.cuda.current_device()`)を使い、CUDA の番号の付け方の既定は
+  `CUDA_DEVICE_ORDER=FASTEST_FIRST`(速い順。nvidia-smi の PCI の順とは違うことがある)。どれが 0 番かは nvidia-smi からは
+  確かに決められないので、違う型番の GPU が複数あるときは「ComfyUI を `--cuda-device` で最大の GPU に向ける」と notes に書く。
+- `--vram` で上書きしたとき: 判定に使える NVIDIA の GPU があればその世代・ドライバ・精度のまま VRAM だけを変える
+  (この PC の GPU の VRAM が違ったら、の判定)。無い・使えない世代なら、世代の分からない仮の GPU にする(精度の直しは無し)。
+  `--ram` は搭載量だけを変え、この PC のページファイル・コミットは使わない(別の PC の想定なので)。
 
 ## 世代と PyTorch・ドライバ
 
@@ -67,13 +75,18 @@ cu128・cu129 は今の版(2.14)には無いが、配布先に残っていて、
 
 NVIDIA CUDA Toolkit 13.4 Update 2 のリリースノート(https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html)の
 表 3「CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility」: 13.x は 580 以上、
-12.x は 525 以上 580 未満(それより新しいドライバでも動く)。表 4 の CUDA 12.0 GA: Linux 525.60.13 / Windows 527.41。
+12.x は 525 以上 580 未満(それより新しいドライバでも動く)。表 3 は OS で分けていないので、そのまま使う
+(表 4 の 527.41 / 525.60.13 は CUDA 12.0 GA の同梱ドライバの版で、最低の条件ではない)。
 PyTorch の配布物は機械語だけで PTX の JIT を使わないので、マイナー版の互換の範囲で動くとみなした。
 
-| ビルド | Windows | Linux |
-|---|---|---|
-| cu126 / cu128 / cu129 | 527.41 以上 | 525.60.13 以上 |
-| cu130 / cu132 | 580 以上 | 580 以上 |
+| ビルド | Windows・Linux |
+|---|---|
+| cu126 / cu128 / cu129 | 525 以上 |
+| cu130 / cu132 | 580 以上 |
+
+世代ごとの最低(`hardware.ARCH_MIN_DRIVER`): Blackwell(10.x・12.x)の機械語が入るのは CUDA 12.8 から
+(PyTorch の cu128 以降。上の表)で、表 4 の CUDA 12.8 GA は Linux 570.26 / Windows 570.65。570 未満では CPU として判定する
+(それより古いドライバは Blackwell を知らないので、nvidia-smi に出ること自体がまれ)。ほかの世代はビルドの条件と同じ。
 
 WSL の nvidia-smi は Windows のドライバの版を返すので、Windows の表で見る。
 
@@ -82,14 +95,14 @@ WSL の nvidia-smi は Windows のドライバの版を返すので、Windows �
 | 世代 | compute capability | 動くビルド | ドライバの条件 | 判定 |
 |---|---|---|---|---|
 | Fermi 以前・Kepler | 〜3.7 | なし | — | **CPU**(ドライバを更新しても動かない) |
-| Maxwell | 5.0, 5.2 | cu126 | 527.41 / 525.60.13 | GPU |
+| Maxwell | 5.0, 5.2 | cu126 | 525 | GPU |
 | Pascal | 6.0, 6.1 | cu126 | 同上 | GPU |
 | Volta | 7.0 | cu126 | 同上 | GPU |
 | Turing | 7.5 | cu126〜cu132 | 同上(cu13x は 580) | GPU |
 | Ampere | 8.0, 8.6 | cu126〜cu132 | 同上 | GPU |
 | Ada | 8.9 | cu126〜cu132(8.6 の機械語) | 同上 | GPU |
 | Hopper | 9.0 | cu126〜cu132 | 同上 | GPU |
-| Blackwell | 10.x, 12.x | cu128〜cu132 | 527.41(cu128)/ 580(cu13x) | GPU |
+| Blackwell | 10.x, 12.x | cu128〜cu132 | 570(世代の最低)/ 580(cu13x) | GPU |
 | それより新しい | 13.x〜 | なし | — | **CPU**(PyTorch の対応を待つ) |
 
 - 動くビルドが 1 つも無い世代、またはドライバがどのビルドにも足りないときは backend `none` にして CPU として判定する。
@@ -108,26 +121,85 @@ ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `c
   それ以外の major < 7(GT 1030 など)は使わない。1660 / 1650 / 1630 / T500 / T550 / T600 / MX550 / MX450 / CMP 30HX /
   T2000 / T1000 / T1200 を名前に含む GPU は「fp16 が壊れている」として使わない。それ以外(Volta・Turing の RTX)は使う。
 - `should_use_bf16`: major ≥ 8。`supports_fp8_compute`: 8.9 以上(Windows は torch 2.4 以上)。
-- 本体の重み(`unet_dtype` / `unet_manual_cast`): bf16 を持たない GPU では bf16 の重みを fp16 で載せる(同じ 2 バイト)。
-  半精度を使わない GPU では、fp32 にしても `total × 0.88 − 最小の作業用メモリ` に収まるときだけ fp32 に広げ、
-  収まらなければ fp16 のまま計算だけ fp32 にする。fp8 の重みは、fp8 の計算を持たない GPU では、fp16 に広げても収まれば
-  広げ、収まらなければ fp8 のまま(計算のたびに変換)。fp8_scaled など量子化の設定を持つ重みは fp8 のまま。
+- 本体の重み(`unet_dtype` model_management.py:1136〜1187 / `unet_manual_cast` 1189〜1211): 系統ごとの
+  `supported_inference_dtypes`(下の表)の中から選ぶ。
+  - fp16 を持つ系統(SDXL・Flux・Wan など)は、bf16 を持たない GPU でも fp16 で載せて fp16 で計算する(bf16 の重みも同じ 2 バイト)。
+  - **fp16 を持たない系統**(`[bfloat16, float32]`: LTX・Qwen Image・Z-Image・HunyuanVideo・ACE-Step など)は、bf16 を持たない
+    GPU(Pascal・Volta・Turing)では `unet_manual_cast` が float32 を返す(計算は fp32、作業用メモリは 2 倍)。重みは
+    `should_use_bf16(manual_cast=True)` が「fp32 にすると `total × 0.88 − 最小の作業用メモリ` に収まらない」ときだけ bf16 のまま、
+    収まるなら fp32(2 倍)で載せる。
+  - 半精度を使わない GPU(Maxwell など)も、fp32 にしても収まるときだけ fp32 に広げ、収まらなければ 2 バイトのまま計算だけ fp32。
+  - fp8 の重みは、fp8 の計算を持たない GPU では、fp16 に広げても収まれば広げ、収まらなければ fp8 のまま(計算のたびに変換)。
+    fp8_scaled・int8_convrot など量子化の設定を持つ重みは量子化のまま(`quant_config`。sd.py:2268)。
 - テキストエンコーダ: 既定は fp16。ファイルの精度が 2 バイト以下ならその精度のまま載せる(`pick_weight_dtype`)。
-- VAE(`vae_dtype`): fp16 / bf16 を使えなければ fp32。
+- VAE(`vae_dtype` model_management.py:1290): VAE ごとの `working_dtypes`(sd.py。既定は `[bfloat16, float32]`: sd.py:516)の
+  中から、fp16 は `should_use_fp16`、bf16 は `should_use_bf16` のときに選び、どちらも無ければ fp32。2D の KL VAE
+  (SD・SDXL・SD3・Flux の ae・Flux2 の VAE。sd.py:676〜705 の既定の枝)・LTX(780)・Mage(627)は fp16 を持たないので、
+  bf16 を持たない GPU では fp32。Wan(849・857・873)・HunyuanVideo(791・824)・CogVideoX(808)などは fp16 を持つ。
+  仕上げで VRAM が足りなければ ComfyUI はタイルに分けて続ける(遅い)。
 - 作業用メモリ: ComfyUI 自身の見積もり(`model_base.memory_required`、VAE の `memory_used_decode`)が
   計算の精度の大きさ(`dtype_size`)を掛けている。fp32 で計算すると 2 倍。
 
 見積もりへの効かせ方(`estimate.gpu_precision`。コードで確かなところだけ):
 
-| GPU | 例 | Gpu.compute_dtype | 見積もりの直し |
-|---|---|---|---|
-| 半精度を使わない | Maxwell 全部、GT 1030、Linux の GTX 1080、GTX 1660、T1000 | `fp32` | 作業用メモリ × 2、VAE の重み × 2(VAE のファイルが fp32 なら × 1)。本体は変えない(載らなければ fp16 のままなので)。理由に書く |
-| fp16 は使うが bf16 を持たない | Windows の Pascal(1080 など)、Volta、Turing の RTX | `fp16` | 変えない。bf16 の重みには「fp16 で動かす(VRAM は同じ)」と書く |
-| fp8 の計算を持たない | Ada より前 | — | 変えない。fp8 の重みには「余裕があれば fp16 に広げる・無ければ遅い」と書く |
-| 上のどれでもない | Ampere・Ada・Hopper・Blackwell | `fp16` | 変えない |
+| GPU | 例 | Gpu.compute_dtype | 系統・VAE | 見積もりの直し |
+|---|---|---|---|---|
+| 半精度を使わない | Maxwell 全部、GT 1030、Linux の GTX 1080、GTX 1660、T1000 | `fp32` | どれでも | 作業用メモリ × 2、VAE の重み × 2(VAE のファイルが fp32、または VAE がどの GPU でも fp32 なら × 1) |
+| fp16 は使うが bf16 を持たない | Windows の Pascal(1080 など)、Volta、Turing の RTX | `fp16` | fp16 を持たない系統 | 作業用メモリ × 2 |
+| 同上 | 同上 | `fp16` | fp16 を持たない VAE | VAE の重み × 2 |
+| 同上 | 同上 | `fp16` | fp16 を持つ系統 | 変えない(bf16 の重みには「fp16 で動かす(VRAM は同じ)」と書く) |
+| 同上 | 同上 | `fp16` | 系統が分からない | 変えない。「系統が分からないので入れていない」と書く |
+| fp8 の計算を持たない | Ada より前 | — | fp8 の重み | 変えない。「余裕があれば fp16 に広げる・無ければ遅い」と書く |
+| 上のどれでもない | Ampere・Ada・Hopper・Blackwell | `fp16` | どれでも | 変えない |
 
-本体を広げる動き(fp32・fp16)は VRAM の量で変わるので、見積もりには入れない(入れると VRAM を増やしたときに段階が下がる)。
-半精度を使わない GPU では、その GPU の実測でない限り `basis` は `estimated` にする(実測は半精度の GPU のもの)。
+**本体の重みは変えない**(fp32 にしても収まるときだけ fp32 で載せる、という動きは VRAM が多いほど使う量が増えるので、
+見積もりに入れると VRAM を増やして段階が下がる。重みはファイルの 2 バイトで数え、ComfyUI が広げるのは収まるときだけなので、
+動くかどうかの判定は変わらない。広げたときは作業用メモリの分が足りなくなり、ComfyUI が重みの一部を逃がして遅くなることがある。
+そう理由に書く)。作業用メモリ × 2・VAE × 2 は GPU の世代と系統だけで決まり VRAM の量によらないので、世代を固定して
+VRAM・RAM・ページファイルを増やしても段階は下がらない(`test_fit_monotonic_in_vram_per_arch`)。
+fp32 で計算する場合は、その GPU の実測でない限り `basis` は `estimated` にする(実測は半精度の GPU のもの)。
+
+### 系統の表(`src/genmodelfit/families.py`、ComfyUI コミット b1a247c の行)
+
+本体(`comfy/supported_models.py` の `supported_inference_dtypes`。書いていないクラスは `supported_models_base.py:47` の
+`[float16, bfloat16, float32]`):
+
+| 系統(鍵) | ComfyUI のクラス | fp16 | 行 |
+|---|---|---|---|
+| sd / sd3 / hunyuan3d / stable_audio | SD15・SDXL・SVD・SD3・Hunyuan3Dv2・StableAudio など | ○ | base:47 |
+| flux | Flux / FluxSchnell(Ovis も Flux として読む: model_detection.py:363) | ○ | 753 |
+| flux_fill | FluxInpaint(in_channels 96 = Fill・OneReward) | × | 783 |
+| flux2 / flux3 | Flux2 / Flux3 | ○ / × | 812 / 855 |
+| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | ○ | 1820 / 2433 / 2023 / 1171 / 1100 |
+| lens / mochi | Lens / GenmoMochi | × | 882 / 924 |
+| ltxv | LTXV / LTXAV(LTX-Video・LTX-2.x) | × | 952 |
+| minimax_h3 | MiniMaxH3(FastVideo FastH3 も) | × | 1000 |
+| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | × | 1027 / 2203 |
+| hunyuan_video15 | HunyuanVideo15 | ○ | 2241 |
+| lumina2 / zimage / ming_image / pixeldit | Lumina2(NewBie: model_detection.py:611)/ ZImage / MingImage / PixelDiTT2I | × | 1213 / 1240 / 1240 / 1298 |
+| wan | WAN21_* / WAN22_*(HuMo・VACE・S2V・Animate・SCAIL・CausalAR など) | ○ | 1366 |
+| trellis2 | Trellis2(Pixal3D も: model_detection.py:125) | × | 1541 |
+| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | 同名 | ○ | 1685 / 1853 / 2512 / 2471 / 2400 / 2576 |
+| hidream / hidream_o1 | HiDream / HiDreamO1 | × | 1710 / 1735 |
+| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | × | 1903 / 2350 / 2376 |
+| omnigen2 | Omnigen2 / Boogu(torch 2.7 以上で float16 を先頭に足す: 1938) | ○ | 1930 |
+| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | × | 1994 / 2052 / 2085 |
+| qwen_image / qwen_image21 / joyimage | QwenImage(FireRed・Marigold v2 も)/ QwenImage21 / JoyImage | × | 2114 / 2144 / 2176 |
+| kandinsky5 / ernie | Kandinsky5 / ErnieImage | × | 2294 / 2495 |
+
+Z-Image は重みの値で `allow_fp16` が立つと fp16 も使う(model_detection.py:624、supported_models.py:1245)が、
+ファイルを読まないと分からないので fp16 を持たない側(安全側)で見て、理由に書く。
+
+VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`(780)× / `ltx_diffusion`(645)× /
+`mage`(627)× / `wan`(849・857・873)○ / `hunyuan_video`(824)○ / `hunyuan_video15`(791)○ / `hunyuan3d`(902)○ /
+`trellis2`(594・599)○ / `seedvr2`(610)○ / `cogvideox`(808)○ / `minimax_h3`(1049)○ / `ace`(917)○ /
+`fp32`(540・947・999・1083。どの GPU でも fp32)。
+
+一覧の各項目の系統は `families.family_of`(本体のファイル名 → ID・テンプレート名の順に照らす。部品の置き場所のリポジトリ名は
+別のモデルの部品が混ざるので見ない)、VAE は VAE のファイル名(無ければ系統の既定)で決め、`update` が
+`ModelEntry.comfy_family` / `comfy_vae` に入れる(`--heads-only` でも決め直す)。同梱の一覧(323 件)では 279 件に系統が付き、
+44 件は分からない(読み上げ 20 件・ComfyUI に組み込みでない補助ツール 18 件・Capybara 4 件・HF の 3 件。ComfyUI のどのクラスで
+読むかを確かめられなかったもの)。分からないものは見積もりを変えず、bf16 を持たない GPU でだけ理由に書く。
 
 ## NVIDIA 以外の GPU(知らせるだけ)
 

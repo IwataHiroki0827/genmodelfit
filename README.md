@@ -159,8 +159,10 @@ if st.expired:  # HEAD checks older than 30 days → auto-recommendations drop /
 
 - Only NVIDIA GPUs confirmed by `nvidia-smi` are used for judging (v0.1). A GPU is judged as **CPU** when no PyTorch
   CUDA build supports its generation (Kepler and older) or its driver is too old for all of them (CUDA 12 builds need
-  527.41+ on Windows / 525.60.13+ on Linux; CUDA 13 builds need 580+). The reason is shown in `system` and `--json`.
+  525+, CUDA 13 builds need 580+, Blackwell needs 570+). The reason is shown in `system` and `--json`.
 - On GPUs where ComfyUI computes in fp32 (Maxwell, some Pascal, GTX 16xx, T1000 …) working memory and the VAE are doubled.
+  On GPUs without bf16 (Pascal, Volta, Turing), model families that ComfyUI never runs in fp16 (LTX, Qwen Image, Z-Image,
+  HunyuanVideo, ACE-Step …) also compute in fp32, and so do VAEs without fp16 (SD / Flux KL, LTX).
 - The level uses total VRAM; when the VRAM free right now is not enough, a note says to close other apps (`vram_free_short`).
 - When the RAM is short, a fixed-size page file / swap sets how far "slow but runs" goes (system-managed: 1.5× RAM).
 - AMD / Intel GPUs are reported (Windows: WMI + registry, Linux: `lspci`) but never used for judging. Host name,
