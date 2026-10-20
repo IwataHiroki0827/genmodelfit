@@ -296,6 +296,7 @@ def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
         content=args.content,
         license=args.license,
         task=args.task,
+        include_unknown_license=args.include_unknown_license,
         group=not args.all_workflows,
         settings=_settings(args),
         with_limits=args.limits,
@@ -310,6 +311,7 @@ def _filters(args: argparse.Namespace, min_fit: str | None, limit: int | None) -
         "content": args.content,
         "min_fit": min_fit,
         "license": args.license,
+        "include_unknown_license": args.include_unknown_license,
         "task": args.task,
         "all_workflows": args.all_workflows,
         "limit": limit,
@@ -614,13 +616,22 @@ def cmd_update(args: argparse.Namespace) -> int:
     if getattr(args, "from_release", False):
         return _update_from_release(args)
     from .db import cached_db_path
-    from .update import UpdateFailed, make_fetcher, refresh_heads, update_database
+    from .update import UpdateFailed, inspect_database, make_fetcher, refresh_heads, update_database
 
     out_path = Path(args.output) if getattr(args, "output", None) else cached_db_path()
     say = _progress(args)
     fetch = make_fetcher(getattr(args, "offline_sources", None), getattr(args, "rate_limit_budget", None))
     try:
-        if getattr(args, "heads_only", False):
+        if getattr(args, "inspect_only", False):
+            db = inspect_database(
+                fetch,
+                out_path,
+                db_path=getattr(args, "db", None),
+                use_cache=not getattr(args, "no_cache", False),
+                offline=bool(getattr(args, "offline", False)),
+                progress=say,
+            )
+        elif getattr(args, "heads_only", False):
             db = refresh_heads(
                 fetch,
                 out_path,
@@ -649,6 +660,15 @@ def cmd_update(args: argparse.Namespace) -> int:
         _out(_envelope("update", None, db, output=str(out_path), sources=db.sources, status=st.to_dict()))
         return 0
     _print_status_after_update(st)
+    if getattr(args, "inspect_only", False):
+        fh = db.sources["file_headers"]
+        print(f"ファイルの見出しの結果を書き出しました: {out_path}")
+        print(
+            f"  本体のファイル {fh['urls']} 件: キャッシュ {fh['from_cache']}、読んだ {fh['fetched']}、"
+            f"読めない {fh['failed']}、未確認(オフライン) {fh['skipped_offline']}"
+        )
+        print(f"  精度が分からない項目: {fh['precision_unknown']} 件")
+        return 0
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]
         print(f"HEAD の結果を書き出しました: {out_path}")
@@ -1041,7 +1061,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-uncensored-auto", action="store_true", help="無検閲のモデルも自動のおすすめに出してよい"
     )
 
-    p = argparse.ArgumentParser(prog="genmodelfit", description="Right-size generation models to your PC.")
+    p = argparse.ArgumentParser(
+        prog="genmodelfit",
+        description="Right-size generation models to your PC.",
+        epilog="If the genmodelfit command is not found (not on PATH), "
+        "`python -m genmodelfit ...` always works. "
+        "genmodelfit コマンドが見つからないときは `python -m genmodelfit ...` で動きます"
+        "(README「Install」)。",
+    )
     p.add_argument("--version", action="version", version=f"genmodelfit {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -1074,6 +1101,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=_license_list,
         metavar="LIST",
         help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
+    )
+    sel.add_argument(
+        "--include-unknown-license",
+        action="store_true",
+        help="ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る)",
     )
 
     sel.add_argument(
@@ -1128,6 +1160,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--heads-only",
         action="store_true",
         help="今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
+    )
+    sp.add_argument(
+        "--inspect-only",
+        action="store_true",
+        help="今の一覧はそのままで、本体のファイルの見出し(精度)とテンプレートのサンプラーの組だけを"
+        "読み直す(Range 要求。重み本体は落とさない。読んだ見出しはキャッシュに残る)",
+    )
+    sp.add_argument(
+        "--offline",
+        action="store_true",
+        help="--inspect-only で通信せず、キャッシュにある見出しだけを使う",
     )
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
     sp.add_argument(

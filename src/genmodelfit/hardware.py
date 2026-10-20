@@ -1012,6 +1012,23 @@ def _gb(v: int | None, digits: int = 2) -> float | None:
     return round(v / GIB, digits) if v is not None else None
 
 
+WINDOWS_11_BUILD = 22000  # Windows 11 の最初のビルド(21H2)。これより前は Windows 10
+
+
+def os_name(system: str | None = None, release: str | None = None, version: str | None = None) -> str:
+    """OS の名前(例 "Windows 11"、"Linux 6.8.0")。Python 3.10 / 3.11 の platform.release() は Windows 11 でも
+    "10" を返す(3.12 から直った)ので、Windows はビルド番号(platform.version() の 3 つ目、22000 以上で
+    Windows 11)で決める。"""
+    system = platform.system() if system is None else system
+    release = platform.release() if release is None else release
+    if system == "Windows":
+        version = platform.version() if version is None else version
+        parts = (version or "").split(".")
+        if len(parts) >= 3 and parts[2].isdigit() and release in ("10", "11"):
+            release = "11" if int(parts[2]) >= WINDOWS_11_BUILD else "10"
+    return f"{system} {release}".strip()
+
+
 def detect(
     disk_path: str | os.PathLike[str] | None = None,
     vram_gb: float | None = None,
@@ -1105,7 +1122,7 @@ def detect(
     with contextlib.suppress(OSError):
         disk_free = shutil.disk_usage(disk_path or Path.home()).free / GIB
     return SystemInfo(
-        os=f"{platform.system()} {platform.release()}",
+        os=os_name(),
         cpu=_cpu_name(),
         cpu_cores=psutil.cpu_count(logical=True) or 1,
         ram_total_gb=round(ram_total, 2),

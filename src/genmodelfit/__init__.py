@@ -62,6 +62,7 @@ def recommend(
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
     include_tools: bool = False,
+    include_unknown_license: bool = False,
     auto_only: bool = False,
     all_workflows: bool = False,
     limit: int | None = 10,
@@ -83,6 +84,7 @@ def recommend(
     content の既定は sfw。無検閲のモデルも含めるなら "all"、無検閲だけなら "uncensored"。
     license: "apache-2.0,mit" か ["apache-2.0", "mit"](すべてのファイルのライセンスがこの中にあるものだけ。
     不明は合わない)。
+    include_unknown_license: ライセンスの分からないファイルを含むものも出す(既定は出さない。#28)。
     limit / per_modality: 1 以上か None。per_modality を渡すと種類ごとに上位その数(CLI の既定の節と同じ。
     CLI の `recommend`(-m も --task も無し)は per_modality=3, limit=None)。
     comfyui_version: 使う ComfyUI の版(自動おすすめの判定。アプリは自分の版を渡す)。
@@ -99,6 +101,7 @@ def recommend(
         license=license,
         task=task,
         include_tools=include_tools,
+        include_unknown_license=include_unknown_license,
         auto_only=auto_only,
         group=not all_workflows,
         limit=limit,
@@ -116,6 +119,7 @@ def search(
     min_fit: str | None = None,
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
+    include_unknown_license: bool = False,
     all_workflows: bool = False,
     limit: int | None = None,
     settings: Settings | None = None,
@@ -124,7 +128,7 @@ def search(
     comfyui_version: str | None = None,
 ) -> list[Fit]:
     """ID・名前の一部(大文字小文字を区別しない)で探す。CLI の `search` と同じ。合わなければ空の一覧。
-    空の query は ValueError。"""
+    ライセンスの分からないものは include_unknown_license=True のときだけ出す。空の query は ValueError。"""
     from .recommend import select
 
     return select(
@@ -136,6 +140,7 @@ def search(
         min_fit=min_fit,
         license=license,
         task=task,
+        include_unknown_license=include_unknown_license,
         group=not all_workflows,
         limit=limit,
         settings=settings,

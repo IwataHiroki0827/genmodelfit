@@ -4,7 +4,8 @@
 
 """おすすめ順に並べる。
 
-並べ方(Issue #17): 動くもの(too_tight でない)→ 自動でおすすめに出せるもの(gate の auto)→ 点数の高い順 → ID。
+並べ方(Issue #17、#28): 動くもの(too_tight でない。判定できないものは一番後ろ)→ 自動でおすすめに出せるもの
+(gate の auto)→ 段階 → 公式(利用者のテンプレートは同じ段階の中で後ろ)→ 点数の高い順 → ID。
 点数(0〜100)は 5 つの内訳の重み付きの和(式は docs/schema.md「Score」)。VRAM・メモリを増やしても下がらない。
 """
 
@@ -18,7 +19,17 @@ from typing import TYPE_CHECKING, Any
 from .db import Database
 from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients
 from .groups import group_key, index_for, is_community, precision_rank
-from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Estimate, ModelEntry, Settings, SystemInfo
+from .models import (
+    CONTENT_LEVELS,
+    FIT_LEVELS,
+    FIT_UNKNOWN,
+    MODALITIES,
+    Estimate,
+    ModelEntry,
+    Settings,
+    SystemInfo,
+    fit_rank,
+)
 from .tasks import TOOL_TASKS, is_tool, main_use, parse_modalities, task_codes
 
 if TYPE_CHECKING:
@@ -28,11 +39,17 @@ if TYPE_CHECKING:
 CONTENT_FILTERS = ("all", *CONTENT_LEVELS)
 DEFAULT_CONTENT = "sfw"
 
-FIT_LABEL = {"perfect": "Perfect", "good": "Good", "marginal": "Marginal", "too_tight": "Too tight"}
+FIT_LABEL = {
+    "perfect": "Perfect",
+    "good": "Good",
+    "marginal": "Marginal",
+    "too_tight": "Too tight",
+    FIT_UNKNOWN: "?",  # 大きさが分からず判定できない(Too tight とは言わない。#28)
+}
 
 # 点数の内訳の重み(合計 1)。docs/schema.md「Score」と合わせる
 WEIGHTS = {"fit": 0.45, "headroom": 0.15, "readiness": 0.20, "basis": 0.10, "popularity": 0.10}
-FIT_POINTS = {"perfect": 100, "good": 70, "marginal": 35, "too_tight": 0}
+FIT_POINTS = {"perfect": 100, "good": 70, "marginal": 35, "too_tight": 0, FIT_UNKNOWN: 0}
 # 準備のできぐあい: gate の条件ごとの重み(通った条件の和。全部通れば 100)
 READINESS_POINTS = {
     "license": 25,
@@ -94,6 +111,11 @@ def _sum_licenses(m: ModelEntry) -> list[str | None]:
         return [m.license]
     found = {f.license for f in m.files}
     return sorted((x for x in found if x is not None), key=str) + ([None] if None in found else [])
+
+
+def license_unknown(m: ModelEntry) -> bool:
+    """どれかのファイル(ファイルが無ければ一式)のライセンスが分からないか。既定では出さない(#28)。"""
+    return None in _sum_licenses(m)
 
 
 def license_matches(m: ModelEntry, allowed: Iterable[str] | None) -> bool:
@@ -259,28 +281,53 @@ def _check_limit(limit: int | None, name: str = "limit") -> None:
 
 
 def sort_key(f: Fit) -> tuple:
-    """おすすめ順: 動くもの → auto → 公式(利用者のテンプレートは後)→ 点数 → ID。"""
-    return (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -round(f.score, 1), f.model.id)
+    """おすすめ順: 動くもの(判定できないものは一番後ろ)→ auto → 段階 → 公式(利用者のテンプレートは
+    同じ段階の中で後ろ)→ 点数 → ID。"""
+    fit = f.estimate.fit
+    runs = 2 if fit == FIT_UNKNOWN else (1 if fit == "too_tight" else 0)
+    return (runs, not f.auto, fit_rank(fit), is_community(f.model), -round(f.score, 1), f.model.id)
 
 
 # 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
 REP_USE_ORDER = ("gen", "edit", "i2v", "lipsync", "motion", "voice", "upscale", "tool")
 
 
+# 「逃がさずに GPU で動く」とみなす段階(この中では精度の高いものを選ぶ。#28)
+CLEAN_LEVELS = ("perfect", "good")
+
+
+def runs_clean(e: Estimate) -> bool:
+    """GPU に逃がさずに載る(GPU か GPU~ で good 以上)か。"""
+    return e.fit in CLEAN_LEVELS and e.run_mode == "gpu"
+
+
+def row_tier(e: Estimate) -> str:
+    """行の点数を比べる仲間の段階。逃がさずに載るもの(runs_clean)は perfect / good をまとめて "clean"。"""
+    return "clean" if runs_clean(e) else e.fit
+
+
 def variant_key(f: Fit) -> tuple:
     """同じモデルの中で表に出す 1 件を選ぶ順: 用途(--task があればそれに合う用途の中で、生成 → 編集 → …
-    → 高解像度化 → 補助ツール)→ 段階が良い → 逃がさない載せ方(GPU → GPU+RAM → CPU)
-    → 精度が高い → おすすめ順。"""
+    → 高解像度化 → 補助ツール)→ GPU に逃がさずに載る(good 以上で GPU / GPU~)ものがあれば、その中で
+    精度が高い → 段階が良い → … / 無ければ 段階が良い → 逃がさない載せ方(GPU → GPU+RAM → CPU)
+    → 精度が高い → おすすめ順。
+
+    llmfit と同じく「逃がさずに載る中で一番品質の高い精度」を選ぶ(#28。24 GB の Z-Image Turbo は int8 の
+    perfect より bf16 の good)。逃がさないと載らないときだけ段階を優先する。"""
     use = REP_USE_ORDER.index(f.use) if f.use in REP_USE_ORDER else len(REP_USE_ORDER)
     # 利用者のテンプレートは、公式のワークフローがあれば代表にしない
     community = is_community(f.model)
     slow = {"gpu": 0, "offload": 1, "cpu": 2}.get(f.estimate.run_mode, 3)  # 同じ段階なら逃がさないほう(速い)
+    clean = runs_clean(f.estimate)
+    prec = precision_rank(f.model.precision)
     return (
         community,
         use,
-        FIT_LEVELS.index(f.estimate.fit),
+        not clean,
+        prec if clean else 0,
+        fit_rank(f.estimate.fit),
         slow,
-        precision_rank(f.model.precision),
+        prec,
         *sort_key(f),
     )
 
@@ -366,6 +413,7 @@ HIDDEN_KEYS = (
     "tools",
     "task",
     "license",
+    "license_unknown",
     "size_unknown",
     "too_tight",
     "below_min_fit",
@@ -401,6 +449,7 @@ def select(
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
     include_tools: bool = True,
+    include_unknown_license: bool = False,
     auto_only: bool = False,
     drop_unknown_size: bool = False,
     group: bool = True,
@@ -416,6 +465,9 @@ def select(
     group=True なら同じモデル(groups.group_key: 大きさまで同じで、精度か使い方だけが違う)を 1 行にまとめ、
     段階が良く精度が高いものを出す(variant_key)。per_modality を渡すと種類ごとに上位その数だけ、
     種類の順(MODALITIES)に並べる。query に合わないものは数えない(hidden にも入れない)。
+    どれかのファイルのライセンスが分からないものは、include_unknown_license=True でなければ出さない
+    (hidden の license_unknown。#28)。大きさが分からないもの(fit が unknown)は、min_fit を指定せず
+    drop_unknown_size でもないときだけ出す(一番後ろ)。
     """
     mods = check_filters(modality=modality, content=content, min_fit=min_fit)
     allow = _license_list(license)
@@ -459,10 +511,18 @@ def select(
         if not license_matches(m, allow):
             hidden["license"] += 1
             continue
+        if not include_unknown_license and license_unknown(m):
+            hidden["license_unknown"] += 1
+            continue
         f = get(m)
         e = f.estimate
-        if e.unknown_size and (drop_unknown_size or e.fit not in allowed):
+        if e.unknown_size and (drop_unknown_size or min_fit not in (None, "too_tight")):
             hidden["size_unknown"] += 1
+            continue
+        if e.unknown_size:
+            if codes:
+                f.use = main_use(m, codes)
+            passed.append(f)
             continue
         if e.fit not in allowed:
             hidden["too_tight" if e.fit == "too_tight" else "below_min_fit"] += 1
@@ -487,8 +547,11 @@ def select(
         hidden["same_model"] += len(fits) - len(reps)
         if group:
             # 行の点数 = 代表と同じ用途・同じ段階の仲間(絞り込みに合うもの)の点数の一番高いもの。
-            # ほかの値はすべて代表のもの(代表が高い精度へ替わっても点数が下がらないように)
-            same = [x for x in fits if x.use == reps[0].use and x.estimate.fit == reps[0].estimate.fit]
+            # 「逃がさずに載る」(perfect / good で GPU・GPU~)ものは 1 つの段階とみなす(代表は精度で選ぶので、
+            # VRAM が増えて perfect の int8 から good の bf16 へ替わっても点数が下がらないように。#28)。
+            # ほかの値はすべて代表のもの
+            tier = row_tier(reps[0].estimate)
+            same = [x for x in fits if x.use == reps[0].use and row_tier(x.estimate) == tier]
             top = max(same, key=lambda x: x.score)
             reps = [replace(reps[0], score=top.score, score_components=dict(top.score_components))]
         for rep in reps:
@@ -535,6 +598,7 @@ def recommend(
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
     include_tools: bool = False,
+    include_unknown_license: bool = False,
     auto_only: bool = False,
     group: bool = True,
     limit: int | None = 10,
@@ -544,7 +608,7 @@ def recommend(
     with_limits: bool = False,
     policy: GatePolicy | None = None,
 ) -> list[Fit]:
-    """おすすめ順(大きさが分からないものは出さない)。CLI の recommend と同じ既定。"""
+    """おすすめ順(大きさ・ライセンスが分からないものは出さない)。CLI の recommend と同じ既定。"""
     return select(
         db,
         system,
@@ -554,6 +618,7 @@ def recommend(
         license=license,
         task=task,
         include_tools=include_tools,
+        include_unknown_license=include_unknown_license,
         auto_only=auto_only,
         drop_unknown_size=True,
         group=group,

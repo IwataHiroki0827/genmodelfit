@@ -102,7 +102,8 @@ def test_cli_json_has_no_table(capsys):
 
 
 def test_cli_table_real_db(capsys):
-    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all"]) == 0
+    every_license = ["--content", "all", "--include-unknown-license"]
+    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", *every_license]) == 0
     out = capsys.readouterr().out
     lines = out.splitlines()
     assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
@@ -110,7 +111,7 @@ def test_cli_table_real_db(capsys):
     db = load(use_cache=False)  # 長い ID は省略記号で詰めるので、行数で確かめる
     rows = [x for x in lines if x.startswith("● ")]
     assert len(rows) == len(build_index(db.models).members)  # 1 行 = 1 モデル
-    every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all", "--all-workflows"]
+    every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", *every_license, "--all-workflows"]
     assert cli.main(every) == 0
     out = capsys.readouterr().out
     rows = [x for x in out.splitlines() if x.startswith("● ")]

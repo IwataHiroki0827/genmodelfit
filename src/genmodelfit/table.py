@@ -29,7 +29,13 @@ from .groups import precision_label
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
 from .tasks import MODALITY_LABEL
 
-LEVEL_STYLE = {"perfect": "bold green", "good": "cyan", "marginal": "yellow", "too_tight": "red"}
+LEVEL_STYLE = {
+    "perfect": "bold green",
+    "good": "cyan",
+    "marginal": "yellow",
+    "too_tight": "red",
+    "unknown": "dim",
+}
 LEVEL_LABEL = FIT_LABEL
 MARK = "●"  # 段階の印(絵文字ではない記号)
 # 落ちた条件の id(gate.py)を、表に収まる短い名前にする
@@ -51,6 +57,7 @@ HIDDEN_LABEL = {
     "sfw": "sfw",
     "tools": "tools",
     "license": "license",
+    "license_unknown": "license unknown",
     "size_unknown": "size unknown",
     "too_tight": "too tight",
     "below_min_fit": "below --min-fit",
@@ -346,6 +353,13 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> l
         out.append(
             f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --content all to show them."
         )
+    if hidden.get("license_unknown"):
+        out.append(
+            f"Note: {hidden['license_unknown']} model(s) with an unknown license hidden;"
+            " add --include-unknown-license to show them."
+        )
+    if any(f.estimate.unknown_size for f in fits):
+        out.append("? = size unknown, not judged (listed last).")
     return out
 
 

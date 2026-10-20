@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 
@@ -130,14 +131,16 @@ def test_width(cache, args, columns):
 
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
-    # 同梱の無検閲は 24 件。同じモデルの別のワークフローは「same model」に数える
+    # 同梱の無検閲は 24 件。ライセンスの分からないものも既定では隠す(#28)。
+    # 同じモデルの別のワークフローは「same model」に数える
     assert (
         "All models: " in out
-        and "(24 hidden: uncensored 24; " in out
-        and " more workflows merged into their models)" in out
+        and re.search(r"\(\d+ hidden: uncensored 24, license unknown \d+; ", out)
+        and " more workflows merged into" in out
     )
-    assert "add --content all" in out
-    out = run_cli(["fit", *HW, "--content", "all", "--all-workflows"], cache).stdout.decode("utf-8")
+    assert "add --content all" in out and "--include-unknown-license" in out
+    every = ["--content", "all", "--all-workflows", "--include-unknown-license"]
+    out = run_cli(["fit", *HW, *every], cache).stdout.decode("utf-8")
     assert "hidden" not in out
     out = run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")
     assert "uncensored" not in out and "other types" in out  # 3D には無検閲が無い。ほかの種類は隠した数に出す
