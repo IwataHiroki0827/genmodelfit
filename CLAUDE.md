@@ -7,6 +7,11 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 
 - **依存は MIT / Apache-2.0 / BSD のものだけ**。GPL・AGPL・独自の制限付きライセンスの部品は使わない
   (使う側のアプリがソース非公開で配布するため)。足すときは pyproject.toml にライセンスを書く
+  - 例外: `certifi`(MPL-2.0、requests の依存)。改変せずに使う。MPL-2.0 はファイル単位のコピーレフトで、
+    改変しなければ義務は元のファイルのライセンス表示を残すことだけなので、MIT での配布やアプリのソース非公開に影響しない。
+    これ以外の MPL・LGPL などを足すときは先に相談する
+  - tests/test_licenses.py が、入っている実行時の依存(dev などの extra は除く)のライセンスを許可リストと照らす
+    (MIT-0・ISC・PSF-2.0 も MIT と同じ扱いで許す。cffi が MIT-0)
 - **ComfyUI(GPL-3.0)のコードは import しない**。動いている ComfyUI には HTTP だけで話す(bench)
 - データ源は ComfyUI 公式テンプレート(MIT)の index.json とテンプレートの JSON、Hugging Face Hub API。
   willitrunai.com などのサイトのデータは取り込まない(式の考え方だけ参考にする)
