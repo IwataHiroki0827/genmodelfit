@@ -230,6 +230,7 @@ def resolve_model(db: Database, query: str, content: str = DEFAULT_CONTENT):
     一部で探すときは content で絞る(既定 sfw なので無検閲は出ない)。1 件だけならそれ、
     2 件以上なら AmbiguousModel(先頭を黙って選ばない)、0 件なら CliError。
     """
+    query = query.strip()
     exact = db.get(query)
     if exact is not None:
         return exact
@@ -241,9 +242,10 @@ def resolve_model(db: Database, query: str, content: str = DEFAULT_CONTENT):
     if shown:
         raise AmbiguousModel(query, shown)
     if hits:
+        kinds = "・".join(sorted({m.content for m in hits}))
         raise CliError(
-            f"モデルが見つかりません: {query}(無検閲のモデルなら {len(hits)} 件あります。"
-            "--content all を付けるか ID で指定してください)"
+            f"モデルが見つかりません: {query}(--content {content} で外れた {kinds} のモデルが "
+            f"{len(hits)} 件あります。--content all を付けるか ID で指定してください)"
         )
     raise CliError(f"モデルが見つかりません: {query}")
 

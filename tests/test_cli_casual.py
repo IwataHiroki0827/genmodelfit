@@ -150,3 +150,18 @@ def test_console_script(cache):
     assert r.returncode == 0 and "Recommended (3)" in r.stdout.decode("utf-8")
     r = subprocess.run([exe, "--version"], capture_output=True, env=env, timeout=60, check=False)
     assert r.stdout.decode("utf-8").strip() == f"genmodelfit {__version__}"
+
+
+def test_info_hint_names_the_hidden_content_and_strips_spaces():
+    """--content で外れた候補の案内は、実際に外れた内容を書く。前後の空白は無視する。"""
+    from genmodelfit.cli import CliError, resolve_model
+    from genmodelfit.db import load
+
+    db = load(use_cache=False)
+    try:
+        resolve_model(db, "sdxl_simple", "uncensored")
+    except CliError as e:
+        assert "sfw" in str(e) and "無検閲" not in str(e)
+    else:
+        raise AssertionError("uncensored では sfw の候補を出さない")
+    assert resolve_model(db, "  image_sdxl_simple ").id == "image_sdxl_simple"
