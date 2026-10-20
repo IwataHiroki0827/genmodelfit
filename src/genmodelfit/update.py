@@ -44,11 +44,13 @@ from .hf import (
     guess_precision,
     is_repackager,
     license_tier,
+    obligation_rank,
     parse_hf_url,
     search_url,
     select_weight_files,
     upstream_candidates,
 )
+from .license_sources import enforce_lineage, source_for
 from .models import ModelEntry, ModelFile, Template
 from .tasks import tool_task_from_title
 
@@ -63,9 +65,11 @@ COMFYUI_RELEASES_PAGE = "https://github.com/Comfy-Org/ComfyUI/releases"
 MAX_FAIL_RATIO = 0.30
 # ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
 # (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
-LICENSE_POLICY = 3
+LICENSE_POLICY = 5  # 5: 表の上書きの行・元を読めない系統を不明に戻す・同じ段階は義務の多いもの(0.1.1)
 # 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
 COMPLETE_RATIO = 0.5
+# 本体が GGUF だけのとき、テキストエンコーダ・VAE が別に要るとみなす種類(拡散モデル)。#28
+GGUF_SPLIT_MODALITIES = ("image", "video", "music", "sfx", "3d")
 # sources.counts.license_tier の名前(hf.license_tier の段階)
 _TIER_NAMES = {
     6: "unknown",
@@ -489,7 +493,13 @@ def apply_license(
     f: ModelFile, info: RepoInfo, client: HfClient, path: str, *, discovered_uncensored: bool = False
 ) -> Resolved:
     res = client.resolve_file(info, path, discovered_uncensored=discovered_uncensored)
+    # 自動で決められなかったもの(と、表が上書きと決めたもの)は、人が一次資料で出どころを確かめた表で決める
+    # (license_sources.py)
+    row = source_for(info.repo_id, path)
+    if row is not None and (res.license is None or row.override):
+        res = row.resolved(info.repo_id)
     set_file_license(f, res)
+    enforce_lineage(f)  # 元を読めない系統は不明に戻す(gate と同じ)
     f.license_url = res.url
     if res.source and res.source != info.repo_id:
         f.repo_license = info.license if info.license != "other" else (info.license_name or "other")
@@ -503,7 +513,15 @@ def set_entry_license(e: ModelEntry) -> None:
         e.license, e.license_name, e.license_url = None, None, None
         e.license_evidence = [f"{UNVERIFIED}: 使うファイルが分かりません"]
         return
-    worst = max(e.files, key=lambda f: (license_tier(f.license, f.license_name), f.license or "", f.name))
+    worst = max(
+        e.files,
+        key=lambda f: (
+            license_tier(f.license, f.license_name),
+            obligation_rank(f.license),  # 同じ段階なら義務の多いもの(apache-2.0 を mit より先に)
+            f.license or "",
+            f.name,
+        ),
+    )
     e.license, e.license_name = worst.license, worst.license_name
     e.license_url = worst.license_url if worst.license else None
     ev: list[str] = []
@@ -518,16 +536,41 @@ def set_entry_license(e: ModelEntry) -> None:
 
 
 def set_precision(e: ModelEntry) -> None:
-    """精度は本体のファイル名から読む(groups.model_precision。表のモデルのまとめ方と同じ本体を見る)。
-    ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
+    """精度は本体のファイルの見出し(読めていれば)か名前から読む(groups.model_precision。表のモデルの
+    まとめ方と同じ本体を見る)。ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
     e.precision = model_precision(e)
+
+
+def set_sampler_stages(e: ModelEntry, stages: list[list[str]] | None) -> None:
+    """テンプレートのつながりから読んだサンプラーごとの組(workflow.sampler_stages)のうち、この項目の本体を
+    含むものを sampler_stages に入れる。本体の組が 2 つ以上でなければ [](1 組)。None は読めなかった。"""
+    from .estimate import _base_lower, _role_of
+
+    if stages is None:
+        e.sampler_stages = None
+        return
+    mains = {_base_lower(f.name) for f in e.files if _role_of(f) == "main"}
+    rows = [st for st in stages if {_base_lower(n) for n in st} & mains]
+    kinds = {frozenset(_base_lower(n) for n in st) & mains for st in rows}
+    e.sampler_stages = [list(st) for st in rows] if len(kinds) >= 2 else []
+
+
+def _stages_of(wf: Any) -> list[list[str]] | None:
+    from .workflow import WorkflowError, sampler_stages
+
+    try:
+        return sampler_stages(wf)
+    except (WorkflowError, TypeError, ValueError, KeyError, IndexError, AttributeError, RecursionError):
+        return None
 
 
 def set_completeness(e: ModelEntry) -> None:
     """files_complete と size_floor_bytes(docs/schema.md)。
 
     False: 本体(role main。diffusion_models / unet / checkpoints)が無い、ファイルの合計が index の size の
-    半分未満、または本体が GGUF だけでテキストエンコーダ・VAE が無い(HF のリポジトリ)。
+    半分未満、または本体が GGUF だけでテキストエンコーダ・VAE が無い(HF のリポジトリの画像・動画・3D。
+    拡散モデルの GGUF は本体だけを配る。読み上げなどの音声の GGUF は llama.cpp 系の実行環境向けの
+    一式で、テキストエンコーダ・VAE という部品を持たないので当てはめない。#28)。
     False のとき、テンプレートの index の size を size_floor_bytes に入れる(見積もりが小さく見ないように)。
     """
     reasons = []
@@ -540,6 +583,7 @@ def set_completeness(e: ModelEntry) -> None:
     mains = [f for f in e.files if f.role == "main"]
     if (
         e.source == "huggingface"
+        and e.modality in GGUF_SPLIT_MODALITIES
         and mains
         and all(f.name.lower().endswith(".gguf") for f in mains)
         and not any(f.role in ("text_encoder", "vae") for f in e.files)
@@ -956,8 +1000,12 @@ def build_database(
     progress: Callable[[str], None] | None = None,
     previous: Database | None = None,
     carry_over: bool = True,
+    inspect: bool | None = None,
 ) -> Database:
     """上流から一覧を作る。書き出しはしない(run_update が書く)。
+
+    inspect: 本体のファイルの見出しを読んで精度を決める(inspect_headers。既定は head と同じ。
+        キャッシュにあるものは読み直さない)。
 
     fetch: 取得の仕方(既定は HttpFetcher)。試験では DirFetcher などを渡す。
     previous: 前の一覧(既定はキャッシュ、無ければ同梱の一覧)。実測のあるモデルが上流から消えたときと、
@@ -969,6 +1017,7 @@ def build_database(
     say = progress or _silent
     stats: dict[str, Any] = {}
     warnings: list[str] = []
+    inspect = head if inspect is None else inspect
 
     say("ComfyUI 公式テンプレートの一覧を取得しています")
     index = validate_index(fetch.get_json(INDEX_URL))
@@ -993,7 +1042,8 @@ def build_database(
 
     def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, str | None]:
         try:
-            return workflow_models(fetch.get_json(f"{RAW}/{item[1]['name']}.json")), None
+            wf = fetch.get_json(f"{RAW}/{item[1]['name']}.json")
+            return (workflow_models(wf), _stages_of(wf)), None
         except (FetchError, UpstreamFormatError) as e:
             return None, f"{item[1]['name']}: {e}"
 
@@ -1001,12 +1051,14 @@ def build_database(
     tmpl_by_id: dict[str, dict[str, Any]] = {}
     failed: list[str] = []
     failed_names: list[str] = []
-    for item, (models, err) in zip(chosen, client.map(_load, chosen), strict=False):
+    for item, (loaded, err) in zip(chosen, client.map(_load, chosen), strict=False):
         if err:
             failed.append(err)
             failed_names.append(item[1]["name"])
             continue
+        models, stages = loaded
         e = template_entry(item[0], item[1], item[2], models)
+        set_sampler_stages(e, stages)
         entries.append(e)
         tmpl_by_id[e.id] = item[1]
     if chosen and len(failed) / len(chosen) > MAX_FAIL_RATIO:
@@ -1087,6 +1139,9 @@ def build_database(
                 entries.append(prev_by_id[name])
                 carried += 1
                 warnings.append(f"テンプレートを読めなかったため前の一覧から引き継ぎました: {name}")
+    if inspect:
+        say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
+        stats["file_headers"] = inspect_headers(entries, fetch, progress=say)
     from .families import assign
 
     for e in entries:  # ComfyUI の系統(引き継いだ項目も、今の表で決め直す)
@@ -1194,6 +1249,80 @@ def update_database(
             f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
             f"{hint}欠けたままでよければ --allow-partial を付けてください"
         )
+    db.save(out_path)
+    return db
+
+
+def inspect_headers(
+    entries: list[ModelEntry],
+    fetch: Fetcher | None,
+    *,
+    offline: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """本体のファイルの見出し(safetensors の JSON・GGUF の頭)を Range 要求で読み、精度を決め直す
+    (headers.inspect_files → set_precision)。読んだ結果はキャッシュ(<cache>/file_headers.json)に残し、
+    次からは読まない。offline=True、または fetch が Range 要求を持たない(試験の DirFetcher)ときは
+    キャッシュだけを使う。返す値は sources["file_headers"] に入れる集計。"""
+    from .db import cache_dir
+    from .headers import CACHE_FILE, HeaderCache, inspect_files
+
+    cache = HeaderCache(cache_dir() / CACHE_FILE)
+    get_range = None if offline else getattr(fetch, "get_range", None)
+    stats = inspect_files(entries, get_range, cache, offline=get_range is None, progress=progress)
+    if stats.fetched:
+        cache.save()
+    for e in entries:
+        set_precision(e)
+    out = stats.to_dict()
+    out["checked_at"] = _now()
+    out["precision_unknown"] = sum(1 for e in entries if e.precision is None)
+    return out
+
+
+def refresh_templates(
+    entries: list[ModelEntry], fetch: Fetcher, progress: Callable[[str], None] | None = None
+) -> dict[str, Any]:
+    """公式テンプレートの JSON を読み直し、サンプラーごとの本体の組(sampler_stages)だけを決め直す。"""
+    say = progress or _silent
+    tmpl = [e for e in entries if e.source == "comfyui-template"]
+    say(f"テンプレート {len(tmpl)} 件の JSON からサンプラーごとの本体の組を読んでいます")
+    failed = 0
+    for e in tmpl:
+        try:
+            wf = fetch.get_json(f"{RAW}/{e.id}.json")
+        except FetchError:
+            failed += 1
+            continue
+        set_sampler_stages(e, _stages_of(wf))
+    multi = sum(1 for e in tmpl if e.sampler_stages)
+    return {"templates": len(tmpl), "failed": failed, "multi_stage": multi, "checked_at": _now()}
+
+
+def inspect_database(
+    fetch: Fetcher | None,
+    out_path: Path,
+    *,
+    db_path: str | None = None,
+    use_cache: bool = True,
+    offline: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> Database:
+    """今の一覧をそのまま使い、ファイルの中身から分かることだけを決め直す(update --inspect-only):
+    本体のファイルの見出しの精度(inspect_headers)と、テンプレートのサンプラーごとの本体の組
+    (refresh_templates。offline のときは読まない)。ほかの値は変えない。"""
+    from .db import DatabaseError
+    from .db import load as load_db
+
+    say = progress or _silent
+    try:
+        db = load_db(db_path, use_cache=use_cache)
+    except (DatabaseError, OSError, ValueError) as e:
+        raise UpdateFailed(f"一覧を読めません: {e}") from e
+    if not offline and fetch is not None:
+        db.sources["sampler_stages"] = refresh_templates(db.models, fetch, say)
+    say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
+    db.sources["file_headers"] = inspect_headers(db.models, fetch, offline=offline, progress=say)
     db.save(out_path)
     return db
 

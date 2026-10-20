@@ -18,7 +18,7 @@ from genmodelfit.gate import GatePolicy, evaluate_offline
 from genmodelfit.status import DataStatus, compute
 
 UTC = timezone.utc
-CHECKED = datetime(2026, 10, 19, 19, 50, 3, tzinfo=UTC)  # 同梱の一覧の HEAD の確認日時
+CHECKED = datetime(2026, 10, 20, 10, 33, 7, tzinfo=UTC)  # 同梱の一覧の HEAD の確認日時
 
 
 def _auto(db, m, now) -> bool:
@@ -45,8 +45,8 @@ def test_bundled_is_fresh_today(bundled):
     assert st.auto_count == st.auto_count_if_fresh > 0
     assert st.models == len(bundled.models)
     assert st.max_head_age_days == 30
-    assert st.heads_checked_oldest == "2026-10-19T19:50:03Z"
-    assert st.expires_at == "2026-11-18T19:50:03Z"
+    assert st.heads_checked_oldest == "2026-10-20T10:33:07Z"
+    assert st.expires_at == "2026-11-19T10:33:07Z"
     assert st.generated_at == bundled.generated_at
 
 
@@ -55,7 +55,7 @@ def test_bundled_expires_after_30_days(bundled):
     assert st.expired is True
     assert st.auto_count == 0
     assert st.auto_count_if_fresh > 0
-    assert st.expires_at == "2026-11-18T19:50:03Z"
+    assert st.expires_at == "2026-11-19T10:33:07Z"
     assert st.checked_at == "2026-12-01T00:00:00Z"
 
 

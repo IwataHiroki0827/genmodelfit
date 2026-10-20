@@ -113,6 +113,7 @@ gate は一覧を書き換えずに、判定の中で次の順に読む(どれ�
    | `sdpose` | https://huggingface.co/teemosliang/SDPose-Wholebody のカード「U-Net backbone initialized with Stable Diffusion v2 weights」(表記は mit) |
    | `lotus`(lotus-depth / lotus-normal) | https://github.com/EnVision-Research/Lotus の学習の設定が `stabilityai/stable-diffusion-2-base` から始める(https://huggingface.co/jingheya/lotus-depth-d-v1-1 の表記は apache-2.0) |
    | `sd2`(sd2・sd21・stable-diffusion-2) | Stable Diffusion 2 の元(stabilityai/stable-diffusion-2・-2-base)は 2026-10-20 に匿名で読めない(401)。写し https://huggingface.co/sd2-community/stable-diffusion-2-base の表記は openrail++ |
+   | `void-model`(void_pass・netflix/void-model) | https://huggingface.co/netflix/void-model のカード「VOID is built on CogVideoX-Fun-V1.5-5b-InP」。元の LICENSE は The CogVideoX License(VOID の表記は apache-2.0。#28) |
 
    系統の表(`hf.FAMILIES`。SDXL・SD1.5・Marigold v1(openrail++)など)より寛容な値も不明
 4. ライセンスを**再配布側の表記からしか読めていない**(`license_from` が再配布のリポジトリ)なら、確かめられない
@@ -184,8 +185,8 @@ API の 500 回 / 5 分とは別)で数えられるので、1 回の update で�
 それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 「確認が古い」)。
 `GatePolicy(max_head_age_days=…)` / `--max-head-age-days N`(`none` で期限なし)で変えられる。
 
-**同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD は 2026-10-19T19:50Z(日本時間 2026-10-20)の確認**なので、
-2026-11-18T19:50Z(日本時間 11-19 の朝)を過ぎると、同梱の一覧だけでは auto が 0 件になる。使う側のアプリは、定期的に(30 日以内に)次を実行して記録をやり直す:
+**同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD は 2026-10-20T10:33Z(日本時間 2026-10-20 19:33。0.1.1)の確認**なので、
+2026-11-19T10:33Z(日本時間 11-19 の夜)を過ぎると、同梱の一覧だけでは auto が 0 件になる。使う側のアプリは、定期的に(30 日以内に)次を実行して記録をやり直す:
 
 ```powershell
 genmodelfit update --heads-only [--db PATH] [--output PATH]   # 既定はキャッシュの一覧を読んでキャッシュに書く

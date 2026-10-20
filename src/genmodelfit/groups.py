@@ -442,12 +442,31 @@ def index_for(db) -> ModelIndex:
     return idx[1]
 
 
-def model_precision(m: ModelEntry) -> str | None:
-    """本体のファイル名から読む精度(update と表で同じものを使う)。本体が無ければ None。"""
+# 見出し(safetensors の dtype)では分からず、ファイル名の語を使う精度(4 bit を詰めた形式など)
+_NAME_ONLY_PRECISION = re.compile(r"^(w4a8|nvfp4|mxfp4|fp4|nf4|int4)$")
+
+
+def file_precision(f: ModelFile) -> str | None:
+    """1 つのファイルの精度。ファイルの見出しから読んだ精度(header_precision、#28)があればそれを使い、
+    無ければファイル名から推す。ただし見出しで区別できない形式(nvfp4・w4a8 など)と、名前に量子化の種類が
+    書いてある GGUF は名前を使う。"""
     from .hf import guess_precision
 
+    name = guess_precision(f.name)
+    head = f.header_precision
+    if not head:
+        return name
+    if name and _NAME_ONLY_PRECISION.match(name):
+        return name
+    if name and name.startswith("gguf-") and head.startswith("gguf"):
+        return name
+    return head
+
+
+def model_precision(m: ModelEntry) -> str | None:
+    """本体の精度(update と表で同じものを使う)。本体が無ければ None。本体が複数なら一番大きいもの。"""
     mains = sorted(main_files(m), key=lambda f: (-(f.size_bytes or 0), f.name))
-    return guess_precision(mains[0].name) if mains else None
+    return file_precision(mains[0]) if mains else None
 
 
 def group_keys(models: Iterable[ModelEntry]) -> dict[str, str]:

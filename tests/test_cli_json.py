@@ -65,6 +65,7 @@ FIT = {
     "fit_label",
     "run_mode",
     "run_mode_label",
+    "level_cap",
     "score",
     "score_components",
     "memory_kind",
@@ -120,8 +121,19 @@ CHECK_IDS = [
     "content",
     "size_known",
 ]
-FIT_FILTERS = {"modality", "content", "min_fit", "license", "task", "all_workflows", "limit"}
+FIT_FILTERS = {
+    "modality",
+    "content",
+    "min_fit",
+    "fit",
+    "license",
+    "include_unknown_license",
+    "task",
+    "all_workflows",
+    "limit",
+}
 RECOMMEND_FILTERS = FIT_FILTERS | {"per_type", "auto_only", "include_tools"}
+LISTING_FILTERS = FIT_FILTERS | {"sort", "all"}
 VARIANT = {"precision", "workflow_id", "memory_required_gb", "fit_level", "auto", "disk_size_gb"}
 WORKFLOW = {
     "id",
@@ -136,7 +148,7 @@ WORKFLOW = {
     "matched",
 }
 GROUP = {"modality", "matched", "shown"}
-SEARCH_FILTERS = FIT_FILTERS | {"query"}
+SEARCH_FILTERS = LISTING_FILTERS | {"query"}
 LIST_KEYS = ENVELOPE | {"system", "database", "filters", "matched", "hidden", "groups", "models"}
 HIDDEN_KEYS = {
     "modality",
@@ -144,9 +156,11 @@ HIDDEN_KEYS = {
     "sfw",
     "tools",
     "license",
+    "license_unknown",
     "size_unknown",
     "too_tight",
     "below_min_fit",
+    "other_fit",
     "held",
     "task",
     "same_model",
@@ -179,6 +193,7 @@ MODEL_ENTRY = {
     "comfy_family",
     "comfy_vae",
     "size_floor_bytes",
+    "sampler_stages",
 }
 MODEL_FILE = {
     "name",
@@ -198,6 +213,8 @@ MODEL_FILE = {
     "license_evidence",
     "head_status",
     "head_checked_at",
+    "header_precision",
+    "header_params",
 }
 TEMPLATE = {
     "name",
@@ -285,15 +302,38 @@ def check_fit(item: dict) -> None:
 
 
 def check_order(models: list[dict], by_type: bool = False) -> None:
-    """動くもの → auto → 公式 → 点数 → ID の順(by_type なら種類の順に分けたうえで)。"""
+    """動くもの → auto → 段階 → 公式 → 点数 → ID の順(by_type なら種類の順に分けたうえで)。"""
     order = ["image", "video", "music", "sfx", "tts", "3d"]
+    levels = ["perfect", "good", "marginal", "too_tight", "unknown"]
     keys = [
         (
             order.index(m["modality"]) if by_type else 0,
-            m["fit_level"] == "too_tight",
+            {"unknown": 2, "too_tight": 1}.get(m["fit_level"], 0),
             not m["auto"],
-            m["community"],  # 利用者のテンプレートは公式の後
+            0
+            if m["fit_level"] in ("perfect", "good") and m["run_mode"] == "gpu"
+            else levels.index(m["fit_level"]),
+            m["community"],  # 利用者のテンプレートは同じ段階の中で公式の後
             -m["score"],
+            m["id"],
+        )
+        for m in models
+    ]
+    assert keys == sorted(keys)
+
+
+def check_list_order(models: list[dict], sort: str = "type") -> None:
+    """fit / search の既定(--sort type): 種類 → 段階(判定できないものは too_tight の前)→ 同じ段階の中で公式
+    → 点数 → 名前。自動のおすすめを先にしない。"""
+    order = ["image", "video", "music", "sfx", "tts", "3d"]
+    levels = ["perfect", "good", "marginal", "unknown", "too_tight"]
+    keys = [
+        (
+            order.index(m["modality"]),
+            levels.index(m["fit_level"]),
+            m["community"],
+            -m["score"],
+            m["model_name"].lower(),
             m["id"],
         )
         for m in models
@@ -392,10 +432,12 @@ def test_auto_only_counts_held(cache):
 
 
 def test_fit(cache):
-    d = call(["fit", *HW], cache)
+    d = call(["fit", *HW, "--fit", "all", "--include-unknown-license", "--include-tools"], cache)
     assert set(d) == LIST_KEYS
     check_counts(d)
-    assert set(d["filters"]) == FIT_FILTERS and d["filters"]["min_fit"] is None
+    assert set(d["filters"]) == LISTING_FILTERS | {"include_tools"} and d["filters"]["min_fit"] is None
+    assert d["filters"]["fit"] == "all" and d["filters"]["sort"] == "type"
+    assert d["filters"]["include_unknown_license"] is True
     db = load_db(use_cache=False)
     sfw = [m for m in db.models if m.content == "sfw"]
     idx = build_index(db.models)
@@ -407,8 +449,8 @@ def test_fit(cache):
     assert d["hidden"] == {"uncensored": len(db.models) - len(sfw), "same_model": len(sfw) - d["matched"]}
     for m in d["models"]:
         check_fit(m)
-    check_order(d["models"])
-    every = call(["fit", *HW, "--content", "all", "--all-workflows"], cache)
+    check_list_order(d["models"])
+    every = call(["fit", *HW, "--content", "all", "--all-workflows", "--all"], cache)
     check_counts(every)
     assert len(every["models"]) == every["database"]["models"] and every["hidden"] == {}
 
@@ -450,7 +492,7 @@ def test_min_fit_and_license(cache):
     lic = call(["fit", *HW, "--license", "Apache-2.0, MIT", "--all-workflows"], cache)
     assert lic["filters"]["license"] == ["apache-2.0", "mit"] and lic["hidden"]["license"]
     assert lic["models"] and all(set(m["licenses"]) <= {"apache-2.0", "mit"} for m in lic["models"])
-    every = call(["fit", *HW, "--all-workflows"], cache)
+    every = call(["fit", *HW, "--all-workflows", "--include-unknown-license"], cache)
     unknown = [m for m in every["models"] if None in m["licenses"]]
     assert unknown and not {m["id"] for m in unknown} & {m["id"] for m in lic["models"]}  # 不明は合わない
     r = run_cli(["fit", *HW, "--license", " , "], cache)
@@ -466,7 +508,7 @@ def test_search(cache):
     assert all(m["content"] == "sfw" for m in d["models"]) and d["hidden"].get("uncensored")
     for m in d["models"]:
         check_fit(m)
-    check_order(d["models"])
+    check_list_order(d["models"])
     every = call(["search", "flux", *HW, "--content", "all", "--all-workflows"], cache)
     assert len(every["models"]) == len(d["models"]) + d["hidden"]["uncensored"]
     grouped = call(["search", "flux", *HW], cache)

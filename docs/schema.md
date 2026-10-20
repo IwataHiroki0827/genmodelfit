@@ -27,7 +27,8 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | command | network | writes |
 |---|---|---|
 | `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate` (and the Python API) | none | none |
-| `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD) | the cache `db.json` (or `--output`) |
+| `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
+| `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`) |
 
@@ -105,7 +106,7 @@ Network is never touched.
 
 The gate's `url_reachable` check itself decides both counts (`gate.evaluate_offline`, run once with the policy and once
 with `max_head_age_days=None`), so `expired` and the gate never disagree. The bundled list's HEADs were checked on
-2026-10-19, so with no update it expires after 2026-11-18T19:50:03Z and `auto_count` becomes 0.
+2026-10-20T10:33:07Z (0.1.1), so with no update it expires after 2026-11-19T10:33:07Z and `auto_count` becomes 0.
 判定は gate と同じ関数で行う。`expired` が true なら、HEAD の確認が古いせいで自動のおすすめから落ちたものがある。
 
 ## recommend / fit / search
@@ -114,7 +115,7 @@ The three commands print the same shape (Issue #17, modeled on llmfit's `recomme
 
 | key | type | meaning |
 |---|---|---|
-| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `search` adds `query` |
+| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `include_unknown_license` (bool), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `search` adds `query` |
 | `matched` | int | rows that passed every filter, before `limit` / `per_type` (models; workflows with `--all-workflows`) |
 | `hidden` | object | why the other entries are not shown: `{reason: count}`, only reasons with a count (below) |
 | `groups` | object[] | per type, in the order image, video, music, sfx, tts, 3d (only the `-m` types when given): `{modality, matched, shown}` |
@@ -124,20 +125,50 @@ The three commands print the same shape (Issue #17, modeled on llmfit's `recomme
 LoRA, …) are collapsed into one item; the others are listed in `workflows` / `variants`. `--all-workflows`
 (`all_workflows=True` in Python) gives one item per list entry as before.
 
+`fit` (0.1.1, Issue #28; Python `gmf.fit_list()`): by default only the models that run (`--fit runnable` = perfect /
+good / marginal), without utility tools, unknown-license and uncensored models; `--all` (`show_all=True`) is `--fit all`
+plus tools and unknown licenses (uncensored still needs `--content all`). `--fit perfect|good|marginal` shows exactly
+that level (other runnable levels are counted as `hidden.other_fit`); `--fit` and `--min-fit` cannot be combined
+(`--perfect` = `--fit perfect`). `fit` and `search` print **one table** sorted by `--sort` (`sort=`):
+
+| sort | order |
+|---|---|
+| `type` (default) | type (image, video, music, sfx, tts, 3d) → fit level (perfect → good → marginal → unknown → too_tight) → official before community within the same level → `score` desc → model name |
+| `score` | runs (perfect / good / marginal) → unknown → too_tight, then fit level → official first → `score` desc → name: one ranking across types |
+| `vram` / `disk` | runs → unknown → too_tight, then `memory_required_gb` / `disk_size_gb` ascending (null last) |
+| `name` | runs → unknown → too_tight, then model name |
+
+The fit level always comes before the score (the score weights the level most, but the other components could invert
+two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Auto column shows it). JSON `models`
+follows the same order; `filters` of `fit` adds `fit`, `sort`, `all`, `include_tools`, of `search` `fit`, `sort`, `all`.
+Table columns (all commands): `Type | Status | Score | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Auto`;
+when the terminal is narrow, Disk, Mem%, License, Auto, Prec, Use are dropped in that order (Type, Status, Score and
+Model never). `search` shows every fit level by default (`--fit` narrows).
+
 `recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
 `-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
 and has `matched: 0` in `groups`. With `-m` or `--task` it is one list, `-n` default 10. In JSON `models` is ordered by
 type, then by the order below. Other defaults: `min_fit` `marginal`, utility tools hidden, models with unknown size never
-shown. `fit` and `search` show every level by default (`--min-fit` to narrow) and no limit. `search <query>` matches a
+shown. `fit` shows the runnable levels by default and `search` every level (`--fit` / `--min-fit` to narrow), with no
+limit; models with unknown size (`fit_level: "unknown"`, `?`) come after marginal ones of their type (`--fit all`). `search <query>` matches a
 part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
 `models: []` and exits 0 (text mode prints `(no match / 該当なし)`); a blank query exits 1.
 `content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
 既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
 
+**Unknown licenses are hidden by default** (0.1.1, Issue #28): an entry where any file's license (the entry's license
+when it lists no files) is unknown (`null`) is not shown by `recommend` / `fit` / `search` or by `gmf.recommend()` /
+`gmf.search()`; it is counted as `hidden.license_unknown`. `--include-unknown-license` (Python
+`include_unknown_license=True`) shows them. `info <exact id>` always shows the entry.
+ライセンスが分からないファイルを含むものは既定で出さない(`--include-unknown-license` で出す。`info <ID>` は出す)。
+
 `hidden` reasons, each entry counted once under the first reason that applies, in this order:
-`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
-`task` (other uses than `--task`), `license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good /
-marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into another row of the same model;
+`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend / fit without `--include-tools` / `--all`),
+`task` (other uses than `--task`), `license` (`--license`), `license_unknown` (some file's license is unknown; without
+`--include-unknown-license`), `size_unknown` (recommend, or any `--min-fit` other than `too_tight`), `too_tight`,
+`below_min_fit` (perfect / good / marginal below `--min-fit`), `other_fit` (a runnable level not selected by `--fit`),
+`held` (`--auto-only`), `same_model` (collapsed into
+another row of the same model;
 the text header says "N more workflows merged into their models").
 **`matched` + the sum of `hidden` = the number of entries looked at** (every entry of the list; for `search`, the entries
 whose id or name matched). Tested in `tests/test_cli_json.py`.
@@ -145,9 +176,13 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
-**Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → official before community
-templates (`community`) → `score` (desc) → `id`.
-動くもの → 自動でおすすめに出せるもの → 公式(利用者のテンプレートは後)→ 点数の高い順 → ID。
+**Order of `recommend` / recommend の並べ方** (`gmf.recommend()`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
+**runs without offload** (perfect or good on `GPU` / `GPU~`, one tier like the row score, 0.1.1: the precision upgrade
+to a `good` bf16 row must not move a model below where its `perfect` int8 row was) → marginal → official before
+community templates (`community`) **within the same tier** → `score` (desc) → `id`. Until 0.1.0 community templates
+came after every official row of all levels.
+動くもの(判定できないものは一番後ろ)→ 自動でおすすめに出せるもの → 逃がさずに載るもの(perfect / good)→ marginal →
+同じ段階の中で公式(利用者のテンプレートは後)→ 点数の高い順 → ID。
 
 ### Models / モデルのまとめ方
 
@@ -184,7 +219,9 @@ After the per-entry key, the whole list is looked at (`groups.build_index`):
   `params_b` comes from the title and can be the language model's size (ACE-Step 1.5 "4B LM").
 
 Precision (`ModelEntry.precision`) is read from the main file used for the key (`groups.model_precision`; `update` uses
-the same function), e.g. `w4a8` for the 10Eros W4A8 file.
+the same function): the file's `header_precision` when it was read, else the file name, e.g. `w4a8` for the 10Eros W4A8
+file. The name wins for packed formats the header cannot tell (`w4a8`, `nvfp4`, `mxfp4`, `fp4`, `nf4`, `int4`) and for
+GGUF files whose name states the quantization (`groups.file_precision`).
 
 **Display name** (`model_name`, the table's Model column, `groups.display_name`): candidates are each member's
 name before `:`, after `:` and both joined, without precision / packaging words (`Int8`, `FP16`, `F16`, `ConvRot`, `KJ`,
@@ -207,13 +244,24 @@ Which entry is shown for a model (`recommend.variant_key`): among the entries th
    workflow never stands for a model that has an official one,
 1. the use: `gen` → `edit` → `i2v` → `lipsync` → `motion` → `voice` → `upscale` → `tool` (with `--task`, among the
    matching uses) — so a tool or upscale workflow that shares the weights never stands for the model,
-2. the better fit level, 3. no offload (`GPU` / `GPU~` before `GPU+RAM` before CPU — same level, faster),
-4. the higher precision (bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 / 4-bit > lower; unknown precision counts
-   as full precision), 5. the order above.
-So on 8 GB Z-Image Turbo shows its int8 workflow (swapped, `marginal`) rather than bf16 (offload, `marginal`); with
-`--task edit` the representative is an edit workflow. **The row's `score` (and `score_components`) is the highest score
-among the model's entries that passed the filters and have the same use and the same fit level as the shown entry**;
-everything else on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
+2. **entries that run on the GPU without offload** (`fit_level` `perfect` or `good` and `run_mode` `gpu`, i.e. Mode
+   `GPU` or `GPU~`; `recommend.runs_clean`) first, and **among them the higher precision first**, then the better
+   level — like llmfit, the best quality that fits (0.1.1, Issue #28),
+3. otherwise (no entry runs without offload): the better fit level, then no offload (`GPU` / `GPU~` before `GPU+RAM`
+   before CPU — same level, faster), then the higher precision,
+4. the order above.
+Precision order: bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 / 4-bit > lower; unknown precision counts as
+full precision. So on 24 GB Z-Image Turbo shows bf16 (`good`, `GPU~`) rather than int8 (`perfect`); on 8 GB it shows
+int8 (swapped, `marginal`) rather than bf16 (offload, `marginal`); with `--task edit` the representative is an edit
+workflow. **The row's `score` (and `score_components`) is the highest score among the model's entries that passed the
+filters and have the same use and the same tier as the shown entry**, where the tier is the fit level, except that all
+entries that run without offload (perfect / good on `GPU` / `GPU~`) are one tier (`recommend.row_tier`); everything else
+on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
+Adding VRAM never lowers a row's score and never moves a row out of the "runs without offload" tier, and the shown
+precision only goes up within it; but the row's `fit_level` can go from `perfect` to `good` when a higher precision
+becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48 GB → bf16 `good` at 64 GB).
+Tested in `tests/test_groups.py`.
+逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
 
 On the bundled list (323 entries) this gives 204 models; 55 of them have more than one entry.
 
@@ -245,7 +293,7 @@ workflows}}]`; `models` = number of models as above, `workflows` = list entries;
 
 ### Fit (one item of `models`)
 
-Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.search()` give the same list as the CLI).
+Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` give the same list as the CLI).
 
 | key | type | meaning |
 |---|---|---|
@@ -253,10 +301,11 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 | `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d`; `tasks` is a list (`t2i`, `i2v`, …) |
 | `content` | str | `sfw` or `uncensored` (see README) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
-| `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`) |
-| `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` |
+| `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`), or `unknown` when the size is unknown and nothing was judged (0.1.1; until 0.1.0 these were `too_tight`) |
+| `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped stage by stage) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) |
+| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `marginal`), `cpu` (at most `marginal`); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100 (below) |
 | `score_components` | object | `fit`, `headroom`, `readiness`, `basis`, `popularity`, each 0–100 |
 | `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
@@ -266,7 +315,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 | `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
 | `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
 | `total_size_gb` | float \| null | size of all listed files |
-| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown) |
+| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown); within the same tier the one with more obligations (`apache-2.0` before `bsd-3-clause` before `mit`, `hf.OBLIGATION_RANK`) |
 | `licenses` | (str \| null)[] | the distinct licenses of the files (null last = some file unknown) |
 | `auto` | bool | can be auto-recommended (= `gate.auto`) |
 | `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
@@ -290,7 +339,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 
 | component | formula |
 |---|---|
-| `fit` | perfect 100, good 70, marginal 35, too_tight 0 |
+| `fit` | perfect 100, good 70, marginal 35, too_tight 0, unknown 0 |
 | `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
 | `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 |
 | `basis` | 100 when `measured`, 0 when `estimated` |
@@ -305,19 +354,19 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | key | type | meaning |
 |---|---|---|
 | `vram_gb` | float | peak VRAM when everything stays on the GPU / 全部載せ |
-| `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE) / 順に載せ替え |
-| `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM) / 逃がす |
+| `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE). When the workflow runs several diffusion models one sampler after another (Wan 2.2 14B high_noise → low_noise; `ModelEntry.sampler_stages`), the model stage counts only the largest of them (with its LoRAs) / 順に載せ替え |
+| `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM); several diffusion models run in turn are counted one at a time as above / 逃がす |
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
-| `fit` | str | the four levels below |
+| `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` |
 | `reasons` | str[] | human-readable reasons (Japanese) |
 | `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
-| `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `too_tight`, `run_mode` `none`, VRAM / RAM values are 0, `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these |
+| `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `none`, VRAM / RAM values are 0, `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these; `fit` / `search` list them last |
 
 When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
 used as is); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
@@ -354,8 +403,21 @@ The RAM check is applied afterwards (short but within the page file limit above 
 `too_tight`). On GPUs where ComfyUI computes in fp32 (`compute_dtype: "fp32"`: Maxwell, some Pascal, GTX 16xx …) the
 working memory and the VAE weights are doubled before judging (`docs/hardware.md`, "精度"). A model
 that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
-`marginal`), and the better result is used, so adding VRAM never lowers the level. `too_tight` also covers models whose
-size is unknown (`unknown_size: true`). Constants: `estimate.FIT_BANDS`.
+`marginal`), and the better result is used, so adding VRAM never lowers the level. Models whose size is unknown
+(`unknown_size: true`) get `unknown` instead of a level. Constants: `estimate.FIT_BANDS`.
+
+**Several diffusion models in one workflow / 本体が複数のワークフロー** (0.1.1, Issue #28): ComfyUI runs the samplers one
+after another, and when the next sampler loads its model, `load_models_gpu` calls `free_memory`, which unloads models
+that are loaded but not used now, as much as needed (ComfyUI commit `b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c`:
+`comfy/samplers.py:1241` → `comfy/sampler_helpers.py:201` → `comfy/model_management.py:1001`, unloading at `:905` /
+`:919`; dynamic-VRAM models are loaded on demand, `:914`). So the swapped (`GPU~`) and offload figures count one
+sampler's set at a time: that model + the files on its MODEL input (LoRAs) + the denoise-stage files shared by all
+(ControlNet, model patches); the all-in figure and system RAM still count all of them (unloaded models stay in RAM).
+The sets come from `ModelEntry.sampler_stages` (read from the template graph by `update`); when that is null (not
+checked), from the rule "main files named `*high_noise*` and `*low_noise*`" (LoRAs named high_noise / low_noise go to
+their set, others are shared). `estimate.expert_sets`. The official Wan 2.2 14B I2V template itself notes 84% VRAM on an
+RTX 4090D 24 GB at 640×640, 81 frames.
+サンプラーごとに別の本体を使うワークフローは、載せ替え・逃がすときに本体を 1 組ずつ数える。
 動かし方で使う置き場所の使用率で決める(60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight)。
 載せ替えは good まで、逃がす・CPU は marginal まで。
 
@@ -422,6 +484,12 @@ upstream (docs/sources.md「ライセンス」).
 `size_floor_bytes` is the template's index `size` when `files_complete` is false (null for Hugging Face entries, which
 have no index size).
 
+`sampler_stages` (str[][] \| null, optional; 0.1.1): for official templates, the model files each sampler (KSampler,
+KSamplerAdvanced, SamplerCustom, CFGGuider, …) loads through its MODEL input (diffusion model, LoRAs, model patches),
+one list per distinct set, in graph order (`workflow.sampler_stages`, kept only for sets that contain one of the entry's
+main files). Set only when there are two or more different sets of main files (`[]` = one set, `null` = not checked; HF
+entries are null). Used by the estimator as above.
+
 `comfy_family` / `comfy_vae` (str \| null, optional; added in #21 — older files without them still load): the ComfyUI
 model family and VAE kind (keys of `families.FAMILIES` / `families.VAES`), set by `update` from the main / VAE file
 names. Used only to decide whether ComfyUI computes in fp32 on GPUs without bf16 (`docs/hardware.md`, 「系統の表」).
@@ -435,7 +503,12 @@ known components; a repo id, never a path), `repo_license` (the hosting repo's o
 upstream one), `license_url`, `license_path` (str[]: the derivation path that was checked — hosting repo → base_model … →
 deciding repo), `license_evidence` (str[]: `license_unverified: …`, `component:<key>`, `family:<key>`, `upstream_gated: <repo>` — the component's upstream requires accepting terms),
 `head_status` (int \| null: status of an anonymous HEAD without following redirects, recorded by `update`;
-null = not checked), `head_checked_at` (UTC ISO-8601 of that HEAD).
+null = not checked), `head_checked_at` (UTC ISO-8601 of that HEAD), `header_precision` (str \| null: precision read
+from the file's own header — safetensors: the dtype holding most bytes, `F32`→`fp32`, `F16`→`fp16`, `BF16`→`bf16`,
+`F8_*`→`fp8`, `I8`→`int8`, packed 4-bit `U8` → null; GGUF: `general.file_type`, else the commonest tensor type, as
+`gguf-q8_0` etc.), `header_params` (int \| null: total elements of all tensors in the file). Both are read by
+`update` / `update --inspect-only` for Hugging Face main weight files only (`headers.py`; ranged GET of the first 8 bytes
+and the JSON header, or of the first MiB(s) of a GGUF, never the weights), null = not read.
 The estimator decides a file's part from `directory` first, then `role`, then the Hugging Face folder / known file
 names, and counts one variant per part (`docs/accuracy.md`, 「ファイルの数え方」).
 
@@ -512,6 +585,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `size_check` | `templates`, `equal`, `within_10pct` (index `size` vs the sum of the files) |
 | `counts` | `models`, `modality`, `content`, `source`, `license` (null = unknown), `license_tier`, `files_complete_false` |
 | `head_check` | `checked_at`, `urls` (unique HF URLs sent a HEAD), `status` (count per status code), `unchecked` (no answer), `not_sent` (files on other hosts, per host) |
+| `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
+| `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `checked_at` |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |
@@ -526,6 +601,11 @@ models taken in), `generated_at`, `output`, `status` (DataStatus with `source: r
 cache, `path` for `--output` elsewhere).
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
+`update --inspect-only` reads the current database the same way and redoes only what is read from the files
+themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`) and the official
+templates' `sampler_stages`; nothing else changes. Headers already in `<cache>/file_headers.json` (keyed by URL and
+sha256) are not read again; requests are sent one at a time with a short pause and honor `Retry-After`. With
+`--offline` it uses only that cache and sends nothing (the templates are then not re-read).
 
 Measurements live in `measurements.json` (`{"unit": "GiB", "unit_note": "…", "measurements": [Measurement, …]}`), bundled plus
 `<cache>/measurements/*.json`.

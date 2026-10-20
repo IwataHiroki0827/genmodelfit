@@ -17,9 +17,14 @@
       順に載せ替え(sequential) = 固定分 + 段ごとの最大(その段の部品 + 作業用メモリ)
       逃がす(vram_offload_gb)  = 固定分 + 段ごとの最大(その段の部品の一部 + 作業用メモリ)
     最後のものは ComfyUI の lowvram / 動的 VRAM が重みの一部をメインメモリに置いたまま動く場合で、遅い
+  - 本体が複数あり、サンプラーごとに別の本体を使うワークフロー(Wan 2.2 14B の high_noise → low_noise など)は、
+    生成の段を本体ごとの組(Parts.experts)に分ける。ComfyUI は次のサンプラーで本体を読み込むとき、
+    使っていない前の本体を必要な分だけ降ろす(出典は EXPERT_SOURCE)。そこで「順に載せ替え」「逃がす」は
+    1 組ずつ数え、「全部載せ」とメインメモリは全部を数える(降ろした本体はメインメモリに残る)
   - 作業用メモリ: 画像は画素数 × 枚数、動画は画素数 × コマ数の平方根、音声は長さ、3D は一定
   - 実測があれば、そのモデルの作業用メモリを実測に合わせてずらす。設定が実測と同じなら basis="measured"
-  - 大きさが分からないモデルは判定しない(too_tight + unknown_size。0 GB として「載る」と言わない)
+  - 大きさが分からないモデルは判定しない(fit は unknown、unknown_size。0 GB として「載る」とも
+    「動かない」とも言わない。0.1.0 までは too_tight だった)
   - 単位はすべて GiB(2^30 バイト)。係数は calibration.json(python -m genmodelfit.calibrate が実測から
     合わせたもの)。詳しくは docs/accuracy.md
 """
@@ -32,7 +37,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from .db import bundled_text
-from .models import Estimate, Measurement, ModelEntry, ModelFile, Settings, SystemInfo
+from .models import FIT_UNKNOWN, Estimate, Measurement, ModelEntry, ModelFile, Settings, SystemInfo
 
 GIB = 1024**3  # 大きさはすべて GiB で扱う(nvidia-smi の MiB / 1024、psutil のバイト / 2^30 と同じ単位)
 
@@ -63,6 +68,17 @@ CPU_MAX_WEIGHTS_GB = 2.0
 CPU_MODALITIES = ("tts", "sfx", "music", "image")
 
 UNKNOWN_SIZE_REASON = "大きさが分からないため判定できません"
+
+# サンプラーごとに別の本体を使うとき、ComfyUI が前の本体を降ろしてから次を載せる根拠
+# (Comfy-Org/ComfyUI のコミット b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c。v0.42.1 の後の master、
+# 2026-10-20 に読んだ):
+#   comfy/samplers.py:1241 サンプラーごとに sampler_helpers.prepare_sampling を呼ぶ
+#   comfy/sampler_helpers.py:201 → model_management.load_models_gpu([その本体] + 付属のモデル)
+#   comfy/model_management.py:1001 load_models_gpu が free_memory(要る量 × 1.1 + 作業用, device) を呼ぶ
+#   comfy/model_management.py:905 / 919 今載っているモデルのうち今回使わないもの(keep_loaded に無いもの)を、
+#     足りない分(memory_required − 空き)だけ model_unload で降ろす(メインメモリへ移す)
+#   comfy/model_management.py:914 動的 VRAM のモデルどうしは降ろさず、要るときに読み込む(同時に全部は載せない)
+EXPERT_SOURCE = "ComfyUI b1a247c comfy/model_management.py:1001 load_models_gpu → free_memory"
 
 # 段の名前(ComfyUI が順に動かす単位)
 STAGES = ("encode", "denoise", "decode", "other")
@@ -456,10 +472,18 @@ class Parts:
     notes: list[str] = field(default_factory=list)
     unknown: bool = False
     files_gb: float | None = None  # 数えたファイルの大きさの合計(ダウンロードの量)
+    # 生成の段を、サンプラーごとに順に使う本体の組に分けたときの組ごとの重み(GiB。共通の部品を含む)。
+    # 空なら分けない(1 組)。denoise は全部の和のまま(全部載せ・メインメモリに使う)
+    experts: list[float] = field(default_factory=list)
 
     @property
     def total(self) -> float:
         return self.encode + self.denoise + self.decode + self.other
+
+    @property
+    def denoise_peak(self) -> float:
+        """生成の段で同時に GPU に要る重み(本体の組に分けたときは一番大きい組)。"""
+        return min(self.denoise, max(self.experts)) if self.experts else self.denoise
 
     @property
     def largest(self) -> float:
@@ -527,6 +551,7 @@ def components(entry: ModelEntry) -> Parts:
         p.files_gb = size / GIB
         p.notes.append("部品の内訳が無いので、一般的な割合(本体 75%・エンコーダ 20%・VAE 5%)で分けた")
         return p
+    denoise_files: dict[str, float] = {}  # 生成の段の単独のファイル(名前 → GiB)。本体の組に分けるのに使う
     for f in files:
         gb = f.size_bytes / GIB
         role = _role_of(f)
@@ -534,6 +559,9 @@ def components(entry: ModelEntry) -> Parts:
         all_in_one = f.directory == "checkpoints" or (
             not f.directory and folder is None and _known_all_in_one(f)
         )
+        if ROLE_STAGE[role] == "denoise" and not (role == "main" and all_in_one):
+            key = _base_lower(f.name)
+            denoise_files[key] = denoise_files.get(key, 0.0) + gb
         if role == "main" and all_in_one:
             (main, enc, vae), label = _split_of(f.name)
             p.denoise += gb * main
@@ -552,7 +580,72 @@ def components(entry: ModelEntry) -> Parts:
         biggest = max(STAGES, key=p.stage)
         p.denoise, value = p.stage(biggest), p.denoise
         setattr(p, biggest, value)
+    else:
+        _split_experts(entry, files, denoise_files, p)
     return p
+
+
+def _base_lower(name: str) -> str:
+    return name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+_HIGH = re.compile(r"(^|[_.-])high[_-]?noise([_.-]|$)")
+_LOW = re.compile(r"(^|[_.-])low[_-]?noise([_.-]|$)")
+
+
+def expert_sets(entry: ModelEntry) -> tuple[list[set[str]], str] | None:
+    """サンプラーごとに順に使う本体の組(ファイル名の小文字の集まり)と、その出どころ。
+
+    1. update がテンプレートのつながりから求めた sampler_stages(2 組以上。出どころ "workflow")
+    2. それが無い(調べていない)とき、名前の決まり(出どころ "name"): 本体に `*high_noise*` と `*low_noise*`
+       の両方がある(Wan 2.2 14B の流儀)。LoRA などの生成の段の部品は名前の high_noise / low_noise で
+       振り分け、印の無いものは共通にする
+    当てはまらなければ None(生成の段は 1 組)。"""
+    stages = getattr(entry, "sampler_stages", None)
+    if stages is not None:
+        sets = [{_base_lower(n) for n in st} for st in stages if st]
+        return (sets, "workflow") if len(sets) >= 2 else None
+    mains = [_base_lower(f.name) for f in entry.files if _role_of(f) == "main"]
+    high = {n for n in mains if _HIGH.search(n)}
+    low = {n for n in mains if _LOW.search(n)}
+    if not high or not low:
+        return None
+    for f in entry.files:
+        n = _base_lower(f.name)
+        role = _role_of(f)
+        if role == "main" or ROLE_STAGE[role] != "denoise":
+            continue
+        if _HIGH.search(n):
+            high.add(n)
+        elif _LOW.search(n):
+            low.add(n)
+    return [high, low], "name"
+
+
+def _split_experts(
+    entry: ModelEntry, files: list[ModelFile], denoise_files: dict[str, float], p: Parts
+) -> None:
+    """生成の段を、サンプラーごとに順に使う本体の組に分ける(Parts.experts)。
+
+    組の重み = その組のファイル + どの組にも入らない生成の段のファイル(共通)。数えたファイルの本体(main)を
+    含む組が 2 つ以上あるときだけ分ける。"""
+    found = expert_sets(entry)
+    if not found or not denoise_files:
+        return
+    sets, how = found
+    mains = {_base_lower(f.name) for f in files if _role_of(f) == "main"}
+    sets = [st & set(denoise_files) for st in sets]
+    sets = [st for st in sets if st & mains]
+    if len(sets) < 2:
+        return
+    shared = sum(gb for n, gb in denoise_files.items() if not any(n in st for st in sets))
+    p.experts = [shared + sum(denoise_files[n] for n in st) for st in sets]
+    src = "ワークフローのつながり" if how == "workflow" else "ファイル名の high_noise / low_noise"
+    p.notes.append(
+        f"本体はサンプラーごとに {len(sets)} 組を順に使う({src})。ComfyUI は次の組を載せるとき前の組を降ろす"
+        f"({EXPERT_SOURCE})ので、順に載せ替え・逃がすときは 1 組ずつ数えた"
+        f"(一番大きい組 {max(p.experts):.1f} GB、生成の段の全部は {p.denoise:.1f} GB)"
+    )
 
 
 def source_precision(entry: ModelEntry) -> str | None:
@@ -581,6 +674,7 @@ def apply_precision(parts: Parts, entry: ModelEntry, s: Settings) -> Parts:
     if have != want:
         ratio = PRECISION_BYTES[want] / PRECISION_BYTES[have]
         parts.denoise *= ratio
+        parts.experts = [x * ratio for x in parts.experts]
         parts.notes.append(f"本体を {have} → {want} に換算した(×{ratio:.2f})")
     return parts
 
@@ -631,8 +725,10 @@ def need(parts: Parts, act: float, c: Coefficients) -> Need:
     full = c.overhead_gb + parts.total * w + act
     # 作業用メモリが要るのは生成と仕上げの段(文章の読み取りは小さいので数えない)
     stage_act = {"encode": 0.0, "denoise": act, "decode": act, "other": 0.0}
-    seq = c.overhead_gb + max(parts.stage(st) * w + stage_act[st] for st in STAGES)
-    off = c.overhead_gb + max(parts.stage(st) * w * c.offload_fraction + stage_act[st] for st in STAGES)
+    # 順に載せ替える・逃がすときの生成の段は、本体の組に分けていれば一番大きい組(ComfyUI が前の組を降ろす)
+    peak = {st: (parts.denoise_peak if st == "denoise" else parts.stage(st)) for st in STAGES}
+    seq = c.overhead_gb + max(peak[st] * w + stage_act[st] for st in STAGES)
+    off = c.overhead_gb + max(peak[st] * w * c.offload_fraction + stage_act[st] for st in STAGES)
     # メインメモリ: GPU に載せて動くときは、部品を 1 つずつ読み込んで GPU へ送る。ComfyUI は safetensors を
     # メモリに割り当てて(mmap)読むので、使い終わった部品のページは OS が捨てられる(仮定。実測は無い)。
     # 逃がすときは逃がした重みがメインメモリに居続けるので、全部品を数える(安全側)
@@ -877,7 +973,7 @@ def _unknown_estimate(entry: ModelEntry, parts: Parts, s: Settings) -> Estimate:
         ram_gb=0.0,
         disk_gb=None,
         basis="estimated",
-        fit="too_tight",
+        fit=FIT_UNKNOWN,
         run_mode="none",
         reasons=[UNKNOWN_SIZE_REASON, *parts.notes],
         measured_on=None,
@@ -1061,7 +1157,8 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
     vram = system.vram_gb
     fit, how = gpu_choice(n.full, n.sequential, n.offload, vram)
     pct = {
-        k: round(100 * v / vram) for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
+        k: round(100 * round(v, 2) / vram)
+        for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
     }
     if fit == "too_tight":
         return (

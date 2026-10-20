@@ -141,12 +141,13 @@ def test_precision_rank_and_label():
 
 
 def test_precision_auto_selection(db):
-    """良い段階が先、同じ段階なら逃がさないほう、それも同じなら高い精度。
-    8 GB: int8(載せ替えて marginal)と bf16(逃がして marginal)→ int8。24 GB: int8 が perfect → int8。
-    48 GB: どちらも perfect → bf16。"""
+    """逃がさずに載る(good 以上で GPU / GPU~)ものがあれば、その中で精度の高いもの(#28)。無ければ良い段階が
+    先、同じ段階なら逃がさないほう、それも同じなら高い精度。
+    8 GB: int8(載せ替えて marginal)と bf16(逃がして marginal)→ int8。24 GB: int8 は perfect、bf16 は
+    載せ替えて good → bf16(0.1.0 は int8)。48 GB: どちらも perfect → bf16。"""
     for v, want, other in (
         (8, "image_z_image_turbo_int8", "image_z_image_turbo"),
-        (24, "image_z_image_turbo_int8", "image_z_image_turbo"),
+        (24, "image_z_image_turbo", "image_z_image_turbo_int8"),
     ):
         ids = {f.model.id for f in recommend(db, pc(v, 64), modality="image", limit=None)}
         assert want in ids and other not in ids, v
@@ -284,13 +285,13 @@ def test_row_score_never_drops_with_more_vram(db):
         prev = rows
 
 
-PRECISION_FIXED = {  # 本体のファイル名から読む精度(同梱の一覧も直した)
+PRECISION_FIXED = {  # 本体のファイル名(0.1.1 からは読めればファイルの見出し)から読む精度(同梱の一覧も直した)
     "templates_mjm_airt_machIne": "fp8",
     "template_rob_split_stack_qwen_multi_wan22": "bf16",
-    "video_ltx2_canny_to_video": None,
-    "video_ltx2_depth_to_video": None,
-    "video_ltx2_pose_to_video": None,
-    "utility_void_video_inpainting": None,
+    "video_ltx2_canny_to_video": "bf16",  # 名前に精度の語が無い。見出しの dtype は BF16(#28)
+    "video_ltx2_depth_to_video": "bf16",
+    "video_ltx2_pose_to_video": "bf16",
+    "utility_void_video_inpainting": "bf16",
     "flux_depth_lora_example": "fp8",
     "templates_hellorob_facegen_skindetail_upscale": "bf16",
 }
@@ -478,7 +479,10 @@ def test_sha_merge_needs_the_whole_set_of_main_weights():
 
 
 def test_row_score_comes_from_the_same_use_and_level(db):
-    """行の点数は、代表と同じ用途・同じ段階の仲間の一番高い点数(ほかの値はすべて代表のもの)。"""
+    """行の点数は、代表と同じ用途・同じ段階の仲間の一番高い点数(ほかの値はすべて代表のもの)。
+    逃がさずに載るもの(perfect / good で GPU・GPU~)は 1 つの段階とみなす(recommend.row_tier。#28)。"""
+    from genmodelfit.recommend import row_tier
+
     for v in (8, 16, 24):
         sel = select(db, pc(v))
         idx = build_index(db.models)
@@ -489,7 +493,7 @@ def test_row_score_comes_from_the_same_use_and_level(db):
                 for m in idx.members[row.group_key]
                 if m.id in every
                 and every[m.id].use == row.use
-                and every[m.id].estimate.fit == row.estimate.fit
+                and row_tier(every[m.id].estimate) == row_tier(row.estimate)
             ]
             assert row.score == max(f.score for f in same), (v, row.model.id)
 

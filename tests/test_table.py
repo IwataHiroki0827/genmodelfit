@@ -11,12 +11,12 @@ from genmodelfit.recommend import Fit
 from genmodelfit.table import make_console, print_fit_table
 
 HEADER = [
-    "Status",
-    "Model",
     "Type",
+    "Status",
+    "Score",
+    "Model",
     "Use",
     "Prec",
-    "Score",
     "VRAM",
     "Mem%",
     "Mode",
@@ -102,18 +102,19 @@ def test_cli_json_has_no_table(capsys):
 
 
 def test_cli_table_real_db(capsys):
-    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all"]) == 0
+    every_license = ["--content", "all", "--all"]
+    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", *every_license]) == 0
     out = capsys.readouterr().out
     lines = out.splitlines()
     assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
     assert "SDXL" in out and "image_sdxl_simple" not in out  # まとめた表はモデルの表示名
     db = load(use_cache=False)  # 長い ID は省略記号で詰めるので、行数で確かめる
-    rows = [x for x in lines if x.startswith("● ")]
+    rows = [x for x in lines if "● " in x]
     assert len(rows) == len(build_index(db.models).members)  # 1 行 = 1 モデル
-    every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all", "--all-workflows"]
+    every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", *every_license, "--all-workflows"]
     assert cli.main(every) == 0
     out = capsys.readouterr().out
-    rows = [x for x in out.splitlines() if x.startswith("● ")]
+    rows = [x for x in out.splitlines() if "● " in x]
     assert len(rows) == len(db.models) and "image_sdxl_simple" in out  # ワークフローごとなら ID
 
 
@@ -165,7 +166,7 @@ def test_measured_mark_and_status_mark():
     f = fit("m1", "perfect")
     f.estimate.basis, f.estimate.vram_gb = "measured", 3.0
     row = row_of(render([f]), "m1")
-    assert row.startswith("● Perfect") and " 3.0m " in row
+    assert row.split()[1:3] == ["●", "Perfect"] and " 3.0m " in row
 
 
 def test_header_hidden_and_count():
@@ -185,19 +186,20 @@ def test_columns_drop_in_order_when_narrow(width):
     long = "hf:someone/" + "very-long-model-name-" * 6
     out = render([fit(long), fit("b", "too_tight")], width=width)
     assert all(cell_len(x) <= width for x in out.splitlines()), width
-    header = next(x for x in out.splitlines() if x.startswith("Status"))
-    assert "Model" in header and "VRAM" in header and "Mode" in header
+    header = next(x for x in out.splitlines() if x.startswith("Type"))
+    # Type・Status・Score・Model は外さない(0.1.1: Type が左端、Score は Model の左)
+    assert header.split()[:4] == ["Type", "Status", "Score", "Model"]
+    assert "VRAM" in header and "Mode" in header
     if width <= 80:  # 狭いときは Disk・Mem%・License の順に外す
         assert "Disk" not in header and "License" not in header
-    if width == 100:  # 1 種類だけの表なので Type は無い
-        assert header.split() == [c for c in HEADER if c != "Type"]
 
 
-def test_type_column_only_when_types_mix():
+def test_type_column_is_always_first():
     v = fit("v")
     v.model.modality = "video"
-    header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Status"))
-    assert "Type" in header and "Disk" not in header  # 名前の幅を残すため Disk を外す
+    header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Type"))
+    assert header.split()[:4] == ["Type", "Status", "Score", "Model"]
+    assert "Disk" not in header  # 幅 100 では名前の幅を残すため Disk を外す
 
 
 def test_middle_ellipsis_and_distinct_names():

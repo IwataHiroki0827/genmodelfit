@@ -87,9 +87,44 @@ offloading to system RAM, so they need their own database and scoring.
 
 ## Install / 入れ方
 
+Recommended: install it as a command-line tool with [pipx](https://pipx.pypa.io/) or
+[uv](https://docs.astral.sh/uv/). They put `genmodelfit` on PATH for you (run the PATH command once, then open a new
+terminal):
+
+```
+pipx install genmodelfit        # once: pipx ensurepath
+uv tool install genmodelfit     # once: uv tool update-shell
+```
+
+Or with pip:
+
 ```
 pip install genmodelfit
 ```
+
+**`python -m genmodelfit …` always works**, whatever PATH says (e.g. `python -m genmodelfit recommend`; on Windows
+also `py -m genmodelfit …`). Use it when `genmodelfit` is "not recognized" / "command not found".
+
+If pip printed *"WARNING: The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH"*, the command
+was installed but that folder is not on PATH. Common cases:
+
+- Python from python.org installed without "Add python.exe to PATH" → the `Scripts` folder of that Python is not on PATH.
+- pip fell back to a user install (no write access to the system Python) → the command is in
+  `%APPDATA%\Python\Python3XX\Scripts` (Windows) or `~/.local/bin` (Linux), which is often not on PATH.
+- Microsoft Store Python → its `Scripts` folder lives deep under `%LOCALAPPDATA%\Packages\…` and is not on PATH.
+- Installed into a virtual environment that is not activated → activate it (`.venv\Scripts\activate` /
+  `source .venv/bin/activate`) or run `.venv\Scripts\genmodelfit`.
+
+Fix: add the folder named in the warning to PATH (or use pipx / uv above, or `python -m genmodelfit`).
+**A terminal opened before PATH changed does not see the change: open a new one.**
+
+おすすめは pipx か uv でコマンドとして入れる方法です(PATH を通すコマンドを 1 回だけ実行し、端末を開き直す)。
+pip で入れた場合も、**`python -m genmodelfit …` は PATH に関係なく必ず動きます**(Windows は `py -m genmodelfit …` も可)。
+pip が「The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH」と出したら、コマンドは入っていますが、
+その場所に PATH が通っていません。よくあるのは、python.org の Python を「Add python.exe to PATH」なしで入れた、
+書き込めないため利用者ごとの場所(Windows は `%APPDATA%\Python\Python3XX\Scripts`、Linux は `~/.local/bin`)に入った、
+Microsoft Store の Python、仮想環境を有効にしていない、の 4 つです。警告に出た場所を PATH に足すか、pipx / uv か
+`python -m genmodelfit` を使ってください。**PATH を変える前に開いた端末には反映されないので、新しい端末を開いてください。**
 
 From source / ソースから:
 
@@ -105,8 +140,8 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 |---|---|
 | `genmodelfit system [--all-gpus]` | detected GPU (generation, driver, PyTorch builds, ComfyUI precision), RAM, page file, disk, and whether the model list is still fresh (Data); `--all-gpus` also lists non-NVIDIA adapters / この PC の GPU(世代・ドライバ・精度)・メモリ・ページファイル・空きと、一覧の新しさ |
 | `genmodelfit recommend [-m image,video] [--task edit] [-n 5] [--auto-only]` | best models for this PC: per type without `-m` / `--task` (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順。`-m`・`--task` が無ければ種類ごと(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
-| `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
-| `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
+| `genmodelfit fit [-m video] [--fit good] [--sort score] [--all]` | the models that run on this PC (Perfect / Good / Marginal) in one table: by type, then fit level, then Score; `--all` also shows tools, models that do not run, unjudged (`?`) and unknown-license ones / この PC で動くモデルの表(種類 → 段階 → 点数の順)。`--all` で全部 |
+| `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC, every fit level, same order as `fit` (exit 0 even with no match) / ID・名前の一部で探す |
 | `genmodelfit types` | the six types, the uses inside each (`--task` names) and counts / 種類と、その中の用途と数 |
 | `genmodelfit info <id>` | files, licenses, estimate, limits, gate checks, other workflows of the same model / 1 つのモデルの詳細 |
 | `genmodelfit gate` | how many models can be auto-recommended, and why the rest are held / 自動でおすすめに出せる数と保留の理由 |
@@ -124,15 +159,55 @@ Common options / 共通の指定:
   such as `t2i` (`genmodelfit types`) / 種類の中の用途
 - `--all-workflows` — one row per workflow instead of one per model / モデルにまとめず、ワークフローごとに出す
 - `--content sfw|all|uncensored` — filter by content mark (below; default `sfw`) / 内容の印で絞る(既定は `sfw`)
-- `--min-fit perfect|good|marginal|too_tight` — only this level or better (recommend: `marginal` by default) / この段階以上だけ
+- `--fit perfect|good|marginal|runnable|all` — only that level, every level that runs (`fit` default) or everything / その段階だけ・動くもの全部(`fit` の既定)・全部
+- `--min-fit perfect|good|marginal|too_tight` — only this level or better (recommend: `marginal` by default; not together with `--fit`) / この段階以上だけ
+- `--sort type|score|vram|disk|name` (`fit`, `search`) — `type` (default): type, then fit level, then Score; `score`: one ranking across types; `vram` / `disk`: smallest first / 並べ方
+- `--include-unknown-license` — also show models with a file whose license is unknown (hidden by default) / ライセンスの分からないものも出す
 - `--license apache-2.0,mit` — every file's license must be in the list; unknown never matches / すべてのファイルのライセンスがこの中にあるものだけ
 - `--comfyui-version 0.40.0` — the ComfyUI version your app runs, for the gate / 使う ComfyUI の版(自動おすすめの判定用)
 
-Order / 並べ方 (in each type): models that run, then auto-recommendable ones (`Auto yes`), then **Score** (0–100: fit level,
-VRAM headroom, readiness for auto-recommendation, measured or not, popularity; formula in
-[docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)), then id. The first lines show this PC and how many models were hidden
-and why (`uncensored`, `tools`, `too tight`, …). `--help` of each command lists preconditions, exit codes and examples.
-動くもの → 自動でおすすめに出せるもの → 点数の高い順。先頭に PC と、隠した件数とその理由を出します。
+Order / 並べ方: `fit` and `search` show one table, **by type** (image, video, music, sfx, tts, 3d), then **fit level**
+(Perfect → Good → Marginal → `?` → Too tight), then **Score** (0–100: fit level, VRAM headroom, readiness for
+auto-recommendation, measured or not, popularity; formula in
+[docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)); auto-recommendable
+models are not moved up (see the Auto column). `recommend` shows the top models of each type, with auto-recommendable
+ones first. The first lines show this PC and how many models were hidden and why (`uncensored`, `tools`,
+`license unknown`, `too tight`, …). `--help` of each command lists preconditions, exit codes and examples.
+`fit`・`search` は 1 つの表で、種類 → 段階 → 点数の順。`recommend` は種類ごとの上位で、自動でおすすめに出せるものを先に
+します。先頭に PC と、隠した件数とその理由を出します。
+
+Example / 例 (`COLUMNS=100 genmodelfit fit --vram 24 --ram 128`, 24 GB GPU / 128 GB RAM assumed; rows cut with …):
+
+```
+PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
+All models: 141 (93 hidden: uncensored 24, tools 34, license unknown 32, too tight 3; 89 more
+    workflows merged into their models)
+Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Auto
+image ● Perfect      91 SDXL1.0 Base             gen+3   fp16  8.0m  33% GPU     openrail++ license
+image ● Perfect      84 FLUX.2 [Klein] 4B Base   edit    fp8   13.2  55% GPU     apache-2.0 yes
+image ● Perfect      80 Anima Preview 3 Base     gen     bf16   7.0  29% GPU     other      license
+image ● Perfect      80 SDXL Turbo 1.0           gen     fp16   8.2  34% GPU     other      license
+image ● Perfect      79 NetaYume Lumina          gen     bf16  11.6  48% GPU     gemma      license
+image ● Perfect      79 PixelDiT 1300M           gen     bf16   9.0  38% GPU     other      license
+…
+video ● Perfect      92 Wan 2.1 1.3B T2V         gen     fp16 13.3m  55% GPU     apache-2.0 yes
+video ● Good         67 Wan 2.2 5B TI2V          gen     fp16 15.7m  66% GPU~    apache-2.0 yes
+video ● Good         63 Wan 2.1 ControlNet 1.3B  edit    bf16  17.1  71% GPU     apache-2.0 yes
+video ● Marginal     44 Wan 2.2 14B I2V          i2v+2   fp8   21.0  88% GPU~    apache-2.0 yes
+…
+music ● Perfect      94 ACE-Step 1.5 Turbo       gen+2   bf16 10.8m  45% GPU     mit        yes
+music ● Perfect      82 ACE Step v1 3.5B         gen+2   bf16   8.7  36% GPU     apache-2.0 yes
+…
+tts   ● Perfect      81 Qwen3-TTS-12…CustomVoice gen     bf16   5.0  21% GPU     apache-2.0 workflow
+tts   ● Perfect      80 Chatterbox               gen     fp32   3.5  14% GPU     mit        workflow
+…
+3d    ● Perfect      89 HY 3D 2.1                gen     fp16  9.4m  39% GPU     other      license
+3d    ● Perfect      88 HY 3D 2.0                gen     fp16  6.7m  28% GPU     other      license
+Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured.
+Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
+Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
+…
+```
 
 Python:
 
@@ -148,6 +223,9 @@ for f in gmf.recommend(modality="image", task="edit", limit=5, comfyui_version="
         [w["id"] for w in f.workflows]
     )  # other workflows of the same model / 同じモデルのほかのワークフロー
     f.to_dict()  # the same dict as one item of `recommend --json` / `--json` の 1 件と同じ
+
+# the same list as `genmodelfit fit` (runnable only, by type → level → score) / `fit` と同じ一覧
+rows = gmf.fit_list(sort="type")  # fit="good", show_all=True, include_tools=True, … like the CLI
 gmf.search("flux", license=["apache-2.0", "mit"])
 
 st = gmf.data_status()  # is the model list fresh enough for auto-recommendation? / 一覧の新しさ
@@ -242,7 +320,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
   locally (`nvidia-smi`, psutil). This is tested with every socket blocked.
 - `genmodelfit update --from-release` only downloads `db.json` and `db.json.sig` from this project's GitHub release.
 - `genmodelfit update` only reads public data with GET / HEAD: the ComfyUI workflow templates and releases on
-  GitHub, the Hugging Face Hub API, and the model download URLs (HEAD only; no weights are downloaded).
+  GitHub, the Hugging Face Hub API, and the model download URLs (HEAD, plus a ranged GET of the first bytes of the
+  main weight files to read their header — dtype and tensor shapes; no weights are downloaded).
 - `genmodelfit bench` talks only to the ComfyUI URL you give with `--url` (plus the official template files on
   GitHub when ComfyUI does not have them).
 - Hardware information (GPU name, VRAM, RAM, CPU, disk) is read locally with `nvidia-smi` and psutil and is
@@ -258,8 +337,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 - `recommend`・`fit`・`search`・`info`・`system`・`types`・`gate` と Python の関数は**ネットにつなぎません**
   (PC の情報は手元で読みます。通信をふさいだ試験で確かめています)。
 - `update --from-release` は、このプロジェクトの GitHub Release から `db.json` と署名だけを取ります。
-- `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD。
-  モデル本体は落としません)。
+- `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD と、
+  本体のファイルの先頭の見出し(dtype・テンソルの形)だけの Range 要求。モデル本体は落としません)。
 - `bench` は `--url` で指定した ComfyUI とだけ話します(ComfyUI に無い公式テンプレートは GitHub から取ります)。
 - PC の情報(GPU の名前・VRAM・メモリ・CPU・空き)は `nvidia-smi` と psutil で手元で読むだけで、**送りません**。
   `bench` の実測は手元に保存するだけで、利用者が自分で Pull Request を出したときだけ共有されます

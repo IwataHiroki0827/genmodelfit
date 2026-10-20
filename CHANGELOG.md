@@ -7,6 +7,73 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.1] - Unreleased
+
+Fixes from the owner's review on an RTX 4500 Ada 24 GB / 128 GB RAM PC (Issue #28).
+RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直した版。
+
+### Changed
+
+- License tracing (#28): a hand-checked source table (`license_sources.py`) maps files in repackaging repos
+  (Comfy-Org, Kijai, …) to their original models, using primary sources only (original model card / LICENSE,
+  official GitHub, sha256). `update` applies it to files it could not resolve; `apply_license_sources(db)` applies it
+  offline. VOID (netflix/void-model) is now unknown (fine-tuned from a CogVideoX-licensed model). `LICENSE_POLICY` 4.
+  ライセンスの出どころの表を足した(再配布のファイル → 元のモデル。一次資料だけで確かめたもの)。
+- **Wan 2.2 14B and other workflows that run several diffusion models one sampler after another** (high_noise →
+  low_noise): the swapped (`GPU~`) and offload estimates count one model (+ its LoRA) at a time, because ComfyUI
+  unloads the unused model before loading the next one (`load_models_gpu` → `free_memory`, ComfyUI commit
+  b1a247c, cited in `docs/schema.md`). Wan 2.2 14B I2V at 832×480×81: swapped 35.5 → 21.0 GiB, offload 18.1 → 12.3 GiB.
+  On 24 GB it now runs on the GPU with parts swapped (`GPU~`, `marginal` at 87 %) instead of `GPU+RAM`; on 16 GB it is
+  `marginal` with offload instead of `too_tight`. The sets come from the template graph (`sampler_stages`, new) or
+  from `*high_noise*` / `*low_noise*` file names.
+- **Precision choice within a model**: among the variants that run on the GPU without offload (Good or better, `GPU`
+  or `GPU~`), the highest precision is shown, like llmfit; only when none does, the better level wins as before.
+  Z-Image Turbo on 24 GB now shows bf16 instead of int8. The row's score is taken from the same use and the same tier
+  (runs without offload = one tier), so it never drops when VRAM grows.
+- **Unknown licenses are hidden by default** from `recommend`, `fit`, `search`, `gmf.recommend()` and `gmf.search()`
+  (`hidden.license_unknown`); `--include-unknown-license` / `include_unknown_license=True` shows them; `info <id>`
+  still shows them.
+- **Models whose size is unknown show `?`** (`fit_level: "unknown"`, `fit_label: "?"`) instead of "Too tight";
+  `fit` lists them last, `recommend` still hides them.
+- **Community templates** come after official ones only within the same auto group and fit level (they used to come
+  after every official row, so a Good community model appeared after Marginal ones).
+- TTS GGUF repositories (llama.cpp-style runtimes: VieNeu-TTS v3 Turbo, Qwen3-TTS GGUF, Higgs Audio v3 Studio,
+  Drama-3) are no longer marked incomplete for lacking a text encoder / VAE, so they are judged.
+- OS shown as `Windows 11` on Python 3.10 / 3.11 too (build number ≥ 22000).
+- **`fit` is easier to read** (like llmfit's `fit`): it shows only the models that run (Perfect / Good / Marginal)
+  and counts the rest by reason in the header; `--all` shows everything (tools, models that do not run, `?`, unknown
+  licenses). One table ordered by type → fit level → Score (no auto-first; see the Auto column). New options for
+  `fit` / `search`: `--fit perfect|good|marginal|runnable|all` (`--min-fit` still works, not together with `--fit`),
+  `--sort type|score|vram|disk|name`, `--all`; `fit --include-tools`. JSON follows the same order. Python:
+  `gmf.fit_list()`, and `fit=` / `sort=` on `gmf.search()`.
+- Table columns in every command: `Type | Status | Score | Model | …` (Type leftmost, Score left of the name).
+- Review fixes: `recommend` ranks "runs without offload" (Perfect / Good on `GPU` / `GPU~`) as one tier, so Z-Image
+  Turbo stays first in image on 24 GB after switching to bf16; JSON `level_cap` (`sequential` / `offload` / `cpu`) and a
+  legend line explain why GPU~ is at most Good; `--fit` with `--min-fit` is a usage error (exit 2); info and the table
+  round Mem% the same way; malformed file headers are reported as header errors.
+- Licenses: rows of the source table can override an automatic result (`override`). ChronoEdit's distill LoRA was
+  apache-2.0 from the card's metadata but the card says it is governed by the NVIDIA Open Model License; InfiniteTalk
+  and Wan 2.1 I2V 480P now point at their real upstreams. Files of lineages whose license cannot be read (VOID) are
+  unknown in the data too (as the gate already judged). An entry mixing apache-2.0 and mit files is shown as
+  apache-2.0 (more obligations), not mit. `update.LICENSE_POLICY` 4 → 5.
+
+### Added
+
+- Precision from the files themselves: `update` (and the new `update --inspect-only`, `--offline` for the cache only)
+  reads the safetensors JSON header / GGUF header of the main weight files with HTTP Range requests (never the
+  weights), caches them in `file_headers.json`, and stores `ModelFile.header_precision` / `header_params`. On the
+  bundled list, entries with unknown precision went from 97 to 25 (sfw: 90 → 25; the rest are gated repos, 401, or
+  have no main file on Hugging Face).
+- `ModelEntry.sampler_stages`, `ModelFile.header_precision`, `ModelFile.header_params` (optional; `schema_version`
+  stays 1). `sources.file_headers`, `sources.sampler_stages`.
+- README: how to install so that the `genmodelfit` command is found (pipx / uv tool, the pip "not on PATH" warning,
+  and `python -m genmodelfit`, which always works). Also in `genmodelfit --help`.
+
+### Data
+
+- Bundled list: HEADs re-checked on 2026-10-20T10:33:07Z (valid until 2026-11-19T10:33:07Z); precision from file
+  headers; `sampler_stages` from the 277 official templates (19 with several sampler sets).
+
 ## [0.1.0] - 2026-10-20
 
 First public release. / 最初の公開版。

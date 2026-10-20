@@ -12,7 +12,7 @@ import pytest
 
 from genmodelfit import cli, load_db
 from genmodelfit.groups import is_community
-from genmodelfit.models import FIT_LEVELS, Gpu, SystemInfo
+from genmodelfit.models import FIT_LEVELS, FIT_UNKNOWN, Gpu, SystemInfo, fit_rank
 from genmodelfit.recommend import evaluate, recommend
 
 VRAMS = [
@@ -57,15 +57,15 @@ def levels(db):
             assert len(fits) == len(db.models)
             for f in fits:
                 e = f.estimate
-                assert e.fit in FIT_LEVELS, (f.model.id, e.fit)
+                assert e.fit in (*FIT_LEVELS, FIT_UNKNOWN), (f.model.id, e.fit)
                 if e.unknown_size:  # 「?」の印: 判定しない
-                    assert e.fit == "too_tight" and e.run_mode == "none", f.model.id
+                    assert e.fit == FIT_UNKNOWN and e.run_mode == "none", f.model.id
                 else:
                     assert e.run_mode in ("gpu", "offload", "cpu", "none"), f.model.id
                     assert e.vram_gb > 0 or e.ram_gb > 0, f.model.id
                 if not v:
                     assert e.run_mode in ("cpu", "none"), f.model.id
-            out[(v, r)] = {f.model.id: FIT_LEVELS.index(f.estimate.fit) for f in fits}
+            out[(v, r)] = {f.model.id: fit_rank(f.estimate.fit) for f in fits}
             scores[(v, r)] = {f.model.id: f.score for f in fits}
             for f in fits:
                 assert 0 <= f.score <= 100 and all(0 <= x <= 100 for x in f.score_components.values())
@@ -114,10 +114,18 @@ def test_score_never_drops_with_more_vram_or_ram(levels):
 
 
 def test_order_is_runs_then_auto_then_score(db, levels):
+    """動くもの(判定できないものは最後)→ auto → 段階 → 公式(同じ段階の中で利用者のテンプレートは後)→ 点数。"""
     for v in (0, 8, 24):
         fits = evaluate(db, pc(v, 32), content="all")
         keys = [
-            (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -f.score, f.model.id)
+            (
+                {FIT_UNKNOWN: 2, "too_tight": 1}.get(f.estimate.fit, 0),
+                not f.auto,
+                fit_rank(f.estimate.fit),
+                is_community(f.model),
+                -f.score,
+                f.model.id,
+            )
             for f in fits
         ]
         assert keys == sorted(keys)
