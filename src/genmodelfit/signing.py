@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """データの署名(Ed25519)。
 
 配る一覧(db.json)に署名(db.json.sig)を付け、取り込む側が同梱の公開鍵で確かめる。

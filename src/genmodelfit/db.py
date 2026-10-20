@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """一覧(データベース)の読み書き。
 
 読む順: 1) 明示したパス 2) 利用者のキャッシュ(`genmodelfit update` が書く) 3) 同梱のデータ。

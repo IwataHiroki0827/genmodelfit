@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genmodelfit"
-version = "0.1.0.dev0"
+dynamic = ["version"]  # 正本は src/genmodelfit/_version.py
 description = "Right-size image / video / audio / 3D generation models to your PC (inspired by llmfit)."
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "MPL-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES"]
 authors = [{ name = "Laxshmate", email = "laxshmate@gmail.com" }]
 requires-python = ">=3.10"
 keywords = ["comfyui", "diffusion", "vram", "stable-diffusion", "video-generation", "hardware", "llmfit"]
@@ -20,7 +20,13 @@ classifiers = [
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
 ]
 # 依存は MIT / Apache-2.0 / BSD のものだけ(例外は requests 経由の certifi の MPL-2.0。CLAUDE.md)
 dependencies = [
@@ -40,12 +46,19 @@ genmodelfit = "genmodelfit.cli:main"
 [project.urls]
 Homepage = "https://github.com/laxshmate/genmodelfit"
 Issues = "https://github.com/laxshmate/genmodelfit/issues"
+Changelog = "https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md"
+
+[tool.hatch.version]
+path = "src/genmodelfit/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/genmodelfit"]
 
+# CLAUDE.md(開発の決まり)・.github は配らない。LICENSE と THIRD_PARTY_NOTICES は license-files で入る
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "README.md", "LICENSE", "CLAUDE.md"]
+include = ["src", "tests", "docs", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "THIRD_PARTY_NOTICES"]
+exclude = ["__pycache__", "*.pyc"]
 
 [tool.ruff]
 line-length = 110

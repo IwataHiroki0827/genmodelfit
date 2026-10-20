@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """自動でおすすめに出してよいかの判定(Issue #3)。
 
 使う側(AI生成キット)は、人が確かめずにおすすめを出す。そのため判定は**保守的**にする:

@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """実測から見積もりの係数を合わせる。`python -m genmodelfit.calibrate`
 
 合わせるのは「全部載せ」の VRAM(estimate の vram_gb)だけ:

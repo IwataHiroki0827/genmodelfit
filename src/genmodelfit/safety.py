@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """一覧から外すモデルの判定(未成年の性的表現を目的とするもの)。
 
 CLAUDE.md の決まり: 無検閲のモデルは印を付けて残すが、未成年の性的表現を目的とするものは除外する。

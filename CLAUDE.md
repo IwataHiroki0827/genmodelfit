@@ -1,14 +1,18 @@
 # CLAUDE.md — genmodelfit
 
 画像・動画・音楽・効果音・読み上げ・3D の生成モデルが、その PC で動くかを判定する(llmfit の生成モデル版)。
-MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai_gen_kit。ソース非公開で販売するアプリ)。
+**MPL-2.0** で公開(コードも同梱のデータも。2026-10-20 にユーザが決めた。Issue #18)。使う側の代表は AI生成キット
+(laxshmate/local_model_ai_gen_kit。ソース非公開で販売するアプリ。改変せずに import して同梱する)。
+新しい `.py` には MPL の表示(Exhibit A の 3 行)を先頭に入れる。外からの修正は MPL-2.0 で受け入れる(CLA なし)。
+データの出典(ComfyUI workflow_templates の MIT の表示・HF の扱い・llmfit)は THIRD_PARTY_NOTICES に書く
 
 ## 決まり(2026-10-20)
 
 - **依存は MIT / Apache-2.0 / BSD のものだけ**。GPL・AGPL・独自の制限付きライセンスの部品は使わない
   (使う側のアプリがソース非公開で配布するため)。足すときは pyproject.toml にライセンスを書く
   - 例外: `certifi`(MPL-2.0、requests の依存)。改変せずに使う。MPL-2.0 はファイル単位のコピーレフトで、
-    改変しなければ義務は元のファイルのライセンス表示を残すことだけなので、MIT での配布やアプリのソース非公開に影響しない。
+    改変しなければ、義務はライセンス表示を残すことと、実行形式で配るときにソースの入手先を知らせること(§3.2)だけ。
+    アプリのソース非公開には影響しない。
     これ以外の MPL・LGPL などを足すときは先に相談する
   - tests/test_licenses.py が、入っている実行時の依存(dev などの extra は除く)のライセンスを許可リストと照らす
     (MIT-0・ISC・PSF-2.0 も MIT と同じ扱いで許す。cffi が MIT-0)
@@ -22,6 +26,11 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
   (Python は `content="all"|"uncensored"`)を指定したときだけ出す(2026-10-20)。`info <id>` は ID を指定するので出す
 - 見積もりには必ず `basis`(measured / estimated)を付ける。実測があれば実測を使う
 - 精度の目標に届かないとき、係数を無理に合わせてごまかさない。docs/accuracy.md に正直に書く
+- 版の正本は `src/genmodelfit/_version.py`(pyproject は hatch が読む)。変えたら CHANGELOG.md も書く
+- 一覧の新しさ(HEAD の 30 日の期限)は `status.py`(`gmf.data_status()`、`system` の Data の欄)。gate の
+  `evaluate_offline` で判定する(期限の式を別に持たない)
+- HTTP は必ず `fetch.make_session()`(User-Agent を付け、~/.netrc の資格情報を送らない。プロキシの環境変数は使う)。
+  読むだけのコマンドと Python の関数はネットに触らない(README「Privacy」、tests/test_privacy.py・test_embedding.py)
 - REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
 

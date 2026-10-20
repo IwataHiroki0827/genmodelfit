@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -191,7 +192,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def _patch_session(monkeypatch: pytest.MonkeyPatch, files) -> FakeSession:
     s = FakeSession(files)
-    monkeypatch.setattr(remote.requests, "get", s.get)
+    monkeypatch.setattr(remote, "_http_get", s.get)
     return s
 
 
@@ -429,7 +430,7 @@ def test_get_stops_when_too_large(monkeypatch) -> None:
     """上限を超えたら、最後まで読まずにやめる。"""
     monkeypatch.setattr(remote, "MAX_BYTES", 10)
     resp = FakeResp(b"x" * (3 * 1024 * 1024))
-    monkeypatch.setattr(remote.requests, "get", lambda url, **kw: resp)
+    monkeypatch.setattr(remote, "_http_get", lambda url, **kw: resp)
     with pytest.raises(remote.RemoteError, match="大きすぎます"):
         remote._get("https://example.invalid/db.json", 1)
     assert resp.chunks == 1  # 3 つのうち最初の 1 つで止まる
@@ -438,7 +439,7 @@ def test_get_stops_when_too_large(monkeypatch) -> None:
 def test_get_rejects_large_content_length(monkeypatch) -> None:
     monkeypatch.setattr(remote, "MAX_BYTES", 10)
     resp = FakeResp(b"x", headers={"Content-Length": "999"})
-    monkeypatch.setattr(remote.requests, "get", lambda url, **kw: resp)
+    monkeypatch.setattr(remote, "_http_get", lambda url, **kw: resp)
     with pytest.raises(remote.RemoteError, match="大きすぎます"):
         remote._get("https://example.invalid/db.json", 1)
     assert resp.chunks == 0
@@ -485,11 +486,19 @@ def test_release_workflow_shape() -> None:
 
 def test_data_workflow_shape() -> None:
     doc = _wf("data.yml")
-    assert set(doc[True]) == {"workflow_dispatch"}  # schedule は Issue #2 の後で戻す
+    # 最初の公開: main にコミットした db.json に署名して置く(作り直しと schedule は Issue #19)
+    assert set(doc[True]) == {"workflow_dispatch", "push"}
+    assert doc[True]["push"] == {"branches": ["main"], "paths": ["src/genmodelfit/data/db.json"]}
     assert doc["permissions"] == {"contents": "read"}
     jobs = doc["jobs"]
-    # 秘密鍵は data-signing の environment の署名ステップにだけ渡す
+    assert set(jobs) == {"sign", "upload"}
+    runs = [st.get("run", "") for job in jobs.values() for st in job["steps"]]
+    assert not any(re.search(r"genmodelfit update(?! --from-release)", r) for r in runs)  # 作り直さない
+    # 秘密鍵は data-signing の environment の署名ステップにだけ渡す。main からだけ動く
     assert jobs["sign"]["environment"] == "data-signing"
+    assert jobs["sign"]["if"] == "github.ref == 'refs/heads/main'"
+    names = [st.get("name") for st in jobs["sign"]["steps"]]
+    assert names.index("署名する") < names.index("同梱の公開鍵で確かめる")
     for name, job in jobs.items():
         for step in job["steps"]:
             uses_secret = "secrets." in json.dumps(step)

@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """おすすめ順に並べる。
 
 並べ方(Issue #17): 動くもの(too_tight でない)→ 自動でおすすめに出せるもの(gate の auto)→ 点数の高い順 → ID。

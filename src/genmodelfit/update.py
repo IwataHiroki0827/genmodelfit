@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """`genmodelfit update`: モデルの一覧を上流から作り直す(llmfit の update に当たる)。
 
 データ源(詳しくは docs/sources.md):
@@ -24,7 +28,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import __version__, safety
+from . import safety
+from ._version import __version__
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
 from .groups import model_precision
