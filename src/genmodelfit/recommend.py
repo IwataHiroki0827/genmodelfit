@@ -132,6 +132,14 @@ def _how(e: Estimate, vram: float) -> tuple[str, str]:
     return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram)
 
 
+def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
+    """動かし方で段階に上限があるとき、その動かし方(JSON の level_cap)。sequential(GPU~、good まで)/
+    offload(GPU+RAM、marginal まで)/ cpu(marginal まで)。
+    全部 GPU に載る・動かない・判定できないときは None。"""
+    label = mode_label(e, system)
+    return {"GPU~": "sequential", "GPU+RAM": "offload", "CPU": "cpu"}.get(label)
+
+
 def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
     """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU / -。"""
     if e.unknown_size or e.run_mode == "none":
@@ -218,6 +226,7 @@ class Fit:
             "fit_label": FIT_LABEL[e.fit],
             "run_mode": e.run_mode,
             "run_mode_label": self.run_mode_label,
+            "level_cap": level_cap(e, self.system),
             "score": round(self.score, 1),
             "score_components": dict(self.score_components),
             "memory_kind": kind,
@@ -327,13 +336,17 @@ def list_key(f: Fit, sort: str = "score", auto_first: bool = True) -> tuple:
         (点数は段階の重みが一番大きいが、ほかの内訳で段階が逆になることがあるので、段階を先に見る)
     vram: 判定に使ったメモリ(表の VRAM)の少ない順 / disk: ダウンロードの小さい順 / name: 名前の順
         (どれも、動くもの → 判定できない → too_tight で分けてから)
-    auto_first=True(recommend)なら、score の順で、動くものの中で自動のおすすめに出せるものを先にする
-    (0.1.0 からの recommend の順。名前ではなく ID で決める)。"""
+    auto_first=True(recommend)なら sort は使わず、動くもの → 自動のおすすめに出せるもの → 逃がさずに載るもの
+    (perfect / good を 1 つの段階に)→ marginal → 公式 → 点数 → ID。"""
     level = LIST_LEVEL_ORDER.get(f.estimate.fit, 4)
     score = -round(f.score, 1)
     name = (f.model_name or f.model.name or f.model.id).lower()
     if auto_first:
-        return (_runs(f), not f.auto, fit_rank(f.estimate.fit), is_community(f.model), score, f.model.id)
+        # recommend: 逃がさずに載るもの(perfect / good で GPU・GPU~。row_tier の clean)は 1 つの段階として
+        # 点数で並べる。代表を高い精度に替えて good になったモデル(24 GB の Z-Image Turbo の bf16)が、
+        # int8 の perfect のときより下がらないように(行の点数と同じ考え方。#28 のレビュー)
+        tier = 0 if runs_clean(f.estimate) else fit_rank(f.estimate.fit)
+        return (_runs(f), not f.auto, tier, is_community(f.model), score, f.model.id)
     if sort == "type":
         mod = MODALITIES.index(f.model.modality) if f.model.modality in MODALITIES else len(MODALITIES)
         return (mod, level, is_community(f.model), score, name, f.model.id)

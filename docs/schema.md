@@ -177,10 +177,12 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 list (case-insensitive). An unknown license (`null`) never matches.
 
 **Order of `recommend` / recommend の並べ方** (`gmf.recommend()`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
-fit level (perfect → good → marginal) → official before community templates (`community`) **within the same level** →
-`score` (desc) → `id`. Until 0.1.0 community templates came after every official row of all levels.
-動くもの(判定できないものは一番後ろ)→ 自動でおすすめに出せるもの → 段階 → 同じ段階の中で公式(利用者の
-テンプレートは後)→ 点数の高い順 → ID。
+**runs without offload** (perfect or good on `GPU` / `GPU~`, one tier like the row score, 0.1.1: the precision upgrade
+to a `good` bf16 row must not move a model below where its `perfect` int8 row was) → marginal → official before
+community templates (`community`) **within the same tier** → `score` (desc) → `id`. Until 0.1.0 community templates
+came after every official row of all levels.
+動くもの(判定できないものは一番後ろ)→ 自動でおすすめに出せるもの → 逃がさずに載るもの(perfect / good)→ marginal →
+同じ段階の中で公式(利用者のテンプレートは後)→ 点数の高い順 → ID。
 
 ### Models / モデルのまとめ方
 
@@ -303,6 +305,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped stage by stage) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) |
+| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `marginal`), `cpu` (at most `marginal`); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100 (below) |
 | `score_components` | object | `fit`, `headroom`, `readiness`, `basis`, `popularity`, each 0–100 |
 | `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
@@ -312,7 +315,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
 | `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
 | `total_size_gb` | float \| null | size of all listed files |
-| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown) |
+| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown); within the same tier the one with more obligations (`apache-2.0` before `bsd-3-clause` before `mit`, `hf.OBLIGATION_RANK`) |
 | `licenses` | (str \| null)[] | the distinct licenses of the files (null last = some file unknown) |
 | `auto` | bool | can be auto-recommended (= `gate.auto`) |
 | `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |

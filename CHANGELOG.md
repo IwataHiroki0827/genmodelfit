@@ -47,6 +47,15 @@ RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直�
   `--sort type|score|vram|disk|name`, `--all`; `fit --include-tools`. JSON follows the same order. Python:
   `gmf.fit_list()`, and `fit=` / `sort=` on `gmf.search()`.
 - Table columns in every command: `Type | Status | Score | Model | …` (Type leftmost, Score left of the name).
+- Review fixes: `recommend` ranks "runs without offload" (Perfect / Good on `GPU` / `GPU~`) as one tier, so Z-Image
+  Turbo stays first in image on 24 GB after switching to bf16; JSON `level_cap` (`sequential` / `offload` / `cpu`) and a
+  legend line explain why GPU~ is at most Good; `--fit` with `--min-fit` is a usage error (exit 2); info and the table
+  round Mem% the same way; malformed file headers are reported as header errors.
+- Licenses: rows of the source table can override an automatic result (`override`). ChronoEdit's distill LoRA was
+  apache-2.0 from the card's metadata but the card says it is governed by the NVIDIA Open Model License; InfiniteTalk
+  and Wan 2.1 I2V 480P now point at their real upstreams. Files of lineages whose license cannot be read (VOID) are
+  unknown in the data too (as the gate already judged). An entry mixing apache-2.0 and mit files is shown as
+  apache-2.0 (more obligations), not mit. `update.LICENSE_POLICY` 4 → 5.
 
 ### Added
 

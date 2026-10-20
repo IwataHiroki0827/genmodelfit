@@ -1157,7 +1157,8 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
     vram = system.vram_gb
     fit, how = gpu_choice(n.full, n.sequential, n.offload, vram)
     pct = {
-        k: round(100 * v / vram) for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
+        k: round(100 * round(v, 2) / vram)
+        for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
     }
     if fit == "too_tight":
         return (

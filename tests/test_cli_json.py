@@ -65,6 +65,7 @@ FIT = {
     "fit_label",
     "run_mode",
     "run_mode_label",
+    "level_cap",
     "score",
     "score_components",
     "memory_kind",
@@ -309,7 +310,9 @@ def check_order(models: list[dict], by_type: bool = False) -> None:
             order.index(m["modality"]) if by_type else 0,
             {"unknown": 2, "too_tight": 1}.get(m["fit_level"], 0),
             not m["auto"],
-            levels.index(m["fit_level"]),
+            0
+            if m["fit_level"] in ("perfect", "good") and m["run_mode"] == "gpu"
+            else levels.index(m["fit_level"]),
             m["community"],  # 利用者のテンプレートは同じ段階の中で公式の後
             -m["score"],
             m["id"],

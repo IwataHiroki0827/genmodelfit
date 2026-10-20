@@ -180,19 +180,19 @@ Example / 例 (`COLUMNS=100 genmodelfit fit --vram 24 --ram 128`, 24 GB GPU / 12
 
 ```
 PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
-All models: 107 (156 hidden: uncensored 24, tools 34, license unknown 96, too tight 2; 60 more
+All models: 141 (93 hidden: uncensored 24, tools 34, license unknown 32, too tight 3; 89 more
     workflows merged into their models)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Auto
 image ● Perfect      91 SDXL1.0 Base             gen+3   fp16  8.0m  33% GPU     openrail++ license
 image ● Perfect      84 FLUX.2 [Klein] 4B Base   edit    fp8   13.2  55% GPU     apache-2.0 yes
+image ● Perfect      80 Anima Preview 3 Base     gen     bf16   7.0  29% GPU     other      license
 image ● Perfect      80 SDXL Turbo 1.0           gen     fp16   8.2  34% GPU     other      license
 image ● Perfect      79 NetaYume Lumina          gen     bf16  11.6  48% GPU     gemma      license
-image ● Good         93 Z-Image-Turbo            gen+5   bf16 13.1m  54% GPU~    apache-2.0 yes
-image ● Good         66 Chroma                   gen     fp8   15.4  64% GPU     apache-2.0 yes
+image ● Perfect      79 PixelDiT 1300M           gen     bf16   9.0  38% GPU     other      license
 …
 video ● Perfect      92 Wan 2.1 1.3B T2V         gen     fp16 13.3m  55% GPU     apache-2.0 yes
 video ● Good         67 Wan 2.2 5B TI2V          gen     fp16 15.7m  66% GPU~    apache-2.0 yes
-video ● Good         63 Wan 2.1 ControlNet 1.3B  edit    bf16  17.1  71% GPU     mit        yes
+video ● Good         63 Wan 2.1 ControlNet 1.3B  edit    bf16  17.1  71% GPU     apache-2.0 yes
 video ● Marginal     44 Wan 2.2 14B I2V          i2v+2   fp8   21.0  88% GPU~    apache-2.0 yes
 …
 music ● Perfect      94 ACE-Step 1.5 Turbo       gen+2   bf16 10.8m  45% GPU     mit        yes
@@ -204,6 +204,8 @@ tts   ● Perfect      80 Chatterbox               gen     fp32   3.5  14% GPU  
 3d    ● Perfect      89 HY 3D 2.1                gen     fp16  9.4m  39% GPU     other      license
 3d    ● Perfect      88 HY 3D 2.0                gen     fp16  6.7m  28% GPU     other      license
 Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured.
+Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
+Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
 …
 ```
 

@@ -61,6 +61,7 @@ HIDDEN_LABEL = {
     "size_unknown": "size unknown",
     "too_tight": "too tight",
     "below_min_fit": "below --min-fit",
+    "other_fit": "other levels (--fit)",
     "held": "held",
     "task": "other uses",
     "same_model": "merged into their models",
@@ -345,7 +346,7 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Auto=yes, level, Score.",
+    "auto": "Order: runs, Auto=yes, Perfect/Good, Marginal, Score.",
     "type": "Order: Type, Status, Score (--sort).",
     "score": "Order: Status, Score (all types).",
     "vram": "Order: runs, VRAM (least first).",
@@ -358,6 +359,7 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True, orde
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
+        "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
         "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.",
     ]
     if grouped:
@@ -381,7 +383,7 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True, orde
             " add --include-unknown-license to show them."
         )
     if any(f.estimate.unknown_size for f in fits):
-        out.append("? = size unknown, not judged (listed last).")
+        out.append("? = size unknown, not judged (after the levels that run, before Too tight).")
     return out
 
 

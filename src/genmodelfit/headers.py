@@ -145,12 +145,37 @@ class HeaderInfo:
 
 
 def _numel(shape: Any) -> int:
+    """形(整数の並び)の要素の数。整数でない・負の大きさ・並びでない形は HeaderError。"""
+    if shape is None:
+        return 1
+    if not isinstance(shape, list):
+        raise HeaderError(f"テンソルの形が並びではありません: {shape!r}"[:200])
     n = 1
-    for d in shape or []:
-        n *= int(d)
+    for d in shape:
+        if isinstance(d, bool) or not isinstance(d, int) or d < 0:
+            raise HeaderError(f"テンソルの形がおかしい: {shape!r}"[:200])
+        n *= d
     return n
 
 
+def _guarded(fn):
+    """見出しの形がおかしいときの例外(ValueError・TypeError・OverflowError・struct.error)を HeaderError に
+    そろえる(NeedMore と HeaderError はそのまま)。"""
+    import functools
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except (HeaderError, NeedMore):
+            raise
+        except (ValueError, TypeError, OverflowError, AttributeError, struct.error) as e:
+            raise HeaderError(f"見出しの形がおかしい: {type(e).__name__}: {e}"[:300]) from e
+
+    return run
+
+
+@_guarded
 def parse_safetensors_header(header: bytes) -> HeaderInfo:
     """safetensors の見出しの JSON(先頭 8 バイトの後ろ)から精度と要素の数を求める。"""
     try:
@@ -164,6 +189,8 @@ def parse_safetensors_header(header: bytes) -> HeaderInfo:
     for name, t in data.items():
         if name == "__metadata__" or not isinstance(t, dict):
             continue
+        if not isinstance(t.get("dtype", ""), str):
+            raise HeaderError(f"dtype が文字列ではありません: {name}"[:200])
         dtype = str(t.get("dtype", "")).upper()
         n = _numel(t.get("shape"))
         params += n
@@ -236,6 +263,7 @@ def _gguf_value(r: _Reader, vtype: int) -> Any:
     return None
 
 
+@_guarded
 def parse_gguf_header(buf: bytes) -> HeaderInfo:
     """GGUF の先頭(buf)から精度と要素の数を求める。足りなければ NeedMore(要るバイト数)。"""
     r = _Reader(buf)

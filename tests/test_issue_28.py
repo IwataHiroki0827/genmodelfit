@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 import struct
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from genmodelfit.headers import (
     read_header,
 )
 from genmodelfit.models import FIT_UNKNOWN, Gpu, ModelEntry, ModelFile, SystemInfo, fit_rank
-from genmodelfit.recommend import license_unknown, recommend, row_tier, runs_clean, select, sort_key
+from genmodelfit.recommend import license_unknown, list_key, recommend, row_tier, runs_clean, select, sort_key
 from genmodelfit.table import build_table, make_console
 from genmodelfit.update import set_completeness, set_sampler_stages
 from genmodelfit.workflow import sampler_stages
@@ -348,7 +349,7 @@ def test_community_comes_after_official_only_within_the_same_level(db):
 
     for v in (8, 24):
         fits = select(db, pc(v), content="all", include_unknown_license=True).fits
-        keys = [sort_key(f) for f in fits]
+        keys = [list_key(f) for f in fits]
         assert keys == sorted(keys)
         for a, b in itertools.pairwise(fits):
             if a.auto == b.auto and a.estimate.fit == b.estimate.fit and is_community(a.model):
@@ -561,7 +562,9 @@ def test_fit_level_filter(capsys):
     assert good["hidden"]["other_fit"] > 0
     perfect = _fit_json(capsys, "--perfect")
     assert {m["fit_level"] for m in perfect["models"]} == {"perfect"}
-    assert cli.main(["fit", *HW24, "--fit", "good", "--min-fit", "good"]) == 1
+    with pytest.raises(SystemExit) as ex:
+        cli.main(["fit", *HW24, "--fit", "good", "--min-fit", "good"])
+    assert ex.value.code == 2  # 使い方の誤り
     capsys.readouterr()
     old = _fit_json(capsys, "--min-fit", "good")  # --min-fit も使える(その段階以上)
     assert {m["fit_level"] for m in old["models"]} == {"perfect", "good"} and old["filters"]["fit"] is None
@@ -587,3 +590,71 @@ def test_fit_list_api_matches_cli(db, capsys):
     with pytest.raises(ValueError):
         gmf.fit_list(system_info=pc(24), db=db, min_fit="good")  # fit の既定 runnable と両方
     assert gmf.fit_list(system_info=pc(24), db=db, fit=None, min_fit="good")
+
+
+# --- 9. レビューの指摘(0.1.1 の Checker) -----------------------------------------------------------
+
+
+def test_recommend_keeps_z_image_turbo_on_top_after_precision_upgrade(db):
+    """代表を bf16(good・GPU~)に替えても、逃がさずに載るものは perfect と 1 つの段階として点数で並べる
+    (int8 の perfect だったときの順位から下げない)。"""
+    rows = recommend(db, pc(24), modality="image", limit=6)
+    assert rows[0].model.id == "image_z_image_turbo" and rows[0].estimate.fit == "good"
+    clean = [f for f in rows if runs_clean(f.estimate) and f.auto]
+    assert [f.score for f in clean] == sorted((f.score for f in clean), reverse=True)
+
+
+def test_level_cap_in_json_and_legend(capsys):
+    d = _fit_json(capsys, "-m", "image")
+    caps = {m["run_mode_label"]: m["level_cap"] for m in d["models"]}
+    assert caps.get("GPU") is None and caps.get("GPU~") == "sequential"
+    every = _fit_json(capsys, "--all", "-m", "video")
+    assert {m["level_cap"] for m in every["models"] if m["run_mode_label"] == "GPU+RAM"} == {"offload"}
+    assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
+    out = capsys.readouterr().out
+    assert "GPU~ is at most Good; GPU+RAM and CPU are at most Marginal" in out
+    assert all(len(x) <= 100 for x in out.splitlines())
+
+
+def test_fit_and_min_fit_together_is_a_usage_error(tmp_path):
+    for extra in (["--fit", "good"], ["--perfect"]):
+        r = run_cli(["fit", "--vram", "8", "--no-cache", "--min-fit", "good", *extra], tmp_path / "c")
+        assert r.returncode == 2 and b"--min-fit" in r.stderr
+
+
+def test_other_fit_label_is_humanized(tmp_path):
+    out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--fit", "good"], tmp_path / "c")
+    text = re.sub(r"\s+", " ", out.stdout.decode("utf-8"))
+    assert "other levels (--fit)" in text and "other_fit" not in text
+
+
+def test_info_and_table_use_the_same_percentage(db, capsys):
+    assert cli.main(["info", "video_wan2_2_14B_i2v", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
+    info = capsys.readouterr().out
+    d = _fit_json(capsys, "--all-workflows", "-m", "video")
+    row = next(m for m in d["models"] if m["id"] == "video_wan2_2_14B_i2v")
+    assert f"({round(row['utilization_pct'])}%)" in info
+
+
+@pytest.mark.parametrize(
+    "tensors",
+    [
+        {"w": {"dtype": "F16", "shape": [-1, 4]}},
+        {"w": {"dtype": "F16", "shape": ["a"]}},
+        {"w": {"dtype": "F16", "shape": 7}},
+        {"w": {"dtype": 3, "shape": [1]}},
+        {"w": {"dtype": "F16", "shape": [1.5]}},
+    ],
+)
+def test_malformed_safetensors_shapes_are_header_errors(tensors):
+    with pytest.raises(HeaderError):
+        parse_safetensors_header(json.dumps(tensors).encode())
+
+
+def test_malformed_gguf_is_a_header_error():
+    raw = _gguf(15, [("w", [4, 4], 12)])
+    with pytest.raises(HeaderError):
+        parse_gguf_header(b"XXXX" + raw[4:])
+    bad_kv = raw[:24] + struct.pack("<Q", 3) + b"abc" + struct.pack("<I", 99)  # 知らない値の型
+    with pytest.raises(HeaderError):
+        parse_gguf_header(bad_kv + b"\0" * 64)

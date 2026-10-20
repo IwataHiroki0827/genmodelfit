@@ -1333,6 +1333,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     args = parser.parse_args(argv)
+    # 使い方の誤り(argparse と同じく終了コード 2)
+    if getattr(args, "min_fit", None) is not None and (
+        getattr(args, "fit", None) is not None or getattr(args, "perfect", False)
+    ):
+        parser.error("--fit(--perfect)と --min-fit は同時に指定できません")
     try:
         return args.func(args)
     except BrokenPipeError:  # | head などで出力を途中で閉じられた
