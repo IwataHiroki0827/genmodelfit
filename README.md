@@ -117,7 +117,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 Common options / 共通の指定:
 
 - `--json` — machine-readable output for apps and agents ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md)) / アプリ向けの JSON
-- `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
+- `--vram 12 --ram 32` — judge with other VRAM / RAM sizes; the GPU generation of this PC is kept when it has a usable NVIDIA GPU ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)) / VRAM・RAM の量を変えて判定(この PC に使える NVIDIA の GPU があれば、その世代は引き継ぐ)
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
 - `-m image,video` — types / 種類(カンマ区切り可)
 - `--task edit` — uses inside a type: `gen`, `edit`, `i2v`, `lipsync`, `motion`, `voice`, `upscale`, `tool`, or task codes

@@ -125,7 +125,7 @@ VAES: dict[str, Vae] = {
         Vae("ltxv", False, "sd.py:780"),
         Vae("ltx_diffusion", False, "sd.py:645(LTX 2.4 以降の拡散の VAE)"),
         Vae("mage", False, "sd.py:627"),
-        Vae("wan", True, "sd.py:849・857・873(Wan 2.1 / 2.2 / Qwen Image 2.1)"),
+        Vae("wan", True, "sd.py:849・852・862・878 付近(Wan 2.1 / 2.2 / Qwen Image 2.1)"),
         Vae("hunyuan_video", True, "sd.py:824"),
         Vae("hunyuan_video15", True, "sd.py:791"),
         Vae("hunyuan3d", True, "sd.py:902"),
@@ -157,7 +157,7 @@ _RULES: tuple[tuple[str, str], ...] = (
     (r"hunyuan[._-]?video", "hunyuan_video"),
     (r"hunyuan[._-]?3d", "hunyuan3d"),
     (r"cosmos", "cosmos"),
-    (r"anima(?!te)", "anima"),  # animate(Wan Animate)と分ける
+    (r"anima(?!t)", "anima"),  # animate(Wan Animate)・animation・animatediff と分ける
     (r"lumina|netayume|newbie", "lumina2"),
     (r"z[._-]?image", "zimage"),
     (r"ming[._-]?image", "ming_image"),
@@ -183,7 +183,9 @@ _RULES: tuple[tuple[str, str], ...] = (
     (r"(^|[^a-z])wan|humo|chrono[._-]?edit|causal[._-]?forcing|scail|infinitetalk|bernini", "wan"),
     (r"sd3|sd[._-]?3\.5", "sd3"),
     (
-        r"sd[._-]?xl|sdxl|noobai|lustify|juggernaut|realismbystable|meina|hassaku|svd[._-]|v1[._-]5|lotus",
+        r"sd[._-]?xl|sdxl|noobai|lustify|juggernaut|realismbystable|meina|hassaku|svd[._-]|lotus"
+        # v1.5 のような版の番号だけでは SD にしない(10Eros・MOSS-TTS が当たっていた)
+        r"|(sd|stable[._-]?diffusion)[._-]?v?1[._-]5|v1[._-]5[._-](pruned|emaonly|inpainting)",
         "sd",
     ),
     (r"stable[._-]?audio", "stable_audio"),
@@ -225,6 +227,8 @@ def _main_names(entry) -> list[str]:
 
 def family_of(entry) -> str | None:
     """一覧の 1 件の系統。本体のファイル名で決まらなければ、ID・テンプレート名で決める。"""
+    if entry.modality == "tts":  # 読み上げは ComfyUI の組み込みの系統に当たらない(名前の偶然の一致を避ける)
+        return None
     names = " ".join(_main_names(entry))
     key = _match(_RULES, names) if names else None
     if key:

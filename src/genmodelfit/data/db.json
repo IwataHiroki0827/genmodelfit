@@ -24528,8 +24528,6 @@
    ],
    "files_complete": false,
    "size_floor_bytes": 10737418240,
-   "comfy_family": "anima",
-   "comfy_vae": "wan",
    "total_size_bytes": 10737418240
   },
   {
@@ -39506,8 +39504,6 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "comfy_family": "sd",
-   "comfy_vae": "kl",
    "total_size_bytes": 16979739072
   },
   {
@@ -40845,8 +40841,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "comfy_family": "sd",
-   "comfy_vae": "kl",
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 58918453144
   },
   {
@@ -40994,8 +40990,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "comfy_family": "sd",
-   "comfy_vae": "kl",
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 21734103566
   }
  ]
