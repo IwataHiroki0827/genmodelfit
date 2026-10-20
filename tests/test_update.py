@@ -487,12 +487,15 @@ def test_hf_selection_rules_like_llmfit(built):
     skipped = built.sources["huggingface-search"]["skipped"]
     # rare-nsfw-xl(全期間 9,999)、brand-new-voice(trending だけ、900)、both-voice(全期間 5,000。
     # trending の検索にも
-    # 出るが、ダウンロード数の順の検索にも出たので下限は 10,000)
-    assert skipped["skip_downloads"] == 3
+    # 出るが、ダウンロード数の順の検索にも出たので下限は 10,000)、old-voice(likes が多く trending の検索に
+    # 出るが、trendingScore 0.1・直近 30 日 50 なので下限は 10,000。#19)
+    assert skipped["skip_downloads"] == 4
     assert skipped["test_stub"] == 1 and skipped["merge"] == 1 and skipped["adapter"] == 1
     # new-voice(trending だけ、1,500)と meina-like-xl(直近 30 日 2,000・全期間 50,000)は下限を通る
     # (試験のフォルダにリポジトリの情報が無いので、取れなかった数に入る)
     assert skipped["fetch_failed"] == 2
+    # #19: 直近 30 日 20 の無検閲(old-nsfw-xl)は入れない。plain-nsfw-xl の量子化の写し(-Q8-GGUF)は重複
+    assert skipped["uncensored_inactive"] == 1 and skipped["duplicate"] == 1
     st = built.sources["huggingface-search"]
     assert st["all_time_missing"] >= 1  # downloadsAllTime の無い結果(直近 30 日の数で代えた)を数える
     ids = {e.id for e in built.models}
@@ -501,3 +504,34 @@ def test_hf_selection_rules_like_llmfit(built):
         "hf:hexgrad/Kokoro-82M"
     )  # trending の検索にも出るが、downloads の順でも拾ったので下限は 10,000
     assert k is not None and k.downloads_all_time and k.downloads_all_time >= 10_000
+
+
+def test_hf_selection_rules_19():
+    """#19: 伸びているときだけ低い下限、名前の merge、量子化の写しの名前。"""
+    from genmodelfit.update import (
+        _MERGE_NAME,
+        MIN_DOWNLOADS,
+        MIN_TRENDING_DOWNLOADS,
+        Candidate,
+        copy_name,
+        download_floor,
+    )
+
+    def cand(**kw):
+        base = dict(
+            repo_id="a/b", modality="image", task="t2i", downloads=500, likes=0, tags=[], uncensored=False
+        )
+        return Candidate(**{**base, **kw})
+
+    assert download_floor(cand(trending_score=0.5)) == MIN_TRENDING_DOWNLOADS
+    assert download_floor(cand(trending_score=0.4)) == MIN_DOWNLOADS
+    assert download_floor(cand(trending_score=2.0, downloads=99)) == MIN_DOWNLOADS
+    assert download_floor(cand(trending_score=2.0, trending_only=False)) == MIN_DOWNLOADS
+    assert _MERGE_NAME.search("uber-realistic-porn-merge-urpm") and _MERGE_NAME.search("x_mergekit")
+    assert not _MERGE_NAME.search("CamelliaMix_NSFW") and not _MERGE_NAME.search("emerged-model")
+    assert copy_name("sothmik/Wai-NSFW-Illustrious-v140-Q8-GGUF") == copy_name(
+        "Ine007/waiNSFWIllustrious_v140"
+    )
+    assert copy_name("x/Foo-Q4_K_M-GGUF") == copy_name("y/foo") == copy_name("z/Foo_diffusers") == "foo"
+    assert copy_name("x/flux-fp8") == copy_name("x/flux-nf4") == copy_name("x/flux-int8") == "flux"
+    assert copy_name("x/Qwen-Image-2.1") != copy_name("x/Qwen-Image-2.2")

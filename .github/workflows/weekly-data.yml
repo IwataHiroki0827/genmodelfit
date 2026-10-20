@@ -9,6 +9,9 @@ name: Weekly data
 #   状態の ruff と pytest を通してから PR を作る(PR の本文にもそう書く)
 # - 一部が欠けた(sources.partial)ときは失敗にして PR を作らない。手動実行で allow_partial を選んだときだけ、
 #   筋が通る欠け方(weekly.partial_problems)なら「一部欠け」の警告を付けて PR にする
+# - 新しく無検閲の印が付いた項目が 5 件を超えたら失敗(手動実行で allow_many_uncensored を選べば先頭に警告)
+# - PR の本文の上流の文字(名前・ID・ライセンス・URL など)は weekly.md() で HTML と Markdown を効かなくしてある
+# - 60 日リポジトリに動きが無いと GitHub は schedule を止める。止まったら Actions の画面で有効にし直すか手動実行する
 # - HEAD の期限(30 日)は作り直しで延びる。作り直した直後に期限が 7 日以内なら失敗にする(取り直しが効いていない)
 # 手順と PR で確かめることは docs/release.md「毎週の一覧の更新」。手元では `python -m genmodelfit.weekly --dry-run`。
 
@@ -19,6 +22,10 @@ on:
     inputs:
       allow_partial:
         description: "一部を取得できなくても、筋が通れば警告付きで PR にする"
+        type: boolean
+        default: false
+      allow_many_uncensored:
+        description: "新しく無検閲の項目が 5 件を超えても失敗にせず、本文の先頭に警告を書く"
         type: boolean
         default: false
 
@@ -70,10 +77,12 @@ jobs:
         timeout-minutes: 90
         env:
           ALLOW_PARTIAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_partial || false }}
+          ALLOW_MANY_UNCENSORED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_many_uncensored || false }}
         run: |
           set -euo pipefail
           extra=()
           if [ "${ALLOW_PARTIAL}" = "true" ]; then extra+=(--allow-partial); fi
+          if [ "${ALLOW_MANY_UNCENSORED}" = "true" ]; then extra+=(--allow-many-uncensored); fi
           uv run --no-sync python -m genmodelfit.weekly --out weekly-out \
             --apply src/genmodelfit/data/db.json --rate-limit-budget 900 "${extra[@]}"
 
@@ -117,12 +126,16 @@ jobs:
       - name: 実測の集計(あれば)
         run: |
           if uv run --no-sync genmodelfit contrib aggregate --help > /dev/null 2>&1; then
-            {
-              echo
-              echo "### 実測の集計(genmodelfit contrib aggregate --report)"
-              echo
-              uv run --no-sync genmodelfit contrib aggregate --report
-            } >> weekly-out/pr_body.md
+            uv run --no-sync genmodelfit contrib aggregate --report > weekly-out/contrib-report.txt
+            # 利用者の出した値を含むので、囲みに入れて HTML・リンク・メンションを効かなくする(weekly.code_block)
+            uv run --no-sync python - <<'PY'
+          from pathlib import Path
+          from genmodelfit.weekly import code_block
+          out = Path("weekly-out/pr_body.md")
+          rep = Path("weekly-out/contrib-report.txt").read_text(encoding="utf-8")
+          head = "\n### 実測の集計(genmodelfit contrib aggregate --report)\n\n"
+          out.write_text(out.read_text(encoding="utf-8") + head + code_block(rep), encoding="utf-8")
+          PY
           else
             echo "genmodelfit contrib はまだありません(#34)。飛ばします"
           fi

@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
 
 - `genmodelfit diff OLD NEW [--json]` and `gmf.diff_db(old, new)` (Issue #19): what changed between two lists —
@@ -20,6 +22,24 @@ All notable changes to this project are documented here. The format is based on
   diff. It is never merged automatically; publishing stays in data.yml after the owner merges. A partial rebuild
   fails unless run by hand with `allow_partial` and only HF repos failed transiently. docs/release.md.
   毎週、作り直した一覧を PR にする(自動ではマージしない。配るのはマージした一覧だけ)。
+
+### Changed
+
+- Hugging Face selection (Issue #19): the 1,000 all-time floor for models found only by the trending / likes30d
+  searches now needs a trendingScore of at least 0.5 and at least 100 downloads in the last 30 days (otherwise
+  10,000 applies); repo names containing `merge` / `mergekit` are skipped like the tag; quantized / format copies
+  are recognized by name (`-GGUF`, `-Q8_0`, `_K_M`, `-fp8`, `-nf4`, `-int8`, `_diffusers`, `-Quantized`, …) and
+  only the most downloaded is kept; uncensored models also need 100 downloads in the last 30 days.
+  HF の選び方を締めた(伸びている条件・名前の merge・量子化の写し・無検閲は直近 30 日も使われているもの)。
+- The bundled list was rebuilt with these rules (328 entries: HF 50, uncensored 28; auto 99 unchanged).
+  Added: 6 uncensored HF models that meet the rules and the new official template `video_fasth3_ominiref_r2v`;
+  removed: `hf:0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF` (a quantized copy of
+  `hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized`) and `hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting`
+  (the same weights, by sha256, as the more downloaded `hf:andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING`).
+  同梱の一覧を新しい規則で作り直した。
+- Weekly PR body: every upstream string is HTML-escaped and Markdown-neutralized (`weekly.md`), mentions are
+  broken, truncation keeps `<details>` balanced; a scheduled run fails when more than 5 entries become uncensored
+  or when HF / template / uncensored / auto counts fall below half.
 
 ### Fixed
 

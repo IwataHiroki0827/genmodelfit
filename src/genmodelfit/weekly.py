@@ -14,8 +14,11 @@
 流れ:
 1. 比べる元(--base。既定は同梱の一覧 = main の db.json)を読む
 2. `genmodelfit update` と同じ作り直し(テンプレート・HF・HEAD・ファイルの見出しと精度。見出しと精度は
-   キャッシュ(GENMODELFIT_CACHE_DIR)にあるものは読み直さない)。引き継ぎの元は 1 の一覧
-3. 確かめる: 形(db.load で読み直す)、自動のおすすめが 0 件でない、項目が元の半分未満に減っていない、
+   キャッシュ(GENMODELFIT_CACHE_DIR)にあるものは読み直さない)。引き継ぎの元は 1 の一覧。続けて
+   `update --inspect-only` と同じ読み直し(401 だったリポジトリの確かめ直し・テンプレートのサンプラーの組)。
+   同梱の一覧もこの 2 段で作るので、毎週の差分に段の違いが出ない
+3. 確かめる: 形(db.load で読み直す)、自動のおすすめが 0 件でない、区分ごとに元の半分未満に減っていない、
+   新しく無検閲になった項目が MAX_NEW_UNCENSORED 件まで、
    **HEAD の期限(30 日)が 7 日より先**(作り直した直後なのに近ければ、HEAD の取り直しが効いていない)
 4. 一部を取得できなかったとき(sources.partial): 既定は失敗(PR を作らない)。--allow-partial のときだけ、
    中身が筋の通るとき(下の partial_problems が空)に限って「一部欠け」の警告を付けて通す
@@ -30,8 +33,10 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
+import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -47,7 +52,7 @@ from .diff import diff_db
 from .fetch import DirFetcher, Fetcher, RecordingFetcher
 from .gate import GatePolicy, _parse_time
 from .status import compute as compute_status
-from .update import LICENSE_POLICY, UpdateFailed, make_fetcher, update_database
+from .update import LICENSE_POLICY, UpdateFailed, inspect_database, make_fetcher, update_database
 
 # 作り直した直後の HEAD の期限が、これより近ければ失敗にする(取り直しが効いていない)
 EXPIRY_MARGIN_DAYS = 7
@@ -56,6 +61,10 @@ MIN_KEEP_RATIO = 0.5
 # PR の本文の 1 つの表に載せる行の上限(残りは diff.json)。本文は GitHub の上限(65536 文字)より短くする
 MAX_ROWS = 40
 MAX_BODY_CHARS = 60_000
+# 1 回の更新で新しく無検閲の印が付いてよい数。超えたら定期の実行は失敗(手動の実行は先頭に警告。#19)
+MAX_NEW_UNCENSORED = 5
+# 減り方を見る区分の、元の件数の下限(少ない区分は 1 件の増減で半分を切るので見ない)
+SHRINK_MIN_BASE = 4
 HEADS_FILE = "heads.json"
 
 
@@ -131,11 +140,6 @@ def check_new(new: Database, old: Database, *, now: datetime) -> tuple[list[str]
     st = compute_status(new, GatePolicy(), now=now, source="path")
     if st.auto_count == 0:
         problems.append("自動のおすすめが 0 件です(HEAD・ライセンス・ComfyUI の版の記録を確かめてください)")
-    if old.models and len(new.models) < len(old.models) * MIN_KEEP_RATIO:
-        problems.append(
-            f"項目が {len(old.models)} → {len(new.models)} 件に減りました"
-            "(上流の形が変わった・検索が止まった疑い)"
-        )
     expires = _parse_time(st.expires_at)
     if st.expired:
         problems.append("作り直した直後なのに HEAD の確認が期限切れの項目があります")
@@ -147,6 +151,37 @@ def check_new(new: Database, old: Database, *, now: datetime) -> tuple[list[str]
     return problems, st.to_dict()
 
 
+def shrink_problems(old: Database, new: Database, d: dict[str, Any]) -> list[str]:
+    """出どころ・内容ごとに、元の半分未満に減っていないか(全体の数だけでは、HF の検索が止まって
+    HF の項目だけ消えたのを見落とすため)。元が SHRINK_MIN_BASE 件未満の区分は見ない。"""
+
+    def count(db: Database, pred: Callable[[Any], bool]) -> int:
+        return sum(1 for m in db.models if pred(m))
+
+    def hf(m: Any) -> bool:
+        return m.source == "huggingface"
+
+    def tmpl(m: Any) -> bool:
+        return m.source == "comfyui-template"
+
+    def unc(m: Any) -> bool:
+        return m.content == "uncensored"
+
+    s = d["summary"]
+    parts = [
+        ("項目", len(old.models), len(new.models)),
+        ("Hugging Face の項目", count(old, hf), count(new, hf)),
+        ("公式テンプレートの項目", count(old, tmpl), count(new, tmpl)),
+        ("無検閲の項目", count(old, unc), count(new, unc)),
+        ("自動のおすすめ(HEAD の古さを除く)", s["auto_old"], s["auto_new"]),
+    ]
+    return [
+        f"{label}が {a} → {b} 件に減りました(上流の形が変わった・検索が止まった疑い)"
+        for label, a, b in parts
+        if a >= SHRINK_MIN_BASE and b < a * MIN_KEEP_RATIO
+    ]
+
+
 def _run_url() -> str | None:
     server, repo, run = (
         os.environ.get(k) for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID")
@@ -154,9 +189,33 @@ def _run_url() -> str | None:
     return f"{server}/{repo}/actions/runs/{run}" if server and repo and run else None
 
 
-def _cell(v: Any) -> str:
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]!|#~])")
+
+
+def md(v: Any) -> str:
+    """上流から来た文字(モデルの名前・ID・ライセンスの名前・根拠・URL・リポジトリ名など)を、PR の本文
+    (GitHub の Markdown)にそのまま置いても効かないようにする: HTML の文字を実体参照に(`<!--`・`<img>`・
+    `</details>` が効かない)、Markdown の記号をバックスラッシュで(リンク・画像・強調・表の区切り)、
+    `@` の後に幅の無い空白(メンション・通知を出さない)、改行は空白に。"""
     s = "—" if v is None else str(v)
-    return s.replace("|", "\\|").replace("\n", " ")
+    s = " ".join(s.split())
+    s = html.escape(s, quote=False)
+    s = _MD_SPECIAL.sub(r"\\\1", s)
+    return s.replace("@", "@\u200b")
+
+
+def code_block(text: str, max_chars: int = 8_000) -> str:
+    """ほかのコマンドの出力(#34 の実測の集計など、利用者の出した値を含む)を、そのまま見える囲みにする。
+    囲みの中では HTML・リンク・メンションが効かない。囲みの記号は中身のどの ` の並びより長くする。"""
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n…(長いため省きました)"
+    longest = max((len(m.group(0)) for m in re.finditer(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}text\n{text.rstrip()}\n{fence}\n"
+
+
+def _cell(v: Any) -> str:
+    return md(v)
 
 
 def _table(head: list[str], rows: list[list[Any]], total: int | None = None) -> list[str]:
@@ -197,7 +256,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         )
     lines.append("")
 
-    warn: list[str] = []
+    warn: list[str] = [f"**{md(w)}**" for w in result.get("warnings") or []]
     if d["new"]["partial"]:
         pc = d.get("partial_counts") or {}
         detail = ", ".join(f"{k}={v}" for k, v in pc.items() if v)
@@ -219,6 +278,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
     lines.append("")
 
     st = result.get("status") or {}
+    old_st = result.get("status_old") or {}
     lines += ["### 要約", ""]
     lines += _table(
         ["項目", "前(main)", "今回"],
@@ -232,7 +292,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
                 d["new"]["comfyui_latest_release"],
             ],
             ["license_policy", d["old"]["license_policy"], d["new"]["license_policy"]],
-            ["HEAD の期限(expires_at)", "", st.get("expires_at")],
+            ["HEAD の期限(expires_at)", old_st.get("expires_at"), st.get("expires_at")],
         ],
     )
     lines.append("")
@@ -317,8 +377,8 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         lines.append("")
     if d["unauthorized"]["added"] or d["unauthorized"]["removed"]:
         lines += ["### 匿名の API が 401 のリポジトリ", ""]
-        lines += [f"- 増えた: {', '.join(d['unauthorized']['added']) or 'なし'}"]
-        lines += [f"- 減った: {', '.join(d['unauthorized']['removed']) or 'なし'}", ""]
+        lines += [f"- 増えた: {', '.join(md(r) for r in d['unauthorized']['added']) or 'なし'}"]
+        lines += [f"- 減った: {', '.join(md(r) for r in d['unauthorized']['removed']) or 'なし'}", ""]
     if d["stats"]:
         lines += ["<details><summary>sources の数の変化</summary>", ""]
         lines += _table(["鍵", "前", "今回"], [[x["key"], x["old"], x["new"]] for x in d["stats"]])
@@ -339,12 +399,19 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         f"<sub>genmodelfit {__version__} / `python -m genmodelfit.weekly` / "
         "全部の違いは artifact の diff.json</sub>",
     ]
-    body = "\n".join(lines) + "\n"
-    if len(body) > MAX_BODY_CHARS:
-        body = (
-            body[: MAX_BODY_CHARS - 200] + "\n\n…(本文が長いため省きました。全部は artifact の diff.json)\n"
-        )
-    return body
+    return limit_body("\n".join(lines) + "\n")
+
+
+def limit_body(body: str) -> str:
+    """本文を MAX_BODY_CHARS に収める。行の途中で切らず、開いたままの <details> を閉じる
+    (上流の文字の < > は md() で実体参照にしてあるので、ここで数える <details> は自分で書いたものだけ)。"""
+    if len(body) <= MAX_BODY_CHARS:
+        return body
+    cut = body[: MAX_BODY_CHARS - 300]
+    cut = cut[: cut.rfind("\n") + 1]
+    tail = "\n…(本文が長いため省きました。全部は artifact の diff.json)\n"
+    tail += "\n</details>\n" * max(0, cut.count("<details>") - cut.count("</details>"))
+    return cut + tail
 
 
 def run(
@@ -353,6 +420,7 @@ def run(
     base: str | Path | None = None,
     fetch: Fetcher | None = None,
     allow_partial: bool = False,
+    allow_many_uncensored: bool = False,
     apply_to: str | Path | None = None,
     now: datetime | None = None,
     progress: Callable[[str], None] | None = None,
@@ -379,6 +447,7 @@ def run(
     new_path = out / "db.json"
     try:
         new = update_database(fetch, new_path, allow_partial=True, progress=progress, previous=old)
+        inspect_database(fetch, new_path, db_path=str(new_path), offline=offline, progress=progress)
         new = load_db(new_path)  # 書いたものを形の検査を通して読み直す
     except (UpdateFailed, DatabaseError) as e:
         result["problems"].append(str(e))
@@ -396,7 +465,18 @@ def run(
     more, status = check_new(new, old, now=when)
     problems += more
     d = diff_db(old, new)
+    problems += shrink_problems(old, new, d)
+    warnings: list[str] = []
+    many = d["summary"]["newly_uncensored"]
+    if many > MAX_NEW_UNCENSORED:
+        msg = (
+            f"新しく無検閲の印が付いた項目が {many} 件あります({MAX_NEW_UNCENSORED} 件まで)。"
+            "選び方の規則が緩んでいないか確かめてください"
+        )
+        (warnings if allow_many_uncensored else problems).append(msg)
     result.update(
+        warnings=warnings,
+        status_old=compute_status(old, GatePolicy(), now=when, source="path").to_dict(),
         problems=problems,
         ok=not problems,
         partial=bool(new.sources.get("partial")),
@@ -408,7 +488,10 @@ def run(
     body = pr_body(d, result)
     if problems:
         body = (
-            "## 確かめに落ちました(PR は作りません)\n\n" + "".join(f"- {p}\n" for p in problems) + "\n" + body
+            "## 確かめに落ちました(PR は作りません)\n\n"
+            + "".join(f"- {md(p)}\n" for p in problems)
+            + "\n"
+            + body
         )
     (out / "pr_body.md").write_text(body, encoding="utf-8")
     if result["ok"] and apply_to:
@@ -444,6 +527,11 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument("--record", metavar="DIR", help="取った上流の応答と HEAD の応答コードを残す")
     p.add_argument("--allow-partial", action="store_true", help="一部が欠けても、筋が通れば警告付きで通す")
     p.add_argument(
+        "--allow-many-uncensored",
+        action="store_true",
+        help=f"新しく無検閲の項目が {MAX_NEW_UNCENSORED} 件を超えても失敗にせず、先頭に警告(手動の実行)",
+    )
+    p.add_argument(
         "--rate-limit-budget", type=float, metavar="SEC", help="429 で待つ時間の合計の上限(既定 900)"
     )
     p.add_argument("--json", action="store_true", help="result.json と同じものを標準出力に出す")
@@ -465,6 +553,7 @@ def main(argv: list[str] | None = None) -> int:
             base=args.base,
             fetch=fetch,
             allow_partial=args.allow_partial,
+            allow_many_uncensored=args.allow_many_uncensored,
             apply_to=None if args.dry_run else args.apply,
             progress=say,
             offline=bool(args.offline_sources),

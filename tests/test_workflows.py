@@ -111,7 +111,7 @@ def test_weekly_pr_step(weekly):
     assert set(w["labels"].split()) == {"automated", "data-update"}
     assert w["add-paths"] == "src/genmodelfit/data/db.json"
     text = _code("weekly-data.yml")
-    for bad in ("gh pr merge", "auto-merge", "automerge", "gh release", "signing sign"):
+    for bad in ("gh pr merge", "gh pr review", "auto-merge", "automerge", "gh release", "signing sign"):
         assert bad not in text, bad  # 自動でマージしない・ここでは公開しない
     assert any("result.json" in s.get("run", "") for s in steps)  # 確かめを通った一覧だけ
 

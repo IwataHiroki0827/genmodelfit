@@ -355,7 +355,8 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 ## Data sources / データ源
 
-The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 204 models.
+The bundled list has 328 entries (image 165, video 115, TTS 20, music 15, 3D 10, SFX 3) that make 211 models
+(2026-10-21; refreshed weekly, see "Maintenance").
 Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
 ones), and merges and test stubs are skipped ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
 llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。
@@ -395,7 +396,7 @@ upstream, not the uploader's label) is on a commercial-use allowlist (apache-2.0
 replaceable), nothing is gated, an official ComfyUI workflow without custom nodes, the ComfyUI version is
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
 known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
-In the bundled list 83 of 323 entries are auto. When a license cannot be verified it is treated as unknown
+In the bundled list 99 of 328 entries are auto (2026-10-21). When a license cannot be verified it is treated as unknown
 and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
 
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない

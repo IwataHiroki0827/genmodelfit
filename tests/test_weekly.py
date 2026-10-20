@@ -64,6 +64,7 @@ def _fake_update(monkeypatch, make):
         return db
 
     monkeypatch.setattr(weekly, "update_database", fake)
+    monkeypatch.setattr(weekly, "inspect_database", lambda *a, **k: None)
     return seen
 
 
@@ -243,5 +244,121 @@ def test_body_lists_permissive_changes_first(bundled):
     a.license = "mit"
     body = weekly.pr_body(diff_db(old, new), {"status": {}})
     assert "ライセンスが寛容な側に変わった項目: 1 件" in body
-    assert f"| ⚠ | {a.id} | 不明 | mit |" in body
+    assert f"| ⚠ | {weekly.md(a.id)} | 不明 | mit |" in body
     assert len(body) <= weekly.MAX_BODY_CHARS
+
+
+EVIL = [
+    "<!-- hidden",
+    "@octocat please",
+    "![img](https://evil.example/x.png)",
+    "<img src=x onerror=alert(1)>",
+    "</details><details open>",
+    "[link](https://evil.example)",
+    "a|b`code`*em*_u_" + chr(92) + "back#1~~s~~",
+]
+
+
+def test_md_neutralizes_untrusted_text():
+    for t in EVIL:
+        out = weekly.md(t)
+        assert "<" not in out and ">" not in out, out
+        assert "@" not in out or "@" + chr(0x200B) in out
+        for ch in "[]!|`*_#~":
+            # 記号はすべてバックスラッシュの後ろにある
+            assert all(out[i - 1] == "\\" for i, c in enumerate(out) if c == ch), (t, out)
+    assert weekly.md("a" + chr(10) + "b" + chr(9) + "c") == "a b c" and weekly.md(None) == "—"
+
+
+def test_body_escapes_malicious_names(bundled):
+    old, new = copy.deepcopy(bundled), copy.deepcopy(bundled)
+    from genmodelfit.models import ModelEntry, ModelFile
+
+    for i, t in enumerate(EVIL):
+        new.models.append(
+            ModelEntry(
+                id=f"hf:{t}/{i}",
+                name=t,
+                modality="image",
+                source="huggingface",
+                content="uncensored",
+                content_evidence=[t],
+                license="other",
+                license_name=t,
+                files=[ModelFile(name=t, url=f"https://huggingface.co/{t}/resolve/main/x", head_status=401)],
+            )
+        )
+    new.sources["huggingface"]["unauthorized"] = [*new.sources["huggingface"]["unauthorized"], *EVIL]
+    body = weekly.pr_body(diff_db(old, new), {"status": {}, "warnings": EVIL[:2]})
+    for bad in ("<!--", "<img", "@octocat", "[img](", "[link](", "</details><details open>"):
+        assert bad not in body, bad
+    assert body.count("<details>") == body.count("</details>")
+
+
+def test_truncated_body_keeps_details_balanced(monkeypatch):
+    monkeypatch.setattr(weekly, "MAX_BODY_CHARS", 2_000)
+    nl = chr(10)
+    row = "| a | b |" + nl
+    body = "intro" + nl + "<details><summary>x</summary>" + nl + nl + row * 1_000 + nl + "</details>" + nl
+    out = weekly.limit_body(body)
+    assert len(out) <= 2_000 and out.count("<details>") == out.count("</details>") == 1
+    assert "省きました" in out and row in out
+    assert out.split("…")[0].rstrip(nl).endswith("|")  # 行の途中で切らない
+
+
+def test_many_new_uncensored(tmp_path, monkeypatch, bundled):
+    from genmodelfit.models import ModelEntry
+
+    def make(old):
+        new = _fresh(old, NOW)
+        new.models += [
+            ModelEntry(
+                id=f"hf:n/{i}", name=f"n{i}", modality="image", source="huggingface", content="uncensored"
+            )
+            for i in range(weekly.MAX_NEW_UNCENSORED + 1)
+        ]
+        return new
+
+    _fake_update(monkeypatch, make)
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "a", base=base, fetch=object(), now=NOW)
+    assert r["ok"] is False and any("無検閲" in p for p in r["problems"])
+    r = weekly.run(tmp_path / "b", base=base, fetch=object(), now=NOW, allow_many_uncensored=True)
+    assert r["ok"] is True and r["warnings"]
+    body = (tmp_path / "b" / "pr_body.md").read_text(encoding="utf-8")
+    assert "新しく無検閲の印が付いた項目が" in body.split("### 要約")[0]
+
+
+def test_shrink_per_source(tmp_path, monkeypatch, bundled):
+    def make(old):
+        new = _fresh(old, NOW)
+        new.models = [m for m in new.models if m.source != "huggingface"]  # 全体は半分を切らない
+        return new
+
+    _fake_update(monkeypatch, make)
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "out", base=base, fetch=object(), now=NOW)
+    assert r["ok"] is False
+    assert any(p.startswith("Hugging Face の項目が") for p in r["problems"])
+    assert not any(p.startswith("項目が") for p in r["problems"])
+
+
+def test_old_expiry_in_summary(tmp_path, monkeypatch, bundled):
+    _fake_update(monkeypatch, lambda old: _fresh(old, NOW))
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "out", base=base, fetch=object(), now=NOW)
+    body = (tmp_path / "out" / "pr_body.md").read_text(encoding="utf-8")
+    old_exp = r["status_old"]["expires_at"]
+    assert old_exp and f"| HEAD の期限(expires{chr(92)}_at) | {old_exp} |" in body
+
+
+def test_code_block_contains_untrusted_report():
+    rep = "| x | <img src=x> @user ```` [a](b) <!--"
+    out = weekly.code_block(rep)
+    fence = out.split("text", 1)[0]
+    assert len(fence) == 5 and out.endswith(fence + "\n")  # 中身の ```` より長い囲み
+    assert rep in out
+    assert weekly.code_block("x" * 10, max_chars=3).count("省きました") == 1

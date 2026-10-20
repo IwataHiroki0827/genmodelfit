@@ -655,7 +655,21 @@ MIN_DOWNLOADS = 10_000
 MIN_TRENDING_DOWNLOADS = 1_000
 TRENDING_SORTS = ("trendingScore", "likes30d")
 # 検索の結果に含める項目(全期間のダウンロード数は既定では返らない)
-SEARCH_EXPAND = ("downloads", "downloadsAllTime", "likes", "tags", "pipeline_tag")
+SEARCH_EXPAND = ("downloads", "downloadsAllTime", "likes", "tags", "pipeline_tag", "trendingScore")
+# 伸びているもの(trendingScore・likes30d の検索だけで拾ったもの)に低い下限を使うのは、
+# 本当に伸びているときだけ: trendingScore がこれ以上で、直近 30 日のダウンロード数が
+# MIN_RECENT_DOWNLOADS 以上。それ以外は全期間 MIN_DOWNLOADS 以上
+# (#19。古くて使われていないものが likes30d の順で拾われていた)
+MIN_TRENDING_SCORE = 0.5
+MIN_RECENT_DOWNLOADS = 100
+# 名前に merge が入るものも混ぜ合わせ(タグが付いていないものがある。「mix」は入れない)
+_MERGE_NAME = re.compile(r"(?<![a-z])(merge|mergekit)(?![a-z])", re.IGNORECASE)
+# 量子化・形式違いの写しの名前の末尾(取り除いて同じ名前なら写し。例: Wai-NSFW-Illustrious-v140-Q8-GGUF)
+_QUANT_SUFFIX = re.compile(
+    r"[-_. ](gguf|ggml|q\d(_\d|_k(_[sml])?|_0|_1)?|k_[sml]|i?q\d_?xxs|fp8(_e4m3fn|_e5m2)?|e4m3fn"
+    r"|fp16|bf16|fp32|nf4|int8|int4|w4a16|w8a8|diffusers|safetensors|quantized|quant)$",
+    re.IGNORECASE,
+)
 # 試験用・作りかけのリポジトリの名前(llmfit と同じ)
 _TEST_STUB = re.compile(r"tiny-random|tiny-dummy|-random-init|ci-random-|(^|/)test-", re.IGNORECASE)
 _MERGE_TAGS = frozenset({"merge", "mergekit"})
@@ -682,6 +696,7 @@ class Candidate:
     downloads_all_time: int = 0  # 全期間(検索の結果に無ければ downloads)
     trending_only: bool = True  # trendingScore・likes30d の検索だけで拾った
     all_time_known: bool = False  # 検索の結果に downloadsAllTime があった(無ければ直近 30 日の数で代える)
+    trending_score: float = 0.0  # 検索の結果の trendingScore(一番大きいもの)
     evidence: list[str] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
 
@@ -722,11 +737,32 @@ def _candidate(item: dict[str, Any], url: str, modality_hint: str | None) -> Can
         trending_only="sort=downloads" not in url,
         all_time_known=item.get("downloadsAllTime") is not None,
         likes=int(item.get("likes") or 0),
+        trending_score=float(item.get("trendingScore") or 0.0),
         tags=tags,
         uncensored=bool(ev),
         evidence=ev,
         queries=[url],
     )
+
+
+def download_floor(c: Candidate) -> int:
+    """全期間のダウンロード数の下限。伸びているもの(trending・likes30d の検索だけで拾い、trendingScore が
+    MIN_TRENDING_SCORE 以上で、直近 30 日も MIN_RECENT_DOWNLOADS 以上)だけ MIN_TRENDING_DOWNLOADS。"""
+    if c.trending_only and c.trending_score >= MIN_TRENDING_SCORE and c.downloads >= MIN_RECENT_DOWNLOADS:
+        return MIN_TRENDING_DOWNLOADS
+    return MIN_DOWNLOADS
+
+
+def copy_name(repo_id: str) -> str:
+    """写しを見分ける名前: リポジトリ名(持ち主を除く)から量子化・形式の末尾(-GGUF・-Q8_0・_K_M・-fp8・
+    _diffusers など)を取り、英数字だけにする。同じなら同じモデルの写し(ダウンロード数の多いほうを残す)。"""
+    name = repo_id.split("/", 1)[-1].lower()
+    while True:
+        cut = _QUANT_SUFFIX.sub("", name)
+        if cut == name or not cut:
+            break
+        name = cut
+    return re.sub(r"[^a-z0-9]", "", name)
 
 
 def discover_hf(
@@ -777,6 +813,8 @@ def discover_hf(
                 old.trending_only = old.trending_only and c.trending_only
                 old.downloads_all_time = max(old.downloads_all_time, c.downloads_all_time)
                 old.all_time_known = old.all_time_known or c.all_time_known
+                old.trending_score = max(old.trending_score, c.trending_score)
+                old.downloads = max(old.downloads, c.downloads)
             else:
                 cands[c.repo_id] = c
     if network_fail and network_fail == len(queries):
@@ -790,12 +828,13 @@ def discover_hf(
             excluded += 1
             continue
         tags = {t.lower() for t in c.tags}
-        floor = MIN_TRENDING_DOWNLOADS if c.trending_only else MIN_DOWNLOADS
-        if c.downloads_all_time < floor:
+        if c.downloads_all_time < download_floor(c):
             skipped["skip_downloads"] += 1
+        elif c.uncensored and c.downloads < MIN_RECENT_DOWNLOADS:
+            skipped["uncensored_inactive"] += 1  # 無検閲は直近 30 日も使われているものだけ(#19)
         elif _TEST_STUB.search(c.repo_id):
             skipped["test_stub"] += 1
-        elif tags & _MERGE_TAGS:
+        elif tags & _MERGE_TAGS or _MERGE_NAME.search(c.repo_id.split("/", 1)[-1]):
             skipped["merge"] += 1
         elif _ADAPTER.search(c.repo_id) or tags & _ADAPTER_TAGS:
             skipped["adapter"] += 1
@@ -809,7 +848,7 @@ def discover_hf(
     per_owner: Counter[tuple[str, str, bool]] = Counter()
     picked: dict[tuple[str, bool], list[Candidate]] = {}
     for c in pool:
-        base = c.repo_id.split("/", 1)[1].lower()
+        base = copy_name(c.repo_id)
         owner = c.repo_id.split("/", 1)[0].lower()
         if base in seen_names:
             skipped["duplicate"] += 1

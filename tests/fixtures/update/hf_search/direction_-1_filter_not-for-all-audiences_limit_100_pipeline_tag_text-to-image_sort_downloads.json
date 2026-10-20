@@ -113,5 +113,27 @@
    "text-to-image"
   ],
   "pipeline_tag": "text-to-image"
+ },
+ {
+  "id": "dormant/old-nsfw-xl",
+  "downloads": 20,
+  "downloadsAllTime": 80000,
+  "likes": 10,
+  "tags": [
+   "text-to-image",
+   "not-for-all-audiences"
+  ],
+  "pipeline_tag": "text-to-image"
+ },
+ {
+  "id": "copy/Plain-NSFW-XL-Q8-GGUF",
+  "downloads": 150,
+  "downloadsAllTime": 30000,
+  "likes": 1,
+  "tags": [
+   "text-to-image",
+   "not-for-all-audiences"
+  ],
+  "pipeline_tag": "text-to-image"
  }
 ]
