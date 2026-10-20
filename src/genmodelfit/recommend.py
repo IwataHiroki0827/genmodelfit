@@ -141,8 +141,11 @@ def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
 
 
 def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
-    """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU / -。"""
-    if e.unknown_size or e.run_mode == "none":
+    """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU /
+    -(動かない = 当てはまらない)/ ?(大きさが分からず判定していない = 分からない。#30)。"""
+    if e.unknown_size:
+        return "?"
+    if e.run_mode == "none":
         return "-"
     if e.run_mode == "cpu":
         return "CPU"

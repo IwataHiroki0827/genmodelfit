@@ -194,6 +194,8 @@ MODEL_ENTRY = {
     "comfy_vae",
     "size_floor_bytes",
     "sampler_stages",
+    "workflow_precision",
+    "precision_source",
 }
 MODEL_FILE = {
     "name",
@@ -215,6 +217,8 @@ MODEL_FILE = {
     "head_checked_at",
     "header_precision",
     "header_params",
+    "repo_precision",
+    "repo_precision_source",
 }
 TEMPLATE = {
     "name",
@@ -283,7 +287,7 @@ def check_fit(item: dict) -> None:
     assert item["fit_label"] == {"perfect": "Perfect", "good": "Good", "marginal": "Marginal"}.get(
         item["fit_level"], "Too tight"
     )
-    assert item["run_mode_label"] in ("GPU", "GPU~", "GPU+RAM", "CPU", "-")
+    assert item["run_mode_label"] in ("GPU", "GPU~", "GPU+RAM", "CPU", "-", "?")
     assert item["estimate_confidence"] == e["basis"] and item["notes"] == e["reasons"]
     assert item["auto"] == g["auto"] and item["held_reasons"] == g["held_by"]
     assert set(item["score_components"]) == SCORE_COMPONENTS
@@ -355,7 +359,7 @@ def check_estimate(e: dict) -> None:
     assert set(e) == ESTIMATE
     assert e["basis"] in ("measured", "estimated")
     assert e["fit"] in ("perfect", "good", "marginal", "too_tight")
-    assert e["run_mode"] in ("gpu", "offload", "cpu", "none")
+    assert e["run_mode"] in ("gpu", "offload", "cpu", "none", "unknown")
     if e["limits"] is not None:
         assert set(e["limits"]) >= LIMITS
         assert set(e["limits"]) - LIMITS <= {"max_side_px", "max_frames", "max_seconds"}

@@ -103,7 +103,27 @@ sha256 はテンプレートの `hash` が `hash_type: SHA256` ならそれ、�
 `max(ファイルの合計, size_floor_bytes)`(`ModelEntry.estimate_size_bytes`)を使い、一式が欠けた一覧を小さく見ない。
 HF のものは index の size が無いので `size_floor_bytes` は null(自動のおすすめ(#3)では「大きさが分からない」と同じ扱い)。
 
-精度(precision)は本体のファイル名から(nvfp4 / fp4 / nf4 / fp8 / int8 / int4 / bf16 / fp16 / fp32 / gguf-<量子化>)、
+精度(precision)は次の順に決め、出どころを `precision_source` に残す(#30。docs/schema.md「Models」)。
+見出しで読めた精度は、後の出どころで上書きしない。
+
+1. `header`: 本体のファイルの見出し(safetensors の JSON・GGUF の頭。Range 要求で読む。`headers.py`)
+2. `filename`: 本体のファイル名(nvfp4 / fp4 / nf4 / fp8 / int8 / int4 / bf16 / fp16 / fp32 / gguf-<量子化>)
+3. `hf_api` / `config`: 本体を置いた HF のリポジトリ(`repo_precision.py`)。Hub API(`/api/models/<repo>`、匿名)の
+   `safetensors.parameters` で一つの dtype が 9 割以上ならそれ(gated でも読める。見出しは 401 で読めない)。
+   無ければ本体と同じフォルダの `config.json` の `torch_dtype` / `dtype`(API の一覧にあって gated でないときだけ取る)。
+   1 つずつ順に、間を 0.3 秒空けて送り、429 は Retry-After を守る。結果は `<cache>/repo_precision.json`
+4. `workflow`: 公式テンプレートの本体の読み込みノード(`workflow.loader_precision`)。UNETLoader の `weight_dtype`・
+   WanVideoModelLoader の `quantization` が fp8_* なら fp8、無ければ読み込むファイル名の精度の語、無ければ精度の指定
+   (GIMM-VFI の `fp32`、WanVideo の `base_precision` など)。`default`・`auto` は何も言わない。LoRA・CLIP・VAE の
+   読み込みノードは見ない。カスタムノードが自分で重みを取るテンプレート(ファイルの一覧が無いもの)にも使える
+
+2026-10-20 の同梱の一覧では、無検閲を除く精度の不明は 25 → 9 件(見出し 3・Hub API 5・ワークフロー 8)。残る 9 件:
+Civitai のチェックポイント(realismByStableYogi。名前に精度が無く、HF ではないので見出しも読まない)の 2 件、
+読み込みノードが精度を言わないテンプレート 4 件(LivePortrait は `auto`、AnimateDiff の Purz は本体の一覧が無く
+チェックポイントの名前に精度が無い、Lineart・OpenPose は前処理のノードが重みを自分で取る)、
+.pth / .ckpt の HF のモデル 3 件(Kokoro・MeloTTS は config.json に dtype が無い、tts-hifigan は config.json が無い。
+Hub API の safetensors の集計は .safetensors だけ)。
+
 パラメータ数(params_b)はファイル名・題の `14B` `1.3B` のような表記から推す(無ければ null)。
 
 ## ライセンス
@@ -340,6 +360,13 @@ openai/gpt-oss-20b そのままとは言えない)、FILM の `film_net_fp16`(�
 HunyuanVideo の `llava_llama3_*`(xtuner/llava-llama-3-8b にライセンスの記載が無い)、ByteZSzn の `Flux2TurboComfyv2`、
 Anima の公式 LoRA、lightx2v/Minimax-h3-Turbo、Kokoro(元の StyleTTS2-LJSpeech に記載が無い)、SDPose・Lotus・
 RT-DETRv4(上の系統・部品)、Civitai のファイル。
+本家の持ち主への記載のお願いの下書きは docs/license_requests.md(出すのはオーナーの確認の後)。
+
+**匿名で読めない(401)リポジトリの確かめ直し**(#30): `update` は Hub API が 401 を返したリポジトリ(非公開・消えた)を
+`sources.huggingface.unauthorized` に並べる。`update --inspect-only` はそのリポジトリにもう一度 API を送り、
+`sources.huggingface.unauthorized_recheck`(`unauthorized` / `readable` / `failed`)に書く。毎週の更新(#19)の PR の
+差分で、Mage-Flow・Lens などが公開されたら分かる(読めるようになったものは、次の作り直しでライセンスが入る)。
+2026-10-20 の時点: Wan-AI/Wan2.2-Dancer-14B、google/gemma-3-12b、microsoft/Lens、microsoft/Mage-Flow。
 
 表を同梱の一覧(2026-10-20)に当てると、無検閲を除く 299 項目のライセンス不明は 113 → 46(ファイルは 75 → 29)、
 auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 16 項目は、すべてのファイルのライセンスを人が確かめた

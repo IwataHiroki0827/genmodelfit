@@ -334,7 +334,7 @@ def test_unknown_size_is_not_judged_as_fitting(db):
     for e in cases:
         for vram in (0, 8, 48):  # GPU 無し(CPU)でも「小さい」とみなさない
             est = estimate(e, pc(vram), coefficients=c, with_limits=True)
-            assert est.unknown_size and est.fit == "unknown" and est.run_mode == "none", (e.id, vram)
+            assert est.unknown_size and est.fit == "unknown" and est.run_mode == "unknown", (e.id, vram)
             assert est.basis == "estimated" and est.reasons[0] == UNKNOWN_SIZE_REASON
             assert est.limits is None and est.measured_on is None
     # テンプレートの大きさがあればそれを使う(大きさが分かる)

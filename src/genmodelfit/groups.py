@@ -446,27 +446,54 @@ def index_for(db) -> ModelIndex:
 _NAME_ONLY_PRECISION = re.compile(r"^(w4a8|nvfp4|mxfp4|fp4|nf4|int4)$")
 
 
-def file_precision(f: ModelFile) -> str | None:
-    """1 つのファイルの精度。ファイルの見出しから読んだ精度(header_precision、#28)があればそれを使い、
-    無ければファイル名から推す。ただし見出しで区別できない形式(nvfp4・w4a8 など)と、名前に量子化の種類が
-    書いてある GGUF は名前を使う。"""
+def file_precision_source(f: ModelFile) -> tuple[str | None, str | None]:
+    """1 つのファイルの (精度, 出どころ)。出どころは header / filename / hf_api / config
+    (models.PRECISION_SOURCES)。
+
+    1. ファイルの見出しから読んだ精度(header_precision、#28)。ただし見出しで区別できない形式
+       (nvfp4・w4a8 など)と、名前に量子化の種類が書いてある GGUF は名前を使う
+    2. ファイル名の語(fp8・bf16 など)
+    3. 置き場所のリポジトリから読んだ精度(repo_precision。Hub API の safetensors の dtype か config.json。#30)
+    """
     from .hf import guess_precision
 
     name = guess_precision(f.name)
     head = f.header_precision
-    if not head:
-        return name
-    if name and _NAME_ONLY_PRECISION.match(name):
-        return name
-    if name and name.startswith("gguf-") and head.startswith("gguf"):
-        return name
-    return head
+    if head:
+        if name and _NAME_ONLY_PRECISION.match(name):
+            return name, "filename"
+        if name and name.startswith("gguf-") and head.startswith("gguf"):
+            return name, "filename"
+        return head, "header"
+    if name:
+        return name, "filename"
+    if f.repo_precision:
+        return f.repo_precision, f.repo_precision_source or "config"
+    return None, None
+
+
+def file_precision(f: ModelFile) -> str | None:
+    """1 つのファイルの精度(file_precision_source の精度だけ)。"""
+    return file_precision_source(f)[0]
+
+
+def model_precision_source(m: ModelEntry) -> tuple[str | None, str | None]:
+    """本体の (精度, 出どころ)。update と表で同じものを使う。本体が複数なら一番大きいもの。
+    本体のファイルから分からなければ、テンプレートの読み込みノードから推した精度(workflow_precision。#30)。
+    ファイルから分かった精度(特に見出しの精度)をワークフローの推しで上書きしない。"""
+    mains = sorted(main_files(m), key=lambda f: (-(f.size_bytes or 0), f.name))
+    if mains:
+        prec, src = file_precision_source(mains[0])
+        if prec:
+            return prec, src
+    if m.workflow_precision:
+        return m.workflow_precision, "workflow"
+    return None, None
 
 
 def model_precision(m: ModelEntry) -> str | None:
-    """本体の精度(update と表で同じものを使う)。本体が無ければ None。本体が複数なら一番大きいもの。"""
-    mains = sorted(main_files(m), key=lambda f: (-(f.size_bytes or 0), f.name))
-    return file_precision(mains[0]) if mains else None
+    """本体の精度(model_precision_source の精度だけ)。"""
+    return model_precision_source(m)[0]
 
 
 def group_keys(models: Iterable[ModelEntry]) -> dict[str, str]:
@@ -500,9 +527,10 @@ def precision_rank(precision: str | None) -> int:
 
 
 def precision_label(precision: str | None) -> str:
-    """表に出す短い精度(bf16 / fp8 / int8 / q8 / q4 …)。不明は -。"""
+    """表に出す短い精度(bf16 / fp8 / int8 / q8 / q4 …)。分からないときは ?
+    (#30。- は当てはまらないときだけ)。"""
     if not precision:
-        return "-"
+        return "?"
     p = precision.lower().removeprefix("gguf-")
     m = re.match(r"(i?q\d+)", p)
     if m:

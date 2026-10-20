@@ -4,4 +4,4 @@
 
 """版の番号(ここだけが正本。pyproject.toml は hatch がここから読む)。"""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

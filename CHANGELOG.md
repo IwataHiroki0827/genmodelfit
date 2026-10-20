@@ -7,7 +7,46 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.1.1] - Unreleased
+## [0.1.2] - Unreleased
+
+Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30).
+表の「?」「-」を減らし、使い分けをそろえた版。
+
+### Changed
+
+- **`?` means unknown, `-` means not applicable**, in the table, `info`, the legend and JSON (`docs/schema.md`,
+  「Unknown and not applicable」). Prec of an unknown precision is now `?` (was `-`); Mode / Mem% of a model whose
+  size is unknown are `?` (Mode `-` stays for "does not run", VRAM `-` for CPU, Mem% `-` without a GPU). A new
+  legend line explains both marks.
+  「?」は分からない、「-」は当てはまらない。精度が分からないときは「?」(前は「-」)。
+- JSON: a model whose size is unknown has `run_mode: "unknown"` (was `"none"`, which now only means "does not run")
+  and `run_mode_label: "?"`; its `estimate.vram_gb` / `vram_offload_gb` / `ram_gb` / `vram_sequential_gb` are `null`
+  (were `0.0`; the Python attributes stay `0.0` with `unknown_size`).
+  大きさが分からないときの run_mode は unknown、VRAM・RAM の値は null。
+
+### Added
+
+- **Precision from more sources**, never overriding a precision read from the file header
+  (`ModelEntry.precision_source`: `header` / `filename` / `hf_api` / `config` / `workflow`, optional, schema 1):
+  - `hf_api`: the Hub API's `safetensors.parameters` when one dtype holds ≥ 90 % (readable anonymously even for
+    gated repos whose file headers return 401);
+  - `config`: `torch_dtype` / `dtype` of the `config.json` next to the main file (only when listed and not gated);
+  - `workflow`: the official template's main loader node (`UNETLoader` `weight_dtype`, `WanVideoModelLoader`
+    `quantization`, the loaded file name, `precision` widgets, …; `workflow.loader_precision`).
+  New optional fields `ModelFile.repo_precision` / `repo_precision_source` and `ModelEntry.workflow_precision`.
+  Tool weights whose role is not `main` (BiRefNet, Depth Anything 3) now get their header read too.
+  Bundled list (no uncensored): precision unknown 25 → 9 (header 3, Hub API 5, workflow 8; the rest are listed
+  in docs/sources.md with the reason).
+  精度をリポジトリ(Hub API・config.json)とテンプレートの読み込みノードからも読み、出どころを残す。
+- `sources.repo_precision` (counts per source, `unauthorized`), `sources.huggingface.unauthorized` (repos whose
+  Hub API returns 401: private or removed) and, after `update --inspect-only`, `unauthorized_recheck`
+  (`unauthorized` / `readable` / `failed`), so the weekly update (#19) shows when Mage-Flow or Lens become public.
+  401 のリポジトリを記録し、`--inspect-only` で確かめ直す。
+- `docs/license_requests.md`: drafts of polite requests to upstream owners whose weights have no stated license or
+  a license that conflicts with their base model (not posted; to be sent only after the owner's review).
+  ライセンスの記載の依頼の下書き(まだ出さない)。
+
+## [0.1.1] - 2026-10-20
 
 Fixes from the owner's review on an RTX 4500 Ada 24 GB / 128 GB RAM PC (Issue #28).
 RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直した版。

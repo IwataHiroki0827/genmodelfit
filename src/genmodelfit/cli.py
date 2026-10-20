@@ -587,9 +587,11 @@ def cmd_info(args: argparse.Namespace) -> int:
     )
     if is_community(m):
         out.append(f"  community template by {m.template.username} (not made by ComfyUI)")
-    out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
-    out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
-    counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
+    out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '?'}  content: {m.content}")
+    out.append(f"  license:  {m.license or '? (unknown)'}  source: {m.source}")
+    prec_from = f" (from {m.precision_source})" if m.precision and m.precision_source else ""
+    out.append(f"  precision: {m.precision or '? (unknown)'}{prec_from}")
+    counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "? (size unknown)"
     out.append(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
@@ -597,7 +599,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     out.append(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
-        out.append("  VRAM:     unknown (weight sizes are not known)")
+        out.append("  VRAM:     ? (unknown: weight sizes are not known)")
     else:
         out.append(
             f"  VRAM:     {e.vram_gb:.1f} GB all-in-GPU{seq} / {e.vram_offload_gb:.1f} GB with offload;"
@@ -617,8 +619,9 @@ def cmd_info(args: argparse.Namespace) -> int:
         out.append(f"  same model ({k} other workflow{'s' if k > 1 else ''}; precision / use differ):")
         for w in same:
             need = w["memory_required_gb"]
-            vram = f"{need:.1f} GB" if need is not None else "-"
-            prec = w["precision"] or "-"
+            # 分からない(大きさ不明)は ?、当てはまらない(GPU を使わない)は -(#30)
+            vram = f"{need:.1f} GB" if need is not None else ("?" if w["fit_level"] == "unknown" else "-")
+            prec = w["precision"] or "?"
             out.append(f"    - {w['id']}  ({w['use']}, {prec}, {w['fit_level']}, {vram})")
     _emit(out)
     return 0
@@ -706,7 +709,17 @@ def cmd_update(args: argparse.Namespace) -> int:
             f"  本体のファイル {fh['urls']} 件: キャッシュ {fh['from_cache']}、読んだ {fh['fetched']}、"
             f"読めない {fh['failed']}、未確認(オフライン) {fh['skipped_offline']}"
         )
-        print(f"  精度が分からない項目: {fh['precision_unknown']} 件")
+        rp = db.sources.get("repo_precision") or {}
+        if rp:
+            print(
+                f"  リポジトリから読んだ精度: Hub API {rp.get('hf_api', 0)}、"
+                f"config.json {rp.get('config', 0)}、分からない {rp.get('unknown', 0)}"
+                f"(調べた本体 {rp.get('files', 0)} 件)"
+            )
+        print(f"  精度が分からない項目: {rp.get('precision_unknown', fh['precision_unknown'])} 件")
+        unauth = (db.sources.get("huggingface") or {}).get("unauthorized")
+        if unauth:
+            print(f"  匿名で読めない(401)リポジトリ: {', '.join(unauth)}")
         return 0
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]
@@ -1229,13 +1242,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--inspect-only",
         action="store_true",
-        help="今の一覧はそのままで、本体のファイルの見出し(精度)とテンプレートのサンプラーの組だけを"
-        "読み直す(Range 要求。重み本体は落とさない。読んだ見出しはキャッシュに残る)",
+        help="今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
+        "リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す"
+        "(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る)",
     )
     sp.add_argument(
         "--offline",
         action="store_true",
-        help="--inspect-only で通信せず、キャッシュにある見出しだけを使う",
+        help="--inspect-only で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う",
     )
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
     sp.add_argument(

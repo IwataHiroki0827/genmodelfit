@@ -32,7 +32,7 @@ from . import safety
 from ._version import __version__
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
-from .groups import model_precision
+from .groups import model_precision_source
 from .hf import (
     UNVERIFIED,
     HfClient,
@@ -324,7 +324,7 @@ def template_entry(
 ) -> ModelEntry:
     files = [model_file(m) for m in models]
     main = next((f for f in files if f.role == "main"), files[0] if files else None)
-    return ModelEntry(
+    e = ModelEntry(
         id=t["name"],
         name=t.get("title") or t["name"],
         modality=modality,
@@ -344,10 +344,11 @@ def template_entry(
             username=t.get("username") or None,
         ),
         params_b=guess_params_b(main.name if main else None, t.get("title"), t["name"]),
-        precision=guess_precision(main.name if main else None),
         discovered_from=[INDEX_PAGE],
         updated=t.get("date"),
     )
+    set_precision(e)  # 大きさが分かったら(enrich_files・inspect_headers)決め直す
+    return e
 
 
 # --- HF でファイルを埋める --------------------------------------------------------------------------
@@ -536,9 +537,10 @@ def set_entry_license(e: ModelEntry) -> None:
 
 
 def set_precision(e: ModelEntry) -> None:
-    """精度は本体のファイルの見出し(読めていれば)か名前から読む(groups.model_precision。表のモデルの
-    まとめ方と同じ本体を見る)。ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
-    e.precision = model_precision(e)
+    """精度は本体のファイルの見出し(読めていれば)→ 名前 → 置き場所のリポジトリ(Hub API・config.json)→
+    テンプレートの読み込みノードの順に決め、出どころを precision_source に残す(groups.model_precision_source。
+    表のモデルのまとめ方と同じ本体を見る)。ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
+    e.precision, e.precision_source = model_precision_source(e)
 
 
 def set_sampler_stages(e: ModelEntry, stages: list[list[str]] | None) -> None:
@@ -553,6 +555,18 @@ def set_sampler_stages(e: ModelEntry, stages: list[list[str]] | None) -> None:
     rows = [st for st in stages if {_base_lower(n) for n in st} & mains]
     kinds = {frozenset(_base_lower(n) for n in st) & mains for st in rows}
     e.sampler_stages = [list(st) for st in rows] if len(kinds) >= 2 else []
+
+
+def set_workflow_precision(e: ModelEntry, wf: Any) -> None:
+    """テンプレートの本体の読み込みノードから推した精度(workflow.loader_precision)を
+    workflow_precision に入れ、精度を決め直す。
+    本体のファイルがあれば、そのファイルを読み込むノードだけを見る。"""
+    from .groups import main_files
+    from .workflow import loader_precision
+
+    names = {f.name.replace("\\", "/").rsplit("/", 1)[-1].lower() for f in main_files(e)}
+    e.workflow_precision = loader_precision(wf, names or None) if isinstance(wf, dict) else None
+    set_precision(e)
 
 
 def _stages_of(wf: Any) -> list[list[str]] | None:
@@ -1043,7 +1057,7 @@ def build_database(
     def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, str | None]:
         try:
             wf = fetch.get_json(f"{RAW}/{item[1]['name']}.json")
-            return (workflow_models(wf), _stages_of(wf)), None
+            return (workflow_models(wf), _stages_of(wf), wf), None
         except (FetchError, UpstreamFormatError) as e:
             return None, f"{item[1]['name']}: {e}"
 
@@ -1056,9 +1070,10 @@ def build_database(
             failed.append(err)
             failed_names.append(item[1]["name"])
             continue
-        models, stages = loaded
+        models, stages, wf = loaded
         e = template_entry(item[0], item[1], item[2], models)
         set_sampler_stages(e, stages)
+        set_workflow_precision(e, wf)
         entries.append(e)
         tmpl_by_id[e.id] = item[1]
     if chosen and len(failed) / len(chosen) > MAX_FAIL_RATIO:
@@ -1142,6 +1157,8 @@ def build_database(
     if inspect:
         say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
         stats["file_headers"] = inspect_headers(entries, fetch, progress=say)
+        say("精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます")
+        stats["repo_precision"] = inspect_repo_precision(entries, fetch)
     from .families import assign
 
     for e in entries:  # ComfyUI の系統(引き継いだ項目も、今の表で決め直す)
@@ -1177,6 +1194,9 @@ def build_database(
             "rate_limited": getattr(fetch, "rate_limited", 0),
             "rate_limit_waited_s": round(float(getattr(fetch, "rate_limit_waited", 0.0)), 1),
             "failures": [f"{f.repo_id}: {f.message}" for f in client.failures[:20]],
+            # API が 401 のリポジトリ(非公開・消えた。ライセンスは不明)。
+            # 毎週の更新の PR で増減が見えるように(#30)
+            "unauthorized": sorted({f.repo_id for f in client.failures if f.status == 401}),
         }
     if hf_stats:
         stats["huggingface-search"] = hf_stats
@@ -1280,10 +1300,38 @@ def inspect_headers(
     return out
 
 
+def inspect_repo_precision(
+    entries: list[ModelEntry],
+    fetch: Fetcher | None,
+    *,
+    offline: bool = False,
+) -> dict[str, Any]:
+    """見出しも名前も精度を示さない本体について、置き場所のリポジトリ(Hub API の safetensors の dtype、
+    config.json の torch_dtype)から精度を読み、精度を決め直す(repo_precision.inspect_repos → set_precision)。
+    inspect_headers の後に呼ぶ。結果は <cache>/repo_precision.json に残す。offline=True ならキャッシュだけ。
+    返す値は sources["repo_precision"] に入れる集計(precision_unknown・precision_source の内訳を含む)。"""
+    from .db import cache_dir
+    from .repo_precision import CACHE_FILE, RepoPrecisionCache, inspect_repos
+
+    cache = RepoPrecisionCache(cache_dir() / CACHE_FILE)
+    get_json = None if offline or fetch is None else fetch.get_json
+    stats = inspect_repos(entries, get_json, cache, offline=get_json is None)
+    if stats.fetched:
+        cache.save()
+    for e in entries:
+        set_precision(e)
+    out = stats.to_dict()
+    out["checked_at"] = _now()
+    out["precision_unknown"] = sum(1 for e in entries if e.precision is None)
+    out["precision_source"] = dict(sorted(Counter(e.precision_source or "unknown" for e in entries).items()))
+    return out
+
+
 def refresh_templates(
     entries: list[ModelEntry], fetch: Fetcher, progress: Callable[[str], None] | None = None
 ) -> dict[str, Any]:
-    """公式テンプレートの JSON を読み直し、サンプラーごとの本体の組(sampler_stages)だけを決め直す。"""
+    """公式テンプレートの JSON を読み直し、サンプラーごとの本体の組(sampler_stages)と、
+    本体の読み込みノードから推す精度(workflow_precision)だけを決め直す。"""
     say = progress or _silent
     tmpl = [e for e in entries if e.source == "comfyui-template"]
     say(f"テンプレート {len(tmpl)} 件の JSON からサンプラーごとの本体の組を読んでいます")
@@ -1295,8 +1343,16 @@ def refresh_templates(
             failed += 1
             continue
         set_sampler_stages(e, _stages_of(wf))
+        set_workflow_precision(e, wf)
     multi = sum(1 for e in tmpl if e.sampler_stages)
-    return {"templates": len(tmpl), "failed": failed, "multi_stage": multi, "checked_at": _now()}
+    from_wf = sum(1 for e in tmpl if e.workflow_precision)
+    return {
+        "templates": len(tmpl),
+        "failed": failed,
+        "multi_stage": multi,
+        "workflow_precision": from_wf,
+        "checked_at": _now(),
+    }
 
 
 def inspect_database(
@@ -1323,8 +1379,32 @@ def inspect_database(
         db.sources["sampler_stages"] = refresh_templates(db.models, fetch, say)
     say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
     db.sources["file_headers"] = inspect_headers(db.models, fetch, offline=offline, progress=say)
+    say("精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます")
+    db.sources["repo_precision"] = inspect_repo_precision(db.models, fetch, offline=offline)
+    hf = db.sources.get("huggingface")
+    if not offline and fetch is not None and isinstance(hf, dict):
+        # 前に API が 401 だったリポジトリ(非公開)が公開されたかを確かめ直す(毎週の更新の差分に出る。#30)
+        from .repo_precision import recheck_unauthorized
+
+        say("前に読めなかった(401)リポジトリを確かめ直しています")
+        hf["unauthorized_recheck"] = recheck_unauthorized(unauthorized_repos(hf), fetch.get_json)
+        hf["unauthorized"] = list(hf["unauthorized_recheck"]["unauthorized"])
     db.save(out_path)
     return db
+
+
+def unauthorized_repos(hf_stats: dict[str, Any]) -> list[str]:
+    """sources["huggingface"] の、API が 401 のリポジトリ(unauthorized。古い一覧では failures の
+    「<repo>: HTTP 401: …」から読む)。"""
+    if isinstance(hf_stats.get("unauthorized"), list):
+        return sorted({r for r in hf_stats["unauthorized"] if isinstance(r, str)})
+    out = set()
+    for line in hf_stats.get("failures") or []:
+        if isinstance(line, str):
+            repo, _, rest = line.partition(": ")
+            if rest.startswith("HTTP 401") and "/" in repo:
+                out.add(repo)
+    return sorted(out)
 
 
 def refresh_heads(
