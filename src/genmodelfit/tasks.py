@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """種類(modality)の中の使い方(用途)と、補助ツールの見分け方(Issue #17)。
 
 大きな種類は 6 つ(image / video / music / sfx / tts / 3d)のまま。用途は種類の中の小分けで、

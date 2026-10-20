@@ -2,15 +2,20 @@
 
 入っている genmodelfit から requires をたどる(dev などの extra は除く)。読むのは License-Expression、
 License、分類子の順。例外は certifi の MPL-2.0 だけ(改変せずに使う。CLAUDE.md)。
+genmodelfit 自身は MPL-2.0(2026-10-20 にユーザが決めた。Issue #18)。
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from importlib.metadata import PackageNotFoundError, distribution
+from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+
+from genmodelfit import __version__
 
 ALLOWED = {
     "MIT",
@@ -24,7 +29,10 @@ ALLOWED = {
     "Apache-2.0 OR BSD-3-Clause",
     "BSD-3-Clause OR Apache-2.0",
 }
-EXCEPTIONS = {"certifi": {"MPL-2.0"}}
+EXCEPTIONS = {"certifi": {"MPL-2.0"}, "genmodelfit": {"MPL-2.0"}}  # genmodelfit 自身は MPL-2.0
+ROOT = Path(__file__).resolve().parents[1]
+# https://www.mozilla.org/media/MPL/2.0/index.txt(2026-10-20 に取得。SPDX の本文と空白以外は同じ)
+MPL_2_0_SHA256 = "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
 MISSING = "NOT INSTALLED"
 
 _CLASSIFIERS = {
@@ -124,11 +132,21 @@ def test_runtime_dependency_licenses():
     assert not bad, "許可リストに無いライセンスの依存があります:\n" + table(deps)
 
 
+def test_own_license_is_mpl_2_0():
+    """genmodelfit 自身は MPL-2.0。入っている配布の License-Expression と LICENSE の全文を見る。"""
+    dist = distribution("genmodelfit")
+    assert dist.metadata.get("License-Expression") == "MPL-2.0"
+    assert dist.version == __version__
+    text = (ROOT / "LICENSE").read_bytes()
+    assert hashlib.sha256(text).hexdigest() == MPL_2_0_SHA256, "LICENSE が MPL-2.0 の公式の全文と違う"
+
+
 @pytest.mark.parametrize(
     ("name", "lic", "ok"),
     [
         ("certifi", "MPL-2.0", True),
-        ("other", "MPL-2.0", False),  # MPL は certifi だけの例外
+        ("genmodelfit", "MPL-2.0", True),
+        ("other", "MPL-2.0", False),  # MPL は certifi(と genmodelfit 自身)だけの例外
         ("x", "GPL-3.0-or-later", False),
         ("x", "LGPL-3.0", False),
         ("x", "Apache-2.0 OR BSD-3-Clause", True),
@@ -154,3 +172,30 @@ def test_missing_required_dependency_fails(monkeypatch):
     monkeypatch.setattr(me, "distribution", fake)
     deps = runtime_dependencies()
     assert deps["rich"] == MISSING and not allowed("rich", deps["rich"])
+
+
+MPL_NOTICE = (
+    "# This Source Code Form is subject to the terms of the Mozilla Public\n"
+    "# License, v. 2.0. If a copy of the MPL was not distributed with this\n"
+    "# file, You can obtain one at https://mozilla.org/MPL/2.0/.\n"
+)
+
+
+def test_source_files_have_mpl_notice():
+    """MPL-2.0 の Exhibit A の表示を、パッケージのすべての .py の先頭に入れる。"""
+    missing = [
+        str(p.relative_to(ROOT))
+        for p in sorted((ROOT / "src" / "genmodelfit").rglob("*.py"))
+        if not p.read_text(encoding="utf-8").startswith(MPL_NOTICE)
+    ]
+    assert not missing, "MPL の表示が無いファイル: " + ", ".join(missing)
+
+
+def test_third_party_notices():
+    """出典の表示: ComfyUI workflow_templates の MIT の著作権表示と許諾文、HF の扱い、llmfit。"""
+    text = (ROOT / "THIRD_PARTY_NOTICES").read_text(encoding="utf-8")
+    assert "Copyright (c) 2023-present Comfy Org" in text
+    assert "The above copyright notice and this permission notice shall be included in all\ncopies" in text
+    assert "https://github.com/Comfy-Org/workflow_templates" in text
+    assert "Hugging Face Hub" in text and "does not grant" in text
+    assert "llmfit" in text and "No code or data from llmfit is copied" in text

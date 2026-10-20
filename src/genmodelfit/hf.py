@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Hugging Face Hub API から、ライセンス・利用申請(gated)・ファイルの大きさ・sha256 を取る。
 
 - 1 リポジトリにつき `GET /api/models/{repo_id}?blobs=true` を 1 回だけ呼ぶ(結果はこの実行の中で使い回す)
