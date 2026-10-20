@@ -42,6 +42,9 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 
 ## 形
 
+- HF のモデルは全期間のダウンロード数 10,000 以上(trendingScore・likes30d で拾ったものは 1,000 以上)、merge のタグ・
+  試験用の名前は入れない(llmfit の scrape_hf_models.py にならう。2026-10-20)。利用者のテンプレート(index の username が
+  ComfyUI でない)は `community`。公式の仲間があれば表の代表にしない
 - 段階は動かし方で使うメモリの使用率(60 / 85 / 98%。載せ替えは good まで、逃がす・CPU は marginal まで。
   llmfit にならう。2026-10-20 に利用者が決めた。`estimate.FIT_BANDS`)
 - 表・JSON では同じモデル(本体の系統 + 大きさ。精度・使い方だけ違う項目)を 1 行にまとめる(`groups.py`。

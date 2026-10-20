@@ -71,8 +71,9 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
-**Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → `score` (desc) → `id`.
-動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
+**Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → official before community
+templates (`community`) → `score` (desc) → `id`.
+動くもの → 自動でおすすめに出せるもの → 公式(利用者のテンプレートは後)→ 点数の高い順 → ID。
 
 ### Models / モデルのまとめ方
 
@@ -83,7 +84,9 @@ automatically), and **workflows** are uses of that model. `group_key` is built f
 1. Main files = role `main` (by the estimator's rule: ComfyUI folder → `role` → HF folder → name). Text encoders
    (umt5, …) and VAEs are never the key. With several main files, the largest one and those ≥95% of its size (a pair
    such as Wan 2.2 high / low noise); without any, the largest file that is not a text encoder / VAE / clip_vision;
-   without files, the entry itself.
+   without files, the entry itself. Super-resolution, upscaler and refiner files (`sr`, `upscal…`, `refiner` in the
+   name) are not main weights when another main file exists (Hunyuan Video 1.5 lists its 1080p SR file in both the
+   720p t2v and i2v workflows).
 2. From each file name (the repo name instead for generic names such as `model.safetensors`), drop the extension,
    shard numbers, GGUF quant tags (`Q4_K_M`, `Q8_0`, …) and precision / packaging words (`fp16`, `bf16`, `fp8`,
    `e4m3fn`, `scaled`, `mixed`, `int8`, `int4`, `nf4`, `nvfp4`, `w4a8`, `convrot`, `kj`, `comfy`, `transformer`, `only`,
@@ -100,8 +103,8 @@ After the per-entry key, the whole list is looked at (`groups.build_index`):
 - An entry with two main files of different names (FLUX.2 klein 4B text-to-image loads both `klein-base-4b` and
   `klein-4b`) joins the model of one of them if that model exists on its own: the one without `base`, then by name.
   Otherwise the names stay joined with `+` (Ideogram 4 with its unconditional pair).
-- Entries whose main files have the **same sha256** are the same model (the same file under another name or repo, e.g.
-  Stable Audio Open 1.0 in the template and in two HF repos). Upstream records whose file name and URL / hash disagree
+- Entries whose **whole set** of main-file sha256s is equal are the same model (the same file under another name or
+  repo, e.g. Stable Audio Open 1.0 in the template and on HF). Sharing only some main files is not enough. Upstream records whose file name and URL / hash disagree
   are corrected first (`update.UPSTREAM_FILE_FIXES`, checked with an anonymous HEAD).
 - `params_b` is added to the key only for generic HF file names (`model.safetensors`) without a size word; template
   `params_b` comes from the title and can be the language model's size (ACE-Step 1.5 "4B LM").
@@ -109,13 +112,18 @@ After the per-entry key, the whole list is looked at (`groups.build_index`):
 Precision (`ModelEntry.precision`) is read from the main file used for the key (`groups.model_precision`; `update` uses
 the same function), e.g. `w4a8` for the 10Eros W4A8 file.
 
-**Display name** (`model_name`, the table's Model column): the members' names before `:` without precision words
-(`Z-Image-Turbo Int8: Text to Image` → `Z-Image-Turbo`); the one containing most words of the key, preferring official
-templates, then the most common, the shortest. Names are unique over the list (on a clash the type, then key words, then
-an id are added). `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
+**Display name** (`model_name`, the table's Model column, `groups.display_name`): candidates are each member's
+name before `:`, after `:` and both joined, without precision / packaging words (`Int8`, `FP16`, `F16`, `ConvRot`, `KJ`,
+`AIO`, …) and use phrases (`Text to Video`, `Depth Estimation`, `Image Upscale`, …). The candidate containing most words
+of the key wins (official templates before community templates and HF repos, then the shorter); it is cut after the
+last key word it contains, and missing size / version / variant words of the key are added (`ACE Step v1 3.5B`,
+`Hunyuan Video 1.5 720p T2V`, `Image Upscale: SeedVR2 7B Int8` → `SeedVR2 7B`). Names are unique over the list (on a
+clash the type, then key words, then an id are added). `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
 others.
 
 Which entry is shown for a model (`recommend.variant_key`): among the entries that passed the filters,
+0. official before community templates (`community`: the template's `username` is not ComfyUI) — a community
+   workflow never stands for a model that has an official one,
 1. the use: `gen` → `edit` → `i2v` → `lipsync` → `motion` → `voice` → `upscale` → `tool` (with `--task`, among the
    matching uses) — so a tool or upscale workflow that shares the weights never stands for the model,
 2. the better fit level, 3. no offload (`GPU` / `GPU~` before `GPU+RAM` before CPU — same level, faster),
@@ -123,10 +131,10 @@ Which entry is shown for a model (`recommend.variant_key`): among the entries th
    as full precision), 5. the order above.
 So on 8 GB Z-Image Turbo shows its int8 workflow (swapped, `marginal`) rather than bf16 (offload, `marginal`); with
 `--task edit` the representative is an edit workflow. **The row's `score` (and `score_components`) is the highest score
-among the model's entries that passed the filters**, so the score never drops when more VRAM switches the
-representative to a higher precision; the order uses that score and the shown entry's `auto`.
+among the model's entries that passed the filters and have the same use and the same fit level as the shown entry**;
+everything else on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
 
-On the bundled list (341 entries) this gives 219 models; 54 of them have more than one entry.
+On the bundled list (323 entries) this gives 205 models; 54 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
@@ -181,6 +189,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 | `licenses` | (str \| null)[] | the distinct licenses of the files (null last = some file unknown) |
 | `auto` | bool | can be auto-recommended (= `gate.auto`) |
 | `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
+| `community` | bool | a community template (the index's `username` is not ComfyUI; docs/sources.md) |
 | `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`) |
 | `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
 | `files_count` | int | download files listed |
@@ -309,7 +318,8 @@ Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwi
 `id`, `name`, `modality`, `tasks`, `source`, `files` (ModelFile[]), `template` (Template \| null), `params_b`,
 `precision`, `license`, `license_url`, `base_model`, `content`, `content_evidence` (str[]: why it is marked
 uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage`, `downloads` / `likes`
-(int \| null: Hugging Face counters, set for `source: huggingface`), `total_size_bytes`,
+(int \| null: Hugging Face counters, set for `source: huggingface`; `downloads` is the last 30 days),
+`downloads_all_time` (int \| null: all-time downloads, used for the inclusion floor), `total_size_bytes`,
 `license_name` (the name of an `other` license, from the strictest file), `license_evidence` (str[]: why the license is
 unknown — entries start with `license_unverified:`), `files_complete`, `size_floor_bytes` (below).
 
@@ -340,7 +350,7 @@ The estimator decides a file's part from `directory` first, then `role`, then th
 names, and counts one variant per part (`docs/accuracy.md`, 「ファイルの数え方」).
 
 Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `requires_custom_nodes`, `usage`,
-`date`, `size_bytes`.
+`date`, `size_bytes`, `username` (who made it; not `ComfyUI` = community template).
 
 ### Measurement
 

@@ -12,24 +12,24 @@ llmfit に着想を得た、生成モデル向けのツールです(llmfit の�
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 12 of 84 (231 hidden: uncensored 39, tools 34, size unknown 5, too tight 153; 26 more
+Recommended: 12 of 83 (215 hidden: uncensored 24, tools 34, size unknown 4, too tight 153; 25 more
     workflows merged into their models)
 == image (画像): top 2 of 43  (-m image for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
 ● Marginal  Z-Image-Turbo             gen+5   int8    54  7.6m  96% GPU~    11.3 apache-2.0 yes
-● Marginal  FLUX.2 [Klein] 4B         gen+1   -       41   7.5  94% GPU+RAM 22.2 apache-2.0 yes
+● Marginal  FLUX.2 [Klein] 4B Base    edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
 == video (動画): top 2 of 5  (-m video for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Marginal  Wan 2.1 Text to Video     gen     fp16    50  7.8m  97% GPU~     9.2 apache-2.0 yes
-● Marginal  Wan 2.1 ControlNet        edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
+● Marginal  Wan 2.1 1.3B T2V          gen     fp16    50  7.8m  97% GPU~     9.2 apache-2.0 yes
+● Marginal  Wan 2.1 ControlNet 1.3B   edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
 == music (音楽): top 2 of 9  (-m music for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Good      ACE-Step 1.5 …eration AIO gen+2   -       65  6.0m  76% GPU~     9.3 mit        yes
+● Good      ACE-Step 1.5 Turbo        gen+2   -       65  6.0m  76% GPU~     9.3 mit        yes
 ● Marginal  ACE-Step 1.5XL Turbo      gen     bf16    40   5.2  65% GPU+RAM 18.5 mit        yes
-== sfx (効果音): top 2 of 3  (-m sfx for more)
+== sfx (効果音): top 2 of 2  (-m sfx for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
 ● Perfect   stable-audio-3-small-sfx  gen     -       68   3.6  45% GPU      2.1 other      license
-● Good      stable-audio-open-1.0     gen+2   -       54   4.9  61% GPU~     5.3 other      license
+● Good      stable-audio-open-1.0     gen+1   -       54   4.9  61% GPU~     5.3 other      license
 == tts (読み上げ): top 2 of 16  (-m tts for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
 ● Perfect   chatterbox                gen     -       80   3.5  44% GPU      2.0 mit        workflow
@@ -43,7 +43,7 @@ Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (s
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
-Note: 39 uncensored model(s) hidden; add --content all to show them.
+Note: 24 uncensored model(s) hidden; add --content all to show them.
 ```
 
 Without `-m` / `--task`, `recommend` shows each of the six types (image, video, music, sfx, tts, 3d). One row is
@@ -57,18 +57,18 @@ chosen (`Prec`; like llmfit's best quant). Narrow down inside a type with `--tas
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -m image --task edit -n 3
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 3 of 18 (321 hidden: other types 169, uncensored 30, tools 19, other uses 63, too
+Recommended: 3 of 18 (303 hidden: other types 162, uncensored 19, tools 19, other uses 63, too
     tight 40; 2 more workflows merged into their models)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
 ● Marginal  FLUX.2 [Klein] 4B         edit+1  fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
-● Marginal  FLUX.2 [Klein] 4B (base)  edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
+● Marginal  FLUX.2 [Klein] 4B Base    edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
 ● Marginal  Z-Image-Turbo             edit+5  bf16    41   7.5  93% GPU+RAM 22.2 apache-2.0 yes
 Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
-Note: 30 uncensored model(s) hidden; add --content all to show them.
+Note: 19 uncensored model(s) hidden; add --content all to show them.
 ```
 
 The default output is a table for people; add `--json` for apps and agents (llmfit prints JSON by default
@@ -164,7 +164,10 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 ## Data sources / データ源
 
-The bundled list has 341 models (image 172, video 118, TTS 20, music 15, 3D 10, SFX 6).
+The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 205 models.
+Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
+ones), and merges and test stubs are skipped ([docs/sources.md](docs/sources.md)).
+llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。
 
 - [ComfyUI workflow templates](https://github.com/Comfy-Org/workflow_templates) (MIT): which models a workflow
   uses, download URLs, hashes, required ComfyUI version, custom nodes. API (cloud) templates are excluded.
@@ -182,7 +185,7 @@ genmodelfit が持つのはモデルの情報だけで、モデル本体は持�
 - `sfw` — default.
 - `uncensored` — models whose safety filtering was removed or that are made for adult output
   (Hugging Face `not-for-all-audiences` tag, or names such as uncensored / abliterated / nsfw). They are in the list
-  (39 in the bundled list) and marked `[U]` in tables, but `recommend` / `fit` / `search` and `gmf.recommend()` / `gmf.search()` show them
+  (24 in the bundled list) and marked `[U]` in tables, but `recommend` / `fit` / `search` and `gmf.recommend()` / `gmf.search()` show them
   **only with `--content all` or `--content uncensored`** (`content="all"` / `"uncensored"` in Python).
   `info <id>` works for them as usual. The evidence is kept in
   `content_evidence`. Whether to show them is up to the app using genmodelfit; they are never auto-recommended
@@ -201,7 +204,7 @@ upstream, not the uploader's label) is on a commercial-use allowlist (apache-2.0
 replaceable), nothing is gated, an official ComfyUI workflow without custom nodes, the ComfyUI version is
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
 known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
-In the bundled list 83 of 341 models are auto. When a license cannot be verified it is treated as unknown
+In the bundled list 83 of 323 entries are auto. When a license cannot be verified it is treated as unknown
 and held. See [docs/gate.md](docs/gate.md).
 
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない
