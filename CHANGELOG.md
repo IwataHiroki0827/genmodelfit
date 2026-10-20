@@ -35,6 +35,13 @@ RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直�
 - TTS GGUF repositories (llama.cpp-style runtimes: VieNeu-TTS v3 Turbo, Qwen3-TTS GGUF, Higgs Audio v3 Studio,
   Drama-3) are no longer marked incomplete for lacking a text encoder / VAE, so they are judged.
 - OS shown as `Windows 11` on Python 3.10 / 3.11 too (build number ≥ 22000).
+- **`fit` is easier to read** (like llmfit's `fit`): it shows only the models that run (Perfect / Good / Marginal)
+  and counts the rest by reason in the header; `--all` shows everything (tools, models that do not run, `?`, unknown
+  licenses). One table ordered by type → fit level → Score (no auto-first; see the Auto column). New options for
+  `fit` / `search`: `--fit perfect|good|marginal|runnable|all` (`--min-fit` still works, not together with `--fit`),
+  `--sort type|score|vram|disk|name`, `--all`; `fit --include-tools`. JSON follows the same order. Python:
+  `gmf.fit_list()`, and `fit=` / `sort=` on `gmf.search()`.
+- Table columns in every command: `Type | Status | Score | Model | …` (Type leftmost, Score left of the name).
 
 ### Added
 

@@ -125,12 +125,32 @@ The three commands print the same shape (Issue #17, modeled on llmfit's `recomme
 LoRA, …) are collapsed into one item; the others are listed in `workflows` / `variants`. `--all-workflows`
 (`all_workflows=True` in Python) gives one item per list entry as before.
 
+`fit` (0.1.1, Issue #28; Python `gmf.fit_list()`): by default only the models that run (`--fit runnable` = perfect /
+good / marginal), without utility tools, unknown-license and uncensored models; `--all` (`show_all=True`) is `--fit all`
+plus tools and unknown licenses (uncensored still needs `--content all`). `--fit perfect|good|marginal` shows exactly
+that level (other runnable levels are counted as `hidden.other_fit`); `--fit` and `--min-fit` cannot be combined
+(`--perfect` = `--fit perfect`). `fit` and `search` print **one table** sorted by `--sort` (`sort=`):
+
+| sort | order |
+|---|---|
+| `type` (default) | type (image, video, music, sfx, tts, 3d) → fit level (perfect → good → marginal → unknown → too_tight) → official before community within the same level → `score` desc → model name |
+| `score` | runs (perfect / good / marginal) → unknown → too_tight, then fit level → official first → `score` desc → name: one ranking across types |
+| `vram` / `disk` | runs → unknown → too_tight, then `memory_required_gb` / `disk_size_gb` ascending (null last) |
+| `name` | runs → unknown → too_tight, then model name |
+
+The fit level always comes before the score (the score weights the level most, but the other components could invert
+two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Auto column shows it). JSON `models`
+follows the same order; `filters` of `fit` adds `fit`, `sort`, `all`, `include_tools`, of `search` `fit`, `sort`, `all`.
+Table columns (all commands): `Type | Status | Score | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Auto`;
+when the terminal is narrow, Disk, Mem%, License, Auto, Prec, Use are dropped in that order (Type, Status, Score and
+Model never). `search` shows every fit level by default (`--fit` narrows).
+
 `recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
 `-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
 and has `matched: 0` in `groups`. With `-m` or `--task` it is one list, `-n` default 10. In JSON `models` is ordered by
 type, then by the order below. Other defaults: `min_fit` `marginal`, utility tools hidden, models with unknown size never
-shown. `fit` and `search` show every level by default (`--min-fit` to narrow) and no limit; models with unknown size
-are listed last with `fit_level: "unknown"` (`?`). `search <query>` matches a
+shown. `fit` shows the runnable levels by default and `search` every level (`--fit` / `--min-fit` to narrow), with no
+limit; models with unknown size (`fit_level: "unknown"`, `?`) come after marginal ones of their type (`--fit all`). `search <query>` matches a
 part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
 `models: []` and exits 0 (text mode prints `(no match / 該当なし)`); a blank query exits 1.
 `content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
@@ -143,10 +163,11 @@ when it lists no files) is unknown (`null`) is not shown by `recommend` / `fit` 
 ライセンスが分からないファイルを含むものは既定で出さない(`--include-unknown-license` で出す。`info <ID>` は出す)。
 
 `hidden` reasons, each entry counted once under the first reason that applies, in this order:
-`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
+`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend / fit without `--include-tools` / `--all`),
 `task` (other uses than `--task`), `license` (`--license`), `license_unknown` (some file's license is unknown; without
 `--include-unknown-license`), `size_unknown` (recommend, or any `--min-fit` other than `too_tight`), `too_tight`,
-`below_min_fit` (perfect / good / marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into
+`below_min_fit` (perfect / good / marginal below `--min-fit`), `other_fit` (a runnable level not selected by `--fit`),
+`held` (`--auto-only`), `same_model` (collapsed into
 another row of the same model;
 the text header says "N more workflows merged into their models").
 **`matched` + the sum of `hidden` = the number of entries looked at** (every entry of the list; for `search`, the entries
@@ -155,7 +176,7 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
-**Order / 並べ方**: models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
+**Order of `recommend` / recommend の並べ方** (`gmf.recommend()`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
 fit level (perfect → good → marginal) → official before community templates (`community`) **within the same level** →
 `score` (desc) → `id`. Until 0.1.0 community templates came after every official row of all levels.
 動くもの(判定できないものは一番後ろ)→ 自動でおすすめに出せるもの → 段階 → 同じ段階の中で公式(利用者の
@@ -270,7 +291,7 @@ workflows}}]`; `models` = number of models as above, `workflows` = list entries;
 
 ### Fit (one item of `models`)
 
-Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.search()` give the same list as the CLI).
+Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` give the same list as the CLI).
 
 | key | type | meaning |
 |---|---|---|
