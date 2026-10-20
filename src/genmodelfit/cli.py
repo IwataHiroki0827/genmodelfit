@@ -706,7 +706,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _quiet_stdout() -> None:
-    with contextlib.suppress(OSError):  # 終了時の flush で再び落ちないように
+    # 終了時の flush で再び落ちないように、出力先(fd)ごと捨て先に向ける(Python の文書の推奨手順)
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    with contextlib.suppress(OSError):
         sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
 
 

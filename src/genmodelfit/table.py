@@ -77,10 +77,17 @@ def wrap_line(text: str, width: int) -> list[str]:
     return out
 
 
+class _Console(Console):
+    def on_broken_pipe(self) -> None:
+        # rich の既定は終了コード 1 で終わる(Linux)。CLI の BrokenPipeError の扱いにそろえる
+        self.quiet = True
+        raise BrokenPipeError
+
+
 def make_console(file=None, width: int | None = None) -> Console:
     out = file or sys.stdout
     width = output_width(out) if width is None else min(width, MAX_WIDTH)
-    return Console(file=out, width=width, soft_wrap=False, highlight=False)
+    return _Console(file=out, width=width, soft_wrap=False, highlight=False)
 
 
 def _auto_cell(gate: dict[str, Any] | None) -> Text:

@@ -58,8 +58,8 @@ jobs:
         run: |
           venv="$RUNNER_TEMP/wheel-venv"
           uv venv --python 3.12 "$venv"
-          if [ -d "$venv/Scripts" ]; then bin="$venv/Scripts"; else bin="$venv/bin"; fi
-          uv pip install --python "$bin/python" dist/*.whl
+          if [ -d "$venv/Scripts" ]; then bin="$venv/Scripts"; py="$bin/python.exe"; else bin="$venv/bin"; py="$bin/python"; fi
+          uv pip install --python "$py" dist/*.whl
           echo "$bin" >> "$GITHUB_PATH"
       - name: Commands
         working-directory: ${{ runner.temp }}
