@@ -22,12 +22,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import os
 import re
 import shutil
 import time
+import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -52,6 +54,8 @@ CHUNK = 1024 * 1024
 MAX_REDIRECTS = 10
 MAX_STALLED = 4  # 進まなかった失敗(接続・時間切れ・5xx・429)をこの回数まで続けてやり直す
 MAX_RETRY_AFTER = 300.0
+MAX_RESTARTS = 3  # 相手が Range に応じず最初から落とし直す回数の上限
+MAX_RECEIVE_FACTOR = 3  # 1 ファイルで受け取る量の上限(大きさの何倍まで)
 OTHER_DIR = "other"  # ComfyUI の置き場所(directory)が一覧に無いファイルの置き場所
 
 # 計画のファイルの状態
@@ -108,15 +112,13 @@ class HostPolicy:
     any_port: bool = False  # 試験用(手元のサーバ)。既定は決まったポート(443)だけ
 
     def allowed(self, url: str, *, start: bool = False) -> bool:
-        try:
-            u = urlsplit(url)
-            port = u.port
-        except ValueError:
+        host_port = url_host(url)
+        if host_port is None:
             return False
-        host = (u.hostname or "").lower()
-        if u.scheme not in self.schemes or not host or u.username or u.password:
+        scheme, host, port = host_port
+        if scheme not in self.schemes:
             return False
-        if port is not None and port != {"https": 443, "http": 80}.get(u.scheme) and not self.any_port:
+        if port is not None and port != {"https": 443, "http": 80}.get(scheme) and not self.any_port:
             return False
         if start:
             return host in self.start_hosts
@@ -124,8 +126,44 @@ class HostPolicy:
 
     def check(self, url: str, *, start: bool = False) -> None:
         if not self.allowed(url, start=start):
-            host = urlsplit(url).hostname or url
-            raise HostNotAllowed(f"許していない転送先です(https の Hugging Face・GitHub だけ): {host}")
+            hp = url_host(url)
+            shown = hp[1] if hp else repr(url[:200])
+            raise HostNotAllowed(f"許していない転送先です(https の Hugging Face・GitHub だけ): {shown}")
+
+
+# URL に入っていたら拒む文字(\ は urlsplit と urllib3 でホストの読み方が分かれる。空白・制御文字も同じ)
+_URL_BAD = re.compile(r"[\\\s\x00-\x1f\x7f]")
+
+
+def url_host(url: str) -> tuple[str, str, int | None] | None:
+    """(scheme, host, port)。読み方が 2 通りに分かれうる URL は None(拒む)。
+
+    requests が実際につなぐ先は urllib3.util.parse_url が読むホスト。urlsplit と urllib3 で違うホストに読める
+    URL(`https://evil.com\\.hf.co/` など)で許可の判定をすり抜けられないように、\\・空白・制御文字・
+    ホストの中の % と @(資格情報)・ASCII でないホストを拒み、2 つの読み方が同じホスト・ポートの
+    ときだけ返す。"""
+    from urllib3.util import parse_url
+
+    if not isinstance(url, str) or _URL_BAD.search(url):
+        return None
+    try:
+        u = urlsplit(url)
+        a_port = u.port
+        p = parse_url(url)
+    except ValueError:
+        return None
+    except Exception:  # urllib3 の LocationParseError など
+        return None
+    if "@" in u.netloc or "%" in u.netloc or p.auth:
+        return None
+    a_host = (u.hostname or "").lower()
+    b_host = (p.host or "").lower()
+    scheme = (u.scheme or "").lower()
+    if not a_host or a_host != b_host or scheme != (p.scheme or "").lower() or a_port != p.port:
+        return None
+    if not a_host.isascii() or a_host.endswith("."):
+        return None
+    return scheme, a_host, a_port
 
 
 # Hugging Face(LFS は cdn-lfs*.hf.co などの CDN、Xet は cas-bridge.xethub.hf.co へ転送する)と
@@ -149,7 +187,26 @@ HOST_POLICY = HostPolicy(
 
 _DIR_OK = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 _BAD_CHARS = re.compile(r'[<>:"|?*\\\x00-\x1f]')
-_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE)
+# Windows の予約名(拡張子・空白が付いても同じ。COM¹ など上付きの数字も。CONIN$ / CONOUT$)
+_RESERVED = re.compile(
+    r"^(con|prn|aux|nul|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3]|conin\$|conout\$)\s*(\..*)?$",
+    re.IGNORECASE,
+)
+
+
+def _bad_part(p: str) -> bool:
+    """パスの 1 部分として使えないか(`..`・Windows で危ない文字と予約名・末尾の点や空白・制御や書式の文字
+    (右から左への上書きなど)・落とすときの一時ファイルと同じ末尾 .part / .lock)。"""
+    return (
+        not p
+        or p in (".", "..")
+        or bool(_BAD_CHARS.search(p))
+        or bool(_RESERVED.match(p))
+        or p.endswith((".", " "))
+        or p.lower().endswith((".part", ".lock"))
+        or any(unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp") for c in p)
+        or len(p) > 200
+    )
 
 
 def safe_relpath(directory: str | None, name: str) -> tuple[str, ...] | None:
@@ -158,19 +215,11 @@ def safe_relpath(directory: str | None, name: str) -> tuple[str, ...] | None:
     name は ComfyUI のサブフォルダを含んでよい("split/vae/x.safetensors")。`..`・`.`・空の部分・
     絶対パス・ドライブ名(`:`)・`\\`・制御文字・予約名(CON など)・末尾の点や空白は拒む。"""
     folder = directory or OTHER_DIR
-    if not _DIR_OK.match(folder) or folder in (".", ".."):
+    if not _DIR_OK.match(folder) or _bad_part(folder):
         return None
     parts = name.split("/")
-    for p in parts:
-        if (
-            not p
-            or p in (".", "..")
-            or _BAD_CHARS.search(p)
-            or _RESERVED.match(p)
-            or p.endswith((".", " "))
-            or len(p) > 200
-        ):
-            return None
+    if any(_bad_part(p) for p in parts):
+        return None
     return (folder, *parts)
 
 
@@ -235,6 +284,7 @@ class PlannedFile:
     status: str = "download"
     part_bytes: int = 0  # 途中まで落とした .part の大きさ
     reason: str | None = None  # unavailable / conflict の理由
+    verified: bool = False  # present のとき、計画で sha256 まで計ったか(download は必ず計り直す)
 
     @property
     def remaining_bytes(self) -> int:
@@ -411,8 +461,10 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
     if dest.exists():
         if not dest.is_file() or dest.stat().st_size != f.size_bytes:
             pf.status, pf.reason = "conflict", "同じ名前の別のファイルがあります(上書きしません)"
-        elif not verify_existing or _hash_file(dest) == pf.sha256:
-            pf.status = "present"
+        elif not verify_existing:
+            pf.status = "present"  # 大きさだけ(download がその場で sha256 を計る)
+        elif _hash_file(dest) == pf.sha256:
+            pf.status, pf.verified = "present", True
         else:
             pf.status, pf.reason = "conflict", "同じ名前のファイルの sha256 が違います(上書きしません)"
         return pf
@@ -559,7 +611,7 @@ def plan_download(
         plans.append(((bool(p.blocked), over, *variant_key(fit)), p, fit))
     plans.sort(key=lambda x: x[0])
     _, plan, fit = plans[0]
-    if not exact and len(plans) > 1 and verify_existing:
+    if len(plans) > 1 and verify_existing:
         plan.files = [_plan_file(f, root, allow, True) for f in fit.model.files]  # 選んだものだけ計り直す
     plan.alternatives = [_alt_dict(x[2]) for x in plans[1:]]
     plan.chosen = (
@@ -606,6 +658,12 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
         plan.warnings.append("この PC では動かない見込みです(fit too_tight)")
     elif fit.estimate.unknown_size:
         plan.warnings.append("大きさが分からず、この PC で動くか判定できていません")
+    other = [f.name for f in plan.files if not f.directory and f.status != "unavailable"]
+    if other and plan.layout == "comfyui":
+        plan.warnings.append(
+            f"ComfyUI の置き場所が一覧に無いファイルは models/{OTHER_DIR} に置きます(ComfyUI はこのフォルダを"
+            "読みません。使うノードの説明に従って移してください): " + ", ".join(other[:4])
+        )
     if plan.layout == "output":
         plan.warnings.append(
             "ComfyUI の models と同じ並びで置きます。ComfyUI で使うなら --comfyui-dir を指定するか、"
@@ -673,11 +731,23 @@ def _retry_after(resp: requests.Response, n: int) -> float:
         return float(min(60, 2**n))
 
 
+def _check_hop(hosts: HostPolicy, url: str, *, start: bool) -> None:
+    """URL そのものと、requests が実際に使う形(prepare した URL)の両方を確かめる。"""
+    hosts.check(url, start=start)
+    try:
+        prepared = requests.Request("GET", url).prepare().url or ""
+    except requests.RequestException as e:
+        raise HostNotAllowed(f"URL を読めません: {url[:200]!r}") from e
+    hosts.check(prepared, start=start)
+    if url_host(prepared) != url_host(url):
+        raise HostNotAllowed(f"URL の読み方が分かれます: {url[:200]!r}")
+
+
 def _open(
     session: requests.Session, url: str, headers: dict[str, str], hosts: HostPolicy, timeout
 ) -> requests.Response:
-    """GET(転送は 1 回ごとに許したホストか確かめて自分で追う)。"""
-    hosts.check(url, start=True)
+    """GET(転送は自分で追い、相対の転送先を解決したあとの URL を 1 回ごとに確かめてからつなぐ)。"""
+    _check_hop(hosts, url, start=True)
     for _ in range(MAX_REDIRECTS + 1):
         resp = session.get(url, headers=headers, stream=True, allow_redirects=False, timeout=timeout)
         if resp.status_code in (301, 302, 303, 307, 308):
@@ -685,9 +755,11 @@ def _open(
             resp.close()
             if not loc:
                 raise DownloadError(f"転送先がありません: {url}")
+            if _URL_BAD.search(loc):
+                raise HostNotAllowed(f"転送先の URL に使えない文字があります: {loc[:200]!r}")
             url = urljoin(url, loc)
-            hosts.check(url)
-            log.debug("download: 転送 -> %s", urlsplit(url).hostname)
+            _check_hop(hosts, url, start=False)
+            log.debug("download: 転送 -> %s", url_host(url))
             continue
         return resp
     raise DownloadError(f"転送が多すぎます: {url}")
@@ -696,6 +768,49 @@ def _open(
 def _content_range_start(resp: requests.Response) -> int | None:
     m = re.match(r"bytes (\d+)-\d+/(\d+|\*)", resp.headers.get("content-range", ""))
     return int(m.group(1)) if m else None
+
+
+def _stale_lock(path: Path) -> bool:
+    """落としている途中の印(.lock)が、もう動いていないプロセスのものか。"""
+    import psutil
+
+    try:
+        pid = int(path.read_text(encoding="ascii").split()[0])
+    except (OSError, ValueError, IndexError):
+        try:  # 読めない・書きかけ: 1 時間より古ければ残骸とみなす
+            return time.time() - path.stat().st_mtime > 3600
+        except OSError:
+            return True
+    return not psutil.pid_exists(pid)
+
+
+@contextlib.contextmanager
+def _file_lock(path: Path, name: str):
+    """同じファイルを 2 つの download が同時に書かないように、.lock を排他で作る(残骸は片付けてやり直す)。"""
+    for attempt in range(2):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if attempt == 0 and _stale_lock(path):
+                with contextlib.suppress(OSError):
+                    path.unlink()
+                continue
+            raise DownloadError(
+                f"{name}: 別の download が同じファイルを落としています(終わってからもう一度。"
+                f"止まったまま残っているなら {path} を消してください)"
+            ) from None
+        except OSError as e:
+            raise DownloadError(f"{name}: 書けません({e.strerror or e}): {path}") from e
+    else:  # pragma: no cover - 2 回とも残骸を消した直後に別のプロセスが作った
+        raise DownloadError(f"{name}: 別の download が同じファイルを落としています")
+    try:
+        with os.fdopen(fd, "w", encoding="ascii") as fh:
+            fh.write(f"{os.getpid()} {int(time.time())}\n")
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            path.unlink()
 
 
 def _fetch_one(
@@ -711,12 +826,56 @@ def _fetch_one(
 ) -> None:
     dest = Path(pf.dest)
     part = dest.with_name(dest.name + ".part")
+    lock = dest.with_name(dest.name + ".lock")
+    # 置き場所の中かを、フォルダを作る前に確かめる(作ったあとにもう一度。間でリンクに替えられたとき)
+    for p in (dest, part, lock):
+        if not _inside(p, root) or p.is_symlink():
+            raise DownloadRefused(f"置き場所の外には書きません: {p}")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise DownloadError(f"{pf.relpath}: フォルダを作れません({e.strerror or e}): {dest.parent}") from e
+    if not _inside(dest.parent, root):
+        raise DownloadRefused(f"置き場所の外には書きません: {dest.parent}")
+    with _file_lock(lock, pf.relpath):
+        try:
+            _transfer(
+                pf,
+                dest,
+                part,
+                session=session,
+                hosts=hosts,
+                sleep=sleep,
+                timeout=timeout,
+                report=report,
+                result=result,
+            )
+        except DownloadError:
+            raise
+        except requests.RequestException as e:
+            raise DownloadError(
+                f"{pf.relpath}: 通信の失敗({type(e).__name__})。もう一度実行すると続きから落とします"
+            ) from e
+        except OSError as e:  # 空き不足・権限・別のプロセスとの取り合いなど
+            raise DownloadError(f"{pf.relpath}: 書けません({e.strerror or e})") from e
+
+
+def _transfer(
+    pf: PlannedFile,
+    dest: Path,
+    part: Path,
+    *,
+    session: requests.Session,
+    hosts: HostPolicy,
+    sleep: Callable[[float], None],
+    timeout,
+    report: Callable[[str, int, str | None], None],
+    result: DownloadResult,
+) -> None:
     size = pf.size_bytes or 0
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if not _inside(dest, root) or dest.is_symlink() or part.is_symlink():
-        raise DownloadRefused(f"置き場所の外には書きません: {dest}")
     hasher, hashed = None, -1  # .part のどこまでを hasher に入れたか
-    stalled = 0
+    stalled = restarts = 0
+    received = 0  # このファイルで受け取った量の合計(上限 MAX_RECEIVE_FACTOR × 大きさ)
     resumed = restarted = False
     while True:
         have = part.stat().st_size if part.is_file() else 0
@@ -775,7 +934,13 @@ def _fetch_one(
                         raise DownloadError(f"{pf.name}: 続きの位置が合いません(HTTP 206)")
                     continue
                 elif code == 200:
-                    if have:  # 相手が Range に応じない: 最初から
+                    if have:  # 相手が Range に応じない: 最初から(回数に上限)
+                        restarts += 1
+                        if restarts > MAX_RESTARTS:
+                            raise DownloadError(
+                                f"{pf.name}: 相手が続きからの取得(Range)に応じず、最後まで受け取れません"
+                                f"(最初からを {MAX_RESTARTS} 回やり直しました)"
+                            )
                         restarted = True
                         report("restart", 0, "相手が続きからの取得(Range)に応じないので最初から落とします")
                     have, hasher, hashed, mode = 0, hashlib.sha256(), 0, "wb"
@@ -788,6 +953,12 @@ def _fetch_one(
                         if have + got + len(chunk) > size:
                             raise DownloadError(
                                 f"{pf.name}: 一覧の大きさ({size} バイト)より大きいので止めました"
+                            )
+                        received += len(chunk)
+                        if received > MAX_RECEIVE_FACTOR * size + CHUNK:
+                            raise DownloadError(
+                                f"{pf.name}: 大きさの {MAX_RECEIVE_FACTOR} 倍を受け取っても終わらないので"
+                                "止めました"
                             )
                         fh.write(chunk)
                         hasher.update(chunk)
@@ -820,12 +991,34 @@ def _fetch_one(
             f"{pf.name}: sha256 が一覧と合いません(消しました)。一覧 {pf.sha256}、"
             f"落としたもの {hasher.hexdigest()}"
         )
+    if dest.exists() or dest.is_symlink():  # 落としている間に別のものが置かれた: 上書きしない
+        raise DownloadRefused(
+            f"{pf.relpath}: 落としている間に同じ名前のファイルが置かれました(上書きしません)"
+        )
     os.replace(part, dest)
     result.downloaded.append(pf.relpath)
     if resumed:
         result.resumed.append(pf.relpath)
     if restarted:
         result.restarted.append(pf.relpath)
+
+
+def _existing_ok(dest: Path, f: PlannedFile, emit: Callable[[str, int, str | None], None]) -> bool:
+    """置き場所に既にあるファイルを、計画によらずその場で sha256 まで計る。
+    合えば True、違えば DownloadRefused。"""
+    if dest.is_symlink() or not dest.is_file():
+        raise DownloadRefused(f"{f.relpath}: 同じ名前のファイルでないものがあります(上書きしません)")
+    if dest.stat().st_size != f.size_bytes:
+        raise DownloadRefused(f"{f.relpath}: 同じ名前の別のファイルがあります(大きさが違う。上書きしません)")
+    done = [0]
+
+    def tick(n: int) -> None:
+        done[0] += n
+        emit("check", done[0], None)
+
+    if _hash_file(dest, tick) != f.sha256:
+        raise DownloadRefused(f"{f.relpath}: 同じ名前のファイルの sha256 が一覧と違います(上書きしません)")
+    return True
 
 
 def download(
@@ -844,7 +1037,9 @@ def download(
     同意: confirm(plan) が True を返したときだけ始める(ライセンス・大きさ・置き場所を見せて尋ねる関数)。
     confirm を渡さないなら yes=True で同意済みを示す(どちらも無ければ DownloadRefused)。
     plan.blocked があれば DownloadRefused、空きが足りなければ DiskFull、sha256 が合わなければ ChecksumMismatch
-    (そのファイルは消す)、許していない転送先なら HostNotAllowed。中断(KeyboardInterrupt)は .part を残して
+    (そのファイルは消す)、許していない転送先なら HostNotAllowed、書けない(空き・権限)・同じファイルを別の
+    download が落としているなら DownloadError。既に置いてあるファイルは、計画の状態によらずその場で sha256 を
+    計り、合うときだけ飛ばす(違えば上書きせず DownloadRefused)。中断(KeyboardInterrupt)は .part を残して
     そのまま上げる(もう一度呼ぶと続きから)。
     """
     if isinstance(plan_or_model, DownloadPlan):
@@ -862,8 +1057,8 @@ def download(
         raise DownloadRefused("同意がありません(confirm を渡すか yes=True)", plan)
     root = Path(plan.root)
     hosts = HOST_POLICY
-    todo = [f for f in plan.files if f.status in ("download", "resume")]
-    # 空き(計画のあとで変わっていることがあるので、始める前に見直す)
+    # 空き(計画のあとで変わっていることがあるので、始める前に今のファイルの状態で見直す)
+    todo = [f for f in plan.files if f.dest and not os.path.lexists(f.dest)]
     need = sum(max(0, (f.size_bytes or 0) - _part_size(f)) for f in todo)
     free = _free_bytes(root)
     if todo and free is not None and need + MARGIN_BYTES > free:
@@ -885,21 +1080,20 @@ def download(
                 )
             )
 
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise DownloadError(f"置き場所を作れません({e.strerror or e}): {root}", plan) from e
     session = make_session()
     try:
         for i, f in enumerate(plan.files, 1):
             dest = Path(f.dest)
-            if f.status == "present" or (
-                dest.is_file() and dest.stat().st_size == f.size_bytes and _verified(dest, f)
-            ):
+            report = lambda phase, n, msg, i=i, f=f: emit(i, f, phase, n, msg)  # noqa: E731
+            if os.path.lexists(dest):
+                _existing_ok(dest, f, report)  # 計画の present を信じず、その場で計る
                 result.skipped.append(f.relpath)
                 emit(i, f, "skip", f.size_bytes or 0, "既にあり sha256 が合うので飛ばします")
             else:
-                if dest.exists() or dest.is_symlink():
-                    raise DownloadRefused(
-                        f"{f.relpath}: 同じ名前の別のファイルがあります(上書きしません)", plan
-                    )
                 _fetch_one(
                     f,
                     session=session,
@@ -907,11 +1101,17 @@ def download(
                     root=root,
                     sleep=sleep,
                     timeout=timeout,
-                    report=lambda phase, n, msg, i=i, f=f: emit(i, f, phase, n, msg),
+                    report=report,
                     result=result,
                 )
             base[0] += f.size_bytes or 0
             emit(i, f, "done", 0, None)
+    except DownloadError as e:
+        if e.plan is None:
+            e.plan = plan
+        raise
+    except OSError as e:  # 既にあるファイルを読めないなど
+        raise DownloadError(f"読み書きできません({e.strerror or e})", plan) from e
     finally:
         session.close()
         result.seconds = time.monotonic() - start
@@ -927,7 +1127,3 @@ def _part_size(f: PlannedFile) -> int:
         return p.stat().st_size if p and p.is_file() else 0
     except OSError:
         return 0
-
-
-def _verified(dest: Path, f: PlannedFile) -> bool:
-    return _hash_file(dest) == f.sha256

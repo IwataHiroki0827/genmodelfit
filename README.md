@@ -261,11 +261,17 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
   Hugging Face / GitHub.
 - **Safety**: every file is checked with the sha256 in the list while it is written; a mismatch deletes it and fails.
   A download goes to `<file>.part` first; after Ctrl-C or a network error run the same command again and it resumes
-  with an HTTP Range request (if the server ignores Range it starts over). Files already there with the right sha256
-  are skipped; a different file with the same name is never overwritten. It does not start unless the free disk is
+  with an HTTP Range request (if the server ignores Range it starts over, at most 3 times). Files already there are
+  hashed again right before they are skipped; a different file with the same name is never overwritten. A
+  `<file>.lock` next to it stops two downloads of the same file at once (a lock left by a process that is gone is
+  cleaned up). It does not start unless the free disk is
   the download + 1 GB. Nothing is written outside the destination: names with `..`, absolute paths, drive letters,
-  `\`, reserved Windows names, and symbolic links / junctions that lead outside are refused.
+  `\`, reserved Windows names (also as folder names), control / bidi characters, and symbolic links / junctions
+  that lead outside are refused.
 - **Network**: only the URLs in the list (checked anonymously with HEAD), https only. Every redirect must stay on
+  the hosts below; a URL that could be read as two different hosts (`\`, spaces, control characters, `%` or `@`
+  in the host, non-ASCII hosts) is refused before any connection, and the host is read the way requests / urllib3
+  read it. Allowed:
   `huggingface.co` / `*.hf.co` (CDN, Xet) / `github.com` / `objects.githubusercontent.com` /
   `release-assets.githubusercontent.com`. No `~/.netrc` credentials, no tokens, nothing about this PC (User-Agent and
   Range only). Waits for `Retry-After` on 429 / 503.
@@ -281,11 +287,13 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
   (`--content all` か `uncensored` を明示したときだけ)、ライセンス不明(`--include-unknown-license` のときだけ)、
   一覧に sha256・大きさの無いもの、Hugging Face・GitHub 以外の取得先。
 - **安全**: 書きながら sha256 を計り、合わなければ消して失敗にします。途中は `<名前>.part` に書き、Ctrl-C や通信の失敗の
-  あとで同じコマンドを実行すると HTTP Range で続きから落とします(相手が Range に応じなければ最初から)。
-  sha256 の合うファイルは飛ばし、同じ名前の別のファイルは上書きしません。空きが「落とす量 + 1 GB」に足りなければ
+  あとで同じコマンドを実行すると HTTP Range で続きから落とします(相手が Range に応じなければ最初から。3 回まで)。
+  既にあるファイルは飛ばす直前に sha256 を計り直し、同じ名前の別のファイルは上書きしません。同じファイルを
+  2 つの download が同時に書かないよう `<名前>.lock` を置きます(止まったプロセスの残りは片付けます)。空きが「落とす量 + 1 GB」に足りなければ
   始めません。置き場所の外には書きません(`..`・絶対パス・ドライブ名・`\`・Windows の予約名・外へ出るリンクを拒みます)。
 - **通信**: 一覧の URL(匿名の HEAD で確かめたもの)だけを https で使い、転送先は Hugging Face(CDN・Xet を含む)と
-  GitHub の決めたホストだけ。`~/.netrc` もトークンも使わず、PC の情報も送りません。
+  GitHub の決めたホストだけ。2 通りのホストに読める URL(`\`・空白・制御文字・ホストの中の `%` や `@`・ASCII でない
+  ホスト)は、つなぐ前に拒みます。`~/.netrc` もトークンも使わず、PC の情報も送りません。
 
 Python:
 

@@ -17,7 +17,10 @@ All notable changes to this project are documented here. The format is based on
   `.part` files resume with HTTP Range, files already there are skipped, and it needs the download + 1 GB free.
   Gated files, uncensored models (unless `--content all|uncensored`) and unknown licenses (unless
   `--include-unknown-license`) are refused; only https URLs on Hugging Face / GitHub hosts are followed (each
-  redirect is checked); nothing is written outside the destination. JSON: docs/schema.md "download".
+  redirect is checked, and URLs that urlsplit and urllib3 would read as different hosts are refused before
+  connecting); nothing is written outside the destination. Existing files are hashed again right before they
+  are skipped, restarts against servers that ignore Range are capped, and a `.lock` file stops two downloads of
+  the same file. JSON: docs/schema.md "download".
   モデルを落とす `download` を足した(同意・sha256・続きから・ComfyUI のフォルダ)。
 
 ## [0.2.0] - Unreleased

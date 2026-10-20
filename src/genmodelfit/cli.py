@@ -890,7 +890,12 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
         f" (already there {_gb(plan.present_bytes)})"
     )
     free = _gb(plan.disk_free_bytes) if plan.disk_free_bytes is not None else "unknown"
-    out.append(f"  disk:      {free} free; needs {_gb(plan.disk_needed_bytes)} (to download + 1 GB)")
+    if plan.download_bytes:
+        out.append(f"  disk:      {free} free; needs {_gb(plan.disk_needed_bytes)} (to download + 1 GB)")
+    else:
+        out.append(
+            f"  disk:      {free} free; nothing to download (sha256 of the files there is checked again)"
+        )
     if plan.budget_bytes is not None:
         out.append(f"  budget:    {_gb(plan.budget_bytes)} (--budget)")
     if plan.license_url:
@@ -906,7 +911,10 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
         out.append(f"  注意: {w}")
     for b in plan.blocked:
         out.append(f"  落とせません: {b}")
-    if consent and not plan.blocked:
+    if consent and not plan.blocked and not plan.download_bytes:
+        out.append("")
+        out.append("落とすものはありません(置いてあるファイルの sha256 だけ確かめます)。続けますか?")
+    elif consent and not plan.blocked:
         out.append("")
         out.append(
             "上のファイルを、それぞれのライセンス・利用条件(URL)に従って使うことに同意して落としますか?"

@@ -429,6 +429,19 @@ def test_not_allowlisted_license_is_warned(server, comfy):
         ("../..", "evil.safetensors"),
         ("C:", "evil.safetensors"),
         ("/tmp", "evil.safetensors"),
+        # 予約名・末尾の点や空白はフォルダ名でも(#31 の確認の指摘 7)
+        ("con", "x.safetensors"),
+        ("nul", "x.safetensors"),
+        ("COM1", "x.safetensors"),
+        ("vae", "COM\u00b9"),
+        ("vae", "LPT\u00b2.bin"),
+        ("CONIN$", "x.safetensors"),
+        ("vae", "conout$"),
+        ("vae", "nul .txt"),
+        ("models.", "x.safetensors"),
+        ("vae", "x\u202etxt.safetensors"),  # 右から左への上書き
+        ("vae", "x.safetensors.part"),  # 落とすときの一時ファイルと重なる
+        ("vae", "x.lock"),
     ],
 )
 def test_path_attacks_refused(server, comfy, directory, name):
@@ -734,3 +747,257 @@ def test_network_download(tmp_path):
         assert h == p.files[0].sha256
     finally:
         dest.unlink(missing_ok=True)
+
+
+# --- 確認の指摘(#31 の Security Checker)の回帰 ---------------------------------------------------
+
+BS = chr(92)
+EVIL_HOPS = [
+    "https://evil.com" + BS + ".hf.co/x",  # urlsplit は *.hf.co、urllib3 は evil.com と読む
+    "//evil.com" + BS + ".huggingface.co/x",  # 相対の転送先(解決すると上と同じ)
+    "https://evil.com" + BS + "@huggingface.co/x",
+    "https://huggingface.co" + BS + "@evil.com/",
+    "https://evil.com%2f.hf.co/x",
+    "https://evil.com%00.hf.co/x",
+    "https://evil.com\t.hf.co/x",
+    "https://evil.com#.hf.co",
+    "https://evil.com?.hf.co",
+    "https://huggingface.co@evil.com/x",
+    "https://huggingface.co.evil.com/x",
+    "//evil.com/x",
+    "http://huggingface.co/x",
+    "https://huggingface.co:8443/x",
+    "https://huggingfacе.co/x",  # キリル文字の е
+    "https://ｈf.co/x",
+]
+
+
+class _RedirectAdapter(requests.adapters.HTTPAdapter):
+    """huggingface.co の最初の応答だけを手元で作る(302 で loc へ)。ほかはそのまま本物の接続へ。"""
+
+    def __init__(self, loc: str):
+        super().__init__()
+        self.loc = loc
+
+    def send(self, request, **kw):
+        import io
+
+        from requests.structures import CaseInsensitiveDict
+
+        r = requests.Response()
+        r.status_code, r.url, r.request = 302, request.url, request
+        # 本物の応答の見出しは latin-1 で読まれる(http.client と同じ形で渡す)
+        loc = self.loc.encode("utf-8").decode("latin-1")
+        r.headers = CaseInsensitiveDict({"Location": loc, "Content-Length": "0"})
+        r.raw = io.BytesIO(b"")
+        return r
+
+
+@pytest.fixture
+def connections(monkeypatch):
+    """接続の層(urllib3 の create_connection)で、つなごうとした先をすべて記録し、つながせない。"""
+    import urllib3.util.connection as uc
+
+    seen: list = []
+
+    def fake(address, *a, **k):
+        seen.append(address)
+        raise OSError("試験: つながせない")
+
+    monkeypatch.setattr(uc, "create_connection", fake)
+    for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    return seen
+
+
+_REAL_MAKE_SESSION = downloader.make_session
+
+
+def _evil_session(loc: str) -> requests.Session:
+    s = _REAL_MAKE_SESSION()
+    s.mount("https://huggingface.co/", _RedirectAdapter(loc))
+    return s
+
+
+@pytest.mark.parametrize("loc", EVIL_HOPS)
+def test_redirect_never_connects_to_other_host(connections, loc):
+    with pytest.raises(HostNotAllowed):
+        downloader._open(
+            _evil_session(loc), "https://huggingface.co/a/resolve/main/f", {}, downloader.HOST_POLICY, 5
+        )
+    assert connections == []  # 許していないホストへは、つなごうとすらしない
+
+
+def test_redirect_to_cdn_connects_only_there(connections):
+    """対照: 許すホスト(Xet の CDN)への転送はそこへつなぎに行く(接続の記録が効いていること)。"""
+    s = _evil_session("https://cas-bridge.xethub.hf.co/x")
+    with pytest.raises(requests.ConnectionError):
+        downloader._open(s, "https://huggingface.co/a/resolve/main/f", {}, downloader.HOST_POLICY, 5)
+    assert [c[0] for c in connections] == ["cas-bridge.xethub.hf.co"]
+
+
+def test_download_via_evil_redirect_writes_nothing(connections, monkeypatch, comfy):
+    db = make_db("https://huggingface.co/example/tiny/resolve/main")
+    p = plan(db, comfy)
+    assert p.ok
+    monkeypatch.setattr(
+        downloader, "make_session", lambda: _evil_session("https://evil.com" + BS + ".hf.co/x")
+    )
+    with pytest.raises(HostNotAllowed):
+        gmf.download(p, yes=True)
+    assert connections == [] and not any(comfy.rglob("*.safetensors*"))
+
+
+@pytest.mark.parametrize(
+    "url", ["https://huggingface.co/x", "https://cdn-lfs-us-1.hf.co/x", "https://hf.co/x"]
+)
+def test_url_host_agrees_with_urllib3(url):
+    import urllib3
+
+    _scheme, host, _port = downloader.url_host(url)
+    assert host == urllib3.util.parse_url(requests.Request("GET", url).prepare().url).host
+
+
+def test_truncated_200_without_range_terminates(server, comfy, monkeypatch):
+    """Range に応じず、毎回途中で切る相手: 最初からのやり直しに上限があり、止まる。"""
+    _Handler.range_ok = False
+    orig = _Handler.do_GET
+
+    def do_get(self):
+        name = self.path.rsplit("/", 1)[-1]
+        if name != "tiny_unet.safetensors":
+            return orig(self)
+        type(self).seen.append({"path": self.path})
+        data = type(self).files[name]
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data[: MIB + 5])
+        self.wfile.flush()
+        self.close_connection = True
+
+    monkeypatch.setattr(_Handler, "do_GET", do_get)
+    with pytest.raises(DownloadError, match="Range"):
+        gmf.download(plan(make_db(server), comfy), yes=True, sleep=lambda s: None)
+    assert len(_gets("tiny_unet")) <= downloader.MAX_RESTARTS + 2
+
+
+def test_unverified_present_is_hashed_before_skip(server, comfy):
+    """verify_existing=False の計画で present でも、download はその場で sha256 を計る
+    (違えば上書きもしない)。"""
+    dest = comfy / "models" / "vae" / "tiny_vae.safetensors"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"x" * len(BODY_B))  # 同じ大きさで中身が違う
+    p = gmf.plan_download(
+        "test_tiny", db=make_db(server), system_info=pc(), comfyui_dir=comfy, verify_existing=False
+    )
+    assert p.files[1].status == "present" and not p.files[1].verified
+    with pytest.raises(DownloadRefused, match="sha256"):
+        gmf.download(p, yes=True)
+    assert dest.read_bytes() == b"x" * len(BODY_B)
+
+
+def test_id_plus_precision_measures_existing(server, comfy):
+    """ID と精度を指定して候補が 2 つ以上でも、選んだワークフローの既にあるファイルは sha256 まで計る。"""
+    import copy
+
+    db = make_db(server)
+    m2 = copy.deepcopy(db.models[0])
+    m2.id = "test_tiny_b"
+    db = Database(models=[db.models[0], m2])
+    dest = comfy / "models" / "vae" / "tiny_vae.safetensors"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"x" * len(BODY_B))
+    p = gmf.plan_download("test_tiny", precision="fp16", db=db, system_info=pc(), comfyui_dir=comfy)
+    assert len(p.alternatives) == 1
+    assert p.files[1].status == "conflict" and not p.ok
+
+
+def test_file_replaced_after_plan_is_not_trusted(server, comfy):
+    db = make_db(server)
+    gmf.download(plan(db, comfy), yes=True)
+    p = plan(db, comfy)
+    assert [f.verified for f in p.files] == [True, True]
+    dest = comfy / "models" / "vae" / "tiny_vae.safetensors"
+    dest.write_bytes(b"y" * len(BODY_B))  # 計画のあとで差し替えられた
+    with pytest.raises(DownloadRefused, match="sha256"):
+        gmf.download(p, yes=True)
+    assert dest.read_bytes()[:1] == b"y"
+
+
+def test_concurrent_download_same_file_is_locked(server, comfy):
+    db = make_db(server)
+    lock = comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text(f"{os.getpid()} 0\n", encoding="ascii")  # 動いているプロセス(自分)の印
+    with pytest.raises(DownloadError, match="別の download"):
+        gmf.download(plan(db, comfy), yes=True)
+    assert lock.exists()
+    lock.write_text("999999999 0\n", encoding="ascii")  # もう無いプロセスの印は片付けて続ける
+    gmf.download(plan(db, comfy), yes=True)
+    assert not list(comfy.rglob("*.lock"))
+    assert (comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors").read_bytes() == BODY_A
+
+
+def test_two_threads_same_destination(server, comfy):
+    db = make_db(server)
+    p1, p2 = plan(db, comfy), plan(db, comfy)
+    out: dict[str, object] = {}
+
+    def run(k, p):
+        try:
+            out[k] = gmf.download(p, yes=True, sleep=lambda s: None).downloaded
+        except DownloadError as e:
+            out[k] = e
+
+    ts = [threading.Thread(target=run, args=(k, p)) for k, p in (("a", p1), ("b", p2))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(60)
+    assert (comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors").read_bytes() == BODY_A
+    assert not list(comfy.rglob("*.part")) and not list(comfy.rglob("*.lock"))
+    errors = [v for v in out.values() if isinstance(v, DownloadError)]
+    assert all("別の download" in str(e) or "上書き" in str(e) for e in errors), errors
+
+
+def test_crafted_plan_outside_creates_nothing(server, comfy, tmp_path):
+    p = plan(make_db(server), comfy)
+    outside = tmp_path / "OUTSIDE" / "deep"
+    p.files[1].dest = str(outside / "x.safetensors")
+    with pytest.raises(DownloadRefused):
+        gmf.download(p, yes=True)
+    assert not (tmp_path / "OUTSIDE").exists()
+
+
+def test_os_error_becomes_download_error(server, comfy, monkeypatch, tmp_path, capsys):
+    def no_space(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    path = tmp_path / "db.json"
+    make_db(server).save(path)
+    monkeypatch.setattr(downloader.os, "replace", no_space)
+    with pytest.raises(DownloadError, match="No space"):
+        gmf.download(plan(make_db(server), comfy), yes=True)
+    args = ["download", "test_tiny", "--db", str(path), "--comfyui-dir", str(comfy), "--json", "--yes", *HW]
+    assert cli.main(args) == 1
+    env = json.loads(capsys.readouterr().out)
+    assert "No space" in env["error"] and env["result"] is None
+
+
+def test_other_folder_warned_with_comfyui(server, comfy):
+    db = make_db(server, files=[_file(server, "tiny_vae.safetensors", BODY_B, None)])
+    p = plan(db, comfy)
+    assert p.files[0].relpath == "other/tiny_vae.safetensors"
+    assert any("models/other" in w for w in p.warnings)
+    assert any("models/other" in w for w in p.to_dict()["warnings"])  # JSON にも
+
+
+def test_consent_when_nothing_to_download(db_file, comfy, monkeypatch, capsys):
+    base = ["download", "test_tiny", "--db", str(db_file), "--comfyui-dir", str(comfy), *HW]
+    assert cli.main([*base, "--yes"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    assert cli.main(base) == 0
+    out = capsys.readouterr().out
+    assert "nothing to download" in out and "needs" not in out and "落とすものはありません" in out

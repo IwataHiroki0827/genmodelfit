@@ -668,6 +668,7 @@ PlannedFile:
 | `part_bytes` | int | size of the existing `.part` |
 | `remaining_bytes` | int | bytes still to download for this file |
 | `reason` | str \| null | why `conflict` / `unavailable` (Japanese) |
+| `verified` | bool | for `present`: the sha256 was measured while planning (false with `verify_existing=False`: size only). `download` always measures existing files again before skipping them |
 
 DownloadResult:
 
@@ -677,7 +678,7 @@ DownloadResult:
 | `downloaded` | str[] | `relpath` of the files downloaded (sha256 checked) |
 | `resumed` | str[] | of those, continued from a `.part` with HTTP Range |
 | `restarted` | str[] | of those, started over because the server ignored Range |
-| `skipped` | str[] | already there with the right sha256 |
+| `skipped` | str[] | already there; the sha256 was measured in this run and matched |
 | `bytes_downloaded` | int | bytes received in this run |
 | `seconds` | float | wall time |
 | `files` | object[] | `relpath`, `dest`, `sha256` of every file |
