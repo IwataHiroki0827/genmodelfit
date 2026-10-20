@@ -58,7 +58,7 @@ Common options / 共通の指定:
 - `--json` — machine-readable output for apps and agents ([docs/schema.md](docs/schema.md)) / アプリ向けの JSON
 - `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
-- `--content all|sfw|uncensored` — filter by content mark (below) / 内容の印で絞る
+- `--content sfw|all|uncensored` — filter by content mark (below; default `sfw`) / 内容の印で絞る(既定は `sfw`)
 - `--comfyui-version 0.40.0` — the ComfyUI version your app runs, for the gate / 使う ComfyUI の版(自動おすすめの判定用)
 
 Python:
@@ -103,14 +103,17 @@ genmodelfit が持つのはモデルの情報だけで、モデル本体は持�
 
 - `sfw` — default.
 - `uncensored` — models whose safety filtering was removed or that are made for adult output
-  (Hugging Face `not-for-all-audiences` tag, or names such as uncensored / abliterated / nsfw). They are listed
-  (39 in the bundled list), marked `[U]` in tables, and can be filtered with `--content`. The evidence is kept in
+  (Hugging Face `not-for-all-audiences` tag, or names such as uncensored / abliterated / nsfw). They are in the list
+  (39 in the bundled list) and marked `[U]` in tables, but `recommend` / `fit` and `gmf.recommend()` show them
+  **only with `--content all` or `--content uncensored`** (`content="all"` / `"uncensored"` in Python).
+  `info <id>` works for them as usual. The evidence is kept in
   `content_evidence`. Whether to show them is up to the app using genmodelfit; they are never auto-recommended
   by default.
 - Models aimed at sexual content involving minors are **excluded** from the list entirely.
 
 `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルです。一覧には載せ、印を付けて
-絞り込めるようにしています。表示するかどうかは使う側のアプリが決めます(既定では自動おすすめに出しません)。
+います。年齢制限があるので、`recommend` / `fit` / `gmf.recommend()` の既定(`sfw`)では出さず、
+`--content all` か `--content uncensored` を指定したときだけ出します(`info <id>` はいつもどおり使えます)。表示するかどうかは使う側のアプリが決めます(既定では自動おすすめに出しません)。
 未成年の性的表現を目的とするものは一覧から除外します。
 
 ## Auto-recommendation gate / 自動でおすすめに出す条件

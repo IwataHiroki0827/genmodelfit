@@ -82,7 +82,7 @@ def test_cli_json_has_no_table(capsys):
 
 
 def test_cli_table_real_db(capsys):
-    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache"]) == 0
+    assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all"]) == 0
     out = capsys.readouterr().out
     assert "image_sdxl_simple" in out and "PC: " in out
     n = len(load(use_cache=False).models)  # 長い ID は省略記号で詰めるので、行数で確かめる

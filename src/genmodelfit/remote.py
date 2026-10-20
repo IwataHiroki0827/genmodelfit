@@ -11,11 +11,9 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
-import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -168,20 +166,3 @@ def update_from_release(
     _atomic_write(state_path(), (json.dumps(state) + "\n").encode("utf-8"))
     _atomic_write(dest or cached_db_path(), data)
     return db
-
-
-def run_from_release(args: argparse.Namespace) -> int:
-    dest = Path(args.output) if getattr(args, "output", None) else cached_db_path()
-    db = update_from_release(dest=dest, force=bool(getattr(args, "force", False)))
-    if getattr(args, "json", False):
-        out = {
-            "genmodelfit": __version__,
-            "command": "update",
-            "models": len(db.models),
-            "generated_at": db.generated_at,
-            "output": str(dest),
-        }
-        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
-    else:
-        print(f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}")
-    return 0

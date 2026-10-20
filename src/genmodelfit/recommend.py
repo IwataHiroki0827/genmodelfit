@@ -12,7 +12,11 @@ from typing import Any
 
 from .db import Database
 from .estimate import GIB, Coefficients, estimate, load_coefficients
-from .models import FIT_LEVELS, Estimate, ModelEntry, Settings, SystemInfo
+from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Estimate, ModelEntry, Settings, SystemInfo
+
+# 内容の絞り込み。既定は sfw(無検閲は all / uncensored を指定したときだけ出す)
+CONTENT_FILTERS = ("all", *CONTENT_LEVELS)
+DEFAULT_CONTENT = "sfw"
 
 
 @dataclass
@@ -43,6 +47,19 @@ class Fit:
         return d
 
 
+def check_filters(
+    *, modality: str | None = None, content: str = DEFAULT_CONTENT, min_fit: str | None = None
+) -> None:
+    """絞り込みの値を確かめる。知らない値は ValueError(組み込み側が誤りに気づけるように)。"""
+    if modality is not None and modality not in MODALITIES:
+        raise ValueError(f"modality が正しくありません: {modality!r}(使えるのは {', '.join(MODALITIES)})")
+    if content not in CONTENT_FILTERS:
+        raise ValueError(f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})")
+    # too_tight は動かないので recommend の下限には使えない
+    if min_fit is not None and min_fit not in FIT_LEVELS[:3]:
+        raise ValueError(f"min_fit が正しくありません: {min_fit!r}(使えるのは {', '.join(FIT_LEVELS[:3])})")
+
+
 def score(m: ModelEntry, e: Estimate) -> float:
     """0〜100。段階が大半を決め、同じ段階の中を人気・新しさ・実測で並べる。"""
     level = {"perfect": 70, "good": 55, "marginal": 30, "too_tight": 0}[e.fit]
@@ -62,12 +79,13 @@ def evaluate(
     system: SystemInfo,
     *,
     modality: str | None = None,
-    content: str = "all",
+    content: str = DEFAULT_CONTENT,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     models: Iterable[ModelEntry] | None = None,
     with_limits: bool = False,
 ) -> list[Fit]:
+    check_filters(modality=modality, content=content)
     c = coefficients or load_coefficients()
     out: list[Fit] = []
     for m in models if models is not None else db.models:
@@ -95,13 +113,14 @@ def recommend(
     system: SystemInfo,
     *,
     modality: str | None = None,
-    content: str = "all",
+    content: str = DEFAULT_CONTENT,
     min_fit: str = "marginal",
     limit: int | None = 10,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     with_limits: bool = False,
 ) -> list[Fit]:
+    check_filters(modality=modality, content=content, min_fit=min_fit)
     allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
     fits = [
         f

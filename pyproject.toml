@@ -22,7 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# 依存は MIT / Apache-2.0 / BSD のものだけ(CLAUDE.md)
+# 依存は MIT / Apache-2.0 / BSD のものだけ(例外は requests 経由の certifi の MPL-2.0。CLAUDE.md)
 dependencies = [
   "requests>=2.31",      # Apache-2.0
   "psutil>=5.9",         # BSD-3-Clause
@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "pyyaml>=6"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pyyaml>=6"]  # pytest-cov は MIT
 
 [project.scripts]
 genmodelfit = "genmodelfit.cli:main"

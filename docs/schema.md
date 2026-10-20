@@ -15,9 +15,10 @@ Every command with `--json` prints one object:
 |---|---|---|
 | `genmodelfit` | str | tool version |
 | `command` | str | `system` / `recommend` / `fit` / `info` / `update` / `bench` / `gate` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides) |
-| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts) |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
+| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
+| `candidates` | object[] | only when `info` matched several models (see info) |
 
 ## System
 
@@ -50,7 +51,9 @@ Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when 
 | `estimate` | Estimate | |
 | `gate` | Gate | can it be auto-recommended (docs/gate.md) |
 
-`recommend` also returns `filters` (`modality`, `content`, `min_fit`, `limit`, `auto_only`). `recommend` drops `too_tight`; `fit` keeps everything.
+`recommend` also returns `filters` (`modality`, `content`, `min_fit`, `limit`, `auto_only`, `include_tools`). `recommend` drops `too_tight`; `fit` keeps everything.
+`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`
+(`filters.content` reports the value actually used). 既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
 
 ## Estimate
 
@@ -113,7 +116,7 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 
 ## gate
 
-`genmodelfit gate --json`: `policy` (`license_allowlist`, `comfyui_version`, `allow_uncensored`),
+`genmodelfit gate --json`: `policy` (`license_allowlist`, `comfyui_version`, `allow_uncensored`, `max_head_age_days`),
 `filters` (`modality`, `only_auto`, `only_held`), `summary` (`models`, `auto`, `held`,
 `failing` = models failing each check, `first_failing` = models whose first failed check is that one),
 `models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
@@ -121,6 +124,17 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 ## info
 
 `model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]).
+
+How `info <query>` picks the model / モデルの選び方:
+
+- An exact id always matches, whatever its content (uncensored included). / ID がそのまま合えば内容によらず出す
+- Otherwise the query is matched as a part of the id or name (case-insensitive), **filtered by `--content`
+  (default `sfw`)**. Exactly one match → that model. / それ以外は ID・名前の一部で探し、`--content` で絞る(既定 sfw)。1 件ならそれ
+- Two or more matches → never picks one: exit code 1. Text mode lists the candidates on stderr; `--json` prints
+  the envelope with `error` and `candidates` (`[{"id", "name", "content"}]`, all of them). / 2 件以上は選ばずに終了コード 1
+- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--content all`).
+
+Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwise.
 
 ### ModelEntry
 
@@ -164,7 +178,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
-`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`.
+`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`.
 
 | key | type | meaning |
 |---|---|---|
@@ -238,6 +252,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 
 `genmodelfit update --json` prints the envelope with `output` (path written) and `sources` (above).
 On failure it prints `error` and exits 1; the previous cache is left untouched.
+`update --from-release --json` prints a smaller object: `genmodelfit`, `command` (`update`), `models` (**int**: number of
+models taken in), `generated_at`, `output`.
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
 

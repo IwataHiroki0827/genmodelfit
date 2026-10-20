@@ -7,12 +7,19 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 
 - **依存は MIT / Apache-2.0 / BSD のものだけ**。GPL・AGPL・独自の制限付きライセンスの部品は使わない
   (使う側のアプリがソース非公開で配布するため)。足すときは pyproject.toml にライセンスを書く
+  - 例外: `certifi`(MPL-2.0、requests の依存)。改変せずに使う。MPL-2.0 はファイル単位のコピーレフトで、
+    改変しなければ義務は元のファイルのライセンス表示を残すことだけなので、MIT での配布やアプリのソース非公開に影響しない。
+    これ以外の MPL・LGPL などを足すときは先に相談する
+  - tests/test_licenses.py が、入っている実行時の依存(dev などの extra は除く)のライセンスを許可リストと照らす
+    (MIT-0・ISC・PSF-2.0 も MIT と同じ扱いで許す。cffi が MIT-0)
 - **ComfyUI(GPL-3.0)のコードは import しない**。動いている ComfyUI には HTTP だけで話す(bench)
 - データ源は ComfyUI 公式テンプレート(MIT)の index.json とテンプレートの JSON、Hugging Face Hub API。
   willitrunai.com などのサイトのデータは取り込まない(式の考え方だけ参考にする)
 - 持つのはモデルの**情報**だけ。モデル本体は持たない・配らない
 - 無検閲のモデルも一覧から外さず、`content: uncensored` の印と根拠(content_evidence)を付ける。
   **未成年の性的表現を目的とするものは除外**する
+  年齢制限があるので、`recommend` / `fit` / `gmf.recommend()` の既定は `sfw`。無検閲は `--content all|uncensored`
+  (Python は `content="all"|"uncensored"`)を指定したときだけ出す(2026-10-20)。`info <id>` は ID を指定するので出す
 - 見積もりには必ず `basis`(measured / estimated)を付ける。実測があれば実測を使う
 - 精度の目標に届かないとき、係数を無理に合わせてごまかさない。docs/accuracy.md に正直に書く
 - REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)
@@ -30,6 +37,8 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 ```
 
 ネットワークに触るテストは `GENMODELFIT_NETWORK_TESTS=1` のときだけ動く(既定では飛ばす)。
+ライブラリの関数は stdout / stderr に何も書かない(組み込み側の出力に混ざるため)。表示は cli.py に寄せ、
+途中経過は `logging.getLogger("genmodelfit")` か、呼び出し側が渡す progress / log に出す(tests/test_embedding.py が検査)。
 
 ## 形
 

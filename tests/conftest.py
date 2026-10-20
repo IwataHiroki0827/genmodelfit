@@ -13,6 +13,7 @@ def _fixed_gate_clock(monkeypatch):
     from genmodelfit import gate
 
     monkeypatch.setattr(gate, "_now", lambda: SNAPSHOT_NOW)
+    monkeypatch.delenv("COLUMNS", raising=False)  # 表の幅を、テストを動かす端末によらず決める
 
 
 def pytest_collection_modifyitems(config, items):

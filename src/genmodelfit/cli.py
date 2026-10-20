@@ -10,6 +10,7 @@ import contextlib
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import __version__
@@ -17,8 +18,8 @@ from .db import Database, DatabaseError
 from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
-from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import evaluate, is_tool, recommend
+from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
+from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, evaluate, is_tool, recommend
 
 
 class CliError(RuntimeError):
@@ -139,10 +140,10 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str, system: SystemInfo | None = None) -> None:
+def _print_fits(fits, title: str, system: SystemInfo | None = None, notes: list[str] | None = None) -> None:
     from .table import print_fit_table
 
-    print_fit_table(fits, title=title, system=system)
+    print_fit_table(fits, title=title, system=system, notes=notes or ())
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
@@ -204,21 +205,64 @@ def cmd_fit(args: argparse.Namespace) -> int:
     if args.json:
         _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
         return 0
-    _print_fits(fits, "All models", s)
+    notes = []
+    if args.content == "sfw":  # 既定で隠した無検閲の数を表の下で知らせる(文字の表示だけ)
+        hidden = sum(
+            1
+            for m in db.models
+            if m.content == "uncensored" and (not args.modality or m.modality == args.modality)
+        )
+        if hidden:
+            notes.append(f"uncensored hidden: {hidden} (--content all)")
+    _print_fits(fits, "All models", s, notes)
     return 0
+
+
+class AmbiguousModel(CliError):
+    def __init__(self, query: str, candidates: list) -> None:
+        super().__init__(f"「{query}」に合うモデルが {len(candidates)} 件あります。ID で指定してください")
+        self.candidates = candidates
+
+
+def resolve_model(db: Database, query: str, content: str = DEFAULT_CONTENT):
+    """ID がそのまま合えば(内容によらず)そのモデル。合わなければ ID・名前の一部で探す。
+
+    一部で探すときは content で絞る(既定 sfw なので無検閲は出ない)。1 件だけならそれ、
+    2 件以上なら AmbiguousModel(先頭を黙って選ばない)、0 件なら CliError。
+    """
+    query = query.strip()
+    exact = db.get(query)
+    if exact is not None:
+        return exact
+    q = query.lower()
+    hits = [m for m in db.models if q in m.id.lower() or q in m.name.lower()]
+    shown = [m for m in hits if content == "all" or m.content == content]
+    if len(shown) == 1:
+        return shown[0]
+    if shown:
+        raise AmbiguousModel(query, shown)
+    if hits:
+        kinds = "・".join(sorted({m.content for m in hits}))
+        raise CliError(
+            f"モデルが見つかりません: {query}(--content {content} で外れた {kinds} のモデルが "
+            f"{len(hits)} 件あります。--content all を付けるか ID で指定してください)"
+        )
+    raise CliError(f"モデルが見つかりません: {query}")
+
+
+def _emit(lines: list[str]) -> None:
+    """info の文を幅(COLUMNS か端末、最大 100 桁)に収めて出す。"""
+    from .table import output_width, wrap_line
+
+    width = output_width()
+    for line in lines:
+        for part in wrap_line(line, width):
+            print(part)
 
 
 def cmd_info(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    hits = db.find(args.model)
-    if not hits:
-        raise CliError(f"モデルが見つかりません: {args.model}")
-    if len(hits) > 1 and not args.json:
-        print(f"{len(hits)} 件見つかりました。ID で指定してください:")
-        for m in hits[:30]:
-            print(f"  {m.id}  ({m.name})")
-        return 0
-    m = hits[0]
+    m = resolve_model(db, args.model, args.content)
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
@@ -235,54 +279,166 @@ def cmd_info(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    print(f"{m.name}  [{m.id}]")
-    print(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
-    print(f"  license:  {m.license or 'unknown'}  source: {m.source}")
+    out = [f"{m.name}  [{m.id}]"]
+    out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
+    out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
-    print(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
+    out.append(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
-        print(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
-    print(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
+        out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
+    out.append(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
-        print("  VRAM:     unknown (weight sizes are not known)")
+        out.append("  VRAM:     unknown (weight sizes are not known)")
     else:
-        print(
+        out.append(
             f"  VRAM:     {e.vram_gb:.1f} GB all-in-GPU{seq} / {e.vram_offload_gb:.1f} GB with offload;"
             f" RAM {e.ram_gb:.1f} GB"
         )
     if e.limits:
-        print(f"  limits:   {format_limits(e.limits)}")
-    for r in e.reasons:
-        print(f"  - {r}")
+        out.append(f"  limits:   {format_limits(e.limits)}")
+    out += [f"  - {r}" for r in e.reasons]
     if gate:
         target = gate.get("comfyui_version") or "?"
-        print(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
+        out.append(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
-            print(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+            out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+    _emit(out)
     return 0
+
+
+def _progress(args: argparse.Namespace):
+    """途中経過を stderr に出す関数(--json のときは出さない)。"""
+
+    def say(msg: str) -> None:
+        if not getattr(args, "json", False):
+            print(msg, file=sys.stderr, flush=True)
+
+    return say
 
 
 def cmd_update(args: argparse.Namespace) -> int:
     if getattr(args, "from_release", False):
-        from .remote import run_from_release
+        return _update_from_release(args)
+    from .db import cached_db_path
+    from .update import UpdateFailed, make_fetcher, refresh_heads, update_database
 
-        return run_from_release(args)
+    out_path = Path(args.output) if getattr(args, "output", None) else cached_db_path()
+    say = _progress(args)
+    fetch = make_fetcher(getattr(args, "offline_sources", None), getattr(args, "rate_limit_budget", None))
     try:
-        from .update import run_update
-    except ImportError as e:  # #2 で実装
-        raise CliError("update はまだ実装されていません(Issue #2)") from e
-    return run_update(args)
+        if getattr(args, "heads_only", False):
+            db = refresh_heads(
+                fetch,
+                out_path,
+                db_path=getattr(args, "db", None),
+                use_cache=not getattr(args, "no_cache", False),
+                progress=say,
+            )
+        else:
+            db = update_database(
+                fetch,
+                out_path,
+                hf=not getattr(args, "skip_hf", False),
+                head=not getattr(args, "skip_head", False),
+                allow_partial=bool(getattr(args, "allow_partial", False)),
+                progress=say,
+            )
+    except UpdateFailed as e:
+        if args.json:
+            _out({"genmodelfit": __version__, "command": "update", "error": str(e)})
+        else:
+            print(f"エラー: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        db.origin = "path"
+        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
+        return 0
+    if getattr(args, "heads_only", False):
+        stats = db.sources["head_check"]
+        print(f"HEAD の結果を書き出しました: {out_path}")
+        print(f"  URL {stats['urls']} 件: " + ", ".join(f"{k} {v}" for k, v in stats["status"].items()))
+        latest = db.sources["comfyui"]["latest_release"]
+        print(f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {latest}")
+        return 0
+    counts = db.sources["counts"]
+    mods = ", ".join(f"{k} {v}" for k, v in counts["modality"].items())
+    print(f"{counts['models']} 件を書き出しました: {out_path}")
+    print(f"  種類: {mods}")
+    print("  内容: " + ", ".join(f"{k} {v}" for k, v in counts["content"].items()))
+    print("  出どころ: " + ", ".join(f"{k} {v}" for k, v in counts["source"].items()))
+    print("  ライセンス: " + ", ".join(f"{k} {v}" for k, v in counts["license_tier"].items()))
+    print(f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件")
+    print(f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件")
+    if db.sources.get("partial"):
+        pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
+        print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
+    return 0
+
+
+def _update_from_release(args: argparse.Namespace) -> int:
+    from .db import cached_db_path
+    from .remote import update_from_release
+
+    dest = Path(args.output) if getattr(args, "output", None) else cached_db_path()
+    db = update_from_release(dest=dest, force=bool(getattr(args, "force", False)))
+    if args.json:
+        out = {
+            "genmodelfit": __version__,
+            "command": "update",
+            "models": len(db.models),
+            "generated_at": db.generated_at,
+            "output": str(dest),
+        }
+        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+    else:
+        print(f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}")
+    return 0
 
 
 def cmd_bench(args: argparse.Namespace) -> int:
+    from .bench import BenchError, options_from_args, run, save, save_decision
+    from .workflow import WorkflowError
+
     try:
-        from .bench import run_bench
-    except ImportError as e:  # #5 で実装
-        raise CliError("bench はまだ実装されていません(Issue #5)") from e
-    return run_bench(args)
+        result = run(options_from_args(args), log=_progress(args))
+    except (BenchError, WorkflowError) as e:
+        raise CliError(str(e)) from e
+    m = result.measurement
+    out_path, not_saved = save_decision(
+        m, args.output, getattr(args, "save_failed", False), getattr(args, "save_nonstandard", False)
+    )
+    if out_path is not None:
+        save(m, out_path)
+    code = 1 if result.failed else 0
+    if args.json:
+        extra = {"saved_to": str(out_path) if out_path else None}
+        if not_saved:
+            extra["not_saved"] = not_saved
+        _out(_envelope("bench", None, None, **extra, **result.to_dict()))
+        return code
+    for w in result.warnings:
+        print(f"注意: {w}", file=sys.stderr)
+    s = m.settings
+    parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} フレーム" if s.frames else None]
+    parts += [f"{s.seconds:g} 秒の音声" if s.seconds else None, f"{s.steps} ステップ" if s.steps else None]
+    print(f"=== bench: {m.model_id} ===")
+    print(f"GPU:      {m.gpu_name}({m.gpu_vram_gb:g} GiB、ドライバ {m.driver or '不明'})")
+    print(f"ComfyUI:  {m.comfyui_version or '不明'}")
+    print(f"設定:     {'、'.join(p for p in parts if p) or '(テンプレートのまま)'}")
+    print(f"結果:     {m.outcome}{'' if m.standard else '(標準でない条件)'}")
+    print(f"最大 VRAM: {m.peak_vram_gb:.2f} GB(ComfyUI のプロセス)")
+    if m.peak_ram_gb is not None:
+        print(f"最大メモリ: {m.peak_ram_gb:.2f} GB")
+    print(f"時間:     {m.seconds:g} 秒(送ってから終わるまで、モデルの読み込み込み)")
+    print(f"載せ方:   {m.offload or '不明'}")
+    print(f"メモ:     {m.note}")
+    if result.failed:
+        print(f"失敗:     {result.failed}")
+    print(f"保存先:   {out_path}" if out_path else f"保存:     {not_saved}")
+    return code
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -400,9 +556,9 @@ def build_parser() -> argparse.ArgumentParser:
     filt.add_argument("--modality", "-m", choices=MODALITIES)
     filt.add_argument(
         "--content",
-        choices=("all", *CONTENT_LEVELS),
-        default="all",
-        help="sfw / uncensored(無検閲)で絞る。既定は all",
+        choices=CONTENT_FILTERS,
+        default=DEFAULT_CONTENT,
+        help="sfw / uncensored(無検閲)/ all で絞る。既定は sfw(無検閲は all か uncensored のときだけ出す)",
     )
     filt.add_argument("--width", type=_positive_int)
     filt.add_argument("--height", type=_positive_int)
@@ -550,14 +706,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _quiet_stdout() -> None:
-    with contextlib.suppress(OSError):  # 終了時の flush で再び落ちないように
+    # 終了時の flush で再び落ちないように、出力先(fd)ごと捨て先に向ける(Python の文書の推奨手順)
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    with contextlib.suppress(OSError):
         sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
 
 
 def main(argv: list[str] | None = None) -> int:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")  # Windows の cp932 でも落ちないように
+    for stream in (sys.stdout, sys.stderr):  # Windows の cp932 でも落ちず、組み込み側が UTF-8 で読めるように
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(AttributeError, ValueError, OSError):
+                stream.reconfigure(encoding="utf-8")
     parser = build_parser()
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:  # 引数なしは使い方の全文を出して正常に終わる(初めて試す人向け)
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
     try:
         return args.func(args)
@@ -570,10 +735,18 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         raise
     except (CliError, DatabaseError) as e:
+        cands = getattr(e, "candidates", None)
         if getattr(args, "json", False):
-            _out({"genmodelfit": __version__, "command": args.command, "error": str(e)})
+            err: dict[str, Any] = {"genmodelfit": __version__, "command": args.command, "error": str(e)}
+            if cands is not None:
+                err["candidates"] = [{"id": m.id, "name": m.name, "content": m.content} for m in cands]
+            _out(err)
         else:
             print(f"error: {e}", file=sys.stderr)
+            for m in (cands or [])[:30]:
+                print(f"  {m.id}  ({m.name})", file=sys.stderr)
+            if cands and len(cands) > 30:
+                print(f"  …ほか {len(cands) - 30} 件(--json で全部)", file=sys.stderr)
         return 1
 
 
