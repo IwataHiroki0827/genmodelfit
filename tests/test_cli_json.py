@@ -100,6 +100,7 @@ ESTIMATE = {
     "ram_gb",
     "disk_gb",
     "basis",
+    "basis_detail",  # #34(後から足した項目)
     "measured_on",
     "fit",
     "run_mode",
@@ -251,6 +252,10 @@ MEASUREMENT = {
     "outcome",
     "standard",
     "vram_metric",
+    "origin",  # 以下 #34(ほかの利用者の実測のまとめ)
+    "n_submissions",
+    "consistent",
+    "approved",
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 
@@ -360,6 +365,8 @@ def check_counts(d: dict) -> None:
 def check_estimate(e: dict) -> None:
     assert set(e) == ESTIMATE
     assert e["basis"] in ("measured", "estimated")
+    assert e["basis_detail"] in ("measured", "measured_community", "calibrated", "estimated")
+    assert (e["basis"] == "measured") == (e["basis_detail"] in ("measured", "measured_community"))
     assert e["fit"] in ("perfect", "good", "marginal", "too_tight")
     assert e["run_mode"] in ("gpu", "offload", "cpu", "none", "unknown")
     if e["limits"] is not None:

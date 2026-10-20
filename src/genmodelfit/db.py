@@ -5,7 +5,8 @@
 """一覧(データベース)の読み書き。
 
 読む順: 1) 明示したパス 2) 利用者のキャッシュ(`genmodelfit update` が書く) 3) 同梱のデータ。
-実測(measurements)は同梱のものとキャッシュのものを合わせて使う。
+実測(measurements)は同梱のもの(作者の measurements.json と、ほかの利用者の実測のまとめ
+measurements_community.json)とキャッシュのものを合わせて使う。
 """
 
 from __future__ import annotations
@@ -161,8 +162,14 @@ def parse_measurements(data: Any) -> list[Measurement]:
     return [Measurement.from_dict(m) for m in items]
 
 
+# ほかの利用者の実測をまとめたもの(#34。`genmodelfit contrib aggregate --output` が data/contrib から作る)
+COMMUNITY_FILE = "measurements_community.json"
+
+
 def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]:
+    """同梱の実測(作者)+ 同梱のほかの利用者の実測のまとめ + この PC の bench の実測(キャッシュ)。"""
     out = parse_measurements(json.loads(bundled_text("measurements.json")))
+    out.extend(parse_measurements(json.loads(bundled_text(COMMUNITY_FILE))))
     for d in [cache_dir() / "measurements", *(extra_dirs or [])]:
         if d.is_dir():
             for p in sorted(d.glob("*.json")):

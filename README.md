@@ -401,6 +401,25 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない
 ものは「不明」として保留にします。アプリは使う ComfyUI の版を `--comfyui-version` で渡してください。
 
+## Contributing measurements / 実測を送る
+
+Measured runs on more GPUs make the estimates better. In a clone of your fork:
+
+```powershell
+genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832x832 --submission data/contrib/
+genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json   # exactly what will be shared + privacy checklist
+```
+
+Then open a pull request that adds only that file. **genmodelfit sends nothing**; the file holds the GPU name / VRAM /
+generation / driver, ComfyUI version, OS family, RAM rounded to GiB and the results — never host or user names, paths,
+GPU UUID, PCI address, IP or exact times (the checks are pattern based, so read the note yourself). CI checks it with
+`genmodelfit contrib validate`. Once two or more consistent submissions exist for the same model, settings and GPU,
+estimates for that setup become `basis_detail: "measured_community"`; community values can only raise the estimated
+needs, never lower them. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
+
+自分のフォークで `bench --submission data/contrib/` を付けて測り、`contrib show` で中身を確かめてから、そのファイルだけを
+Pull Request で出してください。genmodelfit は何も送りません(PC の名前・ユーザー名・パス・GPU の UUID などは入りません)。
+
 ## Privacy / 送るもの・送らないもの
 
 - `recommend`, `fit`, `search`, `info`, `system`, `types`, `gate` and the Python API (`gmf.recommend()`,
@@ -417,7 +436,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 - Hardware information (GPU name, VRAM, RAM, CPU, disk) is read locally with `nvidia-smi` and psutil and is
   **never sent**. Measurements from `bench` are saved only on your PC; they are shared only if you open a pull
   request yourself ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
-  Saved measurements hold no host name, user name, paths or GPU UUID.
+  Saved measurements hold no host name, user name, paths or GPU UUID. Submission files (`bench --submission`,
+  `contrib make`) are written locally only; `genmodelfit contrib` never touches the network.
 - No telemetry. No hardware information, measurements, prompts or other user content is ever sent anywhere.
   Tests replace the PC's details with marker strings and check that no request URL, header or body of `update`,
   `update --from-release`, `bench` or `download` contains them.
@@ -434,7 +454,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
   `--list` と `gmf.plan_download()` は通信しません。
 - PC の情報(GPU の名前・VRAM・メモリ・CPU・空き)は `nvidia-smi` と psutil で手元で読むだけで、**送りません**。
   `bench` の実測は手元に保存するだけで、利用者が自分で Pull Request を出したときだけ共有されます
-  (保存する実測に PC の名前・ユーザー名・パス・GPU の UUID は入りません)。
+  (保存する実測に PC の名前・ユーザー名・パス・GPU の UUID は入りません)。提出用の JSON(`bench --submission`・`contrib make`)も
+  手元に書くだけで、`genmodelfit contrib` は通信しません。
 - 利用状況の送信(テレメトリ)はありません。PC の情報・実測・プロンプトなどを送ることはありません。User-Agent は
   `genmodelfit/<版>` で、`~/.netrc` の資格情報は付けません(プロキシ・証明書の設定は使います)。
 

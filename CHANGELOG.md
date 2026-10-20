@@ -7,6 +7,37 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Measurement submissions from users (Issue #34). `genmodelfit bench … --submission PATH` and
+  `genmodelfit contrib make --from <bench result>` write a submission file (`contrib_schema` 1:
+  `data/contrib/<gpu>/<date>-<sha8>.json`) with the GPU name / VRAM / generation / compute capability / driver, the ComfyUI
+  version, the OS family, RAM rounded to GiB and the results — never host / user names, paths, GPU UUID, PCI address,
+  IP, CPU name or exact times (the note is scrubbed). genmodelfit sends nothing; users open the pull request themselves.
+  `contrib show` prints exactly what will be shared with a privacy checklist; `contrib validate` checks schema, value
+  ranges, privacy patterns, GPU name / generation consistency, file name and duplicates (exit 0 / 1 / 2);
+  `.github/workflows/contrib.yml` runs it on pull requests touching `data/contrib/**` (read-only, the tool installed
+  from the base commit, results in the job summary). `contrib aggregate` groups submissions by model, settings and GPU
+  with median / MAD outlier removal into the new bundled `measurements_community.json` (empty for now), and
+  `--report` re-runs the calibration and flags errors above a threshold (default 25%, exit 3 with `--fail-on-breach`)
+  for the weekly job of #19.
+- `Estimate.basis_detail` (`measured` > `measured_community` > `calibrated` > `estimated`); `basis` stays
+  `measured` / `estimated`. Community measurements are used only when at least two consistent submissions agree (and
+  no OOM), rank after the maintainer's measurements at the same settings, and can only raise the needs (never lower
+  VRAM / RAM, never improve a level, never raise the score: `basis` points 0 like estimates). `validate` marks
+  implausible values (more than 40% from the formula, below the weights with `offload: none`), values that would raise
+  the estimate by more than 15% or change a level at common VRAM / RAM sizes, unknown models and unknown GPUs as
+  review-required; approval is per submission (`--allow-review <sha8>` or the maintainers' `data/contrib/REVIEWED`).
+  Unapproved community rows raise needs by at most 15% and are ignored where they would change the level.
+  `aggregate --report` lists the level changes caused by community data.
+- `torch_reserved` measurements (bench; without the CUDA context) are now lower bounds: below the formula they no
+  longer lower the estimate (the bundled RTX 3070 rows for BiRefNet and MoGe now use the formula value).
+  `Measurement.origin` / `n_submissions` / `consistent` (optional fields).
+- `python -m genmodelfit.calibrate` also writes the check rows (measurements in another `vram_metric`, such as the
+  RTX 3070 runs) to `calibration.json` (`check`) and the accuracy table; LOO rows carry `gpu_name` and `origin`.
+  Coefficients are unchanged.
+  利用者の実測の提出(作る・見る・検査・まとめ・毎週の精度の点検)と、根拠の段階 `basis_detail` を足した。
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

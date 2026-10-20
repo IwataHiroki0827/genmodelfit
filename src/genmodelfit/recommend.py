@@ -89,6 +89,14 @@ def readiness(gate: dict[str, Any] | None) -> float:
     return float(sum(READINESS_POINTS.get(c.get("id"), 0) for c in gate.get("checks", []) if c.get("passed")))
 
 
+def _basis_points(e: Estimate) -> float:
+    """根拠の点数。実測 100、推定 0。ほかの利用者の実測(measured_community)は推定と同じ 0
+    (提出は書き換えられるので、点数を上げる向きには使わない。#34 のオーナーの方針)。"""
+    if e.basis != "measured" or e.basis_detail == "measured_community":
+        return 0.0
+    return 100.0
+
+
 def score_components(
     m: ModelEntry, e: Estimate, system: SystemInfo, gate: dict[str, Any] | None = None
 ) -> dict[str, float]:
@@ -96,7 +104,7 @@ def score_components(
         "fit": float(FIT_POINTS[e.fit]),
         "headroom": round(headroom(e, system), 1),
         "readiness": readiness(gate),
-        "basis": 100.0 if e.basis == "measured" else 0.0,
+        "basis": _basis_points(e),
         "popularity": round(popularity(m), 1),
     }
 
