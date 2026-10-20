@@ -44,12 +44,13 @@ from .hf import (
     guess_precision,
     is_repackager,
     license_tier,
+    obligation_rank,
     parse_hf_url,
     search_url,
     select_weight_files,
     upstream_candidates,
 )
-from .license_sources import source_for
+from .license_sources import enforce_lineage, source_for
 from .models import ModelEntry, ModelFile, Template
 from .tasks import tool_task_from_title
 
@@ -64,7 +65,7 @@ COMFYUI_RELEASES_PAGE = "https://github.com/Comfy-Org/ComfyUI/releases"
 MAX_FAIL_RATIO = 0.30
 # ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
 # (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
-LICENSE_POLICY = 4
+LICENSE_POLICY = 5  # 5: 表の上書きの行・元を読めない系統を不明に戻す・同じ段階は義務の多いもの(0.1.1)
 # 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
 COMPLETE_RATIO = 0.5
 # 本体が GGUF だけのとき、テキストエンコーダ・VAE が別に要るとみなす種類(拡散モデル)。#28
@@ -492,12 +493,13 @@ def apply_license(
     f: ModelFile, info: RepoInfo, client: HfClient, path: str, *, discovered_uncensored: bool = False
 ) -> Resolved:
     res = client.resolve_file(info, path, discovered_uncensored=discovered_uncensored)
-    if res.license is None:
-        # 自動で決められなかったものは、人が一次資料で出どころを確かめた表で決める(license_sources.py)
-        row = source_for(info.repo_id, path)
-        if row is not None:
-            res = row.resolved(info.repo_id)
+    # 自動で決められなかったもの(と、表が上書きと決めたもの)は、人が一次資料で出どころを確かめた表で決める
+    # (license_sources.py)
+    row = source_for(info.repo_id, path)
+    if row is not None and (res.license is None or row.override):
+        res = row.resolved(info.repo_id)
     set_file_license(f, res)
+    enforce_lineage(f)  # 元を読めない系統は不明に戻す(gate と同じ)
     f.license_url = res.url
     if res.source and res.source != info.repo_id:
         f.repo_license = info.license if info.license != "other" else (info.license_name or "other")
@@ -511,7 +513,15 @@ def set_entry_license(e: ModelEntry) -> None:
         e.license, e.license_name, e.license_url = None, None, None
         e.license_evidence = [f"{UNVERIFIED}: 使うファイルが分かりません"]
         return
-    worst = max(e.files, key=lambda f: (license_tier(f.license, f.license_name), f.license or "", f.name))
+    worst = max(
+        e.files,
+        key=lambda f: (
+            license_tier(f.license, f.license_name),
+            obligation_rank(f.license),  # 同じ段階なら義務の多いもの(apache-2.0 を mit より先に)
+            f.license or "",
+            f.name,
+        ),
+    )
     e.license, e.license_name = worst.license, worst.license_name
     e.license_url = worst.license_url if worst.license else None
     ev: list[str] = []

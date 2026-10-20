@@ -174,6 +174,29 @@ def license_tier(lic: str | None, name: str | None = None) -> int:
     return TIER_OTHER
 
 
+# 同じ段階の中で、義務の多いもの(一式の表示に出すほう)。apache-2.0 は特許の条項と NOTICE の義務があるので
+# mit・bsd より先に出す。0.1.1(#28 のレビュー: apache-2.0 と mit の一式が「mit」と出ていた)
+OBLIGATION_RANK = {
+    "apache-2.0": 4,
+    "ecl-2.0": 4,
+    "afl-3.0": 3,
+    "bsd-3-clause": 2,
+    "bsd-3-clause-clear": 2,
+    "bsd": 2,
+    "bsd-2-clause": 1,
+    "mit": 1,
+    "isc": 1,
+    "zlib": 1,
+    "bsl-1.0": 1,
+    "postgresql": 1,
+}
+
+
+def obligation_rank(lic: str | None) -> int:
+    """同じ段階(license_tier)の中での厳しさ(大きいほど義務が多い)。表に無いものは 0。"""
+    return OBLIGATION_RANK.get(lic or "", 0)
+
+
 def license_rank(lic: str | None, name: str | None = None) -> int:
     """license_tier と同じ(大きいほど厳しい)。"""
     return license_tier(lic, name)
@@ -191,7 +214,15 @@ def strictest(licenses: Iterable[LicenseLike]) -> Any:
     items = list(licenses)
     if not items:
         return None
-    return max(items, key=lambda x: (license_tier(*_pair(x)), str(_pair(x)[0] or ""), str(_pair(x)[1] or "")))
+    return max(
+        items,
+        key=lambda x: (
+            license_tier(*_pair(x)),
+            obligation_rank(_pair(x)[0]),
+            str(_pair(x)[0] or ""),
+            str(_pair(x)[1] or ""),
+        ),
+    )
 
 
 @dataclass

@@ -21,8 +21,15 @@
 - 本家を確かめられない部品(hf.UNVERIFIED_COMPONENTS)・元のライセンスを読めない系統(hf.LINEAGES)の名前の
   ファイルには、表に行があっても当てない(二重の守り)
 
-`update` は自動で決めたあと不明のファイルにこの表を当てる(`update.apply_license`)。同梱の一覧には、
-ネットに触らずに `apply_license_sources(db)` で当てられる(`python -m genmodelfit.license_sources` は、
+- 上書きの行(override=True): 自動の決め方が、元のカードの cardData(寛容な表記)だけを見て本文の規約
+  (ChronoEdit の「Governing Terms: NVIDIA Open Model License」など)を見落とす・違う元をたどるものは、
+  決まっていても表で上書きする(寛容の側の誤りを直す・出どころを直す。0.1.1 のレビュー)
+- 元のライセンスを読めない系統(hf.LINEAGES)のファイルは、自動で決まっていても不明に戻す(enforce_lineage。
+  gate も同じ判定で不明にするので、一覧のデータと gate の答えをそろえる)
+
+`update` は自動で決めたあと不明のファイルと上書きの行にこの表を当てる(`update.apply_license`)。
+同梱の一覧には、ネットに触らずに `apply_license_sources(db)` で当てられる
+(`python -m genmodelfit.license_sources` は、
 当てたときに不明・auto が何件変わるかを出す。一覧のファイルは書き換えない)。
 """
 
@@ -66,6 +73,8 @@ class LicenseSource:
     via: tuple[str, ...] = ()  # 置き場所と元の間にたどったもの(license_path に入れる)
     gated: bool = False  # 元が利用申請(規約への同意)を求める
     checked: str = CHECKED
+    # True: 自動で決まっていても上書きする(自動の決め方が寛容な側に誤る・違う元をたどると確かめたもの)
+    override: bool = False
 
     def matches(self, repo_id: str | None, filename: str) -> bool:
         base = filename.rsplit("/", 1)[-1]
@@ -97,6 +106,7 @@ def _s(
     url: str | None = None,
     via: Iterable[str] = (),
     gated: bool = False,
+    override: bool = False,
 ) -> LicenseSource:
     rs = (repos,) if isinstance(repos, str) else tuple(repos)
     return LicenseSource(
@@ -110,6 +120,7 @@ def _s(
         evidence,
         tuple(via),
         gated,
+        override=override,
     )
 
 
@@ -300,7 +311,9 @@ SOURCES: tuple[LicenseSource, ...] = (
         "「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download "
         "Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。"
         f"{HF}/Qwen/Qwen2.5-VL-7B-Instruct "
-        "の license は apache-2.0",
+        "の license は apache-2.0。qwen_2.5_vl_7b.safetensors の sha256(cfafd739…、16,584,415,576 バイト)は "
+        f"{HF}/Comfy-Org/Qwen-Image_ComfyUI の split_files/text_encoders/qwen_2.5_vl_7b.safetensors"
+        "(Qwen-Image の文章の読み取り = Qwen2.5-VL-7B-Instruct)と同じ(2026-10-20 に HF の API で確認)",
         via=("tencent/HunyuanImage-2.1",),
     ),
     _s(
@@ -326,6 +339,21 @@ SOURCES: tuple[LicenseSource, ...] = (
         "the NVIDIA Open Model License Agreement. Additional Information: Apache License Version 2.0」"
         "(apache-2.0 だけではないので、厳しいほうの NVIDIA Open Model License で持つ)",
         url="https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/",
+        override=True,
+    ),
+    _s(
+        "chronoedit-distill-lora",
+        "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        r"chronoedit_distill_lora\.safetensors",
+        "other",
+        "nvidia-open-model-license",
+        "nvidia/ChronoEdit-14B-Diffusers",
+        f"sha256 が {HF}/nvidia/ChronoEdit-14B-Diffusers の lora/chronoedit_distill_lora.safetensors と同じ"
+        "(0af09f4b…、375,905,424 バイト)。そのカードは cardData が apache-2.0 だが、本文に「Governing Terms: "
+        "Use of this model is governed by the NVIDIA Open Model License Agreement. Additional Information: "
+        "Apache License Version 2.0」(自動の決め方は cardData だけを見て apache-2.0 にしていた。上書きする)",
+        url="https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/",
+        override=True,
     ),
     _s(
         "ernie-image-ministral-3-3b",
@@ -364,7 +392,10 @@ SOURCES: tuple[LicenseSource, ...] = (
         "/src/flux2/text_encoder.py の Mistral3SmallEmbedder が model_spec="
         '"mistralai/Mistral-Small-3.2-24B-Instruct-2506" を from_pretrained で読む(手を加えない)。'
         f"{HF}/mistralai/Mistral-Small-3.2-24B-Instruct-2506 の license は apache-2.0(ComfyUI のファイルは"
-        "使う層だけに減らしたもの)",
+        "使う層だけに減らしたもの)。black-forest-labs/FLUX.2-dev の "
+        "text_encoder/model-0000{1..10}-of-00010 の sha256 は、"
+        "mistralai/Mistral-Small-3.2-24B-Instruct-2506 の model-0000{1..10}-of-00010 と 10 個とも同じ"
+        "(91831c2c…・8ffe8070…・… 116ef7ae…。2026-10-20 に HF の API で確認)",
         via=("black-forest-labs/FLUX.2-dev",),
     ),
     _s(
@@ -482,8 +513,40 @@ SOURCES: tuple[LicenseSource, ...] = (
         f"{HF}/Comfy-Org/PixelDiT の cardData の base_model に nvidia/PiD。nvidia/PiD のカード「This "
         "model is "
         "released under the NSCLv1 License. The work and any derivative works may only be used for "
-        "non-commercial (research or evaluation) purposes」",
-        url=f"{HF}/nvidia/PixelDiT-1300M-1024px/blob/main/LICENSE",
+        "non-commercial (research or evaluation) purposes」(NSCLv1 の原文へのリンクは、カードが "
+        f"{HF}/nvidia/PixelDiT-1300M-1024px/blob/main/LICENSE を指す)",
+        url=f"{HF}/nvidia/PiD#licenseterms-of-use",
+    ),
+    _s(
+        "infinitetalk-comfy",
+        "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+        r"wan2\.1_infiniteTalk_(multi|single)_fp16\.safetensors",
+        "apache-2.0",
+        None,
+        "MeiGen-AI/InfiniteTalk",
+        f"{HF}/Comfy-Org/Wan_2.1_ComfyUI_repackaged の README が元に {HF}/MeiGen-AI/InfiniteTalk を挙げ、"
+        "model_patches/wan2.1_infiniteTalk_multi_fp16・_single_fp16 を置く。"
+        "MeiGen-AI/InfiniteTalk のカードは "
+        "license: apache-2.0 と「The models in this repository are licensed under the Apache 2.0 License」"
+        "(自動の決め方は alibaba-pai/Wan2.1-Fun-V1.1-14B-Control-Camera をたどっていた。出どころを直す)",
+        override=True,
+    ),
+    _s(
+        "wan2.1-i2v-14b-480p",
+        ("Comfy-Org/Wan_2.1_ComfyUI_repackaged", "Kijai/WanVideo_comfy_fp8_scaled"),
+        r"(wan2\.1_i2v_480p_14B_(bf16|fp16|fp8_e4m3fn|fp8_scaled)"
+        r"|Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ)\.safetensors",
+        "apache-2.0",
+        None,
+        "Wan-AI/Wan2.1-I2V-14B-480P",
+        f"{HF}/Comfy-Org/Wan_2.1_ComfyUI_repackaged の README が元に Wan-AI/Wan2.1-I2V-14B-480P を挙げ、"
+        "wan2.1_i2v_480p_14B_* を置く。Kijai/WanVideo_comfy_fp8_scaled の I2V/Wan2_1-I2V-14B-480p_…_KJ は"
+        "名前が同じモデルで、safetensors の見出しに img_emb(画像の入力)があり vace の層が無い(カードの "
+        f"base_model の VACE ではない)。{HF}/Wan-AI/Wan2.1-I2V-14B-480P のカードは license: apache-2.0 と"
+        "「The models in this repository are licensed under the Apache 2.0 License」"
+        "(自動の決め方は 720P・VACE をたどっていた。出どころを直す)",
+        url=f"{HF}/Wan-AI/Wan2.1-I2V-14B-480P/blob/main/LICENSE.txt",
+        override=True,
     ),
     _s(
         "wan-dancer-14b",
@@ -517,8 +580,9 @@ SOURCES: tuple[LicenseSource, ...] = (
         "krea/Krea-2-LoRA-darkbrush",
         f"{HF}/Comfy-Org/Krea-2 の README の「Original LoRA repositories」に krea/Krea-2-LoRA-darkbrush。"
         "その darkbrush.safetensors と大きさ(469,291,992 バイト)・重みの名前・形・型が同じ。"
-        "krea/Krea-2-LoRA-darkbrush のカードは other(krea-2-community-license)",
-        url=f"{HF}/krea/Krea-2-LoRA-impressionist/blob/main/LICENSE.pdf",
+        "krea/Krea-2-LoRA-darkbrush のカードは other(krea-2-community-license)"
+        "(原文はそのリポジトリの LICENSE.pdf。カードの license_link は impressionist の LICENSE.pdf を指す)",
+        url=f"{HF}/krea/Krea-2-LoRA-darkbrush/blob/main/LICENSE.pdf",
     ),
     _s(
         "krea-2-qwen3-vl-4b",
@@ -563,20 +627,50 @@ def _file_repo(f: ModelFile) -> tuple[str, str] | None:
 
 
 def apply_to_file(f: ModelFile) -> LicenseSource | None:
-    """ライセンスが不明(None)のファイルに表を当てる。当てた行(当てなければ None)。"""
-    if f.license is not None:
-        return None
+    """ライセンスが不明(None)のファイルに表を当てる。上書きの行(override)と、前にこの表で決めたファイルは
+    決まっていても当て直す。
+    当てた行(当てなければ・すでに同じ値なら None)。"""
     loc = _file_repo(f)
     if loc is None:
         return None
     repo_id, path = loc
     row = source_for(repo_id, path)
-    if row is None:
+    # 表で決めたファイル(license_evidence に license_source:<行>)は、表の行を直したら当て直す
+    from_table = f"{EVIDENCE_KEY}:{row.key}" in f.license_evidence if row is not None else False
+    if row is None or (f.license is not None and not row.override and not from_table):
         return None
+    res = row.resolved(repo_id)
+    if (f.license, f.license_name, f.license_from, f.license_url, f.license_path, f.license_evidence) == (
+        res.license,
+        res.license_name,
+        res.source,
+        res.url,
+        list(res.path),
+        list(res.evidence),
+    ):
+        return None  # 当て済み(冪等)
     from .update import set_file_license  # update がこのモジュールを import するので、ここで読む
 
-    set_file_license(f, row.resolved(repo_id))
+    set_file_license(f, res)
     return row
+
+
+def enforce_lineage(f: ModelFile) -> str | None:
+    """元のライセンスを読めない系統(hf.LINEAGES)のファイルは、自動で決まっていても不明に戻す
+    (gate.resolve_file_license と同じ名前で見る)。戻したら系統の名前。"""
+    if f.license is None:
+        return None
+    from .gate import _lineage_names
+
+    lin = lineage_for(_lineage_names(f))
+    if lin is None:
+        return None
+    from .hf import UNVERIFIED
+
+    f.license = f.license_name = f.license_url = None
+    why = f"{UNVERIFIED}: 系統 {lin[0]}: {lin[1]}"
+    f.license_evidence = [why, *(e for e in f.license_evidence if e != why)]
+    return lin[0]
 
 
 def apply_license_sources(db: Database | Iterable[ModelEntry]) -> list[tuple[str, str, str]]:
@@ -592,6 +686,10 @@ def apply_license_sources(db: Database | Iterable[ModelEntry]) -> list[tuple[str
             row = apply_to_file(f)
             if row is not None:
                 changed.append((e.id, f.name, row.key))
+                hit = True
+            lin = enforce_lineage(f)
+            if lin is not None:
+                changed.append((e.id, f.name, f"lineage:{lin}"))
                 hit = True
         if hit:
             set_entry_license(e)

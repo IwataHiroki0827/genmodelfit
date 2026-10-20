@@ -110,7 +110,8 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 
 一覧はソース非公開の商用アプリ(AI生成キット)の自動のおすすめに使う。**寛容の側に間違えることが一番悪い**ので、
 確かめられないとき・表記が食い違うときは `license: null`(不明)にし、`license_evidence` に
-`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 4。#28 で出どころの表と VOID の系統を足して上げた)を上げる。
+`license_unverified: <理由>` を残す。決め方を変えたら `update.LICENSE_POLICY`(今は 5。4 は #28 で出どころの表と VOID の系統、5 は 0.1.1 のレビューで
+表の上書きの行・系統の不明への戻し・同じ段階の中の順を足して上げた)を上げる。
 
 ### 段階(`hf.license_tier`。一式は一番厳しいもの)
 
@@ -168,6 +169,16 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
 決め手と違うときの置き場所の表記)を入れる。HF 以外のファイル(Civitai など)は不明。
 
 上の決め方で不明になったファイルには、最後に**出どころの表**(`license_sources.SOURCES`。下の「出どころの表」)を当てる。
+表の行のうち**上書きの行**(`override=True`)は、自動で決まっていても当てる(0.1.1 のレビュー)。自動の決め方が
+cardData の寛容な表記だけを見て本文の規約を見落とすもの(ChronoEdit の LoRA: cardData は apache-2.0、本文は
+「Governing Terms: … NVIDIA Open Model License」。nvidia/ChronoEdit-14B-Diffusers の lora/ と sha256 が同じ)と、
+違う元をたどるもの(InfiniteTalk → MeiGen-AI/InfiniteTalk、Wan 2.1 I2V 480P → Wan-AI/Wan2.1-I2V-14B-480P)だけ。
+前に表で決めたファイル(`license_source:<行>` の印)は、表の行を直したら当て直す。
+元のライセンスを読めない系統(`hf.LINEAGES`。VOID など)のファイルは、自動で決まっていても不明に戻す
+(`license_sources.enforce_lineage`。gate と同じ判定なので、一覧のデータと gate の答えがそろう)。
+一式のライセンス(`ModelEntry.license`)は一番厳しいファイルのもの。同じ段階(寛容など)の中では義務の多いもの
+(apache-2.0 > bsd-3-clause > mit・bsd-2-clause …。`hf.OBLIGATION_RANK`)を出す(apache-2.0 と mit の一式が
+「mit」と出ていた)。ファイルごとの値は JSON の `licenses` に全部ある。
 
 ### 部品の表(2026-10-20 に確認。再配布の中のファイルだけに当てる)
 

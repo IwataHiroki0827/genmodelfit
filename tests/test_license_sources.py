@@ -34,6 +34,31 @@ KREA = ("other", "krea-2-community-license")
 
 # (置き場所, ファイル名, ライセンス, license_name)。2026-10-20 に一次資料で確かめた値(根拠は表の evidence)
 CASES = [
+    # 上書きの行(override。自動の決め方が寛容な側に誤る・違う元をたどるもの。0.1.1 のレビュー)
+    (
+        "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        "split_files/loras/chronoedit_distill_lora.safetensors",
+        "other",
+        "nvidia-open-model-license",
+    ),
+    (
+        "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+        "split_files/model_patches/wan2.1_infiniteTalk_multi_fp16.safetensors",
+        "apache-2.0",
+        None,
+    ),
+    (
+        "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+        "split_files/diffusion_models/wan2.1_i2v_480p_14B_fp16.safetensors",
+        "apache-2.0",
+        None,
+    ),
+    (
+        "Kijai/WanVideo_comfy_fp8_scaled",
+        "I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors",
+        "apache-2.0",
+        None,
+    ),
     ("Kijai/WanVideo_comfy", "Wan21_CausVid_14B_T2V_lora_rank32.safetensors", NC, None),
     ("Kijai/WanVideo_comfy", "Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors", NC, None),
     ("Kijai/WanVideo_comfy", "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors", NC, None),
@@ -350,6 +375,105 @@ def test_reapplying_restores_cleared_licenses(bundled):
     for m0, m1 in zip(bundled.models, cleared.models, strict=True):
         for f0, f1 in zip(m0.files, m1.files, strict=True):
             assert (f1.license, f1.license_name) == (f0.license, f0.license_name), (m0.id, f0.name)
+
+
+def _before_table(bundled):
+    """表(上書きでない行)で決めたファイルのライセンスを消した一覧(表を当てる前の状態)。上書きの行のファイルは
+    当てる前も自動で決まっていたので、そのまま残す。"""
+    from genmodelfit.update import set_entry_license
+
+    cleared = copy.deepcopy(bundled)
+    for m in cleared.models:
+        hit = False
+        for f in m.files:
+            keys = [e.split(":", 1)[1] for e in f.license_evidence if e.startswith(f"{ls.EVIDENCE_KEY}:")]
+            rows = [r for r in ls.SOURCES if r.key in keys]
+            if rows and not rows[0].override:
+                f.license = f.license_name = f.license_url = None
+                hit = True
+        if hit:
+            set_entry_license(m)
+    return cleared
+
+
+def test_newly_auto_is_exactly_the_justified_list(bundled):
+    """表を当てる前(表で決めたファイルを消した一覧)と当てた後で、新しく auto になる項目が JUSTIFIED_AUTO と
+    ちょうど同じ(当て済みの一覧どうしを比べると空になって何も確かめないので、当てる前を作り直す)。"""
+    r = ls.report(_before_table(bundled))
+    assert r["auto_after"] > r["auto_before"]
+    assert set(r["newly_auto"]) == JUSTIFIED_AUTO, set(r["newly_auto"]) ^ JUSTIFIED_AUTO
+    assert r["no_longer_auto"] == []
+
+
+def test_override_rows_fix_permissive_errors_and_provenance(bundled):
+    """ChronoEdit の LoRA は自動の決め方では apache-2.0(cardData)だが、本文の NVIDIA Open Model License で
+    上書きする。InfiniteTalk・Wan 2.1 I2V 480P は出どころを本家に直す。"""
+    f = ModelFile(
+        name="chronoedit_distill_lora.safetensors",
+        url=_url(
+            "Comfy-Org/Wan_2.2_ComfyUI_Repackaged", "split_files/loras/chronoedit_distill_lora.safetensors"
+        ),
+        repo_id="Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        license="apache-2.0",
+        license_from="nvidia/ChronoEdit-14B-Diffusers",
+    )
+    row = ls.apply_to_file(f)
+    assert row is not None and row.override
+    assert (f.license, f.license_name) == ("other", "nvidia-open-model-license")
+    assert ls.apply_to_file(f) is None  # 当て済みなら何もしない
+    m = bundled.get("image_chrono_edit_14B")
+    assert all(x.license == "other" for x in m.files if "chrono" in x.name)
+    assert not evaluate_offline(m, GatePolicy(max_head_age_days=None), sources=bundled.sources).auto
+    talk = bundled.get("video_wan2_1_infinitetalk")
+    froms = {x.name: x.license_from for x in talk.files}
+    assert froms["wan2.1_infiniteTalk_multi_fp16.safetensors"] == "MeiGen-AI/InfiniteTalk"
+    assert froms["Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"] == "Wan-AI/Wan2.1-I2V-14B-480P"
+    assert talk.base_model == "Wan-AI/Wan2.1-I2V-14B-480P"
+    i2v = bundled.get("image_to_video_wan")
+    assert {x.license_from for x in i2v.files if "i2v_480p" in x.name} == {"Wan-AI/Wan2.1-I2V-14B-480P"}
+
+
+def test_update_overrides_when_the_row_says_so():
+    repo, path = (
+        "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        "split_files/loras/chronoedit_distill_lora.safetensors",
+    )
+
+    class Client:
+        def resolve_file(self, info, p, *, discovered_uncensored=False):
+            return Resolved("apache-2.0", None, "nvidia/ChronoEdit-14B-Diffusers", None, [repo], [])
+
+    f = ModelFile(name=path.rsplit("/", 1)[-1], url=_url(repo, path), repo_id=repo)
+    apply_license(f, RepoInfo(repo_id=repo, license="apache-2.0"), Client(), path)
+    assert (f.license, f.license_name) == ("other", "nvidia-open-model-license")
+
+
+def test_lineage_files_are_unknown_in_the_data(bundled):
+    """元を読めない系統(VOID)は、一覧のデータでも不明(gate と同じ答え)。"""
+    m = bundled.get("utility_void_video_inpainting")
+    for f in m.files:
+        if "void_pass" in f.name or "raft_large" in f.name:
+            assert f.license is None and any("void-model" in e for e in f.license_evidence), f.name
+    g = ModelFile(name="void_pass1.safetensors", license="apache-2.0", license_from="netflix/void-model")
+    assert ls.enforce_lineage(g) == "void-model" and g.license is None
+
+
+def test_entry_license_prefers_more_obligations_in_the_same_tier(bundled):
+    from genmodelfit.hf import strictest
+    from genmodelfit.update import set_entry_license
+
+    e = ModelEntry(
+        id="x",
+        name="x",
+        modality="video",
+        files=[ModelFile(name="a", license="mit"), ModelFile(name="b", license="apache-2.0")],
+    )
+    set_entry_license(e)
+    assert e.license == "apache-2.0"
+    assert strictest(["mit", "apache-2.0", "bsd-3-clause"]) == "apache-2.0"
+    assert strictest(["mit", "cc-by-nc-4.0"]) == "cc-by-nc-4.0"  # 段階が先
+    mixed = [m for m in bundled.models if {f.license for f in m.files} >= {"apache-2.0", "mit"}]
+    assert mixed and all(m.license != "mit" for m in mixed)
 
 
 def test_report_on_bundled_db(bundled):
