@@ -93,6 +93,10 @@ def _base_name(f: ModelFile, m: ModelEntry) -> str:
     return base
 
 
+# 本体の置き場所にあっても、生成の本体ではない部品(超解像・高解像度化・リファイナ)
+_AUX_MAIN = re.compile(r"(^|[_\-.])(sr|super[_-]?res\w*|upscal\w*|refiner)([_\-.]|$)")
+
+
 def main_files(m: ModelEntry) -> list[ModelFile]:
     """本体のファイル(役割が main。複数なら一番大きいものと、その 95% 以上の大きさのもの)。"""
     from .estimate import _role_of
@@ -101,6 +105,10 @@ def main_files(m: ModelEntry) -> list[ModelFile]:
     if not mains:
         rest = [f for f in m.files if _role_of(f) not in ("text_encoder", "vae", "clip_vision")]
         mains = [max(rest, key=lambda f: f.size_bytes or 0)] if rest else []
+    core = [f for f in mains if not _AUX_MAIN.search(f.name.replace("\\", "/").rsplit("/", 1)[-1].lower())]
+    if core and len(core) < len(mains):
+        # 超解像(Hunyuan Video 1.5 の 1080p SR)・高解像度化・リファイナは、ほかに本体があれば本体にしない
+        mains = core
     if len(mains) > 1:
         big = max(f.size_bytes or 0 for f in mains)
         if big:
@@ -135,17 +143,100 @@ def group_key(m: ModelEntry) -> str:
 # --- 一覧全体でのまとめ(sha256・本体が 2 つの項目・表示名) -------------------------------------
 
 _NAME_PRECISION = re.compile(
-    r"\b(fp32|fp16|bf16|fp8|fp4|nvfp4|int8|int4|nf4|w4a8|gguf|q\d+(_k)?(_[a-z0-9]+)?|"
-    r"fp8[ _-]?scaled|scaled|mixed)\b",
+    r"\b(fp32|fp16|bf16|f16|fp8|fp4|nvfp4|int8|int4|nf4|w4a8|gguf|q\d+(_k)?(_[a-z0-9]+)?|"
+    r"fp8[ _-]?scaled|scaled|mixed|convrot|kj|aio)\b",
     re.IGNORECASE,
 )
+_NAME_SKIP_WORDS = frozenset({"diffusion", "pytorch", "model", "models", "v"})
+
+
+def is_community(m: ModelEntry) -> bool:
+    """利用者が作ったテンプレート(index の username が ComfyUI でないもの)。"""
+    u = m.template.username if m.template else None
+    return bool(u) and u.strip().lower() != "comfyui"
+
+
+def _flat(text: str) -> str:
+    return re.sub(r"[-_. ]+", "", text.lower())
+
+
+def _word_label(w: str) -> str:
+    if _SIZE.match(w):
+        return w[:-1] + w[-1].upper()
+    if re.fullmatch(r"[a-z]\d[a-z]+|[a-z]+\d[a-z]", w):  # t2v・i2v・ti2v
+        return w.upper()
+    return w if any(ch.isdigit() for ch in w) else w.capitalize()
+
+
+# 表示名に足してよい鍵の語(大きさ・版・種類)。それ以外の語(ファイル名の細かい語)は足さない
+_APPEND_WORDS = frozenset(
+    {"turbo", "distilled", "distill", "dev", "base", "schnell", "fill", "lite", "sft", "xl", "large",
+     "medium", "small", "i2v", "t2v", "ti2v", "flf2v", "s2v", "480p", "720p", "1080p"}
+)  # fmt: skip
+# 使い方の言い回し(モデルの名前ではない)。「LTX-2 Text to Video (Distilled)」→「LTX-2 Distilled」
+_USE_PHRASE = re.compile(
+    r"\b(text|image|video|audio|speech|music|single view|multi ?view)[- ]to[- ]"
+    r"(image|video|audio|speech|music|3d|model)\b"
+    r"|\b(depth|normal|albedo|geometry|pose)\s+(estimation|map|detection)\b"
+    r"|\b(image|video)\s+(upscale|segmentation|restoration)\b|\bframe interpolation\b|\bremove background\b",
+    re.IGNORECASE,
+)
+
+
+def _appendable(w: str) -> bool:
+    return bool(_SIZE.match(w) or re.fullmatch(r"\d+(\.\d+)+", w) or w in _APPEND_WORDS)
+
+
+def _span_name(text: str, words: set[str]) -> tuple[int, str]:
+    """(当たった鍵の語の数, 先頭から最後に当たった語までの範囲 + 含まれない大きさ・版・種類の語)。"""
+    text = re.sub(r"\s{2,}", " ", _USE_PHRASE.sub("", text).replace("(", " ").replace(")", " ")).strip(" -_,")
+    pieces = text.split()
+    hit_at: dict[str, int] = {}
+    for w in words:
+        fw = _flat(w)
+        if (len(fw) < 2 and not fw.isdigit()) or w in _NAME_SKIP_WORDS:
+            continue
+        for i in range(len(pieces)):
+            ends = [j for j in range(i, min(len(pieces), i + 3)) if fw in _flat(" ".join(pieces[i : j + 1]))]
+            if ends:
+                hit_at[w] = ends[0]  # 当たった範囲の最後の片
+                break
+    if not pieces:
+        return 0, ""
+    end = max(hit_at.values()) if hit_at else len(pieces) - 1
+    name = " ".join(pieces[: end + 1])
+    missing = sorted(
+        (w for w in words if w not in hit_at and _appendable(w) and _flat(w) not in _flat(name)),
+        key=lambda w: (not _SIZE.match(w), w),
+    )
+    if missing:
+        name += " " + " ".join(_word_label(w) for w in missing)
+    return len(hit_at), name.strip(" -_,")
+
+
+def display_name(key: str, members: list[ModelEntry]) -> str:
+    words = set(key.rsplit(":", 1)[-1].replace(" + ", " ").split())
+    if key.split(":", 2)[2].startswith("id:"):
+        words = set()
+    cands = []
+    for m in members:
+        parts = m.name.split(":")
+        for part in [*parts, " ".join(parts)] if len(parts) > 1 else parts:
+            text = clean_name(part)
+            hits, name = _span_name(text, words) if text else (0, "")
+            name = name.replace(",", "").strip()
+            if not name:
+                continue
+            unofficial = is_community(m) or m.id.startswith("hf:")
+            # 「:」の前・後ろ・両方をつないだもののうち、鍵の語を一番多く含むもの → 公式 → 短いもの
+            cands.append((-hits, unofficial, len(name), name))
+    return min(cands)[3] if cands else members[0].id
 
 
 def clean_name(name: str) -> str:
     """一覧の名前 → モデルの表示名。「:」より前で、精度の語を外す
     (「Z-Image-Turbo Int8: Text to Image」→「Z-Image-Turbo」)。"""
-    head = name.split(":", 1)[0]
-    head = _NAME_PRECISION.sub("", head)
+    head = _NAME_PRECISION.sub("", name.split(":", 1)[0])
     head = re.sub(r"\s*\(\s*\)|\[\s*\]", "", head)
     head = re.sub(r"([-_])[-_]+", r"\1", head)  # 「10Eros-v1.5--ConvRot」の「--」
     return re.sub(r"\s{2,}", " ", head).strip(" -_") or name.strip()
@@ -188,7 +279,8 @@ def build_index(models: Iterable[ModelEntry]) -> ModelIndex:
                 known.sort(key=lambda p: ("base" in p.split(), p))
                 k = f"{prefix}:{known[0]}"
         key_of[m.id] = k
-    # sha256 が同じ本体を持つ鍵をつなぐ(内容・種類が違えばつながない)
+    # 本体の sha256 の組が全部同じ項目の鍵をつなぐ(1 つでも sha256 が無い・違う本体があればつながない。
+    # 内容・種類が違ってもつながない)
     parent: dict[str, str] = {}
 
     def root(k: str) -> str:
@@ -196,42 +288,28 @@ def build_index(models: Iterable[ModelEntry]) -> ModelIndex:
             k = parent[k]
         return k
 
-    by_sha: dict[tuple[str, str, str], str] = {}
+    by_sha: dict[tuple[str, str, frozenset[str]], str] = {}
     for m in models:
-        for f in main_files(m):
-            if not f.sha256:
-                continue
-            sk = (m.modality, m.content, f.sha256.lower())
-            k = key_of[m.id]
-            if sk in by_sha:
-                a, b = root(by_sha[sk]), root(k)
-                if a != b:
-                    lo, hi = sorted((a, b))
-                    parent[hi] = lo
-            else:
-                by_sha[sk] = k
+        files = main_files(m)
+        if not files or not all(f.sha256 for f in files):
+            continue
+        sk = (m.modality, m.content, frozenset(f.sha256.lower() for f in files))
+        k = key_of[m.id]
+        if sk in by_sha:
+            a, b = root(by_sha[sk]), root(k)
+            if a != b:
+                lo, hi = sorted((a, b))
+                parent[hi] = lo
+        else:
+            by_sha[sk] = k
     key_of = {i: root(k) for i, k in key_of.items()}
     members: dict[str, list[ModelEntry]] = {}
     for m in models:
         members.setdefault(key_of[m.id], []).append(m)
-    # 表示名(docs/schema.md「Models」): 仲間の名前(「:」より前・精度の語を外す)のうち、
-    # 鍵の語(系統・版・大きさ)を一番多く含むもの → 公式のテンプレート(templates_ / hf: でない)
-    # → 多いもの → 短いもの → 名前の順。
-    # 「Image Relight」のような使い方の題より「Qwen Image Edit 2509」を選ぶため
-    name_of: dict[str, str] = {}
-    for k, ms in members.items():
-        words = set(k.rsplit(":", 1)[-1].replace(" + ", " ").split())
-        cands = [(clean_name(m.name), m) for m in ms]
-        names = [c for c, _ in cands]
-
-        def rank(item, words=words, names=names):
-            c, m = item
-            flat = re.sub(r"[-_ ]+", "", c.lower())
-            hits = sum(1 for w in words if w.replace(".", "") in flat.replace(".", "") or w in c.lower())
-            community = m.id.lower().startswith(("template", "hf:"))
-            return (-hits, community, -names.count(c), len(c), c)
-
-        name_of[k] = min(cands, key=rank)[0]
+    # 表示名(docs/schema.md「Models」、display_name): 仲間の名前を「:」の前後に分けた候補のうち、
+    # 鍵の語(系統・版・大きさ)を一番多く含むもの → 公式のテンプレート → 短いもの。その中の鍵の語を含む範囲に、
+    # 含まれない鍵の語(大きさ・turbo など)を足す。「Image Upscale: SeedVR2 3B」は「SeedVR2 3B」になる
+    name_of = {k: display_name(k, ms) for k, ms in members.items()}
     # 重なったら: 種類が違えば種類 → 鍵の語 → それでも重なれば ID
     for step in ("modality", "words", "modality", "id"):
         seen: dict[str, list[str]] = {}
@@ -246,7 +324,10 @@ def build_index(models: Iterable[ModelEntry]) -> ModelIndex:
                         name_of[k] = f"{name_of[k]} ({k.split(':', 1)[0]})"
                 elif step == "words":
                     words = k.rsplit(":", 1)[-1].replace(" + ", " ").split()
-                    extra = [w for w in words if w not in name_of[k].lower()]
+                    left = [
+                        w for w in words if _flat(w) not in _flat(name_of[k]) and w not in _NAME_SKIP_WORDS
+                    ]
+                    extra = [w for w in left if _appendable(w)] or [w for w in left if not w.isdigit()]
                     if extra:
                         name_of[k] = f"{name_of[k]} ({' '.join(extra)})"
                 else:
@@ -307,4 +388,6 @@ def precision_label(precision: str | None) -> str:
         return "-"
     p = precision.lower().removeprefix("gguf-")
     m = re.match(r"(i?q\d+)", p)
-    return m.group(1) if m else p[:5]
+    if m:
+        return m.group(1)
+    return {"nvfp4": "fp4", "mxfp4": "fp4", "fp8_e4m3fn": "fp8"}.get(p, p[:4])

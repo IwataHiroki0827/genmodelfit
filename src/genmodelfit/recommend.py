@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from .db import Database
 from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients
-from .groups import group_key, index_for, precision_rank
+from .groups import group_key, index_for, is_community, precision_rank
 from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Estimate, ModelEntry, Settings, SystemInfo
 from .tasks import TOOL_TASKS, is_tool, main_use, parse_modalities, task_codes
 
@@ -204,6 +204,7 @@ class Fit:
             "license": m.license,
             "licenses": _sum_licenses(m),
             "auto": self.auto,
+            "community": is_community(m),
             "held_reasons": list((self.gate or {}).get("held_by", [])),
             "estimate_confidence": e.basis,
             "notes": list(e.reasons),
@@ -254,7 +255,8 @@ def _check_limit(limit: int | None, name: str = "limit") -> None:
 
 
 def sort_key(f: Fit) -> tuple:
-    return (f.estimate.fit == "too_tight", not f.auto, -round(f.score, 1), f.model.id)
+    """おすすめ順: 動くもの → auto → 公式(利用者のテンプレートは後)→ 点数 → ID。"""
+    return (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -round(f.score, 1), f.model.id)
 
 
 # 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
@@ -266,8 +268,17 @@ def variant_key(f: Fit) -> tuple:
     → 高解像度化 → 補助ツール)→ 段階が良い → 逃がさない載せ方(GPU → GPU+RAM → CPU)
     → 精度が高い → おすすめ順。"""
     use = REP_USE_ORDER.index(f.use) if f.use in REP_USE_ORDER else len(REP_USE_ORDER)
+    # 利用者のテンプレートは、公式のワークフローがあれば代表にしない
+    community = is_community(f.model)
     slow = {"gpu": 0, "offload": 1, "cpu": 2}.get(f.estimate.run_mode, 3)  # 同じ段階なら逃がさないほう(速い)
-    return (use, FIT_LEVELS.index(f.estimate.fit), slow, precision_rank(f.model.precision), *sort_key(f))
+    return (
+        community,
+        use,
+        FIT_LEVELS.index(f.estimate.fit),
+        slow,
+        precision_rank(f.model.precision),
+        *sort_key(f),
+    )
 
 
 def _gate(m: ModelEntry, policy: GatePolicy | None, db: Database) -> dict[str, Any]:
@@ -471,9 +482,10 @@ def select(
         reps = fits[:1] if group else fits
         hidden["same_model"] += len(fits) - len(reps)
         if group:
-            # 行の点数 = 絞り込みに合う仲間の点数の一番高いもの
-            # (代表が高い精度へ替わっても、VRAM を増やして点数が下がらないように)
-            top = max(fits, key=lambda x: x.score)
+            # 行の点数 = 代表と同じ用途・同じ段階の仲間(絞り込みに合うもの)の点数の一番高いもの。
+            # ほかの値はすべて代表のもの(代表が高い精度へ替わっても点数が下がらないように)
+            same = [x for x in fits if x.use == reps[0].use and x.estimate.fit == reps[0].estimate.fit]
+            top = max(same, key=lambda x: x.score)
             reps = [replace(reps[0], score=top.score, score_components=dict(top.score_components))]
         for rep in reps:
             others = [get(m) for m in members[key] if m.id != rep.model.id]

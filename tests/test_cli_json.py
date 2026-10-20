@@ -53,6 +53,7 @@ FIT = {
     "license",
     "licenses",
     "auto",
+    "community",
     "held_reasons",
     "estimate_confidence",
     "notes",
@@ -144,6 +145,7 @@ MODEL_ENTRY = {
     "updated",
     "homepage",
     "downloads",
+    "downloads_all_time",
     "likes",
     "total_size_bytes",
     "license_name",
@@ -180,6 +182,7 @@ TEMPLATE = {
     "usage",
     "date",
     "size_bytes",
+    "username",
 }
 MEASUREMENT = {
     "model_id",
@@ -255,13 +258,14 @@ def check_fit(item: dict) -> None:
 
 
 def check_order(models: list[dict], by_type: bool = False) -> None:
-    """動くもの → auto → 点数 → ID の順(by_type なら種類の順に分けたうえで)。"""
+    """動くもの → auto → 公式 → 点数 → ID の順(by_type なら種類の順に分けたうえで)。"""
     order = ["image", "video", "music", "sfx", "tts", "3d"]
     keys = [
         (
             order.index(m["modality"]) if by_type else 0,
             m["fit_level"] == "too_tight",
             not m["auto"],
+            m["community"],  # 利用者のテンプレートは公式の後
             -m["score"],
             m["id"],
         )
@@ -316,7 +320,7 @@ def test_recommend(cache):
     assert d["filters"]["min_fit"] == "marginal" and d["filters"]["license"] is None
     assert [g["modality"] for g in d["groups"]] == ["image", "video", "music", "sfx", "tts", "3d"]
     assert all(g["shown"] == min(5, g["matched"]) for g in d["groups"])
-    assert d["hidden"]["uncensored"] == 39 and d["hidden"]["same_model"]
+    assert d["hidden"]["uncensored"] == 24 and d["hidden"]["same_model"]
     for m in d["models"]:
         check_fit(m)
         assert m["fit_level"] != "too_tight" and m["content"] == "sfw"
@@ -440,6 +444,7 @@ def test_info(cache):
         "measurements",
         "group_key",
         "model_name",
+        "community",
         "same_model",
     }
     assert d["same_model"] and all(set(w) == WORKFLOW for w in d["same_model"])  # SDXL base は 4 項目

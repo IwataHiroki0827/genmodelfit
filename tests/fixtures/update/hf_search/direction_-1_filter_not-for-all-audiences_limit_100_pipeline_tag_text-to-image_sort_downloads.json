@@ -48,7 +48,7 @@
  },
  {
   "id": "example-org/loli-style-xl",
-  "downloads": 5000,
+  "downloads": 50000,
   "likes": 1,
   "tags": [
    "not-for-all-audiences",
@@ -60,7 +60,7 @@
  },
  {
   "id": "example-org/plain-nsfw-xl",
-  "downloads": 4000,
+  "downloads": 40000,
   "likes": 1,
   "tags": [
    "not-for-all-audiences",
@@ -69,5 +69,38 @@
   "pipeline_tag": "text-to-image",
   "createdAt": "2026-01-01T00:00:00.000Z",
   "_comment": "synthetic: blocked by its model card (fixture only)"
+ },
+ {
+  "id": "example-org/tiny-random-nsfw-xl",
+  "downloads": 90000,
+  "likes": 1,
+  "tags": [
+   "not-for-all-audiences",
+   "text-to-image"
+  ],
+  "pipeline_tag": "text-to-image"
+ },
+ {
+  "id": "example-org/nsfw-merge-xl",
+  "downloads": 90000,
+  "likes": 1,
+  "tags": [
+   "not-for-all-audiences",
+   "text-to-image",
+   "merge",
+   "mergekit"
+  ],
+  "pipeline_tag": "text-to-image"
+ },
+ {
+  "id": "example-org/rare-nsfw-xl",
+  "downloads": 9000,
+  "downloadsAllTime": 9999,
+  "likes": 1,
+  "tags": [
+   "not-for-all-audiences",
+   "text-to-image"
+  ],
+  "pipeline_tag": "text-to-image"
  }
 ]

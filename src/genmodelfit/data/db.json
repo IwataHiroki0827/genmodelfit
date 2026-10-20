@@ -42,16 +42,17 @@
   "huggingface-search": {
    "queries": 38,
    "candidates": 638,
-   "added": 64,
+   "added": 46,
    "skipped": {
     "adapter": 144,
     "component": 14,
     "duplicate": 76,
     "duplicate_weights": 13,
-    "low_downloads": 223,
+    "merge": 2,
     "no_weights": 10,
     "over_cap": 21,
-    "owner_cap": 36
+    "owner_cap": 36,
+    "skip_downloads": 239
    },
    "excluded": 0,
    "failed_queries": 0
@@ -80,43 +81,43 @@
    "within_10pct": 214
   },
   "counts": {
-   "models": 341,
+   "models": 323,
    "modality": {
     "3d": 10,
-    "image": 172,
+    "image": 161,
     "music": 15,
-    "sfx": 6,
+    "sfx": 3,
     "tts": 20,
-    "video": 118
+    "video": 114
    },
    "content": {
-    "sfw": 302,
-    "uncensored": 39
+    "sfw": 299,
+    "uncensored": 24
    },
    "source": {
     "comfyui-template": 277,
-    "huggingface": 64
+    "huggingface": 46
    },
    "license": {
-    "apache-2.0": 78,
+    "apache-2.0": 76,
     "bsd-3-clause": 1,
     "cc-by-nc-4.0": 2,
     "cc-by-nc-sa-4.0": 1,
     "gemma": 1,
     "llama3.1": 5,
     "mit": 34,
-    "null": 136,
+    "null": 126,
     "openrail++": 4,
-    "other": 79
+    "other": 73
    },
    "license_tier": {
-    "non_commercial": 31,
-    "other": 51,
-    "permissive": 113,
-    "unknown": 136,
+    "non_commercial": 30,
+    "other": 46,
+    "permissive": 111,
+    "unknown": 126,
     "use_restricted": 10
    },
-   "files_complete_false": 35
+   "files_complete_false": 31
   },
   "excluded": 0,
   "warnings": [],
@@ -166,7 +167,8 @@
     "requires_custom_nodes": [],
     "usage": 158,
     "date": "2025-03-01",
-    "size_bytes": 4939212390
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -231,7 +233,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2025-03-01",
-    "size_bytes": 4939212390
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -296,7 +299,8 @@
     "requires_custom_nodes": [],
     "usage": 104,
     "date": "2025-03-01",
-    "size_bytes": 4928474972
+    "size_bytes": 4928474972,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -361,7 +365,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2025-03-01",
-    "size_bytes": 4928474972
+    "size_bytes": 4928474972,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -426,7 +431,8 @@
     "requires_custom_nodes": [],
     "usage": 20,
     "date": "2026-05-19",
-    "size_bytes": 644245094
+    "size_bytes": 644245094,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -491,7 +497,8 @@
     "requires_custom_nodes": [],
     "usage": 54,
     "date": "2026-05-15",
-    "size_bytes": 644245094
+    "size_bytes": 644245094,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -651,7 +658,8 @@
     "requires_custom_nodes": [],
     "usage": 294,
     "date": "2026-09-09",
-    "size_bytes": 9341553869
+    "size_bytes": 9341553869,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -857,7 +865,8 @@
     "requires_custom_nodes": [],
     "usage": 818,
     "date": "2026-08-25",
-    "size_bytes": 15354508083
+    "size_bytes": 15354508083,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -1013,7 +1022,8 @@
     "requires_custom_nodes": [],
     "usage": 291,
     "date": "2026-06-02",
-    "size_bytes": 3972844749
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -1151,7 +1161,8 @@
     "requires_custom_nodes": [],
     "usage": 138,
     "date": "2026-08-25",
-    "size_bytes": 5476083302
+    "size_bytes": 5476083302,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -1314,7 +1325,8 @@
     "requires_custom_nodes": [],
     "usage": 24,
     "date": "2026-02-23",
-    "size_bytes": 37044092928
+    "size_bytes": 37044092928,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -1453,7 +1465,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-02-23",
-    "size_bytes": 36185099469
+    "size_bytes": 36185099469,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -1594,7 +1607,8 @@
     "requires_custom_nodes": [],
     "usage": 303,
     "date": "2025-09-02",
-    "size_bytes": 18575733555
+    "size_bytes": 18575733555,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -1735,7 +1749,8 @@
     "requires_custom_nodes": [],
     "usage": 214,
     "date": "2025-07-31",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -1872,7 +1887,8 @@
     "requires_custom_nodes": [],
     "usage": 45,
     "date": "2025-03-01",
-    "size_bytes": 34177202258
+    "size_bytes": 34177202258,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -2078,7 +2094,8 @@
     "requires_custom_nodes": [],
     "usage": 24,
     "date": "2025-03-01",
-    "size_bytes": 35433480192
+    "size_bytes": 35433480192,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -2217,7 +2234,8 @@
     "requires_custom_nodes": [],
     "usage": 196,
     "date": "2025-03-01",
-    "size_bytes": 34144990003
+    "size_bytes": 34144990003,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -2354,7 +2372,8 @@
     "requires_custom_nodes": [],
     "usage": 183,
     "date": "2025-03-01",
-    "size_bytes": 34144990003
+    "size_bytes": 34144990003,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -2491,7 +2510,8 @@
     "requires_custom_nodes": [],
     "usage": 447,
     "date": "2025-03-01",
-    "size_bytes": 34144990003
+    "size_bytes": 34144990003,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -2628,7 +2648,8 @@
     "requires_custom_nodes": [],
     "usage": 138,
     "date": "2025-03-01",
-    "size_bytes": 10372346020
+    "size_bytes": 10372346020,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -2765,7 +2786,8 @@
     "requires_custom_nodes": [],
     "usage": 280,
     "date": "2025-06-26",
-    "size_bytes": 17609365914
+    "size_bytes": 17609365914,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -2950,7 +2972,8 @@
     "requires_custom_nodes": [],
     "usage": 18,
     "date": "2025-03-01",
-    "size_bytes": 35154307318
+    "size_bytes": 35154307318,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -3015,7 +3038,8 @@
     "requires_custom_nodes": [],
     "usage": 31,
     "date": "2025-03-01",
-    "size_bytes": 17233556275
+    "size_bytes": 17233556275,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -3152,7 +3176,8 @@
     "requires_custom_nodes": [],
     "usage": 62,
     "date": "2025-03-01",
-    "size_bytes": 34144990003
+    "size_bytes": 34144990003,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -3338,7 +3363,8 @@
     "requires_custom_nodes": [],
     "usage": 65,
     "date": "2025-07-21",
-    "size_bytes": 50465865728
+    "size_bytes": 50465865728,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -3524,7 +3550,8 @@
     "requires_custom_nodes": [],
     "usage": 18,
     "date": "2025-05-01",
-    "size_bytes": 34252364186
+    "size_bytes": 34252364186,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -3709,7 +3736,8 @@
     "requires_custom_nodes": [],
     "usage": 22,
     "date": "2025-04-17",
-    "size_bytes": 33285996544
+    "size_bytes": 33285996544,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -3894,7 +3922,8 @@
     "requires_custom_nodes": [],
     "usage": 8,
     "date": "2025-04-17",
-    "size_bytes": 24266565222
+    "size_bytes": 24266565222,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -4079,7 +4108,8 @@
     "requires_custom_nodes": [],
     "usage": 13,
     "date": "2025-04-17",
-    "size_bytes": 24266565222
+    "size_bytes": 24266565222,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -4216,7 +4246,8 @@
     "requires_custom_nodes": [],
     "usage": 36,
     "date": "2026-01-30",
-    "size_bytes": 50787988275
+    "size_bytes": 50787988275,
+    "username": "PurzBeats"
    },
    "params_b": null,
    "precision": "bf16",
@@ -4351,7 +4382,8 @@
     "requires_custom_nodes": [],
     "usage": 574,
     "date": "2026-05-23",
-    "size_bytes": 5798205850
+    "size_bytes": 5798205850,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -4513,7 +4545,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2026-07-20",
-    "size_bytes": 5798205850
+    "size_bytes": 5798205850,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -4697,7 +4730,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-07-21",
-    "size_bytes": 7086696038
+    "size_bytes": 7086696038,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -4859,7 +4893,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-07-21",
-    "size_bytes": 5798205850
+    "size_bytes": 5798205850,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -4974,7 +5009,8 @@
     "requires_custom_nodes": [],
     "usage": 201,
     "date": "2025-05-07",
-    "size_bytes": 5583457485
+    "size_bytes": 5583457485,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -5087,7 +5123,8 @@
     "requires_custom_nodes": [],
     "usage": 33,
     "date": "2026-06-23",
-    "size_bytes": 21260088115
+    "size_bytes": 21260088115,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -5198,7 +5235,8 @@
     "requires_custom_nodes": [],
     "usage": 12,
     "date": "2026-07-10",
-    "size_bytes": 22333829939
+    "size_bytes": 22333829939,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -5309,7 +5347,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2026-06-23",
-    "size_bytes": 21260088115
+    "size_bytes": 21260088115,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -5398,7 +5437,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2025-09-18",
-    "size_bytes": 24159191040
+    "size_bytes": 24159191040,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -5512,7 +5552,8 @@
     "requires_custom_nodes": [],
     "usage": 47,
     "date": "2025-06-04",
-    "size_bytes": 23300197581
+    "size_bytes": 23300197581,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -5670,7 +5711,8 @@
     "requires_custom_nodes": [],
     "usage": 19,
     "date": "2025-11-03",
-    "size_bytes": 41446434406
+    "size_bytes": 41446434406,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -5804,7 +5846,8 @@
     "requires_custom_nodes": [],
     "usage": 55,
     "date": "2026-04-14",
-    "size_bytes": 25984552141
+    "size_bytes": 25984552141,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -5938,7 +5981,8 @@
     "requires_custom_nodes": [],
     "usage": 48,
     "date": "2026-04-14",
-    "size_bytes": 25984552141
+    "size_bytes": 25984552141,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -6072,7 +6116,8 @@
     "requires_custom_nodes": [],
     "usage": 441,
     "date": "2026-03-06",
-    "size_bytes": 51324859187
+    "size_bytes": 51324859187,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -6260,7 +6305,8 @@
     "requires_custom_nodes": [],
     "usage": 49,
     "date": "2025-09-21",
-    "size_bytes": 22333829939
+    "size_bytes": 22333829939,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -6395,7 +6441,8 @@
     "requires_custom_nodes": [],
     "usage": 2075,
     "date": "2025-11-26",
-    "size_bytes": 74088185856
+    "size_bytes": 74088185856,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -6534,7 +6581,8 @@
     "requires_custom_nodes": [],
     "usage": 37,
     "date": "2025-11-26",
-    "size_bytes": 56586194125
+    "size_bytes": 56586194125,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -6649,7 +6697,8 @@
     "requires_custom_nodes": [],
     "usage": 16,
     "date": "2026-03-12",
-    "size_bytes": 18790481920
+    "size_bytes": 18790481920,
+    "username": "ComfyUI"
    },
    "params_b": 9.0,
    "precision": "fp8",
@@ -6760,7 +6809,8 @@
     "requires_custom_nodes": [],
     "usage": 326,
     "date": "2026-01-16",
-    "size_bytes": 17072495002
+    "size_bytes": 17072495002,
+    "username": "ComfyUI"
    },
    "params_b": 4.0,
    "precision": "fp8",
@@ -6872,7 +6922,8 @@
     "requires_custom_nodes": [],
     "usage": 395,
     "date": "2026-01-16",
-    "size_bytes": 12455405158
+    "size_bytes": 12455405158,
+    "username": "ComfyUI"
    },
    "params_b": 4.0,
    "precision": "fp8",
@@ -6981,7 +7032,8 @@
     "requires_custom_nodes": [],
     "usage": 1152,
     "date": "2026-01-16",
-    "size_bytes": 19327352832
+    "size_bytes": 19327352832,
+    "username": "ComfyUI"
    },
    "params_b": 9.0,
    "precision": "fp8",
@@ -7092,7 +7144,8 @@
     "requires_custom_nodes": [],
     "usage": 69,
     "date": "2026-01-16",
-    "size_bytes": 19112604467
+    "size_bytes": 19112604467,
+    "username": "ComfyUI"
    },
    "params_b": 9.0,
    "precision": "fp8",
@@ -7231,7 +7284,8 @@
     "requires_custom_nodes": [],
     "usage": 198,
     "date": "2026-01-16",
-    "size_bytes": 17072495002
+    "size_bytes": 17072495002,
+    "username": "ComfyUI"
    },
    "params_b": 4.0,
    "precision": null,
@@ -7363,7 +7417,8 @@
     "requires_custom_nodes": [],
     "usage": 412,
     "date": "2025-11-26",
-    "size_bytes": 71403831296
+    "size_bytes": 71403831296,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -7475,7 +7530,8 @@
     "requires_custom_nodes": [],
     "usage": 367,
     "date": "2026-01-16",
-    "size_bytes": 19219978650
+    "size_bytes": 19219978650,
+    "username": "ComfyUI"
    },
    "params_b": 9.0,
    "precision": "fp8",
@@ -7610,7 +7666,8 @@
     "requires_custom_nodes": [],
     "usage": 654,
     "date": "2026-10-15",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -7745,7 +7802,8 @@
     "requires_custom_nodes": [],
     "usage": 302,
     "date": "2026-10-15",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -7880,7 +7938,8 @@
     "requires_custom_nodes": [],
     "usage": 916,
     "date": "2026-10-15",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -8015,7 +8074,8 @@
     "requires_custom_nodes": [],
     "usage": 1211,
     "date": "2026-10-15",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -8106,7 +8166,8 @@
     "requires_custom_nodes": [],
     "usage": 39,
     "date": "2026-05-14",
-    "size_bytes": 25447681229
+    "size_bytes": 25447681229,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -8195,7 +8256,8 @@
     "requires_custom_nodes": [],
     "usage": 19,
     "date": "2026-05-14",
-    "size_bytes": 17072495002
+    "size_bytes": 17072495002,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -8328,7 +8390,8 @@
     "requires_custom_nodes": [],
     "usage": 88,
     "date": "2026-06-03",
-    "size_bytes": 26521423053
+    "size_bytes": 26521423053,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -8461,7 +8524,8 @@
     "requires_custom_nodes": [],
     "usage": 23,
     "date": "2026-07-13",
-    "size_bytes": 30064771072
+    "size_bytes": 30064771072,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -8576,7 +8640,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2026-07-20",
-    "size_bytes": 26736171418
+    "size_bytes": 26736171418,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -8710,7 +8775,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-02-03",
-    "size_bytes": 21689584845
+    "size_bytes": 21689584845,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -8846,7 +8912,8 @@
     "requires_custom_nodes": [],
     "usage": 458,
     "date": "2026-07-20",
-    "size_bytes": 19434727014
+    "size_bytes": 19434727014,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -8985,7 +9052,8 @@
     "requires_custom_nodes": [],
     "usage": 9677,
     "date": "2026-06-24",
-    "size_bytes": 19112604467
+    "size_bytes": 19112604467,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -9124,7 +9192,8 @@
     "requires_custom_nodes": [],
     "usage": 718,
     "date": "2026-07-08",
-    "size_bytes": 19112604467
+    "size_bytes": 19112604467,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -9240,7 +9309,8 @@
     "requires_custom_nodes": [],
     "usage": 37,
     "date": "2026-05-26",
-    "size_bytes": 21796959027
+    "size_bytes": 21796959027,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -9356,7 +9426,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2026-05-26",
-    "size_bytes": 21796959027
+    "size_bytes": 21796959027,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -9469,7 +9540,8 @@
     "requires_custom_nodes": [],
     "usage": 36,
     "date": "2026-03-23",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -9580,7 +9652,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2026-03-02",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -9666,7 +9739,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-05-21",
-    "size_bytes": 2040109466
+    "size_bytes": 2040109466,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -9781,7 +9855,8 @@
     "requires_custom_nodes": [],
     "usage": 40,
     "date": "2026-07-27",
-    "size_bytes": 13421772800
+    "size_bytes": 13421772800,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -9898,7 +9973,8 @@
     "requires_custom_nodes": [],
     "usage": 95,
     "date": "2026-07-27",
-    "size_bytes": 13421772800
+    "size_bytes": 13421772800,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10015,7 +10091,8 @@
     "requires_custom_nodes": [],
     "usage": 91,
     "date": "2026-07-28",
-    "size_bytes": 13421772800
+    "size_bytes": 13421772800,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10132,7 +10209,8 @@
     "requires_custom_nodes": [],
     "usage": 11,
     "date": "2026-07-28",
-    "size_bytes": 13421772800
+    "size_bytes": 13421772800,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10277,7 +10355,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2026-09-14",
-    "size_bytes": 22441204122
+    "size_bytes": 22441204122,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10418,7 +10497,8 @@
     "requires_custom_nodes": [],
     "usage": 239,
     "date": "2026-09-14",
-    "size_bytes": 22441204122
+    "size_bytes": 22441204122,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10559,7 +10639,8 @@
     "requires_custom_nodes": [],
     "usage": 33,
     "date": "2026-09-14",
-    "size_bytes": 22441204122
+    "size_bytes": 22441204122,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10666,7 +10747,8 @@
     "requires_custom_nodes": [],
     "usage": 43,
     "date": "2026-09-29",
-    "size_bytes": 25984552141
+    "size_bytes": 25984552141,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10795,7 +10877,8 @@
     "requires_custom_nodes": [],
     "usage": 206,
     "date": "2026-09-25",
-    "size_bytes": 43271795507
+    "size_bytes": 43271795507,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -10905,7 +10988,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-10-17",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -11017,7 +11101,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-10-17",
-    "size_bytes": 22226455757
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -11130,7 +11215,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-10-17",
-    "size_bytes": 22222122562
+    "size_bytes": 22222122562,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -11242,7 +11328,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-10-17",
-    "size_bytes": 15461882266
+    "size_bytes": 15461882266,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -11309,7 +11396,8 @@
     "requires_custom_nodes": [],
     "usage": 146,
     "date": "2025-10-10",
-    "size_bytes": 10630044058
+    "size_bytes": 10630044058,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -11444,7 +11532,8 @@
     "requires_custom_nodes": [],
     "usage": 59,
     "date": "2025-12-19",
-    "size_bytes": 16213501542
+    "size_bytes": 16213501542,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -11558,7 +11647,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2025-06-30",
-    "size_bytes": 15784004813
+    "size_bytes": 15784004813,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -11669,7 +11759,8 @@
     "requires_custom_nodes": [],
     "usage": 15,
     "date": "2025-06-30",
-    "size_bytes": 15784004813
+    "size_bytes": 15784004813,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -11780,7 +11871,8 @@
     "requires_custom_nodes": [],
     "usage": 8,
     "date": "2025-12-02",
-    "size_bytes": 20228222222
+    "size_bytes": 20228222222,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -11866,7 +11958,8 @@
     "requires_custom_nodes": [],
     "usage": 61,
     "date": "2026-04-29",
-    "size_bytes": 7838315315
+    "size_bytes": 7838315315,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -12005,7 +12098,8 @@
     "requires_custom_nodes": [],
     "usage": 399,
     "date": "2025-12-31",
-    "size_bytes": 31782757990
+    "size_bytes": 31782757990,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -12165,7 +12259,8 @@
     "requires_custom_nodes": [],
     "usage": 50,
     "date": "2026-02-16",
-    "size_bytes": 35326106010
+    "size_bytes": 35326106010,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -12302,7 +12397,8 @@
     "requires_custom_nodes": [],
     "usage": 17,
     "date": "2025-08-05",
-    "size_bytes": 31782757990
+    "size_bytes": 31782757990,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -12439,7 +12535,8 @@
     "requires_custom_nodes": [],
     "usage": 41,
     "date": "2026-01-30",
-    "size_bytes": 32427003085
+    "size_bytes": 32427003085,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -12552,7 +12649,8 @@
     "requires_custom_nodes": [],
     "usage": 114,
     "date": "2026-09-20",
-    "size_bytes": 21367462298
+    "size_bytes": 21367462298,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -12689,7 +12787,8 @@
     "requires_custom_nodes": [],
     "usage": 18213,
     "date": "2026-09-20",
-    "size_bytes": 26736171418
+    "size_bytes": 26736171418,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -12826,7 +12925,8 @@
     "requires_custom_nodes": [],
     "usage": 4998,
     "date": "2026-09-20",
-    "size_bytes": 26736171418
+    "size_bytes": 26736171418,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -12963,7 +13063,8 @@
     "requires_custom_nodes": [],
     "usage": 1388,
     "date": "2026-10-13",
-    "size_bytes": 41016937677
+    "size_bytes": 41016937677,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -13100,7 +13201,8 @@
     "requires_custom_nodes": [],
     "usage": 572,
     "date": "2026-10-13",
-    "size_bytes": 40984448745
+    "size_bytes": 40984448745,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -13262,7 +13364,8 @@
     "requires_custom_nodes": [],
     "usage": 28,
     "date": "2025-08-24",
-    "size_bytes": 34037615821
+    "size_bytes": 34037615821,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -13399,7 +13502,8 @@
     "requires_custom_nodes": [],
     "usage": 64,
     "date": "2025-08-18",
-    "size_bytes": 31782757990
+    "size_bytes": 31782757990,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -13537,7 +13641,8 @@
     "requires_custom_nodes": [],
     "usage": 3501,
     "date": "2025-09-25",
-    "size_bytes": 31782757990
+    "size_bytes": 31782757990,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -13699,7 +13804,8 @@
     "requires_custom_nodes": [],
     "usage": 58,
     "date": "2025-12-15",
-    "size_bytes": 31772020572
+    "size_bytes": 31772020572,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -13836,7 +13942,8 @@
     "requires_custom_nodes": [],
     "usage": 496,
     "date": "2025-12-23",
-    "size_bytes": 51324859187
+    "size_bytes": 51324859187,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -13973,7 +14080,8 @@
     "requires_custom_nodes": [],
     "usage": 1455,
     "date": "2026-07-10",
-    "size_bytes": 31031138714
+    "size_bytes": 31031138714,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -14180,7 +14288,8 @@
     "requires_custom_nodes": [],
     "usage": 60,
     "date": "2025-08-23",
-    "size_bytes": 35304631173
+    "size_bytes": 35304631173,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -14345,7 +14454,8 @@
     "requires_custom_nodes": [],
     "usage": 172,
     "date": "2025-09-12",
-    "size_bytes": 36013300777
+    "size_bytes": 36013300777,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -14460,7 +14570,8 @@
     "requires_custom_nodes": [],
     "usage": 97,
     "date": "2025-12-22",
-    "size_bytes": 50465865728
+    "size_bytes": 50465865728,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -14622,7 +14733,8 @@
     "requires_custom_nodes": [],
     "usage": 34,
     "date": "2025-08-23",
-    "size_bytes": 32749125632
+    "size_bytes": 32749125632,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -14686,7 +14798,8 @@
     "requires_custom_nodes": [],
     "usage": 610,
     "date": "2024-02-22",
-    "size_bytes": 6979321856
+    "size_bytes": 6979321856,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -14799,7 +14912,8 @@
     "requires_custom_nodes": [],
     "usage": 137,
     "date": "2026-01-27",
-    "size_bytes": 20830591386
+    "size_bytes": 20830591386,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -14912,7 +15026,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2026-07-10",
-    "size_bytes": 14602888806
+    "size_bytes": 14602888806,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -15025,7 +15140,8 @@
     "requires_custom_nodes": [],
     "usage": 14843,
     "date": "2025-11-27",
-    "size_bytes": 20830591386
+    "size_bytes": 20830591386,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -15161,7 +15277,8 @@
     "requires_custom_nodes": [],
     "usage": 309,
     "date": "2025-12-02",
-    "size_bytes": 23837068493
+    "size_bytes": 23837068493,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -15274,7 +15391,8 @@
     "requires_custom_nodes": [],
     "usage": 216,
     "date": "2026-07-04",
-    "size_bytes": 12133282611
+    "size_bytes": 12133282611,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -15363,7 +15481,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2025-03-01",
-    "size_bytes": 23590107873
+    "size_bytes": 23590107873,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -15452,7 +15571,8 @@
     "requires_custom_nodes": [],
     "usage": 11,
     "date": "2025-03-01",
-    "size_bytes": 23590107873
+    "size_bytes": 23590107873,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -15586,7 +15706,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2025-03-01",
-    "size_bytes": 23590107873
+    "size_bytes": 23590107873,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -15653,7 +15774,8 @@
     "requires_custom_nodes": [],
     "usage": 202,
     "date": "2025-03-01",
-    "size_bytes": 14935748772
+    "size_bytes": 14935748772,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -15740,7 +15862,8 @@
     "requires_custom_nodes": [],
     "usage": 48,
     "date": "2025-03-01",
-    "size_bytes": 13013750907
+    "size_bytes": 13013750907,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -15828,7 +15951,8 @@
     "requires_custom_nodes": [],
     "usage": 12,
     "date": "2025-03-01",
-    "size_bytes": 10630044058
+    "size_bytes": 10630044058,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -15915,7 +16039,8 @@
     "requires_custom_nodes": [],
     "usage": 95,
     "date": "2025-03-01",
-    "size_bytes": 13013750907
+    "size_bytes": 13013750907,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -15979,7 +16104,8 @@
     "requires_custom_nodes": [],
     "usage": 168,
     "date": "2025-03-01",
-    "size_bytes": 6936372183
+    "size_bytes": 6936372183,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -16140,7 +16266,8 @@
     "requires_custom_nodes": [],
     "usage": 19,
     "date": "2026-05-19",
-    "size_bytes": 32534377267
+    "size_bytes": 32534377267,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -16301,7 +16428,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-05-10",
-    "size_bytes": 51646981734
+    "size_bytes": 51646981734,
+    "username": "ingi"
    },
    "params_b": null,
    "precision": "bf16",
@@ -16438,7 +16566,8 @@
     "requires_custom_nodes": [],
     "usage": 101,
     "date": "2026-03-30",
-    "size_bytes": 30816390349
+    "size_bytes": 30816390349,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -16599,7 +16728,8 @@
     "requires_custom_nodes": [],
     "usage": 708,
     "date": "2026-10-13",
-    "size_bytes": 31245887078
+    "size_bytes": 31245887078,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -16733,7 +16863,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-03-30",
-    "size_bytes": 30709016166
+    "size_bytes": 30709016166,
+    "username": "enigmatic_e"
    },
    "params_b": null,
    "precision": "fp8",
@@ -16894,7 +17025,8 @@
     "requires_custom_nodes": [],
     "usage": 363,
     "date": "2025-12-08",
-    "size_bytes": 31245887078
+    "size_bytes": 31245887078,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "bf16",
@@ -17055,7 +17187,8 @@
     "requires_custom_nodes": [],
     "usage": 123,
     "date": "2025-12-08",
-    "size_bytes": 31198642438
+    "size_bytes": 31198642438,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "fp8",
@@ -17216,7 +17349,8 @@
     "requires_custom_nodes": [],
     "usage": 35,
     "date": "2026-01-13",
-    "size_bytes": 31138512896
+    "size_bytes": 31138512896,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "fp8",
@@ -17332,7 +17466,8 @@
     ],
     "usage": 215,
     "date": "2026-03-19",
-    "size_bytes": 16750372454
+    "size_bytes": 16750372454,
+    "username": "Doc_workBox"
    },
    "params_b": 9.0,
    "precision": null,
@@ -17540,7 +17675,8 @@
     ],
     "usage": 204,
     "date": "2026-03-09",
-    "size_bytes": 27809913242
+    "size_bytes": 27809913242,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "bf16",
@@ -17705,7 +17841,8 @@
     "requires_custom_nodes": [],
     "usage": 189,
     "date": "2026-03-09",
-    "size_bytes": 31568009626
+    "size_bytes": 31568009626,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "fp8",
@@ -17867,7 +18004,8 @@
     "requires_custom_nodes": [],
     "usage": 16,
     "date": "2026-03-09",
-    "size_bytes": 31138512896
+    "size_bytes": 31138512896,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "fp8",
@@ -18007,7 +18145,8 @@
     ],
     "usage": 20,
     "date": "2026-03-06",
-    "size_bytes": 31782757990
+    "size_bytes": 31782757990,
+    "username": "shane"
    },
    "params_b": null,
    "precision": "bf16",
@@ -18072,7 +18211,8 @@
     "requires_custom_nodes": [],
     "usage": 60,
     "date": "2026-05-10",
-    "size_bytes": 429496730
+    "size_bytes": 429496730,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -18135,7 +18275,8 @@
     "requires_custom_nodes": [],
     "usage": 55,
     "date": "2026-06-12",
-    "size_bytes": 1288490189
+    "size_bytes": 1288490189,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -18201,7 +18342,8 @@
     "requires_custom_nodes": [],
     "usage": 122,
     "date": "2026-04-26",
-    "size_bytes": 1717986918
+    "size_bytes": 1717986918,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -18314,7 +18456,8 @@
     ],
     "usage": 0,
     "date": "2026-04-20",
-    "size_bytes": 19112604467
+    "size_bytes": 19112604467,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -18379,7 +18522,8 @@
     "requires_custom_nodes": [],
     "usage": 94,
     "date": "2026-09-18",
-    "size_bytes": 2469606195
+    "size_bytes": 2469606195,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -18444,7 +18588,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-05-20",
-    "size_bytes": 644245094
+    "size_bytes": 644245094,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -18604,7 +18749,8 @@
     "requires_custom_nodes": [],
     "usage": 2,
     "date": "2026-05-19",
-    "size_bytes": 25984552141
+    "size_bytes": 25984552141,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -18695,7 +18841,8 @@
     "requires_custom_nodes": [],
     "usage": 15,
     "date": "2026-03-31",
-    "size_bytes": 2040109466
+    "size_bytes": 2040109466,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -18763,7 +18910,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2026-03-02",
-    "size_bytes": 1932735283
+    "size_bytes": 1932735283,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -18850,7 +18998,8 @@
     "requires_custom_nodes": [],
     "usage": 93,
     "date": "2026-07-13",
-    "size_bytes": 3972844749
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
    },
    "params_b": 3.0,
    "precision": "int8",
@@ -18935,7 +19084,8 @@
     "requires_custom_nodes": [],
     "usage": 521,
     "date": "2026-07-13",
-    "size_bytes": 8804682957
+    "size_bytes": 8804682957,
+    "username": "ComfyUI"
    },
    "params_b": 7.0,
    "precision": "int8",
@@ -18978,7 +19128,8 @@
     ],
     "usage": 919,
     "date": "2026-02-06",
-    "size_bytes": 17716740096
+    "size_bytes": 17716740096,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -19117,7 +19268,8 @@
     "requires_custom_nodes": [],
     "usage": 370,
     "date": "2026-02-19",
-    "size_bytes": 20723217203
+    "size_bytes": 20723217203,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "bf16",
@@ -19277,7 +19429,8 @@
     "requires_custom_nodes": [],
     "usage": 91,
     "date": "2026-06-14",
-    "size_bytes": 38762079846
+    "size_bytes": 38762079846,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -19412,7 +19565,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2026-04-10",
-    "size_bytes": 19864223744
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -19545,7 +19699,8 @@
     "requires_custom_nodes": [],
     "usage": 75,
     "date": "2026-04-10",
-    "size_bytes": 19864223744
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -19678,7 +19833,8 @@
     "requires_custom_nodes": [],
     "usage": 202,
     "date": "2026-04-10",
-    "size_bytes": 19864223744
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -19741,7 +19897,8 @@
     "requires_custom_nodes": [],
     "usage": 90,
     "date": "2026-02-03",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -19874,7 +20031,8 @@
     "requires_custom_nodes": [],
     "usage": 33,
     "date": "2026-02-02",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -20007,7 +20165,8 @@
     "requires_custom_nodes": [],
     "usage": 37,
     "date": "2026-02-05",
-    "size_bytes": 14710262989
+    "size_bytes": 14710262989,
+    "username": "ComfyUI"
    },
    "params_b": 4.0,
    "precision": null,
@@ -20070,7 +20229,8 @@
     "requires_custom_nodes": [],
     "usage": 19,
     "date": "2025-03-01",
-    "size_bytes": 7698728878
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
    },
    "params_b": 3.5,
    "precision": null,
@@ -20133,7 +20293,8 @@
     "requires_custom_nodes": [],
     "usage": 11,
     "date": "2025-03-01",
-    "size_bytes": 7698728878
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
    },
    "params_b": 3.5,
    "precision": null,
@@ -20196,7 +20357,8 @@
     "requires_custom_nodes": [],
     "usage": 12,
     "date": "2025-03-01",
-    "size_bytes": 7698728878
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
    },
    "params_b": 3.5,
    "precision": null,
@@ -20238,7 +20400,8 @@
     ],
     "usage": 27,
     "date": "2026-03-30",
-    "size_bytes": 429496730
+    "size_bytes": 429496730,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -20353,7 +20516,8 @@
     "requires_custom_nodes": [],
     "usage": 523,
     "date": "2026-08-13",
-    "size_bytes": 15354508083
+    "size_bytes": 15354508083,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -20468,7 +20632,8 @@
     "requires_custom_nodes": [],
     "usage": 291,
     "date": "2026-05-20",
-    "size_bytes": 15676630630
+    "size_bytes": 15676630630,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -20581,7 +20746,8 @@
     "requires_custom_nodes": [],
     "usage": 260,
     "date": "2026-05-20",
-    "size_bytes": 15891378995
+    "size_bytes": 15891378995,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -20669,7 +20835,8 @@
     "requires_custom_nodes": [],
     "usage": 22,
     "date": "2026-09-14",
-    "size_bytes": 5368709120
+    "size_bytes": 5368709120,
+    "username": "ComfyUI"
    },
    "params_b": 3.0,
    "precision": "int8",
@@ -20732,7 +20899,8 @@
     "requires_custom_nodes": [],
     "usage": 0,
     "date": "2026-09-14",
-    "size_bytes": 3972844749
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
    },
    "params_b": 3.0,
    "precision": "int8",
@@ -20818,7 +20986,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2025-03-01",
-    "size_bytes": 5690831667
+    "size_bytes": 5690831667,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -20952,7 +21121,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-03-01",
-    "size_bytes": 35476429865
+    "size_bytes": 35476429865,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "bf16",
@@ -21093,7 +21263,8 @@
     "requires_custom_nodes": [],
     "usage": 131,
     "date": "2025-03-01",
-    "size_bytes": 41049149932
+    "size_bytes": 41049149932,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -21181,7 +21352,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2025-03-01",
-    "size_bytes": 19155554140
+    "size_bytes": 19155554140,
+    "username": "ComfyUI"
    },
    "params_b": 2.0,
    "precision": null,
@@ -21269,7 +21441,8 @@
     "requires_custom_nodes": [],
     "usage": 16,
     "date": "2025-03-01",
-    "size_bytes": 19155554140
+    "size_bytes": 19155554140,
+    "username": "ComfyUI"
    },
    "params_b": 2.0,
    "precision": null,
@@ -21432,7 +21605,8 @@
     ],
     "usage": 11,
     "date": "2025-12-11",
-    "size_bytes": 31568009626
+    "size_bytes": 31568009626,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -21522,7 +21696,8 @@
     ],
     "usage": 7,
     "date": "2026-03-30",
-    "size_bytes": 4294967296
+    "size_bytes": 4294967296,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -21664,7 +21839,8 @@
     "requires_custom_nodes": [],
     "usage": 94,
     "date": "2026-07-13",
-    "size_bytes": 39621073306
+    "size_bytes": 39621073306,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -21806,7 +21982,8 @@
     ],
     "usage": 18,
     "date": "2026-05-21",
-    "size_bytes": 61418032333
+    "size_bytes": 61418032333,
+    "username": "PurzBeats"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -21920,7 +22097,8 @@
     ],
     "usage": 26,
     "date": "2026-05-21",
-    "size_bytes": 71511205478
+    "size_bytes": 71511205478,
+    "username": "hellorob"
    },
    "params_b": 22.0,
    "precision": null,
@@ -22034,7 +22212,8 @@
     ],
     "usage": 31,
     "date": "2026-05-21",
-    "size_bytes": 71511205478
+    "size_bytes": 71511205478,
+    "username": "hellorob"
    },
    "params_b": 22.0,
    "precision": null,
@@ -22174,7 +22353,8 @@
     ],
     "usage": 143,
     "date": "2026-05-21",
-    "size_bytes": 62491774157
+    "size_bytes": 62491774157,
+    "username": "PurzBeats"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -22335,7 +22515,8 @@
     ],
     "usage": 127,
     "date": "2026-05-21",
-    "size_bytes": 61418032333
+    "size_bytes": 61418032333,
+    "username": "hellorob"
    },
    "params_b": 22.0,
    "precision": "bf16",
@@ -22451,7 +22632,8 @@
     ],
     "usage": 44,
     "date": "2026-05-21",
-    "size_bytes": 71511205478
+    "size_bytes": 71511205478,
+    "username": "hellorob"
    },
    "params_b": 22.0,
    "precision": null,
@@ -22563,7 +22745,8 @@
     "requires_custom_nodes": [],
     "usage": 24,
     "date": "2026-03-30",
-    "size_bytes": 39406324941
+    "size_bytes": 39406324941,
+    "username": "shane"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -22752,7 +22935,8 @@
     ],
     "usage": 1237,
     "date": "2026-03-08",
-    "size_bytes": 28776280883
+    "size_bytes": 28776280883,
+    "username": "PurzBeats"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -23066,7 +23250,8 @@
     ],
     "usage": 13,
     "date": "2026-03-18",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "hellorob"
    },
    "params_b": 14.0,
    "precision": "bf16",
@@ -23136,7 +23321,8 @@
     ],
     "usage": 368,
     "date": "2026-02-19",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": null,
@@ -23303,7 +23489,8 @@
     ],
     "usage": 8,
     "date": "2026-03-09",
-    "size_bytes": 50787988275
+    "size_bytes": 50787988275,
+    "username": "ingi"
    },
    "params_b": null,
    "precision": "bf16",
@@ -23347,7 +23534,8 @@
     ],
     "usage": 21,
     "date": "2026-03-06",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "shane"
    },
    "params_b": null,
    "precision": null,
@@ -23416,7 +23604,8 @@
     ],
     "usage": 1,
     "date": "2026-03-02",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "Julien | MJM"
    },
    "params_b": null,
    "precision": null,
@@ -23700,7 +23889,8 @@
     ],
     "usage": 10,
     "date": "2026-03-03",
-    "size_bytes": 60129542144
+    "size_bytes": 60129542144,
+    "username": "Julien | MJM"
    },
    "params_b": null,
    "precision": "fp8",
@@ -23745,7 +23935,8 @@
     ],
     "usage": 26,
     "date": "2026-03-04",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "PurzBeats"
    },
    "params_b": null,
    "precision": null,
@@ -23911,7 +24102,8 @@
     ],
     "usage": 39,
     "date": "2026-03-18",
-    "size_bytes": 77202037146
+    "size_bytes": 77202037146,
+    "username": "hellorob"
    },
    "params_b": null,
    "precision": "fp8",
@@ -24057,7 +24249,8 @@
     ],
     "usage": 66,
     "date": "2026-03-04",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "shane"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -24225,7 +24418,8 @@
     ],
     "usage": 22,
     "date": "2026-03-03",
-    "size_bytes": 21474836480
+    "size_bytes": 21474836480,
+    "username": "shane"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -24340,7 +24534,8 @@
     "requires_custom_nodes": [],
     "usage": 104,
     "date": "2025-03-01",
-    "size_bytes": 9824737690
+    "size_bytes": 9824737690,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "fp16",
@@ -24425,7 +24620,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2025-03-01",
-    "size_bytes": 16492674417
+    "size_bytes": 16492674417,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24468,7 +24664,8 @@
     ],
     "usage": 58,
     "date": "2026-01-12",
-    "size_bytes": 1073741824
+    "size_bytes": 1073741824,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24513,7 +24710,8 @@
     ],
     "usage": 11,
     "date": "2026-01-12",
-    "size_bytes": 5368709120
+    "size_bytes": 5368709120,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24558,7 +24756,8 @@
     ],
     "usage": 13,
     "date": "2026-01-12",
-    "size_bytes": 5368709120
+    "size_bytes": 5368709120,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24603,7 +24802,8 @@
     ],
     "usage": 33,
     "date": "2026-01-12",
-    "size_bytes": 5368709120
+    "size_bytes": 5368709120,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24668,7 +24868,8 @@
     "requires_custom_nodes": [],
     "usage": 132,
     "date": "2026-06-12",
-    "size_bytes": 1288490189
+    "size_bytes": 1288490189,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -24711,7 +24912,8 @@
     ],
     "usage": 20,
     "date": "2026-03-30",
-    "size_bytes": 10737418240
+    "size_bytes": 10737418240,
+    "username": "PurzBeats"
    },
    "params_b": null,
    "precision": null,
@@ -24801,7 +25003,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2026-03-31",
-    "size_bytes": 2040109466
+    "size_bytes": 2040109466,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -24869,7 +25072,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2026-03-02",
-    "size_bytes": 1932735283
+    "size_bytes": 1932735283,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -24956,7 +25160,8 @@
     "requires_custom_nodes": [],
     "usage": 581,
     "date": "2026-07-14",
-    "size_bytes": 3972844749
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
    },
    "params_b": 3.0,
    "precision": "int8",
@@ -25020,7 +25225,8 @@
     "requires_custom_nodes": [],
     "usage": 57,
     "date": "2026-04-27",
-    "size_bytes": 107374182
+    "size_bytes": 107374182,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -25088,7 +25294,8 @@
     "requires_custom_nodes": [],
     "usage": 157,
     "date": "2026-04-27",
-    "size_bytes": 1717986918
+    "size_bytes": 1717986918,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -25131,7 +25338,8 @@
     ],
     "usage": 299,
     "date": "2026-01-22",
-    "size_bytes": 42949672960
+    "size_bytes": 42949672960,
+    "username": "sirolim"
    },
    "params_b": null,
    "precision": null,
@@ -25314,7 +25522,8 @@
     "requires_custom_nodes": [],
     "usage": 159,
     "date": "2026-05-14",
-    "size_bytes": 34252364186
+    "size_bytes": 34252364186,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -25388,7 +25597,8 @@
     ],
     "usage": 116,
     "date": "2026-01-19",
-    "size_bytes": 20401094656
+    "size_bytes": 20401094656,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -25548,7 +25758,8 @@
     "requires_custom_nodes": [],
     "usage": 354,
     "date": "2026-06-14",
-    "size_bytes": 38762079846
+    "size_bytes": 38762079846,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -25711,7 +25922,8 @@
     "requires_custom_nodes": [],
     "usage": 29,
     "date": "2026-02-23",
-    "size_bytes": 37044092928
+    "size_bytes": 37044092928,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -25874,7 +26086,8 @@
     "requires_custom_nodes": [],
     "usage": 40,
     "date": "2026-02-23",
-    "size_bytes": 37044092928
+    "size_bytes": 37044092928,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -25990,7 +26203,8 @@
     "requires_custom_nodes": [],
     "usage": 34,
     "date": "2026-03-31",
-    "size_bytes": 12670153523
+    "size_bytes": 12670153523,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -26121,7 +26335,8 @@
     "requires_custom_nodes": [],
     "usage": 2516,
     "date": "2026-09-15",
-    "size_bytes": 45097156608
+    "size_bytes": 45097156608,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -26252,7 +26467,8 @@
     "requires_custom_nodes": [],
     "usage": 816,
     "date": "2026-09-15",
-    "size_bytes": 42949672960
+    "size_bytes": 42949672960,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -26410,7 +26626,8 @@
     "requires_custom_nodes": [],
     "usage": 18,
     "date": "2025-09-21",
-    "size_bytes": 27895812588
+    "size_bytes": 27895812588,
+    "username": "ComfyUI"
    },
    "params_b": 17.0,
    "precision": "fp8",
@@ -26622,7 +26839,8 @@
     "requires_custom_nodes": [],
     "usage": 96,
     "date": "2025-11-21",
-    "size_bytes": 45384919416
+    "size_bytes": 45384919416,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -26807,7 +27025,8 @@
     "requires_custom_nodes": [],
     "usage": 26,
     "date": "2025-11-21",
-    "size_bytes": 45419279155
+    "size_bytes": 45419279155,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -26941,7 +27160,8 @@
     "requires_custom_nodes": [],
     "usage": 24,
     "date": "2025-12-09",
-    "size_bytes": 14710262989
+    "size_bytes": 14710262989,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -27076,7 +27296,8 @@
     "requires_custom_nodes": [],
     "usage": 44,
     "date": "2025-12-09",
-    "size_bytes": 14710262989
+    "size_bytes": 14710262989,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": null,
@@ -27166,7 +27387,8 @@
     "requires_custom_nodes": [],
     "usage": 120,
     "date": "2026-03-16",
-    "size_bytes": 38976828211
+    "size_bytes": 38976828211,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -27329,7 +27551,8 @@
     "requires_custom_nodes": [],
     "usage": 18113,
     "date": "2026-03-05",
-    "size_bytes": 47244640256
+    "size_bytes": 47244640256,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -27495,7 +27718,8 @@
     "requires_custom_nodes": [],
     "usage": 1146,
     "date": "2026-03-09",
-    "size_bytes": 42949672960
+    "size_bytes": 42949672960,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -27660,7 +27884,8 @@
     "requires_custom_nodes": [],
     "usage": 94,
     "date": "2026-04-25",
-    "size_bytes": 40909563494
+    "size_bytes": 40909563494,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -27824,7 +28049,8 @@
     "requires_custom_nodes": [],
     "usage": 120,
     "date": "2026-03-27",
-    "size_bytes": 43486543872
+    "size_bytes": 43486543872,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -27987,7 +28213,8 @@
     "requires_custom_nodes": [],
     "usage": 566,
     "date": "2026-03-05",
-    "size_bytes": 47244640256
+    "size_bytes": 47244640256,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "fp8",
@@ -28217,7 +28444,8 @@
     ],
     "usage": 114,
     "date": "2026-09-19",
-    "size_bytes": 61418032333
+    "size_bytes": 61418032333,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "int8",
@@ -28373,7 +28601,8 @@
     "requires_custom_nodes": [],
     "usage": 634,
     "date": "2026-08-11",
-    "size_bytes": 56908316672
+    "size_bytes": 56908316672,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "int8",
@@ -28552,7 +28781,8 @@
     "requires_custom_nodes": [],
     "usage": 4416,
     "date": "2026-08-11",
-    "size_bytes": 56908316672
+    "size_bytes": 56908316672,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "int8",
@@ -28731,7 +28961,8 @@
     "requires_custom_nodes": [],
     "usage": 1414,
     "date": "2026-08-11",
-    "size_bytes": 53150220288
+    "size_bytes": 53150220288,
+    "username": "ComfyUI"
    },
    "params_b": 22.0,
    "precision": "int8",
@@ -28912,7 +29143,8 @@
     "requires_custom_nodes": [],
     "usage": 14,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -29138,7 +29370,8 @@
     "requires_custom_nodes": [],
     "usage": 11,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -29298,7 +29531,8 @@
     "requires_custom_nodes": [],
     "usage": 90,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": "fp8",
@@ -29433,7 +29667,8 @@
     "requires_custom_nodes": [],
     "usage": 23,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -29592,7 +29827,8 @@
     "requires_custom_nodes": [],
     "usage": 11,
     "date": "2026-02-09",
-    "size_bytes": 103830834381
+    "size_bytes": 103830834381,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -29775,7 +30011,8 @@
     ],
     "usage": 18,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -29933,7 +30170,8 @@
     "requires_custom_nodes": [],
     "usage": 13,
     "date": "2026-01-06",
-    "size_bytes": 45526653338
+    "size_bytes": 45526653338,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": "fp8",
@@ -30068,7 +30306,8 @@
     "requires_custom_nodes": [],
     "usage": 17,
     "date": "2026-01-06",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": null,
@@ -30181,7 +30420,8 @@
     ],
     "usage": 48,
     "date": "2026-02-16",
-    "size_bytes": 53794465382
+    "size_bytes": 53794465382,
+    "username": "ComfyUI"
    },
    "params_b": 19.0,
    "precision": "bf16",
@@ -30406,7 +30646,8 @@
     "requires_custom_nodes": [],
     "usage": 159,
     "date": "2026-09-07",
-    "size_bytes": 48747878810
+    "size_bytes": 48747878810,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -30563,7 +30804,8 @@
     "requires_custom_nodes": [],
     "usage": 21177,
     "date": "2026-08-02",
-    "size_bytes": 44452911514
+    "size_bytes": 44452911514,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -30719,7 +30961,8 @@
     "requires_custom_nodes": [],
     "usage": 813,
     "date": "2026-08-24",
-    "size_bytes": 44452911514
+    "size_bytes": 44452911514,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -30874,7 +31117,8 @@
     "requires_custom_nodes": [],
     "usage": 282,
     "date": "2026-09-04",
-    "size_bytes": 44452911514
+    "size_bytes": 44452911514,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -31027,7 +31271,8 @@
     "requires_custom_nodes": [],
     "usage": 8556,
     "date": "2026-08-02",
-    "size_bytes": 44452911514
+    "size_bytes": 44452911514,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -31181,7 +31426,8 @@
     "requires_custom_nodes": [],
     "usage": 4200,
     "date": "2026-08-02",
-    "size_bytes": 56908316672
+    "size_bytes": 56908316672,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -31370,7 +31616,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-10-06",
-    "size_bytes": 22494891213
+    "size_bytes": 22494891213,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -31509,7 +31756,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-04-15",
-    "size_bytes": 11489037517
+    "size_bytes": 11489037517,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "bf16",
@@ -31646,7 +31894,8 @@
     "requires_custom_nodes": [],
     "usage": 13,
     "date": "2025-04-15",
-    "size_bytes": 42047729828
+    "size_bytes": 42047729828,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "bf16",
@@ -31855,7 +32104,8 @@
     "requires_custom_nodes": [],
     "usage": 957,
     "date": "2026-06-15",
-    "size_bytes": 44775034061
+    "size_bytes": 44775034061,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -32066,7 +32316,8 @@
     "requires_custom_nodes": [],
     "usage": 653,
     "date": "2026-07-13",
-    "size_bytes": 28668906701
+    "size_bytes": 28668906701,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "int8",
@@ -32251,7 +32502,8 @@
     "requires_custom_nodes": [],
     "usage": 71,
     "date": "2026-01-26",
-    "size_bytes": 29635274342
+    "size_bytes": 29635274342,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -32440,7 +32692,8 @@
     ],
     "usage": 34,
     "date": "2025-09-22",
-    "size_bytes": 27380416512
+    "size_bytes": 27380416512,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -32628,7 +32881,8 @@
     "requires_custom_nodes": [],
     "usage": 450,
     "date": "2025-08-02",
-    "size_bytes": 38031935406
+    "size_bytes": 38031935406,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -32815,7 +33069,8 @@
     "requires_custom_nodes": [],
     "usage": 22,
     "date": "2025-08-17",
-    "size_bytes": 40050570035
+    "size_bytes": 40050570035,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33003,7 +33258,8 @@
     "requires_custom_nodes": [],
     "usage": 90,
     "date": "2025-08-12",
-    "size_bytes": 38031935406
+    "size_bytes": 38031935406,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33190,7 +33446,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-08-12",
-    "size_bytes": 38031935406
+    "size_bytes": 38031935406,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33375,7 +33632,8 @@
     "requires_custom_nodes": [],
     "usage": 10653,
     "date": "2025-07-29",
-    "size_bytes": 38010460570
+    "size_bytes": 38010460570,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33536,7 +33794,8 @@
     "requires_custom_nodes": [],
     "usage": 106,
     "date": "2025-08-02",
-    "size_bytes": 25254407700
+    "size_bytes": 25254407700,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33721,7 +33980,8 @@
     "requires_custom_nodes": [],
     "usage": 379,
     "date": "2025-07-29",
-    "size_bytes": 38031935406
+    "size_bytes": 38031935406,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -33836,7 +34096,8 @@
     "requires_custom_nodes": [],
     "usage": 29,
     "date": "2025-07-29",
-    "size_bytes": 18146236826
+    "size_bytes": 18146236826,
+    "username": "ComfyUI"
    },
    "params_b": 5.0,
    "precision": "bf16",
@@ -33950,7 +34211,8 @@
     "requires_custom_nodes": [],
     "usage": 2,
     "date": "2025-07-29",
-    "size_bytes": 18146236826
+    "size_bytes": 18146236826,
+    "username": "ComfyUI"
    },
    "params_b": 5.0,
    "precision": "bf16",
@@ -34063,7 +34325,8 @@
     "requires_custom_nodes": [],
     "usage": 228,
     "date": "2025-07-29",
-    "size_bytes": 18146236826
+    "size_bytes": 18146236826,
+    "username": "ComfyUI"
    },
    "params_b": 5.0,
    "precision": "fp16",
@@ -34222,7 +34485,8 @@
     "requires_custom_nodes": [],
     "usage": 1414,
     "date": "2026-08-07",
-    "size_bytes": 25662429594
+    "size_bytes": 25662429594,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -34361,7 +34625,8 @@
     "requires_custom_nodes": [],
     "usage": 246,
     "date": "2026-08-07",
-    "size_bytes": 24910810317
+    "size_bytes": 24910810317,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "int8",
@@ -34500,7 +34765,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2025-05-21",
-    "size_bytes": 25393994138
+    "size_bytes": 25393994138,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -34684,7 +34950,8 @@
     "requires_custom_nodes": [],
     "usage": 32,
     "date": "2026-07-14",
-    "size_bytes": 52935471923
+    "size_bytes": 52935471923,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp8",
@@ -34895,7 +35162,8 @@
     "requires_custom_nodes": [],
     "usage": 50,
     "date": "2025-05-21",
-    "size_bytes": 57756572713
+    "size_bytes": 57756572713,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "fp16",
@@ -35105,7 +35373,8 @@
     "requires_custom_nodes": [],
     "usage": 10,
     "date": "2025-05-21",
-    "size_bytes": 57756572713
+    "size_bytes": 57756572713,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "fp16",
@@ -35315,7 +35584,8 @@
     "requires_custom_nodes": [],
     "usage": 188,
     "date": "2025-05-21",
-    "size_bytes": 57756572713
+    "size_bytes": 57756572713,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -35454,7 +35724,8 @@
     "requires_custom_nodes": [],
     "usage": 45,
     "date": "2025-05-21",
-    "size_bytes": 57767310131
+    "size_bytes": 57767310131,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -35617,7 +35888,8 @@
     "requires_custom_nodes": [],
     "usage": 216,
     "date": "2025-05-21",
-    "size_bytes": 57767310131
+    "size_bytes": 57767310131,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp16",
@@ -35826,7 +36098,8 @@
     "requires_custom_nodes": [],
     "usage": 60,
     "date": "2025-05-21",
-    "size_bytes": 57756572713
+    "size_bytes": 57756572713,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "fp16",
@@ -35989,7 +36262,8 @@
     "requires_custom_nodes": [],
     "usage": 8,
     "date": "2025-12-15",
-    "size_bytes": 25447681229
+    "size_bytes": 25447681229,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -36154,7 +36428,8 @@
     ],
     "usage": 10,
     "date": "2025-12-15",
-    "size_bytes": 25447681229
+    "size_bytes": 25447681229,
+    "username": "ComfyUI"
    },
    "params_b": null,
    "precision": "fp8",
@@ -36294,7 +36569,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2025-04-15",
-    "size_bytes": 41049149932
+    "size_bytes": 41049149932,
+    "username": "ComfyUI"
    },
    "params_b": 14.0,
    "precision": "fp16",
@@ -36431,7 +36707,8 @@
     "requires_custom_nodes": [],
     "usage": 27,
     "date": "2025-04-15",
-    "size_bytes": 11381663334
+    "size_bytes": 11381663334,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "bf16",
@@ -36568,7 +36845,8 @@
     "requires_custom_nodes": [],
     "usage": 9,
     "date": "2025-04-15",
-    "size_bytes": 11381663334
+    "size_bytes": 11381663334,
+    "username": "ComfyUI"
    },
    "params_b": 1.3,
    "precision": "bf16",
@@ -36645,7 +36923,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 7591551648
+   "total_size_bytes": 7591551648,
+   "downloads_all_time": 63949
   },
   {
    "id": "hf:AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
@@ -36704,7 +36983,8 @@
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 8709520096
+   "total_size_bytes": 8709520096,
+   "downloads_all_time": 407270
   },
   {
    "id": "hf:ChrisColeTech/qwen-image-edit-uncensored-GGUF",
@@ -36812,7 +37092,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 26409042758
+   "total_size_bytes": 26409042758,
+   "downloads_all_time": 116867
   },
   {
    "id": "hf:Heartsync/NSFW-Uncensored",
@@ -36946,223 +37227,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 13875688436
-  },
-  {
-   "id": "hf:John6666/nova-furry-xl-il-v120-sdxl",
-   "name": "nova-furry-xl-il-v120-sdxl",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "text_encoder/model.safetensors",
-     "url": "https://huggingface.co/John6666/nova-furry-xl-il-v120-sdxl/resolve/main/text_encoder/model.safetensors",
-     "sha256": "e231a069ab514993b147e7e0889ffb71ca878f3eadcff2fbdf12d637a8b6574a",
-     "size_bytes": 246144152,
-     "directory": null,
-     "repo_id": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license": "other",
-     "license_name": "faipl-1.0-sd",
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-     "repo_license": null,
-     "license_path": [
-      "John6666/nova-furry-xl-il-v120-sdxl",
-      "Laxhar/noobai-XL-1.1",
-      "Laxhar/noobai-XL-1.0",
-      "Laxhar/noobai-XL-0.77",
-      "Laxhar/noobai-XL-0.75",
-      "Laxhar/noobai-XL-0.6",
-      "Laxhar/noobai-XL-0.5",
-      "OnomaAIResearch/Illustrious-xl-early-release-v0",
-      "KBlueLeaf/kohaku-xl-beta5"
-     ],
-     "license_evidence": [
-      "family:illustrious-noobai"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "text_encoder_2/model.safetensors",
-     "url": "https://huggingface.co/John6666/nova-furry-xl-il-v120-sdxl/resolve/main/text_encoder_2/model.safetensors",
-     "sha256": "382225e3cfb21f7402d2bb1ba8139a511835639e49342a879826ee6812492937",
-     "size_bytes": 1389382176,
-     "directory": null,
-     "repo_id": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license": "other",
-     "license_name": "faipl-1.0-sd",
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-     "repo_license": null,
-     "license_path": [
-      "John6666/nova-furry-xl-il-v120-sdxl",
-      "Laxhar/noobai-XL-1.1",
-      "Laxhar/noobai-XL-1.0",
-      "Laxhar/noobai-XL-0.77",
-      "Laxhar/noobai-XL-0.75",
-      "Laxhar/noobai-XL-0.6",
-      "Laxhar/noobai-XL-0.5",
-      "OnomaAIResearch/Illustrious-xl-early-release-v0",
-      "KBlueLeaf/kohaku-xl-beta5"
-     ],
-     "license_evidence": [
-      "family:illustrious-noobai"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "unet/diffusion_pytorch_model.safetensors",
-     "url": "https://huggingface.co/John6666/nova-furry-xl-il-v120-sdxl/resolve/main/unet/diffusion_pytorch_model.safetensors",
-     "sha256": "aa9629bda1973bb0973a030650d2c7154a1a06da92e612ed08c4df06c3d883b3",
-     "size_bytes": 5135149760,
-     "directory": null,
-     "repo_id": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license": "other",
-     "license_name": "faipl-1.0-sd",
-     "gated": false,
-     "role": "main",
-     "license_from": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-     "repo_license": null,
-     "license_path": [
-      "John6666/nova-furry-xl-il-v120-sdxl",
-      "Laxhar/noobai-XL-1.1",
-      "Laxhar/noobai-XL-1.0",
-      "Laxhar/noobai-XL-0.77",
-      "Laxhar/noobai-XL-0.75",
-      "Laxhar/noobai-XL-0.6",
-      "Laxhar/noobai-XL-0.5",
-      "OnomaAIResearch/Illustrious-xl-early-release-v0",
-      "KBlueLeaf/kohaku-xl-beta5"
-     ],
-     "license_evidence": [
-      "family:illustrious-noobai"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "vae/diffusion_pytorch_model.safetensors",
-     "url": "https://huggingface.co/John6666/nova-furry-xl-il-v120-sdxl/resolve/main/vae/diffusion_pytorch_model.safetensors",
-     "sha256": "9d3aca1a278ed7262b9c5d13fa232c088b039a05abbce27c45b5d2c8cc60df1d",
-     "size_bytes": 167335342,
-     "directory": null,
-     "repo_id": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license": "other",
-     "license_name": "faipl-1.0-sd",
-     "gated": false,
-     "role": "vae",
-     "license_from": "John6666/nova-furry-xl-il-v120-sdxl",
-     "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-     "repo_license": null,
-     "license_path": [
-      "John6666/nova-furry-xl-il-v120-sdxl",
-      "Laxhar/noobai-XL-1.1",
-      "Laxhar/noobai-XL-1.0",
-      "Laxhar/noobai-XL-0.77",
-      "Laxhar/noobai-XL-0.75",
-      "Laxhar/noobai-XL-0.6",
-      "Laxhar/noobai-XL-0.5",
-      "OnomaAIResearch/Illustrious-xl-early-release-v0",
-      "KBlueLeaf/kohaku-xl-beta5"
-     ],
-     "license_evidence": [
-      "family:illustrious-noobai"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": null,
-   "license": "other",
-   "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-   "base_model": "OnomaAIResearch/Illustrious-XL-v2.0",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads"
-   ],
-   "updated": "2025-10-01",
-   "homepage": "https://huggingface.co/John6666/nova-furry-xl-il-v120-sdxl",
-   "downloads": 153170,
-   "likes": 8,
-   "license_name": "faipl-1.0-sd",
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 6938011430
-  },
-  {
-   "id": "hf:KENIC-1/Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16",
-   "name": "Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "Qwen-Image-2.1-Turbo-Abliterated-Uncensored-BF16.gguf",
-     "url": "https://huggingface.co/KENIC-1/Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16/resolve/main/Qwen-Image-2.1-Turbo-Abliterated-Uncensored-BF16.gguf",
-     "sha256": "af8502723461ba196d3b486c93b198e4163ce20c39a64916cce52f14bf5cafe3",
-     "size_bytes": 16388045536,
-     "directory": null,
-     "repo_id": "KENIC-1/Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "Qwen/Qwen-Image-2.1",
-     "license_url": null,
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "KENIC-1/Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16",
-      "Qwen/Qwen3-VL-8B-Instruct"
-     ],
-     "license_evidence": [
-      "license_unverified: apache-2.0 は、系統 qwen-image-2.1 の other(qwen-research)(https://huggingface.co/Qwen/Qwen-Image-2.1)より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "gguf-bf16",
-   "license": null,
-   "license_url": null,
-   "base_model": "Qwen/Qwen3-VL-8B-Instruct",
-   "content": "uncensored",
-   "content_evidence": [
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2026-10-12",
-   "homepage": "https://huggingface.co/KENIC-1/Qwen-Image-2.1-Turbo-Uncensored-GGUF-BF16",
-   "downloads": 1503,
-   "likes": 1,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: apache-2.0 は、系統 qwen-image-2.1 の other(qwen-research)(https://huggingface.co/Qwen/Qwen-Image-2.1)より寛容です(Qwen-Image-2.1-Turbo-Abliterated-Uncensored-BF16.gguf)"
-   ],
-   "files_complete": false,
-   "size_floor_bytes": null,
-   "total_size_bytes": 16388045536
+   "total_size_bytes": 13875688436,
+   "downloads_all_time": 201196
   },
   {
    "id": "hf:Laxhar/noobai-XL-1.1",
@@ -37225,90 +37291,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7105349958
-  },
-  {
-   "id": "hf:LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-   "name": "Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "qwen-image-2.1-Uncensored-Genesis-BF16.gguf",
-     "url": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF/resolve/main/qwen-image-2.1-Uncensored-Genesis-BF16.gguf",
-     "sha256": "4ea8f1795f2fa145baa11123c4507c58510375ec2cd3211ed3bb2dab698f56cc",
-     "size_bytes": 14230272800,
-     "directory": null,
-     "repo_id": "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "license": "other",
-     "license_name": "qwen-research",
-     "gated": false,
-     "role": "main",
-     "license_from": "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "license_url": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "repo_license": null,
-     "license_path": [
-      "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-      "abenzerps/Qwen-Image-2.1-Uncensored-Quantized",
-      "Qwen/Qwen-Image-2.1"
-     ],
-     "license_evidence": [
-      "family:qwen-image-2.1"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "vae/qwen_image_2.1_vae_bf16.safetensors",
-     "url": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
-     "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
-     "size_bytes": 675509688,
-     "directory": null,
-     "repo_id": "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "license": "other",
-     "license_name": "qwen-research",
-     "gated": false,
-     "role": "vae",
-     "license_from": "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "license_url": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-     "repo_license": null,
-     "license_path": [
-      "LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-      "abenzerps/Qwen-Image-2.1-Uncensored-Quantized",
-      "Qwen/Qwen-Image-2.1"
-     ],
-     "license_evidence": [
-      "family:qwen-image-2.1"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "gguf-bf16",
-   "license": "other",
-   "license_url": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-   "base_model": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-   "content": "uncensored",
-   "content_evidence": [
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2026-09-26",
-   "homepage": "https://huggingface.co/LuffyTheFox/Qwen-Image-2.1-Uncensored-Genesis-BF16-GGUF",
-   "downloads": 7537,
-   "likes": 24,
-   "license_name": "qwen-research",
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 14905782488
+   "total_size_bytes": 7105349958,
+   "downloads_all_time": 1074106
   },
   {
    "id": "hf:Meina/MeinaHentai",
@@ -37366,68 +37350,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2132651866
-  },
-  {
-   "id": "hf:ModdiAdam/Lusty_Krea-2_NSFW",
-   "name": "Lusty_Krea-2_NSFW",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "Lusty_Krea-2_NSFW-Q8_0.gguf",
-     "url": "https://huggingface.co/ModdiAdam/Lusty_Krea-2_NSFW/resolve/main/Lusty_Krea-2_NSFW-Q8_0.gguf",
-     "sha256": "a69bad2fec6c6e7479bbce1af918a25cc8a874b1a89f8c5a335da683a9cb8031",
-     "size_bytes": 14565971264,
-     "directory": null,
-     "repo_id": "ModdiAdam/Lusty_Krea-2_NSFW",
-     "license": "other",
-     "license_name": "krea-2-license",
-     "gated": false,
-     "role": "main",
-     "license_from": "ModdiAdam/Lusty_Krea-2_NSFW",
-     "license_url": "https://huggingface.co/Comfy-Org/Krea-2/blob/main/LICENSE.md",
-     "repo_license": null,
-     "license_path": [
-      "ModdiAdam/Lusty_Krea-2_NSFW",
-      "Comfy-Org/Krea-2",
-      "krea/Krea-2-Turbo",
-      "krea/Krea-2-Raw"
-     ],
-     "license_evidence": [
-      "family:krea-2"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "gguf-q8_0",
-   "license": "other",
-   "license_url": "https://huggingface.co/Comfy-Org/Krea-2/blob/main/LICENSE.md",
-   "base_model": "Comfy-Org/Krea-2",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences",
-    "name:nsfw"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=nsfw&sort=downloads"
-   ],
-   "updated": "2026-10-07",
-   "homepage": "https://huggingface.co/ModdiAdam/Lusty_Krea-2_NSFW",
-   "downloads": 6299,
-   "likes": 4,
-   "license_name": "krea-2-license",
-   "license_evidence": [],
-   "files_complete": false,
-   "size_floor_bytes": null,
-   "total_size_bytes": 14565971264
+   "total_size_bytes": 2132651866,
+   "downloads_all_time": 10180
   },
   {
    "id": "hf:ModdiAdam/Wild_Krea-2-turbo_NSFW",
@@ -37488,7 +37412,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 13625742656
+   "total_size_bytes": 13625742656,
+   "downloads_all_time": 17937
   },
   {
    "id": "hf:Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1",
@@ -37547,155 +37472,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7256784376
-  },
-  {
-   "id": "hf:Quiho/Krea2_NSFW_Uncensored_Complete",
-   "name": "Krea2_NSFW_Uncensored_Complete",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "moodyKrea2Mix_v3-Global-FP8.safetensors",
-     "url": "https://huggingface.co/Quiho/Krea2_NSFW_Uncensored_Complete/resolve/main/moodyKrea2Mix_v3-Global-FP8.safetensors",
-     "sha256": "49591a46ef95d21635156408c91f5281befeb090284fc243d44bc4b74d783a9e",
-     "size_bytes": 13485164976,
-     "directory": null,
-     "repo_id": "Quiho/Krea2_NSFW_Uncensored_Complete",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "krea/Krea-2-Turbo",
-     "license_url": null,
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "Quiho/Krea2_NSFW_Uncensored_Complete",
-      "krea/Krea-2-Turbo",
-      "krea/Krea-2-Raw"
-     ],
-     "license_evidence": [
-      "license_unverified: Quiho/Krea2_NSFW_Uncensored_Complete の表記 apache-2.0 は、元の krea/Krea-2-Turbo の other(krea-2-community-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "qwen3VL4BAbliteratedComfyui_FP8.safetensors",
-     "url": "https://huggingface.co/Quiho/Krea2_NSFW_Uncensored_Complete/resolve/main/qwen3VL4BAbliteratedComfyui_FP8.safetensors",
-     "sha256": "1cc1120f54f04736e4dee3b8b22744637332cb34e645a1e4c51196191861ae9d",
-     "size_bytes": 4831356160,
-     "directory": null,
-     "repo_id": "Quiho/Krea2_NSFW_Uncensored_Complete",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "krea/Krea-2-Turbo",
-     "license_url": null,
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "Quiho/Krea2_NSFW_Uncensored_Complete",
-      "krea/Krea-2-Turbo",
-      "krea/Krea-2-Raw"
-     ],
-     "license_evidence": [
-      "license_unverified: Quiho/Krea2_NSFW_Uncensored_Complete の表記 apache-2.0 は、元の krea/Krea-2-Turbo の other(krea-2-community-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "fp8",
-   "license": null,
-   "license_url": null,
-   "base_model": "krea/Krea-2-Turbo",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences",
-    "name:nsfw",
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=nsfw&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2026-09-03",
-   "homepage": "https://huggingface.co/Quiho/Krea2_NSFW_Uncensored_Complete",
-   "downloads": 54913,
-   "likes": 27,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: Quiho/Krea2_NSFW_Uncensored_Complete の表記 apache-2.0 は、元の krea/Krea-2-Turbo の other(krea-2-community-license) より寛容です(moodyKrea2Mix_v3-Global-FP8.safetensors)",
-    "license_unverified: Quiho/Krea2_NSFW_Uncensored_Complete の表記 apache-2.0 は、元の krea/Krea-2-Turbo の other(krea-2-community-license) より寛容です(qwen3VL4BAbliteratedComfyui_FP8.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 18316521136
-  },
-  {
-   "id": "hf:TheImposterImposters/URPM-SD1.5-v2.3.inpainting",
-   "name": "URPM-SD1.5-v2.3.inpainting",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "uberRealisticPornMerge_v23Inpainting.safetensors",
-     "url": "https://huggingface.co/TheImposterImposters/URPM-SD1.5-v2.3.inpainting/resolve/main/uberRealisticPornMerge_v23Inpainting.safetensors",
-     "sha256": "ac0f65dd95ee8b77868133a3cd8eb6e8a25009bd8fa13afdb966f1184bae0c24",
-     "size_bytes": 4265204890,
-     "directory": null,
-     "repo_id": "TheImposterImposters/URPM-SD1.5-v2.3.inpainting",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "TheImposterImposters/URPM-SD1.5-v2.3.inpainting",
-     "license_url": null,
-     "repo_license": null,
-     "license_path": [
-      "TheImposterImposters/URPM-SD1.5-v2.3.inpainting"
-     ],
-     "license_evidence": [
-      "license_unverified: TheImposterImposters/URPM-SD1.5-v2.3.inpainting にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": null,
-   "license": null,
-   "license_url": null,
-   "base_model": null,
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads"
-   ],
-   "updated": "2024-10-30",
-   "homepage": "https://huggingface.co/TheImposterImposters/URPM-SD1.5-v2.3.inpainting",
-   "downloads": 1666,
-   "likes": 8,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: TheImposterImposters/URPM-SD1.5-v2.3.inpainting にライセンスの記載がありません(uberRealisticPornMerge_v23Inpainting.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 4265204890
+   "total_size_bytes": 7256784376,
+   "downloads_all_time": 260678
   },
   {
    "id": "hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting",
@@ -37753,7 +37531,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938078610
+   "total_size_bytes": 6938078610,
+   "downloads_all_time": 13216
   },
   {
    "id": "hf:UnfilteredAI/NSFW-gen-v2",
@@ -37810,7 +37589,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938043264
+   "total_size_bytes": 6938043264,
+   "downloads_all_time": 599038
   },
   {
    "id": "hf:Winnougan/Ideogram_Instant_NSFW",
@@ -37867,7 +37647,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18558640000
+   "total_size_bytes": 18558640000,
+   "downloads_all_time": 22018
   },
   {
    "id": "hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized",
@@ -37972,66 +37753,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 25801402224
-  },
-  {
-   "id": "hf:anlord/Flux-12B-abliterated-V2-GGUF",
-   "name": "Flux-12B-abliterated-V2-GGUF",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "flux-abliterated-v2-Q4_K_M.gguf",
-     "url": "https://huggingface.co/anlord/Flux-12B-abliterated-V2-GGUF/resolve/main/flux-abliterated-v2-Q4_K_M.gguf",
-     "sha256": "a326a7228a481cfbc7aaf125921e2fed37aa9eb41789ad061d2f0056e3191fdf",
-     "size_bytes": 6925647168,
-     "directory": null,
-     "repo_id": "anlord/Flux-12B-abliterated-V2-GGUF",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "aoxo/flux.1dev-abliteratedv2",
-     "license_url": null,
-     "repo_license": "fair-noncommercial-research-license",
-     "license_path": [
-      "anlord/Flux-12B-abliterated-V2-GGUF",
-      "aoxo/flux.1dev-abliteratedv2"
-     ],
-     "license_evidence": [
-      "license_unverified: aoxo/flux.1dev-abliteratedv2 にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": 12.0,
-   "precision": "gguf-q4_k_m",
-   "license": null,
-   "license_url": null,
-   "base_model": "aoxo/flux.1dev-abliteratedv2",
-   "content": "uncensored",
-   "content_evidence": [
-    "name:abliterated"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=abliterated&sort=downloads"
-   ],
-   "updated": "2026-08-23",
-   "homepage": "https://huggingface.co/anlord/Flux-12B-abliterated-V2-GGUF",
-   "downloads": 1085,
-   "likes": 0,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: aoxo/flux.1dev-abliteratedv2 にライセンスの記載がありません(flux-abliterated-v2-Q4_K_M.gguf)"
-   ],
-   "files_complete": false,
-   "size_floor_bytes": null,
-   "total_size_bytes": 6925647168
+   "total_size_bytes": 25801402224,
+   "downloads_all_time": 2739572
   },
   {
    "id": "hf:darknight9121/FLUX.2-klein-base-9B-bucket-uncensored",
@@ -38087,7 +37810,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18157185200
+   "total_size_bytes": 18157185200,
+   "downloads_all_time": 86556
   },
   {
    "id": "hf:kkkkk26/lustify_v9",
@@ -38145,7 +37869,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938143490
+   "total_size_bytes": 6938143490,
+   "downloads_all_time": 14755
   },
   {
    "id": "hf:kpsss34/FHDR_Uncensored",
@@ -38204,7 +37929,8 @@
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 12714452256
+   "total_size_bytes": 12714452256,
+   "downloads_all_time": 343070
   },
   {
    "id": "hf:lesliemore/z-image-turbo-nsfw-v2-GGUF",
@@ -38263,173 +37989,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 7224707264
-  },
-  {
-   "id": "hf:nesaorg/LazyMix-Uncensored",
-   "name": "LazyMix-Uncensored",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "lazymixRealAmateur_fp16.safetensors",
-     "url": "https://huggingface.co/nesaorg/LazyMix-Uncensored/resolve/main/lazymixRealAmateur_fp16.safetensors",
-     "sha256": "d5fd15bf727be286564ed6af5c9a612348f328eadd9067784cd57fcb34891546",
-     "size_bytes": 4244149062,
-     "directory": null,
-     "repo_id": "nesaorg/LazyMix-Uncensored",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "nesaorg/LazyMix-Uncensored",
-     "license_url": null,
-     "repo_license": null,
-     "license_path": [
-      "nesaorg/LazyMix-Uncensored"
-     ],
-     "license_evidence": [
-      "license_unverified: nesaorg/LazyMix-Uncensored にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "fp16",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
-   "content": "uncensored",
-   "content_evidence": [
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2025-04-06",
-   "homepage": "https://huggingface.co/nesaorg/LazyMix-Uncensored",
-   "downloads": 1028,
-   "likes": 1,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: nesaorg/LazyMix-Uncensored にライセンスの記載がありません(lazymixRealAmateur_fp16.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 4244149062
-  },
-  {
-   "id": "hf:raidenzeke/flux.1dev-abliterated-gguf",
-   "name": "flux.1dev-abliterated-gguf",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "flux.1dev_abliterated_Q8_0.gguf",
-     "url": "https://huggingface.co/raidenzeke/flux.1dev-abliterated-gguf/resolve/main/flux.1dev_abliterated_Q8_0.gguf",
-     "sha256": "bdecb75fa6bdb543016906e397a495f35682710d2dda267c0ae231300a56fd59",
-     "size_bytes": 12708281664,
-     "directory": null,
-     "repo_id": "raidenzeke/flux.1dev-abliterated-gguf",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "raidenzeke/flux.1dev-abliterated-gguf",
-      "aoxo/flux.1dev-abliterated"
-     ],
-     "license_evidence": [
-      "license_unverified: apache-2.0 は、系統 flux.1-dev の other(flux-1-dev-non-commercial-license)(https://huggingface.co/black-forest-labs/FLUX.1-dev)より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "t5xxl_fp16.safetensors",
-     "url": "https://huggingface.co/raidenzeke/flux.1dev-abliterated-gguf/resolve/main/t5xxl_fp16.safetensors",
-     "sha256": "f247511d8203727e31b69752ebe91de49e89ee9635d5d29c35de23ad18be2751",
-     "size_bytes": 11537914408,
-     "directory": null,
-     "repo_id": "raidenzeke/flux.1dev-abliterated-gguf",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "google/t5-v1_1-xxl",
-     "license_url": "https://huggingface.co/google/t5-v1_1-xxl",
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "raidenzeke/flux.1dev-abliterated-gguf",
-      "google/t5-v1_1-xxl"
-     ],
-     "license_evidence": [
-      "component:t5-v1_1-xxl"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "ae.safetensors",
-     "url": "https://huggingface.co/raidenzeke/flux.1dev-abliterated-gguf/resolve/main/ae.safetensors",
-     "sha256": "f58ad0fbb7e0621871b778bf36a6faeb2c46a79adb32b898b60acd1f9560f890",
-     "size_bytes": 167666654,
-     "directory": null,
-     "repo_id": "raidenzeke/flux.1dev-abliterated-gguf",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "vae",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "apache-2.0",
-     "license_path": [
-      "raidenzeke/flux.1dev-abliterated-gguf",
-      "aoxo/flux.1dev-abliterated"
-     ],
-     "license_evidence": [
-      "license_unverified: apache-2.0 は、系統 flux.1-dev の other(flux-1-dev-non-commercial-license)(https://huggingface.co/black-forest-labs/FLUX.1-dev)より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "gguf-q8_0",
-   "license": null,
-   "license_url": null,
-   "base_model": "aoxo/flux.1dev-abliterated",
-   "content": "uncensored",
-   "content_evidence": [
-    "name:abliterated"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=abliterated&sort=downloads"
-   ],
-   "updated": "2026-03-05",
-   "homepage": "https://huggingface.co/raidenzeke/flux.1dev-abliterated-gguf",
-   "downloads": 3195,
-   "likes": 8,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: apache-2.0 は、系統 flux.1-dev の other(flux-1-dev-non-commercial-license)(https://huggingface.co/black-forest-labs/FLUX.1-dev)より寛容です(flux.1dev_abliterated_Q8_0.gguf)",
-    "license_unverified: apache-2.0 は、系統 flux.1-dev の other(flux-1-dev-non-commercial-license)(https://huggingface.co/black-forest-labs/FLUX.1-dev)より寛容です(ae.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 24413862726
+   "total_size_bytes": 7224707264,
+   "downloads_all_time": 98618
   },
   {
    "id": "hf:rectangleworm/PornMaster_Klein-9b",
@@ -38534,216 +38095,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18788082940
-  },
-  {
-   "id": "hf:shauray/FLUX-UNCENSORED-merged",
-   "name": "FLUX-UNCENSORED-merged",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "text_encoder/model.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/text_encoder/model.safetensors",
-     "sha256": "893d67a23f4693ed42cdab4cbad7fe3e727cf59609c40da28a46b5470f9ed082",
-     "size_bytes": 246144352,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "text_encoder_2/model-00001-of-00002.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/text_encoder_2/model-00001-of-00002.safetensors",
-     "sha256": "ec87bffd1923e8b2774a6d240c922a41f6143081d52cf83b8fe39e9d838c893e",
-     "size_bytes": 4994582224,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "text_encoder_2/model-00002-of-00002.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/text_encoder_2/model-00002-of-00002.safetensors",
-     "sha256": "a5640855b301fcdbceddfa90ae8066cd9414aff020552a201a255ecf2059da00",
-     "size_bytes": 4530066360,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "sha256": "3af7681205f5d535746fe6eb840842b8702c1859c387aa580d8ce9dba69be9fa",
-     "size_bytes": 9997626992,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/transformer/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "sha256": "21b918ae7ad8350225f50325983c5b0ce2eb72e08423e90ac99401699f47731d",
-     "size_bytes": 9945629344,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/transformer/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "sha256": "a6199d33f036f2c45bd86ccc5c02164ecbcc1c0b44b4ee91b8673be3373f803b",
-     "size_bytes": 4031674568,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "vae/diffusion_pytorch_model.safetensors",
-     "url": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged/resolve/main/vae/diffusion_pytorch_model.safetensors",
-     "sha256": "f5b59a26851551b67ae1fe58d32e76486e1e812def4696a4bea97f16604d40a3",
-     "size_bytes": 167666902,
-     "directory": null,
-     "repo_id": "shauray/FLUX-UNCENSORED-merged",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "vae",
-     "license_from": "black-forest-labs/FLUX.1-dev",
-     "license_url": null,
-     "repo_license": "mit",
-     "license_path": [
-      "shauray/FLUX-UNCENSORED-merged",
-      "black-forest-labs/FLUX.1-dev"
-     ],
-     "license_evidence": [
-      "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": null,
-   "license": null,
-   "license_url": null,
-   "base_model": "black-forest-labs/FLUX.1-dev",
-   "content": "uncensored",
-   "content_evidence": [
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2024-11-04",
-   "homepage": "https://huggingface.co/shauray/FLUX-UNCENSORED-merged",
-   "downloads": 1276,
-   "likes": 30,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(model.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(model-00001-of-00002.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(model-00002-of-00002.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(diffusion_pytorch_model-00001-of-00003.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(diffusion_pytorch_model-00002-of-00003.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(diffusion_pytorch_model-00003-of-00003.safetensors)",
-    "license_unverified: shauray/FLUX-UNCENSORED-merged の表記 mit は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(diffusion_pytorch_model.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 33913390742
+   "total_size_bytes": 18788082940,
+   "downloads_all_time": 43734
   },
   {
    "id": "hf:sinkinai/hassaku-hentai",
@@ -38801,88 +38154,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2132626072
-  },
-  {
-   "id": "hf:webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-   "name": "Sakura-Iris-3B-Uncensored-GGUF",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "Sakura-Iris-3B-Q8_0-4.15GiB.gguf",
-     "url": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF/resolve/main/Sakura-Iris-3B-Q8_0-4.15GiB.gguf",
-     "sha256": "4e9821f132f6c076b833ade81e201754268756064dd073881414b62a70afc4a5",
-     "size_bytes": 4459531168,
-     "directory": null,
-     "repo_id": "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "license_url": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "repo_license": null,
-     "license_path": [
-      "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-      "speridlabs/iris-3b"
-     ],
-     "license_evidence": [],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "Sakura-TextEncoder-Qwen3VL-4B-Uncensored-4bit-2.33GiB.gguf",
-     "url": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF/resolve/main/Sakura-TextEncoder-Qwen3VL-4B-Uncensored-4bit-2.33GiB.gguf",
-     "sha256": "a876aed5e2b350fab9c7d5cf22ffaf03e0bf79cf4c163a6e7f747cd5c4a8fc6d",
-     "size_bytes": 2497281984,
-     "directory": null,
-     "repo_id": "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "license_url": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-     "repo_license": null,
-     "license_path": [
-      "webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-      "speridlabs/iris-3b"
-     ],
-     "license_evidence": [
-      "family:qwen3-vl"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": 3.0,
-   "precision": "gguf-q8_0",
-   "license": "apache-2.0",
-   "license_url": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-   "base_model": "speridlabs/iris-3b",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences",
-    "name:uncensored"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads"
-   ],
-   "updated": "2026-10-17",
-   "homepage": "https://huggingface.co/webmp3/Sakura-Iris-3B-Uncensored-GGUF",
-   "downloads": 1834,
-   "likes": 3,
-   "license_name": null,
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 6956813152
+   "total_size_bytes": 2132626072,
+   "downloads_all_time": 36515
   },
   {
    "id": "hf:webmp3/Sakura-Qwen-Image-2.1-Turbo-Uncensored-GGUF",
@@ -38992,62 +38265,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 13294875288
-  },
-  {
-   "id": "hf:AEmotionStudio/stable-audio-open-models",
-   "name": "stable-audio-open-models",
-   "modality": "sfx",
-   "tasks": [
-    "t2a"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "model.safetensors",
-     "url": "https://huggingface.co/AEmotionStudio/stable-audio-open-models/resolve/main/model.safetensors",
-     "sha256": "7b20458a071231aaf32613b6fbc7945f28f34dbba4f295bb49bad56f5f66b57e",
-     "size_bytes": 4853889016,
-     "directory": null,
-     "repo_id": "AEmotionStudio/stable-audio-open-models",
-     "license": "other",
-     "license_name": "stability-ai-community",
-     "gated": false,
-     "role": "main",
-     "license_from": "AEmotionStudio/stable-audio-open-models",
-     "license_url": "https://huggingface.co/AEmotionStudio/stable-audio-open-models/blob/main/LICENSE.md",
-     "repo_license": null,
-     "license_path": [
-      "AEmotionStudio/stable-audio-open-models",
-      "stabilityai/stable-audio-open-1.0"
-     ],
-     "license_evidence": [
-      "family:stable-audio"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": null,
-   "license": "other",
-   "license_url": "https://huggingface.co/AEmotionStudio/stable-audio-open-models/blob/main/LICENSE.md",
-   "base_model": "stabilityai/stable-audio-open-1.0",
-   "content": "sfw",
-   "content_evidence": [],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=stable-audio-open&sort=downloads"
-   ],
-   "updated": "2026-04-12",
-   "homepage": "https://huggingface.co/AEmotionStudio/stable-audio-open-models",
-   "downloads": 372,
-   "likes": 2,
-   "license_name": "stability-ai-community",
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 4853889016
+   "total_size_bytes": 13294875288,
+   "downloads_all_time": 27134
   },
   {
    "id": "hf:stabilityai/stable-audio-3-small-sfx",
@@ -39102,7 +38321,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2270384940
+   "total_size_bytes": 2270384940,
+   "downloads_all_time": 119397
   },
   {
    "id": "hf:stabilityai/stable-audio-open-1.0",
@@ -39179,140 +38399,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 5478363963
-  },
-  {
-   "id": "hf:tencent/HunyuanVideo-Foley",
-   "name": "HunyuanVideo-Foley",
-   "modality": "sfx",
-   "tasks": [
-    "t2a"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "hunyuanvideo_foley.pth",
-     "url": "https://huggingface.co/tencent/HunyuanVideo-Foley/resolve/main/hunyuanvideo_foley.pth",
-     "sha256": "2900021f8ee562a8175b2f1a3fafb06b9e9e848f11f4c6d4d5d72e126f7c0475",
-     "size_bytes": 10301204679,
-     "directory": null,
-     "repo_id": "tencent/HunyuanVideo-Foley",
-     "license": "other",
-     "license_name": "tencent-hunyuan-community",
-     "gated": false,
-     "role": "main",
-     "license_from": "tencent/HunyuanVideo-Foley",
-     "license_url": "https://huggingface.co/tencent/HunyuanVideo-Foley/blob/main/LICENSE",
-     "repo_license": null,
-     "license_path": [
-      "tencent/HunyuanVideo-Foley"
-     ],
-     "license_evidence": [
-      "family:hunyuan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "vae_128d_48k.pth",
-     "url": "https://huggingface.co/tencent/HunyuanVideo-Foley/resolve/main/vae_128d_48k.pth",
-     "sha256": "07e6139ff33bd21ba8a7a7f40ed24aab13ac0d100cd686f8a9f3e03dc5251cb1",
-     "size_bytes": 1486465965,
-     "directory": null,
-     "repo_id": "tencent/HunyuanVideo-Foley",
-     "license": "other",
-     "license_name": "tencent-hunyuan-community",
-     "gated": false,
-     "role": "vae",
-     "license_from": "tencent/HunyuanVideo-Foley",
-     "license_url": "https://huggingface.co/tencent/HunyuanVideo-Foley/blob/main/LICENSE",
-     "repo_license": null,
-     "license_path": [
-      "tencent/HunyuanVideo-Foley"
-     ],
-     "license_evidence": [
-      "family:hunyuan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": null,
-   "license": "other",
-   "license_url": "https://huggingface.co/tencent/HunyuanVideo-Foley/blob/main/LICENSE",
-   "base_model": null,
-   "content": "sfw",
-   "content_evidence": [],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=foley&sort=downloads"
-   ],
-   "updated": "2025-09-29",
-   "homepage": "https://huggingface.co/tencent/HunyuanVideo-Foley",
-   "downloads": 770,
-   "likes": 179,
-   "license_name": "tencent-hunyuan-community",
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 11787670644
-  },
-  {
-   "id": "hf:thepatch/stable-audio-3-small-sfx-GGUF",
-   "name": "stable-audio-3-small-sfx-GGUF",
-   "modality": "sfx",
-   "tasks": [
-    "t2a"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "stable-audio-3-small-sfx-same-s-v1.0-Q8_0.gguf",
-     "url": "https://huggingface.co/thepatch/stable-audio-3-small-sfx-GGUF/resolve/main/stable-audio-3-small-sfx-same-s-v1.0-Q8_0.gguf",
-     "sha256": "d1b4e26213df03032eabd72668cd33d06deb5d93cfaa19d1d6d3fba3bcb7adc8",
-     "size_bytes": 115345696,
-     "directory": null,
-     "repo_id": "thepatch/stable-audio-3-small-sfx-GGUF",
-     "license": "other",
-     "license_name": "stable-audio-community",
-     "gated": false,
-     "role": "main",
-     "license_from": "thepatch/stable-audio-3-small-sfx-GGUF",
-     "license_url": "https://huggingface.co/thepatch/stable-audio-3-small-sfx-GGUF/blob/main/LICENSE.md",
-     "repo_license": null,
-     "license_path": [
-      "thepatch/stable-audio-3-small-sfx-GGUF",
-      "stabilityai/stable-audio-3-small-sfx",
-      "stabilityai/stable-audio-3-small-sfx-base"
-     ],
-     "license_evidence": [
-      "family:stable-audio"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "gguf-q8_0",
-   "license": "other",
-   "license_url": "https://huggingface.co/thepatch/stable-audio-3-small-sfx-GGUF/blob/main/LICENSE.md",
-   "base_model": "stabilityai/stable-audio-3-small-sfx",
-   "content": "sfw",
-   "content_evidence": [],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=downloads"
-   ],
-   "updated": "2026-08-15",
-   "homepage": "https://huggingface.co/thepatch/stable-audio-3-small-sfx-GGUF",
-   "downloads": 696,
-   "likes": 1,
-   "license_name": "stable-audio-community",
-   "license_evidence": [],
-   "files_complete": false,
-   "size_floor_bytes": null,
-   "total_size_bytes": 115345696
+   "total_size_bytes": 5478363963,
+   "downloads_all_time": 902686
   },
   {
    "id": "hf:FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
@@ -39364,7 +38452,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 988097824
+   "total_size_bytes": 988097824,
+   "downloads_all_time": 990557
   },
   {
    "id": "hf:Jmica/Drama-3-GGUF",
@@ -39421,7 +38510,8 @@
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 23386029088
+   "total_size_bytes": 23386029088,
+   "downloads_all_time": 188725
   },
   {
    "id": "hf:OpenMOSS-Team/MOSS-TTS-v1.5",
@@ -39536,7 +38626,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 16979739072
+   "total_size_bytes": 16979739072,
+   "downloads_all_time": 999454
   },
   {
    "id": "hf:Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
@@ -39588,7 +38679,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 1811626576
+   "total_size_bytes": 1811626576,
+   "downloads_all_time": 7659339
   },
   {
    "id": "hf:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -39640,7 +38732,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 3833402552
+   "total_size_bytes": 3833402552,
+   "downloads_all_time": 17255380
   },
   {
    "id": "hf:ResembleAI/chatterbox",
@@ -39692,7 +38785,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2143989928
+   "total_size_bytes": 2143989928,
+   "downloads_all_time": 23745332
   },
   {
    "id": "hf:Serveurperso/Qwen3-TTS-GGUF",
@@ -39745,7 +38839,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 968588544
+   "total_size_bytes": 968588544,
+   "downloads_all_time": 1697063
   },
   {
    "id": "hf:ai4bharat/indic-parler-tts",
@@ -39797,7 +38892,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 3751321772
+   "total_size_bytes": 3751321772,
+   "downloads_all_time": 5190611
   },
   {
    "id": "hf:audio-cpp/AuK-Base-and-Flash-GGUF",
@@ -39872,7 +38968,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2276722304
+   "total_size_bytes": 2276722304,
+   "downloads_all_time": 215912
   },
   {
    "id": "hf:bosonai/higgs-tts-3-4b",
@@ -39924,7 +39021,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 9309834930
+   "total_size_bytes": 9309834930,
+   "downloads_all_time": 904200
   },
   {
    "id": "hf:drbaph/Higgs-Audio-v3-Studio",
@@ -39976,7 +39074,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 5519235296
+   "total_size_bytes": 5519235296,
+   "downloads_all_time": 936543
   },
   {
    "id": "hf:hexgrad/Kokoro-82M",
@@ -40033,7 +39132,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 327212226
+   "total_size_bytes": 327212226,
+   "downloads_all_time": 132951460
   },
   {
    "id": "hf:k2-fsa/OmniVoice",
@@ -40089,7 +39189,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2450344112
+   "total_size_bytes": 2450344112,
+   "downloads_all_time": 10403122
   },
   {
    "id": "hf:microsoft/VibeVoice-1.5B",
@@ -40183,7 +39284,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 5408202454
+   "total_size_bytes": 5408202454,
+   "downloads_all_time": 3809857
   },
   {
    "id": "hf:microsoft/VibeVoice-Realtime-0.5B",
@@ -40236,7 +39338,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2035332888
+   "total_size_bytes": 2035332888,
+   "downloads_all_time": 6129660
   },
   {
    "id": "hf:myshell-ai/MeloTTS-English",
@@ -40288,7 +39391,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 207860748
+   "total_size_bytes": 207860748,
+   "downloads_all_time": 25534058
   },
   {
    "id": "hf:openbmb/VoxCPM2",
@@ -40340,7 +39444,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 4580080592
+   "total_size_bytes": 4580080592,
+   "downloads_all_time": 3491871
   },
   {
    "id": "hf:pnnbao-ump/VieNeu-TTS-v3-Turbo",
@@ -40392,7 +39497,8 @@
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 187917664
+   "total_size_bytes": 187917664,
+   "downloads_all_time": 2704202
   },
   {
    "id": "hf:sesame/csm-1b",
@@ -40465,7 +39571,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7133500964
+   "total_size_bytes": 7133500964,
+   "downloads_all_time": 2099656
   },
   {
    "id": "hf:speechbrain/tts-hifigan-libritts-22050Hz",
@@ -40517,7 +39624,8 @@
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 55828077
+   "total_size_bytes": 55828077,
+   "downloads_all_time": 1192693
   },
   {
    "id": "hf:ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8",
@@ -40625,7 +39733,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 31497521610
+   "total_size_bytes": 31497521610,
+   "downloads_all_time": 200432
   },
   {
    "id": "hf:ChrisColeTech/LTX-2.5-uncensored-v1.1-FP8",
@@ -40733,126 +39842,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 37777193202
-  },
-  {
-   "id": "hf:JoaoZaokk/10Eros-v1.5-W4A8-ConvRot",
-   "name": "10Eros-v1.5-W4A8-ConvRot",
-   "modality": "video",
-   "tasks": [
-    "i2v"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "10Eros_v1.5_bf16_w4a8_audioint8.safetensors",
-     "url": "https://huggingface.co/JoaoZaokk/10Eros-v1.5-W4A8-ConvRot/resolve/main/10Eros_v1.5_bf16_w4a8_audioint8.safetensors",
-     "sha256": "9a99cde06807c1b92873282221d24e95a2e26dd0f8292e404d8e939af5575cd3",
-     "size_bytes": 19107895342,
-     "directory": null,
-     "repo_id": "JoaoZaokk/10Eros-v1.5-W4A8-ConvRot",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "TenStrip/LTX2.3-10Eros",
-     "license_url": null,
-     "repo_license": "ltx-2-community-license-agreement",
-     "license_path": [
-      "JoaoZaokk/10Eros-v1.5-W4A8-ConvRot",
-      "TenStrip/LTX2.3-10Eros"
-     ],
-     "license_evidence": [
-      "license_unverified: TenStrip/LTX2.3-10Eros にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "w4a8",
-   "license": null,
-   "license_url": null,
-   "base_model": "TenStrip/LTX2.3-10Eros",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=image-to-video&sort=downloads"
-   ],
-   "updated": "2026-09-26",
-   "homepage": "https://huggingface.co/JoaoZaokk/10Eros-v1.5-W4A8-ConvRot",
-   "downloads": 418,
-   "likes": 0,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: TenStrip/LTX2.3-10Eros にライセンスの記載がありません(10Eros_v1.5_bf16_w4a8_audioint8.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 19107895342
-  },
-  {
-   "id": "hf:Muinez/ltxvideo-2b-nsfw",
-   "name": "ltxvideo-2b-nsfw",
-   "modality": "video",
-   "tasks": [
-    "i2v"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "model_weights_1508.safetensors",
-     "url": "https://huggingface.co/Muinez/ltxvideo-2b-nsfw/resolve/main/model_weights_1508.safetensors",
-     "sha256": "bfcf4201a89f073e040d97a0ec7a20badedcab6bb4e53206c34d7cb2880c4ece",
-     "size_bytes": 7693623008,
-     "directory": null,
-     "repo_id": "Muinez/ltxvideo-2b-nsfw",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "Muinez/ltxvideo-2b-nsfw",
-     "license_url": null,
-     "repo_license": null,
-     "license_path": [
-      "Muinez/ltxvideo-2b-nsfw"
-     ],
-     "license_evidence": [
-      "license_unverified: Muinez/ltxvideo-2b-nsfw にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": 2.0,
-   "precision": null,
-   "license": null,
-   "license_url": null,
-   "base_model": "Lightricks/LTX-Video-0.9.5",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences",
-    "name:nsfw"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=image-to-video&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=image-to-video&search=nsfw&sort=downloads"
-   ],
-   "updated": "2025-08-17",
-   "homepage": "https://huggingface.co/Muinez/ltxvideo-2b-nsfw",
-   "downloads": 2741,
-   "likes": 24,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: Muinez/ltxvideo-2b-nsfw にライセンスの記載がありません(model_weights_1508.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 7693623008
+   "total_size_bytes": 37777193202,
+   "downloads_all_time": 91115
   },
   {
    "id": "hf:TenStrip/LTX2.3-10Eros",
@@ -40934,91 +39925,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 58918453144
-  },
-  {
-   "id": "hf:coolthor/Sulphur-2-distilled-NVFP4",
-   "name": "Sulphur-2-distilled-NVFP4",
-   "modality": "video",
-   "tasks": [
-    "t2v"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "sulphur_distil_nvfp4.safetensors",
-     "url": "https://huggingface.co/coolthor/Sulphur-2-distilled-NVFP4/resolve/main/sulphur_distil_nvfp4.safetensors",
-     "sha256": "e2e0873b86d848765ad88ad037ae7264c08358412f0f50c17717c84a4d2aa52c",
-     "size_bytes": 19514949846,
-     "directory": null,
-     "repo_id": "coolthor/Sulphur-2-distilled-NVFP4",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "SulphurAI/Sulphur-2-base",
-     "license_url": null,
-     "repo_license": "ltx-2-community-license-agreement",
-     "license_path": [
-      "coolthor/Sulphur-2-distilled-NVFP4",
-      "SulphurAI/Sulphur-2-base"
-     ],
-     "license_evidence": [
-      "license_unverified: SulphurAI/Sulphur-2-base にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "ltx_full_vae.safetensors",
-     "url": "https://huggingface.co/coolthor/Sulphur-2-distilled-NVFP4/resolve/main/ltx_full_vae.safetensors",
-     "sha256": "a48d539b06bd8628d514de36c3a3e816c08c217d2fe90534b6426978c6dca5d8",
-     "size_bytes": 1452240458,
-     "directory": null,
-     "repo_id": "coolthor/Sulphur-2-distilled-NVFP4",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "vae",
-     "license_from": "SulphurAI/Sulphur-2-base",
-     "license_url": null,
-     "repo_license": "ltx-2-community-license-agreement",
-     "license_path": [
-      "coolthor/Sulphur-2-distilled-NVFP4",
-      "SulphurAI/Sulphur-2-base"
-     ],
-     "license_evidence": [
-      "license_unverified: SulphurAI/Sulphur-2-base にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "nvfp4",
-   "license": null,
-   "license_url": null,
-   "base_model": "SulphurAI/Sulphur-2-base",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-video&sort=downloads"
-   ],
-   "updated": "2026-06-02",
-   "homepage": "https://huggingface.co/coolthor/Sulphur-2-distilled-NVFP4",
-   "downloads": 2901,
-   "likes": 5,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: SulphurAI/Sulphur-2-base にライセンスの記載がありません(sulphur_distil_nvfp4.safetensors)",
-    "license_unverified: SulphurAI/Sulphur-2-base にライセンスの記載がありません(ltx_full_vae.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 20967190304
+   "total_size_bytes": 58918453144,
+   "downloads_all_time": 962337
   },
   {
    "id": "hf:coolthor/Sulphur-2-distilled-Q4_K_M-GGUF",
@@ -41102,272 +40010,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 15646703530
-  },
-  {
-   "id": "hf:fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-   "name": "wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-   "modality": "video",
-   "tasks": [
-    "i2v"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "text_encoder/model-00001-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/text_encoder/model-00001-of-00003.safetensors",
-     "sha256": "a8e861969c7433e707cc5a74065d795d36cca07ec96eb6763eb4083df7248f58",
-     "size_bytes": 4935812536,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "text_encoder/model-00002-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/text_encoder/model-00002-of-00003.safetensors",
-     "sha256": "d57d948ece4837d850b7a859a4415121d57cacf8b9ee1d4db200c67f592902d7",
-     "size_bytes": 4983103192,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "text_encoder/model-00003-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/text_encoder/model-00003-of-00003.safetensors",
-     "sha256": "0da9ee284e21d1406df708788db1d502d95d75f69faa25cd26151bf8829b7c5f",
-     "size_bytes": 1442935480,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "text_encoder",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "sha256": "00f3d9984859715156422bbc4e638e46cbb0201d69ede310df50158250ad94eb",
-     "size_bytes": 9969048744,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "sha256": "40d7bcf01cdc960faa700e6c344dd3c928b70b830d0f8ee13ac5a5b0fbb82630",
-     "size_bytes": 9891560008,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "sha256": "c304c0a083423bd8162b514198ef6080c382ca9287e4aa803d3f904f54882bf7",
-     "size_bytes": 8717306128,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer_2/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer_2/diffusion_pytorch_model-00001-of-00003.safetensors",
-     "sha256": "bad77fc4eb5ecc59d786bcc65c79ff89e798897d10b7dcfa2d70876a512e7feb",
-     "size_bytes": 9969048744,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer_2/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer_2/diffusion_pytorch_model-00002-of-00003.safetensors",
-     "sha256": "3b8544e9a1dc758125cec8ba6c7054f3da523728485dadf1aeb88a328eb11881",
-     "size_bytes": 9891560008,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "transformer_2/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/transformer_2/diffusion_pytorch_model-00003-of-00003.safetensors",
-     "sha256": "b8e2eb676de138664d346c09501d504527a689448470bd0339b46b83b1653a23",
-     "size_bytes": 8717306128,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    },
-    {
-     "name": "vae/diffusion_pytorch_model.safetensors",
-     "url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers/resolve/main/vae/diffusion_pytorch_model.safetensors",
-     "sha256": "d6e524b3fffede1787a74e81b30976dce5400c4439ba64222168e607ed19e793",
-     "size_bytes": 507591892,
-     "directory": null,
-     "repo_id": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license": "apache-2.0",
-     "license_name": null,
-     "gated": false,
-     "role": "vae",
-     "license_from": "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-     "repo_license": null,
-     "license_path": [
-      "fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers"
-     ],
-     "license_evidence": [
-      "family:wan"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-19T19:50:03Z"
-    }
-   ],
-   "template": null,
-   "params_b": 14.0,
-   "precision": null,
-   "license": "apache-2.0",
-   "license_url": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-   "base_model": null,
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences",
-    "name:nsfw"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=image-to-video&sort=downloads",
-    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=image-to-video&search=nsfw&sort=downloads"
-   ],
-   "updated": "2026-03-20",
-   "homepage": "https://huggingface.co/fdk6566/wan2.2_14b_i2v_480p_lightning_nsfw_diffusers",
-   "downloads": 373,
-   "likes": 24,
-   "license_name": null,
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "total_size_bytes": 69025272860
+   "total_size_bytes": 15646703530,
+   "downloads_all_time": 11630
   },
   {
    "id": "hf:rockerBOO/ltx2.3-10eros-nvfp4",
@@ -41426,7 +40070,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 21734103566
+   "total_size_bytes": 21734103566,
+   "downloads_all_time": 12210
   }
  ]
 }

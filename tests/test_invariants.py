@@ -11,6 +11,7 @@ from itertools import pairwise
 import pytest
 
 from genmodelfit import cli, load_db
+from genmodelfit.groups import is_community
 from genmodelfit.models import FIT_LEVELS, Gpu, SystemInfo
 from genmodelfit.recommend import evaluate, recommend
 
@@ -115,7 +116,10 @@ def test_score_never_drops_with_more_vram_or_ram(levels):
 def test_order_is_runs_then_auto_then_score(db, levels):
     for v in (0, 8, 24):
         fits = evaluate(db, pc(v, 32), content="all")
-        keys = [(f.estimate.fit == "too_tight", not f.auto, -f.score, f.model.id) for f in fits]
+        keys = [
+            (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -f.score, f.model.id)
+            for f in fits
+        ]
         assert keys == sorted(keys)
 
 

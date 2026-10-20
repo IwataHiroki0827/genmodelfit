@@ -130,10 +130,10 @@ def test_width(cache, args, columns):
 
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
-    # 同梱の無検閲は 39 件。同じモデルの別のワークフローは「same model」に数える
+    # 同梱の無検閲は 24 件。同じモデルの別のワークフローは「same model」に数える
     assert (
         "All models: " in out
-        and "(39 hidden: uncensored 39; " in out
+        and "(24 hidden: uncensored 24; " in out
         and " more workflows merged into their models)" in out
     )
     assert "add --content all" in out
@@ -146,7 +146,7 @@ def test_fit_says_uncensored_hidden(cache):
 def test_pc_line_and_sections(cache):
     out = run_cli(["recommend", *HW, "-n", "3"], cache).stdout.decode("utf-8").splitlines()
     assert out[0] == "PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)"
-    assert out[1].startswith("Recommended: ") and "hidden: uncensored 39, tools " in out[1]
+    assert out[1].startswith("Recommended: ") and "hidden: uncensored 24, tools " in out[1]
     heads = [x for x in out if x.startswith("== ")]
     assert [h.split()[1] for h in heads] == ["image", "video", "music", "sfx", "tts", "3d"]
     header = next(x for x in out if x.startswith("Status"))

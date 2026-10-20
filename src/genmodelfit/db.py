@@ -90,6 +90,7 @@ _ENTRY_TYPES = {
     "license": _OPT_STR,
     "content": _STR,
     "downloads": (int, type(None)),
+    "downloads_all_time": (int, type(None)),
     "files_complete": (bool, type(None)),
     "size_floor_bytes": (int, type(None)),
 }

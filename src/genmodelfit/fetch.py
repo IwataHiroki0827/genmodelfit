@@ -230,7 +230,8 @@ def url_to_relpath(url: str) -> str:
         rest = path[len("/api/models/") :]
         return "hf/" + _safe(rest.replace("/", "__")) + ".json"
     if u.netloc == "huggingface.co" and path == "/api/models":
-        q = "&".join(f"{k}={v}" for k, v in sorted(parse_qsl(u.query)))
+        # expand[] は返す項目の指定なので名前に入れない(長くなって切れ、検索どうしが重なるため)
+        q = "&".join(f"{k}={v}" for k, v in sorted(parse_qsl(u.query)) if k != "expand[]")
         return "hf_search/" + _safe(q)[:120] + ".json"
     if u.netloc == "huggingface.co" and "/raw/" in path:
         repo = path.strip("/").split("/raw/")[0]

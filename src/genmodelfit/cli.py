@@ -398,7 +398,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
     key, same = same_model(db, s, m, args)
-    from .groups import index_for
+    from .groups import index_for, is_community
 
     if args.json:
         _out(
@@ -412,17 +412,21 @@ def cmd_info(args: argparse.Namespace) -> int:
                 measurements=[vars(x) | {"settings": vars(x.settings)} for x in db.measurements_for(m.id)],
                 group_key=key,
                 model_name=index_for(db).name_of.get(key),
+                community=is_community(m),
                 same_model=same,
             )
         )
         return 0
-    from .groups import index_for
+    from .groups import index_for, is_community
 
+    n = len(same) + 1
     out = [f"{m.name}  [{m.id}]"]
     out.append(
         f"  model:    {index_for(db).name_of.get(key, m.name)}"
-        f"  ({len(same) + 1} workflow(s) use these weights)"
+        f"  ({n} workflow{'s' if n > 1 else ''} use{'' if n > 1 else 's'} these weights)"
     )
+    if is_community(m):
+        out.append(f"  community template by {m.template.username} (not made by ComfyUI)")
     out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
     out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
@@ -449,7 +453,8 @@ def cmd_info(args: argparse.Namespace) -> int:
             mark = "ok" if chk["passed"] else "NG"
             out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
     if same:
-        out.append(f"  same model ({len(same)} other workflow(s); precision / use differ):")
+        k = len(same)
+        out.append(f"  same model ({k} other workflow{'s' if k > 1 else ''}; precision / use differ):")
         for w in same:
             need = w["memory_required_gb"]
             vram = f"{need:.1f} GB" if need is not None else "-"

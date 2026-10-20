@@ -13,6 +13,8 @@ from genmodelfit.groups import (
     build_index,
     family_tokens,
     group_key,
+    is_community,
+    main_files,
     model_precision,
     precision_label,
     precision_rank,
@@ -92,6 +94,8 @@ SAME = [  # 同じモデル(精度か使い方だけが違う)
     ("video_wan_vace_14B_v2v", "video_wan_vace_inpainting"),  # 1.3B の切り替え用も載っているが本体は 14B
 ]
 DIFFERENT = [  # 大きさ・版・種類が違う
+    # 共通の 1080p 超解像のファイルを本体と数えて、sha256 でまとめていた(超解像は本体にしない)
+    ("video_hunyuan_video_1.5_720p_t2v", "video_hunyuan_video_1.5_720p_i2v"),
     ("text_to_video_wan", "video_wan2.1_alpha_t2v_14B"),  # Wan 2.1 1.3B と 14B
     ("image_flux2_klein_image_edit_4b_distilled", "image_flux2_klein_image_edit_9b_distilled"),
     ("audio_ace_step_1_t2a_song", "audio_ace_step_1_5_split"),  # ACE-Step v1 3.5B と 1.5
@@ -288,7 +292,6 @@ PRECISION_FIXED = {  # 本体のファイル名から読む精度(同梱の一�
     "utility_void_video_inpainting": None,
     "flux_depth_lora_example": "fp8",
     "templates_hellorob_facegen_skindetail_upscale": "bf16",
-    "hf:JoaoZaokk/10Eros-v1.5-W4A8-ConvRot": "w4a8",
 }
 
 
@@ -306,8 +309,7 @@ def test_bundled_precision_matches_update_rule(db):
 def test_same_sha256_is_the_same_model(db):
     idx = build_index(db.models)
     k = idx.key_of
-    assert k["hf:AEmotionStudio/stable-audio-open-models"] == k["hf:stabilityai/stable-audio-open-1.0"]
-    assert k["hf:stabilityai/stable-audio-open-1.0"] == k["audio_stable_audio_example"]
+    assert k["hf:stabilityai/stable-audio-open-1.0"] == k["audio_stable_audio_example"]  # 同じファイル
     assert (
         k["audio_ace_step_1_5_split"]
         == k["audio_ace_step_1_5_split_4b"]
@@ -441,3 +443,81 @@ def test_fit_bands():
     assert gpu_choice(12, 5, 2, 10) == ("good", "seq")  # 載せ替えは 50% でも good まで
     assert gpu_choice(12, 11, 5, 10) == ("marginal", "offload")  # 逃がすのは marginal まで
     assert gpu_choice(12, 11, 9.9, 10) == ("too_tight", "full")
+
+
+# --- 4 回目の指摘 -------------------------------------------------------------------------------
+
+
+def test_super_resolution_is_not_a_main_weight(db):
+    m = db.get("video_hunyuan_video_1.5_720p_t2v")
+    assert [f.name for f in main_files(m)] == ["hunyuanvideo1.5_720p_t2v_fp16.safetensors"]
+    k = build_index(db.models).key_of
+    assert k["video_hunyuan_video_1.5_720p_t2v"] != k["video_hunyuan_video_1.5_720p_i2v"]
+
+
+def test_sha_merge_needs_the_whole_set_of_main_weights():
+    from genmodelfit.models import ModelFile
+
+    def entry(i, *files):
+        fs = [ModelFile(name=n, directory="diffusion_models", size_bytes=10, sha256=h) for n, h in files]
+        return ModelEntry(id=i, name=i, modality="video", files=fs)
+
+    a = entry("a", ("x_low.safetensors", "1" * 64), ("x_high.safetensors", "2" * 64))
+    b = entry("b", ("y_low.safetensors", "1" * 64), ("y_high.safetensors", "3" * 64))  # 1 つだけ同じ
+    c = entry("c", ("z_low.safetensors", "1" * 64), ("z_high.safetensors", "2" * 64))  # 組が同じ
+    k = build_index([a, b, c]).key_of
+    assert k["a"] == k["c"] != k["b"]
+
+
+def test_row_score_comes_from_the_same_use_and_level(db):
+    """行の点数は、代表と同じ用途・同じ段階の仲間の一番高い点数(ほかの値はすべて代表のもの)。"""
+    for v in (8, 16, 24):
+        sel = select(db, pc(v))
+        idx = build_index(db.models)
+        every = {f.model.id: f for f in select(db, pc(v), group=False).fits}
+        for row in sel.fits:
+            same = [
+                every[m.id]
+                for m in idx.members[row.group_key]
+                if m.id in every
+                and every[m.id].use == row.use
+                and every[m.id].estimate.fit == row.estimate.fit
+            ]
+            assert row.score == max(f.score for f in same), (v, row.model.id)
+
+
+def test_community_template_is_never_the_representative(db):
+    k = build_index(db.models).key_of
+    assert is_community(db.get("templates_mjm_airt_machIne"))
+    assert not is_community(db.get("video_wan2_2_14B_i2v"))
+    for v in (8, 24, 48):
+        row = next(f for f in select(db, pc(v, 64)).fits if f.group_key == k["video_wan2_2_14B_i2v"])
+        assert not is_community(row.model), v
+        assert "templates_mjm_airt_machIne" in {w["id"] for w in row.workflows}
+
+
+def test_community_only_models_are_flagged(db):
+    idx = build_index(db.models)
+    only = [k for k, ms in idx.members.items() if all(is_community(m) for m in ms)]
+    assert only
+    rows = {f.group_key: f for f in select(db, pc(48, 64)).fits}
+    for k in only:
+        if k in rows:
+            assert rows[k].to_dict()["community"] is True
+
+
+def test_display_names_of_utility_titles(db):
+    idx = build_index(db.models)
+    by_id = {mid: idx.name_of[k] for mid, k in idx.key_of.items()}
+    assert by_id["utility_seedvr2_7b_int8_upscale_image"] == "SeedVR2 7B"
+    assert by_id["video_wan_vace_inpainting"] == "Wan2.1 VACE 14B"
+    assert by_id["audio_ace_step_1_m2m_editing"] == "ACE Step v1 3.5B"
+    assert by_id["hf:TenStrip/LTX2.3-10Eros"] == "LTX2.3-10Eros 1.5"  # 精度・包み方の語は入れない
+    assert "F16" not in by_id["wan2.1_flf2v_720_f16"] and "Turbo" in by_id["image_krea2_turbo_t2i"]
+    assert precision_label("nvfp4") == "fp4"
+
+
+def test_w4a8_is_four_bit():
+    from genmodelfit.hf import guess_precision
+
+    assert guess_precision("10Eros_v1.5_bf16_w4a8_audioint8.safetensors") == "w4a8"

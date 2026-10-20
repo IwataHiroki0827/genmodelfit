@@ -475,3 +475,23 @@ def test_bundled_snapshot_is_an_update_result():
     assert db.sources.get("license_policy") == 3 and db.sources.get("partial") is False
     assert all(m.files_complete is not None for m in db.models)
     assert all(m.size_floor_bytes for m in db.models if m.files_complete is False and m.template)
+
+
+def test_hf_selection_rules_like_llmfit(built):
+    """全期間 10,000 未満・試験用の名前・merge のタグは入れない。
+    trendingScore・likes30d だけで拾ったものは 1,000 から。"""
+    from genmodelfit.update import MIN_DOWNLOADS, MIN_TRENDING_DOWNLOADS
+
+    assert (MIN_DOWNLOADS, MIN_TRENDING_DOWNLOADS) == (10_000, 1_000)
+    skipped = built.sources["huggingface-search"]["skipped"]
+    # rare-nsfw-xl(全期間 9,999)と brand-new-voice(trending だけ、900)
+    assert skipped["skip_downloads"] == 2
+    assert skipped["test_stub"] == 1 and skipped["merge"] == 1 and skipped["adapter"] == 1
+    # new-voice(trending だけ、1,500)は下限を通る(試験のフォルダにリポジトリの情報が無いので取れずに数える)
+    assert skipped["fetch_failed"] == 1
+    ids = {e.id for e in built.models}
+    assert not {"hf:example-org/tiny-random-nsfw-xl", "hf:example-org/nsfw-merge-xl"} & ids
+    k = built.get(
+        "hf:hexgrad/Kokoro-82M"
+    )  # trending の検索にも出るが、downloads の順でも拾ったので下限は 10,000
+    assert k is not None and k.downloads_all_time and k.downloads_all_time >= 10_000
