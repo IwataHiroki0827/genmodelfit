@@ -14,7 +14,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `info` / `update` / `bench` / `gate` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `info` / `update` / `bench` / `gate` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
@@ -34,26 +34,84 @@ Every command with `--json` prints one object:
 
 Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when overridden), `driver`, `backend` (`cuda` / `none`).
 
-## recommend / fit
+## recommend / fit / search
 
-`models`: list of Fit, best first.
+The three commands print the same shape (Issue #17, modeled on llmfit's `recommend --json`):
+
+| key | type | meaning |
+|---|---|---|
+| `filters` | object | values actually used: `modality`, `content`, `min_fit`, `license` (str[] \| null), `limit`; `recommend` adds `auto_only`, `include_tools`; `search` adds `query` |
+| `matched` | int | models that passed every filter, before `limit` |
+| `hidden` | object | why the other models are not shown: `{reason: count}`, only reasons with a count (below) |
+| `models` | Fit[] | best first (order below) |
+
+`recommend` defaults: `min_fit` `marginal`, `limit` 10, utility tools hidden, models with unknown size never shown.
+`fit` and `search` show every level by default (`--min-fit` to narrow) and no limit. `search <query>` matches a part of
+the id or name (case-insensitive); models that do not match are not counted in `hidden`. With no match it prints
+`models: []` and exits 0 (text mode prints `(no match / 該当なし)`).
+`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
+既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
+
+`hidden` reasons, each model counted once under the first reason that applies, in this order:
+`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
+`license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good / marginal below `--min-fit`),
+`held` (`--auto-only`).
+
+`--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
+list (case-insensitive). An unknown license (`null`) never matches.
+
+**Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → `score` (desc) → `id`.
+動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
+
+### Fit (one item of `models`)
+
+Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.search()` give the same list as the CLI).
 
 | key | type | meaning |
 |---|---|---|
 | `id` | str | template name (`image_z_image_turbo_int8`) or `hf:<owner>/<repo>` |
-| `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d` |
+| `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d`; `tasks` is a list (`t2i`, `i2v`, …) |
 | `content` | str | `sfw` or `uncensored` (see README) |
-| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
-| `total_size_gb` | float \| null | size of all listed files (GiB) |
-| `score` | float | 0–100, used for ordering |
-| `fit` | str | `perfect` / `good` / `marginal` / `too_tight` |
-| `estimate` | Estimate | |
-| `gate` | Gate | can it be auto-recommended (docs/gate.md) |
+| `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`) |
+| `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` |
+| `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (= `estimate.run_mode`) |
+| `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped stage by stage) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) |
+| `score` | float | 0–100 (below) |
+| `score_components` | object | `fit`, `headroom`, `readiness`, `basis`, `popularity`, each 0–100 |
+| `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
+| `memory_required_gb` | float \| null | the figure the level was judged on: VRAM for all-in / swapping / offload (the table's VRAM column); RAM for CPU. When a GPU is needed but missing: the minimum VRAM. null when the size is unknown |
+| `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing |
+| `utilization_pct` | float \| null | `memory_required_gb / memory_available_gb × 100` (the table's Mem%) |
+| `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
+| `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
+| `total_size_gb` | float \| null | size of all listed files |
+| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown) |
+| `licenses` | (str \| null)[] | the distinct licenses of the files (null last = some file unknown) |
+| `auto` | bool | can be auto-recommended (= `gate.auto`) |
+| `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
+| `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`) |
+| `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
+| `files_count` | int | download files listed |
+| `estimate` | Estimate | full estimate (below; `limits` with `--limits`) |
+| `gate` | Gate | full gate result (below) |
 
-`recommend` also returns `filters` (`modality`, `content`, `min_fit`, `limit`, `auto_only`, `include_tools`). `recommend` drops `too_tight`; `fit` keeps everything.
-`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`
-(`filters.content` reports the value actually used). 既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
+### Score / 点数
+
+`score = 0.45·fit + 0.15·headroom + 0.20·readiness + 0.10·basis + 0.10·popularity`, rounded to 0.1
+(`recommend.WEIGHTS`). Each component is 0–100:
+
+| component | formula |
+|---|---|
+| `fit` | perfect 100, good 70, marginal 35, too_tight 0 |
+| `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
+| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 |
+| `basis` | 100 when `measured`, 0 when `estimated` |
+| `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
+
+The score never goes down when VRAM or RAM increases (the level never drops, `headroom` compares against the all-in
+VRAM which does not depend on the PC, and `basis` only turns `measured` when a GPU is present). Tested in
+`tests/test_invariants.py`. VRAM・メモリを増やしても点数は下がらない(試験あり)。
 
 ## Estimate
 
@@ -108,7 +166,7 @@ Computed every time (never stored in `db.json`). Details and the default license
 | key | type | meaning |
 |---|---|---|
 | `auto` | bool | true only when every check passed |
-| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is the table's `held:<id>`) |
+| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Auto column and as `held:<id>` by `gate --only-held`) |
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
 | `checks` | Check[] | always the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known` |
 

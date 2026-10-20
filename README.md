@@ -10,17 +10,26 @@ llmfit に着想を得た、生成モデル向けのツールです(llmfit の�
 > Status: v0.1 in development (not on PyPI yet). / 状態: v0.1 を開発中(PyPI には未公開)。
 
 ```
-$ genmodelfit recommend -m image --auto-only --vram 8 -n 5
-Recommended (5)
-Fit        Model                              Type     VRAM   Room  Basis  License     Auto
-Good       image_z_image_turbo_int8           image    7.6~   +0.4  meas.  apache-2.0  yes
-Marginal   image_z_image_turbo                image    6.2*   +1.8  meas.  apache-2.0  yes
-Marginal   image_flux2_klein…it_4b_distilled  image    4.5*   +3.5  est.   apache-2.0  yes
-Marginal   image_flux2_klein…ge_edit_4b_base  image    4.5*   +3.5  est.   apache-2.0  yes
-Marginal   image_flux2_klein_text_to_image    image    7.5*   +0.5  est.   apache-2.0  yes
-VRAM: GiB needed. ~ parts one at a time, * offload to RAM, ? size unknown. Basis: meas. = measured
-Room: this PC's VRAM minus need (GiB). RAM = not enough system RAM
+$ genmodelfit recommend --vram 8 --ram 32 -n 5
+PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
+Recommended: 5 of 119 (222 hidden: uncensored 39, tools 25, size unknown 5, too tight 153)
+Status      Model                            Type  Score  VRAM Mem% Mode    Disk License    Auto
+● Good      image_z_image_turbo_int8         image    66  7.6m  96% GPU~    11.3 apache-2.0 yes
+● Good      text_to_video_wan                video    66  7.8m  97% GPU~     9.2 apache-2.0 yes
+● Good      audio_ace_step_1_5_checkpoint    music    65  6.0m  76% GPU~     9.3 mit        yes
+● Good      audio_ace_step_1_5_split         music    55   6.0  76% GPU~     9.3 mit        yes
+● Good      audio_ace_step_1_m2m_editing     music    54   6.9  86% GPU~     7.2 apache-2.0 yes
+Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
+Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
+Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
+Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).
+Note: 39 uncensored model(s) hidden; add --content all to show them.
 ```
+
+The default output is a table for people; add `--json` for apps and agents (llmfit prints JSON by default
+for `recommend`; genmodelfit keeps the table so a first try is readable).
+既定の出力は人が読む表です。アプリやエージェントは `--json` を付けてください(llmfit の recommend は既定が JSON ですが、
+genmodelfit は初めて試す人のために表のままにしています)。
 
 ## Why / なぜ作るか
 
@@ -46,7 +55,8 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 |---|---|
 | `genmodelfit system` | detected GPU / RAM / disk / この PC の GPU・メモリ・空き |
 | `genmodelfit recommend [-m image] [-n 5] [--auto-only]` | best models for this PC (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
-| `genmodelfit fit [-m video] [--perfect]` | every model with its fit level / すべての判定の表 |
+| `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
+| `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
 | `genmodelfit info <id>` | files, licenses, estimate, limits, gate checks / 1 つのモデルの詳細 |
 | `genmodelfit gate` | how many models can be auto-recommended, and why the rest are held / 自動でおすすめに出せる数と保留の理由 |
 | `genmodelfit update` | rebuild the model list from upstream / 一覧を上流から作り直す |
@@ -59,7 +69,15 @@ Common options / 共通の指定:
 - `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
 - `--content sfw|all|uncensored` — filter by content mark (below; default `sfw`) / 内容の印で絞る(既定は `sfw`)
+- `--min-fit perfect|good|marginal|too_tight` — only this level or better (recommend: `marginal` by default) / この段階以上だけ
+- `--license apache-2.0,mit` — every file's license must be in the list; unknown never matches / すべてのファイルのライセンスがこの中にあるものだけ
 - `--comfyui-version 0.40.0` — the ComfyUI version your app runs, for the gate / 使う ComfyUI の版(自動おすすめの判定用)
+
+Order / 並べ方: models that run, then auto-recommendable ones (`Auto yes`), then **Score** (0–100: fit level,
+VRAM headroom, readiness for auto-recommendation, measured or not, popularity; formula in
+[docs/schema.md](docs/schema.md#score--点数)), then id. The first lines show this PC and how many models were hidden
+and why (`uncensored`, `tools`, `too tight`, …). `--help` of each command lists preconditions, exit codes and examples.
+動くもの → 自動でおすすめに出せるもの → 点数の高い順。先頭に PC と、隠した件数とその理由を出します。
 
 Python:
 
@@ -67,8 +85,10 @@ Python:
 import genmodelfit as gmf
 
 pc = gmf.system()
-for f in gmf.recommend(modality="image", limit=5):
-    print(f.model.id, f.estimate.fit, f.estimate.vram_gb, f.estimate.basis)
+for f in gmf.recommend(modality="image", limit=5, comfyui_version="0.40.0"):
+    print(f.model.id, f.score, f.auto, f.estimate.fit, f.estimate.vram_gb, f.estimate.basis)
+    f.to_dict()  # the same dict as one item of `recommend --json` / `--json` の 1 件と同じ
+gmf.search("flux", license=["apache-2.0", "mit"])
 ```
 
 ## Fit levels / 段階
@@ -76,11 +96,11 @@ for f in gmf.recommend(modality="image", limit=5):
 | level | meaning |
 |---|---|
 | **Perfect** | everything fits in VRAM with headroom / 余裕をもって全部 GPU に載る |
-| **Good** | fits all at once, or when parts are loaded one at a time (`~`) / 全部、または部品を順に載せ替えれば載る |
-| **Marginal** | runs by offloading weights to RAM (`*`, slow), on CPU, or with slightly too little RAM / メインメモリへ逃がせば動く(遅い) |
+| **Good** | fits all at once, or when parts are loaded one at a time (Mode `GPU~`) / 全部、または部品を順に載せ替えれば載る |
+| **Marginal** | runs by offloading weights to RAM (Mode `GPU+RAM`, slow), on CPU, or with slightly too little RAM / メインメモリへ逃がせば動く(遅い) |
 | **Too tight** | does not run (VRAM or RAM) / 動かない |
 
-Every estimate says whether it is **measured** (`meas.`, a real run) or **estimated** (`est.`, formula).
+Every estimate says whether it is **measured** (`m` after the VRAM figure, a real run) or **estimated** (formula).
 Measured values win. Models whose download size is unknown are not judged (shown as `?`).
 すべての見積もりに「実測」か「推定」かを付けます。実測があれば実測を使います。大きさが分からないモデルは判定しません。
 
@@ -104,7 +124,7 @@ genmodelfit が持つのはモデルの情報だけで、モデル本体は持�
 - `sfw` — default.
 - `uncensored` — models whose safety filtering was removed or that are made for adult output
   (Hugging Face `not-for-all-audiences` tag, or names such as uncensored / abliterated / nsfw). They are in the list
-  (39 in the bundled list) and marked `[U]` in tables, but `recommend` / `fit` and `gmf.recommend()` show them
+  (39 in the bundled list) and marked `[U]` in tables, but `recommend` / `fit` / `search` and `gmf.recommend()` / `gmf.search()` show them
   **only with `--content all` or `--content uncensored`** (`content="all"` / `"uncensored"` in Python).
   `info <id>` works for them as usual. The evidence is kept in
   `content_evidence`. Whether to show them is up to the app using genmodelfit; they are never auto-recommended
@@ -122,7 +142,7 @@ A model is `auto: yes` only if **all** machine-checkable conditions hold: every 
 upstream, not the uploader's label) is on a commercial-use allowlist (apache-2.0, mit, bsd, cc0, unlicense;
 replaceable), nothing is gated, an official ComfyUI workflow without custom nodes, the ComfyUI version is
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
-known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (e.g. `held:license`).
+known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
 In the bundled list 83 of 341 models are auto. When a license cannot be verified it is treated as unknown
 and held. See [docs/gate.md](docs/gate.md).
 
