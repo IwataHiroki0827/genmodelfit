@@ -178,6 +178,8 @@ class Measurement:
     source: str = ""  # 誰がどこで測ったか
     date: str | None = None
     note: str | None = None
+    outcome: str = "ok"  # ok / oom / error(ok 以外は見積もりにも合わせ直しにも使わない)
+    standard: bool = True  # False = 独自のワークフローや追加の上書きで測った(見積もりに使わない)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:
@@ -229,14 +231,18 @@ class Estimate:
     """1 モデル × 1 設定 × 1 PC の見積もりと判定。"""
 
     vram_gb: float  # 全部を GPU に載せたときの最大 VRAM
-    vram_offload_gb: float  # 逃がしたとき(最大の部品だけ載る)の最大 VRAM
-    ram_gb: float  # メインメモリの目安
+    vram_offload_gb: float  # 重みの一部(offload_fraction 以外)をメインメモリに逃がしたときの最大 VRAM
+    ram_gb: float  # 判定した動かし方で要るメインメモリ(GiB)
     disk_gb: float | None
     basis: str  # measured / estimated
     fit: str  # FIT_LEVELS
     run_mode: str  # gpu / offload / cpu / none
     reasons: list[str] = field(default_factory=list)
     measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
+    vram_sequential_gb: float | None = None  # 部品を段ごとに載せ替えたときの最大 VRAM
+    settings: dict[str, Any] | None = None  # 判定に使った設定(省いた項目は既定や実測の設定で埋めたもの)
+    limits: dict[str, Any] | None = None  # この PC で good 以上になる最大の設定(info で出す)
+    unknown_size: bool = False  # 重みの大きさが分からず判定できない(fit は too_tight、VRAM の値は 0)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

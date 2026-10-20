@@ -16,7 +16,7 @@ def pc(vram: float, ram: float = 32.0) -> SystemInfo:
 
 
 def entry(sizes_gb: list[float], modality: str = "image") -> ModelEntry:
-    files = [ModelFile(name=f"f{i}", size_bytes=int(s * 1e9)) for i, s in enumerate(sizes_gb)]
+    files = [ModelFile(name=f"f{i}", size_bytes=int(s * 2**30)) for i, s in enumerate(sizes_gb)]
     return ModelEntry(id="x", name="x", modality=modality, files=files)
 
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .db import Database
-from .estimate import Coefficients, estimate, load_coefficients
+from .estimate import GIB, Coefficients, estimate, load_coefficients
 from .models import FIT_LEVELS, Estimate, ModelEntry, Settings, SystemInfo
 
 
@@ -32,7 +32,7 @@ class Fit:
             "content": m.content,
             "license": m.license,
             "source": m.source,
-            "total_size_gb": round((m.total_size_bytes or 0) / 1e9, 2) or None,
+            "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,
             "score": round(self.score, 1),
             "fit": self.estimate.fit,
             "estimate": self.estimate.to_dict(),
@@ -66,6 +66,7 @@ def evaluate(
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     models: Iterable[ModelEntry] | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     c = coefficients or load_coefficients()
     out: list[Fit] = []
@@ -74,9 +75,10 @@ def evaluate(
             continue
         if content != "all" and m.content != content:
             continue
-        e = estimate(m, system, settings, db.measurements, c)
+        e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
         out.append(Fit(m, e, score(m, e)))
-    out.sort(key=lambda f: (-f.score, f.model.id))
+    # 段階を最優先にする(実測や人気の加点で、下の段階が上に来ないように)
+    out.sort(key=lambda f: (FIT_LEVELS.index(f.estimate.fit), -f.score, f.model.id))
     return out
 
 
@@ -90,13 +92,20 @@ def recommend(
     limit: int | None = 10,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
+    with_limits: bool = False,
 ) -> list[Fit]:
     allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
     fits = [
         f
         for f in evaluate(
-            db, system, modality=modality, content=content, settings=settings, coefficients=coefficients
+            db,
+            system,
+            modality=modality,
+            content=content,
+            settings=settings,
+            coefficients=coefficients,
+            with_limits=with_limits,
         )
-        if f.estimate.fit in allowed
+        if f.estimate.fit in allowed and not f.estimate.unknown_size  # 大きさが分からないものは出さない
     ]
     return fits[:limit] if limit else fits

@@ -359,7 +359,7 @@ def test_estimate_does_not_look_small_when_incomplete():
     small = estimate(e, pc)
     set_completeness(e)
     big = estimate(e, pc)
-    assert big.vram_gb > small.vram_gb + 30 and big.disk_gb >= 40
+    assert big.vram_gb > small.vram_gb + 30 and big.disk_gb >= 37  # GiB(40 GB = 37.25 GiB)
 
 
 # --- 7. 除外 ----------
