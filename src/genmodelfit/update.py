@@ -405,7 +405,7 @@ def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *,
             f.size_bytes = size or f.size_bytes
             f.sha256 = f.sha256 or sha
             f.gated = info.gated
-            apply_license(f, info, client, p[2])
+            apply_license(f, info, client, p[2], url_repo=p[0])
             if f.size_bytes is None:
                 missing.append(f)
     if head and missing:
@@ -491,14 +491,24 @@ def set_file_license(f: ModelFile, res: Resolved) -> None:
 
 
 def apply_license(
-    f: ModelFile, info: RepoInfo, client: HfClient, path: str, *, discovered_uncensored: bool = False
+    f: ModelFile,
+    info: RepoInfo,
+    client: HfClient,
+    path: str,
+    *,
+    discovered_uncensored: bool = False,
+    url_repo: str | None = None,
 ) -> Resolved:
+    """url_repo: ファイルの URL に書かれたリポジトリ。HF でリポジトリの名前が変わると、API は新しい名前
+    (info.repo_id)を返す。出どころの表はファイルの URL の名前で当てる(license_sources.apply_to_file と
+    同じ。当て直したときに同じ結果になるように。#19 の毎週の更新で見つかった)。"""
     res = client.resolve_file(info, path, discovered_uncensored=discovered_uncensored)
     # 自動で決められなかったもの(と、表が上書きと決めたもの)は、人が一次資料で出どころを確かめた表で決める
     # (license_sources.py)
-    row = source_for(info.repo_id, path)
+    repo = url_repo or info.repo_id
+    row = source_for(repo, path)
     if row is not None and (res.license is None or row.override):
-        res = row.resolved(info.repo_id)
+        res = row.resolved(repo)
     set_file_license(f, res)
     enforce_lineage(f)  # 元を読めない系統は不明に戻す(gate と同じ)
     f.license_url = res.url
@@ -1257,10 +1267,15 @@ def update_database(
     head: bool = True,
     allow_partial: bool = False,
     progress: Callable[[str], None] | None = None,
+    previous: Database | None = None,
 ) -> Database:
-    """上流から一覧を作り、out_path に書く。やめたときは UpdateFailed(何も書かない)。"""
+    """上流から一覧を作り、out_path に書く。やめたときは UpdateFailed(何も書かない)。
+
+    previous: 引き継ぎに使う前の一覧(build_database と同じ。既定はキャッシュ、無ければ同梱)。
+    毎週の更新(weekly.py)は main の一覧を渡す。
+    """
     try:
-        db = build_database(fetch, hf=hf, head=head, progress=progress)
+        db = build_database(fetch, hf=hf, head=head, progress=progress, previous=previous)
     except NetworkError as e:
         raise UpdateFailed(
             f"ネットワークにつながらないため更新できませんでした(前の一覧はそのまま使えます): {e}"

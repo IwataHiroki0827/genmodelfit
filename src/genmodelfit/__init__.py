@@ -14,6 +14,7 @@ Python から:
         ...
     plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir="C:/ComfyUI")  # 落とさずに計画だけ(通信しない)
     gmf.download(plan, confirm=ask_user, progress=show)  # 同意を取ってから落とす(sha256 で確かめる)
+    gmf.diff_db(gmf.load_db("old.json"), gmf.load_db("new.json"))  # 2 つの一覧の違い(`genmodelfit diff`)
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from datetime import datetime
 from ._version import __version__
 from .db import Database
 from .db import load as load_db
+from .diff import diff_db
 from .downloader import (
     DownloadError,
     DownloadPlan,
@@ -278,6 +280,7 @@ __all__ = [
     "__version__",
     "data_status",
     "detect",
+    "diff_db",
     "download",
     "estimate",
     "evaluate",

@@ -401,6 +401,30 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない
 ものは「不明」として保留にします。アプリは使う ComfyUI の版を `--comfyui-version` で渡してください。
 
+## Maintenance / 一覧の保守
+
+Like llmfit, the list is rebuilt every week and published only after a person has reviewed it:
+
+1. Every Monday (03:00 UTC) `.github/workflows/weekly-data.yml` rebuilds the list from upstream
+   (`python -m genmodelfit.weekly`: templates, Hugging Face, HEAD checks, file headers; caches are kept between
+   runs), checks it (schema, auto count, the 30-day HEAD expiry must be more than 7 days away), runs ruff and
+   pytest with the new list, and opens or updates the pull request `automated/weekly-data` (labels `automated`,
+   `data-update`). The body is made by `genmodelfit diff` (added / removed models, license changes — the
+   ones toward the permissive side are marked —, auto-recommendation changes, failed HEAD checks).
+   It is never merged automatically.
+2. The owner reviews and merges it.
+3. On merge, `.github/workflows/data.yml` signs main's `db.json` and replaces the `data-latest` release.
+4. Apps take it with `genmodelfit update --from-release` (signature checked).
+
+```powershell
+genmodelfit diff old_db.json new_db.json            # what changed between two lists (--json for tools)
+python -m genmodelfit.weekly --dry-run --out weekly-out   # the same pipeline locally (writes only weekly-out)
+```
+
+毎週、上流から作り直した一覧を自動で PR にし(自動ではマージしない)、作者が見てマージしたものだけを
+署名して配ります。PR で確かめることは [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md)
+「毎週の一覧の更新」。
+
 ## Privacy / 送るもの・送らないもの
 
 - `recommend`, `fit`, `search`, `info`, `system`, `types`, `gate` and the Python API (`gmf.recommend()`,

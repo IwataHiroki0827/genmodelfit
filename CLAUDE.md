@@ -46,7 +46,12 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | bench <template> | gate
 .venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
+.venv\Scripts\genmodelfit diff <old.json> <new.json>              # 2 つの一覧の違い(毎週の PR の本文と同じ中身)
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out <dir>   # 毎週の作り直し・確かめ・PR の本文を手元で(#19)
 ```
+
+毎週の一覧の更新(weekly-data.yml、#19)は PR を作るだけで、自動でマージ・公開しない。配るのはマージした
+main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付を決め打ちしない(毎週変わる。一覧から数える)。
 
 ネットワークに触るテストは `GENMODELFIT_NETWORK_TESTS=1` のときだけ動く(既定では飛ばす)。
 ライブラリの関数は stdout / stderr に何も書かない(組み込み側の出力に混ざるため)。表示は cli.py に寄せ、

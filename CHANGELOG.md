@@ -7,6 +7,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `genmodelfit diff OLD NEW [--json]` and `gmf.diff_db(old, new)` (Issue #19): what changed between two lists —
+  added / removed models, license changes (changes toward the permissive side are marked), auto-recommendation
+  changes under one policy for both lists (HEAD age ignored), size / precision changes beyond a threshold, newly
+  uncensored models, failed HEAD checks, 401 repos and changed `sources` numbers. JSON: docs/schema.md "diff".
+  2 つの一覧の違いをまとめる `diff` を足した。
+- Weekly data refresh (Issue #19): `.github/workflows/weekly-data.yml` rebuilds the list every Monday with
+  `python -m genmodelfit.weekly` (caches kept between runs), checks it (auto count, the HEAD expiry must be more than
+  7 days away, ruff and pytest with the new list) and opens a pull request `automated/weekly-data` whose body is the
+  diff. It is never merged automatically; publishing stays in data.yml after the owner merges. A partial rebuild
+  fails unless run by hand with `allow_partial` and only HF repos failed transiently. docs/release.md.
+  毎週、作り直した一覧を PR にする(自動ではマージしない。配るのはマージした一覧だけ)。
+
+### Fixed
+
+- When a Hugging Face repo was renamed, `update` applied the license-source table with the new name from the API
+  while re-applying it uses the name in the file URL, so the two disagreed (`license_path`). Both now use the URL's
+  name. Found by the first weekly rebuild (Comfy-Org/flux2-klein-9B → vae-text-encorder-for-flux-klein-9b).
+  リポジトリの名前が変わったとき、出どころの表をファイルの URL の名前で当てるようにした。
+- Tests no longer pin numbers of the bundled list (uncensored count, HEAD check date) so that the weekly rebuild
+  can pass them.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

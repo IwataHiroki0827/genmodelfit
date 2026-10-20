@@ -770,6 +770,92 @@ def _update_from_release(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diff_lines(d: dict[str, Any], limit: int) -> list[str]:
+    """`genmodelfit diff` の表示(折り返し前の行)。項目の並びは毎週の PR の本文(weekly.pr_body)と同じ。"""
+    s = d["summary"]
+    o, n = d["old"], d["new"]
+
+    def more(items: list[Any]) -> list[str]:
+        return [f"    …ほか {len(items) - limit} 件(--json で全部)"] if len(items) > limit else []
+
+    lines = [
+        f"前: {o['generated_at']}  {s['models_old']} 件  ComfyUI {o['comfyui_latest_release']}",
+        f"後: {n['generated_at']}  {s['models_new']} 件  ComfyUI {n['comfyui_latest_release']}"
+        + ("  (一部欠け: sources.partial)" if n["partial"] else ""),
+        f"増えた {s['added']} / 消えた {s['removed']} / ライセンスの変化 {s['license_changed']}"
+        f"(寛容な側 {s['license_permissive_side']})/ 自動 {s['auto_old']} → {s['auto_new']}"
+        f"(+{s['auto_gained']} -{s['auto_lost']})",
+        f"大きさ {s['size_changed']} / 精度 {s['precision_changed']} / 新しく無検閲 {s['newly_uncensored']}"
+        f" / HEAD の失敗 {s['head_failures']}(新 {s['head_failures_new']})"
+        f" / 401 +{s['unauthorized_added']} -{s['unauthorized_removed']}",
+    ]
+    lc = sorted(d["license_changes"], key=lambda c: (not c["permissive_side"], c["id"]))
+    if lc:
+        lines += ["", "ライセンスの変化(! = 寛容な側。原文で確かめる):"]
+        lines += [
+            f"  {'!' if c['permissive_side'] else ' '} {c['id']}: {c['old']} -> {c['new']}"
+            for c in lc[:limit]
+        ]
+        lines += more(lc)
+    if d["auto_changes"]:
+        lines += ["", "自動のおすすめの変化(HEAD の古さは見ない同じ方針):"]
+        for c in d["auto_changes"][:limit]:
+            why = f"  保留: {', '.join(c['held_by'])}" if c["held_by"] else ""
+            lines.append(f"  {c['id']}: {c['old']} -> {c['new']}{why}")
+        lines += more(d["auto_changes"])
+    hf_ = sorted(d["head_failures"], key=lambda h: (not h["new"], h["url"]))
+    if hf_:
+        lines += ["", "HEAD が失敗した URL(! = 新しく):"]
+        lines += [f"  {'!' if h['new'] else ' '} {h['status']} {h['url']}" for h in hf_[:limit]]
+        lines += more(hf_)
+    for key, title in (("added", "増えた"), ("removed", "消えた")):
+        if d[key]:
+            lines += ["", f"{title}:"]
+            lines += [f"  {m['id']}  [{m['modality']}/{m['content']}/{m['license']}]" for m in d[key][:limit]]
+            lines += more(d[key])
+    if d["newly_uncensored"]:
+        lines += ["", "新しく無検閲:"]
+        lines += [f"  {m['id']}  ({'; '.join(m['evidence'][:1])})" for m in d["newly_uncensored"][:limit]]
+        lines += more(d["newly_uncensored"])
+    sz = [
+        f"  {c['id']}: 大きさ {_gib(c['old_bytes'])} -> {_gib(c['new_bytes'])} GiB" for c in d["size_changes"]
+    ]
+    sz += [f"  {c['id']}: 精度 {c['old']} -> {c['new']}" for c in d["precision_changes"]]
+    if sz:
+        lines += ["", "大きさ・精度の変化:", *sz[:limit], *more(sz)]
+    ua = d["unauthorized"]
+    if ua["added"] or ua["removed"]:
+        lines += [
+            "",
+            f"401 のリポジトリ: +{', '.join(ua['added']) or '-'} / -{', '.join(ua['removed']) or '-'}",
+        ]
+    if d["stats"]:
+        lines += ["", "sources の数の変化:"]
+        lines += [f"  {x['key']}: {x['old']} -> {x['new']}" for x in d["stats"][:limit]]
+        lines += more(d["stats"])
+    return lines
+
+
+def _gib(b: int | None) -> str:
+    return "?" if not b else f"{b / GIB:.2f}"
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    from .diff import diff_db
+    from .table import output_width, wrap_line
+
+    old, new = load_db(args.old), load_db(args.new)
+    d = diff_db(old, new, comfyui_version=args.comfyui_version)
+    if args.json:
+        _out({"genmodelfit": __version__, "command": "diff", **d})
+        return 0
+    width = output_width()
+    for line in _diff_lines(d, args.limit):
+        for part in wrap_line(line, width):
+            print(part)
+    return 0
+
+
 def cmd_bench(args: argparse.Namespace) -> int:
     from .bench import BenchError, options_from_args, run, save, save_decision
     from .workflow import WorkflowError
@@ -1261,6 +1347,31 @@ EXIT CODES:
   1  Error (network, bad signature, older list, ...; with --json the error is in "error")
   2  Usage error
 """,
+    "diff": """Compare two model lists (db.json): added / removed models, license changes (the ones toward
+the permissive side are marked), auto-recommendation changes, size / precision changes, newly
+uncensored models, failed HEAD checks, 401 repos and the changed numbers in `sources`.
+2 つの一覧(db.json)の違いをまとめる(毎週の自動 PR の本文とレビューに使う)。
+
+PRECONDITIONS:
+  Two db.json files (for example main's src/genmodelfit/data/db.json and a new `update --output`).
+
+SIDE EFFECTS:
+  None - read-only. No network access.
+
+EXIT CODES:
+  0  Success (also when there are differences)
+  1  Error (a file cannot be read or has another schema; with --json the error is in "error")
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit diff old.json new.json
+  genmodelfit diff old.json new.json --json
+
+  The auto-recommendation is compared with one policy for both lists: the ComfyUI version recorded
+  in the new list (or --comfyui-version) and no HEAD age limit (HEAD failures still count).
+  JSON (--json): { genmodelfit, command, old, new, policy, summary, added, removed,
+  license_changes, auto_changes, size_changes, precision_changes, newly_uncensored,
+  head_failures, unauthorized, partial_counts, stats }. Details: docs/schema.md""",
     "download": """Download the files of a model for this PC (all files of one workflow), checking sha256.
 モデルのファイルを落とす(1 つのワークフローの全部のファイル。sha256 で確かめる)。
 
@@ -1569,6 +1680,23 @@ def build_parser() -> argparse.ArgumentParser:
     only.add_argument("--only-auto", action="store_true", help="自動で出せるものの ID も並べる")
     only.add_argument("--only-held", action="store_true", help="保留のものの ID と理由も並べる")
     sp.set_defaults(func=cmd_gate)
+
+    sp = sub.add_parser(
+        "diff",
+        help="2 つの一覧(db.json)の違い(増減・ライセンス・自動のおすすめ・HEAD の失敗)",
+        description=HELP["diff"],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sp.add_argument("old", help="前の一覧(例: main の src/genmodelfit/data/db.json)")
+    sp.add_argument("new", help="新しい一覧")
+    sp.add_argument("--json", action="store_true", help="JSON で出す")
+    sp.add_argument(
+        "--comfyui-version",
+        metavar="VER",
+        help="自動のおすすめを比べるときの ComfyUI の版(既定は新しい一覧の記録)",
+    )
+    sp.add_argument("--limit", "-n", type=_positive_int, default=20, help="1 つの節に出す行の上限(既定 20)")
+    sp.set_defaults(func=cmd_diff)
 
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")
     sp.add_argument("template", help="テンプレート名(モデルの ID)")

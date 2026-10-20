@@ -1,0 +1,184 @@
+name: Weekly data
+
+# 毎週、一覧(src/genmodelfit/data/db.json)を上流から作り直し、確かめてから PR にする(#19)。
+# llmfit の weekly-model-update.yml にならう(cache の引き継ぎ・時間の上限・試験・create-pull-request)。
+#
+# - ここでは公開しない。PR を人が見て main にマージすると、data.yml が main の db.json に署名して data-latest に置く
+# - PR は自動ではマージしない(auto-merge を使わない)
+# - GITHUB_TOKEN で作った PR では CI(ci.yml)が自動で動かない。代わりに build のジョブで、新しい一覧を入れた
+#   状態の ruff と pytest を通してから PR を作る(PR の本文にもそう書く)
+# - 一部が欠けた(sources.partial)ときは失敗にして PR を作らない。手動実行で allow_partial を選んだときだけ、
+#   筋が通る欠け方(weekly.partial_problems)なら「一部欠け」の警告を付けて PR にする
+# - HEAD の期限(30 日)は作り直しで延びる。作り直した直後に期限が 7 日以内なら失敗にする(取り直しが効いていない)
+# 手順と PR で確かめることは docs/release.md「毎週の一覧の更新」。手元では `python -m genmodelfit.weekly --dry-run`。
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # 毎週月曜 03:00 UTC(日本時間 12:00)
+  workflow_dispatch:
+    inputs:
+      allow_partial:
+        description: "一部を取得できなくても、筋が通れば警告付きで PR にする"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      # ファイルの見出し・リポジトリの精度のキャッシュ(file_headers.json・repo_precision.json)の置き場所
+      GENMODELFIT_CACHE_DIR: ${{ github.workspace }}/.gmf-cache
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+
+      # 前回の確認結果を引き継ぐ(読み直さないので HF への要求が減る)。鍵は毎回違う run_id なので、
+      # restore-keys で一番新しいものを取り、最後に必ず保存し直す(失敗・時間切れでも。llmfit と同じ)
+      - name: キャッシュを戻す
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .gmf-cache/file_headers.json
+            .gmf-cache/repo_precision.json
+          key: gmf-weekly-${{ github.run_id }}
+          restore-keys: |
+            gmf-weekly-
+
+      # 上流から作り直す(テンプレート・HF・HEAD・ファイルの見出しと精度)。HF の 429 は Retry-After を守って待ち、
+      # 待ち時間の合計の上限(--rate-limit-budget)を超えたら止まる。HF_TOKEN は使わない(匿名で読める情報だけ)
+      - name: 一覧を作り直して確かめる
+        id: weekly
+        timeout-minutes: 90
+        env:
+          ALLOW_PARTIAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_partial || false }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "${ALLOW_PARTIAL}" = "true" ]; then extra+=(--allow-partial); fi
+          uv run --no-sync python -m genmodelfit.weekly --out weekly-out \
+            --apply src/genmodelfit/data/db.json --rate-limit-budget 900 "${extra[@]}"
+
+      - name: キャッシュを保存する
+        if: always() && hashFiles('.gmf-cache/file_headers.json', '.gmf-cache/repo_precision.json') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .gmf-cache/file_headers.json
+            .gmf-cache/repo_precision.json
+          key: gmf-weekly-${{ github.run_id }}
+
+      - name: 新しい一覧で確かめる
+        run: |
+          set -euo pipefail
+          uv run --no-sync python -m json.tool src/genmodelfit/data/db.json > /dev/null
+          uv run --no-sync python -c "from genmodelfit.db import load; db = load('src/genmodelfit/data/db.json'); print(len(db.models), db.generated_at)"
+          uv run --no-sync genmodelfit gate --json --db src/genmodelfit/data/db.json > weekly-out/gate.json
+          uv run --no-sync genmodelfit system --db src/genmodelfit/data/db.json --vram 8 --ram 32
+          # 作り直したあとの HEAD の期限が 7 日より先か(weekly でも確かめている。ここは CLI の側から二重に見る)
+          uv run --no-sync genmodelfit system --json --db src/genmodelfit/data/db.json --vram 8 --ram 32 > weekly-out/system.json
+          uv run --no-sync python - <<'PY'
+          import json, sys
+          from datetime import datetime, timedelta, timezone
+          st = json.load(open("weekly-out/system.json", encoding="utf-8"))["database"]["status"]
+          exp = st["expires_at"]
+          ok = exp and not st["expired"] and datetime.fromisoformat(exp.replace("Z", "+00:00")) > datetime.now(timezone.utc) + timedelta(days=7)
+          print("expires_at:", exp, "auto:", st["auto_count"], "/", st["auto_count_if_fresh"])
+          if not ok:
+              print("::error::作り直した直後なのに HEAD の期限が 7 日以内です(HEAD の取り直しが効いていません)")
+              sys.exit(1)
+          PY
+
+      - name: Lint と試験(CI の代わり。GITHUB_TOKEN の PR では CI が動かないため)
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+          uv run --no-sync pytest -q
+
+      # #34(実測の受け付け)の集計が入ったら、その報告を PR の本文に足す。無ければ何もしない
+      - name: 実測の集計(あれば)
+        run: |
+          if uv run --no-sync genmodelfit contrib aggregate --help > /dev/null 2>&1; then
+            {
+              echo
+              echo "### 実測の集計(genmodelfit contrib aggregate --report)"
+              echo
+              uv run --no-sync genmodelfit contrib aggregate --report
+            } >> weekly-out/pr_body.md
+          else
+            echo "genmodelfit contrib はまだありません(#34)。飛ばします"
+          fi
+
+      - name: 本文を実行の要約に出す
+        if: always()
+        run: |
+          if [ -f weekly-out/pr_body.md ]; then cat weekly-out/pr_body.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: weekly-data
+          path: weekly-out/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  pr:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # PR を作るジョブだけ書き込みの権限を持つ(公開・署名はしない。秘密鍵の environment も使わない)
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: weekly-data
+          path: weekly-out/
+      - name: 確かめた一覧を入れる
+        run: |
+          set -euo pipefail
+          jq -e '.ok == true' weekly-out/result.json > /dev/null
+          cp weekly-out/db.json src/genmodelfit/data/db.json
+          git status --short
+      # ラベルが無ければ作る(pull-requests: write では作れないことがある。そのときは作者が一度作る。docs/release.md)
+      - name: ラベル
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create automated --color ededed --description "自動で作った PR" -R "${GITHUB_REPOSITORY}" 2>/dev/null || true
+          gh label create data-update --color 1d76db --description "一覧(db.json)の更新" -R "${GITHUB_REPOSITORY}" 2>/dev/null || true
+      - name: PR を作る・更新する
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ github.token }}
+          add-paths: src/genmodelfit/data/db.json
+          commit-message: "data: 毎週の一覧の更新(自動)"
+          title: "[Automated] 毎週の一覧の更新"
+          body-path: weekly-out/pr_body.md
+          branch: automated/weekly-data
+          delete-branch: true
+          labels: |
+            automated
+            data-update

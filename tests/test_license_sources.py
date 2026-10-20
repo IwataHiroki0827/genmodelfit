@@ -452,6 +452,24 @@ def test_update_overrides_when_the_row_says_so():
     assert (f.license, f.license_name) == ("other", "nvidia-open-model-license")
 
 
+def test_renamed_repo_uses_the_url_name():
+    """HF でリポジトリの名前が変わると、API は新しい名前を返す(2026-10 に Comfy-Org/flux2-klein-9B →
+    vae-text-encorder-for-flux-klein-9b)。update は表をファイルの URL の名前で当て、
+    当て直しても変わらない(#19)。"""
+    old, new = "Comfy-Org/flux2-klein-9B", "Comfy-Org/vae-text-encorder-for-flux-klein-9b"
+    path = "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors"
+
+    class Client:
+        def resolve_file(self, info, p, *, discovered_uncensored=False):
+            return Resolved(None, None, new, None, [new], ["license_unverified: x"])
+
+    f = ModelFile(name=path.rsplit("/", 1)[-1], url=_url(old, path), repo_id=old)
+    apply_license(f, RepoInfo(repo_id=new, license="other"), Client(), path, url_repo=old)
+    assert f.license == "apache-2.0" and f.license_path[0] == old
+    e = ModelEntry(id="x", name="x", modality="image", files=[f])
+    assert ls.apply_license_sources([e]) == []  # 当て直しても同じ(冪等)
+
+
 def test_lineage_files_are_unknown_in_the_data(bundled):
     """元を読めない系統(VOID)は、一覧のデータでも不明(gate と同じ答え)。"""
     m = bundled.get("utility_void_video_inpainting")
