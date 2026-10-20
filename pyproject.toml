@@ -28,11 +28,11 @@ dependencies = [
   "psutil>=5.9",         # BSD-3-Clause
   "platformdirs>=4.0",   # MIT
   "rich>=13.0",          # MIT
+  "cryptography>=42",   # Apache-2.0 OR BSD-3-Clause(データの署名の検証。安全に関わるので必須)
 ]
 
 [project.optional-dependencies]
-sign = ["cryptography>=42"]  # Apache-2.0 OR BSD-3-Clause
-dev = ["pytest>=8", "ruff>=0.6", "cryptography>=42"]
+dev = ["pytest>=8", "ruff>=0.6", "pyyaml>=6"]
 
 [project.scripts]
 genmodelfit = "genmodelfit.cli:main"

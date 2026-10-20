@@ -266,6 +266,10 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 
 def cmd_update(args: argparse.Namespace) -> int:
+    if getattr(args, "from_release", False):
+        from .remote import run_from_release
+
+        return run_from_release(args)
     try:
         from .update import run_update
     except ImportError as e:  # #2 で実装
@@ -469,6 +473,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
     )
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
+    sp.add_argument(
+        "--from-release",
+        action="store_true",
+        help="配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)。"
+        "--output があればそこへ書く",
+    )
+    sp.add_argument(
+        "--force",
+        action="store_true",
+        help="(--from-release)前に取り込んだ一覧より古くても取り込む",
+    )
     sp.add_argument(
         "--allow-partial",
         action="store_true",
