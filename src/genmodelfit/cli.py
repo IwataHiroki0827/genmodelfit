@@ -596,7 +596,8 @@ def cmd_info(args: argparse.Namespace) -> int:
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
         out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
-    out.append(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
+    basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
+    out.append(f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
         out.append("  VRAM:     ? (unknown: weight sizes are not known)")
@@ -784,11 +785,14 @@ def cmd_bench(args: argparse.Namespace) -> int:
     )
     if out_path is not None:
         save(m, out_path)
+    sub_path, sub_repo = _bench_submission(args, m)
     code = 1 if result.failed else 0
     if args.json:
         extra = {"saved_to": str(out_path) if out_path else None}
         if not_saved:
             extra["not_saved"] = not_saved
+        if sub_path is not None:
+            extra["submission"] = {"saved_to": str(sub_path), "path_in_repo": sub_repo}
         _out(_envelope("bench", None, None, **extra, **result.to_dict()))
         return code
     for w in result.warnings:
@@ -810,6 +814,301 @@ def cmd_bench(args: argparse.Namespace) -> int:
     if result.failed:
         print(f"失敗:     {result.failed}")
     print(f"保存先:   {out_path}" if out_path else f"保存:     {not_saved}")
+    if sub_path is not None:
+        print(f"提出用:   {sub_path}")
+        print(f"          中身は genmodelfit contrib show {sub_path} で確かめ、PR では {sub_repo} に置きます")
+    return code
+
+
+def _bench_submission(args: argparse.Namespace, m) -> tuple[Path | None, str | None]:
+    """bench --submission: 提出用の JSON を書く(#34)。ComfyUI が同じ PC のときだけ、この PC の
+    OS の種類・メモリ・GPU の世代を入れる。"""
+    target = getattr(args, "submission", None)
+    if not target:
+        return None, None
+    from .bench import is_local
+    from .contrib import build_submission, suggested_path, write_submission
+
+    system = detect() if is_local(args.url) else None
+    sub = build_submission(m, system)
+    return write_submission(sub, target), suggested_path(sub)
+
+
+# --- contrib(#34) --------------------------------------------------------------------------------
+
+# 終了コード(contrib)。docs/schema.md「contrib」
+EXIT_BREACH = 3  # aggregate --fail-on-breach で、誤差が閾値を超えた
+
+
+def _contrib_db(args: argparse.Namespace) -> Database:
+    """検査・まとめに使う一覧。既定は同梱のもの(CI と手元で同じ結果にする)。"""
+    return load_db(getattr(args, "db", None), use_cache=False)
+
+
+def _shown(v: Any, unit: str = "") -> str:
+    return "不明" if v is None else f"{v}{unit}"
+
+
+def format_submission(data: dict[str, Any]) -> list[str]:
+    """提出の中身を人が読める形に(contrib show)。ファイルの項目はすべて出す。"""
+    from .contrib import suggested_path
+
+    system = data.get("system") or {}
+    gpu = system.get("gpu") or {}
+    mm = data.get("measurement") or {}
+    tool = data.get("tool") or {}
+    s = mm.get("settings") or {}
+    gpu_bits = [
+        f"{_shown(gpu.get('vram_gb'), ' GiB')}",
+        f"世代 {_shown(gpu.get('arch'))}",
+        f"compute {_shown(gpu.get('compute_capability'))}",
+        f"ドライバ {_shown(gpu.get('driver'))}",
+    ]
+    peak = mm.get("peak_vram_gb")
+    return [
+        "=== 提出する中身 / What will be shared ===",
+        f"置き場所:   {suggested_path(data)}(PR でこの名前で足す)",
+        f"形式:       contrib_schema {data.get('contrib_schema')}"
+        f"({tool.get('name')} {tool.get('version')}、{data.get('kind')})",
+        f"日付:       {data.get('date')}(UTC の日付だけ。時刻は入れない)",
+        f"OS:         {_shown(system.get('os_family'))}(種類だけ。版・ビルドは入れない)",
+        f"メモリ:     {_shown(system.get('ram_total_gb'), ' GiB')}(整数に丸めた量)",
+        f"GPU:        {_shown(gpu.get('name'))}({'、'.join(gpu_bits)})",
+        f"ComfyUI:    {_shown(data.get('comfyui_version'))}",
+        f"モデル:     {_shown(mm.get('model_id'))}",
+        f"設定:       {', '.join(f'{k}={v}' for k, v in s.items()) or '(テンプレートのまま)'}",
+        f"結果:       {_shown(mm.get('outcome'))}{'' if mm.get('standard', True) else '(標準でない条件)'}",
+        f"最大 VRAM:  {_shown(peak, ' GiB')}(測り方 {_shown(mm.get('vram_metric'))})",
+        f"最大メモリ: {_shown(mm.get('peak_ram_gb'), ' GiB')}",
+        f"時間:       {_shown(mm.get('seconds'), ' 秒')}",
+        f"載せ方:     {_shown(mm.get('offload'))}",
+        f"メモ:       {mm.get('note') or '(なし)'}",
+        "",
+        "これがファイルの中身のすべてです。genmodelfit はこのファイルをどこにも送りません。",
+        "共有するのは、あなたが自分の GitHub で Pull Request を出したときだけです(CONTRIBUTING.md)。",
+    ]
+
+
+def cmd_contrib_make(args: argparse.Namespace) -> int:
+    from .contrib import build_submission, measurements_from_file, suggested_path, write_submission
+
+    try:
+        ms = measurements_from_file(args.source)
+    except (OSError, ValueError) as e:
+        raise CliError(f"bench の結果を読めません: {args.source}: {e}") from e
+    system = None if args.no_pc_info else detect()
+    out = []
+    target = args.output
+    for m in ms:
+        sub = build_submission(m, system)
+        # 1 件で、ファイル名(.json)を指定したときはそこへ。ほかはフォルダの下に決まった名前で
+        dest = target if len(ms) == 1 and target.lower().endswith(".json") else str(Path(target)) + os.sep
+        path = write_submission(sub, dest)
+        out.append({"saved_to": str(path), "path_in_repo": suggested_path(sub), "submission": sub})
+    if args.json:
+        _out(_envelope("contrib", None, None, action="make", submissions=out))
+        return 0
+    for o in out:
+        print(f"提出用の JSON を書きました: {o['saved_to']}")
+        print(
+            f"  PR では {o['path_in_repo']} に置きます。"
+            f"送る前に genmodelfit contrib show {o['saved_to']} で確かめてください"
+        )
+    return 0
+
+
+def cmd_contrib_show(args: argparse.Namespace) -> int:
+    from .contrib import privacy_checklist, read_submission, validate_submission
+
+    try:
+        data, raw = read_submission(args.file)
+    except (OSError, ValueError) as e:
+        raise CliError(f"提出用の JSON を読めません: {args.file}: {type(e).__name__}") from e
+    checks = privacy_checklist(data, raw)
+    report = validate_submission(data, _contrib_db(args), path=args.file, raw=raw, check_filename=False)
+    good = report.ok and all(c["ok"] is not False for c in checks)
+    if args.json:
+        _out(
+            _envelope(
+                "contrib",
+                None,
+                None,
+                action="show",
+                file=str(args.file),
+                ok=good,
+                submission=data,
+                checklist=checks,
+                report=report.to_dict(),
+            )
+        )
+        return 0 if good else 1
+    if isinstance(data, dict):
+        for line in format_submission(data):
+            print(line)
+    print()
+    print("=== 個人の情報の点検 / Privacy checklist ===")
+    for c in checks:
+        mark = "[  ]" if c["ok"] is None else ("[ok]" if c["ok"] else "[NG]")
+        print(f"  {mark} {c['label']}" + (f": {c['detail']}" if c["detail"] else ""))
+    print()
+    for e in report.errors:
+        print(f"誤り {e['code']}: {e['message']}")
+    for w in report.warnings:
+        print(f"注意 {w['code']}: {w['message']}")
+    print(
+        "検査: "
+        + ("ok" if good else "NG(直してから出してください)")
+        + (f"(注意 {len(report.warnings)} 件)" if report.warnings else "")
+    )
+    return 0 if good else 1
+
+
+def _validate_markdown(reports: list) -> list[str]:
+    ok = sum(r.ok for r in reports)
+    lines = [
+        "## genmodelfit contrib validate",
+        "",
+        f"{len(reports)} files: {ok} ok, {len(reports) - ok} NG",
+        "",
+        "| 結果 | ファイル | モデル | GPU | 誤り・注意 |",
+        "|---|---|---|---|---|",
+    ]
+    for r in reports:
+        msgs = [f"誤り {e['code']}: {e['message']}" for e in r.errors]
+        msgs += [f"注意 {w['code']}: {w['message']}" for w in r.warnings]
+        text = "<br>".join(m.replace("|", "\\|") for m in msgs) or "-"
+        lines.append(
+            f"| {'ok' if r.ok else '**NG**'} | `{r.path}` | {r.model_id or '-'} |"
+            f" {r.gpu_name or '-'} | {text} |"
+        )
+    return lines
+
+
+def cmd_contrib_validate(args: argparse.Namespace) -> int:
+    from .contrib import find_files, validate_files
+
+    files: list[Path] = []
+    for f in args.files:
+        p = Path(f)
+        files += find_files(p) if p.is_dir() else [p]
+    reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
+    bad = [r for r in reports if not r.ok or (args.strict and r.warnings)]
+    code = 1 if bad else 0
+    if args.json:
+        _out(
+            _envelope(
+                "contrib",
+                None,
+                None,
+                action="validate",
+                ok=not bad,
+                files=len(reports),
+                valid=sum(r.ok for r in reports),
+                invalid=sum(not r.ok for r in reports),
+                warnings=sum(len(r.warnings) for r in reports),
+                reports=[r.to_dict() for r in reports],
+            )
+        )
+        return code
+    if args.markdown:
+        for line in _validate_markdown(reports):
+            print(line)
+        return code
+    if not reports:
+        print("検査するファイルがありません")
+    for r in reports:
+        what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
+        print(f"{'ok' if r.ok else 'NG'}  {r.path}" + (f"  ({what})" if what else ""))
+        for e in r.errors:
+            print(f"      誤り {e['code']}: {e['message']}")
+        for w in r.warnings:
+            print(f"      注意 {w['code']}: {w['message']}")
+    ok = sum(r.ok for r in reports)
+    print(f"{len(reports)} files: {ok} ok, {len(reports) - ok} NG")
+    return code
+
+
+def format_report(rep: dict[str, Any]) -> list[str]:
+    """精度の点検の表(Markdown。毎週の自動 PR にそのまま貼れる形)。"""
+    from .calibrate import check_table
+
+    thr = rep["threshold_pct"]
+    lines = [
+        "## 見積もりの精度の点検 / Accuracy check",
+        "",
+        f"係数を合わせた実測 {rep['n_fit']} 件。閾値: 誤差の絶対値 {thr:g}%"
+        "(評価できる種類の leave-one-out と、ほかの利用者の実測の照合で見る)。",
+        "",
+        "| 種類 | LOO 件数 | LOO 平均 | LOO 最大 | 評価できる | 照合 件数 | 照合 最大 |",
+        "|---|---:|---:|---:|---|---:|---:|",
+    ]
+
+    def pct(v: Any) -> str:
+        return "-" if v is None else f"{v:g}%"
+
+    for mod, b in rep["by_modality"].items():
+        lines.append(
+            f"| {mod} | {b['loo_n']} | {pct(b['loo_mean_abs_pct'])} | {pct(b['loo_max_abs_pct'])} |"
+            f" {'yes' if b['evaluable'] else 'no'} | {b['check_n']} | {pct(b['check_max_abs_pct'])} |"
+        )
+    lines.append("")
+    if rep["breach"]:
+        lines.append(f"**警告: 誤差が閾値 {thr:g}% を超えたものがあります**")
+        lines.append("")
+        for b in rep["breaches"]:
+            lines.append(
+                f"- {b['model_id']}({b.get('gpu_name') or '?'}、{b['kind']}、{b.get('origin')}):"
+                f" {b['error_pct']:+g}%"
+            )
+    else:
+        lines.append(f"閾値 {thr:g}% を超えたものはありません。")
+    if rep.get("check"):
+        lines += ["", *check_table(rep["check"])]
+    return lines
+
+
+def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
+    from .contrib import accuracy_report, aggregate, community_document, load_dir, report_db, write_community
+
+    db = _contrib_db(args)
+    subs, reports = load_dir(args.dir, db)
+    rows = aggregate(subs)
+    written = str(write_community(rows, args.output)) if args.output else None
+    rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
+    code = EXIT_BREACH if (rep and rep["breach"] and args.fail_on_breach) else 0
+    stats = {
+        "dir": str(args.dir),
+        "files": len(reports),
+        "valid": sum(r.ok for r in reports),
+        "invalid": sum(not r.ok for r in reports),
+        "submissions_used": len(subs),
+        "groups": len(rows),
+        "consistent": sum(1 for r in rows if r["consistent"]),
+    }
+    if args.json:
+        payload: dict[str, Any] = {"action": "aggregate", **stats, "written_to": written}
+        payload["community"] = community_document(rows)
+        if rep is not None:
+            payload["report"] = rep
+        _out(_envelope("contrib", None, None, **payload))
+        return code
+    print(
+        f"提出 {stats['files']} 件(検査を通った {stats['valid']} 件、通らなかった {stats['invalid']} 件)→ "
+        f"{stats['groups']} 組にまとめた(そろった組 {stats['consistent']})"
+    )
+    for r in rows:
+        mark = "consistent" if r["consistent"] else "not used"
+        print(
+            f"  {r['model_id']}  {r['gpu_name']}  {r['peak_vram_gb']:g} GiB  "
+            f"(n={r['n_submissions']}, used={r['n_used']}, outliers={r['n_outliers']}, oom={r['n_oom']}, "
+            f"spread {r['spread_rel_pct']:g}%, {mark})"
+        )
+    if written:
+        print(f"書き出し: {written}")
+    if rep is not None:
+        print()
+        for line in format_report(rep):
+            print(line)
     return code
 
 
@@ -1611,8 +1910,109 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--source", help="誰がどこで測ったか(結果の source に入る)")
     sp.add_argument("--note", help="結果の note に足す文")
+    sp.add_argument(
+        "--submission",
+        metavar="PATH",
+        help="提出用の JSON(contrib_schema 1)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
+        "(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない(CONTRIBUTING.md)",
+    )
     sp.set_defaults(func=cmd_bench)
+
+    cj = argparse.ArgumentParser(add_help=False)
+    cj.add_argument("--json", action="store_true", help="JSON で出す")
+    cj.add_argument(
+        "--db", metavar="PATH", help="モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない)"
+    )
+    sp = sub.add_parser(
+        "contrib",
+        help="実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)",
+        description=CONTRIB_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    csub = sp.add_subparsers(dest="contrib_command", required=True)
+    c = csub.add_parser("make", parents=[cj], help="bench が保存した結果から提出用の JSON を作る")
+    c.add_argument("--from", dest="source", required=True, metavar="FILE", help="bench の結果の JSON")
+    c.add_argument(
+        "--output",
+        default=CONTRIB_DIR_DEFAULT,
+        metavar="PATH",
+        help=f"書き出す場所(フォルダなら <GPU>/<日付>-<sha8>.json。既定 {CONTRIB_DIR_DEFAULT})",
+    )
+    c.add_argument(
+        "--no-pc-info",
+        action="store_true",
+        help="この PC の OS の種類・メモリ・GPU の世代を入れない(ComfyUI が別の PC だったとき)",
+    )
+    c.set_defaults(func=cmd_contrib_make)
+    c = csub.add_parser("show", parents=[cj], help="送る中身と個人の情報の点検を見せる")
+    c.add_argument("file", help="提出用の JSON")
+    c.set_defaults(func=cmd_contrib_show)
+    c = csub.add_parser("validate", parents=[cj], help="形・値・個人の情報・重複を検査する(CI でも使う)")
+    c.add_argument(
+        "files", nargs="+", metavar="FILE|DIR", help="提出用の JSON(フォルダなら下の *.json すべて)"
+    )
+    c.add_argument("--strict", action="store_true", help="注意(warnings)も失敗にする")
+    c.add_argument(
+        "--no-filename-check",
+        action="store_true",
+        help="ファイル名(<GPU>/<日付>-<sha8>.json)を確かめない",
+    )
+    c.add_argument("--markdown", action="store_true", help="Markdown の表で出す(CI のまとめ用)")
+    c.set_defaults(func=cmd_contrib_validate)
+    c = csub.add_parser("aggregate", parents=[cj], help="同じモデル・設定・GPU ごとにまとめ、精度を点検する")
+    c.add_argument(
+        "dir", nargs="?", default=CONTRIB_DIR_DEFAULT, help=f"提出のフォルダ(既定 {CONTRIB_DIR_DEFAULT})"
+    )
+    c.add_argument(
+        "--output",
+        metavar="FILE",
+        help="まとめを書き出す(同梱するなら src/genmodelfit/data/measurements_community.json)",
+    )
+    c.add_argument(
+        "--report", action="store_true", help="校正をやり直し、種類ごとの誤差の表と閾値の判定を出す"
+    )
+    c.add_argument(
+        "--threshold",
+        type=_positive_float,
+        default=25.0,
+        metavar="PCT",
+        help="誤差の閾値(%%、既定 25)",
+    )
+    c.add_argument(
+        "--fail-on-breach",
+        action="store_true",
+        help=f"--report で閾値を超えたら終了コード {EXIT_BREACH} にする",
+    )
+    c.set_defaults(func=cmd_contrib_aggregate)
     return p
+
+
+CONTRIB_DIR_DEFAULT = "data/contrib"
+CONTRIB_HELP = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1).
+実測の提出用 JSON を作る・送る前に見る・検査する・まとめる。genmodelfit は何も送らない
+(共有は利用者が自分の GitHub で Pull Request を出すときだけ。CONTRIBUTING.md)。
+
+  make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
+  show      <file>                 送る中身と個人の情報の点検(同意のため)
+  validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
+  aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
+            同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
+
+SIDE EFFECTS:
+  No network access. make writes the submission files; aggregate writes only with --output.
+
+EXIT CODES:
+  0  Success (validate: every file passed; show: nothing to fix)
+  1  Error / validate: a file failed (or a warning with --strict) / show: something to fix
+  2  Usage error
+  3  aggregate --report --fail-on-breach: an error exceeded the threshold
+
+AGENT USAGE:
+  genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
+  genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
+  genmodelfit contrib validate data/contrib --json
+  genmodelfit contrib aggregate --report --json --fail-on-breach
+Details: docs/schema.md「contrib」"""
 
 
 def _quiet_stdout() -> None:

@@ -36,6 +36,16 @@ def fit_rank(fit: str) -> int:
 
 # 推定の根拠
 BASIS = ("measured", "estimated")
+# 根拠の細かい段階(Estimate.basis_detail。#34)。上ほど確か。basis は後方互換のため 2 値のまま:
+# measured / measured_community → basis "measured"、calibrated / estimated → basis "estimated"
+#   measured           同梱の実測(作者が測ったもの)か、この PC で bench が保存した実測で、設定も同じ
+#   measured_community ほかの利用者の実測(data/contrib を contrib aggregate でまとめたもの)。同じ GPU・
+#                      設定の 2 件以上がそろった(consistent)ものだけ。設定も同じ
+#   calibrated         設定の違う実測でずらした推定
+#   estimated          式だけの推定
+BASIS_DETAILS = ("measured", "measured_community", "calibrated", "estimated")
+# 実測の出どころ(Measurement.origin)。None = 同梱の作者の実測・この PC の bench の実測
+ORIGIN_COMMUNITY = "community"
 # 実測の結果。ok=最後まで動いた、oom=メモリ不足で失敗、error=ほかの理由で失敗
 OUTCOMES = ("ok", "oom", "error")
 
@@ -233,6 +243,12 @@ class Measurement:
     # (bench。CUDA の文脈は含まない)。
     # None = 記録が無い(AI生成キットで測った RTX 5080 の 9 件)。測り方が違う値どうしで係数を合わせない
     vram_metric: str | None = None
+    # ほかの利用者の実測をまとめたもの(#34。measurements_community.json)の印と件数。
+    # origin が "community" のとき、consistent(同じ GPU・設定の 2 件以上で、ばらつきが小さい)でなければ
+    # 見積もりにも合わせ直しにも使わない(estimate.usable)。None は同梱の作者の実測・この PC の bench
+    origin: str | None = None
+    n_submissions: int | None = None  # まとめた提出の数(外れ値・OOM も含む)
+    consistent: bool | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:
@@ -338,6 +354,8 @@ class Estimate:
     # GPU で動く判定だが、今の空き VRAM(nvidia-smi の memory.free)では足りない(ほかのアプリを閉じれば動く)。
     # 段階は総量で決めるので、これは知らせるだけ
     vram_free_short: bool = False
+    # 根拠の細かい段階(BASIS_DETAILS。#34)。basis は measured / estimated のまま(後方互換)
+    basis_detail: str = "estimated"
 
     def to_dict(self) -> dict[str, Any]:
         """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする

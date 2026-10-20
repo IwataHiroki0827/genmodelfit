@@ -1,6 +1,6 @@
 # 見積もりの精度 / Accuracy
 
-2026-10-20 時点。係数は `src/genmodelfit/data/calibration.json`、作り直しは `python -m genmodelfit.calibrate`
+2026-10-20 時点(ほかの利用者の実測の扱いは 2026-10-21)。係数は `src/genmodelfit/data/calibration.json`、作り直しは `python -m genmodelfit.calibrate`
 (`--dry-run` で書き出さずに表だけ出す)。下の表はそのコマンドの出力をそのまま貼ったもの。
 **単位はすべて GiB(2^30 バイト)**。表や CLI の「GB」も GiB を指す。
 
@@ -180,6 +180,13 @@ RTX 5080 の実測は ComfyUI の動的 VRAM で測ったもので、**空きが
 music・video は張り付いていない実測が 1 件以下のため評価できない(target_met は null)。
 張り付いた 3 件のうち 3 件は重みだけで実測を超え、情報を持たない。 参考: 張り付いていない全 6 件の LOO 平均絶対誤差 6.5%、最大 17.2%(重みだけなら平均 22.8%)
 
+照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):
+
+| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |
+|---|---|---|---|---:|---:|---:|
+| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | 作者 | - | 1.25 | 2.13 | +70% |
+| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | 作者 | - | 0.72 | 2.87 | +299% |
+
 読み方:
 
 - 「知らないモデルを当てる力」を測れているのは、画像の 2 件と 3D の 2 件だけ。それぞれ同じ種類のもう 1 件だけで
@@ -213,11 +220,48 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 - **役割の推定**: 置き場所もフォルダも無いファイルは、知っている名前の一覧で役割を決める。一覧に無いテキストエンコーダは
   本体として数える(全部載せの値は変わらないが、順に載せ替え・逃がすの値は大きめに出る)
 
+## ほかの利用者の実測(#34、2026-10-21)
+
+利用者が `genmodelfit bench --submission` で作った提出用の JSON を、Pull Request で `data/contrib/<GPU>/<日付>-<sha8>.json`
+に足してもらう(手順は CONTRIBUTING.md、形は docs/schema.md「contrib」)。**2026-10-21 時点で受け付けた提出は 0 件**で、
+同梱の `src/genmodelfit/data/measurements_community.json` は空。下の決まりは、提出が来たときの扱い。
+
+- **まとめ方**(`genmodelfit contrib aggregate`): 同じモデル・GPU 名・測り方(`vram_metric`)・設定(解像度・コマ数・長さ・
+  ステップ数・精度・枚数)ごとにまとめる。標準でない提出(`standard: false`)は使わない。最後まで動いた(ok)ものの最大 VRAM で、
+  3 件以上あれば |x − 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き(MAD の下限は中央値の 2%。そろいすぎた値で
+  小さな差を外れ値にしない)、残りの中央値を値にする。2 件以下では外れ値を見分けない。OOM だけの組は `outcome: oom` の 1 行
+- **使う条件**: 使った件数が 2 件以上で、残りの幅(最大 − 最小)が中央値の 15% 以内のとき `consistent: true`。
+  **1 件だけ・ばらつきの大きい組は、見積もりにも校正にも使わない**(測り違い・書き換えを 1 件では見分けられないため。
+  表には出す)。llmfit の measured_community に当たる
+- **根拠の段階**(`Estimate.basis_detail`。`basis` は後方互換のため measured / estimated の 2 値のまま):
+
+  | 段階 | basis | 意味 |
+  |---|---|---|
+  | `measured` | measured | 同梱の作者の実測か、この PC で bench が保存した実測で、設定が同じ |
+  | `measured_community` | measured | そろったほかの利用者の実測で、設定が同じ。点数の basis は 80(作者の実測は 100) |
+  | `calibrated` | estimated | 設定の違う実測(作者・ほかの利用者)でずらした推定 |
+  | `estimated` | estimated | 式だけの推定(実測が無い・精度を変えた・GPU が無い) |
+
+  実測の選び方(`estimate.pick_measurement`)は、設定が同じもの → 作者・この PC の実測(ほかの利用者より先)→
+  張り付いていないもの → 大きい GPU → 大きい値。同じ設定のほかの利用者の実測は、設定の違う作者の実測より先に使う。
+  「この PC の実測」(キャッシュの bench の結果)は v0 では作者の実測と同じ段階に数える(分けていない)
+- **校正への取り込み**(`python -m genmodelfit.calibrate`): そろったほかの利用者の実測も、測り方が係数の合わせと同じ
+  (`calibrate.CALIBRATION_METRIC`。今は記録の無い RTX 5080 の 9 件の測り方)なら、係数の合わせと leave-one-out に入る。
+  bench の提出は `torch_reserved` なので、今は**照合**(上の表。全件で合わせた係数で当てた誤差)にだけ入る。
+  `torch_reserved` の実測が種類ごとに数件そろったら、測り方ごとに固定分を分けて合わせ直す(それまで混ぜない)
+- **毎週の点検**(`genmodelfit contrib aggregate --report`。#19 の毎週の自動 PR が呼ぶ): その時点の data/contrib をまとめ直し、
+  校正をやり直して種類ごとの LOO 誤差と照合の誤差を表にする。閾値(既定 25%、`--threshold`)を超えたら警告を出す
+  (`--fail-on-breach` で終了コード 3)。判定に入れるのは、評価できる種類(張り付いていない実測が 2 件以上)の LOO 誤差と、
+  ほかの利用者の実測の照合の誤差。作者の照合の行(下の RTX 3070 の 2 件)は既知の外れなので、表には出すが判定には入れない
+- 同じ人が同じ構成で何度も出すと、件数が水増しされる(提出に個人を見分ける情報を入れないので見分けられない)。
+  同じ内容(hash)は重複として断るが、測り直した別の値は断れない。PR を見る人が、同じ PR に同じ構成が並んでいないかを見る
+
 ## RTX 3070 8GB の実測との照合(bench、2026-10-19 UTC、係数の合わせには使っていない)
 
 `genmodelfit bench` で、この PC(RTX 3070 8GB、AI生成キットのエンジン ComfyUI 0.40.0)で 2 件を測りました。
 測り方が RTX 5080 の 9 件と違う(`vram_metric: torch_reserved` = ComfyUI のプロセスの torch の確保量の最大で、CUDA の文脈などは含まない。
 RTX 5080 の 9 件は何を記録したかが残っていない)ので、係数の合わせには使わず、照合だけに使います(`calibrate.CALIBRATION_METRIC`)。
+この照合は `python -m genmodelfit.calibrate` が上の「結果」の表の下に作る(calibration.json の `check`。#34 から)。
 
 | モデル | GPU | 実測 GiB(torch_reserved) | 推定 GiB(全部載せ) | 誤差 | 推定での段階(8 GiB) |
 |---|---|---:|---:|---:|---|

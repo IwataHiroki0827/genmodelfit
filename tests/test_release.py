@@ -466,7 +466,7 @@ def _wf(name: str) -> dict:
     return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("name", ["release.yml", "data.yml", "ci.yml"])
+@pytest.mark.parametrize("name", ["release.yml", "data.yml", "ci.yml", "contrib.yml"])
 def test_workflow_yaml_parses(name: str) -> None:
     assert _wf(name)["jobs"]
 

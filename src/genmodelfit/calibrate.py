@@ -68,14 +68,15 @@ class Row:
 CALIBRATION_METRIC: str | None = None
 
 
-def build_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
+def _rows(db: Database, c: Coefficients | None, *, same_metric: bool) -> list[Row]:
     c = c or Coefficients()
     rows = []
     for m in db.measurements:
         e = db.get(m.model_id)
-        if e is None or not usable(m):  # OOM・エラー・標準でない設定の実測は使わない
+        # OOM・エラー・標準でない設定の実測と、そろっていないほかの利用者の実測は使わない(estimate.usable)
+        if e is None or not usable(m):
             continue
-        if getattr(m, "vram_metric", None) != CALIBRATION_METRIC:  # 測り方が違う値は混ぜない(照合だけに使う)
+        if (getattr(m, "vram_metric", None) == CALIBRATION_METRIC) != same_metric:
             continue
         parts = components(e)
         if parts.unknown:
@@ -84,6 +85,46 @@ def build_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
         feats = {"overhead_gb": 1.0, **activation_features(e.modality, s, c)}
         rows.append(Row(m, parts.total * c.weight_factor, feats, is_censored(m), e.modality))
     return rows
+
+
+def build_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
+    """係数を合わせる実測(測り方が CALIBRATION_METRIC のもの)。ほかの利用者の実測(#34)も、
+    測り方が同じでそろっていれば(consistent)入る。"""
+    return _rows(db, c, same_metric=True)
+
+
+def build_check_rows(db: Database, c: Coefficients | None = None) -> list[Row]:
+    """照合だけに使う実測(測り方が違うもの。bench の torch_reserved。同梱の RTX 3070 の 2 件と、
+    ほかの利用者の実測のまとめ)。全件で合わせた係数で当て、誤差を出す(係数の合わせには入れない)。"""
+    return _rows(db, c, same_metric=False)
+
+
+def _origin(m: Measurement) -> str:
+    return getattr(m, "origin", None) or "maintainer"
+
+
+def check(rows: list[Row], theta: dict[str, float]) -> list[dict]:
+    out = []
+    for r in rows:
+        pred = r.predict(theta)
+        y = r.m.peak_vram_gb
+        out.append(
+            {
+                "model_id": r.m.model_id,
+                "modality": r.modality,
+                "gpu_name": r.m.gpu_name,
+                "gpu_vram_gb": r.m.gpu_vram_gb,
+                "origin": _origin(r.m),
+                "n_submissions": getattr(r.m, "n_submissions", None),
+                "vram_metric": r.m.vram_metric,
+                "settings": {k: v for k, v in vars(r.m.settings).items() if v is not None and k != "batch"},
+                "measured_gb": y,
+                "censored": r.censored,
+                "predicted_gb": round(pred, 2),
+                "error_pct": round((pred - y) / y * 100, 1),
+            }
+        )
+    return out
 
 
 def _loss(rows: list[Row], theta: dict[str, float]) -> float:
@@ -141,6 +182,8 @@ def leave_one_out(rows: list[Row]) -> list[dict]:
             {
                 "model_id": r.m.model_id,
                 "modality": r.modality,
+                "gpu_name": r.m.gpu_name,
+                "origin": _origin(r.m),
                 "settings": {k: v for k, v in vars(r.m.settings).items() if v is not None and k != "batch"},
                 "note": r.m.note,
                 "measured_gb": y,
@@ -200,6 +243,7 @@ def calibrate(db: Database | None = None, date: str | None = None) -> dict:
     rows = build_rows(db)
     theta = fit(rows)
     loo = leave_one_out(rows)
+    checked = check(build_check_rows(db), theta)
     fixed = Coefficients()
     return {
         "source": "calibration.json",
@@ -227,6 +271,7 @@ def calibrate(db: Database | None = None, date: str | None = None) -> dict:
         },
         "loo": loo,
         "summary": summarize(loo),
+        "check": checked,
     }
 
 
@@ -278,7 +323,40 @@ def markdown_table(result: dict) -> str:
         f" 参考: 張り付いていない全 {sm['n_point']} 件の LOO 平均絶対誤差 {sm['mean_abs_pct']}%、"
         f"最大 {sm['max_abs_pct']}%(重みだけなら平均 {sm['weights_only_mean_abs_pct']}%)"
     )
+    if result.get("check"):
+        lines += ["", *check_table(result["check"])]
     return "\n".join(lines)
+
+
+def _settings_text(s: dict) -> str:
+    bits = []
+    if s.get("width"):
+        bits.append(f"{s['width']}x{s['height']}")
+    if s.get("frames"):
+        bits.append(f"{s['frames']} コマ")
+    if s.get("seconds"):
+        bits.append(f"{s['seconds']:g} 秒")
+    return "・".join(bits) or "-"
+
+
+def check_table(rows: list[dict]) -> list[str]:
+    """照合の表(係数の合わせに使わない測り方の実測を、全件で合わせた係数で当てたもの)。"""
+    lines = [
+        "照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):",
+        "",
+        "| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |",
+        "|---|---|---|---|---:|---:|---:|",
+    ]
+    for x in rows:
+        who = "ほかの利用者" if x["origin"] == "community" else "作者"
+        if x["origin"] == "community" and x.get("n_submissions"):
+            who += f"({x['n_submissions']} 件)"
+        err = "張り付き" if x["censored"] else f"{x['error_pct']:+.0f}%"
+        lines.append(
+            f"| {x['model_id']} | {x['gpu_name']} | {who} | {_settings_text(x['settings'])} |"
+            f" {x['measured_gb']:.2f} | {x['predicted_gb']:.2f} | {err} |"
+        )
+    return lines
 
 
 def default_output() -> Path:
@@ -304,7 +382,18 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["Row", "build_rows", "calibrate", "fit", "leave_one_out", "main", "markdown_table"]
+__all__ = [
+    "Row",
+    "build_check_rows",
+    "build_rows",
+    "calibrate",
+    "check",
+    "check_table",
+    "fit",
+    "leave_one_out",
+    "main",
+    "markdown_table",
+]
 
 if __name__ == "__main__":
     raise SystemExit(main())

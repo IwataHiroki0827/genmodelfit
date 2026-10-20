@@ -1,0 +1,79 @@
+name: Contrib
+
+# 利用者が出す実測(data/contrib/**、#34)の PR を検査し、結果をジョブのまとめ(Job summary)に出す。
+# llmfit の community-benchmarks.yml に当たる。手順は CONTRIBUTING.md、検査の中身は docs/schema.md「contrib」。
+#
+# 安全のため:
+# - pull_request(pull_request_target ではない)。フォークからの PR でもトークンは読むだけで、シークレットは渡らない
+# - 検査に使う genmodelfit は PR の側ではなく、PR の向き先(base)のコミットから入れる
+#   (PR で検査のコードを書き換えて通すことができないように)。PR の側からは data/contrib だけを読む
+# - PR へのコメントは書かない(書き込みの権限を持たない)。結果はジョブのまとめと終了コードで知らせる
+
+on:
+  pull_request:
+    paths:
+      - data/contrib/**
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 検査の道具(PR の向き先のコミット)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: tool
+          persist-credentials: false
+      - name: PR の中身(data/contrib だけを使う)
+        uses: actions/checkout@v4
+        with:
+          path: pr
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: tool
+        run: |
+          uv venv
+          uv pip install -e .
+      - name: data/contrib の外を変えていないか
+        working-directory: pr
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          outside=$(git diff --name-only "$BASE_SHA" HEAD -- . ':(exclude)data/contrib/**' || true)
+          if [ -n "$outside" ]; then
+            {
+              echo "## data/contrib の外のファイルも変えています"
+              echo
+              echo "実測の PR は data/contrib/ の下だけにしてください(コードの変更は別の PR に)。"
+              echo
+              echo '```'
+              echo "$outside"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::data/contrib の外のファイルも変えています(実測の PR は data/contrib だけにしてください)"
+          fi
+      - name: 検査(contrib validate)
+        run: |
+          set +e
+          uv run --no-sync --project tool genmodelfit contrib validate pr/data/contrib --markdown > validate.md
+          code=$?
+          set -e
+          cat validate.md >> "$GITHUB_STEP_SUMMARY"
+          cat validate.md
+          exit $code
+      - name: まとめと精度の点検(contrib aggregate --report)
+        if: always()
+        run: |
+          {
+            echo
+            uv run --no-sync --project tool genmodelfit contrib aggregate pr/data/contrib --report
+          } >> "$GITHUB_STEP_SUMMARY"

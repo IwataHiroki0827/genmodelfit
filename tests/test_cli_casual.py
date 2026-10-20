@@ -12,7 +12,19 @@ from rich.cells import cell_len
 
 from genmodelfit import __version__, cli
 
-SUBCOMMANDS = ["system", "recommend", "fit", "search", "types", "info", "update", "gate", "bench", "download"]
+SUBCOMMANDS = [
+    "system",
+    "recommend",
+    "fit",
+    "search",
+    "types",
+    "info",
+    "update",
+    "gate",
+    "bench",
+    "download",
+    "contrib",
+]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
 HEADER = [

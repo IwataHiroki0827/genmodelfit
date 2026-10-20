@@ -14,8 +14,8 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `contrib` |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `contrib` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
@@ -30,7 +30,8 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
-| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`) |
+| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
+| `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate`: none |
 | `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
@@ -363,7 +364,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `auto` | bool | can be auto-recommended (= `gate.auto`) |
 | `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
 | `community` | bool | a community template (the index's `username` is not ComfyUI; docs/sources.md) |
-| `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`) |
+| `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`; the finer level is `estimate.basis_detail`) |
 | `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
 | `files_count` | int | download files listed |
 | `use` | str | the use shown (Uses below) |
@@ -386,7 +387,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit` | perfect 100, good 70, marginal 35, too_tight 0, unknown 0 |
 | `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
 | `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 |
-| `basis` | 100 when `measured`, 0 when `estimated` |
+| `basis` | 100 when `measured`, 80 when `measured` from other users' submissions (`basis_detail: measured_community`), 0 when `estimated` |
 | `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
 
 The score never goes down when VRAM or RAM increases (the level never drops, `headroom` compares against the all-in
@@ -402,7 +403,8 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM); several diffusion models run in turn are counted one at a time as above / 逃がす |
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
-| `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present |
+| `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present. Stays two-valued for compatibility; the finer level is `basis_detail` |
+| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions, at least 2 consistent ones, same settings; `basis` is `measured`) > `calibrated` (shifted by a measurement at other settings; `basis` is `estimated`) > `estimated` (formula only). `models.BASIS_DETAILS`, docs/accuracy.md「ほかの利用者の実測」 |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
@@ -570,7 +572,8 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
-`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`.
+`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`, and (#34) `origin`,
+`n_submissions`, `consistent`.
 
 | key | type | meaning |
 |---|---|---|
@@ -578,6 +581,9 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `offload` | str \| null | how ComfyUI placed the model: `none` (all on GPU) / `dynamic` (dynamic VRAM) / `partial` (partially loaded) / `lowvram` (`--lowvram` / `--novram`) / `oom` (ran out of memory) |
 | `outcome` | str | `ok` (finished) / `oom` (out of memory) / `error` (failed for another reason). Default `"ok"` |
 | `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`) |
+| `origin` | str \| null | (#34) `community` for rows of `measurements_community.json` (other users' submissions aggregated by `contrib aggregate`); null for the maintainer's bundled rows and this PC's bench results |
+| `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_used`, `n_outliers`, `n_oom`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
+| `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median. Community rows that are not consistent are ignored by estimates and calibration |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -597,6 +603,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | settings that could not be applied, uploaded inputs, … (Japanese) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
+| `submission` | object | only with `--submission`: `{saved_to, path_in_repo}` (the submission JSON, see contrib) |
 
 How bench fills Measurement / 測り方:
 
@@ -609,6 +616,108 @@ How bench fills Measurement / 測り方:
 - `offload`: read from the ComfyUI log: `dynamic` / `partial` / `lowvram` / `none` / `oom`, or null when unknown.
 - `--set` values: only numbers are written to `note`; for other values only the input name is kept.
 - The saved file is `{"measurements": [Measurement]}` and holds no paths, user names or prompts.
+
+## contrib
+
+Measurement submissions from users (#34). genmodelfit **never sends** them: users add the file to `data/contrib/` of
+their fork and open a pull request themselves (CONTRIBUTING.md). Code: `src/genmodelfit/contrib.py`.
+利用者の実測の提出。genmodelfit は送らない(利用者が自分で PR を出す)。
+
+### Submission file (`contrib_schema` 1)
+
+Written by `genmodelfit bench … --submission PATH` or `genmodelfit contrib make --from <bench result>`. Stored in the
+repository as `data/contrib/<gpu-slug>/<date>-<sha8>.json`: `gpu-slug` is the GPU name in lower case without
+`NVIDIA` / `GeForce` (`rtx-3070`), `sha8` the first 8 hex digits of the sha256 of the canonical JSON (keys sorted,
+no spaces, UTF-8), so the name does not depend on indentation and two identical files collide.
+
+```json
+{
+ "contrib_schema": 1,
+ "kind": "genmodelfit-measurement",
+ "tool": {"name": "genmodelfit", "version": "0.3.0"},
+ "date": "2026-10-20",
+ "system": {
+  "os_family": "windows",
+  "ram_total_gb": 32,
+  "gpu": {"name": "NVIDIA GeForce RTX 3070", "vram_gb": 8.0, "arch": "ampere", "compute_capability": "8.6", "driver": "566.03"}
+ },
+ "comfyui_version": "0.40.0",
+ "measurement": {
+  "model_id": "image_sdxl_simple",
+  "settings": {"width": 832, "height": 832, "steps": 20},
+  "outcome": "ok", "standard": true, "offload": "dynamic",
+  "peak_vram_gb": 6.9, "peak_ram_gb": 7.4, "seconds": 41.2,
+  "vram_metric": "torch_reserved",
+  "note": "…"
+ }
+}
+```
+
+| key | type | meaning |
+|---|---|---|
+| `date` | str | UTC date only (`YYYY-MM-DD`); no time |
+| `system.os_family` | str \| null | `windows` / `linux` / `macos`; no version or build. null when ComfyUI ran on another PC |
+| `system.ram_total_gb` | int \| null | RAM in GiB rounded to an integer; null when unknown or overridden with `--ram` |
+| `system.gpu` | object | `name`, `vram_gb` (as measured), `arch` / `compute_capability` (from nvidia-smi on this PC when the names match, else from the GPU name table), `driver` |
+| `measurement` | object | the Measurement fields that matter (settings without `batch: 1`). `note` has paths, URLs, host / user names, e-mail addresses, UUIDs, PCI addresses, IPs and times replaced with `<path>` / `<url>` / `<removed>` (`contrib.scrub_text`) |
+
+Never included: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses, the
+measurement's free-text `source`, CPU name, exact time. Unknown keys are rejected by `validate`, so nothing else can
+slip in.
+
+### `contrib show FILE`
+
+Prints every field of the file and a privacy checklist (`known_fields`, `paths`, `host_user` — also this PC's own
+host / user name —, `device_ids`, `network`, `date_only`, and `note_reviewed`, which is for the user to tick).
+`--json`: envelope + `action: "show"`, `file`, `ok`, `submission`, `checklist` [{id, label, ok (null = for the user
+to check), detail}], `report` (below). Exit code 1 when something must be fixed.
+
+### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
+
+For each file a report `{path, ok, errors: [{code, message}], warnings: [{code, message}], sha256, suggested_path,
+model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, `valid`, `invalid`, `warnings` (count),
+`reports`. `--markdown`: a table for the CI job summary.
+
+| error code | when |
+|---|---|
+| `read` | not readable / not JSON |
+| `schema` | `contrib_schema` ≠ 1, wrong `kind` / `tool`, missing keys, not objects |
+| `unknown_field` | a key outside the schema (anywhere, including `settings`) |
+| `privacy` | a value, key or the raw file looks like a path (`C:\`, `\\server\`, `/home/`, `~/`, `\Users\`), e-mail, UUID / GPU UUID, PCI address, IP / MAC address, URL, host name (`DESKTOP-XXXXXXX`, `*.local`), a time of day, or a serial number |
+| `date` | not `YYYY-MM-DD`, or in the future |
+| `value` | out of range: `peak_vram_gb` > GPU VRAM × 1.02 + 0.25, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0 or missing for `ok`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch`, malformed `driver` / `comfyui_version` / `compute_capability` |
+| `settings` | width / height 64–8192, frames 1–2000, seconds 0.1–3600, steps 1–1000, batch 1–64 (integers except seconds) |
+| `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's |
+| `filename` | name not `<date>-<sha8>.json`, date or sha8 not matching the content, folder not the GPU slug |
+| `duplicate` | same content hash as an earlier file in the same run |
+
+Warnings (accepted, but reported; `--strict` makes them fail): `unknown_model` (not in the bundled list),
+`unknown_gpu` (not in the GPU name table), `nonstandard` (kept as a record, never aggregated), `metric_missing`,
+`driver_missing`, `comfyui_version_missing`, `ram_not_rounded`, `settings_missing` / `settings_modality`,
+`offload_outcome`, `date_old`.
+
+Exit codes: 0 every file passed (warnings allowed) / 1 a file failed (or a warning with `--strict`) / 2 usage error.
+
+### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
+
+Reads `DIR` (default `data/contrib`), keeps the files that pass `validate`, and groups standard submissions by model id,
+GPU name, `vram_metric` and settings. Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
+are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value. A group is
+`consistent` with at least 2 used runs whose range is within 15% of the median. Output rows are Measurement records
+with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
+`--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, measurements}`;
+the bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
+
+`--report` re-runs the calibration (`calibrate.calibrate`) on the bundled maintainer rows plus the new community rows
+(never the local cache) and returns per modality `loo_n`, `loo_mean_abs_pct`, `loo_max_abs_pct`, `evaluable`, `check_n`,
+`check_mean_abs_pct`, `check_max_abs_pct`, plus `breaches` [{kind (`loo` / `community_check`), model_id, gpu_name,
+origin, error_pct}] and `breach`. Counted against the threshold (default 25%): LOO errors of evaluable modalities and
+the check errors of community rows; the maintainer's own check rows (RTX 3070) are shown but not counted.
+Text output is Markdown (for the weekly pull request of #19).
+
+`--json`: envelope + `action: "aggregate"`, `dir`, `files`, `valid`, `invalid`, `submissions_used`, `groups`,
+`consistent`, `written_to`, `community` (the document above), and `report` with `--report`.
+Exit codes: 0 / 1 error / 2 usage error / **3** a breach with `--report --fail-on-breach`.
 
 ## download
 

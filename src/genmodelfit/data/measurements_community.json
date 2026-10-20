@@ -1,0 +1,8 @@
+{
+ "unit": "GiB",
+ "source": "community",
+ "contrib_schema": 1,
+ "date": null,
+ "method": "data/contrib の提出を、同じモデル・GPU・測り方・設定ごとにまとめる。最後まで動いた(ok)ものの最大 VRAM で、|x - 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き(3 件以上のとき。MAD は中央値の 2% を下限)、残りの中央値を値にする。使った件数が 2 以上で、幅が中央値の 15% 以内なら consistent(見積もりに使う)",
+ "measurements": []
+}

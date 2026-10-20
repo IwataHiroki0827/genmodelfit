@@ -1,0 +1,1043 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+"""利用者が出す実測(提出用の JSON)の作成・検査・まとめ(#34)。
+
+流れ(genmodelfit 自体は何も送らない。利用者が自分の GitHub で Pull Request を出す):
+
+1. `genmodelfit bench ... --submission <path>`(または `contrib make --from <bench の結果>`)で
+   提出用の JSON(`contrib_schema` 1)を作る。入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・
+   ComfyUI の版・OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
+   モデル ID・設定・結果・最大 VRAM / メモリ・時間・測り方・日付(UTC の日付だけ)。
+   PC 名・ユーザ名・パス・GPU の UUID・PCI の位置・シリアル・IP・時刻は入れない(note の中も消す)
+2. `contrib show` で、送る中身をそのまま見せる(同意のため)。個人の情報の点検の結果も出す
+3. `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` として PR にする
+4. CI(.github/workflows/contrib.yml)が `contrib validate` で形・値・個人の情報・重複を検査する
+5. `contrib aggregate` が同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、
+   同梱の `measurements_community.json` を作る。`--report` は校正(leave-one-out)の誤差の表と閾値の判定
+
+ライブラリの関数は何も表示しない(表示は cli.py)。
+"""
+
+from __future__ import annotations
+
+import contextlib
+import getpass
+import hashlib
+import json
+import os
+import platform
+import re
+import statistics
+from collections import Counter
+from dataclasses import asdict, dataclass, field
+from datetime import date as _date
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from ._version import __version__
+from .db import Database
+from .hardware import arch_of, cc_from_name, parse_compute_cap
+from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
+
+CONTRIB_SCHEMA = 1
+CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足す)
+KIND = "genmodelfit-measurement"
+
+# 値の健全さの許容
+VRAM_TOLERANCE_GB = 0.25  # 最大 VRAM は GPU の総量 × 1.02 + これまで
+RAM_TOLERANCE_GB = 1.0  # 最大メモリはメインメモリ × 1.05 + これまで
+MAX_GPU_VRAM_GB = 512.0
+MAX_RAM_GB = 4096.0
+MAX_NOTE_CHARS = 2000
+# 設定の範囲(テンプレートで使うありえる幅。外れたら誤り)
+SETTING_RANGES: dict[str, tuple[float, float]] = {
+    "width": (64, 8192),
+    "height": (64, 8192),
+    "frames": (1, 2000),
+    "seconds": (0.1, 3600),
+    "steps": (1, 1000),
+    "batch": (1, 64),
+}
+ARCHES = (
+    "fermi",
+    "kepler",
+    "maxwell",
+    "pascal",
+    "volta",
+    "turing",
+    "ampere",
+    "ada",
+    "hopper",
+    "blackwell",
+)
+OS_FAMILIES = ("windows", "linux", "macos")
+OFFLOADS = ("none", "dynamic", "partial", "lowvram", "oom")
+VRAM_METRICS = ("torch_reserved",)
+
+# 項目(これ以外のキーは誤り。知らない項目に PC の情報が紛れ込まないように)
+TOP_KEYS = {"contrib_schema", "kind", "tool", "date", "system", "comfyui_version", "measurement"}
+TOOL_KEYS = {"name", "version"}
+SYSTEM_KEYS = {"os_family", "ram_total_gb", "gpu"}
+GPU_KEYS = {"name", "vram_gb", "arch", "compute_capability", "driver"}
+MEASUREMENT_KEYS = {
+    "model_id",
+    "settings",
+    "outcome",
+    "standard",
+    "offload",
+    "peak_vram_gb",
+    "peak_ram_gb",
+    "seconds",
+    "vram_metric",
+    "note",
+}
+SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
+
+# --- 個人の情報の検出 ------------------------------------------------------------------------------
+
+# (種類, 正規表現, 説明)。値の文字列と、ファイルの生の文字列の両方を調べる
+PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    ("path", re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:(\\|/)"), "Windows のパス(C:\\… など)"),
+    ("path", re.compile(r"\\\\[A-Za-z0-9._$-]+\\"), "ネットワークのパス(\\\\server\\…)"),
+    (
+        "path",
+        re.compile(r"(?<![\w.])/(home|Users|root|mnt|media|tmp|var|opt|srv|private|Volumes)/", re.I),
+        "Linux / macOS のパス(/home/… など)",
+    ),
+    ("path", re.compile(r"(?<!\w)~[\\/]"), "ホームのパス(~/…)"),
+    ("users_dir", re.compile(r"\\Users\\|/Users/|\\Documents and Settings\\", re.I), "ユーザーのフォルダ"),
+    (
+        "email",
+        re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
+        "メールアドレス",
+    ),
+    (
+        "uuid",
+        re.compile(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"),
+        "UUID(GPU の UUID など)",
+    ),
+    ("gpu_uuid", re.compile(r"\b(GPU|MIG)-[0-9A-Za-z]{4,}[0-9A-Za-z-]*", re.I), "GPU の UUID"),
+    (
+        "pci",
+        re.compile(
+            r"\b[0-9A-Fa-f]{4,8}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]\b|PCI\\VEN_|\bbus[ _-]?id\b", re.I
+        ),
+        "PCI の位置",
+    ),
+    ("ip", re.compile(r"(?<![\d.])(\d{1,3}\.){3}\d{1,3}(?![\d.])"), "IP アドレス"),
+    ("mac", re.compile(r"\b([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), "MAC アドレス"),
+    ("url", re.compile(r"\b(https?|ftp|file)://", re.I), "URL(ComfyUI の場所など)"),
+    (
+        "hostname",
+        re.compile(
+            r"\b(DESKTOP|LAPTOP|WIN|PC)-[A-Z0-9]{5,}\b|\b[\w-]+\.(local|lan|localdomain|internal|corp)\b"
+        ),
+        "PC 名らしい文字(DESKTOP-XXXXXXX、*.local など)",
+    ),
+    ("time", re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}|\b\d{1,2}:\d{2}:\d{2}\b"), "時刻(日付より細かい)"),
+    ("serial", re.compile(r"\bserial\b|シリアル", re.I), "シリアル番号"),
+)
+
+
+def _identity_words() -> list[str]:
+    """この PC の名前・ユーザ名・ホーム(短すぎるものは誤検出が多いので除く)。"""
+    words: list[str] = []
+    with contextlib.suppress(Exception):
+        words.append(platform.node())
+    with contextlib.suppress(Exception):
+        words.append(getpass.getuser())
+    with contextlib.suppress(Exception):
+        words.append(str(Path.home()))
+    words += [os.environ.get(k, "") for k in ("COMPUTERNAME", "USERNAME", "USER", "HOSTNAME")]
+    return sorted({w for w in words if len(w) >= 4}, key=len, reverse=True)
+
+
+def scrub_text(text: str | None, extra: list[str] | None = None) -> str | None:
+    """文の中の個人の情報らしいところを <removed> に置き換える(note のため)。
+
+    パスは区切りまで(空白・読点・括弧の手前まで)を消す。この PC の名前・ユーザ名・ホームも消す。"""
+    if text is None:
+        return None
+    out = text
+    path_tail = r"[^\s,、。;:)）」'\"]*"
+    out = re.sub(r"\b(https?|ftp|file)://[^\s,、。;)）」'\"]*", "<url>", out, flags=re.I)
+    out = re.sub(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]" + path_tail, "<path>", out)
+    out = re.sub(r"\\\\[A-Za-z0-9._$-]+\\" + path_tail, "<path>", out)
+    out = re.sub(r"(?<![\w.])(/[\w.-]+){2,}" + path_tail, "<path>", out)
+    out = re.sub(r"(?<!\w)~[\\/]" + path_tail, "<path>", out)
+    for w in [*(extra or []), *_identity_words()]:
+        if w:
+            out = re.sub(re.escape(w), "<removed>", out, flags=re.I)
+    for kind, pat, _ in PRIVACY_PATTERNS:
+        if kind in ("path", "users_dir", "time", "serial", "url"):
+            continue
+        out = pat.sub("<removed>", out)
+    out = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?", "<removed>", out)
+    out = re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "<removed>", out)
+    return out
+
+
+def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
+    """個人の情報らしい文字の一覧 [{where, kind, what}]。値(キーも)と、ファイルの生の文字列を調べる。"""
+    found: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def check(where: str, text: str) -> None:
+        for kind, pat, what in PRIVACY_PATTERNS:
+            if pat.search(text) and (where, kind) not in seen:
+                seen.add((where, kind))
+                found.append({"where": where, "kind": kind, "what": what})
+
+    def walk(x: Any, where: str) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                check(f"{where}.{k} (key)", str(k))
+                walk(v, f"{where}.{k}")
+        elif isinstance(x, list):
+            for i, v in enumerate(x):
+                walk(v, f"{where}[{i}]")
+        elif isinstance(x, str):
+            check(where, x)
+
+    walk(data, "$")
+    if raw is not None and not found:
+        check("(file)", raw)
+    return found
+
+
+# 個人の情報の点検の一覧(contrib show)。(id, 見出し, 当てはまる PRIVACY_PATTERNS の種類)
+CHECKLIST: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("paths", "フォルダのパス(C:\\Users\\…、/home/… など)が入っていない", ("path", "users_dir")),
+    ("host_user", "PC の名前・ユーザ名らしい文字が入っていない", ("hostname",)),
+    (
+        "device_ids",
+        "GPU の UUID・PCI の位置・MAC・シリアルが入っていない",
+        ("uuid", "gpu_uuid", "pci", "mac", "serial"),
+    ),
+    ("network", "IP アドレス・URL・メールアドレスが入っていない", ("ip", "url", "email")),
+    ("date_only", "日時は日付だけ(時刻が入っていない)", ("time",)),
+)
+
+
+def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]:
+    """送る前の点検の一覧 [{id, label, ok, detail}]。
+    最後の note の項目は人が読んで確かめるもの(ok は None)。"""
+    found = privacy_findings(data, raw)
+    text = raw if raw is not None else json.dumps(data, ensure_ascii=False)
+    out: list[dict[str, Any]] = []
+    unknown: list[str] = []
+    if isinstance(data, dict):
+        unknown = sorted(set(data) - TOP_KEYS)
+        for key, allowed in (("system", SYSTEM_KEYS), ("measurement", MEASUREMENT_KEYS)):
+            sub = data.get(key)
+            if isinstance(sub, dict):
+                unknown += [f"{key}.{k}" for k in sorted(set(sub) - allowed)]
+        gpu = (data.get("system") or {}).get("gpu") if isinstance(data.get("system"), dict) else None
+        if isinstance(gpu, dict):
+            unknown += [f"system.gpu.{k}" for k in sorted(set(gpu) - GPU_KEYS)]
+    out.append(
+        {
+            "id": "known_fields",
+            "label": "決まった項目だけ(知らない項目が無い)",
+            "ok": not unknown,
+            "detail": ", ".join(unknown) or None,
+        }
+    )
+    for cid, label, kinds in CHECKLIST:
+        hits = [f"{f['where']}({f['what']})" for f in found if f["kind"] in kinds]
+        if cid == "host_user":
+            own = [w for w in _identity_words() if w.lower() in text.lower()]
+            hits += ["この PC の名前・ユーザ名・ホーム" for _ in own[:1]]
+        out.append({"id": cid, "label": label, "ok": not hits, "detail": "; ".join(hits) or None})
+    out.append(
+        {
+            "id": "note_reviewed",
+            "label": "note(メモ)を自分で読んだ(自動の点検は文の意味までは分からない)",
+            "ok": None,
+            "detail": None,
+        }
+    )
+    return out
+
+
+# --- 作る -----------------------------------------------------------------------------------------
+
+
+def gpu_slug(name: str) -> str:
+    """GPU 名 → フォルダ名(例 'NVIDIA GeForce RTX 3070' → 'rtx-3070')。"""
+    n = name.lower()
+    for word in ("nvidia", "geforce", "(tm)", "(r)"):
+        n = n.replace(word, " ")
+    n = re.sub(r"[^a-z0-9]+", "-", n).strip("-")
+    return n or "unknown-gpu"
+
+
+def canonical(data: dict[str, Any]) -> bytes:
+    """内容の決まった並べ方(キーの順・空白によらない)。重複と名前の hash に使う。"""
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def content_hash(data: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical(data)).hexdigest()
+
+
+def suggested_path(data: dict[str, Any]) -> str:
+    """リポジトリの中の置き場所 data/contrib/<GPU>/<日付>-<sha8>.json(区切りは /)。"""
+    gpu = ((data.get("system") or {}).get("gpu") or {}).get("name") or "unknown"
+    return f"{CONTRIB_DIR}/{gpu_slug(str(gpu))}/{data.get('date')}-{content_hash(data)[:8]}.json"
+
+
+def _os_family(os_name: str | None) -> str | None:
+    n = (os_name or "").lower()
+    if n.startswith("windows"):
+        return "windows"
+    if n.startswith("linux"):
+        return "linux"
+    if n.startswith(("darwin", "macos", "mac os")):
+        return "macos"
+    return None
+
+
+def _clean_settings(s: Settings | dict[str, Any]) -> dict[str, Any]:
+    d = asdict(s) if isinstance(s, Settings) else dict(s)
+    order = ("width", "height", "frames", "seconds", "steps", "precision", "batch")
+    out = {k: d.get(k) for k in order if d.get(k) is not None}
+    if out.get("batch") == 1:
+        out.pop("batch")  # 1 枚は省く(既定)
+    return out
+
+
+def build_submission(
+    m: Measurement, system: SystemInfo | None = None, *, extra_secrets: list[str] | None = None
+) -> dict[str, Any]:
+    """bench の実測 1 件 → 提出用の JSON(contrib_schema 1)。
+
+    system は測った PC(ComfyUI が同じ PC のときだけ渡す)。OS の種類・メインメモリ・GPU の世代を取る。
+    GPU の世代は、測った GPU と同じ名前の GPU が system にあればその値、無ければ GPU 名の表から推す。
+    source(自由に書ける文)は入れない。note は個人の情報らしいところを消して入れる。"""
+    arch = cc = None
+    driver = m.driver
+    if system is not None:
+        same = [g for g in system.gpus if g.name == m.gpu_name]
+        if same:
+            g = same[0]
+            arch, cc, driver = g.arch, g.compute_capability, driver or g.driver
+    if cc is None:
+        guess = cc_from_name(m.gpu_name)
+        if guess:
+            cc, arch = f"{guess[0]}.{guess[1]}", arch or arch_of(guess)
+    elif arch is None:
+        parsed = parse_compute_cap(cc)
+        arch = arch_of(parsed) if parsed else None
+    ram = None
+    os_family = None
+    if system is not None:
+        os_family = _os_family(system.os)
+        if "ram" not in system.overrides and system.ram_total_gb:
+            ram = round(system.ram_total_gb)
+    note = scrub_text(m.note, extra_secrets)
+    if note and len(note) > MAX_NOTE_CHARS:
+        note = note[: MAX_NOTE_CHARS - 1] + "…"
+    return {
+        "contrib_schema": CONTRIB_SCHEMA,
+        "kind": KIND,
+        "tool": {"name": "genmodelfit", "version": __version__},
+        "date": m.date or datetime.now(timezone.utc).date().isoformat(),
+        "system": {
+            "os_family": os_family,
+            "ram_total_gb": ram,
+            "gpu": {
+                "name": m.gpu_name,
+                "vram_gb": m.gpu_vram_gb,
+                "arch": arch,
+                "compute_capability": cc,
+                "driver": driver,
+            },
+        },
+        "comfyui_version": m.comfyui_version,
+        "measurement": {
+            "model_id": m.model_id,
+            "settings": _clean_settings(m.settings),
+            "outcome": m.outcome,
+            "standard": bool(m.standard),
+            "offload": m.offload,
+            "peak_vram_gb": m.peak_vram_gb,
+            "peak_ram_gb": m.peak_ram_gb,
+            "seconds": m.seconds,
+            "vram_metric": m.vram_metric,
+            "note": note,
+        },
+    }
+
+
+def dumps(data: dict[str, Any]) -> str:
+    return json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+
+
+def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Path:
+    """書き出す。target が既にあるフォルダ(または / で終わる)なら <target>/<GPU>/<日付>-<sha8>.json、
+    それ以外はそのファイル名で書く。書いた場所を返す。"""
+    t = Path(target)
+    if t.is_dir() or str(target).endswith(("/", "\\")):
+        rel = suggested_path(data).split("/", 2)[2]  # data/contrib/ を除いた <GPU>/<名前>
+        t = t / rel
+    t.parent.mkdir(parents=True, exist_ok=True)
+    t.write_text(dumps(data), encoding="utf-8", newline="\n")
+    return t
+
+
+def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
+    """bench が保存した JSON({"measurements": [...]})か、`bench --json` の出力({"measurement": {...}})。"""
+    p = Path(path)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and isinstance(data.get("measurement"), dict):
+        items = [data["measurement"]]
+    elif isinstance(data, dict) and isinstance(data.get("measurements"), list):
+        items = data["measurements"]
+    elif isinstance(data, list):
+        items = data
+    else:
+        raise ValueError("bench の結果の形ではありません(measurements / measurement がない)")
+    out = []
+    for d in items:
+        if not isinstance(d, dict) or "model_id" not in d or "gpu_name" not in d:
+            raise ValueError("bench の結果の形ではありません(model_id / gpu_name がない)")
+        out.append(Measurement.from_dict(d))
+    return out
+
+
+def to_measurement(data: dict[str, Any]) -> Measurement:
+    """提出 1 件 → Measurement(まとめる前の 1 件)。"""
+    gpu = data["system"]["gpu"]
+    mm = data["measurement"]
+    return Measurement(
+        model_id=mm["model_id"],
+        gpu_name=gpu["name"],
+        gpu_vram_gb=float(gpu["vram_gb"]),
+        peak_vram_gb=float(mm["peak_vram_gb"]),
+        settings=Settings.from_dict(mm.get("settings") or {}),
+        peak_ram_gb=mm.get("peak_ram_gb"),
+        seconds=mm.get("seconds"),
+        driver=gpu.get("driver"),
+        comfyui_version=data.get("comfyui_version"),
+        offload=mm.get("offload"),
+        source=ORIGIN_COMMUNITY,
+        date=data.get("date"),
+        note=mm.get("note"),
+        outcome=mm.get("outcome", "ok"),
+        standard=bool(mm.get("standard", True)),
+        vram_metric=mm.get("vram_metric"),
+        origin=ORIGIN_COMMUNITY,
+    )
+
+
+# --- 検査 -----------------------------------------------------------------------------------------
+
+
+@dataclass
+class Report:
+    """1 ファイルの検査の結果。errors があれば受け付けない。warnings は受け付けるが知らせる。"""
+
+    path: str
+    ok: bool = True
+    errors: list[dict[str, str]] = field(default_factory=list)
+    warnings: list[dict[str, str]] = field(default_factory=list)
+    sha256: str | None = None
+    suggested_path: str | None = None
+    model_id: str | None = None
+    gpu_name: str | None = None
+
+    def error(self, code: str, message: str) -> None:
+        self.errors.append({"code": code, "message": message})
+        self.ok = False
+
+    def warn(self, code: str, message: str) -> None:
+        self.warnings.append({"code": code, "message": message})
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _num(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _check_keys(r: Report, d: Any, allowed: set[str], where: str, required: set[str]) -> bool:
+    if not isinstance(d, dict):
+        r.error("schema", f"{where} はオブジェクトにしてください")
+        return False
+    for k in sorted(set(d) - allowed):
+        r.error(
+            "unknown_field",
+            f"{where}.{k} は知らない項目です(PC の情報が紛れないよう、決まった項目だけ受け付けます)",
+        )
+    for k in sorted(required - set(d)):
+        r.error("schema", f"{where}.{k} がありません")
+    return True
+
+
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DRIVER = re.compile(r"\d{2,4}(\.\d{1,3}){1,3}")
+_VERSION = re.compile(r"v?\d+\.\d+(\.\d+)?([.+-][0-9A-Za-z.+-]*)?")
+_CC = re.compile(r"\d{1,2}\.\d")
+_FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})\.json")
+
+
+def validate_submission(
+    data: Any,
+    db: Database | None = None,
+    *,
+    path: str | os.PathLike[str] | None = None,
+    raw: str | None = None,
+    today: _date | None = None,
+    check_filename: bool = True,
+) -> Report:
+    """提出 1 件を検査する。db を渡すと、モデル ID が一覧にあるか・設定が種類に合うかも見る。"""
+    r = Report(path=Path(path).as_posix() if path is not None else "-")
+    today = today or datetime.now(timezone.utc).date()
+    if not isinstance(data, dict):
+        r.error("schema", "JSON のオブジェクトではありません")
+        return r
+    for f in privacy_findings(data, raw):
+        r.error("privacy", f"{f['where']}: {f['what']}らしい文字があります。消してから出してください")
+    _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
+    if data.get("contrib_schema") != CONTRIB_SCHEMA:
+        r.error(
+            "schema", f"contrib_schema が {CONTRIB_SCHEMA} ではありません: {data.get('contrib_schema')!r}"
+        )
+        return r
+    if data.get("kind") != KIND:
+        r.error("schema", f"kind は {KIND!r} にしてください")
+    tool = data.get("tool")
+    if _check_keys(r, tool, TOOL_KEYS, "$.tool", TOOL_KEYS) and (
+        tool.get("name") != "genmodelfit" or not isinstance(tool.get("version"), str)
+    ):
+        r.error("schema", "tool は {name: genmodelfit, version: 版} にしてください")
+    # 日付(日付だけ。未来の日付は誤り)
+    d = data.get("date")
+    day = None
+    if not isinstance(d, str) or not _DATE.fullmatch(d):
+        r.error("date", f"date は YYYY-MM-DD(日付だけ)にしてください: {d!r}")
+    else:
+        try:
+            day = _date.fromisoformat(d)
+        except ValueError:
+            r.error("date", f"date が日付として読めません: {d}")
+        if day and day > today + timedelta(days=1):
+            r.error("date", f"date が未来です: {d}")
+        if day and day.year < 2026:
+            r.warn("date_old", f"date が古すぎます(genmodelfit より前): {d}")
+    cv = data.get("comfyui_version")
+    if cv is not None and (not isinstance(cv, str) or not _VERSION.fullmatch(cv)):
+        r.error("value", f"comfyui_version は版の番号にしてください: {cv!r}")
+    if cv is None:
+        r.warn("comfyui_version_missing", "comfyui_version がありません")
+
+    system = data.get("system")
+    gpu: dict[str, Any] = {}
+    ram = None
+    if _check_keys(r, system, SYSTEM_KEYS, "$.system", SYSTEM_KEYS):
+        osf = system.get("os_family")
+        if osf is not None and osf not in OS_FAMILIES:
+            r.error(
+                "value", f"system.os_family は {' / '.join(OS_FAMILIES)} か null です(版は入れない): {osf!r}"
+            )
+        ram = system.get("ram_total_gb")
+        if ram is not None:
+            if not _num(ram) or not 0 < ram <= MAX_RAM_GB:
+                r.error("value", f"system.ram_total_gb がありえない値です: {ram!r}")
+                ram = None
+            elif ram != round(ram):
+                r.warn(
+                    "ram_not_rounded", "system.ram_total_gb は GiB の整数に丸めてください(機種を絞らないため)"
+                )
+        g = system.get("gpu")
+        if _check_keys(r, g, GPU_KEYS, "$.system.gpu", {"name", "vram_gb"}):
+            gpu = g
+    name = gpu.get("name")
+    vram = gpu.get("vram_gb")
+    if gpu:
+        if not isinstance(name, str) or not name.strip() or len(name) > 100:
+            r.error("value", f"system.gpu.name がありません・長すぎます: {name!r}")
+            name = None
+        if not _num(vram) or not 0 < vram <= MAX_GPU_VRAM_GB:
+            r.error("value", f"system.gpu.vram_gb がありえない値です: {vram!r}")
+            vram = None
+        drv = gpu.get("driver")
+        if drv is not None and (not isinstance(drv, str) or not _DRIVER.fullmatch(drv)):
+            r.error("value", f"system.gpu.driver はドライバの版にしてください: {drv!r}")
+        if drv is None:
+            r.warn("driver_missing", "system.gpu.driver がありません")
+        arch, cc = gpu.get("arch"), gpu.get("compute_capability")
+        if arch is not None and arch not in ARCHES:
+            r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")
+        if cc is not None and (not isinstance(cc, str) or not _CC.fullmatch(cc)):
+            r.error("value", f"system.gpu.compute_capability は 8.6 の形にしてください: {cc!r}")
+            cc = None
+        if name:
+            r.gpu_name = name
+            known = cc_from_name(name)
+            if known is None:
+                r.warn("unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}")
+            elif cc and parse_compute_cap(cc) != known:
+                r.error(
+                    "gpu_inconsistent",
+                    f"GPU 名({name})の compute capability は {known[0]}.{known[1]} ですが、{cc} とあります",
+                )
+            pcc = parse_compute_cap(cc) if cc else None
+            if pcc and arch and arch_of(pcc) != arch:
+                r.error("gpu_inconsistent", f"compute capability {cc} と世代 {arch} が合いません")
+            elif known and arch and arch_of(known) != arch and not cc:
+                r.error(
+                    "gpu_inconsistent", f"GPU 名({name})の世代は {arch_of(known)} ですが、{arch} とあります"
+                )
+
+    mm = data.get("measurement")
+    if _check_keys(
+        r, mm, MEASUREMENT_KEYS, "$.measurement", {"model_id", "settings", "outcome", "peak_vram_gb"}
+    ):
+        _check_measurement(r, mm, vram, ram, db)
+
+    r.sha256 = content_hash(data)
+    r.suggested_path = suggested_path(data)
+    if path is not None and check_filename:
+        _check_filename(r, Path(path), data)
+    return r
+
+
+def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: Database | None) -> None:
+    mid = mm.get("model_id")
+    entry = None
+    if not isinstance(mid, str) or not mid:
+        r.error("value", f"measurement.model_id がありません: {mid!r}")
+    else:
+        r.model_id = mid
+        entry = db.get(mid) if db is not None else None
+        if db is not None and entry is None:
+            r.warn(
+                "unknown_model",
+                f"モデル ID が同梱の一覧にありません(まとめても見積もりには使われない): {mid}",
+            )
+    outcome = mm.get("outcome")
+    if outcome not in OUTCOMES:
+        r.error("value", f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}")
+    std = mm.get("standard", True)
+    if not isinstance(std, bool):
+        r.error("value", "measurement.standard は true / false です")
+    elif not std:
+        r.warn(
+            "nonstandard",
+            "標準でない条件の実測なので、まとめにも見積もりにも使いません(記録としては受け付けます)",
+        )
+    off = mm.get("offload")
+    if off is not None and off not in OFFLOADS:
+        r.error("value", f"measurement.offload は {' / '.join(OFFLOADS)} か null です: {off!r}")
+    if outcome == "oom" and off not in (None, "oom"):
+        r.warn("offload_outcome", f"outcome が oom なのに offload が {off} です")
+    metric = mm.get("vram_metric")
+    if metric is not None and metric not in VRAM_METRICS:
+        r.error("value", f"measurement.vram_metric は {' / '.join(VRAM_METRICS)} か null です: {metric!r}")
+    if metric is None:
+        r.warn("metric_missing", "vram_metric がありません(測り方が分からないので比べにくい)")
+    peak = mm.get("peak_vram_gb")
+    if not _num(peak) or peak < 0:
+        r.error("value", f"measurement.peak_vram_gb は 0 以上の数です: {peak!r}")
+    else:
+        if outcome == "ok" and peak <= 0:
+            r.error("value", "最後まで動いた(ok)のに peak_vram_gb が 0 です")
+        if _num(vram) and peak > vram * 1.02 + VRAM_TOLERANCE_GB:
+            r.error("value", f"最大 VRAM {peak} GB が GPU の総量 {vram} GB を超えています")
+    pram = mm.get("peak_ram_gb")
+    if pram is not None:
+        if not _num(pram) or pram <= 0:
+            r.error("value", f"measurement.peak_ram_gb は 0 より大きい数か null です: {pram!r}")
+        elif _num(ram) and pram > ram * 1.05 + RAM_TOLERANCE_GB:
+            r.error("value", f"最大メモリ {pram} GB がメインメモリ {ram} GB を超えています")
+    secs = mm.get("seconds")
+    if secs is None:
+        if outcome == "ok":
+            r.error("value", "最後まで動いた(ok)のに seconds がありません")
+    elif not _num(secs) or secs <= 0 or secs > 86400:
+        r.error("value", f"measurement.seconds は 0 より大きい秒数です: {secs!r}")
+    note = mm.get("note")
+    if note is not None and (not isinstance(note, str) or len(note) > MAX_NOTE_CHARS):
+        r.error("value", f"measurement.note は {MAX_NOTE_CHARS} 字までの文です")
+    s = mm.get("settings")
+    if not isinstance(s, dict):
+        r.error("schema", "measurement.settings はオブジェクトにしてください")
+        return
+    for k in sorted(set(s) - SETTINGS_KEYS):
+        r.error("unknown_field", f"measurement.settings.{k} は知らない項目です")
+    for k, (lo, hi) in SETTING_RANGES.items():
+        v = s.get(k)
+        if v is None:
+            continue
+        if not _num(v) or not lo <= v <= hi or (k != "seconds" and v != int(v)):
+            r.error("settings", f"settings.{k} が範囲({lo:g}〜{hi:g})の外です: {v!r}")
+    prec = s.get("precision")
+    if prec is not None and (not isinstance(prec, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,24}", prec)):
+        r.error("settings", f"settings.precision は精度の名前にしてください: {prec!r}")
+    if entry is not None:
+        mod = entry.modality
+        if mod not in MODALITIES:
+            return
+        if mod in ("image", "video") and (s.get("width") is None or s.get("height") is None):
+            r.warn("settings_missing", f"{mod} のモデルなのに width / height がありません")
+        if mod != "video" and s.get("frames") is not None:
+            r.warn("settings_modality", f"{mod} のモデルに frames があります")
+        if mod in ("music", "sfx", "tts") and s.get("seconds") is None:
+            r.warn("settings_missing", f"{mod} のモデルなのに seconds(長さ)がありません")
+
+
+def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
+    m = _FILENAME.fullmatch(p.name)
+    if not m:
+        r.error("filename", f"ファイル名は <日付>-<sha8>.json にしてください(例 {r.suggested_path})")
+        return
+    if m.group(1) != data.get("date"):
+        r.error("filename", f"ファイル名の日付 {m.group(1)} と date {data.get('date')} が違います")
+    if r.sha256 and m.group(2) != r.sha256[:8]:
+        r.error(
+            "filename", f"ファイル名の hash {m.group(2)} が内容の sha256 の先頭 {r.sha256[:8]} と違います"
+        )
+    gpu = ((data.get("system") or {}).get("gpu") or {}).get("name")
+    if isinstance(gpu, str) and p.parent.name != gpu_slug(gpu):
+        r.error("filename", f"フォルダ名 {p.parent.name} が GPU 名から決まる {gpu_slug(gpu)} と違います")
+
+
+def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
+    p = Path(path)
+    raw = p.read_text(encoding="utf-8")
+    return json.loads(raw), raw
+
+
+def validate_files(
+    paths: list[str | os.PathLike[str]],
+    db: Database | None = None,
+    *,
+    today: _date | None = None,
+    check_filename: bool = True,
+) -> list[Report]:
+    """ファイルをまとめて検査する。
+    読めない・JSON でないものも誤りとして返す。同じ内容(hash)は 2 件目以降を誤り。"""
+    reports: list[Report] = []
+    first: dict[str, str] = {}
+    for p in paths:
+        try:
+            data, raw = read_submission(p)
+        except (OSError, ValueError) as e:
+            r = Report(path=Path(p).as_posix())
+            r.error("read", f"読めません・JSON ではありません: {type(e).__name__}")
+            reports.append(r)
+            continue
+        r = validate_submission(data, db, path=p, raw=raw, today=today, check_filename=check_filename)
+        if r.sha256:
+            if r.sha256 in first:
+                r.error("duplicate", f"{first[r.sha256]} と同じ内容です")
+            else:
+                first[r.sha256] = str(p)
+        reports.append(r)
+    return reports
+
+
+def find_files(root: str | os.PathLike[str]) -> list[Path]:
+    """フォルダの下の *.json(並びは決まった順)。ファイルを渡せばそれだけ。"""
+    p = Path(root)
+    if p.is_file():
+        return [p]
+    return sorted(p.rglob("*.json"), key=lambda x: x.as_posix()) if p.is_dir() else []
+
+
+# --- まとめる -------------------------------------------------------------------------------------
+
+MAD_SCALE = 1.4826  # 正規分布の標準偏差に合わせる係数
+OUTLIER_Z = 3.5  # 外れ値とみなす |x - 中央値| / (1.4826 × MAD)(Iglewicz & Hoaglin の目安)
+MAD_FLOOR_REL = 0.02  # MAD の下限(中央値の 2%)。そろいすぎた値で小さな差を外れ値にしない
+CONSISTENT_REL = 0.15  # 残った値の幅(最大 - 最小)が中央値の 15% 以内なら「そろった」
+MIN_CONSISTENT = 2  # 「そろった」とみなす最小の件数
+
+
+def _settings_key(s: Settings) -> tuple:
+    keys = ("width", "height", "frames", "seconds", "steps", "precision")
+    return (*((k, getattr(s, k)) for k in keys), ("batch", max(1, s.batch or 1)))
+
+
+def robust_filter(values: list[float]) -> tuple[list[int], list[int], float]:
+    """中央値と MAD で外れ値を除く。(残した番号, 外した番号, MAD)。3 件未満は外さない(見分けられない)。"""
+    if not values:
+        return [], [], 0.0
+    med = statistics.median(values)
+    mad = statistics.median([abs(v - med) for v in values])
+    if len(values) < 3:
+        return list(range(len(values))), [], mad
+    scale = MAD_SCALE * max(mad, MAD_FLOOR_REL * abs(med), 1e-6)
+    keep = [i for i, v in enumerate(values) if abs(v - med) / scale <= OUTLIER_Z]
+    drop = [i for i in range(len(values)) if i not in keep]
+    return keep, drop, mad
+
+
+def _mode(values: list[Any]) -> Any:
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return None
+    counts = Counter(vals)
+    best = max(counts.values())
+    return sorted((v for v, c in counts.items() if c == best), key=str)[0]
+
+
+def _med(values: list[float | None], digits: int = 2) -> float | None:
+    vals = [v for v in values if v is not None]
+    return round(statistics.median(vals), digits) if vals else None
+
+
+@dataclass
+class Submission:
+    path: str
+    sha256: str
+    data: dict[str, Any]
+
+    @property
+    def measurement(self) -> Measurement:
+        return to_measurement(self.data)
+
+
+def load_dir(
+    root: str | os.PathLike[str], db: Database | None = None
+) -> tuple[list[Submission], list[Report]]:
+    """フォルダの提出を読み、検査を通ったものだけ返す(同じ内容は 1 件)。(通ったもの, 全部の検査結果)。"""
+    files = find_files(root)
+    reports = validate_files(files, db)
+    subs: list[Submission] = []
+    for p, r in zip(files, reports, strict=True):
+        if r.ok and r.sha256:
+            data, _ = read_submission(p)
+            subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
+    return subs, reports
+
+
+def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
+    """同じモデル・設定・GPU(と測り方)ごとにまとめる。標準でない提出は使わない。
+
+    最後まで動いた(ok)ものの最大 VRAM で外れ値を除き(robust_filter)、残りの中央値を値にする。
+    OOM だけのまとまりは outcome: oom の 1 行にする(見積もりには使わない)。
+    結果は決まった順(モデル ID → GPU → 設定)で、同じ入力からは同じ出力になる。"""
+    groups: dict[tuple, list[Submission]] = {}
+    for sub in subs:
+        m = sub.measurement
+        if not m.standard:
+            continue
+        key = (m.model_id, m.gpu_name, m.vram_metric or "", _settings_key(m.settings))
+        groups.setdefault(key, []).append(sub)
+    out: list[dict[str, Any]] = []
+    for key in sorted(groups, key=lambda k: json.dumps(k, default=str)):
+        members = sorted(groups[key], key=lambda s: s.sha256)
+        ms = [s.measurement for s in members]
+        ok = [(s, m) for s, m in zip(members, ms, strict=True) if m.outcome == "ok"]
+        oom = [m for m in ms if m.outcome == "oom"]
+        if ok:
+            keep, drop, _ = robust_filter([m.peak_vram_gb for _, m in ok])
+            used = [ok[i] for i in keep]
+            outliers = [ok[i][0].sha256[:8] for i in drop]
+            uv = [m.peak_vram_gb for _, m in used]
+            med = statistics.median(uv)
+            mad = statistics.median([abs(v - med) for v in uv])
+            rel = (max(uv) - min(uv)) / med if med > 0 else 0.0
+            base = [m for _, m in used]
+            outcome = "ok"
+        else:
+            used, outliers, base = [], [], oom
+            uv = [m.peak_vram_gb for m in oom]
+            med = statistics.median(uv) if uv else 0.0
+            mad, rel = 0.0, 0.0
+            outcome = "oom"
+        first = ms[0]
+        consistent = outcome == "ok" and len(used) >= MIN_CONSISTENT and rel <= CONSISTENT_REL
+        settings = {k: v for k, v in asdict(first.settings).items() if v is not None}
+        out.append(
+            {
+                "model_id": first.model_id,
+                "gpu_name": first.gpu_name,
+                "gpu_vram_gb": _med([m.gpu_vram_gb for m in base] or [first.gpu_vram_gb]),
+                "peak_vram_gb": round(med, 2),
+                "settings": settings,
+                "peak_ram_gb": _med([m.peak_ram_gb for m in base]),
+                "seconds": _med([m.seconds for m in base], 1),
+                "driver": _mode([m.driver for m in base]),
+                "comfyui_version": _mode([m.comfyui_version for m in base]),
+                "offload": _mode([m.offload for m in base]),
+                "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
+                "date": max((m.date or "" for m in ms), default="") or None,
+                "note": (
+                    f"ほかの利用者の実測 {len(ms)} 件(使った {len(used)} 件・外れ値 {len(outliers)} 件・"
+                    f"OOM {len(oom)} 件)の中央値"
+                ),
+                "outcome": outcome,
+                "standard": True,
+                "vram_metric": first.vram_metric,
+                "origin": ORIGIN_COMMUNITY,
+                "n_submissions": len(ms),
+                "consistent": consistent,
+                "n_used": len(used),
+                "n_outliers": len(outliers),
+                "n_oom": len(oom),
+                "spread_mad_gb": round(mad, 3),
+                "spread_rel_pct": round(rel * 100, 1),
+                "peak_vram_min_gb": round(min(uv), 2) if uv else None,
+                "peak_vram_max_gb": round(max(uv), 2) if uv else None,
+                "outlier_submissions": outliers,
+                "submissions": [s.sha256[:8] for s in members],
+            }
+        )
+    return out
+
+
+def community_document(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """同梱の measurements_community.json の中身(日付は提出の最新の日付。作り直しても同じになる)。"""
+    return {
+        "unit": "GiB",
+        "source": "community",
+        "contrib_schema": CONTRIB_SCHEMA,
+        "date": max((r.get("date") or "" for r in rows), default="") or None,
+        "method": (
+            "data/contrib の提出を、同じモデル・GPU・測り方・設定ごとにまとめる。"
+            "最後まで動いた(ok)ものの最大 VRAM で、"
+            f"|x - 中央値| / ({MAD_SCALE} × MAD) > {OUTLIER_Z} を外れ値として除き"
+            "(3 件以上のとき。MAD は中央値の "
+            f"{MAD_FLOOR_REL:.0%} を下限)、残りの中央値を値にする。使った件数が {MIN_CONSISTENT} 以上で、"
+            "幅が中央値の "
+            f"{CONSISTENT_REL:.0%} 以内なら consistent(見積もりに使う)"
+        ),
+        "measurements": rows,
+    }
+
+
+def write_community(rows: list[dict[str, Any]], path: str | os.PathLike[str]) -> Path:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(dumps(community_document(rows)), encoding="utf-8", newline="\n")
+    return p
+
+
+# --- 精度の点検(毎週の表) ---------------------------------------------------------------------
+
+DEFAULT_THRESHOLD_PCT = 25.0
+
+
+def accuracy_report(db: Database, threshold_pct: float = DEFAULT_THRESHOLD_PCT) -> dict[str, Any]:
+    """校正(leave-one-out)をやり直し、種類ごとの誤差と閾値の判定を返す。
+
+    閾値を超えたかは、(1) 評価できる種類(張り付いていない実測が 2 件以上)の LOO 誤差と、
+    (2) ほかの利用者の実測(係数の合わせに使わない測り方のもの)を全件の係数で当てた誤差、で見る。
+    作者の照合の行(RTX 3070 の 2 件など)は表に出すが、閾値の判定には入れない
+    (docs/accuracy.md に既知の外れとして書いた)。"""
+    from .calibrate import calibrate
+
+    result = calibrate(db, date="-")
+    sm = result["summary"]
+    evaluable = set(sm["evaluable_modalities"])
+    by: dict[str, dict[str, Any]] = {}
+    breaches: list[dict[str, Any]] = []
+
+    def slot(mod: str) -> dict[str, Any]:
+        return by.setdefault(
+            mod,
+            {
+                "loo_n": 0,
+                "loo_errors_pct": [],
+                "evaluable": mod in evaluable,
+                "check_n": 0,
+                "check_errors_pct": [],
+            },
+        )
+
+    for x in result["loo"]:
+        if x["censored"]:
+            continue
+        b = slot(x["modality"])
+        b["loo_n"] += 1
+        b["loo_errors_pct"].append(x["loo_error_pct"])
+        if x["modality"] in evaluable and abs(x["loo_error_pct"]) > threshold_pct:
+            breaches.append(
+                {
+                    "kind": "loo",
+                    "model_id": x["model_id"],
+                    "gpu_name": x.get("gpu_name"),
+                    "origin": x.get("origin"),
+                    "error_pct": x["loo_error_pct"],
+                }
+            )
+    for x in result.get("check", []):
+        if x["censored"]:
+            continue
+        b = slot(x["modality"])
+        b["check_n"] += 1
+        b["check_errors_pct"].append(x["error_pct"])
+        if x.get("origin") == ORIGIN_COMMUNITY and abs(x["error_pct"]) > threshold_pct:
+            breaches.append(
+                {
+                    "kind": "community_check",
+                    "model_id": x["model_id"],
+                    "gpu_name": x.get("gpu_name"),
+                    "origin": x.get("origin"),
+                    "error_pct": x["error_pct"],
+                }
+            )
+    for b in by.values():
+        for k in ("loo", "check"):
+            errs = [abs(e) for e in b.pop(f"{k}_errors_pct")]
+            b[f"{k}_mean_abs_pct"] = round(sum(errs) / len(errs), 1) if errs else None
+            b[f"{k}_max_abs_pct"] = round(max(errs), 1) if errs else None
+    return {
+        "threshold_pct": threshold_pct,
+        "breach": bool(breaches),
+        "breaches": breaches,
+        "n_fit": result["n"],
+        "coefficients": result["coefficients"],
+        "summary": sm,
+        "by_modality": dict(sorted(by.items())),
+        "loo": result["loo"],
+        "check": result.get("check", []),
+    }
+
+
+def report_db(base: Database, community_rows: list[dict[str, Any]]) -> Database:
+    """点検に使う一覧: 同梱の一覧のモデル + 同梱の作者の実測 + 今回まとめたほかの利用者の実測。
+    この PC のキャッシュの実測と、同梱の古いまとめ(measurements_community.json)は使わない
+    (毎回同じ結果にする)。"""
+    from .db import bundled_text, parse_measurements
+
+    maint = parse_measurements(json.loads(bundled_text("measurements.json")))
+    comm = [Measurement.from_dict(r) for r in community_rows]
+    return Database(
+        models=base.models,
+        measurements=maint + comm,
+        generated_at=base.generated_at,
+        sources=base.sources,
+        origin=base.origin,
+    )
+
+
+__all__ = [
+    "CONTRIB_SCHEMA",
+    "Report",
+    "Submission",
+    "accuracy_report",
+    "aggregate",
+    "build_submission",
+    "community_document",
+    "content_hash",
+    "gpu_slug",
+    "load_dir",
+    "measurements_from_file",
+    "privacy_findings",
+    "robust_filter",
+    "scrub_text",
+    "suggested_path",
+    "validate_files",
+    "validate_submission",
+    "write_community",
+    "write_submission",
+]

@@ -39,6 +39,7 @@ from dataclasses import dataclass, field, replace
 from .db import bundled_text
 from .models import (
     FIT_UNKNOWN,
+    ORIGIN_COMMUNITY,
     RUN_UNKNOWN,
     Estimate,
     Measurement,
@@ -764,8 +765,17 @@ def is_censored(m: Measurement) -> bool:
 
 
 def usable(m: Measurement) -> bool:
-    """見積もりに使える実測か。OOM・エラーで終わったもの、標準でない設定(独自のワークフローなど)は使わない。"""
+    """見積もりに使える実測か。OOM・エラーで終わったもの、標準でない設定(独自のワークフローなど)は使わない。
+    ほかの利用者の実測(origin が community)は、同じ GPU・設定の 2 件以上がそろったもの(consistent)だけ使う
+    (1 件だけ・ばらつきの大きいものは、測り違いを見分けられないため。
+    docs/accuracy.md「ほかの利用者の実測」)。"""
+    if is_community(m) and not m.consistent:
+        return False
     return (m.outcome or "ok") == "ok" and m.standard is not False
+
+
+def is_community(m: Measurement) -> bool:
+    return getattr(m, "origin", None) == ORIGIN_COMMUNITY
 
 
 def _measured_precision(m: Measurement, entry: ModelEntry) -> str | None:
@@ -794,14 +804,15 @@ def _precision_changed(m: Measurement, s: Settings, entry: ModelEntry) -> bool:
 def pick_measurement(
     measurements: Iterable[Measurement], entry: ModelEntry, s: Settings | None = None
 ) -> Measurement | None:
-    """そのモデルの実測を 1 つ選ぶ。設定が同じもの → 張り付いていないもの → 大きい GPU → 大きい値 の順。"""
+    """そのモデルの実測を 1 つ選ぶ。設定が同じもの → 作者・この PC の実測(ほかの利用者の実測より先)→
+    張り付いていないもの → 大きい GPU → 大きい値 の順(根拠の段階は models.BASIS_DETAILS)。"""
     cands = [m for m in measurements if m.model_id == entry.id and usable(m)]
     if not cands:
         return None
 
     def key(m: Measurement):
         same = s is not None and _settings_match(m.settings, s, entry)
-        return (same, not is_censored(m), m.gpu_vram_gb, m.peak_vram_gb)
+        return (same, not is_community(m), not is_censored(m), m.gpu_vram_gb, m.peak_vram_gb)
 
     return max(cands, key=key)
 
@@ -1012,16 +1023,20 @@ def estimate(
     prec = gpu_precision(entry, system, s)
     n = prep.need(s, prec)
     reasons: list[str] = []
-    basis, measured_on = "estimated", None
+    basis, measured_on, detail = "estimated", None, "estimated"
     m = prep.measurement
     if m is not None:
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
+        if is_community(m):
+            reasons.append(f"{on} の実測は、ほかの利用者の実測 {m.n_submissions or '?'} 件をまとめた中央値")
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
         elif prec.act_factor != 1:
+            detail = "calibrated"
             reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
         elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry):
             basis, measured_on = "measured", on
+            detail = "measured_community" if is_community(m) else "measured"
             if is_censored(m):
                 reasons.append(
                     f"実測 {m.peak_vram_gb:.1f} GB は GPU の上限に張り付いた値(全部載せにはこれ以上要る)"
@@ -1029,6 +1044,7 @@ def estimate(
             if m.peak_ram_gb:
                 n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
         elif not _precision_changed(m, s, entry):
+            detail = "calibrated"
             reasons.append(f"{on} の実測({_describe(entry, m.settings)})で補正した推定")
     desc = _describe(entry, s)
     if desc:
@@ -1063,6 +1079,7 @@ def estimate(
         vram_sequential_gb=round(n.sequential, 2),
         settings={k: v for k, v in vars(s).items() if v is not None},
         vram_free_short=free_short,
+        basis_detail=detail,
     )
     if with_limits:
         est.limits = limits(prep, system, s)
