@@ -470,6 +470,11 @@ def test_sha_merge_needs_the_whole_set_of_main_weights():
     k = build_index([a, b, c, d]).key_of
     assert k["a"] == k["c"] != k["b"]
     assert k["d"] != k["a"]
+    # 本体 1 つが sha256 の無いもの: sha256 のあるほうだけで、同じファイル 1 つの項目とまとめない
+    e = entry("e", ("u_low.safetensors", "4" * 64), ("u_high.safetensors", None))
+    f = entry("f", ("t_main.safetensors", "4" * 64))
+    k = build_index([e, f]).key_of
+    assert k["e"] != k["f"]
 
 
 def test_row_score_comes_from_the_same_use_and_level(db):
