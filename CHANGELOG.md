@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Added
 
 - `genmodelfit download <model>` and `gmf.plan_download()` / `gmf.download()` (Issue #31): download all files of a
@@ -20,7 +22,9 @@ All notable changes to this project are documented here. The format is based on
   redirect is checked, and URLs that urlsplit and urllib3 would read as different hosts are refused before
   connecting); nothing is written outside the destination. Existing files are hashed again right before they
   are skipped, restarts against servers that ignore Range are capped, and a `.lock` file stops two downloads of
-  the same file. JSON: docs/schema.md "download".
+  the same file. URL paths may contain spaces (they are percent-encoded as requests does); spaces, `%` and `@` are
+  refused only in the scheme and host, and refusals say whether the URL is malformed or the host is not allowed.
+  JSON: docs/schema.md "download".
   モデルを落とす `download` を足した(同意・sha256・続きから・ComfyUI のフォルダ)。
 
 ## [0.2.0] - Unreleased

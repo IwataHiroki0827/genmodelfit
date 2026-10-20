@@ -126,30 +126,47 @@ class HostPolicy:
 
     def check(self, url: str, *, start: bool = False) -> None:
         if not self.allowed(url, start=start):
-            hp = url_host(url)
-            shown = hp[1] if hp else repr(url[:200])
-            raise HostNotAllowed(f"許していない転送先です(https の Hugging Face・GitHub だけ): {shown}")
+            raise HostNotAllowed(url_refusal(url, start=start))
 
 
-# URL に入っていたら拒む文字(\ は urlsplit と urllib3 でホストの読み方が分かれる。空白・制御文字も同じ)
-_URL_BAD = re.compile(r"[\\\s\x00-\x1f\x7f]")
+def url_refusal(url: str, *, start: bool = False) -> str:
+    """URL を使わない理由(形が不正 か 許していない取得先・転送先)。"""
+    hp = url_host(url)
+    if hp is None:
+        return f"URL の形が不正です(ホストを 1 通りに読めません): {url[:200]!r}"
+    what = "取得先" if start else "転送先"
+    return f"許していない{what}です(https の Hugging Face・GitHub だけ): {hp[1]}"
+
+
+# URL のどこにあっても拒む文字(\ は urlsplit と urllib3 でホストの読み方が分かれる。制御文字も同じ)
+_URL_BAD = re.compile(r"[\\\x00-\x1f\x7f]")
+# scheme と authority(ホスト:ポート)に入っていたら拒む文字(空白・% の符号化・@ の資格情報)
+_AUTHORITY = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:(//[^/?#]*)?")
+_AUTHORITY_BAD = re.compile(r"[\s%@]")
+_LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 
 
 def url_host(url: str) -> tuple[str, str, int | None] | None:
     """(scheme, host, port)。読み方が 2 通りに分かれうる URL は None(拒む)。
 
     requests が実際につなぐ先は urllib3.util.parse_url が読むホスト。urlsplit と urllib3 で違うホストに読める
-    URL(`https://evil.com\\.hf.co/` など)で許可の判定をすり抜けられないように、\\・空白・制御文字・
-    ホストの中の % と @(資格情報)・ASCII でないホストを拒み、2 つの読み方が同じホスト・ポートの
-    ときだけ返す。"""
+    URL(`https://evil.com\\.hf.co/` など)で許可の判定をすり抜けられないように、\\・制御文字(どこでも)と、
+    scheme・ホスト:ポートの中の空白・%・@(資格情報)・ASCII でないホストを拒む。パスの空白などは requests と
+    同じく % に符号化してから比べ、2 つの読み方が同じホスト・ポートのときだけ返す。"""
+    from requests.utils import requote_uri
     from urllib3.util import parse_url
 
     if not isinstance(url, str) or _URL_BAD.search(url):
         return None
+    m = _AUTHORITY.match(url)
+    if m is None or _AUTHORITY_BAD.search(m.group(0)):
+        return None
     try:
-        u = urlsplit(url)
+        # パス・問い合わせの空白などは requests と同じく % に符号化してから、2 通りの読み方を比べる
+        norm = requote_uri(url)
+        u = urlsplit(norm)
         a_port = u.port
-        p = parse_url(url)
+        p = parse_url(norm)
     except ValueError:
         return None
     except Exception:  # urllib3 の LocationParseError など
@@ -161,8 +178,8 @@ def url_host(url: str) -> tuple[str, str, int | None] | None:
     scheme = (u.scheme or "").lower()
     if not a_host or a_host != b_host or scheme != (p.scheme or "").lower() or a_port != p.port:
         return None
-    if not a_host.isascii() or a_host.endswith("."):
-        return None
+    if len(a_host) > 253 or not all(_LABEL.fullmatch(x) for x in a_host.split(".")):
+        return None  # DNS の名前として正しいもの(英数字とハイフン、各 63 文字まで)だけ。末尾の点も拒む
     return scheme, a_host, a_port
 
 
@@ -442,9 +459,10 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
     reason = None
     if rel is None or dest is None or not _inside(dest, root):
         reason = f"置き場所の外を指す名前です({f.directory or '-'}/{f.name})"
-    elif not f.url or not HOST_POLICY.allowed(f.url, start=True):
-        host = urlsplit(f.url).hostname if f.url else "-"
-        reason = f"許していない取得先です({host}。https の Hugging Face・GitHub だけ)"
+    elif not f.url:
+        reason = "一覧に URL がありません"
+    elif not HOST_POLICY.allowed(f.url, start=True):
+        reason = url_refusal(f.url, start=True)
     elif not pf.sha256 or not re.fullmatch(r"[0-9a-f]{64}", pf.sha256):
         reason = "一覧に sha256 が無く、中身を確かめられません"
     elif not f.size_bytes or f.size_bytes <= 0:
@@ -784,6 +802,28 @@ def _stale_lock(path: Path) -> bool:
     return not psutil.pid_exists(pid)
 
 
+def _retire_stale_lock(path: Path) -> bool:
+    """残骸の .lock を片付ける。消す代わりに、名前の重ならない墓標へ改名してから中身を見直す
+    (残骸と判断してから改名するまでに別のプロセスが新しい .lock を作っていたら、それを消さずに戻す)。"""
+    import uuid
+
+    tomb = path.with_name(f"{path.name}.stale-{uuid.uuid4().hex}")
+    try:
+        os.rename(path, tomb)  # 原子的。同じ .lock を 2 つのプロセスが同時に改名しても、通るのは 1 つだけ
+    except FileNotFoundError:
+        return True  # ほかのプロセスが先に片付けた: 作り直しを試す
+    except OSError:
+        return False
+    if _stale_lock(tomb):
+        with contextlib.suppress(OSError):
+            tomb.unlink()
+        return True
+    # 改名したのは新しい(生きている)印だった: 元へ戻す(戻せなければ残す。持ち主は終わると消そうとする)
+    with contextlib.suppress(OSError):
+        os.rename(tomb, path)
+    return False
+
+
 @contextlib.contextmanager
 def _file_lock(path: Path, name: str):
     """同じファイルを 2 つの download が同時に書かないように、.lock を排他で作る(残骸は片付けてやり直す)。"""
@@ -792,9 +832,7 @@ def _file_lock(path: Path, name: str):
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
         except FileExistsError:
-            if attempt == 0 and _stale_lock(path):
-                with contextlib.suppress(OSError):
-                    path.unlink()
+            if attempt == 0 and _stale_lock(path) and _retire_stale_lock(path):
                 continue
             raise DownloadError(
                 f"{name}: 別の download が同じファイルを落としています(終わってからもう一度。"

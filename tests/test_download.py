@@ -14,6 +14,7 @@ import os
 import threading
 from pathlib import Path
 from typing import ClassVar
+from urllib.parse import unquote
 
 import pytest
 import requests
@@ -75,7 +76,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if self.path.startswith("/evil/"):  # 別のホストへの転送(許さない)
             self._redirect(f"http://localhost:{cls.port}/f/" + self.path[6:])
             return
-        name = self.path.rsplit("/", 1)[-1]
+        name = unquote(self.path.rsplit("/", 1)[-1])
         data = cls.files.get(name)
         if data is None:
             self.send_response(404)
@@ -769,6 +770,9 @@ EVIL_HOPS = [
     "https://huggingface.co:8443/x",
     "https://huggingfacе.co/x",  # キリル文字の е
     "https://ｈf.co/x",
+    "https://evil.com;.hf.co/x",  # DNS の名前として正しくない(英数字とハイフンだけ)
+    "https://evil.com$.hf.co/x",
+    "https://" + "a" * 64 + ".hf.co/x",  # 1 つの区切りが 63 文字を超える
 ]
 
 
@@ -1001,3 +1005,59 @@ def test_consent_when_nothing_to_download(db_file, comfy, monkeypatch, capsys):
     assert cli.main(base) == 0
     out = capsys.readouterr().out
     assert "nothing to download" in out and "needs" not in out and "落とすものはありません" in out
+
+
+# --- パスに空白のある URL(再確認の指摘。hf:Meina/MeinaHentai の「meinaHentai V3 - baked VAE」) ---
+
+
+def test_space_in_path_downloads(server, comfy):
+    _Handler.files["tiny vae - baked.safetensors"] = BODY_B
+    db = make_db(server, files=[_file(server, "tiny vae - baked.safetensors", BODY_B, "vae")])
+    p = plan(db, comfy)
+    assert p.ok and p.files[0].status == "download"
+    gmf.download(p, yes=True)
+    assert (comfy / "models" / "vae" / "tiny vae - baked.safetensors").read_bytes() == BODY_B
+    assert _gets("tiny%20vae%20-%20baked")  # requests と同じく % に符号化して送った
+
+
+def test_bundled_url_with_space_is_not_refused_as_host():
+    db = gmf.load_db(use_cache=False)
+    m = db.get("hf:Meina/MeinaHentai")
+    if m is None:
+        pytest.skip("同梱の一覧にない")
+    f = next(x for x in m.files if " " in (x.url or ""))
+    assert downloader.HOST_POLICY.allowed(f.url, start=True)
+    p = gmf.plan_download(m.id, db=db, system_info=pc(), output_dir="unused-dir", content="all")
+    assert all(pf.status != "unavailable" for pf in p.files), [pf.reason for pf in p.files]
+    assert not Path("unused-dir").exists()
+
+
+@pytest.mark.parametrize(
+    "url,why",
+    [
+        ("https://evil.com" + BS + ".hf.co/x", "URL の形が不正"),
+        ("https://evil.com .hf.co/x", "URL の形が不正"),
+        ("https://huggingface.co/a" + BS + "b", "URL の形が不正"),
+        ("https://huggingface.co/a\tb", "URL の形が不正"),
+        ("https://civitai.com/api/download/models/1", "許していない取得先"),
+        ("http://huggingface.co/x", "許していない取得先"),
+    ],
+)
+def test_refusal_reasons_are_distinct(comfy, url, why):
+    f = ModelFile(
+        name="x.safetensors", url=url, sha256="0" * 64, size_bytes=10, directory="vae", license="mit"
+    )
+    m = ModelEntry(id="t_reason", name="Reason", modality="image", files=[f], template=Template(name="t"))
+    p = gmf.plan_download("t_reason", db=Database(models=[m]), system_info=pc(), comfyui_dir=comfy)
+    assert p.files[0].status == "unavailable" and why in (p.files[0].reason or "")
+
+
+def test_stale_lock_retire_keeps_fresh_lock(tmp_path, monkeypatch):
+    """残骸と判断したあと、改名までの間に別のプロセスが新しい .lock を作っていたら、それを消さずに戻す。"""
+    lock = tmp_path / "x.safetensors.lock"
+    lock.write_text(f"{os.getpid()} 0\n", encoding="ascii")  # 実は生きている印
+    assert downloader._retire_stale_lock(lock) is False
+    assert lock.read_text(encoding="ascii").startswith(str(os.getpid()))
+    assert [x.name for x in tmp_path.iterdir()] == ["x.safetensors.lock"]  # 墓標は残らない
+    lock.write_text("999999999 0\n", encoding="ascii")  # 本当の残骸
+    assert downloader._retire_stale_lock(lock) is True and list(tmp_path.iterdir()) == []
