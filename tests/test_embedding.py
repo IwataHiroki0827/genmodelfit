@@ -55,6 +55,74 @@ def test_api_writes_nothing(db, capfd):
     assert out == "" and err == ""
 
 
+class _FakeFetcher:
+    """HEAD はすべて 200、ComfyUI の版は v0.0.0 を返す(ネットに出ない)。"""
+
+    def get_json(self, url):
+        return {"tag_name": "v0.0.0"}
+
+    def get_text(self, url):
+        raise AssertionError(url)
+
+    def head_size(self, url):
+        return None
+
+    def head_status(self, url):
+        return 200
+
+
+@pytest.fixture
+def release_server(tmp_path):
+    """壊れた署名つきの一覧を配る手元の HTTP サーバー(記録の行も出さない)。"""
+    import functools
+    import threading
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    root = tmp_path / "release"
+    root.mkdir()
+    (root / "db.json").write_text("{}", encoding="utf-8")
+    (root / "db.json.sig").write_text("not-a-signature", encoding="ascii")
+
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(root)))
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}"
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_library_functions_write_nothing(tmp_path, capfd, monkeypatch, release_server):
+    """更新・取り込み・実測のライブラリ関数も、成功でも失敗でも stdout / stderr に何も出さない(fd で見る)。"""
+    from pathlib import Path
+
+    from genmodelfit import bench, remote, update
+    from genmodelfit.fetch import DirFetcher
+
+    fix = Path(__file__).parent / "fixtures" / "update"
+    db = update.update_database(DirFetcher(fix), tmp_path / "a.json", head=False, allow_partial=True)
+    assert db.models and (tmp_path / "a.json").exists()
+    db = update.refresh_heads(_FakeFetcher(), tmp_path / "b.json", use_cache=False)
+    assert db.sources["comfyui"]["latest_release"] == "v0.0.0"
+    monkeypatch.setattr(remote, "RETRY_DELAY", 0)
+    with pytest.raises(remote.RemoteError):
+        remote.update_from_release(release_server, timeout=5, dest=tmp_path / "c.json")
+    assert not (tmp_path / "c.json").exists()
+    with pytest.raises(bench.BenchError):
+        bench.run(bench.BenchOptions(model_id="image_sdxl_simple", url="http://127.0.0.1:9", timeout=5))
+    out, err = capfd.readouterr()
+    assert out == "" and err == ""
+
+
+def test_info_is_exact_id_only(db):
+    assert gmf.info("image_sdxl_simple", db=db).id == "image_sdxl_simple"
+    assert gmf.info("sdxl", db=db) is None  # 一部の一致では探さない
+    assert gmf.info("hf:Heartsync/NSFW-Uncensored", db=db).content == "uncensored"
+
+
 def test_no_network(tmp_path):
     """import と主な関数でネットに出ない(別プロセスで、つなぐ所を全部ふさいでから import する)。"""
     script = textwrap.dedent(

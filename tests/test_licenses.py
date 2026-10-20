@@ -25,6 +25,7 @@ ALLOWED = {
     "BSD-3-Clause OR Apache-2.0",
 }
 EXCEPTIONS = {"certifi": {"MPL-2.0"}}
+MISSING = "NOT INSTALLED"
 
 _CLASSIFIERS = {
     "MIT License": "MIT",
@@ -89,7 +90,8 @@ def runtime_dependencies(root: str = "genmodelfit") -> dict[str, str]:
             continue
         try:
             dist = distribution(name)
-        except PackageNotFoundError:  # この環境では入らない条件付きの依存
+        except PackageNotFoundError:  # この環境で要る(marker が合う)のに入っていない → 落とす
+            seen[name] = MISSING
             continue
         seen[name] = license_of(dist)
         for text in dist.requires or []:
@@ -101,6 +103,8 @@ def runtime_dependencies(root: str = "genmodelfit") -> dict[str, str]:
 
 
 def allowed(name: str, lic: str) -> bool:
+    if lic == MISSING:
+        return False
     if lic in ALLOWED or lic in EXCEPTIONS.get(name, set()):
         return True
     # 「A OR B」はどちらかが許されていればよい(二重ライセンス)
@@ -129,7 +133,24 @@ def test_runtime_dependency_licenses():
         ("x", "LGPL-3.0", False),
         ("x", "Apache-2.0 OR BSD-3-Clause", True),
         ("x", "?", False),
+        ("x", MISSING, False),
     ],
 )
 def test_allowlist_rules(name, lic, ok):
     assert allowed(name, lic) is ok
+
+
+def test_missing_required_dependency_fails(monkeypatch):
+    """要る依存が入っていなければ、飛ばさずに NG にする。"""
+    import test_licenses as me
+
+    real = me.distribution
+
+    def fake(name):
+        if name == "rich":
+            raise PackageNotFoundError(name)
+        return real(name)
+
+    monkeypatch.setattr(me, "distribution", fake)
+    deps = runtime_dependencies()
+    assert deps["rich"] == MISSING and not allowed("rich", deps["rich"])
