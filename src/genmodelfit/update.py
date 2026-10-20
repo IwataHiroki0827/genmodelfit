@@ -44,6 +44,7 @@ from .hf import (
     upstream_candidates,
 )
 from .models import ModelEntry, ModelFile, Template
+from .tasks import tool_task_from_title
 
 RAW = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates"
 INDEX_URL = f"{RAW}/index.json"
@@ -231,6 +232,10 @@ TOOL_CATEGORIES = {"Image Tools", "Video Tools"}
 
 
 def template_tasks(t: dict[str, Any], modality: str, category: str | None = None) -> list[str]:
+    # 深度・線画・ポーズの地図を作る前処理や音の分離は、タグ(controlnet など)によらず補助ツール
+    tool = tool_task_from_title(t.get("title"), category)
+    if tool:
+        return [tool]
     out: list[str] = []
     for tag in t.get("tags") or []:
         task = TAG_TASKS.get(str(tag).lower())

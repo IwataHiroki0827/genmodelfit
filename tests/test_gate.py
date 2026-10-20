@@ -450,20 +450,34 @@ def test_cli_gate_policy_options(small_db, tmp_path, capsys):
 
 
 def test_cli_recommend_auto_only_and_info(small_db, capsys):
+    # 3 件は同じファイルを使う作り物なので、まとめずに 1 件ずつ見る
     base = ["--db", small_db, "--vram", "24", "--ram", "64", "--json"]
-    assert cli.main(["recommend", "--content", "all", *base]) == 0
+    assert cli.main(["recommend", "--all-workflows", "--content", "all", *base]) == 0
     assert len(json.loads(capsys.readouterr().out)["models"]) == 3
     # 既定は sfw なので無検閲の unc は出ない
-    assert cli.main(["recommend", *base]) == 0
+    assert cli.main(["recommend", "--all-workflows", *base]) == 0
     out = json.loads(capsys.readouterr().out)
     assert {m["id"] for m in out["models"]} == {"ok", "nc"} and out["filters"]["content"] == "sfw"
-    assert cli.main(["recommend", "--auto-only", *base]) == 0
+    assert cli.main(["recommend", "--all-workflows", "--auto-only", *base]) == 0
     out = json.loads(capsys.readouterr().out)
     assert [m["id"] for m in out["models"]] == ["ok"] and out["filters"]["auto_only"] is True
-    assert cli.main(["recommend", "--auto-only", "--allow-uncensored-auto", "--content", "all", *base]) == 0
+    assert (
+        cli.main(
+            [
+                "recommend",
+                "--all-workflows",
+                "--auto-only",
+                "--allow-uncensored-auto",
+                "--content",
+                "all",
+                *base,
+            ]
+        )
+        == 0
+    )
     assert {m["id"] for m in json.loads(capsys.readouterr().out)["models"]} == {"ok", "unc"}
     # 件数の上限は保留を除いたあとにかかる(上位が保留ばかりでも auto のものが出る)
-    assert cli.main(["recommend", "--auto-only", "-n", "1", *base]) == 0
+    assert cli.main(["recommend", "--all-workflows", "--auto-only", "-n", "1", *base]) == 0
     assert [m["id"] for m in json.loads(capsys.readouterr().out)["models"]] == ["ok"]
     assert cli.main(["info", "nc", *base]) == 0
     gate = json.loads(capsys.readouterr().out)["gate"]

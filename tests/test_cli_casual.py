@@ -11,10 +11,23 @@ from rich.cells import cell_len
 
 from genmodelfit import __version__, cli
 
-SUBCOMMANDS = ["system", "recommend", "fit", "search", "info", "update", "gate", "bench"]
+SUBCOMMANDS = ["system", "recommend", "fit", "search", "types", "info", "update", "gate", "bench"]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
-HEADER = ["Status", "Model", "Type", "Score", "VRAM", "Mem%", "Mode", "Disk", "License", "Auto"]
+HEADER = [
+    "Status",
+    "Model",
+    "Type",
+    "Use",
+    "Prec",
+    "Score",
+    "VRAM",
+    "Mem%",
+    "Mode",
+    "Disk",
+    "License",
+    "Auto",
+]
 
 
 @pytest.fixture(scope="module")
@@ -87,6 +100,10 @@ TABLE_COMMANDS = [
     ["fit", "--vram", "0", "--ram", "16", "--no-cache"],
     ["search", "flux", *HW, "--content", "all"],
     ["search", "no_such_model_xyz", *HW],
+    ["recommend", *HW, "-m", "image", "--task", "edit"],
+    ["recommend", "--vram", "1", "--ram", "16", "--no-cache", "--all-workflows"],
+    ["types", "--no-cache"],
+    ["info", "image_z_image_turbo", *HW],
     ["gate", "--no-cache", "--only-held"],
     ["system", "--vram", "8", "--ram", "32"],
     ["info", "image_sdxl_simple", *HW],
@@ -113,29 +130,33 @@ def test_width(cache, args, columns):
 
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
-    assert "All models: 302 (39 hidden: uncensored 39)" in out  # 同梱の無検閲は 39 件
+    # 同梱の無検閲は 39 件。同じモデルの別のワークフローは「same model」に数える
+    assert "All models: " in out and "hidden: uncensored 39, same model " in out
     assert "add --content all" in out
-    assert "hidden" not in run_cli(["fit", *HW, "--content", "all"], cache).stdout.decode("utf-8")
+    out = run_cli(["fit", *HW, "--content", "all", "--all-workflows"], cache).stdout.decode("utf-8")
+    assert "hidden" not in out
     out = run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")
     assert "uncensored" not in out and "other types" in out  # 3D には無検閲が無い。ほかの種類は隠した数に出す
 
 
-def test_pc_line_comes_first(cache):
+def test_pc_line_and_sections(cache):
     out = run_cli(["recommend", *HW, "-n", "3"], cache).stdout.decode("utf-8").splitlines()
     assert out[0] == "PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)"
-    assert out[1].startswith("Recommended: 3 of ") and "hidden: uncensored 39, tools " in out[1]
-    assert out[2].split() == [
-        "Status",
-        "Model",
-        "Type",
-        "Score",
-        "VRAM",
-        "Mem%",
-        "Mode",
-        "Disk",
-        "License",
-        "Auto",
-    ]
+    assert out[1].startswith("Recommended: ") and "hidden: uncensored 39, tools " in out[1]
+    heads = [x for x in out if x.startswith("== ")]
+    assert [h.split()[1] for h in heads] == ["image", "video", "music", "sfx", "tts", "3d"]
+    header = next(x for x in out if x.startswith("Status"))
+    assert header.split() == [c for c in HEADER if c != "Type"]  # 節の中は 1 種類なので Type は無い
+    # -m を付けると 1 つの表(種類が混ざれば Type の列)
+    out = run_cli(["recommend", *HW, "-m", "image,video"], cache).stdout.decode("utf-8").splitlines()
+    assert not [x for x in out if x.startswith("== ")]
+    assert "Type" in next(x for x in out if x.startswith("Status"))
+
+
+def test_cpu_only_sections_say_when_nothing_runs(cache):
+    out = run_cli(["recommend", "--vram", "0", "--ram", "16", "--no-cache"], cache).stdout.decode("utf-8")
+    assert "== image (画像): no model runs on this PC with these filters" in out
+    assert "== tts (読み上げ): top 3 of " in out
 
 
 def test_search(cache):
@@ -173,7 +194,7 @@ def test_info_partial_match(cache):
 
 def test_python_m(cache):
     r = run_cli(["recommend", *HW, "-n", "3"], cache)
-    assert r.returncode == 0 and "Recommended: 3 of " in r.stdout.decode("utf-8")
+    assert r.returncode == 0 and "Recommended: " in r.stdout.decode("utf-8")
 
 
 def test_console_script(cache):
@@ -183,7 +204,7 @@ def test_console_script(cache):
     env = child_env(cache)
     args = [exe, "recommend", *HW, "-n", "3"]
     r = subprocess.run(args, capture_output=True, env=env, timeout=120, check=False)
-    assert r.returncode == 0 and "Recommended: 3 of " in r.stdout.decode("utf-8")
+    assert r.returncode == 0 and "Recommended: " in r.stdout.decode("utf-8")
     r = subprocess.run([exe, "--version"], capture_output=True, env=env, timeout=60, check=False)
     assert r.stdout.decode("utf-8").strip() == f"genmodelfit {__version__}"
 

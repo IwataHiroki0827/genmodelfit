@@ -21,7 +21,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from .groups import precision_label
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
+from .tasks import MODALITY_LABEL
 
 LEVEL_STYLE = {"perfect": "bold green", "good": "cyan", "marginal": "yellow", "too_tight": "red"}
 LEVEL_LABEL = FIT_LABEL
@@ -49,13 +51,17 @@ HIDDEN_LABEL = {
     "too_tight": "too tight",
     "below_min_fit": "below --min-fit",
     "held": "held",
+    "task": "other uses",
+    "same_model": "same model",
 }
 MAX_WIDTH = 100
-MIN_NAME_WIDTH = 20  # モデル名がこれより狭くなるなら列を外す
-# 列の幅(並びもこの順)と、狭いときに外す順
+MIN_NAME_WIDTH = 24  # モデル名がこれより狭くなるなら列を外す
+# 列の幅(並びもこの順)と、狭いときに外す順。Type は種類が混ざる表(fit・search など)だけ
 COLUMN_WIDTH = {
     "Status": 11,
     "Type": 5,
+    "Use": 7,
+    "Prec": 4,
     "Score": 5,
     "VRAM": 5,
     "Mem%": 4,
@@ -64,7 +70,7 @@ COLUMN_WIDTH = {
     "License": 10,
     "Auto": 8,
 }
-DROP_ORDER = ("License", "Disk", "Auto", "Mem%", "Type", "Score")
+DROP_ORDER = ("Disk", "Mem%", "License", "Auto", "Prec", "Type", "Use", "Score")
 
 
 def output_width(file=None) -> int:
@@ -160,13 +166,14 @@ def model_width(width: int, cols: Sequence[str]) -> int:
     return max(12, width - used)
 
 
-def columns_for(width: int) -> list[str]:
-    """幅に収まる列(Model 以外。並びは COLUMN_WIDTH の順)。"""
-    cols = list(COLUMN_WIDTH)
+def columns_for(width: int, with_type: bool = True) -> list[str]:
+    """幅に収まる列(Model 以外。並びは COLUMN_WIDTH の順)。Type は種類が混ざる表だけ。"""
+    cols = [c for c in COLUMN_WIDTH if with_type or c != "Type"]
     for drop in DROP_ORDER:
         if model_width(width, cols) >= MIN_NAME_WIDTH:
             break
-        cols.remove(drop)
+        if drop in cols:
+            cols.remove(drop)
     return cols
 
 
@@ -214,8 +221,18 @@ def _mem_cell(e, system) -> Text:
     return Text(f"{shown}%" if shown <= 999 else ">999", style=style)
 
 
-def build_table(fits: Sequence, width: int = MAX_WIDTH, system=None) -> Table:
-    cols = columns_for(width)
+def _use_cell(f, grouped: bool) -> Text:
+    use = getattr(f, "use", "") or "-"
+    n = len(getattr(f, "workflows", []) or []) if grouped else 0
+    return Text.assemble(use, (f"+{n}", "dim") if n else "")
+
+
+def build_table(
+    fits: Sequence, width: int = MAX_WIDTH, system=None, with_type: bool | None = None, grouped: bool = True
+) -> Table:
+    if with_type is None:
+        with_type = len({f.model.modality for f in fits}) > 1
+    cols = columns_for(width, with_type)
     name_w = model_width(width, cols)
     t = Table(
         header_style="bold",
@@ -247,6 +264,8 @@ def build_table(fits: Sequence, width: int = MAX_WIDTH, system=None) -> Table:
             name = Text(shown[m.id])
         cells = {
             "Type": Text(m.modality),
+            "Use": _use_cell(f, grouped),
+            "Prec": Text(precision_label(m.precision)),
             "Score": Text(f"{f.score:.0f}"),
             "VRAM": _vram_cell(e, system),
             "Mem%": _mem_cell(e, system),
@@ -261,16 +280,23 @@ def build_table(fits: Sequence, width: int = MAX_WIDTH, system=None) -> Table:
 
 
 def pc_line(system) -> str:
-    """この PC の 1 行(--vram / --ram で上書きしたら assumed)。"""
+    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed。"""
     g = system.best_gpu
-    gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM" if g else "no GPU (CPU only)"
+    if g:
+        free = f" ({g.vram_free_gb:.1f} free)" if g.vram_free_gb is not None else ""
+        gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
+    else:
+        gpu = "no GPU (CPU only)"
     if "vram" in system.overrides:
         gpu = (
             f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)"
             if system.vram_gb > 0
             else "assumed no GPU (--vram 0)"
         )
-    ram = f"RAM {system.ram_total_gb:.1f} GiB" + (" (--ram)" if "ram" in system.overrides else "")
+    if "ram" in system.overrides:
+        ram = f"RAM {system.ram_total_gb:.1f} GiB (--ram)"
+    else:
+        ram = f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)"
     return f"PC: {gpu}, {ram}"
 
 
@@ -283,13 +309,19 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
     return f"({n} hidden: {parts})"
 
 
-def legend(fits: Sequence, hidden: Mapping[str, int]) -> list[str]:
+def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> list[str]:
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         "Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.",
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
         "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.",
-        "Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).",
     ]
+    if grouped:
+        out.append(
+            "One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows)."
+        )
+    out.append(
+        "Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md)."
+    )
     if any(f.model.content == "uncensored" for f in fits):
         out.append("[U] = uncensored")
     if hidden.get("uncensored"):
@@ -307,8 +339,12 @@ def print_fit_table(
     notes: Sequence[str] = (),
     matched: int | None = None,
     hidden: Mapping[str, int] | None = None,
+    groups: Sequence[Mapping[str, Any]] | None = None,
+    grouped: bool = True,
 ) -> None:
-    """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。"""
+    """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。
+
+    groups を渡すと種類ごとの節に分ける(見出し 1 行 + 表。動くものが無い種類は 1 行で知らせる)。"""
     con = console or make_console()
     hidden = dict(hidden or {})
     matched = len(fits) if matched is None else matched
@@ -322,9 +358,19 @@ def print_fit_table(
     count = f"{len(fits)} of {matched}" if matched != len(fits) else str(len(fits))
     head = f"{title}: {count}" if title else count
     say(" ".join(x for x in (head, hidden_text(hidden)) if x), "bold")
-    if not fits:
+    if groups is not None:
+        for g in groups:
+            mod = g["modality"]
+            _en, ja = MODALITY_LABEL.get(mod, (mod, mod))
+            rows = [f for f in fits if f.model.modality == mod]
+            if not g["matched"]:
+                say(f"== {mod} ({ja}): no model runs on this PC with these filters", "bold")
+                continue
+            say(f"== {mod} ({ja}): top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
+            con.print(build_table(rows, width=con.width, system=system, with_type=False, grouped=grouped))
+    elif not fits:
         say("(no match / 該当なし)")
     else:
-        con.print(build_table(fits, width=con.width, system=system))
-    for n in [*(legend(fits, hidden) if fits else []), *notes]:
+        con.print(build_table(fits, width=con.width, system=system, grouped=grouped))
+    for n in [*(legend(fits, hidden, grouped) if fits else []), *notes]:
         say(n, "dim")

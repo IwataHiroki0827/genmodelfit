@@ -75,13 +75,19 @@ class Database:
 
 
 def parse_db(data: dict[str, Any], origin: str) -> Database:
+    if not isinstance(data, dict):
+        raise DatabaseError("一覧の形が正しくありません(JSON のオブジェクトではない)")
     ver = data.get("schema_version")
     if ver != SCHEMA_VERSION:
         raise DatabaseError(f"未対応のデータ形式です(schema_version={ver}、対応={SCHEMA_VERSION})")
     if not isinstance(data.get("models"), list):
         raise DatabaseError("models がありません")
+    try:
+        models = [ModelEntry.from_dict(m) for m in data["models"]]
+    except (TypeError, AttributeError, ValueError) as e:
+        raise DatabaseError(f"一覧のモデルの形が正しくありません: {e}") from e
     return Database(
-        models=[ModelEntry.from_dict(m) for m in data["models"]],
+        models=models,
         generated_at=data.get("generated_at"),
         sources=data.get("sources") or {},
         origin=origin,
@@ -108,7 +114,11 @@ def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]
 def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) -> Database:
     if path:
         p = Path(path)
-        db = parse_db(json.loads(p.read_text(encoding="utf-8")), "path")
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:  # 無い・読めない・JSON でない(UnicodeDecodeError も ValueError)
+            raise DatabaseError(f"一覧のファイルを読めません: {p}: {e}") from e
+        db = parse_db(data, "path")
     else:
         db = None
         cp = cached_db_path()

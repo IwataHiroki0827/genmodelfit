@@ -99,7 +99,8 @@ def test_cli_json(capsys):
     assert cli.main(["recommend", "--json", "--vram", "8", "--ram", "32", "--no-cache", "-n", "3"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["command"] == "recommend" and out["system"]["best_gpu"]["vram_total_gb"] == 8
-    assert len(out["models"]) <= 3
+    # -m も --task も無ければ種類ごとに 3 件まで
+    assert all(g["shown"] <= 3 for g in out["groups"]) and len(out["models"]) <= 3 * 6
     for m in out["models"]:
         assert m["fit_level"] in ("perfect", "good", "marginal") and m["estimate_confidence"] in (
             "measured",

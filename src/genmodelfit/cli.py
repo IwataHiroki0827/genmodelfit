@@ -149,6 +149,26 @@ def _license_list(text: str) -> list[str]:
     return items
 
 
+def _modality_list(text: str) -> list[str]:
+    from .tasks import parse_modalities
+
+    try:
+        return list(parse_modalities(text) or ())
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
+def _task_list(text: str) -> list[str]:
+    from .tasks import task_codes
+
+    items = [x.strip().lower() for x in text.split(",") if x.strip()]
+    try:
+        task_codes(items)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+    return items
+
+
 def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
     return select(
         db,
@@ -156,6 +176,8 @@ def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
         modality=args.modality,
         content=args.content,
         license=args.license,
+        task=args.task,
+        group=not args.all_workflows,
         settings=_settings(args),
         with_limits=args.limits,
         policy=_policy(args),
@@ -169,11 +191,15 @@ def _filters(args: argparse.Namespace, min_fit: str | None, limit: int | None) -
         "content": args.content,
         "min_fit": min_fit,
         "license": args.license,
+        "task": args.task,
+        "all_workflows": args.all_workflows,
         "limit": limit,
     }
 
 
-def _show(args, command: str, title: str, s: SystemInfo, db: Database, sel, filters: dict[str, Any]) -> int:
+def _show(
+    args, command: str, title: str, s: SystemInfo, db: Database, sel, filters: dict[str, Any], sections=False
+) -> int:
     if args.json:
         _out(
             _envelope(
@@ -183,19 +209,31 @@ def _show(args, command: str, title: str, s: SystemInfo, db: Database, sel, filt
                 filters=filters,
                 matched=sel.matched,
                 hidden=sel.hidden,
+                groups=sel.groups,
                 models=[f.to_dict() for f in sel.fits],
             )
         )
         return 0
     from .table import print_fit_table
 
-    print_fit_table(sel.fits, title=title, system=s, matched=sel.matched, hidden=sel.hidden)
+    print_fit_table(
+        sel.fits,
+        title=title,
+        system=s,
+        matched=sel.matched,
+        hidden=sel.hidden,
+        groups=sel.groups if sections else None,
+        grouped=not args.all_workflows,
+    )
     return 0
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
+    """-m も --task も無ければ種類ごとの節(各 -n 件、既定 3)。あれば 1 つの表(既定 10 件)。"""
     s, db = _system(args), _db(args)
-    limit = args.limit if args.limit is not None else 10
+    sections = not args.modality and not args.task
+    per_type = (args.limit or 3) if sections else None
+    limit = None if sections else (args.limit if args.limit is not None else 10)
     min_fit = args.min_fit or "marginal"
     sel = _select(
         args,
@@ -206,12 +244,14 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         auto_only=args.auto_only,
         drop_unknown_size=True,
         limit=limit,
+        per_modality=per_type,
     )
     filters = _filters(args, min_fit, limit) | {
+        "per_type": per_type,
         "auto_only": args.auto_only,
         "include_tools": args.include_tools,
     }
-    return _show(args, "recommend", "Recommended", s, db, sel, filters)
+    return _show(args, "recommend", "Recommended", s, db, sel, filters, sections=sections)
 
 
 def cmd_fit(args: argparse.Namespace) -> int:
@@ -222,7 +262,7 @@ def cmd_fit(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """ID・名前の一部で探す(大文字小文字を区別しない)。0 件でも終了コード 0。"""
+    """ID・名前の一部で探す(大文字小文字を区別しない)。0 件でも終了コード 0。空の語は 1。"""
     s, db = _system(args), _db(args)
     query = args.query.strip()
     if not query:
@@ -230,6 +270,64 @@ def cmd_search(args: argparse.Namespace) -> int:
     sel = _select(args, s, db, query=query, min_fit=args.min_fit, limit=args.limit)
     filters = {"query": query} | _filters(args, args.min_fit, args.limit)
     return _show(args, "search", f'Search "{query}"', s, db, sel, filters)
+
+
+def types_summary(db: Database, content: str = DEFAULT_CONTENT) -> list[dict[str, Any]]:
+    """大きな種類ごとの、モデルの数・ワークフローの数・用途ごとのワークフローの数。"""
+    from .groups import group_key
+    from .tasks import MODALITY_LABEL, USES, uses_of
+
+    out = []
+    for mod in MODALITIES:
+        entries = [m for m in db.models if m.modality == mod and (content == "all" or m.content == content)]
+        uses = {u: sum(1 for m in entries if u in uses_of(m)) for u in USES}
+        en, ja = MODALITY_LABEL[mod]
+        out.append(
+            {
+                "modality": mod,
+                "label": en,
+                "label_ja": ja,
+                "models": len({group_key(m) for m in entries}),
+                "workflows": len(entries),
+                "uses": {u: n for u, n in uses.items() if n},
+            }
+        )
+    return out
+
+
+def cmd_types(args: argparse.Namespace) -> int:
+    from .tasks import USE_ALIASES, USES
+
+    db = _db(args)
+    rows = types_summary(db, args.content)
+    uses = [
+        {"use": u, "label": en, "label_ja": ja, "tasks": list(codes)} for u, (en, ja, codes) in USES.items()
+    ]
+    if args.json:
+        _out(
+            _envelope(
+                "types",
+                None,
+                db,
+                filters={"content": args.content},
+                types=rows,
+                uses=uses,
+                aliases=USE_ALIASES,
+            )
+        )
+        return 0
+    lines = [f"Types (content {args.content}; models = distinct weights, workflows = list entries)"]
+    lines.append(f"{'Type':<6}{'Models':>7}{'Workflows':>10}  Uses (workflows)")
+    for r in rows:
+        used = ", ".join(f"{u} {n}" for u, n in r["uses"].items())
+        lines.append(f"{r['modality']:<6}{r['models']:>7}{r['workflows']:>10}  {used}")
+    lines.append("")
+    lines.append("Uses for --task (a name below, or a task code such as t2i / i2i / inpaint):")
+    for u in uses:
+        lines.append(f"  {u['use']:<8}{u['label']} / {u['label_ja']}  [{', '.join(u['tasks'])}]")
+    lines.append("Examples: genmodelfit recommend -m image --task edit / -m video --task i2v,lipsync")
+    _emit(lines)
+    return 0
 
 
 class AmbiguousModel(CliError):
@@ -280,6 +378,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
+    key, same = same_model(db, s, m, args)
     if args.json:
         _out(
             _envelope(
@@ -290,6 +389,8 @@ def cmd_info(args: argparse.Namespace) -> int:
                 estimate=e.to_dict(),
                 gate=gate,
                 measurements=[vars(x) | {"settings": vars(x.settings)} for x in db.measurements_for(m.id)],
+                group_key=key,
+                same_model=same,
             )
         )
         return 0
@@ -319,8 +420,31 @@ def cmd_info(args: argparse.Namespace) -> int:
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
             out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+    if same:
+        out.append(f"  same model ({len(same)} other workflow(s); precision / use differ):")
+        for w in same:
+            need = w["memory_required_gb"]
+            vram = f"{need:.1f} GB" if need is not None else "-"
+            prec = w["precision"] or "-"
+            out.append(f"    - {w['id']}  ({w['use']}, {prec}, {w['fit_level']}, {vram})")
     _emit(out)
     return 0
+
+
+def same_model(db: Database, s: SystemInfo, m, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
+    """同じモデル(groups.group_key)のほかのワークフロー。この PC での判定つき、良い順。"""
+    from .groups import group_key
+    from .recommend import _member_dict, judge, variant_key
+
+    key = group_key(m)
+    c = load_coefficients()
+    others = [
+        judge(o, s, db, settings=_settings(args), coefficients=c, policy=_policy(args))
+        for o in db.models
+        if o.id != m.id and group_key(o) == key
+    ]
+    others.sort(key=variant_key)
+    return key, [_member_dict(o, True) for o in others]
 
 
 def _progress(args: argparse.Namespace):
@@ -550,11 +674,14 @@ def _head_age(v: str) -> int | None:
 
 
 _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, database: {...}, filters: {...},
-  matched, hidden: {reason: count}, models: [{ id, name, modality, tasks, content,
-  fit_level, fit_label, run_mode, run_mode_label, score, score_components { fit, headroom,
-  readiness, basis, popularity }, memory_kind, memory_required_gb, memory_available_gb,
-  utilization_pct, ram_required_gb, disk_size_gb, license, licenses, auto, held_reasons,
-  estimate_confidence, notes, files_count, estimate, gate }] }
+  matched, hidden: {reason: count}, groups: [{modality, matched, shown}], models: [{ id, name,
+  modality, tasks, use, content, source, fit_level, fit_label, run_mode, run_mode_label, score,
+  score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
+  memory_required_gb, memory_available_gb, utilization_pct, ram_required_gb, disk_size_gb,
+  total_size_gb, license, licenses, auto, held_reasons, estimate_confidence, notes,
+  files_count, precision, group_key, variants: [{precision, workflow_id, ...}],
+  workflows: [{id, name, tasks, use, precision, fit_level, ...}], estimate, gate }] }
+  One item per model (same weights family + size); --all-workflows gives one per workflow.
   Details: docs/schema.md"""
 
 _COMMON_HELP = """PRECONDITIONS:
@@ -566,7 +693,7 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success{zero}
-  1  Error (e.g. a broken --db file; with --json the error is in "error")
+  1  Error{one} (e.g. a broken --db file; with --json the error is in "error")
   2  Usage error (unknown option or value)
 """
 
@@ -574,18 +701,21 @@ HELP = {
     "recommend": """Recommend generation models for this PC, best first.
 この PC に合う生成モデルを、おすすめ順に出す。
 
+Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
+(default 3) each. With -m or --task: one table (default 10).
+One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
 Order: models that run, then auto-recommendable ones (gate: Auto=yes), then Score (0-100),
 then id. Uncensored models and utility tools are hidden unless asked. The default output is a
 table (llmfit uses JSON by default); add --json for apps.
 並べ方: 動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
 
 """
-    + _COMMON_HELP.format(zero="")
+    + _COMMON_HELP.format(zero="", one="")
     + """
 AGENT USAGE:
   genmodelfit recommend --json
-  genmodelfit recommend -m image -n 5 --min-fit good --json
-  genmodelfit recommend --auto-only --comfyui-version 0.40.0 --json
+  genmodelfit recommend -m image --task edit -n 5 --min-fit good --json
+  genmodelfit recommend -m video,music --auto-only --comfyui-version 0.40.0 --json
   genmodelfit recommend --license apache-2.0,mit --vram 8 --ram 32 --json
 
 """
@@ -594,12 +724,12 @@ AGENT USAGE:
 すべてのモデルをこの PC で判定して表にする(動かないものも、recommend と同じ並べ方で)。
 
 """
-    + _COMMON_HELP.format(zero="")
+    + _COMMON_HELP.format(zero="", one="")
     + """
 AGENT USAGE:
   genmodelfit fit --json
-  genmodelfit fit -m video --min-fit good -n 20
-  genmodelfit fit --content all --vram 12 --ram 32 --json
+  genmodelfit fit -m video --task i2v --min-fit good -n 20
+  genmodelfit fit --content all --all-workflows --vram 12 --ram 32 --json
 
 """
     + _JSON_FIELDS,
@@ -608,7 +738,9 @@ ID・名前の一部で探し(大文字小文字は区別しない)、この PC 
 --content applies (default sfw). With no match the list is empty and the exit code is 0.
 
 """
-    + _COMMON_HELP.format(zero=" (also when nothing matches: empty models / 「no match」)")
+    + _COMMON_HELP.format(
+        zero=" (also when nothing matches: empty models / 「no match」)", one=": blank query"
+    )
     + """
 AGENT USAGE:
   genmodelfit search flux --json
@@ -617,22 +749,41 @@ AGENT USAGE:
 
 """
     + _JSON_FIELDS.replace("filters: {...}", "filters: {query, ...}"),
-    "info": """Show one model: files, licenses, estimate, limits on this PC, and the gate checks.
-1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動おすすめの条件)。
+    "types": """List the big types (image, video, music, sfx, tts, 3d) and the uses inside each type,
+with counts. The use names are what --task accepts.
+大きな種類と、その中の用途(--task に使う名前)と数を出す。
+
+"""
+    + _COMMON_HELP.format(zero="", one="").replace(
+        "  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.\n",
+        "  None. The PC is not judged.\n",
+    )
+    + """
+AGENT USAGE:
+  genmodelfit types
+  genmodelfit types --json
+
+  JSON (--json): { genmodelfit, command, database, filters: {content}, types: [{ modality,
+  label, label_ja, models, workflows, uses: {use: workflows} }], uses: [{ use, label,
+  label_ja, tasks }], aliases }. Details: docs/schema.md""",
+    "info": """Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the
+other workflows that use the same model.
+1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動おすすめの条件・
+同じモデルのほかのワークフロー)。
 An exact id always matches (uncensored included). Otherwise a part of the id or name is
 searched within --content; several matches are an error that lists the candidates.
 
 """
-    + _COMMON_HELP.format(zero="").replace(
-        "1  Error (", "1  Error: no such model, several matches (candidates listed), or ("
-    )
+    + _COMMON_HELP.format(zero="", one=": no such model, several matches (candidates listed), or")
     + """
 AGENT USAGE:
   genmodelfit info image_z_image_turbo_int8 --json
   genmodelfit info sdxlturbo --vram 8 --ram 32
 
   JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
-  gate, measurements } / on error: { error, candidates? }. Details: docs/schema.md""",
+  gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
+  memory_required_gb, disk_size_gb, auto, matched}] } / on error: { error, candidates? }.
+  Details: docs/schema.md""",
 }
 
 
@@ -649,7 +800,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     filt = argparse.ArgumentParser(add_help=False)
-    filt.add_argument("--modality", "-m", choices=MODALITIES)
+    filt.add_argument(
+        "--modality",
+        "-m",
+        type=_modality_list,
+        metavar="TYPE[,TYPE]",
+        help=f"種類で絞る(カンマ区切り可): {', '.join(MODALITIES)}",
+    )
     filt.add_argument(
         "--content",
         choices=CONTENT_FILTERS,
@@ -710,6 +867,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
     )
 
+    sel.add_argument(
+        "--task",
+        type=_task_list,
+        metavar="USE[,USE]",
+        help="用途で絞る(gen / edit / i2v / lipsync / motion / voice / upscale / tool、"
+        "または t2i・i2i・inpaint などの tasks。一覧は genmodelfit types)",
+    )
+    sel.add_argument(
+        "--all-workflows",
+        action="store_true",
+        help="同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す",
+    )
+
     def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
         return sub.add_parser(
             name,
@@ -735,6 +905,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub_parser("search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate])
     sp.add_argument("query", help="探す語(ID・名前の一部。大文字小文字は区別しない)")
     sp.set_defaults(func=cmd_search)
+
+    sp = sub.add_parser(
+        "types",
+        parents=[common],
+        help="大きな種類と、その中の用途(--task の名前)と数",
+        description=HELP["types"],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sp.add_argument("--content", choices=CONTENT_FILTERS, default=DEFAULT_CONTENT)
+    sp.set_defaults(func=cmd_types)
 
     sp = sub_parser("info", "1 つのモデルの詳細", [common, filt, gate])
     sp.add_argument("model", help="モデルの ID または名前の一部")

@@ -5,11 +5,25 @@ from rich.cells import cell_len
 
 from genmodelfit import cli
 from genmodelfit.db import load
+from genmodelfit.groups import group_key
 from genmodelfit.models import Estimate, Gpu, ModelEntry, SystemInfo
 from genmodelfit.recommend import Fit
 from genmodelfit.table import make_console, print_fit_table
 
-HEADER = ["Status", "Model", "Type", "Score", "VRAM", "Mem%", "Mode", "Disk", "License", "Auto"]
+HEADER = [
+    "Status",
+    "Model",
+    "Type",
+    "Use",
+    "Prec",
+    "Score",
+    "VRAM",
+    "Mem%",
+    "Mode",
+    "Disk",
+    "License",
+    "Auto",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -93,9 +107,13 @@ def test_cli_table_real_db(capsys):
     lines = out.splitlines()
     assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
     assert "image_sdxl_simple" in out
-    n = len(load(use_cache=False).models)  # 長い ID は省略記号で詰めるので、行数で確かめる
+    db = load(use_cache=False)  # 長い ID は省略記号で詰めるので、行数で確かめる
     rows = [x for x in lines if x.startswith("● ")]
-    assert len(rows) == n
+    assert len(rows) == len({group_key(m) for m in db.models})  # 1 行 = 1 モデル
+    every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all", "--all-workflows"]
+    assert cli.main(every) == 0
+    rows = [x for x in capsys.readouterr().out.splitlines() if x.startswith("● ")]
+    assert len(rows) == len(db.models)
 
 
 def test_sequential_and_too_tight_show_the_figure_used():
@@ -156,7 +174,7 @@ def test_header_hidden_and_count():
         [fit("a")], title="Recommended", system=pc(), console=make_console(buf), matched=5, hidden=hidden
     )
     lines = buf.getvalue().splitlines()
-    assert lines[0] == "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB"
+    assert lines[0] == "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB (32.0 available)"
     assert lines[1] == "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)"
     assert any("--content all" in x for x in lines)
 
@@ -168,21 +186,17 @@ def test_columns_drop_in_order_when_narrow(width):
     assert all(cell_len(x) <= width for x in out.splitlines()), width
     header = next(x for x in out.splitlines() if x.startswith("Status"))
     assert "Model" in header and "VRAM" in header and "Mode" in header
-    if width <= 80:  # 狭いときは License から外す
-        assert "License" not in header and ("Disk" in header) == (width >= 80)
-    if width == 100:
-        assert header.split() == [
-            "Status",
-            "Model",
-            "Type",
-            "Score",
-            "VRAM",
-            "Mem%",
-            "Mode",
-            "Disk",
-            "License",
-            "Auto",
-        ]
+    if width <= 80:  # 狭いときは Disk・Mem%・License の順に外す
+        assert "Disk" not in header and "License" not in header
+    if width == 100:  # 1 種類だけの表なので Type は無い
+        assert header.split() == [c for c in HEADER if c != "Type"]
+
+
+def test_type_column_only_when_types_mix():
+    v = fit("v")
+    v.model.modality = "video"
+    header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Status"))
+    assert "Type" in header and "Disk" not in header  # 名前の幅を残すため Disk を外す
 
 
 def test_middle_ellipsis_and_distinct_names():

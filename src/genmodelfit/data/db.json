@@ -9607,7 +9607,7 @@
    "name": "Depth Estimation: Lotus",
    "modality": "image",
    "tasks": [
-    "t2i"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -18099,7 +18099,7 @@
    "name": "Depth Estimation: Depth Anything 3",
    "modality": "image",
    "tasks": [
-    "control"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -18406,7 +18406,7 @@
    "name": "Depth Estimation: MoGe",
    "modality": "image",
    "tasks": [
-    "control"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -20223,7 +20223,7 @@
    "name": "MelBandRoFormer Audio Separation",
    "modality": "music",
    "tasks": [
-    "a2a"
+    "separate"
    ],
    "source": "comfyui-template",
    "files": [],
@@ -24452,7 +24452,7 @@
    "name": "Depth Map: Depth Anything v2",
    "modality": "video",
    "tasks": [
-    "control"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [],
@@ -24542,7 +24542,7 @@
    "name": "Lineart Map: LineArt Preprocessor",
    "modality": "video",
    "tasks": [
-    "control"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [],
@@ -24632,7 +24632,7 @@
    "name": "Depth Map: Depth Anything 3",
    "modality": "video",
    "tasks": [
-    "control"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [

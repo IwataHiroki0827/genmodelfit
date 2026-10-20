@@ -210,7 +210,11 @@ def test_results_are_deterministic(db):
 @pytest.mark.parametrize(
     ("cli_args", "kwargs"),
     [
-        ([], {}),
+        ([], {"per_modality": 3, "limit": None}),  # -m も --task も無ければ種類ごとに 3 件
+        (
+            ["-m", "image,video", "--task", "edit,i2v", "--all-workflows"],
+            {"modality": ["image", "video"], "task": "edit,i2v", "all_workflows": True},
+        ),
         (
             ["-m", "image", "--min-fit", "good", "-n", "5"],
             {"modality": "image", "min_fit": "good", "limit": 5},
@@ -222,10 +226,11 @@ def test_results_are_deterministic(db):
                 "auto_only": True,
                 "include_tools": True,
                 "content": "all",
-                "limit": 50,
+                "per_modality": 50,
+                "limit": None,
             },
         ),
-        (["--comfyui-version", "0.3.0"], {"comfyui_version": "0.3.0"}),
+        (["--comfyui-version", "0.3.0", "-m", "video"], {"comfyui_version": "0.3.0", "modality": "video"}),
     ],
 )
 def test_python_and_cli_give_the_same_models(capsys, db, cli_args, kwargs):
@@ -261,3 +266,22 @@ def test_fit_score_and_auto(db):
     # 古い版の ComfyUI を渡すと、新しい版が要るものは自動のおすすめから外れる
     old = gmf.recommend(system_info=pc(8), db=db, limit=None, comfyui_version="0.1.0")
     assert sum(f.auto for f in old) < sum(f.auto for f in fits)
+
+
+def test_python_argument_forms_and_errors(db):
+    """license は文字列(カンマ区切り)でも並びでもよい。limit は 1 以上、空の検索語は誤り。"""
+    a = gmf.recommend(system_info=pc(8), db=db, license="mit, apache-2.0", limit=None)
+    b = gmf.recommend(system_info=pc(8), db=db, license=["mit", "apache-2.0"], limit=None)
+    assert a and [f.to_dict() for f in a] == [f.to_dict() for f in b]
+    assert all(set(f.to_dict()["licenses"]) <= {"mit", "apache-2.0"} for f in a)
+    for bad in (0, -1, True, 2.5):
+        with pytest.raises(ValueError, match="limit"):
+            gmf.recommend(system_info=pc(8), db=db, limit=bad)
+    with pytest.raises(ValueError, match="license"):
+        gmf.recommend(system_info=pc(8), db=db, license=" , ")
+    for q in ("", "   "):
+        with pytest.raises(ValueError, match="query"):
+            gmf.search(q, system_info=pc(8), db=db)
+    with pytest.raises(ValueError, match="task"):
+        gmf.recommend(system_info=pc(8), db=db, task="dance")
+    assert gmf.recommend(system_info=pc(8), db=db, modality="image,music", limit=None)
