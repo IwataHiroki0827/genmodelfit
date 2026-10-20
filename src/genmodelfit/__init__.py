@@ -117,18 +117,21 @@ def search(
     modality: str | Iterable[str] | None = None,
     content: str = "sfw",
     min_fit: str | None = None,
+    fit: str | None = None,
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
     include_unknown_license: bool = False,
     all_workflows: bool = False,
     limit: int | None = None,
+    sort: str = "type",
     settings: Settings | None = None,
     system_info: SystemInfo | None = None,
     db: Database | None = None,
     comfyui_version: str | None = None,
 ) -> list[Fit]:
     """ID・名前の一部(大文字小文字を区別しない)で探す。CLI の `search` と同じ。合わなければ空の一覧。
-    ライセンスの分からないものは include_unknown_license=True のときだけ出す。空の query は ValueError。"""
+    ライセンスの分からないものは include_unknown_license=True のときだけ出す。fit / sort は fit_list と同じ
+    (既定は全部の段階、種類 → 段階 → 点数の順)。空の query は ValueError。"""
     from .recommend import select
 
     return select(
@@ -138,11 +141,65 @@ def search(
         modality=modality,
         content=content,
         min_fit=min_fit,
+        fit=fit,
         license=license,
         task=task,
         include_unknown_license=include_unknown_license,
         group=not all_workflows,
         limit=limit,
+        sort=sort,
+        auto_first=False,
+        settings=settings,
+        policy=_policy(comfyui_version),
+    ).fits
+
+
+def fit_list(
+    *,
+    modality: str | Iterable[str] | None = None,
+    content: str = "sfw",
+    fit: str | None = "runnable",
+    min_fit: str | None = None,
+    license: str | Iterable[str] | None = None,
+    task: str | Iterable[str] | None = None,
+    include_tools: bool = False,
+    include_unknown_license: bool = False,
+    show_all: bool = False,
+    sort: str = "type",
+    all_workflows: bool = False,
+    limit: int | None = None,
+    settings: Settings | None = None,
+    system_info: SystemInfo | None = None,
+    db: Database | None = None,
+    comfyui_version: str | None = None,
+) -> list[Fit]:
+    """CLI の `fit` と同じ一覧(0.1.1)。既定は動くもの(perfect / good / marginal)だけで、補助ツール・
+    ライセンス不明・無検閲は出さない。並びは種類 → 段階 → 点数(sort="type")。
+
+    fit: "perfect" / "good" / "marginal"(その段階だけ)、"runnable"、"all"(too_tight・判定できないものも)。
+    min_fit を渡すときは fit=None にする(両方は ValueError)。show_all=True は CLI の --all
+    (fit="all"・補助ツール・ライセンス不明も。無検閲は content="all" で)。
+    sort: "type" / "score"(種類をまたいだ順位)/ "vram" / "disk" / "name"。"""
+    from .recommend import select
+
+    if show_all:
+        fit = "all" if min_fit is None else None
+        include_tools = include_unknown_license = True
+    return select(
+        db or load_db(),
+        system_info or detect(),
+        modality=modality,
+        content=content,
+        min_fit=min_fit,
+        fit=fit,
+        license=license,
+        task=task,
+        include_tools=include_tools,
+        include_unknown_license=include_unknown_license,
+        group=not all_workflows,
+        limit=limit,
+        sort=sort,
+        auto_first=False,
         settings=settings,
         policy=_policy(comfyui_version),
     ).fits
@@ -189,6 +246,7 @@ __all__ = [
     "detect",
     "estimate",
     "evaluate",
+    "fit_list",
     "info",
     "load_db",
     "recommend",

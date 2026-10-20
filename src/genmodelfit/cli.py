@@ -23,7 +23,7 @@ from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
 from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, select
+from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, FIT_FILTERS, SORTS, select
 
 
 class CliError(RuntimeError):
@@ -296,7 +296,7 @@ def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
         content=args.content,
         license=args.license,
         task=args.task,
-        include_unknown_license=args.include_unknown_license,
+        include_unknown_license=args.include_unknown_license or getattr(args, "all", False),
         group=not args.all_workflows,
         settings=_settings(args),
         with_limits=args.limits,
@@ -310,8 +310,9 @@ def _filters(args: argparse.Namespace, min_fit: str | None, limit: int | None) -
         "modality": args.modality,
         "content": args.content,
         "min_fit": min_fit,
+        "fit": args.fit,
         "license": args.license,
-        "include_unknown_license": args.include_unknown_license,
+        "include_unknown_license": args.include_unknown_license or getattr(args, "all", False),
         "task": args.task,
         "all_workflows": args.all_workflows,
         "limit": limit,
@@ -345,6 +346,7 @@ def _show(
         hidden=sel.hidden,
         groups=sel.groups if sections else None,
         grouped=not args.all_workflows,
+        order=getattr(args, "sort", None) or "auto",
     )
     return 0
 
@@ -355,12 +357,15 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     sections = not args.modality and not args.task
     per_type = (args.limit or 3) if sections else None
     limit = None if sections else (args.limit if args.limit is not None else 10)
-    min_fit = args.min_fit or "marginal"
+    if args.fit is not None and args.min_fit is not None:
+        raise CliError("--fit と --min-fit は同時に指定できません")
+    min_fit = None if args.fit is not None else (args.min_fit or "marginal")
     sel = _select(
         args,
         s,
         db,
         min_fit=min_fit,
+        fit=args.fit,
         include_tools=args.include_tools,
         auto_only=args.auto_only,
         drop_unknown_size=True,
@@ -375,11 +380,42 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     return _show(args, "recommend", "Recommended", s, db, sel, filters, sections=sections)
 
 
+def _fit_choice(args: argparse.Namespace, default: str | None) -> tuple[str | None, str | None]:
+    """(min_fit, fit)。--perfect は --fit perfect。--all は --fit all。どれも無ければ default。"""
+    if args.perfect:
+        args.fit = "perfect"
+    if getattr(args, "all", False) and args.fit is None and args.min_fit is None:
+        args.fit = "all"
+    if args.fit is not None and args.min_fit is not None:
+        raise CliError("--fit と --min-fit は同時に指定できません")
+    if args.fit is None and args.min_fit is None:
+        args.fit = default
+    return args.min_fit, args.fit
+
+
 def cmd_fit(args: argparse.Namespace) -> int:
+    """既定は動くもの(perfect / good / marginal)だけ、補助ツール・ライセンス不明・無検閲は隠す。--all で全部。
+    並びは種類 → 段階 → 点数(--sort)。自動のおすすめを先にはしない(Auto の列で分かる)。"""
     s, db = _system(args), _db(args)
-    min_fit = "perfect" if args.perfect else args.min_fit
-    sel = _select(args, s, db, min_fit=min_fit, limit=args.limit)
-    return _show(args, "fit", "All models", s, db, sel, _filters(args, min_fit, args.limit))
+    min_fit, fit = _fit_choice(args, "runnable")
+    tools = args.include_tools or args.all
+    sel = _select(
+        args,
+        s,
+        db,
+        min_fit=min_fit,
+        fit=fit,
+        limit=args.limit,
+        include_tools=tools,
+        sort=args.sort,
+        auto_first=False,
+    )
+    filters = _filters(args, min_fit, args.limit) | {
+        "sort": args.sort,
+        "include_tools": tools,
+        "all": args.all,
+    }
+    return _show(args, "fit", "All models", s, db, sel, filters)
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -388,8 +424,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     query = args.query.strip()
     if not query:
         raise CliError("探す語が空です")
-    sel = _select(args, s, db, query=query, min_fit=args.min_fit, limit=args.limit)
-    filters = {"query": query} | _filters(args, args.min_fit, args.limit)
+    min_fit, fit = _fit_choice(args, None)
+    sel = _select(
+        args, s, db, query=query, min_fit=min_fit, fit=fit, limit=args.limit, sort=args.sort, auto_first=False
+    )
+    filters = {"query": query} | _filters(args, min_fit, args.limit) | {"sort": args.sort, "all": args.all}
     return _show(args, "search", f'Search "{query}"', s, db, sel, filters)
 
 
@@ -1103,6 +1142,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
     )
     sel.add_argument(
+        "--fit",
+        choices=list(FIT_FILTERS),
+        help="出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、"
+        "all(too_tight・判定できないものも)。--min-fit とは同時に使えない",
+    )
+    sel.add_argument(
         "--include-unknown-license",
         action="store_true",
         help="ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る)",
@@ -1130,11 +1175,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
 
-    sp = sub_parser("fit", "すべてのモデルの判定を表で出す", [common, filt, sel, gate])
-    sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ(--min-fit perfect と同じ)")
+    listing = argparse.ArgumentParser(add_help=False)
+    listing.add_argument(
+        "--sort",
+        choices=SORTS,
+        default="type",
+        help="並べ方: type(既定。種類 → 段階 → 点数)、score(種類をまたいだ順位)、vram / disk(少ない順)、name",
+    )
+    listing.add_argument(
+        "--all",
+        action="store_true",
+        help="全部出す(動かないもの・判定できないもの・補助ツール・ライセンス不明も。無検閲は --content all)",
+    )
+    listing.add_argument("--perfect", "-p", action="store_true", help="perfect だけ(--fit perfect と同じ)")
+
+    sp = sub_parser("fit", "動くモデルの判定を表で出す(--all で全部)", [common, filt, sel, gate, listing])
+    sp.add_argument(
+        "--include-tools",
+        action="store_true",
+        help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
+    )
     sp.set_defaults(func=cmd_fit)
 
-    sp = sub_parser("search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate])
+    sp = sub_parser(
+        "search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate, listing]
+    )
     sp.add_argument("query", help="探す語(ID・名前の一部。大文字小文字は区別しない)")
     sp.set_defaults(func=cmd_search)
 

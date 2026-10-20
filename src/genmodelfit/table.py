@@ -67,13 +67,15 @@ HIDDEN_LABEL = {
 }
 MAX_WIDTH = 100
 MIN_NAME_WIDTH = 24  # モデル名がこれより狭くなるなら列を外す
-# 列の幅(並びもこの順)と、狭いときに外す順。Type は種類が混ざる表(fit・search など)だけ
+# 列の幅(並びもこの順。Model は Score の右)と、狭いときに外す順。Type・Status・Score・Model は外さない
+# (0.1.1 で Type を左端、Score を Model の左にした。#28 の利用者の指定)
+LEFT_COLUMNS = ("Type", "Status", "Score")
 COLUMN_WIDTH = {
-    "Status": 11,
     "Type": 5,
+    "Status": 11,
+    "Score": 5,
     "Use": 7,
     "Prec": 4,
-    "Score": 5,
     "VRAM": 5,
     "Mem%": 4,
     "Mode": 7,
@@ -81,7 +83,7 @@ COLUMN_WIDTH = {
     "License": 10,
     "Auto": 8,
 }
-DROP_ORDER = ("Disk", "Mem%", "License", "Auto", "Prec", "Type", "Use", "Score")
+DROP_ORDER = ("Disk", "Mem%", "License", "Auto", "Prec", "Use")
 
 
 def output_width(file=None) -> int:
@@ -178,7 +180,7 @@ def model_width(width: int, cols: Sequence[str]) -> int:
 
 
 def columns_for(width: int, with_type: bool = True) -> list[str]:
-    """幅に収まる列(Model 以外。並びは COLUMN_WIDTH の順)。Type は種類が混ざる表だけ。"""
+    """幅に収まる列(Model 以外。並びは COLUMN_WIDTH の順)。with_type=False なら Type を出さない。"""
     cols = [c for c in COLUMN_WIDTH if with_type or c != "Type"]
     for drop in DROP_ORDER:
         if model_width(width, cols) >= MIN_NAME_WIDTH:
@@ -242,9 +244,11 @@ def build_table(
     fits: Sequence, width: int = MAX_WIDTH, system=None, with_type: bool | None = None, grouped: bool = True
 ) -> Table:
     if with_type is None:
-        with_type = len({f.model.modality for f in fits}) > 1
+        with_type = True  # 0.1.1 から、種類の列は常に左端に出す(表は 1 つ。#28)
     cols = columns_for(width, with_type)
     name_w = model_width(width, cols)
+    left = [c for c in cols if c in LEFT_COLUMNS]
+    right = [c for c in cols if c not in LEFT_COLUMNS]
     t = Table(
         header_style="bold",
         expand=False,
@@ -253,18 +257,23 @@ def build_table(
         show_edge=False,
         padding=(0, 1, 0, 0),
     )
-    right = {"Score", "VRAM", "Mem%", "Disk"}
-    t.add_column("Status", no_wrap=True, width=COLUMN_WIDTH["Status"])
-    # モデル名は他の列の残りを全部使う。長い名前は真ん中を省略記号にする(middle_ellipsis)
-    t.add_column("Model", no_wrap=True, overflow="ellipsis", width=name_w)
-    for c in cols[1:]:
+    numeric = {"Score", "VRAM", "Mem%", "Disk"}
+
+    def add(c: str) -> None:
         t.add_column(
             c,
-            justify="right" if c in right else "left",
+            justify="right" if c in numeric else "left",
             no_wrap=True,
             overflow="ellipsis",
             width=COLUMN_WIDTH[c],
         )
+
+    for c in left:  # Type | Status | Score
+        add(c)
+    # モデル名は他の列の残りを全部使う。長い名前は真ん中を省略記号にする(middle_ellipsis)
+    t.add_column("Model", no_wrap=True, overflow="ellipsis", width=name_w)
+    for c in right:
+        add(c)
 
     # まとめた表はモデルの表示名(一覧の中で重ならない)、--all-workflows はワークフローの ID
     def label(f) -> str:
@@ -280,6 +289,7 @@ def build_table(
             name = Text(shown[label(f)])
         cells = {
             "Type": Text(m.modality),
+            "Status": Text(f"{MARK} {LEVEL_LABEL.get(e.fit, e.fit)}", style=LEVEL_STYLE.get(e.fit, "")),
             "Use": _use_cell(f, grouped),
             "Prec": Text(precision_label(m.precision)),
             "Score": Text(f"{f.score:.0f}"),
@@ -290,8 +300,7 @@ def build_table(
             "License": Text(m.license or "?"),
             "Auto": _auto_cell(f.gate),
         }
-        status = Text(f"{MARK} {LEVEL_LABEL.get(e.fit, e.fit)}", style=LEVEL_STYLE.get(e.fit, ""))
-        t.add_row(status, name, *(cells[c] for c in cols[1:]))
+        t.add_row(*(cells[c] for c in left), name, *(cells[c] for c in right))
     return t
 
 
@@ -334,9 +343,20 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
     return f"({'; '.join(parts)})" if parts else ""
 
 
-def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> list[str]:
+# 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
+ORDER_TEXT = {
+    "auto": "Order: runs, Auto=yes, level, Score.",
+    "type": "Order: Type, Status, Score (--sort).",
+    "score": "Order: Status, Score (all types).",
+    "vram": "Order: runs, VRAM (least first).",
+    "disk": "Order: runs, Disk (smallest first).",
+    "name": "Order: runs, Model name.",
+}
+
+
+def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True, order: str = "auto") -> list[str]:
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
-        "Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.",
+        f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
         "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.",
     ]
@@ -353,6 +373,8 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> l
         out.append(
             f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --content all to show them."
         )
+    if order != "auto" and any(hidden.get(k) for k in ("tools", "too_tight", "size_unknown", "other_fit")):
+        out.append("Note: add --all to also show tools, models that do not run and models not judged (?).")
     if hidden.get("license_unknown"):
         out.append(
             f"Note: {hidden['license_unknown']} model(s) with an unknown license hidden;"
@@ -373,6 +395,7 @@ def print_fit_table(
     hidden: Mapping[str, int] | None = None,
     groups: Sequence[Mapping[str, Any]] | None = None,
     grouped: bool = True,
+    order: str = "auto",
 ) -> None:
     """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。
 
@@ -399,10 +422,10 @@ def print_fit_table(
                 say(f"== {mod} ({ja}): no model runs on this PC with these filters", "bold")
                 continue
             say(f"== {mod} ({ja}): top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
-            con.print(build_table(rows, width=con.width, system=system, with_type=False, grouped=grouped))
+            con.print(build_table(rows, width=con.width, system=system, grouped=grouped))
     elif not fits:
         say("(no match / 該当なし)")
     else:
         con.print(build_table(fits, width=con.width, system=system, grouped=grouped))
-    for n in [*(legend(fits, hidden, grouped) if fits else []), *notes]:
+    for n in [*(legend(fits, hidden, grouped, order) if fits else []), *notes]:
         say(n, "dim")

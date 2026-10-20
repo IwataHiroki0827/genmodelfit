@@ -503,3 +503,87 @@ def test_bundled_precision_unknown_went_down(db):
 )
 def test_os_name(system, release, version, want):
     assert os_name(system, release, version) == want
+
+
+# --- 8. fit の一覧(利用者の指定: 1 つの表・Type が左端・既定は動くものだけ) --------------------------
+
+HW24 = ["--vram", "24", "--ram", "128", "--no-cache", "--json"]
+LEVEL_ORDER = ["perfect", "good", "marginal", "unknown", "too_tight"]
+TYPES = ["image", "video", "music", "sfx", "tts", "3d"]
+
+
+def _fit_json(capsys, *args: str) -> dict:
+    assert cli.main(["fit", *HW24, *args]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_fit_default_is_runnable_only_and_counts_hidden(capsys):
+    d = _fit_json(capsys)
+    assert d["filters"]["fit"] == "runnable" and d["filters"]["sort"] == "type"
+    assert d["models"] and {m["fit_level"] for m in d["models"]} <= {"perfect", "good", "marginal"}
+    assert all(m["content"] == "sfw" and None not in m["licenses"] for m in d["models"])
+    assert {"uncensored", "tools", "license_unknown"} <= set(d["hidden"])
+    every = _fit_json(capsys, "--all")
+    assert every["filters"]["fit"] == "all" and every["filters"]["include_tools"] is True
+    assert {"tools", "license_unknown", "too_tight", "size_unknown"}.isdisjoint(every["hidden"])
+    flows = _fit_json(capsys, "--all", "--all-workflows", "--content", "all")  # 行にまとめない
+    assert {"too_tight", "unknown"} <= {m["fit_level"] for m in flows["models"]}
+    assert every["matched"] > d["matched"]
+
+
+def test_fit_order_is_type_then_level_then_score(capsys):
+    d = _fit_json(capsys, "--all")
+    keys = [(TYPES.index(m["modality"]), LEVEL_ORDER.index(m["fit_level"])) for m in d["models"]]
+    assert keys == sorted(keys)
+    for a, b in zip(d["models"], d["models"][1:], strict=False):
+        same = a["modality"] == b["modality"] and a["fit_level"] == b["fit_level"]
+        if same and a["community"] == b["community"]:
+            assert a["score"] >= b["score"]
+    # 自動のおすすめを先にしない(Auto の列で分かる)
+    autos = [m["auto"] for m in d["models"] if m["modality"] == "image" and m["fit_level"] == "good"]
+    assert autos != sorted(autos, reverse=True) or len(set(autos)) == 1
+
+
+def test_fit_sort_options(capsys):
+    score = _fit_json(capsys, "--sort", "score")["models"]
+    keys = [LEVEL_ORDER.index(m["fit_level"]) for m in score]
+    assert keys == sorted(keys) and len({m["modality"] for m in score[:10]}) > 1  # 種類をまたいだ順位
+    vram = _fit_json(capsys, "--sort", "vram")["models"]
+    needs = [m["memory_required_gb"] for m in vram]
+    assert needs == sorted(needs)
+    names = [m["model_name"].lower() for m in _fit_json(capsys, "--sort", "name")["models"]]
+    assert names == sorted(names)
+
+
+def test_fit_level_filter(capsys):
+    good = _fit_json(capsys, "--fit", "good")
+    assert good["models"] and {m["fit_level"] for m in good["models"]} == {"good"}
+    assert good["hidden"]["other_fit"] > 0
+    perfect = _fit_json(capsys, "--perfect")
+    assert {m["fit_level"] for m in perfect["models"]} == {"perfect"}
+    assert cli.main(["fit", *HW24, "--fit", "good", "--min-fit", "good"]) == 1
+    capsys.readouterr()
+    old = _fit_json(capsys, "--min-fit", "good")  # --min-fit も使える(その段階以上)
+    assert {m["fit_level"] for m in old["models"]} == {"perfect", "good"} and old["filters"]["fit"] is None
+
+
+def test_fit_table_columns(tmp_path):
+    out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache"], tmp_path / "c", COLUMNS="100")
+    lines = out.stdout.decode("utf-8").splitlines()
+    header = next(x for x in lines if x.startswith("Type"))
+    assert header.split()[:5] == ["Type", "Status", "Score", "Model", "Use"]
+    assert not [x for x in lines if x.startswith("== ")]  # 1 つの表
+    assert all(len(x) <= 100 for x in lines)
+
+
+def test_fit_list_api_matches_cli(db, capsys):
+    d = _fit_json(capsys)
+    api = gmf.fit_list(system_info=pc(24), db=db)
+    assert [f.model.id for f in api] == [m["id"] for m in d["models"]]
+    every = gmf.fit_list(system_info=pc(24), db=db, show_all=True)
+    assert len(every) > len(api)
+    with pytest.raises(ValueError):
+        gmf.fit_list(system_info=pc(24), db=db, sort="speed")
+    with pytest.raises(ValueError):
+        gmf.fit_list(system_info=pc(24), db=db, min_fit="good")  # fit の既定 runnable と両方
+    assert gmf.fit_list(system_info=pc(24), db=db, fit=None, min_fit="good")

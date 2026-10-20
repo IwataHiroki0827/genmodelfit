@@ -16,12 +16,12 @@ SUBCOMMANDS = ["system", "recommend", "fit", "search", "types", "info", "update"
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
 HEADER = [
-    "Status",
-    "Model",
     "Type",
+    "Status",
+    "Score",
+    "Model",
     "Use",
     "Prec",
-    "Score",
     "VRAM",
     "Mem%",
     "Mode",
@@ -135,11 +135,11 @@ def test_fit_says_uncensored_hidden(cache):
     # 同じモデルの別のワークフローは「same model」に数える
     assert (
         "All models: " in out
-        and re.search(r"\(\d+ hidden: uncensored 24, license unknown \d+; ", out)
-        and " more workflows merged into" in out
+        and re.search(r"\(\d+ hidden: uncensored 24, tools \d+, license unknown \d+, too tight \d+", out)
+        and " more workflows merged into" in re.sub(r"\s+", " ", out)  # 見出しは幅 100 で折り返す
     )
     assert "add --content all" in out and "--include-unknown-license" in out
-    every = ["--content", "all", "--all-workflows", "--include-unknown-license"]
+    every = ["--content", "all", "--all-workflows", "--all"]
     out = run_cli(["fit", *HW, *every], cache).stdout.decode("utf-8")
     assert "hidden" not in out
     out = run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")
@@ -152,12 +152,12 @@ def test_pc_line_and_sections(cache):
     assert out[1].startswith("Recommended: ") and "hidden: uncensored 24, tools " in out[1]
     heads = [x for x in out if x.startswith("== ")]
     assert [h.split()[1] for h in heads] == ["image", "video", "music", "sfx", "tts", "3d"]
-    header = next(x for x in out if x.startswith("Status"))
-    assert header.split() == [c for c in HEADER if c != "Type"]  # 節の中は 1 種類なので Type は無い
-    # -m を付けると 1 つの表(種類が混ざれば Type の列)
+    header = next(x for x in out if x.startswith("Type"))
+    assert header.split()[:4] == ["Type", "Status", "Score", "Model"]  # 節の中も同じ列の順(0.1.1)
+    # -m を付けると 1 つの表
     out = run_cli(["recommend", *HW, "-m", "image,video"], cache).stdout.decode("utf-8").splitlines()
     assert not [x for x in out if x.startswith("== ")]
-    assert "Type" in next(x for x in out if x.startswith("Status"))
+    assert next(x for x in out if x.startswith("Type")).split()[:4] == ["Type", "Status", "Score", "Model"]
 
 
 def test_cpu_only_sections_say_when_nothing_runs(cache):

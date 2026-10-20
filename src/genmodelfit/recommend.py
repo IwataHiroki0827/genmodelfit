@@ -248,11 +248,25 @@ class Fit:
         return d
 
 
+# --fit / fit=: 出す段階(llmfit の画面の All / Runnable / Perfect / Good / Marginal にならう。0.1.1)
+FIT_FILTERS: dict[str, tuple[str, ...]] = {
+    "perfect": ("perfect",),
+    "good": ("good",),
+    "marginal": ("marginal",),
+    "runnable": ("perfect", "good", "marginal"),
+    "all": (*FIT_LEVELS, FIT_UNKNOWN),
+}
+# --sort / sort=: 種類ごとの表の中の並べ方(0.1.1)
+SORTS = ("type", "score", "vram", "disk", "name")
+
+
 def check_filters(
     *,
     modality: str | Iterable[str] | None = None,
     content: str = DEFAULT_CONTENT,
     min_fit: str | None = None,
+    fit: str | None = None,
+    sort: str = "score",
 ) -> tuple[str, ...] | None:
     """絞り込みの値を確かめる。知らない値は ValueError(組み込み側が誤りに気づけるように)。
     modality は 1 つ・カンマ区切り・並びのどれでもよく、確かめた並びを返す。"""
@@ -261,6 +275,12 @@ def check_filters(
         raise ValueError(f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})")
     if min_fit is not None and min_fit not in FIT_LEVELS:
         raise ValueError(f"min_fit が正しくありません: {min_fit!r}(使えるのは {', '.join(FIT_LEVELS)})")
+    if fit is not None and fit not in FIT_FILTERS:
+        raise ValueError(f"fit が正しくありません: {fit!r}(使えるのは {', '.join(FIT_FILTERS)})")
+    if fit is not None and min_fit is not None:
+        raise ValueError("fit と min_fit は同時に指定できません")
+    if sort not in SORTS:
+        raise ValueError(f"sort が正しくありません: {sort!r}(使えるのは {', '.join(SORTS)})")
     return mods
 
 
@@ -286,6 +306,49 @@ def sort_key(f: Fit) -> tuple:
     fit = f.estimate.fit
     runs = 2 if fit == FIT_UNKNOWN else (1 if fit == "too_tight" else 0)
     return (runs, not f.auto, fit_rank(fit), is_community(f.model), -round(f.score, 1), f.model.id)
+
+
+def _runs(f: Fit) -> int:
+    """動くもの 0 → too_tight 1 → 判定できない 2。"""
+    return {FIT_UNKNOWN: 2, "too_tight": 1}.get(f.estimate.fit, 0)
+
+
+# 表の中の段階の順(判定できないものは too_tight より前。動かないと分かったものを一番後ろに)
+LIST_LEVEL_ORDER = {"perfect": 0, "good": 1, "marginal": 2, FIT_UNKNOWN: 3, "too_tight": 4}
+
+
+def list_key(f: Fit, sort: str = "score", auto_first: bool = True) -> tuple:
+    """表の並べ方(fit / search の --sort、recommend)。
+
+    type(fit / search の既定): 種類(image → video → music → sfx → tts → 3d)→ 段階(perfect → good →
+        marginal → 判定できない → too_tight)→ 同じ段階の中で公式(利用者のテンプレートは後)
+        → 点数の高い順 → 名前
+    score: 種類をまたいだ 1 つの順位。動くもの → 判定できない → too_tight で分け、段階 → 公式 → 点数 → 名前
+        (点数は段階の重みが一番大きいが、ほかの内訳で段階が逆になることがあるので、段階を先に見る)
+    vram: 判定に使ったメモリ(表の VRAM)の少ない順 / disk: ダウンロードの小さい順 / name: 名前の順
+        (どれも、動くもの → 判定できない → too_tight で分けてから)
+    auto_first=True(recommend)なら、score の順で、動くものの中で自動のおすすめに出せるものを先にする
+    (0.1.0 からの recommend の順。名前ではなく ID で決める)。"""
+    level = LIST_LEVEL_ORDER.get(f.estimate.fit, 4)
+    score = -round(f.score, 1)
+    name = (f.model_name or f.model.name or f.model.id).lower()
+    if auto_first:
+        return (_runs(f), not f.auto, fit_rank(f.estimate.fit), is_community(f.model), score, f.model.id)
+    if sort == "type":
+        mod = MODALITIES.index(f.model.modality) if f.model.modality in MODALITIES else len(MODALITIES)
+        return (mod, level, is_community(f.model), score, name, f.model.id)
+    runs = 0 if level <= 2 else level - 2
+    if sort == "vram":
+        _kind, need, _avail = memory_use(f.estimate, f.system)
+        rest: tuple = (need is None, need or 0.0, level, score)
+    elif sort == "disk":
+        d = f.estimate.disk_gb
+        rest = (d is None, d or 0.0, level, score)
+    elif sort == "name":
+        rest = ()
+    else:
+        rest = (level, is_community(f.model), score)
+    return (runs, *rest, name, f.model.id)
 
 
 # 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
@@ -417,6 +480,7 @@ HIDDEN_KEYS = (
     "size_unknown",
     "too_tight",
     "below_min_fit",
+    "other_fit",
     "held",
     "same_model",
 )
@@ -446,6 +510,7 @@ def select(
     modality: str | Iterable[str] | None = None,
     content: str = DEFAULT_CONTENT,
     min_fit: str | None = None,
+    fit: str | None = None,
     license: str | Iterable[str] | None = None,
     task: str | Iterable[str] | None = None,
     include_tools: bool = True,
@@ -455,6 +520,8 @@ def select(
     group: bool = True,
     limit: int | None = None,
     per_modality: int | None = None,
+    sort: str = "score",
+    auto_first: bool = True,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     with_limits: bool = False,
@@ -466,10 +533,14 @@ def select(
     段階が良く精度が高いものを出す(variant_key)。per_modality を渡すと種類ごとに上位その数だけ、
     種類の順(MODALITIES)に並べる。query に合わないものは数えない(hidden にも入れない)。
     どれかのファイルのライセンスが分からないものは、include_unknown_license=True でなければ出さない
-    (hidden の license_unknown。#28)。大きさが分からないもの(fit が unknown)は、min_fit を指定せず
-    drop_unknown_size でもないときだけ出す(一番後ろ)。
+    (hidden の license_unknown。#28)。
+
+    出す段階: fit(FIT_FILTERS の名前。runnable = perfect / good / marginal、all = 判定できないものも)か、
+    min_fit(その段階以上。判定できないものは min_fit が too_tight のときだけ)。どちらも無ければ全部
+    (判定できないものも)。drop_unknown_size=True なら判定できないものは必ず外す。
+    並べ方は list_key(sort、auto_first。auto_first=True のときは sort を使わず recommend の順)。
     """
-    mods = check_filters(modality=modality, content=content, min_fit=min_fit)
+    mods = check_filters(modality=modality, content=content, min_fit=min_fit, fit=fit, sort=sort)
     allow = _license_list(license)
     _check_limit(limit)
     _check_limit(per_modality, "per_modality")
@@ -480,7 +551,16 @@ def select(
         include_tools = True  # 補助ツールの用途を指定したら、補助ツールを外さない
     hidden = dict.fromkeys(HIDDEN_KEYS, 0)
     c = coefficients or load_coefficients()
-    allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1] if min_fit else FIT_LEVELS
+    if fit is not None:
+        allowed: tuple[str, ...] = FIT_FILTERS[fit]
+    elif min_fit is not None:
+        allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
+        if min_fit == "too_tight":
+            allowed = (*allowed, FIT_UNKNOWN)
+    else:
+        allowed = (*FIT_LEVELS, FIT_UNKNOWN)
+    if drop_unknown_size:
+        allowed = tuple(x for x in allowed if x != FIT_UNKNOWN)
     judged: dict[str, Fit] = {}
 
     def get(m: ModelEntry) -> Fit:
@@ -516,16 +596,13 @@ def select(
             continue
         f = get(m)
         e = f.estimate
-        if e.unknown_size and (drop_unknown_size or min_fit not in (None, "too_tight")):
-            hidden["size_unknown"] += 1
-            continue
-        if e.unknown_size:
-            if codes:
-                f.use = main_use(m, codes)
-            passed.append(f)
-            continue
         if e.fit not in allowed:
-            hidden["too_tight" if e.fit == "too_tight" else "below_min_fit"] += 1
+            if e.unknown_size:
+                hidden["size_unknown"] += 1
+            elif e.fit == "too_tight":
+                hidden["too_tight"] += 1
+            else:
+                hidden["below_min_fit" if fit is None else "other_fit"] += 1
             continue
         if auto_only and not f.auto:
             hidden["held"] += 1
@@ -573,7 +650,7 @@ def select(
                 for v in sorted(best.values(), key=lambda v: precision_rank(v.model.precision))
             ]
         rows += reps
-    rows.sort(key=sort_key)
+    rows.sort(key=lambda f: list_key(f, sort, auto_first))
     matched = len(rows)
     counts = {mod: sum(1 for f in rows if f.model.modality == mod) for mod in MODALITIES}
     if per_modality:
