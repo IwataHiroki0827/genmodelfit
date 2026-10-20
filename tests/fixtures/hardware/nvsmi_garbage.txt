@@ -1,0 +1,5 @@
+﻿garbage, line
+1, 2, 3
+
+,,,,,
+NVIDIA GeForce RTX 3070, abc, 1, 2, 566.03, 8.6

@@ -9,6 +9,18 @@ SNAPSHOT_NOW = datetime(2026, 10, 21, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
+def _no_real_hardware(monkeypatch):
+    """既定の試験では、本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
+    (hardware の外への出口を塞ぐ)。
+    出力を使う試験は tests/fixtures/hardware のフィクスチャで差し替える。"""
+    from genmodelfit import hardware
+
+    monkeypatch.setattr(hardware, "_run", lambda args, timeout: None)
+    monkeypatch.setattr(hardware, "_reg_display_entries", lambda: None)
+    monkeypatch.setattr(hardware, "_reg_paging_files", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def _fixed_gate_clock(monkeypatch):
     from genmodelfit import gate
 

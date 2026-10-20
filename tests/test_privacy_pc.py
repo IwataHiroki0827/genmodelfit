@@ -64,7 +64,7 @@ def sentinel_pc(tmp_path, monkeypatch):
         driver="999.42",
         backend="cuda",
     )
-    monkeypatch.setattr(hardware, "detect_gpus", lambda: [gpu])
+    monkeypatch.setattr(hardware, "detect_gpus", lambda: ([gpu], []))
     monkeypatch.setattr(hardware, "_cpu_name", lambda: SENT_CPU)
     vm = SimpleNamespace(total=int(SENT_RAM * GIB), available=int(SENT_RAM * GIB))
     monkeypatch.setattr(hardware.psutil, "virtual_memory", lambda: vm)

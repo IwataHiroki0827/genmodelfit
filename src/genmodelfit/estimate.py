@@ -53,7 +53,9 @@ CENSOR_RATIO = 0.9
 # メインメモリが足りないとき、必要量がこの倍率 × 搭載量までなら、仮想メモリ(ページファイル)で
 # 動く(遅い)とみなして marginal にする。超えたら too_tight。Windows の既定(システム管理)の
 # ページファイルは搭載量と同程度以上まで伸びるが、重みをページファイルに置くと極端に遅くなるので、
-# 半分までにとどめた。1.5 は判断で決めた値で、実測していない
+# 半分までにとどめた。1.5 は判断で決めた値で、実測していない。
+# ページファイルの大きさが決まっている(固定の大きさ・無し・Linux のスワップ)ときは、
+# 搭載量 + その大きさ(ただしこの倍率まで)を上限にする(ram_limit。docs/hardware.md)
 RAM_PAGEFILE_FACTOR = 1.5
 
 # GPU が無いときに CPU で動くとみなす重みの上限(GiB)と種類
@@ -745,11 +747,14 @@ class _Model:
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
 
-    def need(self, s: Settings) -> Need:
+    def need(self, s: Settings, prec: GpuPrecision | None = None) -> Need:
         parts = self.parts_for(s)
         act = activation_gb(self.entry, s, self.c)
         if self.measurement is not None and not _precision_changed(self.measurement, s, self.entry):
             act += self.delta
+        if prec is not None and (prec.act_factor != 1 or prec.vae_factor != 1):
+            parts.decode *= prec.vae_factor
+            act = max(0.0, act) * prec.act_factor
         return need(parts, act, self.c)
 
 
@@ -766,6 +771,103 @@ def _prepare(
     if is_censored(m):
         delta = max(0.0, delta)  # 張り付いた実測は下限としてだけ使う
     return _Model(entry, c, m, delta, base, parts)
+
+
+@dataclass(frozen=True)
+class GpuPrecision:
+    """判定に使う GPU で ComfyUI が選ぶ精度による、見積もりの直し(docs/hardware.md「精度」)。"""
+
+    act_factor: float = 1.0  # 作業用メモリの倍率(fp32 で計算する GPU は 2)
+    vae_factor: float = 1.0  # VAE(仕上げの段)の重みの倍率(fp32 で載せる GPU は、fp32 でない VAE を 2)
+    notes: tuple[str, ...] = ()
+
+
+def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrecision:
+    """ComfyUI の精度の選び方(comfy/model_management.py)で、見積もりが変わるところだけを直す。
+
+    - 本体を fp32 で計算する場合は作業用メモリを 2 倍にする。作業用メモリは計算の精度の大きさに比例する
+      (ComfyUI の memory_required・VAE の memory_used_decode が dtype_size を掛ける)。fp32 で計算するのは
+      (1) 半精度を使わない GPU(Maxwell・一部の Pascal・GTX 16 系など。Gpu.compute_dtype が fp32)と、
+      (2) bf16 を持たない GPU(Pascal・Volta・Turing)で、fp16 で動かせない系統(families.FAMILIES の fp16 が
+      False: LTX・Qwen Image・Z-Image・HunyuanVideo・ACE-Step など)を動かすとき(unet_manual_cast が float32)
+    - VAE を fp32 で載せる場合は VAE の重みを 2 倍にする(ファイルが fp32 なら同じ)。半精度を使わない GPU と、
+      bf16 を持たない GPU で working_dtypes に fp16 が無い VAE(2D の KL・LTX など)。仕上げの作業用メモリは
+      足りなければ ComfyUI がタイルに分けるので変えない
+    - 本体の重みは変えない。ComfyUI は fp32 にしても `総量 × 0.88 − 最小の作業用メモリ` に収まるときだけ
+      fp32 で載せ、収まらなければ元の 2 バイト(bf16・fp16)のまま計算だけ fp32 にする(unet_dtype)。
+      VRAM が増えたときだけ使う量が増える動きなので、見積もりに入れると VRAM を増やして段階が下がる。
+      注意として書く
+    - fp8 の計算を持たない GPU(Ada より前)の fp8 の重み: 同じ理由で変えない(注意だけ)
+    系統が分からないときは (2) を見積もりに入れず、bf16 を持たない GPU ではそう書く。
+    GPU が無い・世代が分からないときは何も変えない。"""
+    from .families import FAMILIES, VAES, family_of, vae_of
+
+    g = system.best_gpu
+    if g is None or system.vram_gb <= 0 or g.compute_dtype is None:
+        return GpuPrecision()
+    prec = norm_precision(s.precision) or source_precision(entry)
+    notes: list[str] = []
+    fam_key = getattr(entry, "comfy_family", None) or family_of(entry)
+    fam = FAMILIES.get(fam_key or "")
+    vae_key = getattr(entry, "comfy_vae", None) or vae_of(entry, fam_key)
+    vae_kind = VAES.get(vae_key or "")
+    gpu_fp32 = g.compute_dtype == "fp32"
+    no_bf16 = g.bf16 is False
+    family_fp32 = no_bf16 and not gpu_fp32 and fam is not None and not fam.fp16
+    act = 2.0 if gpu_fp32 or family_fp32 else 1.0
+    vae_fp32 = (gpu_fp32 or (no_bf16 and vae_kind is not None and not vae_kind.fp16)) and (
+        vae_kind is None or vae_kind.key != "fp32"
+    )
+    vae_files = [f for f in entry.files if _role_of(f) == "vae"]
+    file_fp32 = bool(vae_files) and all(_name_precision(_path(f)[1]) == "fp32" for f in vae_files)
+    vae = 2.0 if vae_fp32 and not file_fp32 else 1.0
+    if gpu_fp32:
+        notes.append(
+            f"{g.name} では ComfyUI が半精度を使わず fp32 で計算するので、作業用メモリと VAE を 2 倍で"
+            "見積もった(本体は VRAM に余裕があれば fp32 に広げて載せる。遅い)"
+        )
+    elif family_fp32:
+        notes.append(
+            f"このモデルの系統({fam.comfy_class})は ComfyUI が fp16 で動かさない(supported_models の "
+            f"{fam.source})ので、bf16 を持たない {g.name} では fp32 で計算する。"
+            "作業用メモリを 2 倍で見積もった"
+            "(本体は VRAM に余裕があれば fp32 で載せる。遅い)"
+        )
+        if fam.note:
+            notes.append(fam.note)
+    elif no_bf16 and fam is None:
+        notes.append(
+            "このモデルの系統(ComfyUI のどのモデルか)が分からないので、bf16 を持たない "
+            f"{g.name} で fp32 で計算するかは見積もりに入れていない"
+        )
+    elif prec == "bf16" and no_bf16:
+        notes.append(
+            f"{g.name} は bf16 の計算に対応しないので、ComfyUI は bf16 の重みを fp16 で動かす(VRAM は同じ)"
+        )
+    if vae_fp32 and not gpu_fp32 and vae > 1:
+        notes.append(
+            f"VAE({vae_kind.source})は {g.name} では fp32 で載せるので、VAE の重みを 2 倍で見積もった"
+            "(仕上げで VRAM が足りなければ ComfyUI がタイルに分けるので遅くなる)"
+        )
+    if prec == "fp8" and g.fp8 is False:
+        notes.append(
+            f"{g.name} は fp8 の計算に対応しない(Ada 以降が対応)。ComfyUI は fp8 の重みを、fp16 に広げても "
+            "VRAM に収まれば広げて使い(VRAM を多く使う)、収まらなければ fp8 のまま計算のたびに"
+            "変換する(遅い)。見積もりは fp8 の大きさのまま"
+        )
+    return GpuPrecision(act, vae, tuple(notes))
+
+
+def ram_limit(system: SystemInfo) -> tuple[float, float | None]:
+    """(仮想メモリを使えば動くとみなすメインメモリの上限, その根拠にしたページファイル・スワップの最大)。
+    ページファイルの大きさが決まっているとき(固定・無し・Linux のスワップ)は 搭載量 + その大きさ
+    (ただし搭載量 × RAM_PAGEFILE_FACTOR まで)。システム管理で伸びる・分からないときは倍率だけで見る。"""
+    total = system.ram_total_gb
+    cap = total * RAM_PAGEFILE_FACTOR
+    swap = system.swap_max_gb
+    if system.swap_auto is False and swap is not None:
+        return min(cap, total + max(0.0, swap)), swap
+    return cap, None
 
 
 def _unknown_estimate(entry: ModelEntry, parts: Parts, s: Settings) -> Estimate:
@@ -802,7 +904,8 @@ def estimate(
     prep = _prepare(entry, measurements, c, s)  # 設定が同じ実測があればそれを選び直す
     if prep.parts.unknown:
         return _unknown_estimate(entry, prep.parts, s)
-    n = prep.need(s)
+    prec = gpu_precision(entry, system, s)
+    n = prep.need(s, prec)
     reasons: list[str] = []
     basis, measured_on = "estimated", None
     m = prep.measurement
@@ -810,6 +913,8 @@ def estimate(
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
+        elif prec.act_factor != 1:
+            reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
         elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry):
             basis, measured_on = "measured", on
             if is_censored(m):
@@ -826,6 +931,20 @@ def estimate(
     parts = prep.parts_for(s)
     disk = parts.files_gb
     fit, mode, why, ram_need = _judge(n, system, prep.c, entry, parts.total)
+    reasons.extend(prec.notes)
+    free_short = False
+    g = system.best_gpu
+    if g is not None and g.vram_free_gb is not None and mode in ("gpu", "offload") and system.vram_gb > 0:
+        _lvl, how = gpu_choice(n.full, n.sequential, n.offload, system.vram_gb)
+        use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
+        if use > g.vram_free_gb:
+            free_short = True
+            others = f"(ほかのアプリが {g.vram_used_gb:.1f} GB 使用中)" if g.vram_used_gb is not None else ""
+            why = [
+                *why,
+                f"今の空き VRAM は {g.vram_free_gb:.1f} GB{others}で、要る {use:.1f} GB に足りない。"
+                "ほかのアプリ(ブラウザ・ゲームなど)を閉じれば動く",
+            ]
     est = Estimate(
         vram_gb=round(n.full, 2),
         vram_offload_gb=round(n.offload, 2),
@@ -838,22 +957,26 @@ def estimate(
         measured_on=measured_on,
         vram_sequential_gb=round(n.sequential, 2),
         settings={k: v for k, v in vars(s).items() if v is not None},
+        vram_free_short=free_short,
     )
     if with_limits:
         est.limits = limits(prep, system, s)
     return est
 
 
-def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, ram_total: float):
-    """メインメモリの判定。足りなければ、倍率 RAM_PAGEFILE_FACTOR までは marginal(仮想メモリで遅い)、
-    超えたら too_tight。"""
+def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, system: SystemInfo):
+    """メインメモリの判定。足りなければ、ram_limit(ページファイルの大きさ、分からなければ倍率
+    RAM_PAGEFILE_FACTOR)までは marginal(仮想メモリで遅い)、超えたら too_tight。"""
+    ram_total = system.ram_total_gb
     if not ram_total or need_gb <= ram_total:
         return fit, mode, reasons
-    if need_gb > ram_total * RAM_PAGEFILE_FACTOR:
+    limit, swap = ram_limit(system)
+    if need_gb > limit:
+        pf = f"、ページファイルは最大 {swap:.1f} GB" if swap is not None else ""
         return (
             "too_tight",
             "none",
-            [f"メモリ不足: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB)", *reasons],
+            [f"メモリ不足: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB{pf})", *reasons],
         )
     worse = fit if fit in ("marginal", "too_tight") else "marginal"
     return (
@@ -891,13 +1014,10 @@ def _judge_cpu(
     n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
     """GPU を使わない判定(小さく CPU で動く種類だけ marginal)。"""
-    ram_total = system.ram_total_gb
     w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
     if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
         why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
-        fit, mode, reasons = _ram_check(
-            "marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, ram_total
-        )
+        fit, mode, reasons = _ram_check("marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, system)
         return fit, mode, reasons, n.ram
     return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
 
@@ -939,7 +1059,6 @@ def gpu_choice(full: float, sequential: float | None, offload: float, vram: floa
 
 def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, list[str], float]:
     vram = system.vram_gb
-    ram_total = system.ram_total_gb
     fit, how = gpu_choice(n.full, n.sequential, n.offload, vram)
     pct = {
         k: round(100 * v / vram) for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
@@ -967,7 +1086,7 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
             f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)"
         ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
-    fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, ram_total)
+    fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, system)
     return fit, mode, reasons, ram_need
 
 
@@ -1002,7 +1121,7 @@ GOOD = ("perfect", "good")
 
 
 def _ok(prep: _Model, system: SystemInfo, s: Settings) -> bool:
-    n = prep.need(s)
+    n = prep.need(s, gpu_precision(prep.entry, system, s))
     fit, _mode, _, _ram = _judge(n, system, prep.c, prep.entry, prep.parts.total)
     return fit in GOOD
 

@@ -27,9 +27,10 @@ def _isolated_cache(tmp_path, monkeypatch):
 
 
 def test_parse_nvidia_smi():
-    gpus = parse_nvidia_smi("NVIDIA GeForce RTX 3070, 8192, 4199, 566.03\n")
+    gpus = parse_nvidia_smi("NVIDIA GeForce RTX 3070, 8192, 4199, 3993, 566.03, 8.6\n")
     assert gpus[0].name == "NVIDIA GeForce RTX 3070"
     assert gpus[0].vram_total_gb == 8.0 and gpus[0].vram_free_gb == pytest.approx(4.1, abs=0.01)
+    assert gpus[0].compute_capability == "8.6"
     assert parse_nvidia_smi("garbage") == []
 
 

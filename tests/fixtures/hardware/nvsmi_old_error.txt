@@ -1,0 +1,2 @@
+Field "compute_cap" is not a valid field to query.
+

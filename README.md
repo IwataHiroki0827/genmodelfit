@@ -103,7 +103,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 
 | command | what it does / 内容 |
 |---|---|
-| `genmodelfit system` | detected GPU / RAM / disk, and whether the model list is still fresh (Data) / この PC の GPU・メモリ・空きと、一覧の新しさ |
+| `genmodelfit system [--all-gpus]` | detected GPU (generation, driver, PyTorch builds, ComfyUI precision), RAM, page file, disk, and whether the model list is still fresh (Data); `--all-gpus` also lists non-NVIDIA adapters / この PC の GPU(世代・ドライバ・精度)・メモリ・ページファイル・空きと、一覧の新しさ |
 | `genmodelfit recommend [-m image,video] [--task edit] [-n 5] [--auto-only]` | best models for this PC: per type without `-m` / `--task` (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順。`-m`・`--task` が無ければ種類ごと(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
 | `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
 | `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
@@ -117,7 +117,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 Common options / 共通の指定:
 
 - `--json` — machine-readable output for apps and agents ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md)) / アプリ向けの JSON
-- `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
+- `--vram 12 --ram 32` — judge with other VRAM / RAM sizes; the GPU generation of this PC is kept when it has a usable NVIDIA GPU ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)) / VRAM・RAM の量を変えて判定(この PC に使える NVIDIA の GPU があれば、その世代は引き継ぐ)
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
 - `-m image,video` — types / 種類(カンマ区切り可)
 - `--task edit` — uses inside a type: `gen`, `edit`, `i2v`, `lipsync`, `motion`, `voice`, `upscale`, `tool`, or task codes
@@ -154,6 +154,22 @@ st = gmf.data_status()  # is the model list fresh enough for auto-recommendation
 if st.expired:  # HEAD checks older than 30 days → auto-recommendations drop / 期限切れ
     print("run: genmodelfit update --from-release", st.expires_at, st.auto_count)
 ```
+
+## Hardware / ハードウェアの検出
+
+- Only NVIDIA GPUs confirmed by `nvidia-smi` are used for judging (v0.1). A GPU is judged as **CPU** when no PyTorch
+  CUDA build supports its generation (Kepler and older) or its driver is too old for all of them (CUDA 12 builds need
+  525+, CUDA 13 builds need 580+, Blackwell needs 570+). The reason is shown in `system` and `--json`.
+- On GPUs where ComfyUI computes in fp32 (Maxwell, some Pascal, GTX 16xx, T1000 …) working memory and the VAE are doubled.
+  On GPUs without bf16 (Pascal, Volta, Turing), model families that ComfyUI never runs in fp16 (LTX, Qwen Image, Z-Image,
+  HunyuanVideo, ACE-Step …) also compute in fp32, and so do VAEs without fp16 (SD / Flux KL, LTX).
+- The level uses total VRAM; when the VRAM free right now is not enough, a note says to close other apps (`vram_free_short`).
+- When the RAM is short, a fixed-size page file / swap sets how far "slow but runs" goes (system-managed: 1.5× RAM).
+- AMD / Intel GPUs are reported (Windows: WMI + registry, Linux: `lspci`) but never used for judging. Host name,
+  user name, GPU UUID and PCI ids are not collected. Details and sources: [docs/hardware.md](docs/hardware.md).
+
+判定に使うのは nvidia-smi で確かめた NVIDIA の GPU だけ。今の PyTorch が動かない世代(Kepler 以前)・古いドライバは CPU として判定し、
+理由を出します。AMD・Intel の GPU は知らせるだけです。出典と細かい決まりは [docs/hardware.md](docs/hardware.md)。
 
 ## Fit levels / 段階
 

@@ -1087,6 +1087,10 @@ def build_database(
                 entries.append(prev_by_id[name])
                 carried += 1
                 warnings.append(f"テンプレートを読めなかったため前の一覧から引き継ぎました: {name}")
+    from .families import assign
+
+    for e in entries:  # ComfyUI の系統(引き継いだ項目も、今の表で決め直す)
+        assign(e)
     budget = bool(getattr(fetch, "budget_exhausted", False))
     stats["partial"] = bool(failed or transient or hf_stats.get("failed_queries") or budget)
     stats["partial_counts"] = {
@@ -1227,5 +1231,9 @@ def refresh_heads(
         warn = f"{warn}(前に記録した {prev_comfy['latest_release']} を残しました)"
     warnings = [w for w in db.sources.get("warnings", []) if not w.startswith("ComfyUI の最新の版")]
     db.sources["warnings"] = warnings + ([warn] if warn else [])
+    from .families import assign
+
+    for m in db.models:  # ComfyUI の系統も今の表で決め直す(古い一覧に無い項目を足す)
+        assign(m)
     db.save(out_path)
     return db

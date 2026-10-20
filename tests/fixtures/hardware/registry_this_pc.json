@@ -1,0 +1,11 @@
+[
+  {"DriverDesc": "Virtual Desktop Monitor", "MatchingDeviceId": "Root\\vdvmd"},
+  {
+    "DriverDesc": "NVIDIA GeForce RTX 3070",
+    "MatchingDeviceId": "pci\\ven_10de&dev_2488&subsys_39091462",
+    "HardwareInformation.qwMemorySize": 8589934592,
+    "HardwareInformation.MemorySize": 4293918720
+  },
+  {"DriverDesc": "Microsoft Remote Display Adapter", "MatchingDeviceId": "RdpIdd_IndirectDisplay"},
+  {"DriverDesc": "Meta Virtual Monitor", "MatchingDeviceId": "Root\\MetaVirtualScreenDriver"}
+]

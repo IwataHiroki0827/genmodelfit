@@ -1,0 +1,17 @@
+[
+  {
+    "DriverDesc": "AMD Radeon RX 7800 XT",
+    "MatchingDeviceId": "pci\\ven_1002&dev_747e",
+    "HardwareInformation.qwMemorySize": 17163091968
+  },
+  {
+    "DriverDesc": "NVIDIA GeForce GTX 1060 6GB",
+    "MatchingDeviceId": "pci\\ven_10de&dev_1c03",
+    "HardwareInformation.qwMemorySize": 6442450944
+  },
+  {
+    "DriverDesc": "Intel(R) UHD Graphics 770",
+    "MatchingDeviceId": "pci\\ven_8086&dev_4680",
+    "HardwareInformation.qwMemorySize": 134217728
+  }
+]

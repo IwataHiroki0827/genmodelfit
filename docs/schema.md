@@ -43,11 +43,41 @@ credentials never attached (tests/test_privacy.py).
 | `cpu_cores` | int | logical threads |
 | `ram_total_gb`, `ram_available_gb` | float | GiB |
 | `gpus` | Gpu[] | only GPUs confirmed by `nvidia-smi` (v0.1 counts NVIDIA CUDA only) |
-| `best_gpu` | Gpu \| null | the GPU used for judging (largest VRAM) |
+| `best_gpu` | Gpu \| null | the GPU used for judging: the largest-VRAM GPU whose `backend` is `cuda`. null → judged as CPU |
 | `disk_free_gb` | float \| null | free space at the home directory (or `--disk-path`) |
 | `overrides` | str[] | `vram` / `ram` when overridden |
+| `swap_total_gb` | float \| null | current page file (Windows) / swap (Linux, zram excluded) size |
+| `swap_max_gb` | float \| null | how far it can grow: the fixed page file maximum, 0 for none, the Linux swap size. null = unknown or system managed |
+| `swap_auto` | bool \| null | true = system-managed page file (grows) / macOS. false = fixed size or none. null = unknown |
+| `commit_limit_gb`, `commit_used_gb` | float \| null | Windows commit limit (RAM + page file) and current commit (`GlobalMemoryStatusEx`) |
+| `other_gpus` | Adapter[] | display adapters of any vendor (informational, **never used for judging**). Empty unless checked |
+| `other_gpus_checked` | bool | whether `other_gpus` was looked up: by default only when `nvidia-smi` found no NVIDIA GPU and `--vram` is not given; always with `system --all-gpus` |
+| `notes` | str[] | what detection found or could not find (Japanese): why a GPU is judged as CPU, old driver, non-NVIDIA GPUs, page file, WSL / container limits |
 
-Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when overridden), `driver`, `backend` (`cuda` / `none`).
+With `--ram`, the swap / commit values are null (another PC is assumed). Detection never fails: unknown values are
+null and the reason is in `notes`. Host name, user name, GPU UUID, PCI bus id and device instance ids are never
+read into the output. Details and sources: `docs/hardware.md`.
+
+Gpu:
+
+| key | type | meaning |
+|---|---|---|
+| `name`, `vendor` | str | `vendor` is `nvidia` |
+| `vram_total_gb` | float | 0 when nvidia-smi does not report it (then `backend` is `none`) |
+| `vram_free_gb`, `vram_used_gb` | float \| null | free now / used now by other apps (screen, browser, …). null when overridden or not reported |
+| `driver` | str \| null | driver version as nvidia-smi prints it |
+| `backend` | str | `cuda` (used for judging) / `none` (not used: generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`) |
+| `compute_capability` | str \| null | e.g. `"8.6"` |
+| `compute_capability_source` | str \| null | `nvidia-smi` / `name` (guessed from the GPU name when nvidia-smi is too old) |
+| `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell` (`fermi` / `unknown`) |
+| `torch_cuda` | str[] | PyTorch CUDA builds (`cu132` … `cu126`) that run on this GPU with this driver, newest first. Informational |
+| `compute_dtype` | str \| null | what ComfyUI computes in on this GPU by default: `fp16` / `bf16` / `fp32` (fp32 doubles working memory). null when `backend` is `none` or the generation is unknown |
+| `bf16`, `fp8` | bool \| null | bf16 / fp8 compute support as ComfyUI sees it (null as above). Without bf16, model families that ComfyUI never runs in fp16 compute in fp32 (`docs/hardware.md`) |
+| `notes` | str[] | reasons and cautions for this GPU |
+
+Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `unknown`), `vram_gb` (Windows: registry
+`HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; null if unknown),
+`vram_source` (`registry` / `wmi` / `sysfs` / null), `source` (`wmi` / `lspci`).
 
 ## Data status / 一覧の新しさ
 
@@ -277,7 +307,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `vram_gb` | float | peak VRAM when everything stays on the GPU / 全部載せ |
 | `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE) / 順に載せ替え |
 | `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM) / 逃がす |
-| `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short by up to 1.5× → `marginal` (page file, slow); more → `too_tight` |
+| `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
@@ -286,6 +316,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `reasons` | str[] | human-readable reasons (Japanese) |
 | `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
+| `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `too_tight`, `run_mode` `none`, VRAM / RAM values are 0, `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these |
 
 When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
@@ -319,7 +350,9 @@ GPU, RAM on the CPU), as in llmfit (`docs/how-it-works.md`, "Fit analysis"; adop
 
 Caps per run mode: all on the GPU (`GPU`) none; parts swapped stage by stage (`GPU~`) at most `good`; offload to RAM
 (`GPU+RAM`) and CPU at most `marginal`. The run mode with the best level is used (ties: all-in → swapped → offload).
-The RAM check is applied afterwards as before (short by up to 1.5× → at most `marginal`, more → `too_tight`). A model
+The RAM check is applied afterwards (short but within the page file limit above → at most `marginal`, more →
+`too_tight`). On GPUs where ComfyUI computes in fp32 (`compute_dtype: "fp32"`: Maxwell, some Pascal, GTX 16xx …) the
+working memory and the VAE weights are doubled before judging (`docs/hardware.md`, "精度"). A model
 that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
 `marginal`), and the better result is used, so adding VRAM never lowers the level. `too_tight` also covers models whose
 size is unknown (`unknown_size: true`). Constants: `estimate.FIT_BANDS`.
@@ -388,6 +421,12 @@ upstream (docs/sources.md「ライセンス」).
 
 `size_floor_bytes` is the template's index `size` when `files_complete` is false (null for Hugging Face entries, which
 have no index size).
+
+`comfy_family` / `comfy_vae` (str \| null, optional; added in #21 — older files without them still load): the ComfyUI
+model family and VAE kind (keys of `families.FAMILIES` / `families.VAES`), set by `update` from the main / VAE file
+names. Used only to decide whether ComfyUI computes in fp32 on GPUs without bf16 (`docs/hardware.md`, 「系統の表」).
+null = unknown (the estimate is not changed; a reason says so on GPUs without bf16). When null, the estimator derives
+them from the file names again.
 
 ModelFile: `name`, `url`, `sha256`, `size_bytes`, `directory` (ComfyUI folder), `repo_id`, `license`,
 `license_name`, `gated` (bool \| null = unknown), `role` (`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`),
