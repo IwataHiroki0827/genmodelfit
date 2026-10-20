@@ -110,6 +110,10 @@ class ModelEntry:
     files_complete: bool | None = None
     # 一式の大きさの下限(files_complete が False のとき、index の size)。見積もりはこれより小さく見ない
     size_floor_bytes: int | None = None
+    # ComfyUI のモデルの系統と VAE の種類(families.FAMILIES / VAES の鍵。None は分からない)。
+    # bf16 を持たない GPU で fp32 で計算するかを決めるのに使う(docs/hardware.md「精度」)。後から足した項目
+    comfy_family: str | None = None
+    comfy_vae: str | None = None
 
     @property
     def total_size_bytes(self) -> int | None:

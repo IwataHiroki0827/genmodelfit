@@ -186,10 +186,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
    "total_size_bytes": 7365943290
   },
   {
@@ -252,10 +255,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
    "total_size_bytes": 4928151562
   },
   {
@@ -318,10 +324,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
    "total_size_bytes": 4928151562
   },
   {
@@ -384,10 +393,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
    "total_size_bytes": 4930777530
   },
   {
@@ -450,10 +462,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 644245094,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 661859924
   },
   {
@@ -516,10 +531,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 644245094,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 661859924
   },
   {
@@ -677,10 +695,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "dinov3-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "trellis2",
+   "comfy_vae": "trellis2",
    "total_size_bytes": 9288548984
   },
   {
@@ -884,10 +905,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "dinov3-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "trellis2",
+   "comfy_vae": "trellis2",
    "total_size_bytes": 15203457100
   },
   {
@@ -1041,10 +1065,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "dinov3-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "triposplat",
+   "comfy_vae": "kl",
    "total_size_bytes": 3779190284
   },
   {
@@ -1180,12 +1207,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: rt_detr_v4-x-hgnet_fp32.safetensors は RT-DETRv4 の重み(https://github.com/RT-DETRs/RT-DETRv4。コードは Apache-2.0 だが、重みは DINOv3 を教師にした蒸留で、重みのライセンスの記載が無い)(rt_detr_v4-x-hgnet_fp32.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sam3",
+   "comfy_vae": null,
    "total_size_bytes": 5485935084
   },
   {
@@ -1344,12 +1374,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 37054292422
   },
   {
@@ -1484,12 +1517,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 36197786782
   },
   {
@@ -1626,6 +1662,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: bytedance-research/USO の表記 apache-2.0 は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(uso-flux1-projector-v1.safetensors)",
@@ -1633,6 +1670,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 18602766428
   },
   {
@@ -1768,10 +1807,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 22273929236
   },
   {
@@ -1906,10 +1948,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 34172641300
   },
   {
@@ -2113,12 +2158,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 30930093390
   },
   {
@@ -2253,10 +2301,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 34172222116
   },
   {
@@ -2391,10 +2442,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 34172222116
   },
   {
@@ -2529,10 +2583,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux_fill",
+   "comfy_vae": "kl",
    "total_size_bytes": 34174211972
   },
   {
@@ -2667,10 +2724,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux_fill",
+   "comfy_vae": "kl",
    "total_size_bytes": 34174211972
   },
   {
@@ -2805,10 +2865,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 17643437364
   },
   {
@@ -2991,10 +3054,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "flux-1-dev-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 35157790988
   },
   {
@@ -3057,10 +3123,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 17236328572
   },
   {
@@ -3195,10 +3264,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 34151796252
   },
   {
@@ -3382,10 +3454,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream",
+   "comfy_vae": "kl",
    "total_size_bytes": 50422916156
   },
   {
@@ -3569,10 +3644,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream",
+   "comfy_vae": "kl",
    "total_size_bytes": 50422916156
   },
   {
@@ -3755,10 +3833,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream",
+   "comfy_vae": "kl",
    "total_size_bytes": 33317186804
   },
   {
@@ -3941,10 +4022,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream",
+   "comfy_vae": "kl",
    "total_size_bytes": 33317186804
   },
   {
@@ -4127,10 +4211,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream",
+   "comfy_vae": "kl",
    "total_size_bytes": 33317186804
   },
   {
@@ -4265,10 +4352,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 50794654686
   },
   {
@@ -4401,6 +4491,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
@@ -4408,6 +4499,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 5777062286
   },
   {
@@ -4564,6 +4657,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
@@ -4571,6 +4665,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 5793465294
   },
   {
@@ -4749,6 +4845,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
@@ -4756,6 +4853,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 7121674470
   },
   {
@@ -4912,6 +5011,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)",
@@ -4919,6 +5019,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 5842835158
   },
   {
@@ -5028,12 +5130,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_06b_base.safetensors は circlestone-labs/Anima の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_06b_base.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 5628159702
   },
   {
@@ -5142,10 +5247,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "omnigen2",
+   "comfy_vae": "kl",
    "total_size_bytes": 21237777684
   },
   {
@@ -5254,10 +5362,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "omnigen2",
+   "comfy_vae": "kl",
    "total_size_bytes": 22294492532
   },
   {
@@ -5366,10 +5477,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "omnigen2",
+   "comfy_vae": "kl",
    "total_size_bytes": 21237777684
   },
   {
@@ -5456,10 +5570,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "chroma",
+   "comfy_vae": "kl",
    "total_size_bytes": 24169695014
   },
   {
@@ -5571,10 +5688,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "chroma",
+   "comfy_vae": "kl",
    "total_size_bytes": 14686032392
   },
   {
@@ -5730,12 +5850,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Wan_2.2_ComfyUI_Repackaged の chrono_edit_14B_fp16.safetensors の本家が分かりません(chrono_edit_14B_fp16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 41419739755
   },
   {
@@ -5865,12 +5988,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません(ministral-3-3b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ernie",
+   "comfy_vae": "kl",
    "total_size_bytes": 30998316546
   },
   {
@@ -6000,12 +6126,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/ERNIE-Image の ministral-3-3b.safetensors の本家が分かりません(ministral-3-3b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ernie",
+   "comfy_vae": "kl",
    "total_size_bytes": 30998316546
   },
   {
@@ -6135,10 +6264,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 51349051158
   },
   {
@@ -6324,12 +6456,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: lrzjason/ObjectRemovalFluxFill の表記 mit は、元の black-forest-labs/FLUX.1-Fill-dev の other(flux-1-dev-non-commercial-license) より寛容です(removal_timestep_alpha-2-1740.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux_fill",
+   "comfy_vae": "kl",
    "total_size_bytes": 32149409308
   },
   {
@@ -6460,6 +6595,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません(mistral_3_small_flux2_bf16.safetensors)",
@@ -6467,6 +6603,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 74050831011
   },
   {
@@ -6600,6 +6738,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_fp8.safetensors の本家が分かりません(mistral_3_small_flux2_fp8.safetensors)",
@@ -6607,6 +6746,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 56587268115
   },
   {
@@ -6716,12 +6857,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 18819998282
   },
   {
@@ -6828,10 +6972,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 12383999628
   },
   {
@@ -6941,10 +7088,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 12451820124
   },
   {
@@ -7051,12 +7201,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 18481646306
   },
   {
@@ -7163,12 +7316,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 18347429362
   },
   {
@@ -7303,10 +7459,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 23883407028
   },
   {
@@ -7436,6 +7595,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/flux2-dev の mistral_3_small_flux2_bf16.safetensors の本家が分かりません(mistral_3_small_flux2_bf16.safetensors)",
@@ -7443,6 +7603,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 74050831011
   },
   {
@@ -7549,12 +7711,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_8b_fp8mixed.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b_fp8mixed.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 18481646306
   },
   {
@@ -7685,12 +7850,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux3",
+   "comfy_vae": "kl",
    "total_size_bytes": 17746736091
   },
   {
@@ -7821,12 +7989,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux3",
+   "comfy_vae": "kl",
    "total_size_bytes": 17746736091
   },
   {
@@ -7957,12 +8128,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux3",
+   "comfy_vae": "kl",
    "total_size_bytes": 17726288651
   },
   {
@@ -8093,12 +8267,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors は black-forest-labs/flux-3-image-klein-comfy の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux3",
+   "comfy_vae": "kl",
    "total_size_bytes": 17726288651
   },
   {
@@ -8185,10 +8362,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream_o1",
+   "comfy_vae": null,
    "total_size_bytes": 25422992018
   },
   {
@@ -8275,10 +8455,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hidream_o1",
+   "comfy_vae": null,
    "total_size_bytes": 17125317490
   },
   {
@@ -8409,10 +8592,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ideogram-4-non-commercial",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ideogram4",
+   "comfy_vae": "kl",
    "total_size_bytes": 29486333646
   },
   {
@@ -8543,10 +8729,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ideogram-4-non-commercial",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ideogram4",
+   "comfy_vae": "kl",
    "total_size_bytes": 30091782492
   },
   {
@@ -8659,10 +8848,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "joyimage",
+   "comfy_vae": "wan",
    "total_size_bytes": 26751125626
   },
   {
@@ -8794,10 +8986,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "kandinsky5",
+   "comfy_vae": "kl",
    "total_size_bytes": 22010448036
   },
   {
@@ -8931,6 +9126,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
@@ -8938,6 +9134,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "krea2",
+   "comfy_vae": "wan",
    "total_size_bytes": 19446072470
   },
   {
@@ -9071,6 +9269,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
@@ -9078,6 +9277,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "krea2",
+   "comfy_vae": "wan",
    "total_size_bytes": 19107296990
   },
   {
@@ -9211,6 +9412,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Krea-2 の qwen3vl_4b_fp8_scaled.safetensors の本家が分かりません(qwen3vl_4b_fp8_scaled.safetensors)",
@@ -9218,6 +9420,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "krea2",
+   "comfy_vae": "wan",
    "total_size_bytes": 19458252702
   },
   {
@@ -9328,6 +9532,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Lens を読めません(HTTP 401)(gpt_oss_20b_nvfp4.safetensors)",
@@ -9335,6 +9540,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "lens",
+   "comfy_vae": "kl",
    "total_size_bytes": 21781790658
   },
   {
@@ -9445,6 +9652,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Lens を読めません(HTTP 401)(gpt_oss_20b_nvfp4.safetensors)",
@@ -9452,6 +9660,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "lens",
+   "comfy_vae": "kl",
    "total_size_bytes": 21781790658
   },
   {
@@ -9559,10 +9769,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "longcat",
+   "comfy_vae": "kl",
    "total_size_bytes": 22261358212
   },
   {
@@ -9671,10 +9884,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "longcat",
+   "comfy_vae": "kl",
    "total_size_bytes": 22261358212
   },
   {
@@ -9758,12 +9974,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 2069838542
   },
   {
@@ -9874,6 +10093,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Mage-Flow を読めません(HTTP 401)(mage_flow_edit_int8_convrot.safetensors)",
@@ -9882,6 +10102,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "mage_flow",
+   "comfy_vae": "mage",
    "total_size_bytes": 13379919288
   },
   {
@@ -9992,6 +10214,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Mage-Flow を読めません(HTTP 401)(mage_flow_edit_turbo_int8_convrot.safetensors)",
@@ -10000,6 +10223,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "mage_flow",
+   "comfy_vae": "mage",
    "total_size_bytes": 13379919280
   },
   {
@@ -10110,6 +10335,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Mage-Flow を読めません(HTTP 401)(mage_flow_int8_convrot.safetensors)",
@@ -10118,6 +10344,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "mage_flow",
+   "comfy_vae": "mage",
    "total_size_bytes": 13379919288
   },
   {
@@ -10228,6 +10456,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: microsoft/Mage-Flow を読めません(HTTP 401)(mage_flow_turbo_int8_convrot.safetensors)",
@@ -10236,6 +10465,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "mage_flow",
+   "comfy_vae": "mage",
    "total_size_bytes": 13379919280
   },
   {
@@ -10374,10 +10605,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": null,
    "total_size_bytes": 22459228094
   },
   {
@@ -10516,10 +10750,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": null,
    "total_size_bytes": 22459077566
   },
   {
@@ -10658,10 +10895,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": null,
    "total_size_bytes": 22459192254
   },
   {
@@ -10766,10 +11006,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ming_image",
+   "comfy_vae": null,
    "total_size_bytes": 25936727174
   },
   {
@@ -10896,10 +11139,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ming_image",
+   "comfy_vae": null,
    "total_size_bytes": 43222828674
   },
   {
@@ -11007,12 +11253,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "moss_image",
+   "comfy_vae": "kl",
    "total_size_bytes": 13006811386
   },
   {
@@ -11120,12 +11369,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "moss_image",
+   "comfy_vae": "kl",
    "total_size_bytes": 13006811386
   },
   {
@@ -11234,12 +11486,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "moss_image",
+   "comfy_vae": "kl",
    "total_size_bytes": 13006811386
   },
   {
@@ -11347,12 +11602,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/MOSS-Image の qwen3.5_9b_w4a8_gptq.safetensors の本家が分かりません(qwen3.5_9b_w4a8_gptq.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "moss_image",
+   "comfy_vae": "kl",
    "total_size_bytes": 13006811386
   },
   {
@@ -11415,10 +11673,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "lumina2",
+   "comfy_vae": "kl",
    "total_size_bytes": 10620231237
   },
   {
@@ -11551,6 +11812,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: gemma_3_4b_it_bf16.safetensors は Comfy-Org/NewBie-image-Exp0.1_repackaged の本体と別の系統(gemma)の部品とみえ、本家のライセンスを確かめた表に無い(gemma_3_4b_it_bf16.safetensors)",
@@ -11558,6 +11820,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "lumina2",
+   "comfy_vae": "kl",
    "total_size_bytes": 16195631729
   },
   {
@@ -11666,10 +11930,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "omnigen2",
+   "comfy_vae": "kl",
    "total_size_bytes": 15779025788
   },
   {
@@ -11778,10 +12045,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "omnigen2",
+   "comfy_vae": "kl",
    "total_size_bytes": 15779025788
   },
   {
@@ -11890,10 +12160,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
    "total_size_bytes": 20217198004
   },
   {
@@ -11977,12 +12250,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_bf16.safetensors の本家が分かりません(gemma_2_2b_it_elm_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "pixeldit",
+   "comfy_vae": null,
    "total_size_bytes": 7837943801
   },
   {
@@ -12117,10 +12393,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31768107174
   },
   {
@@ -12278,10 +12557,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 35280539710
   },
   {
@@ -12416,10 +12698,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31768063166
   },
   {
@@ -12554,10 +12839,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 32428690534
   },
   {
@@ -12668,10 +12956,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
    "total_size_bytes": 17283091112
   },
   {
@@ -12806,10 +13097,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
    "total_size_bytes": 26754163364
   },
   {
@@ -12944,10 +13238,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
    "total_size_bytes": 26754163364
   },
   {
@@ -13082,10 +13379,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
    "total_size_bytes": 26754168129
   },
   {
@@ -13220,10 +13520,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
    "total_size_bytes": 26754168129
   },
   {
@@ -13383,10 +13686,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 34034901246
   },
   {
@@ -13521,10 +13827,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 30918720358
   },
   {
@@ -13660,10 +13969,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 30918783646
   },
   {
@@ -13823,10 +14135,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31154900678
   },
   {
@@ -13961,10 +14276,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31021848039
   },
   {
@@ -14099,10 +14417,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 30987169046
   },
   {
@@ -14307,12 +14628,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "kl",
    "total_size_bytes": 37373929524
   },
   {
@@ -14473,10 +14797,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 36002662598
   },
   {
@@ -14589,10 +14916,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 50499531184
   },
   {
@@ -14752,10 +15082,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 32711969886
   },
   {
@@ -14817,10 +15150,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 6938078334
   },
   {
@@ -14931,10 +15267,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 20690152836
   },
   {
@@ -15045,10 +15384,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 14581287732
   },
   {
@@ -15159,10 +15501,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 20690152836
   },
   {
@@ -15296,10 +15641,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 23791725244
   },
   {
@@ -15410,10 +15758,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 12168299735
   },
   {
@@ -15500,10 +15851,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "stabilityai-ai-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd3",
+   "comfy_vae": "kl",
    "total_size_bytes": 23589513510
   },
   {
@@ -15590,10 +15944,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "stabilityai-ai-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd3",
+   "comfy_vae": "kl",
    "total_size_bytes": 23589513510
   },
   {
@@ -15725,12 +16082,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd3",
+   "comfy_vae": "kl",
    "total_size_bytes": 25659352052
   },
   {
@@ -15793,10 +16153,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "stabilityai-ai-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd3",
+   "comfy_vae": "kl",
    "total_size_bytes": 14934922866
   },
   {
@@ -15881,10 +16244,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 13014060264
   },
   {
@@ -15970,10 +16336,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 10627989432
   },
   {
@@ -16058,10 +16427,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 13014060264
   },
   {
@@ -16123,10 +16495,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "sai-nc-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 6938081905
   },
   {
@@ -16285,10 +16660,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 32523146510
   },
   {
@@ -16447,10 +16825,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 51644262974
   },
   {
@@ -16585,10 +16966,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 30843489374
   },
   {
@@ -16747,10 +17131,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31282309734
   },
   {
@@ -16882,10 +17269,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 30659266526
   },
   {
@@ -17044,10 +17434,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 51644257470
   },
   {
@@ -17206,10 +17599,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31154900678
   },
   {
@@ -17368,10 +17764,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31154900678
   },
   {
@@ -17485,12 +17884,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_3_8b.safetensors は Comfy-Org/vae-text-encorder-for-flux-klein-9b の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_3_8b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
    "total_size_bytes": 34874915900
   },
   {
@@ -17694,6 +18096,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Hugging Face 以外のファイル(civitai.com)(sdxl-better_freckles.safetensors)",
@@ -17702,6 +18105,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 27795501024
   },
   {
@@ -17860,10 +18265,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31528430254
   },
   {
@@ -18023,10 +18431,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 31154900678
   },
   {
@@ -18164,10 +18575,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 51254547750
   },
   {
@@ -18230,10 +18644,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 429496730,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 444473596
   },
   {
@@ -18294,10 +18711,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 1288490189,
+   "comfy_family": "depth_anything3",
+   "comfy_vae": null,
    "total_size_bytes": 1336748056
   },
   {
@@ -18361,10 +18781,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "sam-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sam3",
+   "comfy_vae": null,
    "total_size_bytes": 1745546848
   },
   {
@@ -18475,12 +18898,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/SUPIR_pruned の SUPIR-v0Q_fp16.safetensors の本家が分かりません(SUPIR-v0Q_fp16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 19090035068
   },
   {
@@ -18541,10 +18967,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 2469606195,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 2501605198
   },
   {
@@ -18607,10 +19036,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 644245094,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 661859924
   },
   {
@@ -18768,6 +19200,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/PixelDiT の gemma_2_2b_it_elm_fp8_scaled.safetensors の本家が分かりません(gemma_2_2b_it_elm_fp8_scaled.safetensors)",
@@ -18775,6 +19208,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 26033802572
   },
   {
@@ -18860,6 +19295,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 sdpose: SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)(sdpose_wholebody_fp16.safetensors)",
@@ -18867,6 +19303,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 2040614770
   },
   {
@@ -18929,12 +19367,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 sdpose: SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)(sdpose_wholebody_fp16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 1916645792
   },
   {
@@ -19017,10 +19458,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "seedvr2",
+   "comfy_vae": "seedvr2",
    "total_size_bytes": 3959584518
   },
   {
@@ -19103,10 +19547,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "seedvr2",
+   "comfy_vae": "seedvr2",
    "total_size_bytes": 8836222790
   },
   {
@@ -19147,12 +19594,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 17716740096,
+   "comfy_family": "seedvr2",
+   "comfy_vae": "seedvr2",
    "total_size_bytes": 17716740096
   },
   {
@@ -19287,10 +19737,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
    "total_size_bytes": 20757010672
   },
   {
@@ -19448,12 +19901,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38770076711
   },
   {
@@ -19584,10 +20040,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 19882894142
   },
   {
@@ -19718,10 +20177,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 19882894142
   },
   {
@@ -19852,10 +20314,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 19882894104
   },
   {
@@ -19916,10 +20381,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 10025478736
   },
   {
@@ -20050,10 +20518,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 10025368944
   },
   {
@@ -20184,10 +20655,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
    "total_size_bytes": 14695999816
   },
   {
@@ -20248,10 +20722,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
    "total_size_bytes": 7699743341
   },
   {
@@ -20312,10 +20789,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
    "total_size_bytes": 7699743341
   },
   {
@@ -20376,10 +20856,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
    "total_size_bytes": 7699743341
   },
   {
@@ -20419,12 +20902,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 429496730,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 429496730
   },
   {
@@ -20535,6 +21021,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: MiniMaxAI/MiniMax-Music3 にライセンスの記載がありません(minimax_music3_dit_fp16.safetensors)",
@@ -20543,6 +21030,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_music3",
+   "comfy_vae": null,
    "total_size_bytes": 14327505696
   },
   {
@@ -20651,12 +21140,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません(t5gemma_b_b_ul2.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
    "total_size_bytes": 14957602151
   },
   {
@@ -20765,12 +21257,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/stable-audio-3 の t5gemma_b_b_ul2.safetensors の本家が分かりません(t5gemma_b_b_ul2.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
    "total_size_bytes": 14957602151
   },
   {
@@ -20854,10 +21349,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "yue2",
+   "comfy_vae": null,
    "total_size_bytes": 5347806922
   },
   {
@@ -20918,10 +21416,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "yue2",
+   "comfy_vae": null,
    "total_size_bytes": 3960938800
   },
   {
@@ -21005,10 +21506,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "stable-audio-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
    "total_size_bytes": 5745535406
   },
   {
@@ -21140,6 +21644,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/HunyuanVideo_repackaged の llava_llama3_fp8_scaled.safetensors の本家が分かりません(llava_llama3_fp8_scaled.safetensors)",
@@ -21148,6 +21653,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan_video",
+   "comfy_vae": "hunyuan_video",
    "total_size_bytes": 35472652265
   },
   {
@@ -21282,10 +21789,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 41045319115
   },
   {
@@ -21371,10 +21881,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 16128570524
   },
   {
@@ -21460,10 +21973,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 19158283132
   },
   {
@@ -21624,12 +22140,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors の本家が分かりません(Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 31596283382
   },
   {
@@ -21715,12 +22234,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Hugging Face 以外のファイル(civitai.com)(realismByStableYogi_v4LCM.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 2528373448
   },
   {
@@ -21858,12 +22380,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 40916568234
   },
   {
@@ -22001,10 +22526,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 61457694696
   },
   {
@@ -22116,10 +22644,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 71524557424
   },
   {
@@ -22231,10 +22762,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 71524557424
   },
   {
@@ -22372,10 +22906,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 62439163728
   },
   {
@@ -22534,12 +23071,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Hugging Face 以外のファイル(civitai.com)(ltx23-obscura_remova.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 61385508306
   },
   {
@@ -22651,10 +23191,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 71524557424
   },
   {
@@ -22764,12 +23307,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: joyfox/LTX-2.3-Transition-LORA の表記 apache-2.0 は、元の Lightricks/LTX-2.3 の other(ltx-2-community-license-agreement) より寛容です(ltx2.3-transition.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 39369815704
   },
   {
@@ -22954,6 +23500,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません(WanAnimate_relight_lora_fp16.safetensors)",
@@ -22961,6 +23508,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 28830380381
   },
   {
@@ -23269,10 +23818,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 89677420197
   },
   {
@@ -23340,10 +23892,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 10737418240,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 1264219396
   },
   {
@@ -23508,10 +24063,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
    "total_size_bytes": 52058874082
   },
   {
@@ -23553,12 +24111,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 21474836480,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 21474836480
   },
   {
@@ -23623,12 +24184,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Hugging Face 以外のファイル(civitai.com)(realismByStableYogi_v4LCM.safetensors)"
    ],
    "files_complete": false,
    "size_floor_bytes": 10737418240,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 10737418240
   },
   {
@@ -23908,10 +24472,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "kl",
    "total_size_bytes": 57710342791
   },
   {
@@ -23954,12 +24521,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 10737418240,
+   "comfy_family": "anima",
+   "comfy_vae": "wan",
    "total_size_bytes": 10737418240
   },
   {
@@ -24121,6 +24691,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
@@ -24128,6 +24699,8 @@
    ],
    "files_complete": false,
    "size_floor_bytes": 77202037146,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25394780013
   },
   {
@@ -24268,12 +24841,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 46495526446
   },
   {
@@ -24437,12 +25013,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 52708319759
   },
   {
@@ -24553,10 +25132,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 9828025775
   },
   {
@@ -24639,10 +25221,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "stable-video-diffusion-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
    "total_size_bytes": 16497704314
   },
   {
@@ -24683,12 +25268,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 1073741824,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 1073741824
   },
   {
@@ -24729,12 +25317,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 5368709120,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -24775,12 +25366,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 5368709120,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -24821,12 +25415,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 5368709120,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -24887,10 +25484,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 1288490189,
+   "comfy_family": "depth_anything3",
+   "comfy_vae": null,
    "total_size_bytes": 1336748056
   },
   {
@@ -24931,12 +25531,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 10737418240,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 10737418240
   },
   {
@@ -25022,6 +25625,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 sdpose: SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)(sdpose_wholebody_fp16.safetensors)",
@@ -25029,6 +25633,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 2040614770
   },
   {
@@ -25091,12 +25697,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 sdpose: SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)(sdpose_wholebody_fp16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 1916645792
   },
   {
@@ -25179,10 +25788,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "seedvr2",
+   "comfy_vae": "seedvr2",
    "total_size_bytes": 3959584518
   },
   {
@@ -25244,12 +25856,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/frame_interpolation の film_net_fp16.safetensors の本家が分かりません(film_net_fp16.safetensors)"
    ],
    "files_complete": false,
    "size_floor_bytes": 107374182,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 68882302
   },
   {
@@ -25313,10 +25928,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "sam-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "sam3",
+   "comfy_vae": null,
    "total_size_bytes": 1745546848
   },
   {
@@ -25357,12 +25975,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 使うファイルが分かりません"
    ],
    "files_complete": false,
    "size_floor_bytes": 42949672960,
+   "comfy_family": null,
+   "comfy_vae": null,
    "total_size_bytes": 42949672960
   },
   {
@@ -25541,12 +26162,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: cogvideox_vae.safetensors は Comfy-Org/void-model の本体と別の系統(cogvideo)の部品とみえ、本家のライセンスを確かめた表に無い(cogvideox_vae.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "cogvideox",
+   "comfy_vae": "cogvideox",
    "total_size_bytes": 34271721758
   },
   {
@@ -25616,10 +26240,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": 20401094656,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 1264219396
   },
   {
@@ -25777,12 +26404,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38770076711
   },
   {
@@ -25941,12 +26571,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 37054292422
   },
   {
@@ -26105,12 +26738,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: qwen_2.5_vl_7b.safetensors は Comfy-Org/HunyuanImage_2.1_ComfyUI の本体と別の系統(qwen)の部品とみえ、本家のライセンスを確かめた表に無い(qwen_2.5_vl_7b.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 37054292422
   },
   {
@@ -26222,10 +26858,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 12665792679
   },
   {
@@ -26354,10 +26993,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "minimax-h3-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 41231841239
   },
   {
@@ -26486,10 +27128,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "minimax-h3-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 41231841239
   },
   {
@@ -26645,6 +27290,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
@@ -26652,6 +27298,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 27873231087
   },
   {
@@ -26858,10 +27506,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan_video15",
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 46718834230
   },
   {
@@ -27044,10 +27695,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "tencent-hunyuan-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "hunyuan_video15",
+   "comfy_vae": "hunyuan_video15",
    "total_size_bytes": 45862328590
   },
   {
@@ -27179,12 +27833,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません(hunyuan_video_vae_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "kandinsky5",
+   "comfy_vae": "hunyuan_video",
    "total_size_bytes": 14696931838
   },
   {
@@ -27315,12 +27972,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/HunyuanVideo_comfy の hunyuan_video_vae_bf16.safetensors の本家が分かりません(hunyuan_video_vae_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "kandinsky5",
+   "comfy_vae": "hunyuan_video",
    "total_size_bytes": 14696931838
   },
   {
@@ -27406,10 +28066,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 38979586280
   },
   {
@@ -27570,12 +28233,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 42958104950
   },
   {
@@ -27737,12 +28403,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 42958104950
   },
   {
@@ -27903,12 +28572,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 40924115172
   },
   {
@@ -28068,10 +28740,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 43487785638
   },
   {
@@ -28232,12 +28907,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: google/gemma-3-12b を読めません(HTTP 401)(gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 42958104950
   },
   {
@@ -28463,10 +29141,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2.x-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltx_diffusion",
    "total_size_bytes": 61468801844
   },
   {
@@ -28620,10 +29301,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2.x-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltx_diffusion",
    "total_size_bytes": 43914091388
   },
   {
@@ -28800,10 +29484,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2.x-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltx_diffusion",
    "total_size_bytes": 44909870140
   },
   {
@@ -28980,10 +29667,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2.x-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltx_diffusion",
    "total_size_bytes": 44909870140
   },
   {
@@ -29162,10 +29852,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 89136265680
   },
   {
@@ -29389,12 +30082,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "kl",
    "total_size_bytes": 91206104222
   },
   {
@@ -29550,10 +30246,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 45524051446
   },
   {
@@ -29686,10 +30385,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 54055835190
   },
   {
@@ -29846,10 +30548,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 76763001798
   },
   {
@@ -30030,10 +30735,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 89136265680
   },
   {
@@ -30189,10 +30897,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 45524051446
   },
   {
@@ -30325,10 +31036,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "ltx-2-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 54055835190
   },
   {
@@ -30439,6 +31153,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/LTXV2_comfy の ltx-2-19b-distilled_transformer_only_bf16.safetensors の本家が分かりません(ltx-2-19b-distilled_transformer_only_bf16.safetensors)",
@@ -30446,6 +31161,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
    "total_size_bytes": 53827813171
   },
   {
@@ -30665,6 +31382,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 系統 sdpose: SDPose は Stable Diffusion 2 の U-Net から作られている(カードの表記は元の規約より寛容でありうる)(sdpose_wholebody_fp16.safetensors)",
@@ -30672,6 +31390,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 46367285289
   },
   {
@@ -30823,12 +31543,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: lightx2v/Minimax-h3-Turbo にライセンスの記載がありません(minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 42030035159
   },
   {
@@ -30980,12 +31703,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: lightx2v/Minimax-h3-Turbo にライセンスの記載がありません(minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 42030035159
   },
   {
@@ -31136,10 +31862,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "minimax-h3-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 42030035159
   },
   {
@@ -31290,10 +32019,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": "minimax-h3-community-license-agreement",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 42030035159
   },
   {
@@ -31445,12 +32177,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: lightx2v/Minimax-h3-Turbo にライセンスの記載がありません(minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "minimax_h3",
+   "comfy_vae": "minimax_h3",
    "total_size_bytes": 42030035159
   },
   {
@@ -31635,12 +32370,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors の本家が分かりません(lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 22479761079
   },
   {
@@ -31775,10 +32513,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 11486669395
   },
   {
@@ -31913,10 +32654,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 42050336219
   },
   {
@@ -32123,12 +32867,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 44758462043
   },
   {
@@ -32335,12 +33082,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 28618927971
   },
   {
@@ -32521,12 +33271,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 29685622417
   },
   {
@@ -32711,6 +33464,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の WanAnimate_relight_lora_fp16.safetensors の本家が分かりません(WanAnimate_relight_lora_fp16.safetensors)",
@@ -32718,6 +33472,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 28830380381
   },
   {
@@ -32900,10 +33656,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38033162727
   },
   {
@@ -33088,10 +33847,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 40046493159
   },
   {
@@ -33277,10 +34039,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38035806375
   },
   {
@@ -33465,10 +34230,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38033164103
   },
   {
@@ -33651,10 +34419,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38033162727
   },
   {
@@ -33813,10 +34584,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25242529435
   },
   {
@@ -33999,10 +34773,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 38031524327
   },
   {
@@ -34115,10 +34892,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 18148611137
   },
   {
@@ -34230,10 +35010,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 18146245513
   },
   {
@@ -34344,10 +35127,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 18144966705
   },
   {
@@ -34504,6 +35290,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_int8_convrot.safetensors の本家が分かりません(wan_animate_2_int8_convrot.safetensors)",
@@ -34511,6 +35298,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25645113843
   },
   {
@@ -34644,12 +35433,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Comfy-Org/Wan-Animate-2 の wan_animate_2_distill_int8_convrot.safetensors の本家が分かりません(wan_animate_2_distill_int8_convrot.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 24907108099
   },
   {
@@ -34784,10 +35576,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25389377307
   },
   {
@@ -34969,6 +35764,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Wan-AI/Wan2.2-Dancer-14B を読めません(HTTP 401)(wan2.2_dancer_14b_global_fp8_scaled.safetensors)",
@@ -34977,6 +35773,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 50307624515
   },
   {
@@ -35181,6 +35979,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
@@ -35188,6 +35987,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 57751314960
   },
   {
@@ -35392,6 +36193,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
@@ -35399,6 +36201,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 57751314960
   },
   {
@@ -35603,6 +36407,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
@@ -35610,6 +36415,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 57751314960
   },
   {
@@ -35743,12 +36550,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 42403051599
   },
   {
@@ -35907,12 +36717,15 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_14B_T2V_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_14B_T2V_lora_rank32.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 43729709207
   },
   {
@@ -36117,6 +36930,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors の本家が分かりません(Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors)",
@@ -36124,6 +36938,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 57751314960
   },
   {
@@ -36281,6 +37097,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
@@ -36288,6 +37105,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25394780013
   },
   {
@@ -36447,6 +37266,7 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [
     "license_unverified: 再配布 Kijai/WanVideo_comfy の lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors の本家が分かりません(lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors)",
@@ -36454,6 +37274,8 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 25394780013
   },
   {
@@ -36588,10 +37410,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 41046635051
   },
   {
@@ -36726,10 +37551,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 11383047059
   },
   {
@@ -36864,10 +37692,13 @@
    "homepage": null,
    "downloads": null,
    "likes": null,
+   "downloads_all_time": null,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
+   "comfy_family": "wan",
+   "comfy_vae": "wan",
    "total_size_bytes": 11382899603
   },
   {
@@ -36921,12 +37752,14 @@
    "homepage": "https://huggingface.co/0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF",
    "downloads": 63949,
    "likes": 83,
+   "downloads_all_time": 63949,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 7591551648,
-   "downloads_all_time": 63949
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
+   "total_size_bytes": 7591551648
   },
   {
    "id": "hf:AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
@@ -36979,14 +37812,16 @@
    "homepage": "https://huggingface.co/AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
    "downloads": 407270,
    "likes": 566,
+   "downloads_all_time": 407270,
    "license_name": null,
    "license_evidence": [
     "license_unverified: apache-2.0 は、系統 qwen-image-2.1 の other(qwen-research)(https://huggingface.co/Qwen/Qwen-Image-2.1)より寛容です(Qwen-Image-2.1-Turbo-Uncensored-Q8_0.gguf)"
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 8709520096,
-   "downloads_all_time": 407270
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
+   "total_size_bytes": 8709520096
   },
   {
    "id": "hf:ChrisColeTech/qwen-image-edit-uncensored-GGUF",
@@ -37086,6 +37921,7 @@
    "homepage": "https://huggingface.co/ChrisColeTech/qwen-image-edit-uncensored-GGUF",
    "downloads": 72171,
    "likes": 74,
+   "downloads_all_time": 116867,
    "license_name": null,
    "license_evidence": [
     "license_unverified: ChrisColeTech/qwen-image-edit-uncensored-GGUF にライセンスの記載がありません(qwen-image-edit-2511-uncensored-Q8_0.gguf)",
@@ -37094,8 +37930,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 26409042758,
-   "downloads_all_time": 116867
+   "comfy_family": "qwen_image",
+   "comfy_vae": "wan",
+   "total_size_bytes": 26409042758
   },
   {
    "id": "hf:Heartsync/NSFW-Uncensored",
@@ -37220,6 +38057,7 @@
    "homepage": "https://huggingface.co/Heartsync/NSFW-Uncensored",
    "downloads": 17377,
    "likes": 325,
+   "downloads_all_time": 201196,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Heartsync/NSFW-Uncensored の元のモデル(base_model)も系統も分かりません(model.fp16.safetensors)",
@@ -37229,8 +38067,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 13875688436,
-   "downloads_all_time": 201196
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 13875688436
   },
   {
    "id": "hf:Laxhar/noobai-XL-1.1",
@@ -37289,12 +38128,14 @@
    "homepage": "https://huggingface.co/Laxhar/noobai-XL-1.1",
    "downloads": 232838,
    "likes": 188,
+   "downloads_all_time": 1074106,
    "license_name": "fair-ai-public-license-1.0-sd",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7105349958,
-   "downloads_all_time": 1074106
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 7105349958
   },
   {
    "id": "hf:Meina/MeinaHentai",
@@ -37346,14 +38187,16 @@
    "homepage": "https://huggingface.co/Meina/MeinaHentai",
    "downloads": 1729,
    "likes": 21,
+   "downloads_all_time": 10180,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Meina/MeinaHentai の元のモデル(base_model)も系統も分かりません(meinaHentai V3 - baked VAE.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2132651866,
-   "downloads_all_time": 10180
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 2132651866
   },
   {
    "id": "hf:ModdiAdam/Wild_Krea-2-turbo_NSFW",
@@ -37410,12 +38253,14 @@
    "homepage": "https://huggingface.co/ModdiAdam/Wild_Krea-2-turbo_NSFW",
    "downloads": 7954,
    "likes": 6,
+   "downloads_all_time": 17937,
    "license_name": "krea-2-license",
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 13625742656,
-   "downloads_all_time": 17937
+   "comfy_family": "krea2",
+   "comfy_vae": "wan",
+   "total_size_bytes": 13625742656
   },
   {
    "id": "hf:Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1",
@@ -37470,12 +38315,14 @@
    "homepage": "https://huggingface.co/Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1",
    "downloads": 260678,
    "likes": 566,
+   "downloads_all_time": 260678,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7256784376,
-   "downloads_all_time": 260678
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
+   "total_size_bytes": 7256784376
   },
   {
    "id": "hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting",
@@ -37527,14 +38374,16 @@
    "homepage": "https://huggingface.co/TheImposterImposters/lustifySDXLNSFW_v20-inpainting",
    "downloads": 2087,
    "likes": 1,
+   "downloads_all_time": 13216,
    "license_name": null,
    "license_evidence": [
     "license_unverified: TheImposterImposters/lustifySDXLNSFW_v20-inpainting にライセンスの記載がありません(lustifySDXLNSFW_v20-inpainting.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938078610,
-   "downloads_all_time": 13216
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 6938078610
   },
   {
    "id": "hf:UnfilteredAI/NSFW-gen-v2",
@@ -37587,12 +38436,14 @@
    "homepage": "https://huggingface.co/UnfilteredAI/NSFW-gen-v2",
    "downloads": 6864,
    "likes": 637,
+   "downloads_all_time": 599038,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938043264,
-   "downloads_all_time": 599038
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 6938043264
   },
   {
    "id": "hf:Winnougan/Ideogram_Instant_NSFW",
@@ -37645,12 +38496,14 @@
    "homepage": "https://huggingface.co/Winnougan/Ideogram_Instant_NSFW",
    "downloads": 2623,
    "likes": 30,
+   "downloads_all_time": 22018,
    "license_name": "ideogram-4-non-commercial",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18558640000,
-   "downloads_all_time": 22018
+   "comfy_family": "ideogram4",
+   "comfy_vae": null,
+   "total_size_bytes": 18558640000
   },
   {
    "id": "hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized",
@@ -37751,12 +38604,14 @@
    "homepage": "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-Quantized",
    "downloads": 2739572,
    "likes": 4631,
+   "downloads_all_time": 2739572,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 25801402224,
-   "downloads_all_time": 2739572
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
+   "total_size_bytes": 25801402224
   },
   {
    "id": "hf:darknight9121/FLUX.2-klein-base-9B-bucket-uncensored",
@@ -37808,12 +38663,14 @@
    "homepage": "https://huggingface.co/darknight9121/FLUX.2-klein-base-9B-bucket-uncensored",
    "downloads": 23422,
    "likes": 51,
+   "downloads_all_time": 86556,
    "license_name": "flux-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18157185200,
-   "downloads_all_time": 86556
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
+   "total_size_bytes": 18157185200
   },
   {
    "id": "hf:kkkkk26/lustify_v9",
@@ -37865,14 +38722,16 @@
    "homepage": "https://huggingface.co/kkkkk26/lustify_v9",
    "downloads": 7977,
    "likes": 0,
+   "downloads_all_time": 14755,
    "license_name": null,
    "license_evidence": [
     "license_unverified: kkkkk26/lustify_v9 にライセンスの記載がありません(lustifyNSFWCheckpoint_zenithV9.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 6938143490,
-   "downloads_all_time": 14755
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 6938143490
   },
   {
    "id": "hf:kpsss34/FHDR_Uncensored",
@@ -37925,14 +38784,16 @@
    "homepage": "https://huggingface.co/kpsss34/FHDR_Uncensored",
    "downloads": 2427,
    "likes": 640,
+   "downloads_all_time": 343070,
    "license_name": null,
    "license_evidence": [
     "license_unverified: kpsss34/FHDR_Uncensored の表記 other は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(FHDR_ComfyUI-Q8_0.gguf)"
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 12714452256,
-   "downloads_all_time": 343070
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 12714452256
   },
   {
    "id": "hf:lesliemore/z-image-turbo-nsfw-v2-GGUF",
@@ -37987,12 +38848,14 @@
    "homepage": "https://huggingface.co/lesliemore/z-image-turbo-nsfw-v2-GGUF",
    "downloads": 64347,
    "likes": 28,
+   "downloads_all_time": 98618,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 7224707264,
-   "downloads_all_time": 98618
+   "comfy_family": "zimage",
+   "comfy_vae": "kl",
+   "total_size_bytes": 7224707264
   },
   {
    "id": "hf:rectangleworm/PornMaster_Klein-9b",
@@ -38093,12 +38956,14 @@
    "homepage": "https://huggingface.co/rectangleworm/PornMaster_Klein-9b",
    "downloads": 21588,
    "likes": 47,
+   "downloads_all_time": 43734,
    "license_name": "flux-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 18788082940,
-   "downloads_all_time": 43734
+   "comfy_family": "flux2",
+   "comfy_vae": "kl",
+   "total_size_bytes": 18788082940
   },
   {
    "id": "hf:sinkinai/hassaku-hentai",
@@ -38150,14 +39015,16 @@
    "homepage": "https://huggingface.co/sinkinai/hassaku-hentai",
    "downloads": 1399,
    "likes": 17,
+   "downloads_all_time": 36515,
    "license_name": null,
    "license_evidence": [
     "license_unverified: sinkinai/hassaku-hentai にライセンスの記載がありません(hassakuHentaiModel_v11.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2132626072,
-   "downloads_all_time": 36515
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 2132626072
   },
   {
    "id": "hf:webmp3/Sakura-Qwen-Image-2.1-Turbo-Uncensored-GGUF",
@@ -38263,12 +39130,14 @@
    "homepage": "https://huggingface.co/webmp3/Sakura-Qwen-Image-2.1-Turbo-Uncensored-GGUF",
    "downloads": 27134,
    "likes": 30,
+   "downloads_all_time": 27134,
    "license_name": "qwen-research",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 13294875288,
-   "downloads_all_time": 27134
+   "comfy_family": "qwen_image21",
+   "comfy_vae": "wan",
+   "total_size_bytes": 13294875288
   },
   {
    "id": "hf:stabilityai/stable-audio-3-small-sfx",
@@ -38319,12 +39188,14 @@
    "homepage": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx",
    "downloads": 45166,
    "likes": 253,
+   "downloads_all_time": 119397,
    "license_name": "stable-audio-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2270384940,
-   "downloads_all_time": 119397
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "total_size_bytes": 2270384940
   },
   {
    "id": "hf:stabilityai/stable-audio-open-1.0",
@@ -38397,12 +39268,14 @@
    "homepage": "https://huggingface.co/stabilityai/stable-audio-open-1.0",
    "downloads": 20703,
    "likes": 1786,
+   "downloads_all_time": 902686,
    "license_name": "stable-audio-community",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 5478363963,
-   "downloads_all_time": 902686
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "total_size_bytes": 5478363963
   },
   {
    "id": "hf:FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
@@ -38450,12 +39323,14 @@
    "homepage": "https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
    "downloads": 242469,
    "likes": 668,
+   "downloads_all_time": 990557,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 988097824,
-   "downloads_all_time": 990557
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 988097824
   },
   {
    "id": "hf:Jmica/Drama-3-GGUF",
@@ -38506,14 +39381,16 @@
    "homepage": "https://huggingface.co/Jmica/Drama-3-GGUF",
    "downloads": 188725,
    "likes": 23,
+   "downloads_all_time": 188725,
    "license_name": null,
    "license_evidence": [
     "license_unverified: Jmica/Drama-3-GGUF の表記 other(fish-audio-community-license-v1.0) は、元の fishaudio/drama-3 の other(fish-audio-research-license) より寛容です(drama-3-backbone-4bit-experts-Q4_K_S.gguf)"
    ],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 23386029088,
-   "downloads_all_time": 188725
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 23386029088
   },
   {
    "id": "hf:OpenMOSS-Team/MOSS-TTS-v1.5",
@@ -38624,12 +39501,14 @@
    "homepage": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-v1.5",
    "downloads": 140720,
    "likes": 213,
+   "downloads_all_time": 999454,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 16979739072,
-   "downloads_all_time": 999454
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 16979739072
   },
   {
    "id": "hf:Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
@@ -38677,12 +39556,14 @@
    "homepage": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
    "downloads": 953490,
    "likes": 206,
+   "downloads_all_time": 7659339,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 1811626576,
-   "downloads_all_time": 7659339
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 1811626576
   },
   {
    "id": "hf:Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -38730,12 +39611,14 @@
    "homepage": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
    "downloads": 2096170,
    "likes": 2144,
+   "downloads_all_time": 17255380,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 3833402552,
-   "downloads_all_time": 17255380
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 3833402552
   },
   {
    "id": "hf:ResembleAI/chatterbox",
@@ -38783,12 +39666,14 @@
    "homepage": "https://huggingface.co/ResembleAI/chatterbox",
    "downloads": 1718719,
    "likes": 1857,
+   "downloads_all_time": 23745332,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2143989928,
-   "downloads_all_time": 23745332
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 2143989928
   },
   {
    "id": "hf:Serveurperso/Qwen3-TTS-GGUF",
@@ -38837,12 +39722,14 @@
    "homepage": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF",
    "downloads": 470247,
    "likes": 61,
+   "downloads_all_time": 1697063,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 968588544,
-   "downloads_all_time": 1697063
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 968588544
   },
   {
    "id": "hf:ai4bharat/indic-parler-tts",
@@ -38890,12 +39777,14 @@
    "homepage": "https://huggingface.co/ai4bharat/indic-parler-tts",
    "downloads": 198385,
    "likes": 433,
+   "downloads_all_time": 5190611,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 3751321772,
-   "downloads_all_time": 5190611
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 3751321772
   },
   {
    "id": "hf:audio-cpp/AuK-Base-and-Flash-GGUF",
@@ -38966,12 +39855,14 @@
    "homepage": "https://huggingface.co/audio-cpp/AuK-Base-and-Flash-GGUF",
    "downloads": 215912,
    "likes": 7,
+   "downloads_all_time": 215912,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2276722304,
-   "downloads_all_time": 215912
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 2276722304
   },
   {
    "id": "hf:bosonai/higgs-tts-3-4b",
@@ -39019,12 +39910,14 @@
    "homepage": "https://huggingface.co/bosonai/higgs-tts-3-4b",
    "downloads": 120143,
    "likes": 813,
+   "downloads_all_time": 904200,
    "license_name": "boson-higgs-tts-3-research-and-non-commercial-license",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 9309834930,
-   "downloads_all_time": 904200
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 9309834930
   },
   {
    "id": "hf:drbaph/Higgs-Audio-v3-Studio",
@@ -39072,12 +39965,14 @@
    "homepage": "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio",
    "downloads": 404033,
    "likes": 8,
+   "downloads_all_time": 936543,
    "license_name": "boson-higgs-audio-v3-research-and-non-commercial-license",
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 5519235296,
-   "downloads_all_time": 936543
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 5519235296
   },
   {
    "id": "hf:hexgrad/Kokoro-82M",
@@ -39128,14 +40023,16 @@
    "homepage": "https://huggingface.co/hexgrad/Kokoro-82M",
    "downloads": 10533404,
    "likes": 7280,
+   "downloads_all_time": 132951460,
    "license_name": null,
    "license_evidence": [
     "license_unverified: yl4579/StyleTTS2-LJSpeech にライセンスの記載がありません(kokoro-v1_0.pth)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 327212226,
-   "downloads_all_time": 132951460
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 327212226
   },
   {
    "id": "hf:k2-fsa/OmniVoice",
@@ -39185,14 +40082,16 @@
    "homepage": "https://huggingface.co/k2-fsa/OmniVoice",
    "downloads": 1799588,
    "likes": 1564,
+   "downloads_all_time": 10403122,
    "license_name": null,
    "license_evidence": [
     "license_unverified: k2-fsa/OmniVoice にライセンスの記載がありません(model.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2450344112,
-   "downloads_all_time": 10403122
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 2450344112
   },
   {
    "id": "hf:microsoft/VibeVoice-1.5B",
@@ -39282,12 +40181,14 @@
    "homepage": "https://huggingface.co/microsoft/VibeVoice-1.5B",
    "downloads": 537112,
    "likes": 2502,
+   "downloads_all_time": 3809857,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 5408202454,
-   "downloads_all_time": 3809857
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 5408202454
   },
   {
    "id": "hf:microsoft/VibeVoice-Realtime-0.5B",
@@ -39336,12 +40237,14 @@
    "homepage": "https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B",
    "downloads": 293242,
    "likes": 1305,
+   "downloads_all_time": 6129660,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 2035332888,
-   "downloads_all_time": 6129660
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 2035332888
   },
   {
    "id": "hf:myshell-ai/MeloTTS-English",
@@ -39389,12 +40292,14 @@
    "homepage": "https://huggingface.co/myshell-ai/MeloTTS-English",
    "downloads": 153442,
    "likes": 316,
+   "downloads_all_time": 25534058,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 207860748,
-   "downloads_all_time": 25534058
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 207860748
   },
   {
    "id": "hf:openbmb/VoxCPM2",
@@ -39442,12 +40347,14 @@
    "homepage": "https://huggingface.co/openbmb/VoxCPM2",
    "downloads": 847173,
    "likes": 1700,
+   "downloads_all_time": 3491871,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 4580080592,
-   "downloads_all_time": 3491871
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 4580080592
   },
   {
    "id": "hf:pnnbao-ump/VieNeu-TTS-v3-Turbo",
@@ -39495,12 +40402,14 @@
    "homepage": "https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo",
    "downloads": 1343183,
    "likes": 82,
+   "downloads_all_time": 2704202,
    "license_name": null,
    "license_evidence": [],
    "files_complete": false,
    "size_floor_bytes": null,
-   "total_size_bytes": 187917664,
-   "downloads_all_time": 2704202
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 187917664
   },
   {
    "id": "hf:sesame/csm-1b",
@@ -39569,12 +40478,14 @@
    "homepage": "https://huggingface.co/sesame/csm-1b",
    "downloads": 129861,
    "likes": 2480,
+   "downloads_all_time": 2099656,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 7133500964,
-   "downloads_all_time": 2099656
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 7133500964
   },
   {
    "id": "hf:speechbrain/tts-hifigan-libritts-22050Hz",
@@ -39622,12 +40533,14 @@
    "homepage": "https://huggingface.co/speechbrain/tts-hifigan-libritts-22050Hz",
    "downloads": 216373,
    "likes": 6,
+   "downloads_all_time": 1192693,
    "license_name": null,
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 55828077,
-   "downloads_all_time": 1192693
+   "comfy_family": null,
+   "comfy_vae": null,
+   "total_size_bytes": 55828077
   },
   {
    "id": "hf:ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8",
@@ -39727,6 +40640,7 @@
    "homepage": "https://huggingface.co/ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8",
    "downloads": 108244,
    "likes": 300,
+   "downloads_all_time": 200432,
    "license_name": null,
    "license_evidence": [
     "license_unverified: ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8 にライセンスの記載がありません(ltxv23_uncensored_v1.4_Q8_0.gguf)",
@@ -39735,8 +40649,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 31497521610,
-   "downloads_all_time": 200432
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
+   "total_size_bytes": 31497521610
   },
   {
    "id": "hf:ChrisColeTech/LTX-2.5-uncensored-v1.1-FP8",
@@ -39836,6 +40751,7 @@
    "homepage": "https://huggingface.co/ChrisColeTech/LTX-2.5-uncensored-v1.1-FP8",
    "downloads": 73953,
    "likes": 104,
+   "downloads_all_time": 91115,
    "license_name": null,
    "license_evidence": [
     "license_unverified: ChrisColeTech/LTX-2.5-uncensored-v1.1-FP8 にライセンスの記載がありません(ltx25_uncensored_v1.1-Q8_0.gguf)",
@@ -39844,8 +40760,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 37777193202,
-   "downloads_all_time": 91115
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltx_diffusion",
+   "total_size_bytes": 37777193202
   },
   {
    "id": "hf:TenStrip/LTX2.3-10Eros",
@@ -39920,6 +40837,7 @@
    "homepage": "https://huggingface.co/TenStrip/LTX2.3-10Eros",
    "downloads": 81815,
    "likes": 593,
+   "downloads_all_time": 962337,
    "license_name": null,
    "license_evidence": [
     "license_unverified: TenStrip/LTX2.3-10Eros にライセンスの記載がありません(10Eros_v1.5_bf16.safetensors)",
@@ -39927,8 +40845,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 58918453144,
-   "downloads_all_time": 962337
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 58918453144
   },
   {
    "id": "hf:coolthor/Sulphur-2-distilled-Q4_K_M-GGUF",
@@ -40005,6 +40924,7 @@
    "homepage": "https://huggingface.co/coolthor/Sulphur-2-distilled-Q4_K_M-GGUF",
    "downloads": 2104,
    "likes": 3,
+   "downloads_all_time": 11630,
    "license_name": null,
    "license_evidence": [
     "license_unverified: SulphurAI/Sulphur-2-base にライセンスの記載がありません(sulphur-distil-ltx23av-Q4_K_M.gguf)",
@@ -40012,8 +40932,9 @@
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 15646703530,
-   "downloads_all_time": 11630
+   "comfy_family": "ltxv",
+   "comfy_vae": "ltxv",
+   "total_size_bytes": 15646703530
   },
   {
    "id": "hf:rockerBOO/ltx2.3-10eros-nvfp4",
@@ -40066,14 +40987,16 @@
    "homepage": "https://huggingface.co/rockerBOO/ltx2.3-10eros-nvfp4",
    "downloads": 5793,
    "likes": 2,
+   "downloads_all_time": 12210,
    "license_name": null,
    "license_evidence": [
     "license_unverified: TenStrip/LTX2.3-10Eros にライセンスの記載がありません(10Eros_v1.5_nvfp4.safetensors)"
    ],
    "files_complete": true,
    "size_floor_bytes": null,
-   "total_size_bytes": 21734103566,
-   "downloads_all_time": 12210
+   "comfy_family": "sd",
+   "comfy_vae": "kl",
+   "total_size_bytes": 21734103566
   }
  ]
 }

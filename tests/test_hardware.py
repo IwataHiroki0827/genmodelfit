@@ -163,7 +163,7 @@ def test_old_driver_falls_back_to_query_without_compute_cap():
     # 名前から Maxwell と推す。ドライバ 472 は CUDA 12 の PyTorch に足りないので CPU、更新すれば動く
     assert (g.compute_capability, g.compute_capability_source, g.arch) == ("5.2", "name", "maxwell")
     assert g.backend == "none" and g.torch_cuda == []
-    assert any("527.41 以上" in n and "更新すれば GPU で動く" in n for n in g.notes)
+    assert any("525 以上" in n and "更新すれば GPU で動く" in n for n in g.notes)
 
 
 def test_old_kepler_is_cpu_even_after_driver_update(monkeypatch):
@@ -211,8 +211,8 @@ def test_nvidia_smi_locations(monkeypatch):
 
 ARCH_CASES = [
     # (名前, cc, ドライバ, Windows か) → (backend, arch, 計算の精度, bf16, fp8, 動く CUDA 版)
-    ("NVIDIA GeForce GTX 780", "3.5", "474.44", True, ("none", "kepler", "fp32", False, False, [])),
-    ("Tesla K80", "3.7", "535.183.01", False, ("none", "kepler", "fp32", False, False, [])),
+    ("NVIDIA GeForce GTX 780", "3.5", "474.44", True, ("none", "kepler", None, None, None, [])),
+    ("Tesla K80", "3.7", "535.183.01", False, ("none", "kepler", None, None, None, [])),
     ("NVIDIA GeForce GTX 980", "5.2", "572.16", True, ("cuda", "maxwell", "fp32", False, False, ["cu126"])),
     ("Quadro K2200", "5.0", "552.22", True, ("cuda", "maxwell", "fp32", False, False, ["cu126"])),
     ("NVIDIA GeForce GTX 1080", "6.1", "572.16", True, ("cuda", "pascal", "fp16", False, False, ["cu126"])),
@@ -274,7 +274,9 @@ ARCH_CASES = [
         True,
         ("cuda", "blackwell", "fp16", True, True, ["cu132", "cu130", "cu129", "cu128"]),
     ),
-    ("NVIDIA Future GPU", "13.0", "700.00", True, ("none", "unknown", "fp16", True, True, [])),
+    ("NVIDIA Future GPU", "13.0", "700.00", True, ("none", "unknown", None, None, None, [])),
+    # Blackwell は CUDA 12.8 の版のドライバ(570)から
+    ("NVIDIA GeForce RTX 5080", "12.0", "566.03", True, ("none", "blackwell", None, None, None, [])),
 ]
 
 
@@ -290,7 +292,9 @@ def test_arch_judgement(name, cc, driver, windows, want):
     ("driver", "windows", "usable"),
     [
         ("527.41", True, True),
-        ("527.37", True, False),
+        ("527.37", True, True),  # 表 3 は 12.x を 525 以上(OS で分けない)
+        ("525.05", True, True),
+        ("524.99", True, False),
         ("525.60.13", False, True),
         ("520.61.05", False, False),
         ("472.12", True, False),
@@ -558,13 +562,16 @@ def pc(vram: float, ram: float = 32.0, g: Gpu | None = None, **kw) -> SystemInfo
     return SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=gpus, **kw)
 
 
-def image(precision: str = "fp16", main_gb: float = 4.0) -> ModelEntry:
+def image(
+    precision: str = "fp16", main_gb: float = 4.0, main: str = "unet", vae: str = "vae.safetensors"
+) -> ModelEntry:
+    """main・vae の名前で ComfyUI の系統が決まる(unet・vae.safetensors は分からない系統)。"""
     files = [
         ModelFile(
-            name=f"unet_{precision}.safetensors", size_bytes=int(main_gb * GB), directory="diffusion_models"
+            name=f"{main}_{precision}.safetensors", size_bytes=int(main_gb * GB), directory="diffusion_models"
         ),
         ModelFile(name="clip_l.safetensors", size_bytes=int(0.25 * GB), directory="text_encoders"),
-        ModelFile(name="vae.safetensors", size_bytes=int(0.3 * GB), directory="vae"),
+        ModelFile(name=vae, size_bytes=int(0.3 * GB), directory="vae"),
     ]
     return ModelEntry(id="t", name="t", modality="image", files=files, precision=precision)
 
@@ -589,9 +596,10 @@ def test_precision_notes_for_bf16_and_fp8():
     turing = arch_gpu("NVIDIA GeForce RTX 2080", "7.5", "566.03")
     ampere = arch_gpu("NVIDIA GeForce RTX 3090", "8.6", "566.03")
     ada = arch_gpu("NVIDIA GeForce RTX 4090", "8.9", "581.57")
-    bf = estimate(image("bf16"), pc(24, g=turing), coefficients=c)
+    wan = image("bf16", main="wan2.1_t2v_1.3B", vae="wan_2.1_vae.safetensors")  # fp16 で動かせる系統
+    bf = estimate(wan, pc(24, g=turing), coefficients=c)
     assert any("bf16 の重みを fp16 で動かす" in r for r in bf.reasons)
-    same = estimate(image("bf16"), pc(24, g=ampere), coefficients=c)
+    same = estimate(wan, pc(24, g=ampere), coefficients=c)
     assert bf.vram_gb == same.vram_gb  # 2 バイトどうしなので VRAM は同じ
     f8 = estimate(image("fp8"), pc(24, g=ampere), coefficients=c)
     assert any("fp8 の計算に対応しない" in r for r in f8.reasons)
@@ -603,7 +611,13 @@ def test_fit_monotonic_in_vram_per_arch(case):
     """同じ世代のまま VRAM を増やしても段階は下がらない。"""
     name, cc, driver, windows, _ = case
     order = ["too_tight", "marginal", "good", "perfect"]
-    for e in (image("fp16", 2.0), image("bf16", 6.0), image("fp8", 11.0)):
+    for e in (
+        image("fp16", 2.0),
+        image("bf16", 6.0, main="qwen_image", vae="qwen_image_vae.safetensors"),
+        image("bf16", 6.0, main="ltx-2-19b-dev"),
+        image("bf16", 4.0, main="flux1-dev", vae="ae.safetensors"),
+        image("fp8", 11.0, main="z_image_turbo", vae="ae.safetensors"),
+    ):
         prev = -1
         for vram in (2, 4, 6, 8, 10, 12, 16, 24, 32, 48):
             g = classify(gpu(name, cc, driver), windows)
@@ -706,3 +720,148 @@ def test_crlf_and_lf_outputs_read_the_same():
     lf = parse_nvidia_smi(text.replace("\r\n", "\n"), QUERY)
     crlf = parse_nvidia_smi(text.replace("\r\n", "\n").replace("\n", "\r\n"), QUERY)
     assert lf == crlf and len(lf) == 2
+
+
+# --- ComfyUI の系統(#21 の Checker: supported_inference_dtypes・working_dtypes) -------------------
+
+FAMILY_GPUS = {
+    "maxwell": ("NVIDIA GeForce GTX 980", "5.2"),
+    "pascal_win": ("NVIDIA GeForce GTX 1080", "6.1"),
+    "volta": ("Tesla V100-PCIE-16GB", "7.0"),
+    "turing": ("NVIDIA GeForce RTX 2080 Ti", "7.5"),
+    "turing16": ("NVIDIA GeForce GTX 1660 SUPER", "7.5"),
+    "ampere": ("NVIDIA GeForce RTX 3060", "8.6"),
+    "ada": ("NVIDIA GeForce RTX 4090", "8.9"),
+    "blackwell": ("NVIDIA GeForce RTX 5090", "12.0"),
+}
+# (本体の名前, VAE) → 期待: bf16 を持たない GPU で作業用メモリが 2 倍になるか、VAE が 2 倍になるか
+FAMILY_CASES = [
+    ("qwen_image", "qwen_image_vae.safetensors", True, False),  # 本体は bf16 だけ、VAE は Wan(fp16 可)
+    ("ltx-2-19b-dev", "vae.safetensors", True, False),  # VAE は分からない
+    ("hunyuan_video_t2v_720p", "hunyuan_video_vae_bf16.safetensors", True, False),
+    ("z_image_turbo", "ae.safetensors", True, True),
+    ("acestep_v1.5_turbo", "vae.safetensors", True, False),
+    ("flux1-dev", "ae.safetensors", False, True),  # 本体は fp16 可、KL の VAE は bf16 か fp32
+    ("flux1-fill-dev", "ae.safetensors", True, True),  # FluxInpaint は bf16 だけ
+    ("wan2.1_t2v_1.3B", "wan_2.1_vae.safetensors", False, False),
+    (
+        "hunyuanvideo1.5_720p_t2v",
+        "hunyuanvideo15_vae_fp16.safetensors",
+        False,
+        False,
+    ),  # HunyuanVideo15 は fp16 可
+    ("sd_xl_base_1.0", "vae.safetensors", False, False),
+]
+
+
+@pytest.mark.parametrize("arch", list(FAMILY_GPUS))
+@pytest.mark.parametrize(("main", "vae", "act2", "vae2"), FAMILY_CASES)
+def test_family_precision_per_arch(arch, main, vae, act2, vae2):
+    c = Coefficients()
+    name, cc = FAMILY_GPUS[arch]
+    g = arch_gpu(name, cc, "581.57")
+    e = image("bf16", 6.0, main=main, vae=vae)
+    base = estimate(e, pc(48, g=arch_gpu("NVIDIA GeForce RTX 3090", "8.6", "581.57")), coefficients=c)
+    got = estimate(e, pc(48, g=g), coefficients=c)
+    act = c.act_image_gb_per_mp * 1024 * 1024 / 1e6
+    if g.compute_dtype == "fp32":  # 半精度を使わない GPU はこれまでどおり作業用メモリと VAE を 2 倍
+        want = act + 0.3
+    elif g.bf16 is False:
+        want = (act if act2 else 0) + (0.3 if vae2 else 0)
+    else:
+        want = 0.0
+    assert got.vram_gb - base.vram_gb == pytest.approx(want, abs=0.02), (arch, main)
+    if g.bf16 is False and g.compute_dtype != "fp32" and act2:
+        assert any("fp16 で動かさない" in r for r in got.reasons)
+
+
+def test_unknown_family_is_noted_only_where_it_matters():
+    c = Coefficients()
+    e = image("bf16", 6.0)  # unet_bf16・vae.safetensors は系統が分からない
+    turing = estimate(e, pc(12, g=arch_gpu("NVIDIA GeForce RTX 2080 Ti", "7.5", "566.03")), coefficients=c)
+    ampere = estimate(e, pc(12, g=arch_gpu("NVIDIA GeForce RTX 3060", "8.6", "566.03")), coefficients=c)
+    assert any("系統(ComfyUI のどのモデルか)が分からない" in r for r in turing.reasons)
+    assert not any("系統" in r for r in ampere.reasons)
+    assert turing.vram_gb == ampere.vram_gb
+
+
+@pytest.mark.parametrize(
+    ("name", "family", "vae"),
+    [
+        ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image", "wan"),  # VAE のファイルが無ければ系統の既定
+        ("qwen_image_2.1_int8_convrot.safetensors", "qwen_image21", "wan"),
+        ("ltx-2.3-22b-dev-fp8.safetensors", "ltxv", "ltxv"),
+        ("Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors", "wan", "wan"),
+        ("anima-base-v1.0.safetensors", "anima", "wan"),
+        ("flux1-fill-dev.safetensors", "flux_fill", "kl"),
+        ("flux1-canny-dev.safetensors", "flux", "kl"),
+        ("flux-2-klein-4b-fp8.safetensors", "flux2", "kl"),
+        ("flux3-image-klein-int8-convrot.safetensors", "flux3", "kl"),
+        ("hunyuanvideo1.5_720p_t2v_fp16.safetensors", "hunyuan_video15", "hunyuan_video15"),
+        ("ace_step_1.5_turbo_aio.safetensors", "ace15", None),
+        ("ace_step_v1_3.5b.safetensors", "ace", "ace"),
+        ("capybara_v0.1.safetensors", None, None),
+        ("moge_2_vitl_normal_fp16.safetensors", None, None),
+    ],
+)
+def test_family_of_names(name, family, vae):
+    from genmodelfit.families import family_of, vae_of
+
+    e = ModelEntry(id="x", name="x", modality="image", files=[ModelFile(name=name, size_bytes=GB)])
+    assert family_of(e) == family
+    assert vae_of(e, family) == vae
+
+
+def test_bundled_catalog_has_families():
+    from genmodelfit.db import load
+    from genmodelfit.families import FAMILIES, VAES, family_of, vae_of
+
+    db = load(use_cache=False)
+    known = [m for m in db.models if m.comfy_family]
+    assert len(known) >= 270
+    for m in db.models:  # 同梱の一覧は今の表で作り直してある(update と同じ結果)
+        assert m.comfy_family == family_of(m), m.id
+        assert m.comfy_vae == vae_of(m, m.comfy_family), m.id
+        assert m.comfy_family is None or m.comfy_family in FAMILIES
+        assert m.comfy_vae is None or m.comfy_vae in VAES
+    unknown_media = [m.id for m in db.models if not m.comfy_family and m.modality in ("image", "video")]
+    assert all(
+        "capybara" in i or "utility" in i or "moge" in i or i.startswith(("hf:", "templates"))
+        for i in unknown_media
+    )
+
+
+def test_old_db_without_family_fields_still_reads():
+    old = {"id": "x", "name": "x", "modality": "image", "files": [{"name": "qwen_image_bf16.safetensors"}]}
+    e = ModelEntry.from_dict(old)
+    assert e.comfy_family is None and e.comfy_vae is None  # 見積もりは名前から決め直す
+    from genmodelfit.families import family_of
+
+    assert family_of(e) == "qwen_image"
+
+
+def test_nvidia_smi_partial_failure_keeps_readable_rows(monkeypatch):
+    out = (
+        "NVIDIA GeForce RTX 3090, 24576, 24000, 576, 581.57, 8.6\n"
+        "Unable to determine the device handle for GPU0000:02:00.0: Unknown Error\n"
+    )
+    monkeypatch.setattr(hardware, "_run", FakeRun((15, out)))
+    gpus, notes = query_nvidia_smi("nvidia-smi")
+    assert [g.name for g in gpus] == ["NVIDIA GeForce RTX 3090"]
+    assert any("1 枚の GPU の情報を読めなかった" in n for n in notes)
+    assert not any("0000:02:00.0" in n for n in notes)  # 差し場所は写さない
+
+
+def test_multiple_gpu_models_get_a_device_note(monkeypatch):
+    _patch_nvidia(monkeypatch, fx("nvsmi_multi.csv"))
+    s = detect(memory=MEM)
+    assert s.best_gpu.name == "NVIDIA GeForce RTX 4090"
+    assert any("CUDA の 0 番" in n and "--cuda-device" in n for n in s.notes)
+
+
+def test_unusable_gpu_has_no_precision():
+    g = classify(gpu("NVIDIA GeForce GTX 780", "3.5", "474.44"))
+    assert g.backend == "none" and (g.compute_dtype, g.bf16, g.fp8) == (None, None, None)
+    assert any(n.startswith("Kepler 世代") for n in g.notes)
+    future = classify(gpu("NVIDIA Future GPU", "13.0", "700.00"))
+    assert any(n.startswith("この世代") for n in future.notes)

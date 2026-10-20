@@ -289,11 +289,11 @@ _NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
     # Kepler(デスクトップの GTX 6xx・7xx、GTX TITAN / Black / Z、Quadro K・Tesla K)
     (r"\btesla k80\b", (3, 7)),
     (
-        r"\bgtx\s*7[6-8]0\b|\bgtx titan( black| z)?$|\btesla k(20|40)\w*\b|\bgt\s*(710|720)\b"
+        r"\bgtx\s*780\b|\bgtx titan( black| z)?$|\btesla k(20|40)\w*\b|\bgt\s*(710|720)\b"
         r"|\bquadro k(5200|6000)\b",
         (3, 5),
     ),
-    (r"\bgtx\s*6[3-9]0\b|\bquadro k\d{3,4}\b", (3, 0)),
+    (r"\bgtx\s*(6[3-9]0|760|770)\b|\bquadro k\d{3,4}\b", (3, 0)),
 )
 
 
@@ -315,8 +315,8 @@ def cc_from_name(name: str) -> tuple[int, int] | None:
 # 出典: 各版の torch/cuda/__init__.py の PYTORCH_RELEASES_CODE_CC と
 # .ci/pytorch/windows/internal/cuda_config.bat・build_env_setup.py。Windows の cu126 は 6.1 も入れている
 # (Linux は 6.0 の機械語が 6.1 でも動く)。最低のドライバは NVIDIA CUDA Toolkit のリリースノートの
-# 表 3(マイナー版の互換: 12.x は 525 以上、13.x は 580 以上)と
-# 表 4(CUDA 12.0 GA: Linux 525.60.13 / Windows 527.41)
+# 表 3「CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility」
+# (12.x は 525 以上、13.x は 580 以上。OS で分けていない)。世代ごとの最低は ARCH_MIN_DRIVER
 TORCH_RELEASE = "2.14.1"
 
 
@@ -332,8 +332,8 @@ class CudaBuild:
 
 _CU13_X86 = frozenset({75, 80, 86, 90, 100, 120})
 _CU13_ARM = frozenset({80, 90, 100, 110, 120})
-_CU12_WIN = (527, 41)
-_CU12_LINUX = (525, 60, 13)
+_CU12_WIN = (525,)
+_CU12_LINUX = (525,)
 TORCH_CUDA_BUILDS: tuple[CudaBuild, ...] = (
     CudaBuild("cu132", "13.2", {"x86_64": _CU13_X86, "aarch64": _CU13_ARM}, (580,), (580,), "2.12〜2.14"),
     CudaBuild("cu130", "13.0", {"x86_64": _CU13_X86, "aarch64": _CU13_ARM}, (580,), (580,), "2.9〜2.14"),
@@ -355,6 +355,13 @@ TORCH_CUDA_BUILDS: tuple[CudaBuild, ...] = (
         "2.6〜2.14",
     ),
 )
+
+# 世代ごとの最低のドライバ。Blackwell(10.x・12.x)の機械語が入るのは CUDA 12.8 からで(PyTorch の cu128 以降。
+# 上の表)、CUDA 12.8 GA のドライバは Linux 570.26 / Windows 570.65(CUDA のリリースノートの表 4)。
+# それより古いドライバは Blackwell を知らない(nvidia-smi に出ること自体がまれ)
+ARCH_MIN_DRIVER: dict[str, tuple[tuple[int, ...], str]] = {
+    "blackwell": ((570,), "CUDA 12.8 GA(Linux 570.26 / Windows 570.65)"),
+}
 
 # Jetson など、同じ世代の機械語が動かない compute capability(PyTorch の DEVICE_REQUIREMENT と同じ)
 _SOLO_CC = {53, 62, 72, 87, 101, 110}
@@ -399,11 +406,11 @@ def torch_support(
         arch_builds = [b for b in TORCH_CUDA_BUILDS if any(_code_runs(c, cc) for c in b.ccs.get(machine, ()))]
         if not arch_builds:
             arch = arch_of(cc)
-            label = {"fermi": "Fermi 以前", "kepler": "Kepler", "unknown": "この"}.get(
-                arch, arch.capitalize()
+            label = {"fermi": "Fermi 以前の", "kepler": "Kepler ", "unknown": "この"}.get(
+                arch, arch.capitalize() + " "
             )
             notes.append(
-                f"{label} 世代(compute capability {cc[0]}.{cc[1]})は PyTorch の CUDA 版のビルドが"
+                f"{label}世代(compute capability {cc[0]}.{cc[1]})は PyTorch の CUDA 版のビルドが"
                 "どれも対応しないので、CPU として判定した(ドライバを更新しても GPU では動かない)"
             )
             return Support([], [], False, notes)
@@ -411,6 +418,15 @@ def torch_support(
     if ver is None:
         notes.append("ドライバの版が読めないので、ドライバでは断っていない")
         return Support([b.tag for b in arch_builds], [b.tag for b in arch_builds], True, notes)
+
+    floor = ARCH_MIN_DRIVER.get(arch_of(cc)) if cc else None
+    if floor and ver < floor[0]:
+        notes.append(
+            f"ドライバ {driver} はこの世代({arch_of(cc).capitalize()})に対応しない"
+            f"({_fmt_ver(floor[0])} 以上。"
+            f"{floor[1]})ので、CPU として判定した(ドライバを更新すれば GPU で動く)"
+        )
+        return Support([], [b.tag for b in arch_builds], False, notes)
 
     def need(b: CudaBuild) -> tuple[int, ...]:
         return b.min_driver_windows if windows_driver else b.min_driver_linux
@@ -596,8 +612,9 @@ def classify_gpu(g: Gpu, *, windows_driver: bool, comfy_windows: bool, machine: 
     g.notes.extend(sup.notes)
     if not sup.usable:
         g.backend = "none"
-    g.compute_dtype, g.bf16, g.fp8 = comfy_precision(cc, g.name, windows=comfy_windows)
-    if g.compute_dtype == "fp32" and g.backend == "cuda":
+    if g.backend == "cuda":  # 判定に使わない GPU には ComfyUI の精度を出さない
+        g.compute_dtype, g.bf16, g.fp8 = comfy_precision(cc, g.name, windows=comfy_windows)
+    if g.compute_dtype == "fp32":
         g.notes.append(
             "ComfyUI はこの GPU では半精度(fp16)を使わず fp32 で計算するので、"
             "作業用メモリを 2 倍で見積もる(遅い)"
@@ -609,21 +626,38 @@ def _ask(exe: str, fields: tuple[str, ...]) -> tuple[int, str] | None:
     return _run([exe, f"--query-gpu={','.join(fields)}", "--format=csv,noheader,nounits"], NVSMI_TIMEOUT)
 
 
+def _partial_notes(result: tuple[int, str]) -> list[str]:
+    """読めた行があるのに失敗した(終了コードが 0 でない・読めない GPU がある)ときの注意。
+    エラーの文言には PCI の差し場所が入るので写さない。"""
+    code, out = result
+    bad = sum(1 for line in out.splitlines() if "Unable to determine" in line or "Unknown Error" in line)
+    if bad:
+        return [
+            f"nvidia-smi が {bad} 枚の GPU の情報を読めなかった(ドライバ・GPU の不調)。"
+            "読めた GPU だけで判定した"
+        ]
+    if code != 0:
+        return [f"nvidia-smi が終了コード {code} を返した。読めた GPU だけで判定した"]
+    return []
+
+
 def query_nvidia_smi(exe: str) -> tuple[list[Gpu], list[str]]:
     """nvidia-smi に聞く。読めなければ compute_cap を除いた QUERY_OLD で聞き直す
     (compute_cap を知らない古い nvidia-smi は「not a valid field」で失敗する)。(GPU, 分かったこと)。"""
     first = _ask(exe, QUERY)
     if first is None:
         return [], ["nvidia-smi が動かない・時間内に終わらないので、GPU は無いものとして判定した"]
-    if first[0] == 0:
-        gpus = parse_nvidia_smi(first[1], QUERY)
-        if gpus:
-            return gpus, []
+    gpus = parse_nvidia_smi(first[1], QUERY)
+    if gpus:  # 1 枚だけ読めない(「Unable to determine the device handle」)ときも、読めた行は使う
+        return gpus, _partial_notes(first)
     second = _ask(exe, QUERY_OLD)
-    if second is not None and second[0] == 0:
+    if second is not None:
         gpus = parse_nvidia_smi(second[1], QUERY_OLD)
         if gpus:
-            return gpus, ["古い nvidia-smi で compute_cap を聞けなかったので、GPU 名から世代を推した"]
+            return gpus, [
+                "古い nvidia-smi で compute_cap を聞けなかったので、GPU 名から世代を推した",
+                *_partial_notes(second),
+            ]
     text = first[1] + (second[1] if second else "")
     if "No devices were found" in text:
         return [], ["nvidia-smi は動いたが NVIDIA の GPU が見つからない"]
@@ -1000,6 +1034,14 @@ def detect(
         found = list(gpus)
     for g in found:
         notes += [f"{g.name}: {n}" for n in g.notes]
+    usable_names = {g.name for g in found if g.backend == "cuda"}
+    if len(usable_names) > 1:
+        notes.append(
+            "GPU が複数ある。判定は VRAM が最大の 1 枚で行った。ComfyUI は既定で CUDA の 0 番"
+            "(CUDA_DEVICE_ORDER の"
+            "既定 FASTEST_FIRST で速い順の先頭)を使うので、違う GPU で動くときは ComfyUI を --cuda-device で"
+            "その GPU に向ける"
+        )
     mem = memory or read_memory()
     notes += mem.notes
 

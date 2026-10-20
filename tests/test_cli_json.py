@@ -176,6 +176,8 @@ MODEL_ENTRY = {
     "license_name",
     "license_evidence",
     "files_complete",
+    "comfy_family",
+    "comfy_vae",
     "size_floor_bytes",
 }
 MODEL_FILE = {

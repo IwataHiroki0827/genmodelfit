@@ -785,32 +785,69 @@ class GpuPrecision:
 def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrecision:
     """ComfyUI の精度の選び方(comfy/model_management.py)で、見積もりが変わるところだけを直す。
 
-    - 半精度を使わない GPU(Maxwell・一部の Pascal・GTX 16 系など。Gpu.compute_dtype が fp32):
-      作業用メモリは計算の精度の大きさに比例する(ComfyUI の memory_required・VAE の memory_used_decode が
-      dtype_size を掛ける)ので 2 倍。VAE は fp32 で載せるので 2 倍(ファイルが fp32 なら同じ)。
-      本体は fp32 にしても載るときだけ fp32 に広げる(載らなければ fp16 のまま)ので、大きさは変えない
-    - bf16 を持たない GPU の bf16 の重み: fp16 で載せる(同じ 2 バイト)ので変えない
-    - fp8 の計算を持たない GPU(Ada より前)の fp8 の重み: fp16 にしても載るときだけ fp16 に広げる
-      (載らなければ fp8 のまま)ので変えない。VRAM の量で変わる動きは、注意として書くだけにする
+    - 本体を fp32 で計算する場合は作業用メモリを 2 倍にする。作業用メモリは計算の精度の大きさに比例する
+      (ComfyUI の memory_required・VAE の memory_used_decode が dtype_size を掛ける)。fp32 で計算するのは
+      (1) 半精度を使わない GPU(Maxwell・一部の Pascal・GTX 16 系など。Gpu.compute_dtype が fp32)と、
+      (2) bf16 を持たない GPU(Pascal・Volta・Turing)で、fp16 で動かせない系統(families.FAMILIES の fp16 が
+      False: LTX・Qwen Image・Z-Image・HunyuanVideo・ACE-Step など)を動かすとき(unet_manual_cast が float32)
+    - VAE を fp32 で載せる場合は VAE の重みを 2 倍にする(ファイルが fp32 なら同じ)。半精度を使わない GPU と、
+      bf16 を持たない GPU で working_dtypes に fp16 が無い VAE(2D の KL・LTX など)。仕上げの作業用メモリは
+      足りなければ ComfyUI がタイルに分けるので変えない
+    - 本体の重みは変えない。ComfyUI は fp32 にしても `総量 × 0.88 − 最小の作業用メモリ` に収まるときだけ
+      fp32 で載せ、収まらなければ元の 2 バイト(bf16・fp16)のまま計算だけ fp32 にする(unet_dtype)。
+      VRAM が増えたときだけ使う量が増える動きなので、見積もりに入れると VRAM を増やして段階が下がる。
+      注意として書く
+    - fp8 の計算を持たない GPU(Ada より前)の fp8 の重み: 同じ理由で変えない(注意だけ)
+    系統が分からないときは (2) を見積もりに入れず、bf16 を持たない GPU ではそう書く。
     GPU が無い・世代が分からないときは何も変えない。"""
+    from .families import FAMILIES, VAES, family_of, vae_of
+
     g = system.best_gpu
     if g is None or system.vram_gb <= 0 or g.compute_dtype is None:
         return GpuPrecision()
     prec = norm_precision(s.precision) or source_precision(entry)
     notes: list[str] = []
-    act = vae = 1.0
-    if g.compute_dtype == "fp32":
-        act = 2.0
-        vae_files = [f for f in entry.files if _role_of(f) == "vae"]
-        vae_fp32 = bool(vae_files) and all(_name_precision(_path(f)[1]) == "fp32" for f in vae_files)
-        vae = 1.0 if vae_fp32 else 2.0
+    fam_key = getattr(entry, "comfy_family", None) or family_of(entry)
+    fam = FAMILIES.get(fam_key or "")
+    vae_key = getattr(entry, "comfy_vae", None) or vae_of(entry, fam_key)
+    vae_kind = VAES.get(vae_key or "")
+    gpu_fp32 = g.compute_dtype == "fp32"
+    no_bf16 = g.bf16 is False
+    family_fp32 = no_bf16 and not gpu_fp32 and fam is not None and not fam.fp16
+    act = 2.0 if gpu_fp32 or family_fp32 else 1.0
+    vae_fp32 = (gpu_fp32 or (no_bf16 and vae_kind is not None and not vae_kind.fp16)) and (
+        vae_kind is None or vae_kind.key != "fp32"
+    )
+    vae_files = [f for f in entry.files if _role_of(f) == "vae"]
+    file_fp32 = bool(vae_files) and all(_name_precision(_path(f)[1]) == "fp32" for f in vae_files)
+    vae = 2.0 if vae_fp32 and not file_fp32 else 1.0
+    if gpu_fp32:
         notes.append(
             f"{g.name} では ComfyUI が半精度を使わず fp32 で計算するので、作業用メモリと VAE を 2 倍で"
             "見積もった(本体は VRAM に余裕があれば fp32 に広げて載せる。遅い)"
         )
-    elif prec == "bf16" and g.bf16 is False:
+    elif family_fp32:
+        notes.append(
+            f"このモデルの系統({fam.comfy_class})は ComfyUI が fp16 で動かさない(supported_models の "
+            f"{fam.source})ので、bf16 を持たない {g.name} では fp32 で計算する。"
+            "作業用メモリを 2 倍で見積もった"
+            "(本体は VRAM に余裕があれば fp32 で載せる。遅い)"
+        )
+        if fam.note:
+            notes.append(fam.note)
+    elif no_bf16 and fam is None:
+        notes.append(
+            "このモデルの系統(ComfyUI のどのモデルか)が分からないので、bf16 を持たない "
+            f"{g.name} で fp32 で計算するかは見積もりに入れていない"
+        )
+    elif prec == "bf16" and no_bf16:
         notes.append(
             f"{g.name} は bf16 の計算に対応しないので、ComfyUI は bf16 の重みを fp16 で動かす(VRAM は同じ)"
+        )
+    if vae_fp32 and not gpu_fp32 and vae > 1:
+        notes.append(
+            f"VAE({vae_kind.source})は {g.name} では fp32 で載せるので、VAE の重みを 2 倍で見積もった"
+            "(仕上げで VRAM が足りなければ ComfyUI がタイルに分けるので遅くなる)"
         )
     if prec == "fp8" and g.fp8 is False:
         notes.append(
