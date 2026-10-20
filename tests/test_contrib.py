@@ -347,16 +347,39 @@ def test_validate_review_required(key, value, code, db, tmp_path, capsys):
         d["system"]["gpu"]["arch"] = d["system"]["gpu"]["compute_capability"] = None
     r = contrib.validate_submission(d, db, today=TODAY)
     assert r.ok and code in {v["code"] for v in r.review}, r.review
-    assert not r.accepted() and r.accepted(allow_review=True)
+    sha8 = r.sha256[:8]
+    assert not r.accepted() and not r.accepted({"00000000"}) and r.accepted({sha8})  # 確かめるのは提出ごと
     p = tmp_path / contrib.suggested_path(d).split("/", 2)[2]
     p.parent.mkdir(parents=True)
     p.write_text(contrib.dumps(d), encoding="utf-8")
     assert cli.main(["contrib", "validate", str(p)]) == 1  # 人が確かめるまで通さない
-    assert cli.main(["contrib", "validate", str(p), "--allow-review"]) == 0
+    assert cli.main(["contrib", "validate", str(p), "--allow-review", "00000000"]) == 1
+    assert cli.main(["contrib", "validate", str(p), "--allow-review", f"00000000,{sha8}"]) == 0
     capsys.readouterr()
     subs, _ = contrib.load_dir(tmp_path, db)
     assert subs == []  # まとめにも使わない
-    assert len(contrib.load_dir(tmp_path, db, allow_review=True)[0]) == 1
+    (tmp_path / "REVIEWED").write_text(f"# 作者が確かめた提出\n{sha8} PR #99 で確かめた\n", encoding="utf-8")
+    subs, _ = contrib.load_dir(tmp_path, db)  # <DIR>/REVIEWED を読む
+    assert len(subs) == 1 and subs[0].approved
+    assert contrib.aggregate(subs)[0]["approved"] is True
+    assert cli.main(["contrib", "validate", str(p), "--reviewed", str(tmp_path / "REVIEWED")]) == 0
+    capsys.readouterr()
+
+
+def test_reviewed_list_and_allow_review_need_sha8(tmp_path, capsys):
+    bad = tmp_path / "REVIEWED"
+    bad.write_text("deadbeef\n", encoding="utf-8")  # 理由の無い承認は作らない
+    with pytest.raises(ValueError):
+        contrib.read_reviewed(bad)
+    assert contrib.read_reviewed(tmp_path / "none") == {}
+    with pytest.raises(SystemExit) as e:  # 全部をまとめて許す書き方は無い
+        cli.main(["contrib", "validate", str(FIX), "--allow-review"])
+    assert e.value.code == 2
+    with pytest.raises(SystemExit) as e:
+        cli.main(["contrib", "validate", str(FIX), "--allow-review", "all"])
+    assert e.value.code == 2
+    assert cli.main(["contrib", "validate", str(FIX), "--reviewed", str(bad)]) == 1
+    capsys.readouterr()
 
 
 def test_validate_filename_duplicates_and_unreadable(tmp_path, db):
@@ -438,9 +461,10 @@ def test_markdown_cells_are_neutralized(tmp_path, capsys):
     body = [line for line in out.splitlines() if line.startswith("| **NG**")]
     assert len(body) == 2 and all(line.count(" | ") == 4 for line in body)  # 列は増えない
     assert all(not line.startswith("::") for line in out.splitlines())
-    assert contrib.md_cell("a|b`c<d>[e](f)\n*g*_h_") == (
-        "a&#124;b&#96;c&lt;d&gt;&#91;e&#93;(f) &#42;g&#42;&#95;h&#95;"
-    )
+    assert contrib.md_cell("a|b`c<d>[e](f)\nx") == "a&#124;b&#96;c&lt;d&gt;&#91;e&#93;(f) x"
+    # GFM の自動リンク(scheme://・www.・メール)も切る
+    cell = contrib.md_cell("https://evil.example/p.png www.evil.example a@b.example")
+    assert "://" not in cell and "www." not in cell and "@" not in cell
 
 
 # --- まとめる -------------------------------------------------------------------------------------
@@ -502,6 +526,14 @@ def test_grouping_normalizes_gpu_names_and_precision():
     assert len(rows) == 1 and rows[0]["n_used"] == 2 and rows[0]["settings"]["precision"] == "bf16"
 
 
+def test_grouping_keeps_vram_variants_apart():
+    a, b = _sub(6.9, gpu="NVIDIA GeForce RTX 4060 Ti"), _sub(7.0, gpu="NVIDIA GeForce RTX 4060 Ti")
+    b.data["system"]["gpu"]["vram_gb"] = 15.99
+    b.sha256 = contrib.content_hash(b.data)
+    rows = contrib.aggregate([a, b])
+    assert sorted(r["gpu_vram_gb"] for r in rows) == [8.0, 15.99]  # 8 GB と 16 GB は混ぜない
+
+
 def test_wide_spread_is_not_consistent():
     rows = contrib.aggregate([_sub(5.0), _sub(6.5)])  # 2 件だが幅が 26%
     assert rows[0]["n_used"] == 2 and rows[0]["consistent"] is False
@@ -541,7 +573,11 @@ def test_basis_ordering(db):
     assert (base.basis, base.basis_detail) == ("estimated", "calibrated")
     # 正直に大きい値: 必要量を上げ、値は実測そのもの(basis measured、点数は推定と同じ 0)
     high = _community(
-        maint[0], gpu_name="NVIDIA GeForce RTX 3070", gpu_vram_gb=12.0, peak_vram_gb=base.vram_gb + 2
+        maint[0],
+        gpu_name="NVIDIA GeForce RTX 3070",
+        gpu_vram_gb=12.0,
+        peak_vram_gb=base.vram_gb + 2,
+        approved=True,  # 人が確かめた(+15% を超えて上げられる)
     )
     high.settings = Settings(width=640, height=640, steps=20)
     e = est([*maint, high])
@@ -624,6 +660,64 @@ def test_poisoned_submissions_cannot_lower_needs_or_raise_levels_and_scores(db):
     assert flagged == len(poisoned)  # どれも人が確かめる(式から 40% より外れ、重み + 固定分より小さい)
 
 
+def _upward(db, factor, models):
+    out = []
+    for t in models:
+        e0 = estimate(t, pc(24), None, db.measurements)
+        sett = {k: v for k, v in e0.settings.items() if k != "batch" and v is not None}
+        subs = []
+        for i, eps in enumerate((0, 0.005)):
+            d = good()
+            d["system"]["gpu"].update(
+                name="NVIDIA A100-SXM4-80GB", vram_gb=80.0, arch="ampere", compute_capability="8.0"
+            )
+            v = min(80.0, round(e0.vram_gb * factor * (1 + eps), 2))
+            d["measurement"].update(model_id=t.id, settings=sett, peak_vram_gb=v, note=f"x{i}")
+            subs.append(contrib.Submission(path=f"p{i}", sha256=contrib.content_hash(d), data=d))
+        out.append((t, subs))
+    return out
+
+
+def _sized(db):
+    return [t for t in db.models if not estimate(t, pc(24), None, db.measurements).unknown_size]
+
+
+def test_upward_poisoning_needs_per_sha_approval(db):
+    """攻撃の台本 poison3.py: 検査の閾値 40% の内側(+39%)の提出 2 件。確かめていなければ、検査を素通りさせても
+    段階を変えず、必要量は +15% までしか上げない。"""
+    models = _sized(db)
+    for t, subs in _upward(db, 1.39, models):
+        cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
+        assert cm[0].consistent and not cm[0].approved
+        for v in (4, 6, 8, 12, 16, 24, 32, 48):
+            for ram in (16, 64):
+                sysi = pc(v)
+                sysi.ram_total_gb = sysi.ram_available_gb = ram
+                a = estimate(t, sysi, None, db.measurements)
+                b = estimate(t, sysi, None, [*db.measurements, *cm])
+                assert (b.fit, b.run_mode) == (a.fit, a.run_mode), (t.id, v, ram)
+                assert b.vram_gb <= a.vram_gb * 1.15 + 0.011, (t.id, v)
+                assert total_score(score_components(t, b, sysi)) <= total_score(score_components(t, a, sysi))
+
+
+def test_upward_submissions_are_review_required(db):
+    """validate は、段階を変える・+15% を超えて上げる提出を「要確認」にする
+    (確かめたものとして足したときの効き目で見る)。"""
+    models = _sized(db)[::12]
+    accepted = 0
+    for t, subs in _upward(db, 1.39, models):
+        r = contrib.validate_submission(subs[0].data, db, today=TODAY, check_filename=False)
+        assert r.ok
+        if r.accepted():
+            accepted += 1
+            approved = [Measurement.from_dict({**x, "approved": True}) for x in contrib.aggregate(subs)]
+            rise, changes = contrib.community_effect(t, contrib._own_measurements(db), approved)
+            assert rise <= 0.15 + 1e-9 and changes == [], (t.id, rise, changes)
+        else:
+            assert {v["code"] for v in r.review} & {"raise_too_large", "fit_change", "deviation"}
+    assert accepted < len(models)
+
+
 def test_honest_higher_submissions_raise_needs(db):
     measured = {m.model_id for m in db.measurements}
     entry = next(
@@ -632,17 +726,29 @@ def test_honest_higher_submissions_raise_needs(db):
     a = estimate(entry, pc(16), None, db.measurements)
     sett = {k: v for k, v in a.settings.items() if k != "batch" and v is not None}
     subs = []
-    for i, v in enumerate((a.vram_gb + 1.5, a.vram_gb + 1.6)):
+    for i, v in enumerate((a.vram_gb * 1.3, a.vram_gb * 1.31)):
         d = good()
         d["system"]["gpu"].update(
             name="NVIDIA GeForce RTX 4090", vram_gb=24.0, arch="ada", compute_capability="8.9"
         )
         d["measurement"].update(model_id=entry.id, settings=sett, peak_vram_gb=round(v, 2), note=f"x{i}")
         subs.append(contrib.Submission(path=f"p{i}", sha256=contrib.content_hash(d), data=d))
+    for s in subs:
+        s.approved = True  # 人が確かめた(REVIEWED にある)提出
     cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
+    assert cm[0].approved
     b = estimate(entry, pc(16), None, [*db.measurements, *cm])
     assert b.vram_gb > a.vram_gb and (b.basis, b.basis_detail) == ("measured", "measured_community")
     assert b.vram_gb == cm[0].peak_vram_gb  # measured のときの値は実測そのもの
+    # 確かめていなければ +15% まで(値は実測ではないので basis は estimated)
+    for s in subs:
+        s.approved = False
+    cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
+    c = estimate(entry, pc(48), None, [*db.measurements, *cm])
+    a48 = estimate(entry, pc(48), None, db.measurements)
+    assert a48.vram_gb < c.vram_gb <= round(a48.vram_gb * 1.15, 2) + 0.01
+    assert (c.basis, c.basis_detail) == ("estimated", "measured_community")
+    assert any("+15%" in r for r in c.reasons)
 
 
 def test_cli_info_json_has_basis_detail(capsys):
@@ -839,10 +945,14 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
     )
     text = capsys.readouterr().out
     assert "警告: 誤差が閾値 10% を超えた" in text and "| 種類 | LOO 件数 |" in text
+    assert "Fit-level changes caused by community data" in text
     assert cli.main(["contrib", "aggregate", str(FIX), "--report", "--json"]) == 0  # 既定の 25% は超えない
     rep = json.loads(capsys.readouterr().out)["report"]
     assert rep["breach"] is False and rep["threshold_pct"] == 25.0
-    assert {"breach", "breaches", "by_modality", "summary", "loo", "check", "n_fit"} <= set(rep)
+    assert {"breach", "breaches", "by_modality", "summary", "loo", "check", "n_fit", "fit_changes"} <= set(
+        rep
+    )
+    assert rep["fit_changes"] == []  # 試験用の提出は段階を変えない
 
 
 def test_cli_aggregate_missing_dir_and_empty_output(tmp_path, capsys):
@@ -878,6 +988,10 @@ def test_library_writes_nothing(tmp_path, capfd, db):
     assert out == "" and err == ""
 
 
+def outside_text(job) -> str:
+    return next(s for s in job["steps"] if "data/contrib の外" in s.get("name", ""))["run"]
+
+
 def test_contrib_workflow_is_read_only_and_uses_base_tool():
     import yaml
 
@@ -909,5 +1023,9 @@ def test_contrib_workflow_is_read_only_and_uses_base_tool():
     for s in job["steps"]:
         if "genmodelfit contrib" in s.get("run", ""):
             assert "::stop-commands::" in s["run"] and "cat " not in s["run"]
+            assert "--reviewed tool/data/contrib/REVIEWED" in s["run"]  # 確かめた一覧は PR の向き先のもの
+            assert "SHOW_ERR" in s["run"]  # 標準エラーも無害にしてまとめに書く
+    assert "md_cell" in doc["env"]["SHOW_ERR"]
+    assert "data/contrib/REVIEWED" in outside_text(job)
     outside = next(s for s in job["steps"] if "data/contrib の外" in s.get("name", ""))
     assert "exit 1" in outside["run"]  # data/contrib の外を変えた PR は失敗

@@ -25,8 +25,11 @@ All notable changes to this project are documented here. The format is based on
   `measured` / `estimated`. Community measurements are used only when at least two consistent submissions agree (and
   no OOM), rank after the maintainer's measurements at the same settings, and can only raise the needs (never lower
   VRAM / RAM, never improve a level, never raise the score: `basis` points 0 like estimates). `validate` marks
-  implausible values (more than 40% from the formula, below the weights with `offload: none`), unknown models and
-  unknown GPUs as review-required (exit 1 unless `--allow-review`; `aggregate` skips them).
+  implausible values (more than 40% from the formula, below the weights with `offload: none`), values that would raise
+  the estimate by more than 15% or change a level at common VRAM / RAM sizes, unknown models and unknown GPUs as
+  review-required; approval is per submission (`--allow-review <sha8>` or the maintainers' `data/contrib/REVIEWED`).
+  Unapproved community rows raise needs by at most 15% and are ignored where they would change the level.
+  `aggregate --report` lists the level changes caused by community data.
 - `torch_reserved` measurements (bench; without the CUDA context) are now lower bounds: below the formula they no
   longer lower the estimate (the bundled RTX 3070 rows for BiRefNet and MoGe now use the formula value).
   `Measurement.origin` / `n_submissions` / `consistent` (optional fields).

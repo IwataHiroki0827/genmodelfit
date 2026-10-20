@@ -249,6 +249,9 @@ class Measurement:
     origin: str | None = None
     n_submissions: int | None = None  # まとめた提出の数(外れ値・OOM も含む)
     consistent: bool | None = None
+    # 人が確かめた提出(data/contrib/REVIEWED の sha8)を含むまとめか。確かめていないまとめは、
+    # ほかの利用者の実測が無いときの見積もりの +15% までしか必要量を上げない(estimate.COMMUNITY_RAISE_CAP)
+    approved: bool | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:

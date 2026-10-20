@@ -8,8 +8,11 @@ name: Contrib
 # - 検査に使う genmodelfit は PR の側ではなく、PR の向き先(base)のコミットから入れる
 #   (PR で検査のコードを書き換えて通すことができないように)。PR の側からは data/contrib だけを読む
 # - data/contrib の外を変えた PR は失敗にする(実測の PR とコードの PR を混ぜない)
+# - 人が確かめた提出の一覧(data/contrib/REVIEWED)は PR の向き先のものを使い、PR で変えたら失敗にする
+#   (提出した人が自分の提出を「確かめた」にできないように。書くのは作者だけ)
 # - 提出から来る文字はログ(標準出力)に出さない。Markdown はジョブのまとめにだけ書き(表のマスは
 #   contrib.md_cell で無害にしてある)、genmodelfit の出力の間はワークフローのコマンド(::error:: など)を止める
+# - genmodelfit の標準エラーも、無害にしてからまとめに書く(失敗の理由が分かるように)
 # - actions はコミットの SHA で固定する
 # - PR へのコメントは書かない(書き込みの権限を持たない)
 
@@ -20,6 +23,13 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # 標準エラー(最後の 50 行)を無害にして(contrib.md_cell)まとめに書く小さな台本
+  SHOW_ERR: >-
+    import sys; from genmodelfit.contrib import md_cell;
+    lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines()[-50:];
+    print(("#### stderr" + chr(10) + chr(10) + "<br>".join(md_cell(x) for x in lines)) if lines else "")
 
 jobs:
   validate:
@@ -46,7 +56,7 @@ jobs:
         run: |
           uv venv
           uv pip install -e .
-      - name: data/contrib の外を変えていないか
+      - name: data/contrib の外・REVIEWED を変えていないか
         working-directory: pr
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -62,14 +72,20 @@ jobs:
             echo "data/contrib の外のファイルを ${n} 件変えています(実測の PR は data/contrib だけにしてください)" >&2
             exit 1
           fi
+          if [ -n "$(git diff --name-only "$BASE_SHA" HEAD -- data/contrib/REVIEWED)" ]; then
+            echo "## data/contrib/REVIEWED は作者だけが変えます(提出の PR では変えないでください)" >> "$GITHUB_STEP_SUMMARY"
+            echo "data/contrib/REVIEWED を変えています" >&2
+            exit 1
+          fi
       - name: 検査(contrib validate)
         run: |
           token="$(openssl rand -hex 16)"
           echo "::stop-commands::${token}"
           set +e
           uv run --no-sync --project tool genmodelfit contrib validate pr/data/contrib --markdown \
-            >> "$GITHUB_STEP_SUMMARY" 2> validate.err
+            --reviewed tool/data/contrib/REVIEWED >> "$GITHUB_STEP_SUMMARY" 2> validate.err
           code=$?
+          uv run --no-sync --project tool python -I -c "$SHOW_ERR" validate.err >> "$GITHUB_STEP_SUMMARY"
           set -e
           echo "::${token}::"
           echo "contrib validate: exit ${code}(結果はジョブのまとめ)"
@@ -81,6 +97,8 @@ jobs:
           echo "::stop-commands::${token}"
           {
             echo
-            uv run --no-sync --project tool genmodelfit contrib aggregate pr/data/contrib --report || true
+            uv run --no-sync --project tool genmodelfit contrib aggregate pr/data/contrib --report \
+              --reviewed tool/data/contrib/REVIEWED || true
           } >> "$GITHUB_STEP_SUMMARY" 2> aggregate.err
+          uv run --no-sync --project tool python -I -c "$SHOW_ERR" aggregate.err >> "$GITHUB_STEP_SUMMARY" || true
           echo "::${token}::"

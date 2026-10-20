@@ -32,6 +32,7 @@ import re
 import statistics
 import unicodedata
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import asdict, dataclass, field
 from datetime import date as _date
 from datetime import datetime, timedelta, timezone
@@ -131,6 +132,7 @@ PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
         re.compile(r"(?<!\w)~[\\/]|%[A-Za-z_]\w*%|\$\{?[A-Za-z_]\w*\}?[\\/]|\$HOME\b|\$env:", re.I),
         "ホーム・環境変数のパス(~/、%USERPROFILE%、$HOME)",
     ),
+    ("path", re.compile(r"%(2F|5C|3A)", re.I), "URL エンコードしたパス(%2F %5C %3A)"),
     ("users_dir", re.compile(r"(?<![A-Za-z])Users[\\/]|Documents and Settings", re.I), "ユーザーのフォルダ"),
     ("at_sign", re.compile(r"@\w"), "メールアドレス・@ の名前"),
     (
@@ -291,8 +293,8 @@ def string_problems(data: Any) -> list[str]:
 
 
 def md_cell(value: Any) -> str:
-    """Markdown の表の 1 マスに入れる文字。| ` < > [ ] & * _ と改行・制御文字を無害にする
-    (CI のまとめへの差し込み・リンクや HTML の埋め込みを防ぐ)。"""
+    """Markdown の表の 1 マスに入れる文字。| ` < > [ ] & @ と改行・制御文字を無害にし、
+    GFM の自動リンク(scheme://・www.)も切る(CI のまとめへの差し込み・リンクや HTML の埋め込みを防ぐ)。"""
     s = CONTROL_CHARS.sub(" ", str(value))
     for a, b in (
         ("&", "&amp;"),
@@ -302,11 +304,11 @@ def md_cell(value: Any) -> str:
         ("`", "&#96;"),
         ("[", "&#91;"),
         ("]", "&#93;"),
-        ("*", "&#42;"),
-        ("_", "&#95;"),
+        ("://", ":&#47;&#47;"),
+        ("@", "&#64;"),
     ):
         s = s.replace(a, b)
-    return s
+    return re.sub(r"(?i)www\.", "www&#46;", s)
 
 
 # 個人の情報の点検の一覧(contrib show)。(id, 見出し, 当てはまる PRIVACY_PATTERNS の種類)
@@ -564,9 +566,10 @@ class Report:
     def needs_review(self, code: str, message: str) -> None:
         self.review.append({"code": code, "message": message})
 
-    def accepted(self, allow_review: bool = False) -> bool:
-        """受け付けるか(誤りが無く、人が見る項目が無いか、それを許したか)。"""
-        return self.ok and (allow_review or not self.review)
+    def accepted(self, approved: Collection[str] = ()) -> bool:
+        """受け付けるか: 誤りが無く、人が見る項目が無いか、この提出の sha8 を人が確かめた(approved)か。
+        確かめたことは提出ごとに(sha8 で)示す(全部をまとめて許す方法は持たない)。"""
+        return self.ok and (not self.review or (self.sha256 or "")[:8] in approved)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -725,6 +728,8 @@ def validate_submission(
 
     r.sha256 = content_hash(data)
     r.suggested_path = suggested_path(data)
+    if r.ok and db is not None and r.model_id and not r.review:  # 既に人が見るものは重い検査を省く
+        _check_effect(r, data, db)
     if path is not None and check_filename:
         _check_filename(r, Path(path), data)
     return r
@@ -851,6 +856,76 @@ def _check_against_estimate(
         )
 
 
+# 段階が変わらないかを確かめる VRAM とメインメモリ(よくある大きさ)
+COMMON_VRAM_GB = (4, 6, 8, 12, 16, 24, 32, 48)
+CHECK_RAM_GB = (16.0, 32.0, 64.0)
+
+
+def _pc(vram: float, ram: float = 32.0) -> SystemInfo:
+    from .models import Gpu
+
+    g = Gpu(name="(check)", vendor="nvidia", vram_total_gb=vram, backend="cuda")
+    return SystemInfo(os="-", cpu="-", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=[g])
+
+
+def _own_measurements(db: Database) -> list[Measurement]:
+    return [m for m in db.measurements if getattr(m, "origin", None) != ORIGIN_COMMUNITY]
+
+
+def community_effect(
+    entry: Any, own: list[Measurement], community: list[Measurement], settings: Settings | None = None
+) -> tuple[float, list[dict[str, Any]]]:
+    """ほかの利用者の実測を足したときの (全部載せの VRAM が上がる割合, 段階が変わる VRAM の一覧)。
+    段階は COMMON_VRAM_GB で、既定の設定(と settings を渡せばその設定)で比べる。"""
+    from .estimate import estimate
+
+    rise = 0.0
+    changes: list[dict[str, Any]] = []
+    for s in [None] if settings is None else [None, settings]:
+        a24 = estimate(entry, _pc(24), s, own)
+        b24 = estimate(entry, _pc(24), s, [*own, *community])
+        if a24.vram_gb and not a24.unknown_size:
+            rise = max(rise, (b24.vram_gb - a24.vram_gb) / a24.vram_gb)
+        for v in COMMON_VRAM_GB:
+            for ram in CHECK_RAM_GB:
+                a = estimate(entry, _pc(v, ram), s, own)
+                b = estimate(entry, _pc(v, ram), s, [*own, *community])
+                if a.fit != b.fit and not any(c["vram_gb"] == v and c["ram_gb"] == ram for c in changes):
+                    changes.append(
+                        {"model_id": entry.id, "vram_gb": v, "ram_gb": ram, "before": a.fit, "after": b.fit}
+                    )
+    return rise, changes
+
+
+def _check_effect(r: Report, data: dict[str, Any], db: Database) -> None:
+    """この提出を(確かめたものとして)足すと、見積もりがどれだけ変わるか。上げすぎ・段階が変わるものは人が見る。"""
+    from .estimate import COMMUNITY_RAISE_CAP
+
+    mm = data["measurement"]
+    entry = db.get(mm["model_id"])
+    if entry is None or mm.get("outcome") != "ok" or mm.get("standard") is False:
+        return
+    m = to_measurement(data)
+    m.consistent, m.approved, m.n_submissions = True, True, 1
+    own = _own_measurements(db)
+    try:
+        rise, changes = community_effect(entry, own, [m], m.settings)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return
+    if rise > COMMUNITY_RAISE_CAP:
+        r.needs_review(
+            "raise_too_large",
+            f"見積もりの全部載せの VRAM を {rise:.0%} 上げます"
+            f"(+{COMMUNITY_RAISE_CAP:.0%} を超えるものは人が確かめる)",
+        )
+    if changes:
+        where = "、".join(
+            f"VRAM {c['vram_gb']} GB・メモリ {c['ram_gb']:g} GB: {c['before']} → {c['after']}"
+            for c in changes[:6]
+        )
+        r.needs_review("fit_change", f"よくある VRAM で段階が変わります({where})")
+
+
 def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
     m = _FILENAME.fullmatch(p.name)
     if not m:
@@ -869,6 +944,28 @@ def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
 
 class SubmissionReadError(ValueError):
     """読めない提出(大きすぎる・シンボリックリンク・JSON でない・入れ子が深すぎる)。"""
+
+
+REVIEWED_FILE = "REVIEWED"  # data/contrib/REVIEWED: 人が確かめた提出の sha8 と理由(作者だけが書く)
+_REVIEWED_LINE = re.compile(r"([0-9a-f]{8})\s+(\S.*)")
+
+
+def read_reviewed(path: str | os.PathLike[str]) -> dict[str, str]:
+    """人が確かめた提出の一覧 {sha8: 理由}。1 行に「sha8 理由」(# で始まる行と空行は飛ばす)。
+    形の違う行は ValueError(理由の無い承認を作らない)。ファイルが無ければ空。"""
+    p = Path(path)
+    if not p.is_file() or p.is_symlink():
+        return {}
+    out: dict[str, str] = {}
+    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        m = _REVIEWED_LINE.fullmatch(s)
+        if not m:
+            raise ValueError(f"{p.name} の {i} 行目は「sha8 理由」の形にしてください")
+        out[m.group(1)] = m.group(2)
+    return out
 
 
 def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
@@ -989,6 +1086,7 @@ class Submission:
     path: str
     sha256: str
     data: dict[str, Any]
+    approved: bool = False  # 人が確かめた(REVIEWED にある)提出
 
     @property
     def measurement(self) -> Measurement:
@@ -996,17 +1094,20 @@ class Submission:
 
 
 def load_dir(
-    root: str | os.PathLike[str], db: Database | None = None, *, allow_review: bool = False
+    root: str | os.PathLike[str], db: Database | None = None, *, approved: Collection[str] | None = None
 ) -> tuple[list[Submission], list[Report]]:
     """フォルダの提出を読み、検査を通ったものだけ返す(同じ内容は 1 件)。(通ったもの, 全部の検査結果)。
-    人が見る項目(review)のある提出は、allow_review が無ければ使わない。"""
+    人が見る項目(review)のある提出は、その sha8 が approved(省くと <root>/REVIEWED)に無ければ使わない。"""
+    if approved is None:
+        approved = set(read_reviewed(Path(root) / REVIEWED_FILE))
     files = find_files(root)
     reports = validate_files(files, db)
     subs: list[Submission] = []
     for p, r in zip(files, reports, strict=True):
-        if r.accepted(allow_review) and r.sha256:
+        if r.accepted(approved) and r.sha256:
             data, _ = read_submission(p)
-            subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
+            reviewed = bool(r.review)  # 人が確かめて受け付けた
+            subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data, approved=reviewed))
     return subs, reports
 
 
@@ -1022,7 +1123,14 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
         if not m.standard:
             continue
         # GPU 名は書き方の違い(NVIDIA / GeForce の有無・大文字小文字・空白)をそろえる
-        key = (m.model_id, gpu_slug(m.gpu_name), m.vram_metric or "", _settings_key(m.settings))
+        # VRAM(1 GB に丸める)も鍵に入れる(RTX 4060 Ti の 8 GB と 16 GB を混ぜない)
+        key = (
+            m.model_id,
+            gpu_slug(m.gpu_name),
+            round(m.gpu_vram_gb or 0),
+            m.vram_metric or "",
+            _settings_key(m.settings),
+        )
         groups.setdefault(key, []).append(sub)
     out: list[dict[str, Any]] = []
     for key in sorted(groups, key=lambda k: json.dumps(k, default=str)):
@@ -1076,6 +1184,8 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 "origin": ORIGIN_COMMUNITY,
                 "n_submissions": len(ms),
                 "consistent": consistent,
+                # 人が確かめた提出を含む組だけが、見積もりを +15% より上げられる(estimate.COMMUNITY_RAISE_CAP)
+                "approved": any(s.approved for s in members),
                 "n_used": len(used),
                 "n_outliers": len(outliers),
                 "n_oom": len(oom),
@@ -1186,8 +1296,16 @@ def accuracy_report(db: Database, threshold_pct: float = DEFAULT_THRESHOLD_PCT) 
             errs = [abs(e) for e in b.pop(f"{k}_errors_pct")]
             b[f"{k}_mean_abs_pct"] = round(sum(errs) / len(errs), 1) if errs else None
             b[f"{k}_max_abs_pct"] = round(max(errs), 1) if errs else None
+    own = _own_measurements(db)
+    comm = [m for m in db.measurements if getattr(m, "origin", None) == ORIGIN_COMMUNITY and m.consistent]
+    fit_changes: list[dict[str, Any]] = []
+    for mid in sorted({m.model_id for m in comm}):
+        entry = db.get(mid)
+        if entry is not None:
+            fit_changes += community_effect(entry, own, [m for m in comm if m.model_id == mid])[1]
     return {
         "threshold_pct": threshold_pct,
+        "fit_changes": fit_changes,
         "breach": bool(breaches),
         "breaches": breaches,
         "n_fit": result["n"],

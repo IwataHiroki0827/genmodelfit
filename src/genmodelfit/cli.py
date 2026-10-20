@@ -965,18 +965,42 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
     return 0 if good else 1
 
 
-def _result_word(r, allow_review: bool) -> str:
+def _result_word(r, approved) -> str:
     if not r.ok:
         return "NG"
-    return "review" if r.review and not allow_review else "ok"
+    return "ok" if r.accepted(approved) else "review"
 
 
-def _validate_markdown(reports: list, allow_review: bool = False) -> list[str]:
+def _sha8_list(text: str) -> list[str]:
+    """--allow-review の値(sha8 をカンマで区切ったもの)。"""
+    import re
+
+    out = [x.strip().lower() for x in text.split(",") if x.strip()]
+    if not out or not all(re.fullmatch(r"[0-9a-f]{8}", x) for x in out):
+        raise argparse.ArgumentTypeError(f"提出の sha8(16 進 8 桁)をカンマで区切って指定してください: {text}")
+    return out
+
+
+def _approved(args: argparse.Namespace, default_reviewed: Path | None) -> set[str]:
+    """人が確かめた提出の sha8: --allow-review の値 + REVIEWED のファイル(--reviewed、無ければ既定の場所)。"""
+    from .contrib import read_reviewed
+
+    out = {x for group in (args.allow_review or []) for x in group}
+    path = Path(args.reviewed) if args.reviewed else default_reviewed
+    if path is not None:
+        try:
+            out |= set(read_reviewed(path))
+        except (OSError, ValueError) as e:
+            raise CliError(f"確かめた提出の一覧を読めません: {e}") from e
+    return out
+
+
+def _validate_markdown(reports: list, approved=()) -> list[str]:
     """CI のまとめ用の表。提出から来た文字(パス・モデル ID・GPU 名・メッセージ)は、
     すべて md_cell で無害にする。"""
     from .contrib import md_cell
 
-    words = [_result_word(r, allow_review) for r in reports]
+    words = [_result_word(r, approved) for r in reports]
     lines = [
         "## genmodelfit contrib validate",
         "",
@@ -1007,7 +1031,7 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
         p = Path(f)
         files += find_files(p) if p.is_dir() else [p]
     reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
-    allow = args.allow_review
+    allow = _approved(args, None)
     bad = [r for r in reports if not r.accepted(allow) or (args.strict and r.warnings)]
     code = 1 if bad else 0
     if args.json:
@@ -1045,7 +1069,7 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
     words = [_result_word(r, allow) for r in reports]
     print(
         f"{len(reports)} files: {words.count('ok')} ok, {words.count('review')} review"
-        f"(--allow-review で受け付ける), {words.count('NG')} NG"
+        f"(人が確かめたら --allow-review <sha8> か REVIEWED で受け付ける), {words.count('NG')} NG"
     )
     return code
 
@@ -1053,7 +1077,7 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
 def format_report(rep: dict[str, Any]) -> list[str]:
     """精度の点検の表(Markdown。毎週の自動 PR にそのまま貼れる形)。"""
     from .calibrate import check_table
-    from .contrib import md_cell
+    from .contrib import CHECK_RAM_GB, COMMON_VRAM_GB, md_cell
 
     thr = rep["threshold_pct"]
     lines = [
@@ -1086,6 +1110,18 @@ def format_report(rep: dict[str, Any]) -> list[str]:
             )
     else:
         lines.append(f"閾値 {thr:g}% を超えたものはありません。")
+    lines += ["", "### ほかの利用者の実測で変わる段階 / Fit-level changes caused by community data", ""]
+    if rep.get("fit_changes"):
+        lines += ["| モデル | VRAM | メモリ | 前 | 後 |", "|---|---:|---:|---|---|"]
+        for c in rep["fit_changes"]:
+            lines.append(
+                f"| {md_cell(c['model_id'])} | {c['vram_gb']} GB | {c['ram_gb']:g} GB |"
+                f" {c['before']} | {c['after']} |"
+            )
+    else:
+        vram = ", ".join(str(v) for v in COMMON_VRAM_GB)
+        ram = ", ".join(f"{v:g}" for v in CHECK_RAM_GB)
+        lines.append(f"ありません(VRAM {vram} GB × メモリ {ram} GB で確かめた)。")
     if rep.get("check"):
         lines += ["", *check_table(rep["check"])]
     return lines
@@ -1105,7 +1141,9 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     if not Path(args.dir).is_dir():
         raise CliError(f"提出のフォルダがありません: {args.dir}")
     db = _contrib_db(args)
-    subs, reports = load_dir(args.dir, db, allow_review=args.allow_review)
+    from .contrib import REVIEWED_FILE
+
+    subs, reports = load_dir(args.dir, db, approved=_approved(args, Path(args.dir) / REVIEWED_FILE))
     rows = aggregate(subs)
     if args.output and not rows and not args.allow_empty:
         raise CliError(
@@ -1999,8 +2037,15 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--markdown", action="store_true", help="Markdown の表で出す(CI のまとめ用)")
     c.add_argument(
         "--allow-review",
-        action="store_true",
-        help="人が確かめる項目(式から 40%% 超の外れ・一覧に無いモデル・知らない GPU など)を受け付ける",
+        type=_sha8_list,
+        action="append",
+        metavar="SHA8[,SHA8...]",
+        help="人が確かめた提出(sha8 で 1 件ずつ)だけ、要確認の項目があっても受け付ける",
+    )
+    c.add_argument(
+        "--reviewed",
+        metavar="FILE",
+        help="人が確かめた提出の一覧(1 行に「sha8 理由」。作者が data/contrib/REVIEWED に書く)",
     )
     c.set_defaults(func=cmd_contrib_validate)
     c = csub.add_parser("aggregate", parents=[cj], help="同じモデル・設定・GPU ごとにまとめ、精度を点検する")
@@ -2029,8 +2074,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     c.add_argument(
         "--allow-review",
-        action="store_true",
-        help="人が確かめる項目のある提出もまとめに使う(PR を見て確かめたあと)",
+        type=_sha8_list,
+        action="append",
+        metavar="SHA8[,SHA8...]",
+        help="人が確かめた提出(sha8 で 1 件ずつ)だけ、要確認の項目があっても受け付ける",
+    )
+    c.add_argument(
+        "--reviewed",
+        metavar="FILE",
+        help="人が確かめた提出の一覧(1 行に「sha8 理由」。作者が data/contrib/REVIEWED に書く)。"
+        "aggregate の既定は <DIR>/REVIEWED",
     )
     c.add_argument(
         "--allow-empty",

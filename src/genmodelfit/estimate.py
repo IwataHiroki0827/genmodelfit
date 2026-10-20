@@ -781,6 +781,17 @@ def is_community(m: Measurement) -> bool:
 # 「これ以上」としてだけ使う測り方。torch_reserved は ComfyUI のプロセスの torch の確保量で、CUDA の文脈などを
 # 含まないので、本当の必要量より小さい(#34 のレビュー、オーナーの方針 2026-10-21)
 LOWER_BOUND_METRICS = ("torch_reserved",)
+# ほかの利用者の実測が必要量を上げてよい上限(それが無いときの見積もりに対する割合)。人が確かめた(approved)
+# まとめだけが超えられる。#34 のオーナーの方針(書き換えた提出で段階を下げる攻撃を防ぐ)
+COMMUNITY_RAISE_CAP = 0.15
+
+
+def _measured_ram(m: Measurement, ram_est: float) -> float:
+    """実測のメインメモリ。確かめていないほかの利用者の実測は、見積もりの +COMMUNITY_RAISE_CAP まで。"""
+    v = m.peak_ram_gb or 0.0
+    if is_community(m) and not getattr(m, "approved", False):
+        v = min(v, ram_est * (1 + COMMUNITY_RAISE_CAP))
+    return v
 
 
 def lower_bound_only(m: Measurement) -> bool:
@@ -877,6 +888,8 @@ class _Model:
     clamped: bool = False
     # ほかの利用者の実測を使うとき、それが無いときの下ごしらえ(精度を変えたときはこちらで見積もる)
     own: _Model | None = None
+    # 確かめていないほかの利用者の実測が +COMMUNITY_RAISE_CAP を超えたので、そこまでにした
+    capped: bool = False
 
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
@@ -916,7 +929,13 @@ def _prepare(
         own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s)
         floor = own.delta if own.measurement is not None else 0.0
         clamped = delta < floor
-        return _Model(entry, c, m, max(delta, floor), own.base, parts, clamped, own)
+        delta = max(delta, floor)
+        capped = False
+        if not getattr(m, "approved", False):
+            ceiling = floor + COMMUNITY_RAISE_CAP * max(0.0, est + floor)
+            capped = delta > ceiling
+            delta = min(delta, ceiling)
+        return _Model(entry, c, m, delta, own.base, parts, clamped or capped, own, capped)
     if is_censored(m) or lower_bound_only(m):
         clamped = delta < 0 and lower_bound_only(m)
         delta = max(0.0, delta)  # 張り付いた実測・下限の実測は「これ以上」としてだけ使う
@@ -1050,6 +1069,33 @@ def estimate(
     """1 モデル × 1 設定 × 1 PC の見積もり。settings を省くと、実測があれば実測の設定、無ければ既定の設定。"""
     c = coefficients or load_coefficients()
     measurements = list(measurements)
+    unreviewed = [
+        m
+        for m in measurements
+        if m.model_id == entry.id and is_community(m) and not getattr(m, "approved", False)
+    ]
+    if unreviewed:
+        # 人が確かめていないほかの利用者の実測は、段階・動かし方を変えるなら使わない(#34 のオーナーの方針)
+        own = [m for m in measurements if not any(m is u for u in unreviewed)]
+        before = _estimate(entry, system, settings, own, c, with_limits)
+        after = _estimate(entry, system, settings, measurements, c, with_limits)
+        if (after.fit, after.run_mode) != (before.fit, before.run_mode):
+            before.reasons.append(
+                "ほかの利用者の実測(人が確かめていないもの)は、段階を変えるので使わなかった"
+            )
+            return before
+        return after
+    return _estimate(entry, system, settings, measurements, c, with_limits)
+
+
+def _estimate(
+    entry: ModelEntry,
+    system: SystemInfo,
+    settings: Settings | None,
+    measurements: list[Measurement],
+    c: Coefficients,
+    with_limits: bool,
+) -> Estimate:
     s = settings_for(entry, settings, _prepare(entry, measurements, c).base)
     prep = _prepare(entry, measurements, c, s)  # 設定が同じ実測があればそれを選び直す
     if prep.parts.unknown:
@@ -1069,14 +1115,21 @@ def estimate(
             detail = "calibrated"
             reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
         elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry) and prep.clamped:
-            # 下限としてだけ使う実測が式より小さい: 値は式のまま(実測の値ではないので basis は estimated)
+            # 下限としてだけ使う実測が式より小さい・上限を超えた: 値は実測ではないので basis は estimated
             detail = "measured_community" if is_community(m) else "calibrated"
-            reasons.append(
-                f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
-                "それを使わない見積もりのほうが大きいので、そちらの値にした"
-            )
+            if prep.capped:
+                reasons.append(
+                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は、それを使わない見積もりの"
+                    f" +{COMMUNITY_RAISE_CAP:.0%} を超えるので、そこまでにした"
+                    "(人が確かめた提出だけが超えられる)"
+                )
+            else:
+                reasons.append(
+                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
+                    "それを使わない見積もりのほうが大きいので、そちらの値にした"
+                )
             if m.peak_ram_gb:
-                n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
+                n.ram_gpu = max(n.ram_gpu, _measured_ram(m, n.ram_gpu))
         elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry):
             basis, measured_on = "measured", on
             detail = "measured_community" if is_community(m) else "measured"
@@ -1085,7 +1138,7 @@ def estimate(
                     f"実測 {m.peak_vram_gb:.1f} GB は GPU の上限に張り付いた値(全部載せにはこれ以上要る)"
                 )
             if m.peak_ram_gb:
-                n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
+                n.ram_gpu = max(n.ram_gpu, _measured_ram(m, n.ram_gpu))
         elif not _precision_changed(m, s, entry):
             detail = "calibrated"
             reasons.append(f"{on} の実測({_describe(entry, m.settings)})で補正した推定")

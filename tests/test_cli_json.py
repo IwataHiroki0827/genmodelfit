@@ -255,6 +255,7 @@ MEASUREMENT = {
     "origin",  # 以下 #34(ほかの利用者の実測のまとめ)
     "n_submissions",
     "consistent",
+    "approved",
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 

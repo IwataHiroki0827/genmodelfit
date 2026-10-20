@@ -404,7 +404,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present. Stays two-valued for compatibility; the finer level is `basis_detail` |
-| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions, at least 2 consistent ones without OOM, same settings) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Community measurements and `torch_reserved` measurements are lower bounds: they can only **raise** the needs (never lower VRAM / RAM, never improve the level, never raise the score). When such a value is below the estimate without it, the value is not used: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
+| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions, at least 2 consistent ones without OOM, same settings) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Community measurements and `torch_reserved` measurements are lower bounds: they can only **raise** the needs (never lower VRAM / RAM, never improve the level, never raise the score). Community rows without an approved submission raise the needs by at most 15% over the estimate without community data (`estimate.COMMUNITY_RAISE_CAP`), and are ignored on a PC where they would change the level or run mode. When such a value is below the estimate without it, the value is not used: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
@@ -583,6 +583,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`) |
 | `origin` | str \| null | (#34) `community` for rows of `measurements_community.json` (other users' submissions aggregated by `contrib aggregate`); null for the maintainer's bundled rows and this PC's bench results |
 | `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_used`, `n_outliers`, `n_oom`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
+| `approved` | bool \| null | community rows: contains a submission approved per sha8 (`data/contrib/REVIEWED`); only then may it raise the needs by more than 15% |
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Community rows that are not consistent are ignored by estimates and calibration |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
@@ -663,8 +664,10 @@ no spaces, UTF-8), so the name does not depend on indentation and two identical 
 
 Not written by genmodelfit: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses,
 the measurement's free-text `source`, CPU name, exact time. **Limits (honest)**: the checks are patterns, not
-understanding. A person's name or other identifying words written in plain text in `note` (or a hand-edited file) are
-not recognized; that is why `contrib show` asks the user to read the note and a person reviews each pull request.
+understanding. **Not detected**: personal names or other identifying words in plain text (e.g. `山田太郎のPCで測った`,
+`on Taro's desktop`, `github KoyoYeager`), paths written in base64 or another encoding (URL-encoded `%2F` / `%5C` /
+`%3A` is detected), and paths without separators described in words. That is why `contrib show` asks the user to
+read the note and a person reviews each pull request.
 Free-text fields are kept small: `gpu.name` only letters, digits, space, `.` and `-` (64 chars), `comfyui_version`
 strictly `x.y.z`, `precision` one of the known precisions, `model_id` up to 200 chars of `[A-Za-z0-9_.:/+-]`, other
 strings 100 chars, `note` 2000 chars; no control characters, newlines or invisible characters anywhere; unknown keys,
@@ -689,7 +692,7 @@ model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, 
 | `string` | a string with control characters / newlines / invisible or bidi characters, too long a string or key, an array, or nesting deeper than 8 |
 | `schema` | `contrib_schema` ≠ 1, wrong `kind` / `tool`, missing keys, not objects |
 | `unknown_field` | a key outside the schema (anywhere, including `settings`) |
-| `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains: a drive path (`C:\`, `C:/`), any backslash, two or more path separators between words (`a/b/c`, `Users\name\`), `/home/`-like roots, `//server`, `~/`, `%VAR%`, `$HOME`, `@` followed by a letter (e-mail, @handle), a UUID / GPU UUID, a PCI address (`0000:01:00.0`, `01:00.0`), an IPv4 / IPv6 / MAC address, a URL (`scheme://`, `www.`), a host-like name (`DESKTOP-XXXX`, `*-PC`, `*.local`, the words "host name" / "PC 名" …), a time (`14:05`, `2pm`, `14時05分`, ISO date-time) or a serial number (`SN:`). Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`) |
+| `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains: a drive path (`C:\`, `C:/`), any backslash, two or more path separators between words (`a/b/c`, `Users\name\`), `/home/`-like roots, `//server`, `~/`, `%VAR%`, `$HOME`, URL-encoded separators (`%2F` `%5C` `%3A`), `@` followed by a letter (e-mail, @handle), a UUID / GPU UUID, a PCI address (`0000:01:00.0`, `01:00.0`), an IPv4 / IPv6 / MAC address, a URL (`scheme://`, `www.`), a host-like name (`DESKTOP-XXXX`, `*-PC`, `*.local`, the words "host name" / "PC 名" …), a time (`14:05`, `2pm`, `14時05分`, ISO date-time) or a serial number (`SN:`). Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`) |
 | `date` | not `YYYY-MM-DD`, or in the future |
 | `value` | out of range: `peak_vram_gb` > GPU VRAM × 1.02 + 0.25, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0 or missing for `ok`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch`, malformed `driver` / `comfyui_version` / `compute_capability` |
 | `settings` | width / height 64–8192, frames 1–2000, seconds 0.1–3600, steps 1–1000, batch 1–64 (integers except seconds) |
@@ -698,17 +701,26 @@ model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, 
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |
 
-Review required (the file is valid, but a person must check it; exit code 1 unless `--allow-review`, and
-`aggregate` skips it unless `--allow-review`): `unknown_model` (not in the bundled list), `unknown_gpu` (not in the GPU
-name table), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
-`below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead).
+Review required (the file is valid, but a person must check it): `unknown_model` (not in the bundled list),
+`unknown_gpu` (not in the GPU name table), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate
+for those settings), `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead),
+`raise_too_large` (adding it would raise the all-in estimate by more than 15% over the estimate without community
+data), `fit_change` (adding it would change the level at a common size: VRAM 4 / 6 / 8 / 12 / 16 / 24 / 32 / 48 GB ×
+RAM 16 / 32 / 64 GB, at the default and the submitted settings).
+
+Approval is **per submission**: `--allow-review <sha8>[,<sha8>…]` (repeatable) or a list file `--reviewed FILE`
+(`data/contrib/REVIEWED`: one `<sha8> <reason>` per line, `#` comments; written only by maintainers — CI reads the
+base branch's copy and fails a pull request that changes it). There is no switch that approves everything. Without
+approval the file fails `validate` (exit 1) and `aggregate` does not use it; `aggregate` reads `<DIR>/REVIEWED` by
+default. An aggregated row records `approved: true` when it contains an approved submission.
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
 `metric_missing`, `driver_missing`, `comfyui_version_missing`, `ram_not_rounded`, `settings_missing` /
 `settings_modality`, `offload_outcome`, `date_old`.
 
-`--markdown` escapes every cell (`| \` < > [ ] & * _`, newlines) so file names and values cannot inject Markdown, HTML
-or workflow commands into the CI summary. Report JSON has `review` [{code, message}] too; `--json` counts `review`.
+`--markdown` escapes every cell (`| \` < > [ ] & @`, newlines, and GFM autolinks: `://` and `www.`) so file names
+and values cannot inject Markdown, HTML, links or workflow commands into the CI summary. CI appends genmodelfit's
+stderr to the summary through the same escaping. Report JSON has `review` [{code, message}] too; `--json` counts `review`.
 
 Exit codes: 0 every file passed (warnings allowed) / 1 a file failed, needs review (without `--allow-review`) or has a
 warning with `--strict` / 2 usage error.
@@ -716,8 +728,9 @@ warning with `--strict` / 2 usage error.
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
 Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (and
-need no review, unless `--allow-review`), and groups standard submissions by model id, GPU name (normalized: case,
-`NVIDIA` / `GeForce`, spaces), `vram_metric` and settings (precision normalized: `BF16` = `bfloat16` = `bf16`). Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
+need no review or were approved per sha8), and groups standard submissions by model id, GPU name (normalized: case,
+`NVIDIA` / `GeForce`, spaces), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
+`vram_metric` and settings (precision normalized: `BF16` = `bfloat16` = `bf16`). Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
 are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value. A group is
 `consistent` with at least 2 used runs whose range is within 15% of the median and no OOM in the group. Output rows are Measurement records
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
@@ -730,6 +743,8 @@ the bundled copy is `src/genmodelfit/data/measurements_community.json`, which is
 `check_mean_abs_pct`, `check_max_abs_pct`, plus `breaches` [{kind (`loo` / `community_check`), model_id, gpu_name,
 origin, error_pct}] and `breach`. Counted against the threshold (default 25%): LOO errors of evaluable modalities and
 the check errors of community rows; the maintainer's own check rows (RTX 3070) are shown but not counted.
+`fit_changes` [{model_id, vram_gb, ram_gb, before, after}] lists the level changes the community rows cause at the
+common sizes above (section "Fit-level changes caused by community data" in the text report).
 Text output is Markdown (for the weekly pull request of #19).
 
 `--json`: envelope + `action: "aggregate"`, `dir`, `files`, `valid`, `invalid`, `submissions_used`, `groups`,
