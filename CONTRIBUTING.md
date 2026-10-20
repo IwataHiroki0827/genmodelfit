@@ -104,10 +104,11 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 | ComfyUI の版、OS の種類(版・ビルドは入れない)、メインメモリ(GiB の整数に丸める) | `0.40.0`, `windows`, `32` |
 | モデル ID・設定・結果・最大 VRAM / メモリ・時間・載せ方・測り方 | `image_sdxl_simple`, `832x832`, `ok`, `6.9` … |
 | 日付(UTC の日付だけ) | `2026-10-21` |
-| メモ(note。bench が書いた測り方の説明) | パス・URL・PC 名・ユーザ名・メール・UUID・IP・時刻は `<path>` などに置き換える |
+| メモ(note。bench が書いた測り方の説明) | パス・URL・PC 名・ユーザ名・メール・UUID・IP・時刻らしい文字を含む文は、文ごと消す |
 
 **入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所、シリアル番号、IP / MAC アドレス、
 CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。決まった項目以外は CI の検査で断ります。
+ただし自動の点検は文字の形を見るだけで、note に普通の言葉で書いた名前などは見分けられません(下の 3 で自分で読んでください)。
 
 ## 3. 中身を確かめる(送る前に必ず)
 
@@ -122,6 +123,8 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   正しい名前を教えます)
 - **note(メモ)は自分で読んでください**。自動の点検は文の意味までは分かりません。気になる文は消して構いません
 - `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
+- 「要確認」(review)は、式の見積もりから 40% より外れた値・全部 GPU に載せたのに重みより小さい値・一覧に無いモデル・
+  知らない GPU です。誤りではありませんが、PR を見る人が確かめるまで受け付けません(測り直すか、PR の説明に事情を書いてください)
 
 ## 4. 送る(Pull Request)
 
@@ -137,8 +140,9 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 ### 受け付けたあと
 
 - 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。同じ構成の提出が **2 件以上そろうと**、その構成の見積もりの根拠が
-  `measured_community`(ほかの利用者の実測)になります。1 件だけの提出は、もう 1 件そろうまで見積もりには使いません
+  提出をまとめます(中央値と MAD で外れ値を除く)。同じ構成の提出が **2 件以上そろい、OOM が無いと**、その構成の見積もりの
+  根拠が `measured_community`(ほかの利用者の実測)になります。1 件だけの提出は、もう 1 件そろうまで見積もりには使いません。
+  ほかの利用者の実測は、必要量を**上げる向きにだけ**使います(見積もりより小さい値では、段階も点数も変わりません)
 - 毎週の点検(`contrib aggregate --report`)が、校正の誤差の表を作り直します(docs/accuracy.md)
 
 ### 作者の実測(measurements.json)

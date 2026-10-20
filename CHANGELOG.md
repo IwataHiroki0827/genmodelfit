@@ -22,8 +22,13 @@ All notable changes to this project are documented here. The format is based on
   `--report` re-runs the calibration and flags errors above a threshold (default 25%, exit 3 with `--fail-on-breach`)
   for the weekly job of #19.
 - `Estimate.basis_detail` (`measured` > `measured_community` > `calibrated` > `estimated`); `basis` stays
-  `measured` / `estimated`. Community measurements are used only when at least two consistent submissions agree, and
-  rank after the maintainer's measurements at the same settings; they score 80 instead of 100 in `basis`.
+  `measured` / `estimated`. Community measurements are used only when at least two consistent submissions agree (and
+  no OOM), rank after the maintainer's measurements at the same settings, and can only raise the needs (never lower
+  VRAM / RAM, never improve a level, never raise the score: `basis` points 0 like estimates). `validate` marks
+  implausible values (more than 40% from the formula, below the weights with `offload: none`), unknown models and
+  unknown GPUs as review-required (exit 1 unless `--allow-review`; `aggregate` skips them).
+- `torch_reserved` measurements (bench; without the CUDA context) are now lower bounds: below the formula they no
+  longer lower the estimate (the bundled RTX 3070 rows for BiRefNet and MoGe now use the formula value).
   `Measurement.origin` / `n_submissions` / `consistent` (optional fields).
 - `python -m genmodelfit.calibrate` also writes the check rows (measurements in another `vram_metric`, such as the
   RTX 3070 runs) to `calibration.json` (`check`) and the accuracy table; LOO rows carry `gpu_name` and `origin`.

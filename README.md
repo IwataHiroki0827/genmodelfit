@@ -412,9 +412,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json   # exac
 
 Then open a pull request that adds only that file. **genmodelfit sends nothing**; the file holds the GPU name / VRAM /
 generation / driver, ComfyUI version, OS family, RAM rounded to GiB and the results — never host or user names, paths,
-GPU UUID, PCI address, IP or exact times. CI checks it with `genmodelfit contrib validate`. Once two or more consistent
-submissions exist for the same model, settings and GPU, estimates for that setup become `basis_detail:
-"measured_community"`. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
+GPU UUID, PCI address, IP or exact times (the checks are pattern based, so read the note yourself). CI checks it with
+`genmodelfit contrib validate`. Once two or more consistent submissions exist for the same model, settings and GPU,
+estimates for that setup become `basis_detail: "measured_community"`; community values can only raise the estimated
+needs, never lower them. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
 
 自分のフォークで `bench --submission data/contrib/` を付けて測り、`contrib show` で中身を確かめてから、そのファイルだけを
 Pull Request で出してください。genmodelfit は何も送りません(PC の名前・ユーザー名・パス・GPU の UUID などは入りません)。

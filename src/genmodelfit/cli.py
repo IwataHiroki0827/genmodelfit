@@ -955,6 +955,8 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
         print(f"誤り {e['code']}: {e['message']}")
     for w in report.warnings:
         print(f"注意 {w['code']}: {w['message']}")
+    for v in report.review:
+        print(f"要確認 {v['code']}: {v['message']}(PR を見る人が確かめます)")
     print(
         "検査: "
         + ("ok" if good else "NG(直してから出してください)")
@@ -963,23 +965,36 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
     return 0 if good else 1
 
 
-def _validate_markdown(reports: list) -> list[str]:
-    ok = sum(r.ok for r in reports)
+def _result_word(r, allow_review: bool) -> str:
+    if not r.ok:
+        return "NG"
+    return "review" if r.review and not allow_review else "ok"
+
+
+def _validate_markdown(reports: list, allow_review: bool = False) -> list[str]:
+    """CI のまとめ用の表。提出から来た文字(パス・モデル ID・GPU 名・メッセージ)は、
+    すべて md_cell で無害にする。"""
+    from .contrib import md_cell
+
+    words = [_result_word(r, allow_review) for r in reports]
     lines = [
         "## genmodelfit contrib validate",
         "",
-        f"{len(reports)} files: {ok} ok, {len(reports) - ok} NG",
+        f"{len(reports)} files: {words.count('ok')} ok, {words.count('review')} review,"
+        f" {words.count('NG')} NG",
         "",
-        "| 結果 | ファイル | モデル | GPU | 誤り・注意 |",
+        "| 結果 | ファイル | モデル | GPU | 誤り・要確認・注意 |",
         "|---|---|---|---|---|",
     ]
-    for r in reports:
+    for r, word in zip(reports, words, strict=True):
         msgs = [f"誤り {e['code']}: {e['message']}" for e in r.errors]
+        msgs += [f"要確認 {v['code']}: {v['message']}" for v in r.review]
         msgs += [f"注意 {w['code']}: {w['message']}" for w in r.warnings]
-        text = "<br>".join(m.replace("|", "\\|") for m in msgs) or "-"
+        text = "<br>".join(md_cell(m) for m in msgs) or "-"
+        mark = {"ok": "ok", "review": "**review**", "NG": "**NG**"}[word]
         lines.append(
-            f"| {'ok' if r.ok else '**NG**'} | `{r.path}` | {r.model_id or '-'} |"
-            f" {r.gpu_name or '-'} | {text} |"
+            f"| {mark} | {md_cell(r.path)} | {md_cell(r.model_id or '-')} |"
+            f" {md_cell(r.gpu_name or '-')} | {text} |"
         )
     return lines
 
@@ -992,7 +1007,8 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
         p = Path(f)
         files += find_files(p) if p.is_dir() else [p]
     reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
-    bad = [r for r in reports if not r.ok or (args.strict and r.warnings)]
+    allow = args.allow_review
+    bad = [r for r in reports if not r.accepted(allow) or (args.strict and r.warnings)]
     code = 1 if bad else 0
     if args.json:
         _out(
@@ -1005,32 +1021,39 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
                 files=len(reports),
                 valid=sum(r.ok for r in reports),
                 invalid=sum(not r.ok for r in reports),
+                review=sum(1 for r in reports if r.ok and r.review),
                 warnings=sum(len(r.warnings) for r in reports),
                 reports=[r.to_dict() for r in reports],
             )
         )
         return code
     if args.markdown:
-        for line in _validate_markdown(reports):
+        for line in _validate_markdown(reports, allow):
             print(line)
         return code
     if not reports:
         print("検査するファイルがありません")
     for r in reports:
         what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
-        print(f"{'ok' if r.ok else 'NG'}  {r.path}" + (f"  ({what})" if what else ""))
+        print(f"{_result_word(r, allow):<6}  {r.path}" + (f"  ({what})" if what else ""))
         for e in r.errors:
             print(f"      誤り {e['code']}: {e['message']}")
+        for v in r.review:
+            print(f"      要確認 {v['code']}: {v['message']}")
         for w in r.warnings:
             print(f"      注意 {w['code']}: {w['message']}")
-    ok = sum(r.ok for r in reports)
-    print(f"{len(reports)} files: {ok} ok, {len(reports) - ok} NG")
+    words = [_result_word(r, allow) for r in reports]
+    print(
+        f"{len(reports)} files: {words.count('ok')} ok, {words.count('review')} review"
+        f"(--allow-review で受け付ける), {words.count('NG')} NG"
+    )
     return code
 
 
 def format_report(rep: dict[str, Any]) -> list[str]:
     """精度の点検の表(Markdown。毎週の自動 PR にそのまま貼れる形)。"""
     from .calibrate import check_table
+    from .contrib import md_cell
 
     thr = rep["threshold_pct"]
     lines = [
@@ -1057,7 +1080,8 @@ def format_report(rep: dict[str, Any]) -> list[str]:
         lines.append("")
         for b in rep["breaches"]:
             lines.append(
-                f"- {b['model_id']}({b.get('gpu_name') or '?'}、{b['kind']}、{b.get('origin')}):"
+                f"- {md_cell(b['model_id'])}({md_cell(b.get('gpu_name') or '?')}、"
+                f"{b['kind']}、{b.get('origin')}):"
                 f" {b['error_pct']:+g}%"
             )
     else:
@@ -1068,11 +1092,25 @@ def format_report(rep: dict[str, Any]) -> list[str]:
 
 
 def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
-    from .contrib import accuracy_report, aggregate, community_document, load_dir, report_db, write_community
+    from .contrib import (
+        accuracy_report,
+        aggregate,
+        community_document,
+        load_dir,
+        md_cell,
+        report_db,
+        write_community,
+    )
 
+    if not Path(args.dir).is_dir():
+        raise CliError(f"提出のフォルダがありません: {args.dir}")
     db = _contrib_db(args)
-    subs, reports = load_dir(args.dir, db)
+    subs, reports = load_dir(args.dir, db, allow_review=args.allow_review)
     rows = aggregate(subs)
+    if args.output and not rows and not args.allow_empty:
+        raise CliError(
+            "まとめが空なので書き出しません(同梱のまとめを空で上書きしないため。空にするなら --allow-empty)"
+        )
     written = str(write_community(rows, args.output)) if args.output else None
     rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
     code = EXIT_BREACH if (rep and rep["breach"] and args.fail_on_breach) else 0
@@ -1081,6 +1119,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         "files": len(reports),
         "valid": sum(r.ok for r in reports),
         "invalid": sum(not r.ok for r in reports),
+        "review": sum(1 for r in reports if r.ok and r.review),
         "submissions_used": len(subs),
         "groups": len(rows),
         "consistent": sum(1 for r in rows if r["consistent"]),
@@ -1099,7 +1138,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     for r in rows:
         mark = "consistent" if r["consistent"] else "not used"
         print(
-            f"  {r['model_id']}  {r['gpu_name']}  {r['peak_vram_gb']:g} GiB  "
+            f"  {md_cell(r['model_id'])}  {md_cell(r['gpu_name'])}  {r['peak_vram_gb']:g} GiB  "
             f"(n={r['n_submissions']}, used={r['n_used']}, outliers={r['n_outliers']}, oom={r['n_oom']}, "
             f"spread {r['spread_rel_pct']:g}%, {mark})"
         )
@@ -1958,6 +1997,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="ファイル名(<GPU>/<日付>-<sha8>.json)を確かめない",
     )
     c.add_argument("--markdown", action="store_true", help="Markdown の表で出す(CI のまとめ用)")
+    c.add_argument(
+        "--allow-review",
+        action="store_true",
+        help="人が確かめる項目(式から 40%% 超の外れ・一覧に無いモデル・知らない GPU など)を受け付ける",
+    )
     c.set_defaults(func=cmd_contrib_validate)
     c = csub.add_parser("aggregate", parents=[cj], help="同じモデル・設定・GPU ごとにまとめ、精度を点検する")
     c.add_argument(
@@ -1983,6 +2027,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"--report で閾値を超えたら終了コード {EXIT_BREACH} にする",
     )
+    c.add_argument(
+        "--allow-review",
+        action="store_true",
+        help="人が確かめる項目のある提出もまとめに使う(PR を見て確かめたあと)",
+    )
+    c.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="まとめが空でも --output に書き出す(既定は、空のまとめで上書きしない)",
+    )
     c.set_defaults(func=cmd_contrib_aggregate)
     return p
 
@@ -2003,7 +2057,9 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
-  1  Error / validate: a file failed (or a warning with --strict) / show: something to fix
+  1  Error / validate: a file failed, needs review (unless --allow-review) or has a warning with --strict /
+     show: something to fix / aggregate: no such folder, or an empty result with --output
+     (unless --allow-empty)
   2  Usage error
   3  aggregate --report --fail-on-breach: an error exceeded the threshold
 

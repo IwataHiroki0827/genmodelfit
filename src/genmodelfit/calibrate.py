@@ -340,7 +340,10 @@ def _settings_text(s: dict) -> str:
 
 
 def check_table(rows: list[dict]) -> list[str]:
-    """照合の表(係数の合わせに使わない測り方の実測を、全件で合わせた係数で当てたもの)。"""
+    """照合の表(係数の合わせに使わない測り方の実測を、全件で合わせた係数で当てたもの)。
+    提出から来る文字(モデル ID・GPU 名)は md_cell で無害にする。"""
+    from .contrib import md_cell
+
     lines = [
         "照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):",
         "",
@@ -353,7 +356,8 @@ def check_table(rows: list[dict]) -> list[str]:
             who += f"({x['n_submissions']} 件)"
         err = "張り付き" if x["censored"] else f"{x['error_pct']:+.0f}%"
         lines.append(
-            f"| {x['model_id']} | {x['gpu_name']} | {who} | {_settings_text(x['settings'])} |"
+            f"| {md_cell(x['model_id'])} | {md_cell(x['gpu_name'])} | {who} |"
+            f" {_settings_text(x['settings'])} |"
             f" {x['measured_gb']:.2f} | {x['predicted_gb']:.2f} | {err} |"
         )
     return lines

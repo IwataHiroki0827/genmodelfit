@@ -778,6 +778,19 @@ def is_community(m: Measurement) -> bool:
     return getattr(m, "origin", None) == ORIGIN_COMMUNITY
 
 
+# 「これ以上」としてだけ使う測り方。torch_reserved は ComfyUI のプロセスの torch の確保量で、CUDA の文脈などを
+# 含まないので、本当の必要量より小さい(#34 のレビュー、オーナーの方針 2026-10-21)
+LOWER_BOUND_METRICS = ("torch_reserved",)
+
+
+def lower_bound_only(m: Measurement) -> bool:
+    """実測を「必要量はこれ以上」としてだけ使うか(式の値より小さければ使わない)。
+
+    ほかの利用者の実測(提出は書き換えられるので、必要量を下げる・段階を上げる・点数を上げる向きには使わない)と、
+    torch_reserved の実測(CUDA の文脈を含まない)。"""
+    return is_community(m) or getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS
+
+
 def _measured_precision(m: Measurement, entry: ModelEntry) -> str | None:
     return norm_precision(m.settings.precision) or source_precision(entry)
 
@@ -859,11 +872,22 @@ class _Model:
     delta: float  # 実測に合わせて作業用メモリをずらす量(GiB)
     base: Settings
     parts: Parts
+    # 下限としてだけ使う実測(lower_bound_only)が式の値(ほかの利用者の実測なら own の見積もり)より小さく、
+    # その実測ではずらさなかった
+    clamped: bool = False
+    # ほかの利用者の実測を使うとき、それが無いときの下ごしらえ(精度を変えたときはこちらで見積もる)
+    own: _Model | None = None
 
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
 
     def need(self, s: Settings, prec: GpuPrecision | None = None) -> Need:
+        if (
+            self.own is not None
+            and self.measurement is not None
+            and _precision_changed(self.measurement, s, self.entry)
+        ):
+            return self.own.need(s, prec)  # 精度を変えたら、ほかの利用者の実測は使わない(own のまま)
         parts = self.parts_for(s)
         act = activation_gb(self.entry, s, self.c)
         if self.measurement is not None and not _precision_changed(self.measurement, s, self.entry):
@@ -877,16 +901,26 @@ class _Model:
 def _prepare(
     entry: ModelEntry, measurements: Iterable[Measurement], c: Coefficients, s: Settings | None = None
 ) -> _Model:
+    measurements = list(measurements)
     parts = components(entry)
     m = None if parts.unknown else pick_measurement(measurements, entry, s)
     if m is None:
         return _Model(entry, c, None, 0.0, settings_for(entry, None), parts)
-    base = settings_for(entry, m.settings)
-    est = need(parts, activation_gb(entry, base, c), c).full
+    at = settings_for(entry, m.settings)
+    est = need(parts, activation_gb(entry, at, c), c).full
     delta = m.peak_vram_gb - est
-    if is_censored(m):
-        delta = max(0.0, delta)  # 張り付いた実測は下限としてだけ使う
-    return _Model(entry, c, m, delta, base, parts)
+    clamped = False
+    if is_community(m):
+        # ほかの利用者の実測は、それが無いときの見積もり(own)より必要量を下げない。判定する既定の設定も
+        # own のまま(小さな設定の提出で既定を下げられないように)。#34 のオーナーの方針
+        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s)
+        floor = own.delta if own.measurement is not None else 0.0
+        clamped = delta < floor
+        return _Model(entry, c, m, max(delta, floor), own.base, parts, clamped, own)
+    if is_censored(m) or lower_bound_only(m):
+        clamped = delta < 0 and lower_bound_only(m)
+        delta = max(0.0, delta)  # 張り付いた実測・下限の実測は「これ以上」としてだけ使う
+    return _Model(entry, c, m, delta, at, parts, clamped)
 
 
 @dataclass(frozen=True)
@@ -1034,6 +1068,15 @@ def estimate(
         elif prec.act_factor != 1:
             detail = "calibrated"
             reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
+        elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry) and prep.clamped:
+            # 下限としてだけ使う実測が式より小さい: 値は式のまま(実測の値ではないので basis は estimated)
+            detail = "measured_community" if is_community(m) else "calibrated"
+            reasons.append(
+                f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
+                "それを使わない見積もりのほうが大きいので、そちらの値にした"
+            )
+            if m.peak_ram_gb:
+                n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
         elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry):
             basis, measured_on = "measured", on
             detail = "measured_community" if is_community(m) else "measured"

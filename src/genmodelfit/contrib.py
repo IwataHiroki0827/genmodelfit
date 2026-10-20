@@ -30,6 +30,7 @@ import os
 import platform
 import re
 import statistics
+import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import date as _date
@@ -39,6 +40,7 @@ from typing import Any
 
 from ._version import __version__
 from .db import Database
+from .estimate import PRECISION_BYTES, norm_precision
 from .hardware import arch_of, cc_from_name, parse_compute_cap
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
@@ -98,48 +100,89 @@ SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "
 
 # --- 個人の情報の検出 ------------------------------------------------------------------------------
 
-# (種類, 正規表現, 説明)。値の文字列と、ファイルの生の文字列の両方を調べる
+# 文字列の長さの上限(note 以外)。長い値に正規表現を当て続けないためでもある
+MAX_STR = 100
+MAX_KEY = 64
+MAX_FILE_BYTES = 64 * 1024  # 提出 1 件のファイルの大きさの上限
+MAX_DEPTH = 8
+
+# 制御文字・改行・見えない文字・向きを変える文字(CI のまとめやログへの差し込み、見えない書き換えを防ぐ)
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]")
+_ZERO_WIDTH = re.compile(r"[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
+_HOST_WORDS = r"host ?name|computer ?name|PC ?name|user ?name|ホスト名|コンピューター?名|PC ?名|ユーザー?名"
+_POSIX_ROOTS = r"home|Users|root|mnt|media|tmp|var|opt|srv|private|Volumes|etc|usr|data|workspace|run"
+
+# (種類, 正規表現, 説明)。値を NFKC でそろえ(全角の Ｃ：＼ → C:\)、見えない文字を除き、
+# ¥ を \ とみなしてから当てる。
+# どれも入れ子の繰り返しの無い形にした(長い値でも時間が線形に近い。値の長さは MAX_STR / MAX_NOTE_CHARS まで)。
+# 当てはまらなければ安全、ではない(人の名前・自由な文の意味は分からない)。docs/schema.md「contrib」
 PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
-    ("path", re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:(\\|/)"), "Windows のパス(C:\\… など)"),
-    ("path", re.compile(r"\\\\[A-Za-z0-9._$-]+\\"), "ネットワークのパス(\\\\server\\…)"),
+    ("path", re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"), "Windows のパス(C:\\… など)"),
+    ("path", re.compile(r"\\"), "バックスラッシュ(Windows のパスの区切り・\\\\server\\…)"),
+    ("path", re.compile(r"\w[\\/]\w+[\\/]"), "区切りが 2 つ以上あるパス(a/b/c、Users\\name\\…)"),
     (
         "path",
-        re.compile(r"(?<![\w.])/(home|Users|root|mnt|media|tmp|var|opt|srv|private|Volumes)/", re.I),
+        re.compile(r"(?<![\w.])//?(" + _POSIX_ROOTS + r")\b", re.I),
         "Linux / macOS のパス(/home/… など)",
     ),
-    ("path", re.compile(r"(?<!\w)~[\\/]"), "ホームのパス(~/…)"),
-    ("users_dir", re.compile(r"\\Users\\|/Users/|\\Documents and Settings\\", re.I), "ユーザーのフォルダ"),
+    ("path", re.compile(r"(?<![\w.:])//\w"), "ネットワークのパス(//server/…)"),
     (
-        "email",
-        re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
-        "メールアドレス",
+        "path",
+        re.compile(r"(?<!\w)~[\\/]|%[A-Za-z_]\w*%|\$\{?[A-Za-z_]\w*\}?[\\/]|\$HOME\b|\$env:", re.I),
+        "ホーム・環境変数のパス(~/、%USERPROFILE%、$HOME)",
     ),
+    ("users_dir", re.compile(r"(?<![A-Za-z])Users[\\/]|Documents and Settings", re.I), "ユーザーのフォルダ"),
+    ("at_sign", re.compile(r"@\w"), "メールアドレス・@ の名前"),
     (
         "uuid",
         re.compile(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"),
         "UUID(GPU の UUID など)",
     ),
-    ("gpu_uuid", re.compile(r"\b(GPU|MIG)-[0-9A-Za-z]{4,}[0-9A-Za-z-]*", re.I), "GPU の UUID"),
+    ("gpu_uuid", re.compile(r"\b(GPU|MIG)-[0-9A-Za-z]{4}", re.I), "GPU の UUID"),
     (
         "pci",
         re.compile(
-            r"\b[0-9A-Fa-f]{4,8}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]\b|PCI\\VEN_|\bbus[ _-]?id\b", re.I
+            r"\b[0-9A-Fa-f]{4,8}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]\b|\b[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-7]\b"
+            r"|PCI\\VEN_|\bbus[ _-]?id\b",
+            re.I,
         ),
         "PCI の位置",
     ),
-    ("ip", re.compile(r"(?<![\d.])(\d{1,3}\.){3}\d{1,3}(?![\d.])"), "IP アドレス"),
-    ("mac", re.compile(r"\b([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), "MAC アドレス"),
-    ("url", re.compile(r"\b(https?|ftp|file)://", re.I), "URL(ComfyUI の場所など)"),
+    ("ip", re.compile(r"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d.])"), "IP アドレス"),
+    ("ip", re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])"), "IPv6 アドレス"),
+    ("mac", re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), "MAC アドレス"),
+    ("url", re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]{1,15}://|\bwww\.", re.I), "URL(ComfyUI の場所など)"),
     (
         "hostname",
         re.compile(
-            r"\b(DESKTOP|LAPTOP|WIN|PC)-[A-Z0-9]{5,}\b|\b[\w-]+\.(local|lan|localdomain|internal|corp)\b"
+            r"\b(DESKTOP|LAPTOP|WIN)-[A-Z0-9]{4,}\b|\b[A-Za-z0-9]+-PC\b"
+            r"|\b[A-Za-z0-9-]{1,63}\.(local|lan|localdomain|internal|corp|home\.arpa)\b|" + _HOST_WORDS,
+            re.I,
         ),
-        "PC 名らしい文字(DESKTOP-XXXXXXX、*.local など)",
+        "PC 名・ユーザ名らしい文字(DESKTOP-XXXXXXX、*-PC、*.local、「PC 名」など)",
     ),
-    ("time", re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}|\b\d{1,2}:\d{2}:\d{2}\b"), "時刻(日付より細かい)"),
-    ("serial", re.compile(r"\bserial\b|シリアル", re.I), "シリアル番号"),
+    (
+        "time",
+        re.compile(
+            r"\b\d{1,2}:\d{2}\b|\b\d{1,2} ?(am|pm)\b|\d{1,2}時\d{1,2}分|\d{4}-\d{2}-\d{2}[T ]\d", re.I
+        ),
+        "時刻(hh:mm、2pm など。日付より細かい)",
+    ),
+    ("serial", re.compile(r"\b(S/?N|serial)\b|シリアル|製造番号", re.I), "シリアル番号"),
 )
+
+
+def normalize_for_scan(text: str) -> str:
+    """検出の前にそろえる: NFKC(全角 → 半角)、見えない文字を除く、
+    ¥(日本語の Windows のパスの区切り)を \\ に。"""
+    t = unicodedata.normalize("NFKC", text)
+    t = _ZERO_WIDTH.sub("", t)
+    return t.replace("¥", "\\")
+
+
+def _hits(text: str) -> list[tuple[str, str]]:
+    t = normalize_for_scan(text)
+    return [(kind, what) for kind, pat, what in PRIVACY_PATTERNS if pat.search(t)]
 
 
 def _identity_words() -> list[str]:
@@ -155,57 +198,115 @@ def _identity_words() -> list[str]:
     return sorted({w for w in words if len(w) >= 4}, key=len, reverse=True)
 
 
-def scrub_text(text: str | None, extra: list[str] | None = None) -> str | None:
-    """文の中の個人の情報らしいところを <removed> に置き換える(note のため)。
+_SEGMENT = re.compile(r"[。\n;]")
 
-    パスは区切りまで(空白・読点・括弧の手前まで)を消す。この PC の名前・ユーザ名・ホームも消す。"""
+
+def scrub_text(text: str | None, extra: list[str] | None = None) -> str | None:
+    """note から個人の情報らしいところを消す。
+
+    文(「。」・改行・「;」で区切ったもの)ごとに見て、この PC の名前・ユーザ名・ホーム(と extra)を含む文と、
+    PRIVACY_PATTERNS のどれかに当たる文を、**文ごと**落とす(空白を含むパスの続きが残らないように、パスの途中で
+    切らない)。この PC の名前はパスより先に見る。落とした数を最後に書く。"""
     if text is None:
         return None
-    out = text
-    path_tail = r"[^\s,、。;:)）」'\"]*"
-    out = re.sub(r"\b(https?|ftp|file)://[^\s,、。;)）」'\"]*", "<url>", out, flags=re.I)
-    out = re.sub(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]" + path_tail, "<path>", out)
-    out = re.sub(r"\\\\[A-Za-z0-9._$-]+\\" + path_tail, "<path>", out)
-    out = re.sub(r"(?<![\w.])(/[\w.-]+){2,}" + path_tail, "<path>", out)
-    out = re.sub(r"(?<!\w)~[\\/]" + path_tail, "<path>", out)
-    for w in [*(extra or []), *_identity_words()]:
-        if w:
-            out = re.sub(re.escape(w), "<removed>", out, flags=re.I)
-    for kind, pat, _ in PRIVACY_PATTERNS:
-        if kind in ("path", "users_dir", "time", "serial", "url"):
+    t = CONTROL_CHARS.sub("。", normalize_for_scan(text))
+    words = [normalize_for_scan(w).lower() for w in [*(extra or []), *_identity_words()] if w]
+    kept: list[str] = []
+    dropped = 0
+    for seg in _SEGMENT.split(t):
+        s = seg.strip()
+        if not s:
             continue
-        out = pat.sub("<removed>", out)
-    out = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?", "<removed>", out)
-    out = re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "<removed>", out)
+        low = s.lower()
+        if any(w in low for w in words) or _hits(s):
+            dropped += 1
+            continue
+        kept.append(s)
+    out = "。".join(kept)
+    if dropped:
+        out = (out + "。" if out else "") + f"(個人の情報らしい文を {dropped} 個省いた)"
     return out
 
 
 def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
-    """個人の情報らしい文字の一覧 [{where, kind, what}]。値(キーも)と、ファイルの生の文字列を調べる。"""
+    """個人の情報らしい文字の一覧 [{where, kind, what}]。値とキーを調べる。
+
+    raw は互換のため受け取るが使わない(JSON として読めた時点で、中身はすべて値とキーにある)。
+    長すぎる文字列は調べない(validate が長さの誤りにする)。"""
     found: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
     def check(where: str, text: str) -> None:
-        for kind, pat, what in PRIVACY_PATTERNS:
-            if pat.search(text) and (where, kind) not in seen:
+        if len(text) > MAX_NOTE_CHARS:
+            return
+        for kind, what in _hits(text):
+            if (where, kind) not in seen:
                 seen.add((where, kind))
                 found.append({"where": where, "kind": kind, "what": what})
 
-    def walk(x: Any, where: str) -> None:
+    def walk(x: Any, where: str, depth: int = 0) -> None:
+        if depth > MAX_DEPTH:
+            return
         if isinstance(x, dict):
             for k, v in x.items():
-                check(f"{where}.{k} (key)", str(k))
-                walk(v, f"{where}.{k}")
+                key = str(k)[:MAX_KEY]
+                check(f"{where}.{key} (key)", str(k))
+                walk(v, f"{where}.{key}", depth + 1)
         elif isinstance(x, list):
-            for i, v in enumerate(x):
-                walk(v, f"{where}[{i}]")
+            for i, v in enumerate(x[:100]):
+                walk(v, f"{where}[{i}]", depth + 1)
         elif isinstance(x, str):
             check(where, x)
 
     walk(data, "$")
-    if raw is not None and not found:
-        check("(file)", raw)
     return found
+
+
+def string_problems(data: Any) -> list[str]:
+    """制御文字・改行・見えない文字を含む文字列、長すぎる文字列・キー、配列、深すぎる入れ子(場所の一覧)。"""
+    out: list[str] = []
+
+    def walk(x: Any, where: str, depth: int = 0) -> None:
+        if depth > MAX_DEPTH:
+            out.append(f"{where}: 入れ子が深すぎます")
+            return
+        if isinstance(x, dict):
+            for k, v in x.items():
+                ks = str(k)
+                if len(ks) > MAX_KEY or CONTROL_CHARS.search(ks):
+                    out.append(f"{where}: キーが長すぎるか、制御文字を含みます")
+                    continue
+                walk(v, f"{where}.{ks}", depth + 1)
+        elif isinstance(x, list):
+            out.append(f"{where}: 配列は使えません")
+        elif isinstance(x, str):
+            limit = MAX_NOTE_CHARS if where == "$.measurement.note" else MAX_STR
+            if len(x) > limit:
+                out.append(f"{where}: {limit} 字を超えています")
+            elif CONTROL_CHARS.search(x):
+                out.append(f"{where}: 改行・制御文字・見えない文字を含みます")
+
+    walk(data, "$")
+    return out
+
+
+def md_cell(value: Any) -> str:
+    """Markdown の表の 1 マスに入れる文字。| ` < > [ ] & * _ と改行・制御文字を無害にする
+    (CI のまとめへの差し込み・リンクや HTML の埋め込みを防ぐ)。"""
+    s = CONTROL_CHARS.sub(" ", str(value))
+    for a, b in (
+        ("&", "&amp;"),
+        ("<", "&lt;"),
+        (">", "&gt;"),
+        ("|", "&#124;"),
+        ("`", "&#96;"),
+        ("[", "&#91;"),
+        ("]", "&#93;"),
+        ("*", "&#42;"),
+        ("_", "&#95;"),
+    ):
+        s = s.replace(a, b)
+    return s
 
 
 # 個人の情報の点検の一覧(contrib show)。(id, 見出し, 当てはまる PRIVACY_PATTERNS の種類)
@@ -217,7 +318,7 @@ CHECKLIST: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "GPU の UUID・PCI の位置・MAC・シリアルが入っていない",
         ("uuid", "gpu_uuid", "pci", "mac", "serial"),
     ),
-    ("network", "IP アドレス・URL・メールアドレスが入っていない", ("ip", "url", "email")),
+    ("network", "IP アドレス・URL・メールアドレス・@ の名前が入っていない", ("ip", "url", "at_sign")),
     ("date_only", "日時は日付だけ(時刻が入っていない)", ("time",)),
 )
 
@@ -439,12 +540,15 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
 
 @dataclass
 class Report:
-    """1 ファイルの検査の結果。errors があれば受け付けない。warnings は受け付けるが知らせる。"""
+    """1 ファイルの検査の結果。errors があれば受け付けない。warnings は受け付けるが知らせる。
+    review は人が確かめるまで受け付けない
+    (validate は --allow-review が無ければ失敗、aggregate は使わない)。"""
 
     path: str
     ok: bool = True
     errors: list[dict[str, str]] = field(default_factory=list)
     warnings: list[dict[str, str]] = field(default_factory=list)
+    review: list[dict[str, str]] = field(default_factory=list)
     sha256: str | None = None
     suggested_path: str | None = None
     model_id: str | None = None
@@ -456,6 +560,13 @@ class Report:
 
     def warn(self, code: str, message: str) -> None:
         self.warnings.append({"code": code, "message": message})
+
+    def needs_review(self, code: str, message: str) -> None:
+        self.review.append({"code": code, "message": message})
+
+    def accepted(self, allow_review: bool = False) -> bool:
+        """受け付けるか(誤りが無く、人が見る項目が無いか、それを許したか)。"""
+        return self.ok and (allow_review or not self.review)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -481,7 +592,12 @@ def _check_keys(r: Report, d: Any, allowed: set[str], where: str, required: set[
 
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DRIVER = re.compile(r"\d{2,4}(\.\d{1,3}){1,3}")
-_VERSION = re.compile(r"v?\d+\.\d+(\.\d+)?([.+-][0-9A-Za-z.+-]*)?")
+_VERSION = re.compile(r"v?\d{1,3}\.\d{1,3}\.\d{1,4}")  # ComfyUI の版(厳密な x.y.z。後ろに何も付けない)
+_TOOL_VERSION = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,4}((a|b|rc|\.dev|\.post)\d{1,4})?")
+_GPU_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 .-]{1,63}")  # 括弧・記号・自由な文は入れられない
+_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,199}")
+_PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
+REVIEW_DEVIATION = 0.40  # 式の見積もりから 40% より外れた値は、人が確かめる
 _CC = re.compile(r"\d{1,2}\.\d")
 _FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})\.json")
 
@@ -501,6 +617,8 @@ def validate_submission(
     if not isinstance(data, dict):
         r.error("schema", "JSON のオブジェクトではありません")
         return r
+    for msg in string_problems(data):
+        r.error("string", msg)
     for f in privacy_findings(data, raw):
         r.error("privacy", f"{f['where']}: {f['what']}らしい文字があります。消してから出してください")
     _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
@@ -513,7 +631,9 @@ def validate_submission(
         r.error("schema", f"kind は {KIND!r} にしてください")
     tool = data.get("tool")
     if _check_keys(r, tool, TOOL_KEYS, "$.tool", TOOL_KEYS) and (
-        tool.get("name") != "genmodelfit" or not isinstance(tool.get("version"), str)
+        tool.get("name") != "genmodelfit"
+        or not isinstance(tool.get("version"), str)
+        or not _TOOL_VERSION.fullmatch(tool["version"])
     ):
         r.error("schema", "tool は {name: genmodelfit, version: 版} にしてください")
     # 日付(日付だけ。未来の日付は誤り)
@@ -532,7 +652,7 @@ def validate_submission(
             r.warn("date_old", f"date が古すぎます(genmodelfit より前): {d}")
     cv = data.get("comfyui_version")
     if cv is not None and (not isinstance(cv, str) or not _VERSION.fullmatch(cv)):
-        r.error("value", f"comfyui_version は版の番号にしてください: {cv!r}")
+        r.error("value", f"comfyui_version は x.y.z の版の番号だけにしてください: {cv!r}")
     if cv is None:
         r.warn("comfyui_version_missing", "comfyui_version がありません")
 
@@ -560,8 +680,8 @@ def validate_submission(
     name = gpu.get("name")
     vram = gpu.get("vram_gb")
     if gpu:
-        if not isinstance(name, str) or not name.strip() or len(name) > 100:
-            r.error("value", f"system.gpu.name がありません・長すぎます: {name!r}")
+        if not isinstance(name, str) or not _GPU_NAME.fullmatch(name):
+            r.error("value", "system.gpu.name は GPU の名前(英数字・空白・. -、64 字まで)だけにしてください")
             name = None
         if not _num(vram) or not 0 < vram <= MAX_GPU_VRAM_GB:
             r.error("value", f"system.gpu.vram_gb がありえない値です: {vram!r}")
@@ -581,7 +701,9 @@ def validate_submission(
             r.gpu_name = name
             known = cc_from_name(name)
             if known is None:
-                r.warn("unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}")
+                r.needs_review(
+                    "unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}"
+                )
             elif cc and parse_compute_cap(cc) != known:
                 r.error(
                     "gpu_inconsistent",
@@ -611,16 +733,13 @@ def validate_submission(
 def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: Database | None) -> None:
     mid = mm.get("model_id")
     entry = None
-    if not isinstance(mid, str) or not mid:
-        r.error("value", f"measurement.model_id がありません: {mid!r}")
+    if not isinstance(mid, str) or not _MODEL_ID.fullmatch(mid):
+        r.error("value", "measurement.model_id は一覧の ID(英数字と _ . : / + -、200 字まで)にしてください")
     else:
         r.model_id = mid
         entry = db.get(mid) if db is not None else None
         if db is not None and entry is None:
-            r.warn(
-                "unknown_model",
-                f"モデル ID が同梱の一覧にありません(まとめても見積もりには使われない): {mid}",
-            )
+            r.needs_review("unknown_model", f"モデル ID が同梱の一覧にありません: {mid}")
     outcome = mm.get("outcome")
     if outcome not in OUTCOMES:
         r.error("value", f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}")
@@ -678,8 +797,16 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         if not _num(v) or not lo <= v <= hi or (k != "seconds" and v != int(v)):
             r.error("settings", f"settings.{k} が範囲({lo:g}〜{hi:g})の外です: {v!r}")
     prec = s.get("precision")
-    if prec is not None and (not isinstance(prec, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,24}", prec)):
-        r.error("settings", f"settings.precision は精度の名前にしてください: {prec!r}")
+    if prec is not None and (
+        not isinstance(prec, str)
+        or not _PRECISION.fullmatch(prec)
+        or norm_precision(prec) not in PRECISION_BYTES
+    ):
+        r.error(
+            "settings", f"settings.precision は知っている精度({', '.join(PRECISION_BYTES)})にしてください"
+        )
+    if entry is not None and outcome == "ok" and _num(peak) and peak > 0:
+        _check_against_estimate(r, entry, mm, s, peak)
     if entry is not None:
         mod = entry.modality
         if mod not in MODALITIES:
@@ -690,6 +817,38 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
             r.warn("settings_modality", f"{mod} のモデルに frames があります")
         if mod in ("music", "sfx", "tts") and s.get("seconds") is None:
             r.warn("settings_missing", f"{mod} のモデルなのに seconds(長さ)がありません")
+
+
+def _check_against_estimate(
+    r: Report, entry: Any, mm: dict[str, Any], s: dict[str, Any], peak: float
+) -> None:
+    """式の見積もりと比べ、ありそうにない値を「人が見る」にする(書き換えた提出で見積もりを動かさないため)。"""
+    from .estimate import activation_gb, apply_precision, components, load_coefficients, need, settings_for
+
+    parts = components(entry)
+    if parts.unknown:
+        return
+    c = load_coefficients()
+    try:
+        settings = settings_for(entry, Settings.from_dict({k: v for k, v in s.items() if k in SETTINGS_KEYS}))
+        parts = apply_precision(parts, entry, settings)
+        full = need(parts, activation_gb(entry, settings, c), c).full
+    except (TypeError, ValueError):
+        return
+    if full > 0 and abs(peak - full) / full > REVIEW_DEVIATION:
+        r.needs_review(
+            "deviation",
+            f"最大 VRAM {peak} GB が式の見積もり {full:.2f} GB から"
+            f" {abs(peak - full) / full:.0%} 外れています"
+            f"(±{REVIEW_DEVIATION:.0%} を超えたものは人が確かめる)",
+        )
+    floor = parts.total + c.overhead_gb
+    if mm.get("offload") == "none" and peak < floor:
+        r.needs_review(
+            "below_weights",
+            f"全部 GPU に載せた(offload: none)のに、最大 VRAM {peak} GB が"
+            f"重みと固定分 {floor:.2f} GB より小さい",
+        )
 
 
 def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
@@ -708,10 +867,26 @@ def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
         r.error("filename", f"フォルダ名 {p.parent.name} が GPU 名から決まる {gpu_slug(gpu)} と違います")
 
 
+class SubmissionReadError(ValueError):
+    """読めない提出(大きすぎる・シンボリックリンク・JSON でない・入れ子が深すぎる)。"""
+
+
 def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
     p = Path(path)
-    raw = p.read_text(encoding="utf-8")
-    return json.loads(raw), raw
+    if p.is_symlink():
+        raise SubmissionReadError("シンボリックリンクは受け付けません")
+    if not p.is_file():
+        raise SubmissionReadError("ファイルではありません")
+    size = p.stat().st_size
+    if size > MAX_FILE_BYTES:
+        raise SubmissionReadError(f"大きすぎます({size} バイト。{MAX_FILE_BYTES} まで)")
+    try:
+        raw = p.read_bytes().decode("utf-8")
+        return json.loads(raw), raw
+    except RecursionError as e:
+        raise SubmissionReadError("入れ子が深すぎます") from e
+    except (UnicodeDecodeError, ValueError) as e:
+        raise SubmissionReadError(f"JSON ではありません({type(e).__name__})") from e
 
 
 def validate_files(
@@ -728,9 +903,14 @@ def validate_files(
     for p in paths:
         try:
             data, raw = read_submission(p)
-        except (OSError, ValueError) as e:
+        except SubmissionReadError as e:
             r = Report(path=Path(p).as_posix())
-            r.error("read", f"読めません・JSON ではありません: {type(e).__name__}")
+            r.error("read", f"読めません: {e}")
+            reports.append(r)
+            continue
+        except OSError as e:
+            r = Report(path=Path(p).as_posix())
+            r.error("read", f"読めません: {type(e).__name__}")
             reports.append(r)
             continue
         r = validate_submission(data, db, path=p, raw=raw, today=today, check_filename=check_filename)
@@ -746,9 +926,15 @@ def validate_files(
 def find_files(root: str | os.PathLike[str]) -> list[Path]:
     """フォルダの下の *.json(並びは決まった順)。ファイルを渡せばそれだけ。"""
     p = Path(root)
-    if p.is_file():
+    if p.is_file() or p.is_symlink():
         return [p]
-    return sorted(p.rglob("*.json"), key=lambda x: x.as_posix()) if p.is_dir() else []
+    if not p.is_dir():
+        return []
+    out: list[Path] = []
+    for d, dirs, files in os.walk(p, followlinks=False):  # シンボリックリンクのフォルダはたどらない
+        dirs[:] = [x for x in dirs if not (Path(d) / x).is_symlink()]
+        out += [Path(d) / f for f in files if f.endswith(".json")]
+    return sorted(out, key=lambda x: x.as_posix())
 
 
 # --- まとめる -------------------------------------------------------------------------------------
@@ -761,8 +947,13 @@ MIN_CONSISTENT = 2  # 「そろった」とみなす最小の件数
 
 
 def _settings_key(s: Settings) -> tuple:
-    keys = ("width", "height", "frames", "seconds", "steps", "precision")
-    return (*((k, getattr(s, k)) for k in keys), ("batch", max(1, s.batch or 1)))
+    """設定の鍵。精度は書き方をそろえる(BF16 と bf16、fp8_e4m3fn と fp8 は同じ)。"""
+    keys = ("width", "height", "frames", "seconds", "steps")
+    return (
+        *((k, getattr(s, k)) for k in keys),
+        ("precision", norm_precision(s.precision)),
+        ("batch", max(1, s.batch or 1)),
+    )
 
 
 def robust_filter(values: list[float]) -> tuple[list[int], list[int], float]:
@@ -805,14 +996,15 @@ class Submission:
 
 
 def load_dir(
-    root: str | os.PathLike[str], db: Database | None = None
+    root: str | os.PathLike[str], db: Database | None = None, *, allow_review: bool = False
 ) -> tuple[list[Submission], list[Report]]:
-    """フォルダの提出を読み、検査を通ったものだけ返す(同じ内容は 1 件)。(通ったもの, 全部の検査結果)。"""
+    """フォルダの提出を読み、検査を通ったものだけ返す(同じ内容は 1 件)。(通ったもの, 全部の検査結果)。
+    人が見る項目(review)のある提出は、allow_review が無ければ使わない。"""
     files = find_files(root)
     reports = validate_files(files, db)
     subs: list[Submission] = []
     for p, r in zip(files, reports, strict=True):
-        if r.ok and r.sha256:
+        if r.accepted(allow_review) and r.sha256:
             data, _ = read_submission(p)
             subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
     return subs, reports
@@ -829,7 +1021,8 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
         m = sub.measurement
         if not m.standard:
             continue
-        key = (m.model_id, m.gpu_name, m.vram_metric or "", _settings_key(m.settings))
+        # GPU 名は書き方の違い(NVIDIA / GeForce の有無・大文字小文字・空白)をそろえる
+        key = (m.model_id, gpu_slug(m.gpu_name), m.vram_metric or "", _settings_key(m.settings))
         groups.setdefault(key, []).append(sub)
     out: list[dict[str, Any]] = []
     for key in sorted(groups, key=lambda k: json.dumps(k, default=str)):
@@ -854,12 +1047,15 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
             mad, rel = 0.0, 0.0
             outcome = "oom"
         first = ms[0]
-        consistent = outcome == "ok" and len(used) >= MIN_CONSISTENT and rel <= CONSISTENT_REL
+        # OOM を含む組はそろったとみなさない(同じ構成で動かなかった人がいる)
+        consistent = outcome == "ok" and not oom and len(used) >= MIN_CONSISTENT and rel <= CONSISTENT_REL
         settings = {k: v for k, v in asdict(first.settings).items() if v is not None}
+        if settings.get("precision"):
+            settings["precision"] = norm_precision(settings["precision"])
         out.append(
             {
                 "model_id": first.model_id,
-                "gpu_name": first.gpu_name,
+                "gpu_name": _mode([m.gpu_name for m in ms]),
                 "gpu_vram_gb": _med([m.gpu_vram_gb for m in base] or [first.gpu_vram_gb]),
                 "peak_vram_gb": round(med, 2),
                 "settings": settings,

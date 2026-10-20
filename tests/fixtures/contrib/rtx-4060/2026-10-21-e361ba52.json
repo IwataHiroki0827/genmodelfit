@@ -28,10 +28,10 @@
   "outcome": "ok",
   "standard": true,
   "offload": "dynamic",
-  "peak_vram_gb": 7.41,
+  "peak_vram_gb": 7.85,
   "peak_ram_gb": 12.3,
   "seconds": 58.4,
   "vram_metric": "torch_reserved",
-  "note": "SYNTHETIC TEST FIXTURE(tests/fixtures/contrib の試験用。実測ではない)"
+  "note": "SYNTHETIC TEST FIXTURE(試験用の架空の値。実測ではない)"
  }
 }

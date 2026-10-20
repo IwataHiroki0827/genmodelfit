@@ -32,6 +32,6 @@
   "peak_ram_gb": 7.4,
   "seconds": 41.2,
   "vram_metric": "torch_reserved",
-  "note": "SYNTHETIC TEST FIXTURE(tests/fixtures/contrib の試験用。実測ではない)"
+  "note": "SYNTHETIC TEST FIXTURE(試験用の架空の値。実測ではない)"
  }
 }
