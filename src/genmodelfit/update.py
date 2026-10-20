@@ -11,11 +11,10 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
+import logging
 import re
-import sys
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -821,8 +820,12 @@ def is_duplicate(e: ModelEntry, kept: list[ModelEntry]) -> bool:
 # --- 全体 ----------------------------------------------------------------------------------------
 
 
-def _silent(_msg: str) -> None:
-    pass
+_log = logging.getLogger("genmodelfit")
+
+
+def _silent(msg: str) -> None:
+    """進み具合の既定の行き先。ライブラリとしては何も表示せず、logging に渡すだけ。"""
+    _log.info(msg)
 
 
 def _previous_db() -> Database | None:
@@ -1067,87 +1070,74 @@ def build_database(
     )
 
 
-# --- CLI ------------------------------------------------------------------------------------------
+# --- 書き出しまで(表示は cli.py) ----------------------------------------------------------------
 
 
-def run_update(args: argparse.Namespace) -> int:
-    out_path = Path(args.output) if getattr(args, "output", None) else cached_db_path()
-    quiet = bool(getattr(args, "json", False))
-    with contextlib.suppress(AttributeError, ValueError, OSError):
-        sys.stderr.reconfigure(encoding="utf-8")  # 途中経過も cp932 で化けないように
+class UpdateFailed(UpdateError):
+    """更新をやめた(前の一覧はそのまま)。文はそのまま利用者に見せる。"""
 
-    def say(msg: str) -> None:
-        if not quiet:
-            print(msg, file=sys.stderr, flush=True)
 
-    src = getattr(args, "offline_sources", None)
-    budget = getattr(args, "rate_limit_budget", None)
-    fetch: Fetcher = (
-        DirFetcher(src)
-        if src
-        else HttpFetcher(rate_limit_budget=RATE_LIMIT_BUDGET if budget is None else budget)
-    )
-    if getattr(args, "heads_only", False):
-        return run_heads_only(args, fetch, out_path, say)
+def make_fetcher(offline_sources: str | None = None, rate_limit_budget: float | None = None) -> Fetcher:
+    if offline_sources:
+        return DirFetcher(offline_sources)
+    budget = RATE_LIMIT_BUDGET if rate_limit_budget is None else rate_limit_budget
+    return HttpFetcher(rate_limit_budget=budget)
+
+
+def update_database(
+    fetch: Fetcher,
+    out_path: Path,
+    *,
+    hf: bool = True,
+    head: bool = True,
+    allow_partial: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> Database:
+    """上流から一覧を作り、out_path に書く。やめたときは UpdateFailed(何も書かない)。"""
     try:
-        db = build_database(
-            fetch,
-            hf=not getattr(args, "skip_hf", False),
-            head=not getattr(args, "skip_head", False),
-            progress=say,
-        )
+        db = build_database(fetch, hf=hf, head=head, progress=progress)
     except NetworkError as e:
-        return _fail(
-            args, f"ネットワークにつながらないため更新できませんでした(前の一覧はそのまま使えます): {e}"
-        )
+        raise UpdateFailed(
+            f"ネットワークにつながらないため更新できませんでした(前の一覧はそのまま使えます): {e}"
+        ) from e
     except (UpdateError, FetchError) as e:
-        return _fail(args, f"更新できませんでした(前の一覧はそのまま使えます): {e}")
-    if db.sources.get("partial") and not getattr(args, "allow_partial", False):
+        raise UpdateFailed(f"更新できませんでした(前の一覧はそのまま使えます): {e}") from e
+    if db.sources.get("partial") and not allow_partial:
         pc = db.sources["partial_counts"]
         detail = ", ".join(f"{k}={v}" for k, v in pc.items() if v)
         hint = "時間をおいてやり直すか、" if pc["rate_limit_budget_exhausted"] else ""
-        return _fail(
-            args,
+        raise UpdateFailed(
             f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
-            f"{hint}欠けたままでよければ --allow-partial を付けてください",
+            f"{hint}欠けたままでよければ --allow-partial を付けてください"
         )
     db.save(out_path)
-    counts = db.sources["counts"]
-    if quiet:
-        from .cli import _envelope, _out
-
-        db.origin = "path"
-        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
-        return 0
-    mods = ", ".join(f"{k} {v}" for k, v in counts["modality"].items())
-    print(f"{counts['models']} 件を書き出しました: {out_path}")
-    print(f"  種類: {mods}")
-    print("  内容: " + ", ".join(f"{k} {v}" for k, v in counts["content"].items()))
-    print("  出どころ: " + ", ".join(f"{k} {v}" for k, v in counts["source"].items()))
-    print("  ライセンス: " + ", ".join(f"{k} {v}" for k, v in counts["license_tier"].items()))
-    print(f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件")
-    print(f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件")
-    if db.sources.get("partial"):
-        pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
-        print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
-    return 0
+    return db
 
 
-def run_heads_only(
-    args: argparse.Namespace, fetch: Fetcher, out_path: Path, say: Callable[[str], None]
-) -> int:
-    """今の一覧(--db / キャッシュ / 同梱)をそのまま使い、HEAD と ComfyUI の版の確認だけをやり直す。"""
+def refresh_heads(
+    fetch: Fetcher,
+    out_path: Path,
+    *,
+    db_path: str | None = None,
+    use_cache: bool = True,
+    progress: Callable[[str], None] | None = None,
+) -> Database:
+    """今の一覧(db_path / キャッシュ / 同梱)をそのまま使い、HEAD と ComfyUI の版の確認だけをやり直す。
+
+    結果は sources["head_check"] と sources["comfyui"] に入る。やめたときは UpdateFailed。
+    """
     from .db import DatabaseError
     from .db import load as load_db
 
+    say = progress or _silent
     try:
-        db = load_db(getattr(args, "db", None), use_cache=not getattr(args, "no_cache", False))
+        db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
-        return _fail(args, f"一覧を読めません: {e}")
+        raise UpdateFailed(f"一覧を読めません: {e}") from e
     say(f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています")
     stats = check_heads(db.models, fetch)
     if stats["urls"] and stats["unchecked"] == stats["urls"]:
-        return _fail(args, "HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)")
+        raise UpdateFailed("HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)")
     db.sources["head_check"] = stats
     prev_comfy = db.sources.get("comfyui") if isinstance(db.sources.get("comfyui"), dict) else None
     db.sources["comfyui"], warn = latest_comfyui(fetch)
@@ -1158,23 +1148,4 @@ def run_heads_only(
     warnings = [w for w in db.sources.get("warnings", []) if not w.startswith("ComfyUI の最新の版")]
     db.sources["warnings"] = warnings + ([warn] if warn else [])
     db.save(out_path)
-    if getattr(args, "json", False):
-        from .cli import _envelope, _out
-
-        db.origin = "path"
-        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
-        return 0
-    print(f"HEAD の結果を書き出しました: {out_path}")
-    print(f"  URL {stats['urls']} 件: " + ", ".join(f"{k} {v}" for k, v in stats["status"].items()))
-    print(f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {db.sources['comfyui']['latest_release']}")
-    return 0
-
-
-def _fail(args: argparse.Namespace, message: str) -> int:
-    if getattr(args, "json", False):
-        from .cli import _out
-
-        _out({"genmodelfit": __version__, "command": "update", "error": message})
-    else:
-        print(f"エラー: {message}", file=sys.stderr)
-    return 1
+    return db

@@ -10,6 +10,7 @@ import contextlib
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import __version__
@@ -265,24 +266,136 @@ def cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _progress(args: argparse.Namespace):
+    """途中経過を stderr に出す関数(--json のときは出さない)。"""
+
+    def say(msg: str) -> None:
+        if not getattr(args, "json", False):
+            print(msg, file=sys.stderr, flush=True)
+
+    return say
+
+
 def cmd_update(args: argparse.Namespace) -> int:
     if getattr(args, "from_release", False):
-        from .remote import run_from_release
+        return _update_from_release(args)
+    from .db import cached_db_path
+    from .update import UpdateFailed, make_fetcher, refresh_heads, update_database
 
-        return run_from_release(args)
+    out_path = Path(args.output) if getattr(args, "output", None) else cached_db_path()
+    say = _progress(args)
+    fetch = make_fetcher(getattr(args, "offline_sources", None), getattr(args, "rate_limit_budget", None))
     try:
-        from .update import run_update
-    except ImportError as e:  # #2 で実装
-        raise CliError("update はまだ実装されていません(Issue #2)") from e
-    return run_update(args)
+        if getattr(args, "heads_only", False):
+            db = refresh_heads(
+                fetch,
+                out_path,
+                db_path=getattr(args, "db", None),
+                use_cache=not getattr(args, "no_cache", False),
+                progress=say,
+            )
+        else:
+            db = update_database(
+                fetch,
+                out_path,
+                hf=not getattr(args, "skip_hf", False),
+                head=not getattr(args, "skip_head", False),
+                allow_partial=bool(getattr(args, "allow_partial", False)),
+                progress=say,
+            )
+    except UpdateFailed as e:
+        if args.json:
+            _out({"genmodelfit": __version__, "command": "update", "error": str(e)})
+        else:
+            print(f"エラー: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        db.origin = "path"
+        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
+        return 0
+    if getattr(args, "heads_only", False):
+        stats = db.sources["head_check"]
+        print(f"HEAD の結果を書き出しました: {out_path}")
+        print(f"  URL {stats['urls']} 件: " + ", ".join(f"{k} {v}" for k, v in stats["status"].items()))
+        latest = db.sources["comfyui"]["latest_release"]
+        print(f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {latest}")
+        return 0
+    counts = db.sources["counts"]
+    mods = ", ".join(f"{k} {v}" for k, v in counts["modality"].items())
+    print(f"{counts['models']} 件を書き出しました: {out_path}")
+    print(f"  種類: {mods}")
+    print("  内容: " + ", ".join(f"{k} {v}" for k, v in counts["content"].items()))
+    print("  出どころ: " + ", ".join(f"{k} {v}" for k, v in counts["source"].items()))
+    print("  ライセンス: " + ", ".join(f"{k} {v}" for k, v in counts["license_tier"].items()))
+    print(f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件")
+    print(f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件")
+    if db.sources.get("partial"):
+        pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
+        print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
+    return 0
+
+
+def _update_from_release(args: argparse.Namespace) -> int:
+    from .db import cached_db_path
+    from .remote import update_from_release
+
+    dest = Path(args.output) if getattr(args, "output", None) else cached_db_path()
+    db = update_from_release(dest=dest, force=bool(getattr(args, "force", False)))
+    if args.json:
+        out = {
+            "genmodelfit": __version__,
+            "command": "update",
+            "models": len(db.models),
+            "generated_at": db.generated_at,
+            "output": str(dest),
+        }
+        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+    else:
+        print(f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}")
+    return 0
 
 
 def cmd_bench(args: argparse.Namespace) -> int:
+    from .bench import BenchError, options_from_args, run, save, save_decision
+    from .workflow import WorkflowError
+
     try:
-        from .bench import run_bench
-    except ImportError as e:  # #5 で実装
-        raise CliError("bench はまだ実装されていません(Issue #5)") from e
-    return run_bench(args)
+        result = run(options_from_args(args), log=_progress(args))
+    except (BenchError, WorkflowError) as e:
+        raise CliError(str(e)) from e
+    m = result.measurement
+    out_path, not_saved = save_decision(
+        m, args.output, getattr(args, "save_failed", False), getattr(args, "save_nonstandard", False)
+    )
+    if out_path is not None:
+        save(m, out_path)
+    code = 1 if result.failed else 0
+    if args.json:
+        extra = {"saved_to": str(out_path) if out_path else None}
+        if not_saved:
+            extra["not_saved"] = not_saved
+        _out(_envelope("bench", None, None, **extra, **result.to_dict()))
+        return code
+    for w in result.warnings:
+        print(f"注意: {w}", file=sys.stderr)
+    s = m.settings
+    parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} フレーム" if s.frames else None]
+    parts += [f"{s.seconds:g} 秒の音声" if s.seconds else None, f"{s.steps} ステップ" if s.steps else None]
+    print(f"=== bench: {m.model_id} ===")
+    print(f"GPU:      {m.gpu_name}({m.gpu_vram_gb:g} GiB、ドライバ {m.driver or '不明'})")
+    print(f"ComfyUI:  {m.comfyui_version or '不明'}")
+    print(f"設定:     {'、'.join(p for p in parts if p) or '(テンプレートのまま)'}")
+    print(f"結果:     {m.outcome}{'' if m.standard else '(標準でない条件)'}")
+    print(f"最大 VRAM: {m.peak_vram_gb:.2f} GB(ComfyUI のプロセス)")
+    if m.peak_ram_gb is not None:
+        print(f"最大メモリ: {m.peak_ram_gb:.2f} GB")
+    print(f"時間:     {m.seconds:g} 秒(送ってから終わるまで、モデルの読み込み込み)")
+    print(f"載せ方:   {m.offload or '不明'}")
+    print(f"メモ:     {m.note}")
+    if result.failed:
+        print(f"失敗:     {result.failed}")
+    print(f"保存先:   {out_path}" if out_path else f"保存:     {not_saved}")
+    return code
 
 
 def cmd_gate(args: argparse.Namespace) -> int:

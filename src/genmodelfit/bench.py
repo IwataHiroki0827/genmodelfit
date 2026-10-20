@@ -22,9 +22,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import logging
 import re
 import subprocess
-import sys
 import threading
 import time
 import uuid
@@ -44,7 +44,6 @@ from .models import Measurement
 from .workflow import (
     FRAME_KEYS,
     SECONDS_KEYS,
-    WorkflowError,
     apply_settings,
     check_inputs,
     effective_settings,
@@ -673,8 +672,9 @@ def _check_queue_empty(client: ComfyClient, when: str) -> None:
         )
 
 
-def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=print) -> BenchResult:
-    """1 回測る。測れないときは BenchError。"""
+def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> BenchResult:
+    """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。"""
+    log = log or logging.getLogger("genmodelfit").info
     if not opts.timeout or opts.timeout <= 0:
         raise BenchError("--timeout は 0 より大きい秒数にしてください")
     session = requests.Session()
@@ -936,7 +936,7 @@ def save_decision(
     return default_output_path(m), None
 
 
-def _options_from_args(args: argparse.Namespace) -> BenchOptions:
+def options_from_args(args: argparse.Namespace) -> BenchOptions:
     width, height = getattr(args, "width", None), getattr(args, "height", None)
     res = getattr(args, "resolution", None)
     if res:
@@ -973,54 +973,3 @@ def _options_from_args(args: argparse.Namespace) -> BenchOptions:
         note=getattr(args, "note", None),
         precision=precision,
     )
-
-
-def run_bench(args: argparse.Namespace) -> int:
-    """cli.py の `bench` から呼ばれる。"""
-    from .cli import CliError, _envelope, _out
-
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")  # 進み具合と注意は stderr に出す(stdout と同じく UTF-8)
-
-    def log(msg: str) -> None:
-        if not args.json:
-            print(msg, file=sys.stderr)
-
-    try:
-        opts = _options_from_args(args)
-        result = run(opts, log=log)
-    except (BenchError, WorkflowError) as e:
-        raise CliError(str(e)) from e
-    m = result.measurement
-    out_path, not_saved = save_decision(
-        m, args.output, getattr(args, "save_failed", False), getattr(args, "save_nonstandard", False)
-    )
-    if out_path is not None:
-        save(m, out_path)
-    code = 1 if result.failed else 0
-    if args.json:
-        extra = {"saved_to": str(out_path) if out_path else None}
-        if not_saved:
-            extra["not_saved"] = not_saved
-        _out(_envelope("bench", None, None, **extra, **result.to_dict()))
-        return code
-    for w in result.warnings:
-        print(f"注意: {w}", file=sys.stderr)
-    s = m.settings
-    parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} フレーム" if s.frames else None]
-    parts += [f"{s.seconds:g} 秒の音声" if s.seconds else None, f"{s.steps} ステップ" if s.steps else None]
-    print(f"=== bench: {m.model_id} ===")
-    print(f"GPU:      {m.gpu_name}({m.gpu_vram_gb:g} GiB、ドライバ {m.driver or '不明'})")
-    print(f"ComfyUI:  {m.comfyui_version or '不明'}")
-    print(f"設定:     {'、'.join(p for p in parts if p) or '(テンプレートのまま)'}")
-    print(f"結果:     {m.outcome}{'' if m.standard else '(標準でない条件)'}")
-    print(f"最大 VRAM: {m.peak_vram_gb:.2f} GB(ComfyUI のプロセス)")
-    if m.peak_ram_gb is not None:
-        print(f"最大メモリ: {m.peak_ram_gb:.2f} GB")
-    print(f"時間:     {m.seconds:g} 秒(送ってから終わるまで、モデルの読み込み込み)")
-    print(f"載せ方:   {m.offload or '不明'}")
-    print(f"メモ:     {m.note}")
-    if result.failed:
-        print(f"失敗:     {result.failed}")
-    print(f"保存先:   {out_path}" if out_path else f"保存:     {not_saved}")
-    return code
