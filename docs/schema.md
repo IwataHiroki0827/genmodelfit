@@ -100,7 +100,7 @@ precision), then the order above. So on 8 GB Z-Image Turbo shows its int8 workfl
 with `--task edit` the representative is an edit workflow. The shown entry's `auto`, score and VRAM are used for the
 order.
 
-On the bundled list (341 entries) this gives 226 models; 51 of them have more than one entry.
+On the bundled list (341 entries) this gives 225 models (188 with content `sfw`); 52 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
