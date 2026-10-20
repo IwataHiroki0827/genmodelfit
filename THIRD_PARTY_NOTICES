@@ -1,0 +1,88 @@
+genmodelfit - third-party notices / 第三者の表示
+================================================
+
+genmodelfit is licensed under the Mozilla Public License 2.0 (see LICENSE).
+The bundled data (src/genmodelfit/data/db.json, measurements.json,
+calibration.json) is also distributed under MPL-2.0, except for the parts
+listed below, which keep their original terms.
+
+genmodelfit 自身と同梱のデータは MPL-2.0 です。下に挙げる部分は元の条件のままです。
+
+Runtime dependencies (requests, psutil, platformdirs, rich, cryptography and
+their dependencies) are installed separately by pip and are not included in
+this distribution; each package carries its own license.
+実行時の依存は pip が別に入れるもので、この配布物には含みません。
+
+
+1. ComfyUI workflow templates (Comfy-Org/workflow_templates)
+------------------------------------------------------------
+
+Source: https://github.com/Comfy-Org/workflow_templates
+License: MIT
+
+Much of src/genmodelfit/data/db.json is derived from the template index and
+template JSON files of this repository: template names and titles, the models
+each workflow uses, download URLs, file hashes, model directories, required
+ComfyUI versions and custom-node requirements. No ComfyUI code is included.
+
+db.json の多くは、このリポジトリのテンプレートの一覧とテンプレートの JSON から
+作っています(テンプレート名・題・使うモデル・URL・ハッシュ・必要な版など)。
+
+The upstream license text, copied verbatim:
+
+MIT License
+
+Copyright (c) 2023-present Comfy Org
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+2. Hugging Face Hub metadata
+----------------------------
+
+Source: https://huggingface.co/docs/hub/api
+
+db.json also contains facts read from the public Hugging Face Hub API and
+from anonymous HEAD requests: repository ids, file names, sizes, sha256
+hashes, license identifiers, gating, tags, download counts and the times the
+URLs were checked. No model weights, model cards or other content of the
+repositories are included or redistributed.
+
+The license field of each model only REPORTS the license that its publisher
+declared (traced to the upstream where possible). genmodelfit does not grant
+any right to use a model. Check each model's own license before you download
+or use it.
+
+Hugging Face Hub の公開 API と匿名の HEAD で読んだ事実(ID・ファイル名・大きさ・
+sha256・ライセンスの名前・申請の要否・ダウンロード数など)を含みます。モデル本体や
+モデルカードは含みません。ライセンスは表示するだけで、利用を許諾するものではありません。
+
+
+3. llmfit
+---------
+
+Source: https://github.com/AlexsJones/llmfit
+
+genmodelfit is inspired by llmfit (which does the same for LLMs): the idea of
+fit levels by memory utilization, the selection rules for Hugging Face models
+and the command layout. No code or data from llmfit is copied into genmodelfit.
+genmodelfit is not an official llmfit project or fork.
+
+llmfit に着想を得ています(段階の考え方・HF のモデルの選び方・コマンドの形)。
+llmfit のコードやデータは写していません。llmfit の公式の派生ではありません。

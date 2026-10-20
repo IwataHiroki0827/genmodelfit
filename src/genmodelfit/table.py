@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """端末向けの表(Issue #7、#17)。llmfit の `fit` の表にならう。
 
 - 先頭に PC と「何件中何件を出したか・隠した件数と理由」、末尾に印の説明

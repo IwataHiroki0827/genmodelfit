@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """genmodelfit: 画像・動画・音声・3D の生成モデルが、その PC で動くかを判定する。
 
 Python から:
@@ -6,13 +10,17 @@ Python から:
     for fit in gmf.recommend(modality="image", limit=5):
         print(fit.model.id, fit.score, fit.auto, fit.estimate.fit, fit.estimate.vram_gb)
         fit.to_dict()  # `recommend --json` の models の 1 件と同じ形
+    if gmf.data_status().expired:  # 同梱・取り込んだ一覧の HEAD の確認が古い(30 日)
+        ...
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from datetime import datetime
 
+from ._version import __version__
 from .db import Database
 from .db import load as load_db
 from .estimate import estimate
@@ -29,8 +37,7 @@ from .models import (
     SystemInfo,
 )
 from .recommend import Fit, evaluate
-
-__version__ = "0.1.0.dev0"
+from .status import DataStatus
 
 # 途中経過は logging に出す。組み込み側が設定しなければ何も出ない
 logging.getLogger("genmodelfit").addHandler(logging.NullHandler())
@@ -136,6 +143,24 @@ def search(
     ).fits
 
 
+def data_status(
+    db: Database | None = None,
+    *,
+    now: datetime | None = None,
+    comfyui_version: str | None = None,
+) -> DataStatus:
+    """一覧の出どころと新しさ。`expired` が True なら、HEAD の確認が古いせいで自動のおすすめから
+    落ちたモデルがある(30 日。`genmodelfit update --from-release` か `update --heads-only` で取り直す)。
+
+    判定は自動のおすすめ(gate)と同じ関数で行う。auto_count がいま自動で出せる数、expires_at が次に
+    期限が切れる時刻。now は試験用(既定は今の UTC。タイムゾーンが無ければ UTC とみなす)。
+    comfyui_version は recommend と同じ(アプリは自分の版を渡す)。ネットには触らない。
+    """
+    from .status import compute
+
+    return compute(db or load_db(), _policy(comfyui_version), now=now)
+
+
 def info(model_id: str, *, db: Database | None = None) -> ModelEntry | None:
     """ID がそのまま合うモデル(内容によらず)。一部だけの一致では探さない。無ければ None。"""
     return (db or load_db()).get(model_id)
@@ -145,6 +170,7 @@ __all__ = [
     "CONTENT_LEVELS",
     "FIT_LEVELS",
     "MODALITIES",
+    "DataStatus",
     "Database",
     "Estimate",
     "Fit",
@@ -154,6 +180,7 @@ __all__ = [
     "Settings",
     "SystemInfo",
     "__version__",
+    "data_status",
     "detect",
     "estimate",
     "evaluate",

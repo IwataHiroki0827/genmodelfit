@@ -1,14 +1,18 @@
 name: Data
 
-# 一覧(db.json)を上流から作り直し、署名して、ローリングの Release(data-latest)に置く。
-# v* のタグではないので PyPI への公開は動かない。使う側は `genmodelfit update --from-release`。
-# 手順と鍵の扱いは docs/release.md。
+# main にコミットされた一覧(src/genmodelfit/data/db.json)に署名して、ローリングの Release(data-latest)に置く。
+# 上流から作り直さない(作り直して PR にする流れは Issue #19)。PyPI への公開は動かない(v* のタグではない)。
+# 使う側は `genmodelfit update --from-release`。手順と鍵の扱いは docs/release.md。
 #
-# 毎日の実行(schedule)は Issue #2(genmodelfit update)が入ってから戻す。今は手動だけ。
+# きっかけ: 手動実行と、main の db.json が変わった push。
 # 秘密鍵は environment `data-signing`(main からの実行だけ使える)のシークレットで、署名の 1 ステップにだけ渡す。
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - src/genmodelfit/data/db.json
 
 permissions:
   contents: read
@@ -18,38 +22,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-data:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Install
-        run: |
-          uv venv
-          uv pip install -e .
-      - name: update が使えるか確かめる
-        run: |
-          uv run --no-sync python - <<'PY'
-          import importlib.util, sys
-          if importlib.util.find_spec("genmodelfit.update") is None:
-              sys.exit("error: genmodelfit.update がまだありません(Issue #2 で入ります)。それまでこのワークフローは動かせません")
-          PY
-      - name: 一覧を作る
-        run: uv run --no-sync genmodelfit update --output dist-data/db.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: db-unsigned
-          path: dist-data/db.json
-          if-no-files-found: error
-
   sign:
-    needs: build-data
+    # main 以外(手動実行でブランチを選んだとき)は動かさない。environment の側でも main に限っている
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: data-signing
     permissions:
@@ -65,10 +40,12 @@ jobs:
         run: |
           uv venv
           uv pip install -e .
-      - uses: actions/download-artifact@v4
-        with:
-          name: db-unsigned
-          path: dist-data/
+      - name: コミットされた一覧を確かめる
+        run: |
+          mkdir -p dist-data
+          cp src/genmodelfit/data/db.json dist-data/db.json
+          uv run --no-sync python -c "from genmodelfit.db import load; db = load('dist-data/db.json'); print(len(db.models), db.generated_at)"
+          uv run --no-sync genmodelfit system --json --db dist-data/db.json --vram 8 --ram 32 > /dev/null
       - name: 署名する
         env:
           GENMODELFIT_SIGNING_KEY: ${{ secrets.GENMODELFIT_SIGNING_KEY }}

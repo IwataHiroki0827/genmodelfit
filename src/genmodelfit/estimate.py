@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """必要な VRAM・メモリの見積もりと、PC との相性(4 段階)の判定。
 
 考え方(willitrunai.com が公開している方式の考え方だけを参考にした。データは使っていない):

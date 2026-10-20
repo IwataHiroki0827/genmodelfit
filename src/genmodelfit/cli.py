@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """コマンドライン。`--json` を付けると、どのコマンドも決まった形の JSON を出す(docs/schema.md)。
 
 終了コード: 0 成功 / 1 失敗 / 2 使い方の誤り。
@@ -13,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import __version__
+from ._version import __version__
 from .db import Database, DatabaseError
 from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
@@ -119,10 +123,44 @@ def format_limits(lim: dict) -> str:
 # --- コマンド ---------------------------------------------------------------------------------
 
 
+def _data_status(args: argparse.Namespace, db: Database, source: str | None = None):
+    from .status import compute
+
+    return compute(db, _policy(args), source=source)
+
+
+def format_data_status(st) -> list[str]:
+    """`system` と `update` の Data の欄(人が読む形)。"""
+    lines = [f"List: {st.source}, generated {st.generated_at or '?'}, {st.models} entries"]
+    if st.max_head_age_days is None:
+        lines.append(f"HEAD checks: {st.heads_checked_oldest or 'none'} (no age limit)")
+    elif st.expired:
+        lines.append(
+            f"HEAD checks: EXPIRED ({st.heads_checked_oldest or 'none'}, limit {st.max_head_age_days} days)"
+            " -> run `genmodelfit update --from-release` (or `update --heads-only`)"
+        )
+    else:
+        lines.append(
+            f"HEAD checks: {st.heads_checked_oldest or 'none'}, valid until {st.expires_at or '-'}"
+            f" ({st.max_head_age_days} days)"
+        )
+    lines.append(f"Auto-recommendable: {st.auto_count} of {st.models} (if fresh: {st.auto_count_if_fresh})")
+    return lines
+
+
+def _print_status_after_update(st) -> None:
+    for line in format_data_status(st)[1:]:
+        print("  " + line)
+
+
 def cmd_system(args: argparse.Namespace) -> int:
     s = _system(args)
+    db = _db(args)
+    st = _data_status(args, db)
     if args.json:
-        _out(_envelope("system", s, None))
+        env = _envelope("system", s, db)
+        env["database"]["status"] = st.to_dict()
+        _out(env)
         return 0
     print("=== System ===")
     print(f"OS:   {s.os}")
@@ -137,6 +175,9 @@ def cmd_system(args: argparse.Namespace) -> int:
         print(f"GPU {i}: {g.name} ({g.vram_total_gb:.1f} GB VRAM{free}, driver {g.driver}, {g.backend})")
     if s.overrides:
         print(f"(overridden: {', '.join(s.overrides)})")
+    print("=== Data ===")
+    for line in format_data_status(st):
+        print(line)
     return 0
 
 
@@ -524,10 +565,12 @@ def cmd_update(args: argparse.Namespace) -> int:
         else:
             print(f"エラー: {e}", file=sys.stderr)
         return 1
+    st = _data_status(args, db, source="cache" if out_path == cached_db_path() else "path")
     if args.json:
         db.origin = "path"
-        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
+        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources, status=st.to_dict()))
         return 0
+    _print_status_after_update(st)
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]
         print(f"HEAD の結果を書き出しました: {out_path}")
@@ -556,6 +599,7 @@ def _update_from_release(args: argparse.Namespace) -> int:
 
     dest = Path(args.output) if getattr(args, "output", None) else cached_db_path()
     db = update_from_release(dest=dest, force=bool(getattr(args, "force", False)))
+    st = _data_status(args, db, source="release")
     if args.json:
         out = {
             "genmodelfit": __version__,
@@ -563,10 +607,12 @@ def _update_from_release(args: argparse.Namespace) -> int:
             "models": len(db.models),
             "generated_at": db.generated_at,
             "output": str(dest),
+            "status": st.to_dict(),
         }
         sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
     else:
         print(f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}")
+        _print_status_after_update(st)
     return 0
 
 
@@ -819,6 +865,42 @@ AGENT USAGE:
   gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
   memory_required_gb, disk_size_gb, auto, matched}] } / on error: { error, candidates? }.
   Details: docs/schema.md""",
+    "system": """Show this PC (GPU, RAM, free disk) and whether the model list in use is still fresh
+(Data: source, HEAD check dates, expired / valid until, auto-recommendable count).
+この PC と、使っている一覧の新しさ(期限切れか)を出す。
+
+"""
+    + _COMMON_HELP.format(
+        zero=" (also when the list has expired: see Data / database.status.expired)", one=""
+    )
+    + """
+AGENT USAGE:
+  genmodelfit system --json
+  genmodelfit system --comfyui-version 0.40.0 --json
+
+  JSON (--json): { genmodelfit, command, system, database: { origin, generated_at, models,
+  measurements, status: { source, generated_at, heads_checked_oldest, heads_checked_newest,
+  max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
+  checked_at } } }. Details: docs/schema.md""",
+    "update": """Rebuild the model list from upstream, redo the HEAD checks (--heads-only), or take in the
+signed list published by this project (--from-release).
+一覧を上流から作り直す・HEAD だけやり直す・署名付きの配布を取り込む。
+
+PRECONDITIONS:
+  Network access.
+
+SIDE EFFECTS:
+  Network: GET / HEAD only. update reads the ComfyUI workflow templates and releases (GitHub),
+  the Hugging Face Hub API and the model download URLs (HEAD, no download of weights);
+  --from-release downloads only db.json and db.json.sig from this project's GitHub release.
+  Nothing about this PC is sent (User-Agent: genmodelfit/<version>; no ~/.netrc credentials).
+  Writes the list to the cache (or --output). The cache is left untouched on failure.
+
+EXIT CODES:
+  0  Success
+  1  Error (network, bad signature, older list, ...; with --json the error is in "error")
+  2  Usage error
+""",
 }
 
 
@@ -885,7 +967,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"genmodelfit {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
-    sp = sub.add_parser("system", parents=[common], help="この PC の GPU・メモリ・空きを出す")
+    def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
+        return sub.add_parser(
+            name,
+            parents=parents,
+            help=help_text,
+            description=HELP[name],
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+
+    sp = sub_parser("system", "この PC の GPU・メモリ・空きと、一覧の新しさを出す", [common, gate])
     sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
     sp.set_defaults(func=cmd_system)
 
@@ -914,15 +1005,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す",
     )
-
-    def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
-        return sub.add_parser(
-            name,
-            parents=parents,
-            help=help_text,
-            description=HELP[name],
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
 
     sp = sub_parser("recommend", "おすすめ順に出す", [common, filt, sel, gate])
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
@@ -955,7 +1037,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("model", help="モデルの ID または名前の一部")
     sp.set_defaults(func=cmd_info)
 
-    sp = sub.add_parser("update", parents=[common], help="一覧を上流から作り直す")
+    sp = sub_parser("update", "一覧を上流から作り直す", [common, gate])
     sp.add_argument("--offline-sources", metavar="DIR", help="(試験用)上流の代わりに使うファイル")
     sp.add_argument("--skip-hf", action="store_true", help="Hugging Face を見ない")
     sp.add_argument("--skip-head", action="store_true", help="URL の HEAD 確認を飛ばす")

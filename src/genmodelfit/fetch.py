@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """上流(GitHub の raw・Hugging Face)からの取得。
 
 - HttpFetcher: 実際の取得。User-Agent を名乗り、429 / 503 は Retry-After を守って待ち、失敗は数回やり直す
@@ -20,7 +24,7 @@ from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 import requests
 
-from . import __version__
+from ._version import __version__
 
 USER_AGENT = f"genmodelfit/{__version__} (+https://github.com/laxshmate/genmodelfit)"
 TIMEOUT = (10, 60)  # (接続, 読み込み) 秒
@@ -28,6 +32,38 @@ MAX_ATTEMPTS = 4  # 接続の失敗・5xx のやり直し
 MAX_RATE_LIMITED = 30  # 429 のやり直し(HF の匿名の上限は 5 分あたり 500 回。待てば通るので多めに待つ)
 MAX_RETRY_AFTER = 300.0
 RATE_LIMIT_BUDGET = 900.0  # 429 で待つ時間の合計の上限(秒)。超えたら RateLimitExhausted で止める
+
+
+class _NoAuth(requests.auth.AuthBase):
+    """何も足さない認証。Session.auth に置くと、requests が ~/.netrc を読まなくなる。"""
+
+    def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
+        return r
+
+
+class NoNetrcSession(requests.Session):
+    """~/.netrc の資格情報を送らない Session(Issue #18。利用者の資格情報を勝手に付けない)。
+
+    requests は trust_env=True のとき、認証の無い要求と転送先(リダイレクト)に ~/.netrc の資格情報を付ける。
+    プロキシと証明書の環境変数(HTTPS_PROXY・REQUESTS_CA_BUNDLE など)は使いたいので trust_env は残し、
+    netrc だけを止める: 既定の認証を _NoAuth にし、転送のときに netrc を読み直す rebuild_auth を差し替える。
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.auth = _NoAuth()
+        self.headers["User-Agent"] = USER_AGENT
+
+    def rebuild_auth(self, prepared_request: requests.PreparedRequest, response: requests.Response) -> None:
+        # 別のホストへの転送では Authorization を外す(requests と同じ)。netrc は読まない
+        headers = prepared_request.headers
+        if "Authorization" in headers and self.should_strip_auth(response.request.url, prepared_request.url):
+            del headers["Authorization"]
+
+
+def make_session() -> requests.Session:
+    """genmodelfit の HTTP はすべてこれを使う(User-Agent を付け、~/.netrc を送らない)。"""
+    return NoNetrcSession()
 
 
 class FetchError(RuntimeError):
@@ -90,8 +126,7 @@ class HttpFetcher:
     def _session(self) -> requests.Session:
         s = getattr(self._local, "session", None)
         if s is None:
-            s = requests.Session()
-            s.headers["User-Agent"] = USER_AGENT
+            s = make_session()
             self._local.session = s
         return s
 

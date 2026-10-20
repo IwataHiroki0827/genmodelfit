@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """ComfyUI のワークフローを扱う(bench 用)。
 
 - 公式テンプレート(画面用の形式)を、サーバーの `/object_info` を見て API 形式に直す

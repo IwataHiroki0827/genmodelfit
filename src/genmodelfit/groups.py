@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """一覧の項目を「モデル」にまとめる(Issue #17)。llmfit と同じ考え方:
 
 - 大きさ(パラメータ数)が違えば別のモデル(Wan 2.1 1.3B と 14B、FLUX.2 klein 4B と 9B)

@@ -16,9 +16,24 @@ Every command with `--json` prints one object:
 | `genmodelfit` | str | tool version |
 | `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
-| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
+| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
+
+## Side effects / 通信と書き込み
+
+The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
+
+| command | network | writes |
+|---|---|---|
+| `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate` (and the Python API) | none | none |
+| `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD) | the cache `db.json` (or `--output`) |
+| `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
+| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`) |
+
+No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
+`genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`, proxy / CA environment variables honored, `~/.netrc`
+credentials never attached (tests/test_privacy.py).
 
 ## System
 
@@ -33,6 +48,35 @@ Every command with `--json` prints one object:
 | `overrides` | str[] | `vram` / `ram` when overridden |
 
 Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when overridden), `driver`, `backend` (`cuda` / `none`).
+
+## Data status / 一覧の新しさ
+
+Whether the model list in use is still fresh enough for auto-recommendation. There is no separate `status` command:
+`genmodelfit system --json` puts it in `database.status`, `update --json` (and `update --from-release --json`) in
+`status`, and Python returns it from `gmf.data_status(db=None, *, now=None, comfyui_version=None)` (a frozen dataclass
+`DataStatus`; `.to_dict()` gives the same keys). The text output of `system` / `update` shows it as the Data lines.
+Network is never touched.
+
+使っている一覧が、自動のおすすめに使えるほど新しいか。別のコマンドは作らず、`system --json` の `database.status`、
+`update --json` の `status`、Python の `gmf.data_status()` で返す。
+
+| key | type | meaning |
+|---|---|---|
+| `source` | str | `bundled` (shipped in the package) / `cache` (written by a local `genmodelfit update`) / `release` (taken in by `update --from-release`: the cache whose `generated_at` equals the one recorded in `release_state.json`) / `path` (`--db`, `db=`) |
+| `generated_at` | str \| null | when the list was made (as written in it) |
+| `heads_checked_oldest`, `heads_checked_newest` | str \| null | oldest / newest `head_checked_at` over all files (UTC, `Z`) |
+| `max_head_age_days` | int \| null | the gate's limit (`--max-head-age-days`, default 30; null = no limit) |
+| `expired` | bool | **true when at least one entry lost auto-recommendation only because its HEAD checks are too old** (`auto_count < auto_count_if_fresh`). Apps should then stop showing "new models" from genmodelfit and refresh with `update --from-release` (or `update --heads-only`) |
+| `expires_at` | str \| null | the earliest moment an auto entry expires: its oldest HEAD check + `max_head_age_days`. Exactly at this time it is still valid (the gate drops a check when its age is **greater** than the limit) |
+| `models` | int | entries in the list (one per workflow) |
+| `auto_count` | int | entries that are auto-recommendable now (default gate policy: content `sfw` only; the ComfyUI version is `--comfyui-version` / `comfyui_version`, else the one recorded by update) |
+| `auto_count_if_fresh` | int | the same with the HEAD age limit removed |
+| `checked_at` | str | the time used for the judgement (UTC) |
+
+The gate's `url_reachable` check itself decides both counts (`gate.evaluate_offline`, run once with the policy and once
+with `max_head_age_days=None`), so `expired` and the gate never disagree. The bundled list's HEADs were checked on
+2026-10-19, so with no update it expires after 2026-11-18T19:50:03Z and `auto_count` becomes 0.
+判定は gate と同じ関数で行う。`expired` が true なら、HEAD の確認が古いせいで自動のおすすめから落ちたものがある。
 
 ## recommend / fit / search
 
@@ -438,7 +482,9 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 `genmodelfit update --json` prints the envelope with `output` (path written) and `sources` (above).
 On failure it prints `error` and exits 1; the previous cache is left untouched.
 `update --from-release --json` prints a smaller object: `genmodelfit`, `command` (`update`), `models` (**int**: number of
-models taken in), `generated_at`, `output`.
+models taken in), `generated_at`, `output`, `status` (DataStatus with `source: release`).
+`update --json` (rebuild / `--heads-only`) also has `status` (DataStatus of the list written; `source` is `cache` for the
+cache, `path` for `--output` elsewhere).
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
 

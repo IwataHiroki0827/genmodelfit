@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """bench: 動いている ComfyUI に HTTP でワークフローを送り、最大 VRAM・メモリ・時間を測る。
 
 ComfyUI のコードは import しない(GPL のため)。使うのは HTTP の API だけ:
@@ -37,8 +41,9 @@ from urllib.parse import urlparse
 import psutil
 import requests
 
-from . import __version__
+from ._version import __version__
 from .db import cache_dir
+from .fetch import make_session
 from .hardware import _nvidia_smi
 from .models import Measurement
 from .workflow import (
@@ -79,7 +84,7 @@ def _queue_ids(items: Any) -> list[str]:
 class ComfyClient:
     def __init__(self, url: str, session: requests.Session | None = None, timeout: float = 30):
         self.url = url.rstrip("/")
-        self.s = session or requests.Session()
+        self.s = session or make_session()
         self.timeout = timeout
 
     def _req(self, method: str, path: str, **kw: Any) -> requests.Response:
@@ -677,7 +682,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     log = log or logging.getLogger("genmodelfit").info
     if not opts.timeout or opts.timeout <= 0:
         raise BenchError("--timeout は 0 より大きい秒数にしてください")
-    session = requests.Session()
+    session = make_session()
     file_data = (
         read_workflow_file(opts.workflow_path) if opts.workflow_path else None
     )  # サーバーに触る前に読む

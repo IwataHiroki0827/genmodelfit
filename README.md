@@ -7,7 +7,7 @@ genmodelfit is inspired by [llmfit](https://github.com/AlexsJones/llmfit), which
 It is **not** an official llmfit project or fork.
 llmfit に着想を得た、生成モデル向けのツールです(llmfit の公式の派生ではありません)。
 
-> Status: v0.1 in development (not on PyPI yet). / 状態: v0.1 を開発中(PyPI には未公開)。
+> Status: v0.1.0 (alpha). / 状態: v0.1.0(アルファ版)。
 
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2
@@ -88,7 +88,12 @@ offloading to system RAM, so they need their own database and scoring.
 ## Install / 入れ方
 
 ```
-# from source (PyPI release pending) / ソースから(PyPI は未公開)
+pip install genmodelfit
+```
+
+From source / ソースから:
+
+```
 git clone https://github.com/laxshmate/genmodelfit && cd genmodelfit && pip install -e .
 ```
 
@@ -98,7 +103,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 
 | command | what it does / 内容 |
 |---|---|
-| `genmodelfit system` | detected GPU / RAM / disk / この PC の GPU・メモリ・空き |
+| `genmodelfit system` | detected GPU / RAM / disk, and whether the model list is still fresh (Data) / この PC の GPU・メモリ・空きと、一覧の新しさ |
 | `genmodelfit recommend [-m image,video] [--task edit] [-n 5] [--auto-only]` | best models for this PC: per type without `-m` / `--task` (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順。`-m`・`--task` が無ければ種類ごと(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
 | `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
 | `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
@@ -111,7 +116,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 
 Common options / 共通の指定:
 
-- `--json` — machine-readable output for apps and agents ([docs/schema.md](docs/schema.md)) / アプリ向けの JSON
+- `--json` — machine-readable output for apps and agents ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md)) / アプリ向けの JSON
 - `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
 - `-m image,video` — types / 種類(カンマ区切り可)
@@ -125,7 +130,7 @@ Common options / 共通の指定:
 
 Order / 並べ方 (in each type): models that run, then auto-recommendable ones (`Auto yes`), then **Score** (0–100: fit level,
 VRAM headroom, readiness for auto-recommendation, measured or not, popularity; formula in
-[docs/schema.md](docs/schema.md#score--点数)), then id. The first lines show this PC and how many models were hidden
+[docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)), then id. The first lines show this PC and how many models were hidden
 and why (`uncensored`, `tools`, `too tight`, …). `--help` of each command lists preconditions, exit codes and examples.
 動くもの → 自動でおすすめに出せるもの → 点数の高い順。先頭に PC と、隠した件数とその理由を出します。
 
@@ -144,6 +149,10 @@ for f in gmf.recommend(modality="image", task="edit", limit=5, comfyui_version="
     )  # other workflows of the same model / 同じモデルのほかのワークフロー
     f.to_dict()  # the same dict as one item of `recommend --json` / `--json` の 1 件と同じ
 gmf.search("flux", license=["apache-2.0", "mit"])
+
+st = gmf.data_status()  # is the model list fresh enough for auto-recommendation? / 一覧の新しさ
+if st.expired:  # HEAD checks older than 30 days → auto-recommendations drop / 期限切れ
+    print("run: genmodelfit update --from-release", st.expires_at, st.auto_count)
 ```
 
 ## Fit levels / 段階
@@ -166,7 +175,7 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 204 models.
 Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
-ones), and merges and test stubs are skipped ([docs/sources.md](docs/sources.md)).
+ones), and merges and test stubs are skipped ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
 llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。
 
 - [ComfyUI workflow templates](https://github.com/Comfy-Org/workflow_templates) (MIT): which models a workflow
@@ -175,9 +184,9 @@ llmfit と同じく、Hugging Face のモデルは全期間のダウンロード
 - [Hugging Face Hub API](https://huggingface.co/docs/hub/api): licenses (following `base_model` chains and a
   table of verified upstreams for repackaged files), gating, file sizes, sha256, and discovery of community models.
 - Civitai is **not** used: its terms limit automated access and forbid reselling compiled data.
-- Measurements: `src/genmodelfit/data/measurements.json`. Contributions welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+- Measurements: `src/genmodelfit/data/measurements.json`. Contributions welcome (see [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
-Details: [docs/sources.md](docs/sources.md). genmodelfit stores model **information only**; it never hosts weights.
+Details: [docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md). genmodelfit stores model **information only**; it never hosts weights.
 genmodelfit が持つのはモデルの情報だけで、モデル本体は持ちません。
 
 ## Content marks / 内容の印
@@ -205,14 +214,46 @@ replaceable), nothing is gated, an official ComfyUI workflow without custom node
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
 known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
 In the bundled list 83 of 323 entries are auto. When a license cannot be verified it is treated as unknown
-and held. See [docs/gate.md](docs/gate.md).
+and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
 
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない
 ものは「不明」として保留にします。アプリは使う ComfyUI の版を `--comfyui-version` で渡してください。
 
+## Privacy / 送るもの・送らないもの
+
+- `recommend`, `fit`, `search`, `info`, `system`, `types`, `gate` and the Python API (`gmf.recommend()`,
+  `gmf.search()`, `gmf.info()`, `gmf.system()`, `gmf.data_status()`) make **no network access**. Hardware is read
+  locally (`nvidia-smi`, psutil). This is tested with every socket blocked.
+- `genmodelfit update --from-release` only downloads `db.json` and `db.json.sig` from this project's GitHub release.
+- `genmodelfit update` only reads public data with GET / HEAD: the ComfyUI workflow templates and releases on
+  GitHub, the Hugging Face Hub API, and the model download URLs (HEAD only; no weights are downloaded).
+- `genmodelfit bench` talks only to the ComfyUI URL you give with `--url` (plus the official template files on
+  GitHub when ComfyUI does not have them).
+- Hardware information (GPU name, VRAM, RAM, CPU, disk) is read locally with `nvidia-smi` and psutil and is
+  **never sent**. Measurements from `bench` are saved only on your PC; they are shared only if you open a pull
+  request yourself ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
+  Saved measurements hold no host name, user name, paths or GPU UUID.
+- No telemetry. No hardware information, measurements, prompts or other user content is ever sent anywhere.
+  Tests replace the PC's details with marker strings and check that no request URL, header or body of `update`,
+  `update --from-release` or `bench` contains them.
+  Requests carry the User-Agent `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`, and never the
+  credentials in your `~/.netrc` (proxy and certificate settings such as `HTTPS_PROXY` are still honored).
+
+- `recommend`・`fit`・`search`・`info`・`system`・`types`・`gate` と Python の関数は**ネットにつなぎません**
+  (PC の情報は手元で読みます。通信をふさいだ試験で確かめています)。
+- `update --from-release` は、このプロジェクトの GitHub Release から `db.json` と署名だけを取ります。
+- `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD。
+  モデル本体は落としません)。
+- `bench` は `--url` で指定した ComfyUI とだけ話します(ComfyUI に無い公式テンプレートは GitHub から取ります)。
+- PC の情報(GPU の名前・VRAM・メモリ・CPU・空き)は `nvidia-smi` と psutil で手元で読むだけで、**送りません**。
+  `bench` の実測は手元に保存するだけで、利用者が自分で Pull Request を出したときだけ共有されます
+  (保存する実測に PC の名前・ユーザー名・パス・GPU の UUID は入りません)。
+- 利用状況の送信(テレメトリ)はありません。PC の情報・実測・プロンプトなどを送ることはありません。User-Agent は
+  `genmodelfit/<版>` で、`~/.netrc` の資格情報は付けません(プロキシ・証明書の設定は使います)。
+
 ## Accuracy and limits / 精度と限界
 
-See [docs/accuracy.md](docs/accuracy.md). In short / 要点:
+See [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md). In short / 要点:
 
 - Estimates are calibrated on only 9 real runs on one GPU (RTX 5080 16 GB). Leave-one-out error could be
   evaluated on 4 of them (image and 3D: max 6.4%, mean 4.6%); video and audio could not be evaluated yet.
@@ -223,11 +264,31 @@ See [docs/accuracy.md](docs/accuracy.md). In short / 要点:
   minimum requirement.
 - Some templates list alternative files (e.g. 1.3B and 14B variants); genmodelfit counts one variant per part,
   which may not match the variant you pick.
-- The HEAD checks in the bundled list expire after 30 days; run `genmodelfit update --heads-only` (or
-  `update --from-release`) to refresh them, otherwise auto-recommendations drop to zero.
+- The HEAD checks in the bundled list expire after 30 days; run `genmodelfit update --from-release` (or
+  `update --heads-only`) to refresh them, otherwise auto-recommendations drop to zero. `genmodelfit system` and
+  `gmf.data_status()` tell whether the list in use has expired (`expired`, `expires_at`).
+  同梱の一覧の HEAD の確認は 30 日で切れます。切れたかは `genmodelfit system` と `gmf.data_status()` で分かります。
 - v0.1 counts NVIDIA GPUs only.
 
-## License
+## License / ライセンス
 
-MIT. Upstream data keeps its own terms; model licenses are reported, not granted.
+genmodelfit is licensed under the [Mozilla Public License 2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) (MPL-2.0), and so is the bundled data
+(`db.json`, measurements, calibration). MPL-2.0 is a file-level copyleft: if you distribute modified genmodelfit
+files, you must make those files' source available under MPL-2.0; you may use genmodelfit unmodified (or import it)
+in a larger work under any license, including closed-source apps. When you distribute genmodelfit inside your
+app (for example in a PyInstaller exe), keep its license notices and tell your users where its source code is
+available (https://github.com/laxshmate/genmodelfit, MPL-2.0 §3.2); the same applies to `certifi` (MPL-2.0).
+アプリに同梱して配るときは、ライセンスの表示を残し、genmodelfit(と certifi)のソースの入手先を利用者に知らせてください。
+Parts of the data come from [ComfyUI workflow templates](https://github.com/Comfy-Org/workflow_templates) (MIT) and
+the Hugging Face Hub API; see [THIRD_PARTY_NOTICES](https://github.com/laxshmate/genmodelfit/blob/main/THIRD_PARTY_NOTICES). Model licenses are reported, not granted.
+
+genmodelfit と同梱のデータは MPL-2.0 です。genmodelfit のファイルを直して配るときは、そのファイルのソースを
+MPL-2.0 で公開してください。直さずに使う(import する)だけなら、ソース非公開のアプリにも組み込めます
+(ライセンスの表示は残してください)。データの出典の表示は THIRD_PARTY_NOTICES にあります。
 モデルのライセンスは表示するだけで、利用の許諾はしません。各モデルのライセンスを確かめてください。
+
+```
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+```

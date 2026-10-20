@@ -150,6 +150,17 @@ def test_no_network(tmp_path):
         gmf.recommend(system_info=pc, db=db, content="all", limit=None)
         evaluate(db, pc, content="all", with_limits=True)
         gmf.info("image_sdxl_simple")
+        gmf.search("flux", system_info=pc)
+        gmf.data_status()
+        gmf.data_status(db, comfyui_version="0.40.0")
+        # CLI の読むだけのコマンドも(README「Privacy」。出力は捨てる)
+        import contextlib, io
+        from genmodelfit import cli
+        for argv in (["system", "--json"], ["recommend", "--json"], ["fit", "--json"], ["search", "wan"],
+                     ["types"], ["info", "image_sdxl_simple"], ["gate", "--json"]):
+            with contextlib.redirect_stdout(io.StringIO()):
+                hw = [] if argv[0] == "types" else ["--vram", "8", "--ram", "32"]
+                assert cli.main([*argv, *hw]) == 0, argv
         sys.stdout.write("OK")
         """
     )

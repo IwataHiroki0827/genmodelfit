@@ -302,8 +302,23 @@ def check_gate(g: dict) -> None:
 
 def test_system(cache):
     d = call(["system", "--vram", "8", "--ram", "32"], cache)
-    assert d["command"] == "system" and set(d) == ENVELOPE | {"system"}
+    assert d["command"] == "system" and set(d) == ENVELOPE | {"system", "database"}
     check_system(d)
+    # 一覧の新しさ(Issue #18。docs/schema.md「Data status」)
+    assert set(d["database"]) == DATABASE | {"status"}
+    assert set(d["database"]["status"]) == {
+        "source",
+        "generated_at",
+        "heads_checked_oldest",
+        "heads_checked_newest",
+        "max_head_age_days",
+        "expired",
+        "expires_at",
+        "models",
+        "auto_count",
+        "auto_count_if_fresh",
+        "checked_at",
+    }
 
 
 def test_recommend(cache):
