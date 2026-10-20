@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- License tracing (#28): a hand-checked source table (`license_sources.py`) maps files in repackaging repos
+  (Comfy-Org, Kijai, …) to their original models, using primary sources only (original model card / LICENSE,
+  official GitHub, sha256). `update` applies it to files it could not resolve; `apply_license_sources(db)` applies it
+  offline. VOID (netflix/void-model) is now unknown (fine-tuned from a CogVideoX-licensed model). `LICENSE_POLICY` 4.
+  ライセンスの出どころの表を足した(再配布のファイル → 元のモデル。一次資料だけで確かめたもの)。
+
 ## [0.1.0] - 2026-10-20
 
 First public release. / 最初の公開版。

@@ -49,6 +49,7 @@ from .hf import (
     select_weight_files,
     upstream_candidates,
 )
+from .license_sources import source_for
 from .models import ModelEntry, ModelFile, Template
 from .tasks import tool_task_from_title
 
@@ -63,7 +64,7 @@ COMFYUI_RELEASES_PAGE = "https://github.com/Comfy-Org/ComfyUI/releases"
 MAX_FAIL_RATIO = 0.30
 # ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
 # (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
-LICENSE_POLICY = 3
+LICENSE_POLICY = 4
 # 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
 COMPLETE_RATIO = 0.5
 # sources.counts.license_tier の名前(hf.license_tier の段階)
@@ -489,6 +490,11 @@ def apply_license(
     f: ModelFile, info: RepoInfo, client: HfClient, path: str, *, discovered_uncensored: bool = False
 ) -> Resolved:
     res = client.resolve_file(info, path, discovered_uncensored=discovered_uncensored)
+    if res.license is None:
+        # 自動で決められなかったものは、人が一次資料で出どころを確かめた表で決める(license_sources.py)
+        row = source_for(info.repo_id, path)
+        if row is not None:
+            res = row.resolved(info.repo_id)
     set_file_license(f, res)
     f.license_url = res.url
     if res.source and res.source != info.repo_id:
