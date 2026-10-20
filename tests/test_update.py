@@ -26,7 +26,7 @@ from genmodelfit.hf import (
     strictest,
 )
 from genmodelfit.models import ModelEntry, Template
-from genmodelfit.recommend import score
+from genmodelfit.recommend import popularity
 from genmodelfit.update import (
     UpstreamFormatError,
     audio_modality,
@@ -300,18 +300,14 @@ def test_parse_hf_url():
     assert parse_hf_url("https://civitai.com/api/download/models/1") is None
 
 
-def test_score_uses_downloads_for_hf():
-    from genmodelfit.models import Estimate
-
-    est = Estimate(
-        vram_gb=1, vram_offload_gb=1, ram_gb=1, disk_gb=1, basis="estimated", fit="perfect", run_mode="gpu"
-    )
+def test_popularity_uses_downloads_for_hf():
     few = ModelEntry(id="hf:a/b", name="b", modality="image", source="huggingface", downloads=100)
     many = ModelEntry(id="hf:a/c", name="c", modality="image", source="huggingface", downloads=1_000_000)
-    assert score(many, est) > score(few, est)
+    assert popularity(many) > popularity(few)
+    assert popularity(few) >= 0 and popularity(many) <= 100
     t = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", usage=0), downloads=10**9)
-    assert score(t, est) == score(
-        ModelEntry(id="u", name="u", modality="image", template=Template(name="u")), est
+    assert popularity(t) == popularity(
+        ModelEntry(id="u", name="u", modality="image", template=Template(name="u"))
     )
 
 
@@ -479,3 +475,28 @@ def test_bundled_snapshot_is_an_update_result():
     assert db.sources.get("license_policy") == 3 and db.sources.get("partial") is False
     assert all(m.files_complete is not None for m in db.models)
     assert all(m.size_floor_bytes for m in db.models if m.files_complete is False and m.template)
+
+
+def test_hf_selection_rules_like_llmfit(built):
+    """全期間 10,000 未満・試験用の名前・merge のタグは入れない。
+    trendingScore・likes30d だけで拾ったものは 1,000 から。"""
+    from genmodelfit.update import MIN_DOWNLOADS, MIN_TRENDING_DOWNLOADS
+
+    assert (MIN_DOWNLOADS, MIN_TRENDING_DOWNLOADS) == (10_000, 1_000)
+    skipped = built.sources["huggingface-search"]["skipped"]
+    # rare-nsfw-xl(全期間 9,999)、brand-new-voice(trending だけ、900)、both-voice(全期間 5,000。
+    # trending の検索にも
+    # 出るが、ダウンロード数の順の検索にも出たので下限は 10,000)
+    assert skipped["skip_downloads"] == 3
+    assert skipped["test_stub"] == 1 and skipped["merge"] == 1 and skipped["adapter"] == 1
+    # new-voice(trending だけ、1,500)と meina-like-xl(直近 30 日 2,000・全期間 50,000)は下限を通る
+    # (試験のフォルダにリポジトリの情報が無いので、取れなかった数に入る)
+    assert skipped["fetch_failed"] == 2
+    st = built.sources["huggingface-search"]
+    assert st["all_time_missing"] >= 1  # downloadsAllTime の無い結果(直近 30 日の数で代えた)を数える
+    ids = {e.id for e in built.models}
+    assert not {"hf:example-org/tiny-random-nsfw-xl", "hf:example-org/nsfw-merge-xl"} & ids
+    k = built.get(
+        "hf:hexgrad/Kokoro-82M"
+    )  # trending の検索にも出るが、downloads の順でも拾ったので下限は 10,000
+    assert k is not None and k.downloads_all_time and k.downloads_all_time >= 10_000

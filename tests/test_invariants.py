@@ -11,10 +11,24 @@ from itertools import pairwise
 import pytest
 
 from genmodelfit import cli, load_db
+from genmodelfit.groups import is_community
 from genmodelfit.models import FIT_LEVELS, Gpu, SystemInfo
 from genmodelfit.recommend import evaluate, recommend
 
-VRAMS = [0, 4, 6, 8, 12, 16, 24, 32]  # 0 = GPU なし(CPU のみ)
+VRAMS = [
+    0,
+    0.5,
+    1,
+    2,
+    3,
+    4,
+    6,
+    8,
+    12,
+    16,
+    24,
+    32,
+]  # 0 = GPU なし(CPU のみ)。小さな GPU でも CPU より悪くならない
 RAMS = [16, 32, 64]
 
 
@@ -52,7 +66,13 @@ def levels(db):
                 if not v:
                     assert e.run_mode in ("cpu", "none"), f.model.id
             out[(v, r)] = {f.model.id: FIT_LEVELS.index(f.estimate.fit) for f in fits}
+            scores[(v, r)] = {f.model.id: f.score for f in fits}
+            for f in fits:
+                assert 0 <= f.score <= 100 and all(0 <= x <= 100 for x in f.score_components.values())
     return out
+
+
+scores: dict[tuple[float, float], dict[str, float]] = {}  # levels と一緒に作る(判定を 2 回しない)
 
 
 def _worse(a: dict[str, int], b: dict[str, int]) -> list[str]:
@@ -79,6 +99,30 @@ def test_more_ram_never_worse(levels):
     assert not bad, f"メモリを増やすと段階が下がる: {bad}"
 
 
+def test_score_never_drops_with_more_vram_or_ram(levels):
+    """点数は VRAM・メモリを増やしても下がらない(docs/schema.md「Score」)。"""
+    bad = []
+    for r in RAMS:
+        for lo, hi in pairwise(VRAMS):
+            a, b = scores[(lo, r)], scores[(hi, r)]
+            bad += [("vram", lo, hi, r, mid) for mid in a if b[mid] < a[mid]]
+    for v in VRAMS:
+        for lo, hi in pairwise(RAMS):
+            a, b = scores[(v, lo)], scores[(v, hi)]
+            bad += [("ram", v, lo, hi, mid) for mid in a if b[mid] < a[mid]]
+    assert not bad, bad[:10]
+
+
+def test_order_is_runs_then_auto_then_score(db, levels):
+    for v in (0, 8, 24):
+        fits = evaluate(db, pc(v, 32), content="all")
+        keys = [
+            (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -f.score, f.model.id)
+            for f in fits
+        ]
+        assert keys == sorted(keys)
+
+
 @pytest.mark.parametrize("vram", VRAMS)
 def test_recommend_never_too_tight_and_sfw_by_default(db, vram):
     for r in RAMS:
@@ -96,7 +140,7 @@ def test_cli_recommend_auto_only(capsys, vram):
     hw = ["--vram", str(vram), "--ram", "32", "--no-cache", "--json", "-n", "500"]
     assert cli.main(["recommend", "--auto-only", *hw]) == 0
     models = json.loads(capsys.readouterr().out)["models"]
-    assert all(m["gate"]["auto"] for m in models)
-    assert all(m["content"] == "sfw" and m["fit"] != "too_tight" for m in models)
+    assert all(m["auto"] and m["gate"]["auto"] for m in models)
+    assert all(m["content"] == "sfw" and m["fit_level"] != "too_tight" for m in models)
     if vram >= 8:
         assert models, "8 GB 以上なら自動でおすすめに出せるものがある"

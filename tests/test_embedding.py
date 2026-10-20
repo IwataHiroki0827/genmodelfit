@@ -173,7 +173,7 @@ def test_no_network(tmp_path):
         ({"content": "nsfw"}, "content"),
         ({"content": "SFW"}, "content"),
         ({"min_fit": "great"}, "min_fit"),
-        ({"min_fit": "too_tight"}, "min_fit"),
+        ({"min_fit": "Good"}, "min_fit"),
     ],
 )
 def test_invalid_arguments_raise_value_error(db, kwargs, word):
@@ -205,3 +205,83 @@ def test_results_are_deterministic(db):
     assert a == b
     c = [f.to_dict() for f in gmf.recommend(system_info=pc(8), db=gmf.load_db(use_cache=False), limit=None)]
     assert c == [x for x in a if x["content"] == "sfw"]
+
+
+@pytest.mark.parametrize(
+    ("cli_args", "kwargs"),
+    [
+        ([], {"per_modality": 3, "limit": None}),  # -m も --task も無ければ種類ごとに 3 件
+        (
+            ["-m", "image,video", "--task", "edit,i2v", "--all-workflows"],
+            {"modality": ["image", "video"], "task": "edit,i2v", "all_workflows": True},
+        ),
+        (
+            ["-m", "image", "--min-fit", "good", "-n", "5"],
+            {"modality": "image", "min_fit": "good", "limit": 5},
+        ),
+        (
+            ["--license", "apache-2.0,mit", "--auto-only", "--include-tools", "--content", "all", "-n", "50"],
+            {
+                "license": ["apache-2.0", "mit"],
+                "auto_only": True,
+                "include_tools": True,
+                "content": "all",
+                "per_modality": 50,
+                "limit": None,
+            },
+        ),
+        (["--comfyui-version", "0.3.0", "-m", "video"], {"comfyui_version": "0.3.0", "modality": "video"}),
+    ],
+)
+def test_python_and_cli_give_the_same_models(capsys, db, cli_args, kwargs):
+    """アプリは Python からでも CLI の --json からでも同じものを受け取る(Fit.to_dict() == models の 1 件)。"""
+    import json
+
+    from genmodelfit import cli
+
+    assert cli.main(["recommend", "--json", "--vram", "8", "--ram", "32", "--no-cache", *cli_args]) == 0
+    from_cli = json.loads(capsys.readouterr().out)["models"]
+    fits = gmf.recommend(system_info=gmf.system(vram_gb=8, ram_gb=32), db=db, **kwargs)
+    assert from_cli and [json.loads(json.dumps(f.to_dict())) for f in fits] == from_cli
+
+
+def test_python_search_matches_cli(capsys, db):
+    import json
+
+    from genmodelfit import cli
+
+    assert cli.main(["search", "wan", "--json", "--vram", "8", "--ram", "32", "--no-cache"]) == 0
+    from_cli = json.loads(capsys.readouterr().out)["models"]
+    fits = gmf.search("wan", system_info=gmf.system(vram_gb=8, ram_gb=32), db=db)
+    assert from_cli and [json.loads(json.dumps(f.to_dict())) for f in fits] == from_cli
+    assert gmf.search("no_such_model_xyz", system_info=pc(8), db=db) == []
+
+
+def test_fit_score_and_auto(db):
+    fits = gmf.recommend(system_info=pc(8), db=db, limit=None)
+    assert fits[0].auto and fits[0].score == fits[0].to_dict()["score"]
+    assert all(
+        set(f.score_components) == {"fit", "headroom", "readiness", "basis", "popularity"} for f in fits
+    )
+    # 古い版の ComfyUI を渡すと、新しい版が要るものは自動のおすすめから外れる
+    old = gmf.recommend(system_info=pc(8), db=db, limit=None, comfyui_version="0.1.0")
+    assert sum(f.auto for f in old) < sum(f.auto for f in fits)
+
+
+def test_python_argument_forms_and_errors(db):
+    """license は文字列(カンマ区切り)でも並びでもよい。limit は 1 以上、空の検索語は誤り。"""
+    a = gmf.recommend(system_info=pc(8), db=db, license="mit, apache-2.0", limit=None)
+    b = gmf.recommend(system_info=pc(8), db=db, license=["mit", "apache-2.0"], limit=None)
+    assert a and [f.to_dict() for f in a] == [f.to_dict() for f in b]
+    assert all(set(f.to_dict()["licenses"]) <= {"mit", "apache-2.0"} for f in a)
+    for bad in (0, -1, True, 2.5):
+        with pytest.raises(ValueError, match="limit"):
+            gmf.recommend(system_info=pc(8), db=db, limit=bad)
+    with pytest.raises(ValueError, match="license"):
+        gmf.recommend(system_info=pc(8), db=db, license=" , ")
+    for q in ("", "   "):
+        with pytest.raises(ValueError, match="query"):
+            gmf.search(q, system_info=pc(8), db=db)
+    with pytest.raises(ValueError, match="task"):
+        gmf.recommend(system_info=pc(8), db=db, task="dance")
+    assert gmf.recommend(system_info=pc(8), db=db, modality="image,music", limit=None)

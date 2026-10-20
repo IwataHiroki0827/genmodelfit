@@ -14,7 +14,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `info` / `update` / `bench` / `gate` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
@@ -34,26 +34,197 @@ Every command with `--json` prints one object:
 
 Gpu: `name`, `vendor` (`nvidia`…), `vram_total_gb`, `vram_free_gb` (null when overridden), `driver`, `backend` (`cuda` / `none`).
 
-## recommend / fit
+## recommend / fit / search
 
-`models`: list of Fit, best first.
+The three commands print the same shape (Issue #17, modeled on llmfit's `recommend --json`):
+
+| key | type | meaning |
+|---|---|---|
+| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `search` adds `query` |
+| `matched` | int | rows that passed every filter, before `limit` / `per_type` (models; workflows with `--all-workflows`) |
+| `hidden` | object | why the other entries are not shown: `{reason: count}`, only reasons with a count (below) |
+| `groups` | object[] | per type, in the order image, video, music, sfx, tts, 3d (only the `-m` types when given): `{modality, matched, shown}` |
+| `models` | Fit[] | best first (order below) |
+
+**One item per model** (below, "Models"): entries that differ only in precision or in workflow (text-to-image, edit,
+LoRA, …) are collapsed into one item; the others are listed in `workflows` / `variants`. `--all-workflows`
+(`all_workflows=True` in Python) gives one item per list entry as before.
+
+`recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
+`-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
+and has `matched: 0` in `groups`. With `-m` or `--task` it is one list, `-n` default 10. In JSON `models` is ordered by
+type, then by the order below. Other defaults: `min_fit` `marginal`, utility tools hidden, models with unknown size never
+shown. `fit` and `search` show every level by default (`--min-fit` to narrow) and no limit. `search <query>` matches a
+part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
+`models: []` and exits 0 (text mode prints `(no match / 該当なし)`); a blank query exits 1.
+`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
+既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
+
+`hidden` reasons, each entry counted once under the first reason that applies, in this order:
+`modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
+`task` (other uses than `--task`), `license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good /
+marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into another row of the same model;
+the text header says "N more workflows merged into their models").
+**`matched` + the sum of `hidden` = the number of entries looked at** (every entry of the list; for `search`, the entries
+whose id or name matched). Tested in `tests/test_cli_json.py`.
+
+`--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
+list (case-insensitive). An unknown license (`null`) never matches.
+
+**Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → official before community
+templates (`community`) → `score` (desc) → `id`.
+動くもの → 自動でおすすめに出せるもの → 公式(利用者のテンプレートは後)→ 点数の高い順 → ID。
+
+### Models / モデルのまとめ方
+
+Like llmfit: a different **size** is a different model, a different **precision** is the same model (chosen
+automatically), and **workflows** are uses of that model. `group_key` is built from the main weights
+(`src/genmodelfit/groups.py`):
+
+1. Main files = role `main` (by the estimator's rule: ComfyUI folder → `role` → HF folder → name). Text encoders
+   (umt5, …) and VAEs are never the key. With several main files, the largest one and those ≥95% of its size (a pair
+   such as Wan 2.2 high / low noise); without any, the largest file that is not a text encoder / VAE / clip_vision;
+   without files, the entry itself. Super-resolution, upscaler and refiner files (`sr`, `upscal…`, `refiner` in the
+   name) are not main weights when another main file exists (Hunyuan Video 1.5 lists its 1080p SR file in both the
+   720p t2v and i2v workflows).
+2. From each file name (the repo name instead for generic names such as `model.safetensors`), drop the extension,
+   shard numbers, GGUF quant tags (`Q4_K_M`, `Q8_0`, …) and precision / packaging words (`fp16`, `bf16`, `fp8`,
+   `e4m3fn`, `scaled`, `mixed`, `int8`, `int4`, `nf4`, `nvfp4`, `w4a8`, `convrot`, `kj`, `comfy`, `transformer`, `only`,
+   `pruned`, `aio`, `high`, `low`, `noise`, …). Keep version, size and variant words (`2.1`, `1.5`, `14b`, `1.3b`,
+   `turbo`, `dev`, `distilled`, `base`, `edit`). `wan2_1` is read as `wan 2.1`, `v1.5` as `1.5`, `ace_step` as
+   `acestep`. If no size word is left, `params_b` is added (`4b`).
+3. Words are sorted and joined; the key is `<modality>:<content>:<words>`, so different types or content marks never
+   share a model. Examples: `z_image_turbo_bf16` and `z_image_turbo_int8_convrot` → `image:sfw:image turbo z`;
+   `wan2.1_t2v_1.3B_fp16` → `… 1.3b 2.1 t2v wan`, `wan2.1_t2v_14B_fp8_scaled` → `… 14b 2.1 t2v wan` (different).
+   The test table is `tests/test_groups.py`.
+
+After the per-entry key, the whole list is looked at (`groups.build_index`):
+
+- An entry with two main files of different names (FLUX.2 klein 4B text-to-image loads both `klein-base-4b` and
+  `klein-4b`) joins the model of one of them if that model exists on its own: the one without `base`, then by name.
+  Otherwise the names stay joined with `+` (Ideogram 4 with its unconditional pair).
+- Entries whose **whole set** of main-file sha256s is equal are the same model (the same file under another name or
+  repo, e.g. Stable Audio Open 1.0 in the template and on HF). Sharing only some main files is not enough. Upstream records whose file name and URL / hash disagree
+  are corrected first (`update.UPSTREAM_FILE_FIXES`, checked with an anonymous HEAD).
+- `params_b` is added to the key only for generic HF file names (`model.safetensors`) without a size word; template
+  `params_b` comes from the title and can be the language model's size (ACE-Step 1.5 "4B LM").
+
+Precision (`ModelEntry.precision`) is read from the main file used for the key (`groups.model_precision`; `update` uses
+the same function), e.g. `w4a8` for the 10Eros W4A8 file.
+
+**Display name** (`model_name`, the table's Model column, `groups.display_name`): candidates are each member's
+name before `:`, after `:` and both joined, without precision / packaging words (`Int8`, `FP16`, `F16`, `ConvRot`, `KJ`,
+`AIO`, …) and use phrases (`Text to Video`, `Depth Estimation`, `Image Upscale`, …). The candidate containing most words
+of the key wins (official templates before community templates and HF repos, then the shorter); it is cut after the
+last key word it contains, and missing size / version / variant words of the key are added (`ACE Step v1 3.5B`,
+`Hunyuan Video 1.5 720p T2V`, `Image Upscale: SeedVR2 7B Int8` → `SeedVR2 7B`). A version added this way gets a `v`
+when it follows a number (`Kokoro-82M v1.0`); `Wan2.1` is written `Wan 2.1`. Models whose key words are the same
+except the type share one name plus the type (`SAM 3.1 (3D)` / `(image)` / `(video)`; no suffix on the only type
+that has official templates). A name without digits gets its one-digit version when a sibling differs only by a
+version (`MoGe 2` beside `MoGe 3`). File-less templates join the one model of the same type whose key contains all
+words of their model name (`Frame Interpolation: FILM` → `FILM`); otherwise they are their own model named
+`<name> (files unknown)`. Remaining clashes get key words (`fl2va` → `first/last frame`), then `#2`. A small table
+`groups.NAME_OVERRIDES` (entry id → name; community templates and a few HF repos whose titles carry no model name)
+overrides the result; `tests/test_groups.py` checks it. Ids never appear in names. `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
+others.
+
+Which entry is shown for a model (`recommend.variant_key`): among the entries that passed the filters,
+0. official before community templates (`community`: the template's `username` is not ComfyUI) — a community
+   workflow never stands for a model that has an official one,
+1. the use: `gen` → `edit` → `i2v` → `lipsync` → `motion` → `voice` → `upscale` → `tool` (with `--task`, among the
+   matching uses) — so a tool or upscale workflow that shares the weights never stands for the model,
+2. the better fit level, 3. no offload (`GPU` / `GPU~` before `GPU+RAM` before CPU — same level, faster),
+4. the higher precision (bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 / 4-bit > lower; unknown precision counts
+   as full precision), 5. the order above.
+So on 8 GB Z-Image Turbo shows its int8 workflow (swapped, `marginal`) rather than bf16 (offload, `marginal`); with
+`--task edit` the representative is an edit workflow. **The row's `score` (and `score_components`) is the highest score
+among the model's entries that passed the filters and have the same use and the same fit level as the shown entry**;
+everything else on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
+
+On the bundled list (323 entries) this gives 204 models; 55 of them have more than one entry.
+
+### Uses / 用途(`--task`, `genmodelfit types`)
+
+The six big types stay the top level. Uses are sub-divisions inside a type, from the entry's `tasks`:
+
+| use | English | 日本語 | task codes |
+|---|---|---|---|
+| `gen` (alias `generate`) | generate from text (3D: from an image) | 文章から作る(3D は画像から) | t2i, t2v, t2a, tts, t23d, i23d |
+| `edit` | edit / transform / control | 編集・変換・形の指定 | i2i, inpaint, outpaint, relight, control, v2v, a2a |
+| `i2v` | image to video | 画像から動画 | i2v, flf2v, ref2v |
+| `lipsync` | lip sync / audio to video | 口の動き・音から動画 | lipsync, a2v |
+| `motion` | motion control | 動きの指定 | motion |
+| `voice` | voice conversion | 声の変換 | vc |
+| `upscale` | upscale / restore | 高解像度化 | upscale |
+| `tool` | utility tool (depth, pose, mask, …) | 補助ツール | tool, estimate, matting, interp, segment, separate |
+
+`--task` takes use names, aliases or task codes, comma-separated (`--task edit`, `--task i2v,lipsync`, `--task t2i`).
+An entry matches when one of its tasks is in the set. `use` (JSON) / the table's Use column is the matching use, else
+the first of tool, upscale, lipsync, motion, voice, edit, gen, i2v that the entry has.
+Utility tools (`upscale` and `tool`, plus Image / Video Tools templates whose title is a depth / normal / line-art /
+pose / geometry map or a segmentation, any audio separation, and MoGe / geometry estimation even under 3D Model) are hidden by `recommend` unless `--include-tools` or a
+tool use is given in `--task`.
+
+`genmodelfit types --json`: `filters` (`content`), `types` (`[{modality, label, label_ja, models, workflows, uses: {use:
+workflows}}]`; `models` = number of models as above, `workflows` = list entries; an entry with two uses counts in both),
+`uses` (`[{use, label, label_ja, tasks}]`), `aliases`.
+
+### Fit (one item of `models`)
+
+Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.search()` give the same list as the CLI).
 
 | key | type | meaning |
 |---|---|---|
 | `id` | str | template name (`image_z_image_turbo_int8`) or `hf:<owner>/<repo>` |
-| `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d` |
+| `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d`; `tasks` is a list (`t2i`, `i2v`, …) |
 | `content` | str | `sfw` or `uncensored` (see README) |
-| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
-| `total_size_gb` | float \| null | size of all listed files (GiB) |
-| `score` | float | 0–100, used for ordering |
-| `fit` | str | `perfect` / `good` / `marginal` / `too_tight` |
-| `estimate` | Estimate | |
-| `gate` | Gate | can it be auto-recommended (docs/gate.md) |
+| `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`) |
+| `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` |
+| `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (= `estimate.run_mode`) |
+| `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped stage by stage) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) |
+| `score` | float | 0–100 (below) |
+| `score_components` | object | `fit`, `headroom`, `readiness`, `basis`, `popularity`, each 0–100 |
+| `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
+| `memory_required_gb` | float \| null | the figure the level was judged on: VRAM for all-in / swapping / offload (the table's VRAM column); RAM for CPU. When a GPU is needed but missing: the minimum VRAM. null when the size is unknown |
+| `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing |
+| `utilization_pct` | float \| null | `memory_required_gb / memory_available_gb × 100` (the table's Mem%) |
+| `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
+| `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
+| `total_size_gb` | float \| null | size of all listed files |
+| `license` | str \| null | strictest license of the files (`apache-2.0`, `mit`, `other`, …; null = unknown) |
+| `licenses` | (str \| null)[] | the distinct licenses of the files (null last = some file unknown) |
+| `auto` | bool | can be auto-recommended (= `gate.auto`) |
+| `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
+| `community` | bool | a community template (the index's `username` is not ComfyUI; docs/sources.md) |
+| `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`) |
+| `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
+| `files_count` | int | download files listed |
+| `use` | str | the use shown (Uses below) |
+| `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = not stated, usually full precision) |
+| `group_key` | str | the model this entry belongs to (Models below) |
+| `model_name` | str | the model's display name (unique over the list; `info` accepts it) |
+| `variants` | object[] | per precision, the best entry that passed the filters: `{precision, workflow_id, memory_required_gb, fit_level, auto, disk_size_gb}`, best precision first (always includes this entry) |
+| `workflows` | object[] | **all** other entries of the same model, also those filtered out: `{id, name, tasks, use, precision, fit_level, memory_required_gb, disk_size_gb, auto, matched}` (`matched`: passed the current filters), best first |
+| `estimate` | Estimate | full estimate (below; `limits` with `--limits`) |
+| `gate` | Gate | full gate result (below) |
 
-`recommend` also returns `filters` (`modality`, `content`, `min_fit`, `limit`, `auto_only`, `include_tools`). `recommend` drops `too_tight`; `fit` keeps everything.
-`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`
-(`filters.content` reports the value actually used). 既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
+### Score / 点数
+
+`score = 0.45·fit + 0.15·headroom + 0.20·readiness + 0.10·basis + 0.10·popularity`, rounded to 0.1
+(`recommend.WEIGHTS`). Each component is 0–100:
+
+| component | formula |
+|---|---|
+| `fit` | perfect 100, good 70, marginal 35, too_tight 0 |
+| `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
+| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 |
+| `basis` | 100 when `measured`, 0 when `estimated` |
+| `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
+
+The score never goes down when VRAM or RAM increases (the level never drops, `headroom` compares against the all-in
+VRAM which does not depend on the PC, and `basis` only turns `measured` when a GPU is present). Tested in
+`tests/test_invariants.py`. VRAM・メモリを増やしても点数は下がらない(試験あり)。
 
 ## Estimate
 
@@ -92,14 +263,24 @@ smallest tried value does not reach `good`):
 | `max_seconds` | int \| null | music / sfx / tts: length in seconds (step 5, up to 600) |
 | `at_cap` | str[] | keys that reached the end of the searched range (the real limit is higher) |
 
-Fit levels / 段階:
+Fit levels / 段階 — by the **utilization of the memory pool of the run mode** (required / available; VRAM on the
+GPU, RAM on the CPU), as in llmfit (`docs/how-it-works.md`, "Fit analysis"; adopted 2026-10-20):
 
-| level | meaning |
+| utilization | level |
 |---|---|
-| `perfect` | everything fits in VRAM with ≥10% headroom / 余裕をもって全部載る |
-| `good` | everything fits with little headroom, or fits when parts are swapped stage by stage / 全部載る(余裕は少ない)、または順に載せ替えれば載る |
-| `marginal` | runs only by offloading to RAM, on CPU, or with a small RAM shortfall (page file); slow / 逃がせば動く・CPU・メモリが少し足りない。遅い |
-| `too_tight` | does not run (VRAM, or RAM short by more than 1.5×), **or cannot be judged because the size is unknown** (`unknown_size: true`) / 動かない、または大きさが分からず判定できない |
+| ≤ 60% | `perfect` |
+| ≤ 85% | `good` |
+| ≤ 98% | `marginal` |
+| > 98% | `too_tight` |
+
+Caps per run mode: all on the GPU (`GPU`) none; parts swapped stage by stage (`GPU~`) at most `good`; offload to RAM
+(`GPU+RAM`) and CPU at most `marginal`. The run mode with the best level is used (ties: all-in → swapped → offload).
+The RAM check is applied afterwards as before (short by up to 1.5× → at most `marginal`, more → `too_tight`). A model
+that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
+`marginal`), and the better result is used, so adding VRAM never lowers the level. `too_tight` also covers models whose
+size is unknown (`unknown_size: true`). Constants: `estimate.FIT_BANDS`.
+動かし方で使う置き場所の使用率で決める(60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight)。
+載せ替えは good まで、逃がす・CPU は marginal まで。
 
 ## Gate
 
@@ -108,7 +289,7 @@ Computed every time (never stored in `db.json`). Details and the default license
 | key | type | meaning |
 |---|---|---|
 | `auto` | bool | true only when every check passed |
-| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is the table's `held:<id>`) |
+| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Auto column and as `held:<id>` by `gate --only-held`) |
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
 | `checks` | Check[] | always the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known` |
 
@@ -123,7 +304,10 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 
 ## info
 
-`model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]).
+`model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]), `group_key`, `same_model` (the other
+entries of the same model, each like a `workflows` item, judged for this PC, best first), `model_name`.
+`info <query>` also accepts a model's display name (exact, case-insensitive): then the model's best workflow for
+this PC is shown.
 
 How `info <query>` picks the model / モデルの選び方:
 
@@ -141,7 +325,8 @@ Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwi
 `id`, `name`, `modality`, `tasks`, `source`, `files` (ModelFile[]), `template` (Template \| null), `params_b`,
 `precision`, `license`, `license_url`, `base_model`, `content`, `content_evidence` (str[]: why it is marked
 uncensored), `discovered_from` (str[]: where it was found), `updated`, `homepage`, `downloads` / `likes`
-(int \| null: Hugging Face counters, set for `source: huggingface`), `total_size_bytes`,
+(int \| null: Hugging Face counters, set for `source: huggingface`; `downloads` is the last 30 days),
+`downloads_all_time` (int \| null: all-time downloads, used for the inclusion floor), `total_size_bytes`,
 `license_name` (the name of an `other` license, from the strictest file), `license_evidence` (str[]: why the license is
 unknown — entries start with `license_unverified:`), `files_complete`, `size_floor_bytes` (below).
 
@@ -172,7 +357,7 @@ The estimator decides a file's part from `directory` first, then `role`, then th
 names, and counts one variant per part (`docs/accuracy.md`, 「ファイルの数え方」).
 
 Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `requires_custom_nodes`, `usage`,
-`date`, `size_bytes`.
+`date`, `size_bytes`, `username` (who made it; not `ComfyUI` = community template).
 
 ### Measurement
 

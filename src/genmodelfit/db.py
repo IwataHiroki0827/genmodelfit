@@ -74,14 +74,78 @@ class Database:
         tmp.replace(path)
 
 
+_STR = (str,)
+_OPT_STR = (str, type(None))
+_OPT_NUM = (int, float, type(None))
+# 項目の型(読めない値で後から落ちないように、読むときに確かめる。docs/schema.md)
+_ENTRY_TYPES = {
+    "id": _STR,
+    "name": _STR,
+    "modality": _STR,
+    "tasks": (list,),
+    "files": (list,),
+    "template": (dict, type(None)),
+    "params_b": _OPT_NUM,
+    "precision": _OPT_STR,
+    "license": _OPT_STR,
+    "content": _STR,
+    "downloads": (int, type(None)),
+    "downloads_all_time": (int, type(None)),
+    "files_complete": (bool, type(None)),
+    "size_floor_bytes": (int, type(None)),
+}
+_FILE_TYPES = {
+    "name": _STR,
+    "url": _OPT_STR,
+    "sha256": _OPT_STR,
+    "size_bytes": (int, type(None)),
+    "directory": _OPT_STR,
+    "license": _OPT_STR,
+    "gated": (bool, type(None)),
+    "role": _OPT_STR,
+}
+
+
+def _check_types(d: Any, types: dict[str, tuple], where: str) -> None:
+    if not isinstance(d, dict):
+        raise DatabaseError(f"{where} の形が正しくありません(オブジェクトではない)")
+    for key, ok in types.items():
+        if key not in d:
+            if ok is _STR:
+                raise DatabaseError(f"{where} に {key} がありません")
+            continue
+        v = d[key]
+        bad = not isinstance(v, ok) or (isinstance(v, bool) and bool not in ok)
+        if bad:
+            raise DatabaseError(f"{where} の {key} の型が正しくありません: {v!r}")
+
+
+def check_entry(d: Any, i: int) -> None:
+    """一覧の 1 項目の型を確かめる。違えば DatabaseError。"""
+    where = f"models[{i}]"
+    _check_types(d, _ENTRY_TYPES, where)
+    if not all(isinstance(t, str) for t in d.get("tasks", [])):
+        raise DatabaseError(f"{where} の tasks は文字列の並びです")
+    for j, f in enumerate(d.get("files", [])):
+        _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
+
+
 def parse_db(data: dict[str, Any], origin: str) -> Database:
+    if not isinstance(data, dict):
+        raise DatabaseError("一覧の形が正しくありません(JSON のオブジェクトではない)")
     ver = data.get("schema_version")
     if ver != SCHEMA_VERSION:
         raise DatabaseError(f"未対応のデータ形式です(schema_version={ver}、対応={SCHEMA_VERSION})")
     if not isinstance(data.get("models"), list):
         raise DatabaseError("models がありません")
+    for i, m in enumerate(data["models"]):
+        check_entry(m, i)
+    try:
+        models = [ModelEntry.from_dict(m) for m in data["models"]]
+    except (TypeError, AttributeError, ValueError) as e:
+        raise DatabaseError(f"一覧のモデルの形が正しくありません: {e}") from e
     return Database(
-        models=[ModelEntry.from_dict(m) for m in data["models"]],
+        models=models,
         generated_at=data.get("generated_at"),
         sources=data.get("sources") or {},
         origin=origin,
@@ -108,7 +172,11 @@ def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]
 def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) -> Database:
     if path:
         p = Path(path)
-        db = parse_db(json.loads(p.read_text(encoding="utf-8")), "path")
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:  # 無い・読めない・JSON でない(UnicodeDecodeError も ValueError)
+            raise DatabaseError(f"一覧のファイルを読めません: {p}: {e}") from e
+        db = parse_db(data, "path")
     else:
         db = None
         cp = cached_db_path()

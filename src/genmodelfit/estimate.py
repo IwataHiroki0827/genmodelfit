@@ -214,7 +214,7 @@ class Coefficients:
     act_video_frame_exponent: float = 0.5  # コマ数への効き方(docs/accuracy.md)
     offload_fraction: float = 0.4  # 逃がすときに GPU に残す重みの割合
     ram_extra_gb: float = 3.0  # メインメモリの固定分(Python・ComfyUI)
-    good_margin: float = 0.90  # perfect はこの割合以内に収まること
+    good_margin: float = 0.90  # 使わない(段階は FIT_BANDS。calibration.json の互換のため残す)
     source: str = "default"
     extra: dict = field(default_factory=dict)
 
@@ -866,39 +866,102 @@ def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, ram_tota
 def _judge(
     n: Need, system: SystemInfo, c: Coefficients, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
-    """(段階, 動かし方, 理由, その動かし方で要るメインメモリ)。"""
+    """(段階, 動かし方, 理由, その動かし方で要るメインメモリ)。
+
+    GPU に載らない(逃がしても足りない・メモリが足りない)ときは、GPU が無いときの判定(CPU)とも比べて
+    良いほうを取る。小さな GPU を足すと、CPU で動くものまで動かない判定になるのを防ぐ
+    (VRAM を増やして段階が下がらない)。"""
+    vram = system.vram_gb
+    if vram <= 0:
+        return _judge_cpu(n, system, entry, weights_gb)
+    gpu = _judge_gpu(n, system, c)
+    if gpu[0] != "too_tight":
+        return gpu
+    cpu = _judge_cpu(n, system, entry, weights_gb)
+    if cpu[0] != "too_tight":
+        return cpu[0], cpu[1], [*cpu[2], f"GPU では動かない: {gpu[2][0]}"], cpu[3]
+    return gpu
+
+
+def _judge_cpu(
+    n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
+) -> tuple[str, str, list[str], float]:
+    """GPU を使わない判定(小さく CPU で動く種類だけ marginal)。"""
+    ram_total = system.ram_total_gb
+    w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
+    if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
+        why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
+        fit, mode, reasons = _ram_check(
+            "marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, ram_total
+        )
+        return fit, mode, reasons, n.ram
+    return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
+
+
+# 段階は、動かし方で使う置き場所(GPU なら VRAM)の使用率で決める
+# (llmfit の docs/how-it-works.md「Fit analysis」にならう。2026-10-20 に利用者が決めた):
+# 60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight。
+# 動かし方ごとの上限: 全部 GPU は上限なし、部品を順に載せ替える(GPU~)は good まで、
+# メインメモリへ逃がす(GPU+RAM)と CPU は marginal まで
+FIT_BANDS = ((0.60, "perfect"), (0.85, "good"), (0.98, "marginal"))
+_LEVELS = ("perfect", "good", "marginal", "too_tight")
+
+
+def fit_band(used: float, available: float) -> str:
+    if available <= 0:
+        return "too_tight"
+    u = used / available
+    for limit, level in FIT_BANDS:
+        if u <= limit:
+            return level
+    return "too_tight"
+
+
+def _cap(level: str, top: str) -> str:
+    return _LEVELS[max(_LEVELS.index(level), _LEVELS.index(top))]
+
+
+def gpu_choice(full: float, sequential: float | None, offload: float, vram: float) -> tuple[str, str]:
+    """(段階, 載せ方)。載せ方は full(全部 GPU)/ seq(部品を順に載せ替え)/ offload(逃がす)。
+    一番良い段階の載せ方を選ぶ(同じなら full → seq → offload)。表の VRAM の値もこれで決める。"""
+    seq = full if sequential is None else sequential
+    options = [
+        (fit_band(full, vram), "full"),
+        (_cap(fit_band(seq, vram), "good"), "seq"),
+        (_cap(fit_band(offload, vram), "marginal"), "offload"),
+    ]
+    return min(options, key=lambda o: _LEVELS.index(o[0]))
+
+
+def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, list[str], float]:
     vram = system.vram_gb
     ram_total = system.ram_total_gb
-    if vram <= 0:
-        w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
-        if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
-            fit, mode, reasons = _ram_check(
-                "marginal", "cpu", ["GPU なし: CPU で動く見込み(遅い)"], n.ram, ram_total
-            )
-            return fit, mode, reasons, n.ram
-        return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
-    if n.full <= vram * c.good_margin:
-        fit, mode, reasons = "perfect", "gpu", [f"VRAM {n.full:.1f} / {vram:.1f} GB: 余裕をもって全部載る"]
-    elif n.full <= vram:
-        fit, mode, reasons = "good", "gpu", [f"VRAM {n.full:.1f} / {vram:.1f} GB: 全部載るが余裕は少ない"]
-    elif n.sequential <= vram:
-        fit, mode = "good", "gpu"
-        reasons = [
-            f"VRAM {n.sequential:.1f} / {vram:.1f} GB: 部品を順に載せ替えれば載る(全部載せは {n.full:.1f} GB)"
-        ]
-    elif n.offload <= vram:
-        fit, mode = "marginal", "offload"
-        reasons = [
-            f"VRAM {n.full:.1f} GB 必要 > {vram:.1f} GB: 重みの一部をメインメモリに逃がせば動く"
-            f"(遅い。逃がすと {n.offload:.1f} GB)"
-        ]
-    else:
+    fit, how = gpu_choice(n.full, n.sequential, n.offload, vram)
+    pct = {
+        k: round(100 * v / vram) for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
+    }
+    if fit == "too_tight":
         return (
             "too_tight",
             "none",
-            [f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB)"],
+            [f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"],
             n.ram,
         )
+    if how == "full":
+        mode = "gpu"
+        reasons = [f"VRAM {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る"]
+    elif how == "seq":
+        mode = "gpu"
+        reasons = [
+            f"VRAM {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
+            f"(全部載せは {n.full:.1f} GB。段階は good まで)"
+        ]
+    else:
+        mode = "offload"
+        reasons = [
+            f"VRAM {n.full:.1f} GB 必要 > {vram:.1f} GB: 重みの一部をメインメモリに逃がせば動く"
+            f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)"
+        ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
     fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, ram_total)
     return fit, mode, reasons, ram_need

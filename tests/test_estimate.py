@@ -125,7 +125,8 @@ def test_levels_full_sequential_offload():
     c = Coefficients()
     e = big_model()
     s = Settings(width=1024, height=1024)
-    assert estimate(e, pc(32), s, coefficients=c).fit == "perfect"
+    assert estimate(e, pc(48), s, coefficients=c).fit == "perfect"  # 全部で約 21 GB = 44%
+    assert estimate(e, pc(32), s, coefficients=c).fit == "good"  # 66%(60% を超えると good)
     seq = estimate(e, pc(16), s, coefficients=c)  # 全部(21 GB)は載らないが、本体の段(13 GB)は載る
     assert seq.fit == "good" and seq.run_mode == "gpu" and "順に載せ替え" in seq.reasons[0]
     off = estimate(e, pc(8), s, coefficients=c)  # 本体も載らない → 一部を逃がす
@@ -160,7 +161,9 @@ def test_measured_on_16gb_falls_through_on_smaller_gpu(db):
     e = db.get("image_z_image_turbo_int8")  # 16 GB で 13.2 GB(動的 VRAM)。アプリでは 6 GB から動く
     on8 = estimate(e, pc(8), None, db.measurements)
     assert on8.basis == "measured" and on8.vram_gb == pytest.approx(13.2)
-    assert on8.fit == "good" and on8.vram_sequential_gb <= 8
+    # 順に載せ替えて 7.6 / 8 GB = 96%: 動くが余裕が無いので marginal(使用率の段階。docs/accuracy.md)
+    assert on8.fit == "marginal" and on8.run_mode == "gpu" and on8.vram_sequential_gb <= 8
+    assert estimate(e, pc(12), None, db.measurements).fit == "good"  # 64%。載せ替えは good まで
     assert estimate(e, pc(6), None, db.measurements).fit == "marginal"
 
 
@@ -208,16 +211,16 @@ def test_settings_scaling_is_monotonic(db, coef):
 
 def test_limits_are_the_largest_good_settings(db):
     e = db.get("text_to_video_wan")
-    lim = limits_for(e, pc(8), None, db.measurements)
+    lim = limits_for(e, pc(10), None, db.measurements)  # 8 GB では標準の設定でも 97% で good にならない
     assert lim["level"] == "good" and lim["max_side_px"] and lim["max_frames"]
     at = Settings(width=lim["max_side_px"], height=lim["max_side_px"], frames=49)
     over = Settings(width=lim["max_side_px"] + 32, height=lim["max_side_px"] + 32, frames=49)
-    assert estimate(e, pc(8), at, db.measurements).fit in ("perfect", "good")
-    assert estimate(e, pc(8), over, db.measurements).fit not in ("perfect", "good")
-    more = estimate(e, pc(8), Settings(width=512, height=512, frames=lim["max_frames"] + 4), db.measurements)
+    assert estimate(e, pc(10), at, db.measurements).fit in ("perfect", "good")
+    assert estimate(e, pc(10), over, db.measurements).fit not in ("perfect", "good")
+    more = estimate(e, pc(10), Settings(width=512, height=512, frames=lim["max_frames"] + 4), db.measurements)
     assert more.fit not in ("perfect", "good")
     # 大きな GPU ほど限界は上がる
-    lim16 = limits_for(e, pc(16), None, db.measurements)
+    lim16 = limits_for(e, pc(24), None, db.measurements)
     assert lim16["max_side_px"] >= lim["max_side_px"] and lim16["max_frames"] >= lim["max_frames"]
     assert limits_for(db.get("3d_hunyuan3d_image_to_model"), pc(8), None, db.measurements) is None
     big = limits_for(db.get("image_sdxl_simple"), pc(24), None, db.measurements)
@@ -254,9 +257,12 @@ def test_curated_min_is_not_too_tight(db, model_id):
 
 
 @pytest.mark.parametrize("model_id", CURATED_IDS)
-def test_curated_recommended_is_good(db, model_id):
+def test_curated_recommended_runs_on_gpu(db, model_id):
+    """推奨の VRAM では GPU で動く(逃がさない)。段階は使用率で決めるので、推奨ぎりぎり(85% 超)なら
+    marginal のこともある(Z-Image Turbo int8 と Wan 2.1 1.3B は 8 GB で 96〜97%)。"""
     _, vrec = CURATED[model_id]
-    assert estimate(db.get(model_id), pc(vrec), None, db.measurements).fit in ("perfect", "good")
+    e = estimate(db.get(model_id), pc(vrec), None, db.measurements)
+    assert e.run_mode == "gpu" and e.fit != "too_tight"
 
 
 def test_curated_8gb_and_4gb(db):
@@ -287,10 +293,15 @@ def test_calibration_is_reproducible():
 
 
 def test_cli_info_shows_limits(capsys):
-    assert cli.main(["info", "text_to_video_wan", "--vram", "8", "--ram", "32", "--no-cache"]) == 0
+    assert cli.main(["info", "text_to_video_wan", "--vram", "10", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "この PC なら 長辺" in out and "コマまで good" in out
-    assert cli.main(["fit", "--json", "--limits", "--vram", "8", "--ram", "32", "--no-cache"]) == 0
+    assert (
+        cli.main(
+            ["fit", "--json", "--limits", "--vram", "10", "--ram", "32", "--no-cache", "--all-workflows"]
+        )
+        == 0
+    )
     data = json.loads(capsys.readouterr().out)
     wan = next(m for m in data["models"] if m["id"] == "text_to_video_wan")
     assert wan["estimate"]["limits"]["max_side_px"] and wan["estimate"]["vram_sequential_gb"]

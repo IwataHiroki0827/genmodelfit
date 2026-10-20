@@ -67,6 +67,7 @@ class Template:
     usage: int | None = None
     date: str | None = None
     size_bytes: int | None = None  # index.json の size
+    username: str | None = None  # index.json の username(作った人。ComfyUI 以外は利用者のテンプレート)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Template:
@@ -96,6 +97,7 @@ class ModelEntry:
     homepage: str | None = None
     downloads: int | None = None  # HF の直近 30 日のダウンロード数(source が huggingface のとき)
     likes: int | None = None
+    downloads_all_time: int | None = None  # HF の全期間のダウンロード数(一覧に入れるかの下限に使う)
     license_name: str | None = None  # license が other のときの名前(一番厳しいファイルのもの)
     # 不明にした理由など(ファイルの license_evidence のうち license_unverified をまとめたもの)
     license_evidence: list[str] = field(default_factory=list)

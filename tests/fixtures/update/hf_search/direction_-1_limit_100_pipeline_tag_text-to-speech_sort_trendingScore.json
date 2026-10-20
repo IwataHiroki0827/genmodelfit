@@ -1,0 +1,42 @@
+[
+ {
+  "id": "hexgrad/Kokoro-82M",
+  "downloads": 10533404,
+  "downloadsAllTime": 132951460,
+  "likes": 7280,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech"
+ },
+ {
+  "id": "newcomer/new-voice",
+  "downloads": 1500,
+  "downloadsAllTime": 1500,
+  "likes": 300,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech"
+ },
+ {
+  "id": "newcomer/brand-new-voice",
+  "downloads": 900,
+  "downloadsAllTime": 900,
+  "likes": 200,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech"
+ },
+ {
+  "id": "dual/both-voice",
+  "downloads": 5000,
+  "downloadsAllTime": 5000,
+  "likes": 50,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech"
+ }
+]

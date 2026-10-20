@@ -34,7 +34,7 @@ r.auto, r.held_by, r.to_dict()
 ```
 
 `to_dict()` の形: `{"auto": bool, "held_by": [落ちた条件の id], "comfyui_version": 比べた版,
-"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順にいつも 9 つ。`held_by[0]` が表の `held:<id>`。
+"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順にいつも 9 つ。`held_by[0]` が表の Auto の列(`workflow` などの短い名前)と `gate --only-held` の `held:<id>`。
 `detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件

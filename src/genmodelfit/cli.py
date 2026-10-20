@@ -19,7 +19,7 @@ from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
 from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, evaluate, is_tool, recommend
+from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, select
 
 
 class CliError(RuntimeError):
@@ -140,81 +140,193 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str, system: SystemInfo | None = None, notes: list[str] | None = None) -> None:
-    from .table import print_fit_table
+def _license_list(text: str) -> list[str]:
+    items = [x.strip().lower() for x in text.split(",") if x.strip()]
+    if not items:
+        raise argparse.ArgumentTypeError(
+            "ライセンスを 1 つ以上、カンマ区切りで指定してください(例: apache-2.0,mit)"
+        )
+    return items
 
-    print_fit_table(fits, title=title, system=system, notes=notes or ())
+
+def _modality_list(text: str) -> list[str]:
+    from .tasks import parse_modalities
+
+    try:
+        return list(parse_modalities(text) or ())
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
-def cmd_recommend(args: argparse.Namespace) -> int:
-    s, db = _system(args), _db(args)
-    limit = args.limit if args.limit is not None else 10
-    fits = recommend(
+def _task_list(text: str) -> list[str]:
+    from .tasks import task_codes
+
+    items = [x.strip().lower() for x in text.split(",") if x.strip()]
+    try:
+        task_codes(items)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+    return items
+
+
+def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
+    return select(
         db,
         s,
         modality=args.modality,
         content=args.content,
-        min_fit=args.min_fit,
-        limit=None,  # 保留・補助ツールを除いてから件数を絞る
+        license=args.license,
+        task=args.task,
+        group=not args.all_workflows,
         settings=_settings(args),
         with_limits=args.limits,
+        policy=_policy(args),
+        **kw,
     )
-    if not args.include_tools:
-        fits = [f for f in fits if not is_tool(f.model)]
-    _attach_gate(fits, args, db)
-    if args.auto_only:
-        fits = [f for f in fits if f.gate and f.gate.get("auto")]
-    fits = fits[:limit] if limit else fits
+
+
+def _filters(args: argparse.Namespace, min_fit: str | None, limit: int | None) -> dict[str, Any]:
+    return {
+        "modality": args.modality,
+        "content": args.content,
+        "min_fit": min_fit,
+        "license": args.license,
+        "task": args.task,
+        "all_workflows": args.all_workflows,
+        "limit": limit,
+    }
+
+
+def _show(
+    args, command: str, title: str, s: SystemInfo, db: Database, sel, filters: dict[str, Any], sections=False
+) -> int:
     if args.json:
         _out(
             _envelope(
-                "recommend",
+                command,
                 s,
                 db,
-                filters={
-                    "modality": args.modality,
-                    "content": args.content,
-                    "min_fit": args.min_fit,
-                    "limit": args.limit if args.limit is not None else 10,
-                    "auto_only": args.auto_only,
-                    "include_tools": args.include_tools,
-                },
-                models=[f.to_dict() for f in fits],
+                filters=filters,
+                matched=sel.matched,
+                hidden=sel.hidden,
+                groups=sel.groups,
+                models=[f.to_dict() for f in sel.fits],
             )
         )
         return 0
-    _print_fits(fits, "Recommended", s)
+    from .table import print_fit_table
+
+    print_fit_table(
+        sel.fits,
+        title=title,
+        system=s,
+        matched=sel.matched,
+        hidden=sel.hidden,
+        groups=sel.groups if sections else None,
+        grouped=not args.all_workflows,
+    )
     return 0
+
+
+def cmd_recommend(args: argparse.Namespace) -> int:
+    """-m も --task も無ければ種類ごとの節(各 -n 件、既定 3)。あれば 1 つの表(既定 10 件)。"""
+    s, db = _system(args), _db(args)
+    sections = not args.modality and not args.task
+    per_type = (args.limit or 3) if sections else None
+    limit = None if sections else (args.limit if args.limit is not None else 10)
+    min_fit = args.min_fit or "marginal"
+    sel = _select(
+        args,
+        s,
+        db,
+        min_fit=min_fit,
+        include_tools=args.include_tools,
+        auto_only=args.auto_only,
+        drop_unknown_size=True,
+        limit=limit,
+        per_modality=per_type,
+    )
+    filters = _filters(args, min_fit, limit) | {
+        "per_type": per_type,
+        "auto_only": args.auto_only,
+        "include_tools": args.include_tools,
+    }
+    return _show(args, "recommend", "Recommended", s, db, sel, filters, sections=sections)
 
 
 def cmd_fit(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    fits = evaluate(
-        db,
-        s,
-        modality=args.modality,
-        content=args.content,
-        settings=_settings(args),
-        with_limits=args.limits,
-    )
-    if args.perfect:
-        fits = [f for f in fits if f.estimate.fit == "perfect"]
-    if args.limit:
-        fits = fits[: args.limit]
-    _attach_gate(fits, args, db)
-    if args.json:
-        _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
-        return 0
-    notes = []
-    if args.content == "sfw":  # 既定で隠した無検閲の数を表の下で知らせる(文字の表示だけ)
-        hidden = sum(
-            1
-            for m in db.models
-            if m.content == "uncensored" and (not args.modality or m.modality == args.modality)
+    min_fit = "perfect" if args.perfect else args.min_fit
+    sel = _select(args, s, db, min_fit=min_fit, limit=args.limit)
+    return _show(args, "fit", "All models", s, db, sel, _filters(args, min_fit, args.limit))
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    """ID・名前の一部で探す(大文字小文字を区別しない)。0 件でも終了コード 0。空の語は 1。"""
+    s, db = _system(args), _db(args)
+    query = args.query.strip()
+    if not query:
+        raise CliError("探す語が空です")
+    sel = _select(args, s, db, query=query, min_fit=args.min_fit, limit=args.limit)
+    filters = {"query": query} | _filters(args, args.min_fit, args.limit)
+    return _show(args, "search", f'Search "{query}"', s, db, sel, filters)
+
+
+def types_summary(db: Database, content: str = DEFAULT_CONTENT) -> list[dict[str, Any]]:
+    """大きな種類ごとの、モデルの数・ワークフローの数・用途ごとのワークフローの数。"""
+    from .groups import group_key
+    from .tasks import MODALITY_LABEL, USES, uses_of
+
+    out = []
+    for mod in MODALITIES:
+        entries = [m for m in db.models if m.modality == mod and (content == "all" or m.content == content)]
+        uses = {u: sum(1 for m in entries if u in uses_of(m)) for u in USES}
+        en, ja = MODALITY_LABEL[mod]
+        out.append(
+            {
+                "modality": mod,
+                "label": en,
+                "label_ja": ja,
+                "models": len({group_key(m) for m in entries}),
+                "workflows": len(entries),
+                "uses": {u: n for u, n in uses.items() if n},
+            }
         )
-        if hidden:
-            notes.append(f"uncensored hidden: {hidden} (--content all)")
-    _print_fits(fits, "All models", s, notes)
+    return out
+
+
+def cmd_types(args: argparse.Namespace) -> int:
+    from .tasks import USE_ALIASES, USES
+
+    db = _db(args)
+    rows = types_summary(db, args.content)
+    uses = [
+        {"use": u, "label": en, "label_ja": ja, "tasks": list(codes)} for u, (en, ja, codes) in USES.items()
+    ]
+    if args.json:
+        _out(
+            _envelope(
+                "types",
+                None,
+                db,
+                filters={"content": args.content},
+                types=rows,
+                uses=uses,
+                aliases=USE_ALIASES,
+            )
+        )
+        return 0
+    lines = [f"Types (content {args.content}; models = distinct weights, workflows = list entries)"]
+    lines.append(f"{'Type':<6}{'Models':>7}{'Workflows':>10}  Uses (workflows)")
+    for r in rows:
+        used = ", ".join(f"{u} {n}" for u, n in r["uses"].items())
+        lines.append(f"{r['modality']:<6}{r['models']:>7}{r['workflows']:>10}  {used}")
+    lines.append("")
+    lines.append("Uses for --task (a name below, or a task code such as t2i / i2i / inpaint):")
+    for u in uses:
+        lines.append(f"  {u['use']:<8}{u['label']} / {u['label_ja']}  [{', '.join(u['tasks'])}]")
+    lines.append("Examples: genmodelfit recommend -m image --task edit / -m video --task i2v,lipsync")
+    _emit(lines)
     return 0
 
 
@@ -260,12 +372,34 @@ def _emit(lines: list[str]) -> None:
             print(part)
 
 
+def _by_model_name(db: Database, s: SystemInfo, args: argparse.Namespace, query: str):
+    """モデルの表示名(大文字小文字を区別しない)に合えば、そのモデルの中でこの PC に一番合うワークフロー。"""
+    from .groups import index_for
+    from .recommend import judge, variant_key
+
+    if db.get(query.strip()) is not None:
+        return None  # ID がそのまま合うなら ID を優先
+    idx = index_for(db)
+    key = idx.find(query)
+    if key is None:
+        return None
+    c = load_coefficients()
+    fits = [
+        judge(m, s, db, settings=_settings(args), coefficients=c, policy=_policy(args))
+        for m in idx.members[key]
+    ]
+    return min(fits, key=variant_key).model
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    m = resolve_model(db, args.model, args.content)
+    m = _by_model_name(db, s, args, args.model) or resolve_model(db, args.model, args.content)
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
+    key, same = same_model(db, s, m, args)
+    from .groups import index_for, is_community
+
     if args.json:
         _out(
             _envelope(
@@ -276,10 +410,23 @@ def cmd_info(args: argparse.Namespace) -> int:
                 estimate=e.to_dict(),
                 gate=gate,
                 measurements=[vars(x) | {"settings": vars(x.settings)} for x in db.measurements_for(m.id)],
+                group_key=key,
+                model_name=index_for(db).name_of.get(key),
+                community=is_community(m),
+                same_model=same,
             )
         )
         return 0
+    from .groups import index_for, is_community
+
+    n = len(same) + 1
     out = [f"{m.name}  [{m.id}]"]
+    out.append(
+        f"  model:    {index_for(db).name_of.get(key, m.name)}"
+        f"  ({n} workflow{'s' if n > 1 else ''} use{'' if n > 1 else 's'} these weights)"
+    )
+    if is_community(m):
+        out.append(f"  community template by {m.template.username} (not made by ComfyUI)")
     out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
     out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
@@ -305,8 +452,33 @@ def cmd_info(args: argparse.Namespace) -> int:
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
             out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+    if same:
+        k = len(same)
+        out.append(f"  same model ({k} other workflow{'s' if k > 1 else ''}; precision / use differ):")
+        for w in same:
+            need = w["memory_required_gb"]
+            vram = f"{need:.1f} GB" if need is not None else "-"
+            prec = w["precision"] or "-"
+            out.append(f"    - {w['id']}  ({w['use']}, {prec}, {w['fit_level']}, {vram})")
     _emit(out)
     return 0
+
+
+def same_model(db: Database, s: SystemInfo, m, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
+    """同じモデル(groups.group_key)のほかのワークフロー。この PC での判定つき、良い順。"""
+    from .groups import index_for
+    from .recommend import _member_dict, judge, variant_key
+
+    idx = index_for(db)
+    key = idx.key_of[m.id]
+    c = load_coefficients()
+    others = [
+        judge(o, s, db, settings=_settings(args), coefficients=c, policy=_policy(args))
+        for o in idx.members[key]
+        if o.id != m.id
+    ]
+    others.sort(key=variant_key)
+    return key, [_member_dict(o, True) for o in others]
 
 
 def _progress(args: argparse.Namespace):
@@ -510,11 +682,6 @@ def _gate_for(model, args, db: Database | None = None) -> dict[str, Any] | None:
     return evaluate_offline(model, _policy(args), sources=db.sources if db else None).to_dict()
 
 
-def _attach_gate(fits, args, db: Database | None = None) -> None:
-    for f in fits:
-        f.gate = _gate_for(f.model, args, db)
-
-
 # --- 引数 ---------------------------------------------------------------------------------------
 
 
@@ -540,6 +707,121 @@ def _head_age(v: str) -> int | None:
     return n
 
 
+_JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, database: {...}, filters: {...},
+  matched, hidden: {reason: count}, groups: [{modality, matched, shown}],
+  models: [{ id, name, model_name,
+  modality, tasks, use, content, source, fit_level, fit_label, run_mode, run_mode_label, score,
+  score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
+  memory_required_gb, memory_available_gb, utilization_pct, ram_required_gb, disk_size_gb,
+  total_size_gb, license, licenses, auto, held_reasons, estimate_confidence, notes,
+  files_count, precision, group_key, variants: [{precision, workflow_id, ...}],
+  workflows: [{id, name, tasks, use, precision, fit_level, ...}], estimate, gate }] }
+  One item per model (same weights family + size); --all-workflows gives one per workflow.
+  Details: docs/schema.md"""
+
+_COMMON_HELP = """PRECONDITIONS:
+  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.
+  The bundled model list is used unless `genmodelfit update` stored a newer one (--no-cache).
+
+SIDE EFFECTS:
+  None - read-only. No network access.
+
+EXIT CODES:
+  0  Success{zero}
+  1  Error{one} (e.g. a broken --db file; with --json the error is in "error")
+  2  Usage error (unknown option or value)
+"""
+
+HELP = {
+    "recommend": """Recommend generation models for this PC, best first.
+この PC に合う生成モデルを、おすすめ順に出す。
+
+Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
+(default 3) each. With -m or --task: one table (default 10).
+One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
+Order: models that run, then auto-recommendable ones (gate: Auto=yes), then Score (0-100),
+then id. Uncensored models and utility tools are hidden unless asked. The default output is a
+table (llmfit uses JSON by default); add --json for apps.
+並べ方: 動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
+
+"""
+    + _COMMON_HELP.format(zero="", one="")
+    + """
+AGENT USAGE:
+  genmodelfit recommend --json
+  genmodelfit recommend -m image --task edit -n 5 --min-fit good --json
+  genmodelfit recommend -m video,music --auto-only --comfyui-version 0.40.0 --json
+  genmodelfit recommend --license apache-2.0,mit --vram 8 --ram 32 --json
+
+"""
+    + _JSON_FIELDS,
+    "fit": """Judge every model for this PC (too tight ones included), in the same order as recommend.
+すべてのモデルをこの PC で判定して表にする(動かないものも、recommend と同じ並べ方で)。
+
+"""
+    + _COMMON_HELP.format(zero="", one="")
+    + """
+AGENT USAGE:
+  genmodelfit fit --json
+  genmodelfit fit -m video --task i2v --min-fit good -n 20
+  genmodelfit fit --content all --all-workflows --vram 12 --ram 32 --json
+
+"""
+    + _JSON_FIELDS,
+    "search": """Search models by a part of the id or name (case-insensitive) and judge them for this PC.
+ID・名前の一部で探し(大文字小文字は区別しない)、この PC での判定を出す。
+--content applies (default sfw). With no match the list is empty and the exit code is 0.
+
+"""
+    + _COMMON_HELP.format(
+        zero=" (also when nothing matches: empty models / 「no match」)", one=": blank query"
+    )
+    + """
+AGENT USAGE:
+  genmodelfit search flux --json
+  genmodelfit search wan -m video --min-fit good
+  genmodelfit search sdxl --content all --json
+
+"""
+    + _JSON_FIELDS.replace("filters: {...}", "filters: {query, ...}"),
+    "types": """List the big types (image, video, music, sfx, tts, 3d) and the uses inside each type,
+with counts. The use names are what --task accepts.
+大きな種類と、その中の用途(--task に使う名前)と数を出す。
+
+"""
+    + _COMMON_HELP.format(zero="", one="").replace(
+        "  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.\n",
+        "  None. The PC is not judged.\n",
+    )
+    + """
+AGENT USAGE:
+  genmodelfit types
+  genmodelfit types --json
+
+  JSON (--json): { genmodelfit, command, database, filters: {content}, types: [{ modality,
+  label, label_ja, models, workflows, uses: {use: workflows} }], uses: [{ use, label,
+  label_ja, tasks }], aliases }. Details: docs/schema.md""",
+    "info": """Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the
+other workflows that use the same model.
+1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動おすすめの条件・
+同じモデルのほかのワークフロー)。
+An exact id always matches (uncensored included). Otherwise a part of the id or name is
+searched within --content; several matches are an error that lists the candidates.
+
+"""
+    + _COMMON_HELP.format(zero="", one=": no such model, several matches (candidates listed), or")
+    + """
+AGENT USAGE:
+  genmodelfit info image_z_image_turbo_int8 --json
+  genmodelfit info sdxlturbo --vram 8 --ram 32
+
+  JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
+  gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
+  memory_required_gb, disk_size_gb, auto, matched}] } / on error: { error, candidates? }.
+  Details: docs/schema.md""",
+}
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="JSON で出す")
@@ -553,7 +835,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     filt = argparse.ArgumentParser(add_help=False)
-    filt.add_argument("--modality", "-m", choices=MODALITIES)
+    filt.add_argument(
+        "--modality",
+        "-m",
+        type=_modality_list,
+        metavar="TYPE[,TYPE]",
+        help=f"種類で絞る(カンマ区切り可): {', '.join(MODALITIES)}",
+    )
     filt.add_argument(
         "--content",
         choices=CONTENT_FILTERS,
@@ -601,21 +889,69 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
     sp.set_defaults(func=cmd_system)
 
-    sp = sub.add_parser("recommend", parents=[common, filt, gate], help="おすすめ順に出す")
-    sp.add_argument("--min-fit", choices=FIT_LEVELS[:3], default="marginal")
+    sel = argparse.ArgumentParser(add_help=False)
+    sel.add_argument(
+        "--min-fit",
+        choices=FIT_LEVELS,
+        help="この段階以上だけ出す(recommend の既定は marginal、fit / search は全部)",
+    )
+    sel.add_argument(
+        "--license",
+        type=_license_list,
+        metavar="LIST",
+        help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
+    )
+
+    sel.add_argument(
+        "--task",
+        type=_task_list,
+        metavar="USE[,USE]",
+        help="用途で絞る(gen / edit / i2v / lipsync / motion / voice / upscale / tool、"
+        "または t2i・i2i・inpaint などの tasks。一覧は genmodelfit types)",
+    )
+    sel.add_argument(
+        "--all-workflows",
+        action="store_true",
+        help="同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す",
+    )
+
+    def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
+        return sub.add_parser(
+            name,
+            parents=parents,
+            help=help_text,
+            description=HELP[name],
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+
+    sp = sub_parser("recommend", "おすすめ順に出す", [common, filt, sel, gate])
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
     sp.add_argument(
         "--include-tools",
         action="store_true",
         help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
     )
-    sp.set_defaults(func=cmd_recommend)  # 既定の 10 件は cmd_recommend で決める(親の引数は fit と共有なので)
+    sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
 
-    sp = sub.add_parser("fit", parents=[common, filt, gate], help="すべてのモデルの判定を表で出す")
-    sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ")
+    sp = sub_parser("fit", "すべてのモデルの判定を表で出す", [common, filt, sel, gate])
+    sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ(--min-fit perfect と同じ)")
     sp.set_defaults(func=cmd_fit)
 
-    sp = sub.add_parser("info", parents=[common, filt, gate], help="1 つのモデルの詳細")
+    sp = sub_parser("search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate])
+    sp.add_argument("query", help="探す語(ID・名前の一部。大文字小文字は区別しない)")
+    sp.set_defaults(func=cmd_search)
+
+    sp = sub.add_parser(
+        "types",
+        parents=[common],
+        help="大きな種類と、その中の用途(--task の名前)と数",
+        description=HELP["types"],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sp.add_argument("--content", choices=CONTENT_FILTERS, default=DEFAULT_CONTENT)
+    sp.set_defaults(func=cmd_types)
+
+    sp = sub_parser("info", "1 つのモデルの詳細", [common, filt, gate])
     sp.add_argument("model", help="モデルの ID または名前の一部")
     sp.set_defaults(func=cmd_info)
 

@@ -73,6 +73,11 @@ HF の匿名の API は **5 分あたり 500 回まで**(応答の `ratelimit-po
 当てはまるタグが無ければ種類の既定(image → t2i、video → t2v、3d → i23d、tts → tts、音 → t2a)。
 ただし分類が **Image Tools / Video Tools**(道具)のものは、生成ではないので既定を **`tool`** にする
 (`Depth`・`Pose Map` など表に無いタグの道具を t2i / t2v と言わないため)。
+さらにタグによらず、道具の分類で題が深度・法線・線画・ポーズ・形状の地図(`Depth Map: …`、`Depth Estimation: …`、
+`Lineart Map: …`)や切り分け(Segmentation)のものは **`estimate`**、題が音の分離(`Audio Separation`)のものは
+**`separate`** にする(`tasks.tool_task_from_title`。タグが ControlNet / Text to Image でも、生成ではない前処理なので)。
+分類によらず、題が MoGe で始まるもの・Geometry Estimation のものも **`estimate`**(MoGe は写真から形を推す単眼の形状推定。
+メッシュを出すが生成ではない)。
 
 上流のタグの誤り・ゆれ(`Depth` と `Depth Estimation` が混在する、道具に `Text to Image` が付いているなど)は直さず、
 そのまま対応表に当てる(表に足すのは名前がはっきりしたものだけ)。
@@ -265,23 +270,39 @@ CLAUDE.md の決まり: 無検閲のモデルも一覧から外さず、`content
 
 **Hugging Face の検索**: pipeline_tag(text-to-image・image-to-image・text-to-video・image-to-video・text-to-speech・
 text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audiences` と `search=uncensored|nsfw|abliterated`
-で、ダウンロード数の多い順に 100 件ずつ取る。根拠(`hf-tag:not-for-all-audiences` か名前の `name:<語>`)の
+で、ダウンロード数の多い順に 100 件ずつ取る。新しく伸びているものを拾うため、`filter=not-for-all-audiences` と
+テンプレートで足りない種類の検索は `sort=trendingScore` と `sort=likes30d` でも取る。どの検索も
+`expand[]=downloadsAllTime` で全期間のダウンロード数を受け取る(返らなければ直近 30 日の数で代え、その候補の数を
+`sources.huggingface-search.all_time_missing` に残す)。trending の検索を先に並べ、ダウンロード数の順の検索にも
+出たものは trending だけのものとして扱わない(下限は 10,000)。根拠(`hf-tag:not-for-all-audiences` か名前の `name:<語>`)の
 あるものだけを候補にし、次の順に絞る:
 
 1. 除外の判定(下)に当たるものを外す(数だけ数える)
-2. ダウンロード数が 100 未満のもの(写し・試作が多い)を外す
-3. LoRA・LyCORIS・アダプタ・埋め込み(名前か `lora` / `peft` タグ)を外す。本体が無いと動かず、適否は本体で決まるため
-4. 部品だけのもの(名前に text-encoder・VL・CLIP・VAE・GPTQ・AWQ・MLX など)を外す
-5. 同じリポジトリ名の写し(持ち主違い)は一番ダウンロード数の多いものだけ。持ち主ごとに種類あたり 2 件まで
-6. 種類ごとに**上位 30 件**まで(一覧を大きくしすぎない)。リポジトリの情報とモデルカードを取り、カードで
+2. **全期間のダウンロード数が 10,000 未満**のものを外す(`skip_downloads`)。trendingScore・likes30d の検索だけで
+   見つけたものは 1,000 以上で入れる。llmfit の `scripts/scrape_hf_models.py`(`min_downloads=10000`、
+   trendingScore・likes30d での発見)にならった(2026-10-20 に利用者が決めた)。一覧に「誰も使っていないモデル」を入れないため
+3. 試験用・作りかけの名前(`tiny-random`・`tiny-dummy`・`-random-init`・`ci-random-`・`test-` で始まる)を外す(`test_stub`)。
+   `merge` / `mergekit` のタグのある混ぜ合わせ(merge)を外す(`merge`。llmfit と同じ)
+4. LoRA・LyCORIS・アダプタ・埋め込み(名前か `lora` / `peft` / `adapter` / `qlora` タグ)を外す。本体が無いと動かず、適否は本体で決まるため
+5. 部品だけのもの(名前に text-encoder・VL・CLIP・VAE・GPTQ・AWQ・MLX など)を外す
+6. 同じリポジトリ名の写し(持ち主違い)は一番ダウンロード数の多いものだけ。持ち主ごとに種類あたり 2 件まで
+7. 種類ごとに**上位 30 件**まで(一覧を大きくしすぎない)。リポジトリの情報とモデルカードを取り、カードで
    除外に当たるもの・重みが選べないもの・本体が 30 MB 未満のもの(差分や中身の無いリポジトリ)を外す
-7. **同じ重みの写し**(名前が違う)を外す: 選んだファイルの sha256 の組が同じもの、または元のモデル(たどった
+8. **同じ重みの写し**(名前が違う)を外す: 選んだファイルの sha256 の組が同じもの、または元のモデル(たどった
    base_model・当たった系統)が重なり、合計の大きさが ±1% 以内のもの。ダウンロード数の多いほうを残す
    (`sources.huggingface-search.skipped.duplicate_weights`)
 
 ライセンスは上の「ライセンス」の規則で確かめる(本人の表記をそのまま使わない。無検閲化したもので元が分からなければ不明)。
 
-ID は `hf:<owner>/<repo>`、`source: "huggingface"`、`discovered_from` に見つけた検索の URL、`downloads` / `likes` を入れる。
+ID は `hf:<owner>/<repo>`、`source: "huggingface"`、`discovered_from` に見つけた検索の URL、`downloads`(直近 30 日)/
+`downloads_all_time`(全期間)/ `likes` を入れる。
+同梱の一覧も 2026-10-20 にこの規則へそろえた(HF の 64 件から、全期間 10,000 未満の 16 件と merge のタグの 2 件を外して 46 件。
+無検閲は 39 → 24 件)。
+
+**利用者のテンプレート**: index.json の `username` が `ComfyUI` でないテンプレート(2026-10-20 時点で 32 件。hellorob・
+PurzBeats など)は `Template.username` に持ち、`community: true` とする。同じ重みの公式のワークフローがあれば表の代表にしない
+(ワークフローの一覧には残す)。公式の仲間がいない利用者のテンプレートはそのまま 1 つのモデルとして出すが、並べ方では
+公式のものの後にする(docs/schema.md「Order」)。
 `recommend` の並べ方では、HF のダウンロード数を 100 で割ってテンプレートの使用回数(`usage`)と同じ目盛りにして使う。
 
 **テンプレートで足りない種類**: ローカルの読み上げのテンプレートは 0 件(Chatterbox は `size` 0)、効果音は 1 件

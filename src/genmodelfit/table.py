@@ -1,18 +1,19 @@
-"""端末向けの表(Issue #7)。llmfit の `fit` の表にならう。
+"""端末向けの表(Issue #7、#17)。llmfit の `fit` の表にならう。
 
-- 幅 100 文字の端末で崩れない。モデル名は残りの幅を全部使い、長い名前だけ省略記号で詰める
-  (88 未満では License 列、70 未満では Auto 列も外す)
-- 段階は色分けするが、色の無い端末でも文字で分かる(NO_COLOR やパイプ出力では色を付けない)
-- VRAM は判定に使った値を出す(~ = 部品を順に載せ替える、* = メインメモリへ逃がす、
-  RAM = メインメモリが足りないのが理由、GPU = GPU が要るのに無い、? = 大きさ不明、cpu = CPU で動く)
-- 自動でおすすめに出せないものは「held:<落ちた条件>」と短く出す
+- 先頭に PC と「何件中何件を出したか・隠した件数と理由」、末尾に印の説明
+- 幅 100 文字の端末で崩れない。モデル名は残りの幅を全部使い、長い名前は真ん中を省略記号で詰める
+  (狭い端末では License → Disk → Auto → Mem% → Type → Score の順に列を外す)
+- 段階は色と「●」で分ける。色の無い端末でも文字で分かる(NO_COLOR やパイプ出力では色を付けない)。
+  絵文字は Windows の端末(cp932)で幅が崩れるので使わない
+- VRAM は判定に使った値(m = 実測)。Mode は GPU / GPU~(部品を順に載せ替え)/ GPU+RAM(逃がす)/ CPU / -(動かない)
+- Auto は自動でおすすめに出せれば yes、出せなければ最初に落ちた条件の短い名前
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from rich.cells import cell_len
@@ -20,8 +21,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from .groups import precision_label
+from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
+from .tasks import MODALITY_LABEL
+
 LEVEL_STYLE = {"perfect": "bold green", "good": "cyan", "marginal": "yellow", "too_tight": "red"}
-LEVEL_LABEL = {"perfect": "Perfect", "good": "Good", "marginal": "Marginal", "too_tight": "Too tight"}
+LEVEL_LABEL = FIT_LABEL
+MARK = "●"  # 段階の印(絵文字ではない記号)
 # 落ちた条件の id(gate.py)を、表に収まる短い名前にする
 CHECK_LABEL = {
     "license": "license",
@@ -33,11 +39,38 @@ CHECK_LABEL = {
     "sha256": "sha256",
     "content": "content",
     "size_known": "size",
-    "files_complete": "size",
+}
+# 隠した理由の表示名(recommend.HIDDEN_KEYS)
+HIDDEN_LABEL = {
+    "modality": "other types",
+    "uncensored": "uncensored",
+    "sfw": "sfw",
+    "tools": "tools",
+    "license": "license",
+    "size_unknown": "size unknown",
+    "too_tight": "too tight",
+    "below_min_fit": "below --min-fit",
+    "held": "held",
+    "task": "other uses",
+    "same_model": "merged into their models",
 }
 MAX_WIDTH = 100
-FULL_WIDTH = 88  # これ未満では License 列を外す
-MIN_AUTO_WIDTH = 70  # これ未満では Auto 列も外す
+MIN_NAME_WIDTH = 24  # モデル名がこれより狭くなるなら列を外す
+# 列の幅(並びもこの順)と、狭いときに外す順。Type は種類が混ざる表(fit・search など)だけ
+COLUMN_WIDTH = {
+    "Status": 11,
+    "Type": 5,
+    "Use": 7,
+    "Prec": 4,
+    "Score": 5,
+    "VRAM": 5,
+    "Mem%": 4,
+    "Mode": 7,
+    "Disk": 4,
+    "License": 10,
+    "Auto": 8,
+}
+DROP_ORDER = ("Disk", "Mem%", "License", "Auto", "Prec", "Type", "Use", "Score")
 
 
 def output_width(file=None) -> int:
@@ -90,74 +123,6 @@ def make_console(file=None, width: int | None = None) -> Console:
     return _Console(file=out, width=width, soft_wrap=False, highlight=False)
 
 
-def _auto_cell(gate: dict[str, Any] | None) -> Text:
-    if not gate:
-        return Text("-", style="dim")
-    if gate.get("auto"):
-        return Text("yes", style="green")
-    failed = [c.get("id", "?") for c in gate.get("checks", []) if not c.get("passed")]
-    if not failed:
-        return Text("held", style="yellow")
-    return Text("held:" + CHECK_LABEL.get(failed[0], failed[0]), style="yellow")
-
-
-def _ram_short(e, system) -> bool:
-    return bool(system is not None and system.ram_total_gb and e.ram_gb > system.ram_total_gb)
-
-
-def _need(e, vram: float, system=None) -> tuple[float | None, str]:
-    """判定の根拠にした VRAM と印。"""
-    if getattr(e, "unknown_size", False):
-        return None, "?"
-    if e.run_mode == "cpu":
-        return None, "cpu"
-    if e.fit == "too_tight" and vram <= 0:
-        return None, "GPU"
-    seq = getattr(e, "vram_sequential_gb", None)
-    if e.fit == "too_tight":
-        # VRAM は足りていてメモリが理由なら、VRAM の側は判定に使った載せ方の値を出す
-        if _ram_short(e, system) and e.vram_offload_gb <= vram:
-            if e.vram_gb <= vram:
-                return e.vram_gb, ""
-            if seq is not None and seq <= vram:
-                return seq, "~"
-            return e.vram_offload_gb, "*"
-        return e.vram_offload_gb, "*"  # 動かないときは「最低これだけ要る」を出す
-    if e.run_mode == "offload":
-        return e.vram_offload_gb, "*"
-    if e.run_mode == "gpu" and vram and e.vram_gb > vram and seq is not None and seq <= vram:
-        return seq, "~"
-    return e.vram_gb, ""
-
-
-def _need_cell(e, vram: float, system=None) -> str:
-    need, mark = _need(e, vram, system)
-    return mark if need is None else f"{round(need, 1):.1f}{mark}"
-
-
-def _room_cell(e, vram: float, system=None) -> Text:
-    if vram <= 0:
-        return Text("-", style="dim")
-    need, _ = _need(e, vram, system)
-    if need is None:
-        return Text("-", style="dim")
-    if _ram_short(e, system):  # メモリが理由なら VRAM の余裕を出さない(足りているように見えるので)
-        return Text("RAM", style="red" if e.fit == "too_tight" else "yellow")
-    diff = round(round(vram, 1) - round(need, 1), 1)  # 表に出した値どうしで引く
-    if diff == 0:
-        diff = 0.0  # -0.0 を出さない
-    if e.fit == "too_tight":
-        style = "red"
-    elif e.fit == "marginal":
-        style = "yellow"
-    else:
-        style = "green" if diff >= vram * 0.1 else "yellow"
-    return Text(f"{diff:+.1f}", style=style)
-
-
-COLUMN_WIDTH = {"Fit": 9, "Type": 5, "VRAM": 6, "Room": 5, "Basis": 5, "License": 10, "Auto": 13}
-
-
 def middle_ellipsis(text: str, width: int) -> str:
     """真ん中を省略記号にする。頭が共通の名前(video_wan21_scail2_… など)も末尾で区別できるように。"""
     if len(text) <= width:
@@ -196,91 +161,228 @@ def distinct_names(names: Sequence[str], width: int) -> dict[str, str]:
     return shown
 
 
-def model_width(width: int, show_license: bool, show_auto: bool) -> int:
-    cols = (
-        ["Fit", "Type", "VRAM", "Room", "Basis"]
-        + (["License"] if show_license else [])
-        + (["Auto"] if show_auto else [])
-    )
-    used = sum(COLUMN_WIDTH[c] for c in cols) + 2 * len(cols)  # 列の間は 2 文字
+def model_width(width: int, cols: Sequence[str]) -> int:
+    used = sum(COLUMN_WIDTH[c] for c in cols) + len(cols)  # 列の間は 1 文字(Model の列を入れて len(cols) 個)
     return max(12, width - used)
 
 
+def columns_for(width: int, with_type: bool = True) -> list[str]:
+    """幅に収まる列(Model 以外。並びは COLUMN_WIDTH の順)。Type は種類が混ざる表だけ。"""
+    cols = [c for c in COLUMN_WIDTH if with_type or c != "Type"]
+    for drop in DROP_ORDER:
+        if model_width(width, cols) >= MIN_NAME_WIDTH:
+            break
+        if drop in cols:
+            cols.remove(drop)
+    return cols
+
+
+def _auto_cell(gate: dict[str, Any] | None) -> Text:
+    if not gate:
+        return Text("-", style="dim")
+    if gate.get("auto"):
+        return Text("yes", style="green")
+    failed = [c.get("id", "?") for c in gate.get("checks", []) if not c.get("passed")]
+    if not failed:
+        return Text("held", style="yellow")
+    return Text(CHECK_LABEL.get(failed[0], failed[0]), style="yellow")
+
+
+def _gb(v: float) -> str:
+    """GiB の値を 4 桁に収める(100 以上は整数、1000 以上は 999+)。"""
+    if v < 99.95:
+        return f"{v:.1f}"
+    return f"{v:.0f}" if v < 999.5 else "999+"
+
+
+def _vram_cell(e, system) -> Text:
+    if e.unknown_size:
+        return Text("?")
+    need = vram_need(e, system)
+    if need is None:
+        if e.fit == "too_tight":  # GPU が無くて動かない: 最低これだけの VRAM が要る
+            return Text(_gb(e.vram_offload_gb), style="red")
+        return Text("-", style="dim")
+    if e.basis == "measured":
+        return Text.assemble(_gb(need), ("m", "bold"))
+    return Text(_gb(need))
+
+
+def _mem_cell(e, system) -> Text:
+    if _ram_short(e, system):  # メモリが理由(VRAM の割合だけだと足りているように見えるので)
+        return Text("RAM", style="red" if e.fit == "too_tight" else "yellow")
+    _, need, avail = memory_use(e, system)
+    if need is None or not avail:
+        return Text("-", style="dim")
+    pct = 100 * need / avail
+    # 足りないのに 100% と出さない。載るのに 101% とも出さない
+    shown = max(round(pct), 101) if need > avail else min(round(pct), 100)
+    style = "red" if pct > 100 else ("yellow" if pct > 90 else "")
+    return Text(f"{shown}%" if shown <= 999 else ">999", style=style)
+
+
+def _use_cell(f, grouped: bool) -> Text:
+    use = getattr(f, "use", "") or "-"
+    n = len(getattr(f, "workflows", []) or []) if grouped else 0
+    return Text.assemble(use, (f"+{n}", "dim") if n else "")
+
+
 def build_table(
-    fits: Sequence, vram_gb: float, width: int = MAX_WIDTH, title: str | None = None, system=None
+    fits: Sequence, width: int = MAX_WIDTH, system=None, with_type: bool | None = None, grouped: bool = True
 ) -> Table:
-    show_license = width >= FULL_WIDTH
-    show_auto = width >= MIN_AUTO_WIDTH
-    name_w = model_width(width, show_license, show_auto)
+    if with_type is None:
+        with_type = len({f.model.modality for f in fits}) > 1
+    cols = columns_for(width, with_type)
+    name_w = model_width(width, cols)
     t = Table(
-        title=title,
-        title_justify="left",
         header_style="bold",
         expand=False,
         pad_edge=False,
         box=None,
         show_edge=False,
+        padding=(0, 1, 0, 0),
     )
-    t.add_column("Fit", no_wrap=True, width=COLUMN_WIDTH["Fit"])
+    right = {"Score", "VRAM", "Mem%", "Disk"}
+    t.add_column("Status", no_wrap=True, width=COLUMN_WIDTH["Status"])
     # モデル名は他の列の残りを全部使う。長い名前は真ん中を省略記号にする(middle_ellipsis)
     t.add_column("Model", no_wrap=True, overflow="ellipsis", width=name_w)
-    t.add_column("Type", no_wrap=True, width=COLUMN_WIDTH["Type"])
-    t.add_column("VRAM", justify="right", no_wrap=True, width=COLUMN_WIDTH["VRAM"])
-    t.add_column("Room", justify="right", no_wrap=True, width=COLUMN_WIDTH["Room"])
-    t.add_column("Basis", no_wrap=True, width=COLUMN_WIDTH["Basis"])
-    if show_license:
-        t.add_column("License", no_wrap=True, overflow="ellipsis", width=COLUMN_WIDTH["License"])
-    if show_auto:
-        t.add_column("Auto", no_wrap=True, overflow="ellipsis", width=COLUMN_WIDTH["Auto"])
-    shown = distinct_names([f.model.id for f in fits if f.model.content != "uncensored"], name_w)
-    shown_u = distinct_names([f.model.id for f in fits if f.model.content == "uncensored"], name_w - 4)
+    for c in cols[1:]:
+        t.add_column(
+            c,
+            justify="right" if c in right else "left",
+            no_wrap=True,
+            overflow="ellipsis",
+            width=COLUMN_WIDTH[c],
+        )
+
+    # まとめた表はモデルの表示名(一覧の中で重ならない)、--all-workflows はワークフローの ID
+    def label(f) -> str:
+        return (getattr(f, "model_name", "") or f.model.id) if grouped else f.model.id
+
+    shown = distinct_names([label(f) for f in fits if f.model.content != "uncensored"], name_w)
+    shown_u = distinct_names([label(f) for f in fits if f.model.content == "uncensored"], name_w - 4)
     for f in fits:
         e, m = f.estimate, f.model
         if m.content == "uncensored":
-            name = Text.assemble(("[U] ", "magenta"), shown_u[m.id])
+            name = Text.assemble(("[U] ", "magenta"), shown_u[label(f)])
         else:
-            name = Text(shown[m.id])
-        row = [
-            Text(LEVEL_LABEL.get(e.fit, e.fit), style=LEVEL_STYLE.get(e.fit, "")),
-            name,
-            m.modality,
-            _need_cell(e, vram_gb, system),
-            _room_cell(e, vram_gb, system),
-            Text("meas.", style="bold") if e.basis == "measured" else Text("est.", style="dim"),
-        ]
-        if show_license:
-            row.append(m.license or "?")
-        if show_auto:
-            row.append(_auto_cell(f.gate))
-        t.add_row(*row)
+            name = Text(shown[label(f)])
+        cells = {
+            "Type": Text(m.modality),
+            "Use": _use_cell(f, grouped),
+            "Prec": Text(precision_label(m.precision)),
+            "Score": Text(f"{f.score:.0f}"),
+            "VRAM": _vram_cell(e, system),
+            "Mem%": _mem_cell(e, system),
+            "Mode": Text(mode_label(e, system), style="red" if e.fit == "too_tight" else ""),
+            "Disk": Text(_gb(e.disk_gb) if e.disk_gb else "?"),
+            "License": Text(m.license or "?"),
+            "Auto": _auto_cell(f.gate),
+        }
+        status = Text(f"{MARK} {LEVEL_LABEL.get(e.fit, e.fit)}", style=LEVEL_STYLE.get(e.fit, ""))
+        t.add_row(status, name, *(cells[c] for c in cols[1:]))
     return t
 
 
-def print_fit_table(
-    fits, title: str = "", system=None, console: Console | None = None, notes: Sequence[str] = ()
-) -> None:
-    """notes は表の下に足す一行の注意(例: 隠した無検閲の数)。"""
-    con = console or make_console()
-    vram = system.vram_gb if system is not None else 0.0
-    head = f"{title} ({len(fits)})" if title else None
-    if not fits:
-        con.print(f"{head}: (該当なし)" if head else "(該当なし)")
-        for n in notes:
-            con.print(Text(n, style="dim"), overflow="ellipsis", no_wrap=True)
-        return
-    con.print(build_table(fits, vram, width=con.width, title=head, system=system))
-    legend = [
-        "VRAM: GiB needed. ~ parts one at a time, * offload to RAM, ? size unknown. Basis: meas. = measured",
-        "Room: this PC's VRAM minus need (GiB). RAM = not enough system RAM",
+def pc_line(system) -> str:
+    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed。"""
+    g = system.best_gpu
+    if g:
+        free = f" ({g.vram_free_gb:.1f} free)" if g.vram_free_gb is not None else ""
+        gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
+    else:
+        gpu = "no GPU (CPU only)"
+    if "vram" in system.overrides:
+        gpu = (
+            f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)"
+            if system.vram_gb > 0
+            else "assumed no GPU (--vram 0)"
+        )
+    if "ram" in system.overrides:
+        ram = f"RAM {system.ram_total_gb:.1f} GiB (--ram)"
+    else:
+        ram = f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)"
+    return f"PC: {gpu}, {ram}"
+
+
+def hidden_text(hidden: Mapping[str, int]) -> str:
+    """「(N hidden: uncensored 39, tools 20; 24 more workflows merged into their models)」。
+    何も無ければ空。"""
+    merged = hidden.get("same_model", 0)
+    rest = {k: v for k, v in hidden.items() if v and k != "same_model"}
+    parts = []
+    if rest:
+        parts.append(
+            f"{sum(rest.values())} hidden: "
+            + ", ".join(f"{HIDDEN_LABEL.get(k, k)} {v}" for k, v in rest.items())
+        )
+    if merged:
+        parts.append(f"{merged} more workflows merged into their models")
+    return f"({'; '.join(parts)})" if parts else ""
+
+
+def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> list[str]:
+    out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
+        "Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.",
+        "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
+        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.",
     ]
+    if grouped:
+        out.append(
+            "One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows)."
+        )
+    out.append(
+        "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
+    )
     if any(f.model.content == "uncensored" for f in fits):
-        legend.append("[U] = uncensored")
-    for n in [*legend, *notes]:
-        con.print(Text(n, style="dim"), overflow="ellipsis", no_wrap=True)
+        out.append("[U] = uncensored")
+    if hidden.get("uncensored"):
+        out.append(
+            f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --content all to show them."
+        )
+    return out
+
+
+def print_fit_table(
+    fits,
+    title: str = "",
+    system=None,
+    console: Console | None = None,
+    notes: Sequence[str] = (),
+    matched: int | None = None,
+    hidden: Mapping[str, int] | None = None,
+    groups: Sequence[Mapping[str, Any]] | None = None,
+    grouped: bool = True,
+) -> None:
+    """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。
+
+    groups を渡すと種類ごとの節に分ける(見出し 1 行 + 表。動くものが無い種類は 1 行で知らせる)。"""
+    con = console or make_console()
+    hidden = dict(hidden or {})
+    matched = len(fits) if matched is None else matched
+
+    def say(line: str, style: str = "") -> None:
+        for part in wrap_line(line, con.width):
+            con.print(Text(part, style=style), overflow="ellipsis", no_wrap=True)
+
     if system is not None:
-        g = system.best_gpu
-        gpu = f"{g.name} {g.vram_total_gb:.1f} GiB" if g else "no GPU (CPU only)"
-        if "vram" in system.overrides:
-            gpu = f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)"
-        ram = f"RAM {system.ram_total_gb:.1f} GiB" + (" (--ram)" if "ram" in system.overrides else "")
-        con.print(Text(f"PC: {gpu}, {ram}", style="dim"), overflow="ellipsis", no_wrap=True)
+        say(pc_line(system))
+    count = f"{len(fits)} of {matched}" if matched != len(fits) else str(len(fits))
+    head = f"{title}: {count}" if title else count
+    say(" ".join(x for x in (head, hidden_text(hidden)) if x), "bold")
+    if groups is not None:
+        for g in groups:
+            mod = g["modality"]
+            _en, ja = MODALITY_LABEL.get(mod, (mod, mod))
+            rows = [f for f in fits if f.model.modality == mod]
+            if not g["matched"]:
+                say(f"== {mod} ({ja}): no model runs on this PC with these filters", "bold")
+                continue
+            say(f"== {mod} ({ja}): top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
+            con.print(build_table(rows, width=con.width, system=system, with_type=False, grouped=grouped))
+    elif not fits:
+        say("(no match / 該当なし)")
+    else:
+        con.print(build_table(fits, width=con.width, system=system, grouped=grouped))
+    for n in [*(legend(fits, hidden, grouped) if fits else []), *notes]:
+        say(n, "dim")

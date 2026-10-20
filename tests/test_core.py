@@ -1,3 +1,4 @@
+import itertools
 import json
 
 import pytest
@@ -81,8 +82,15 @@ def test_recommend_order_and_filters():
     db = load(use_cache=False)
     fits = gmf.recommend(modality="image", limit=None, system_info=pc(16), db=db)
     assert fits and all(f.model.modality == "image" for f in fits)
-    order = [("perfect", "good", "marginal").index(f.estimate.fit) for f in fits]
-    assert order == sorted(order)
+    # 自動でおすすめに出せるものが先、その中は点数の高い順(同点は ID)
+    from genmodelfit.recommend import sort_key
+
+    assert fits == sorted(fits, key=sort_key)
+    autos = [f.auto for f in fits]
+    assert any(autos) and autos == sorted(autos, reverse=True)
+    for a, b in itertools.pairwise(fits):
+        if a.auto == b.auto:
+            assert (-a.score, a.model.id) <= (-b.score, b.model.id)
     unc = gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db)
     assert all(f.model.content == "uncensored" and f.model.content_evidence for f in unc)
 
@@ -91,9 +99,10 @@ def test_cli_json(capsys):
     assert cli.main(["recommend", "--json", "--vram", "8", "--ram", "32", "--no-cache", "-n", "3"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["command"] == "recommend" and out["system"]["best_gpu"]["vram_total_gb"] == 8
-    assert len(out["models"]) <= 3
+    # -m も --task も無ければ種類ごとに 3 件まで
+    assert all(g["shown"] <= 3 for g in out["groups"]) and len(out["models"]) <= 3 * 6
     for m in out["models"]:
-        assert m["fit"] in ("perfect", "good", "marginal") and m["estimate"]["basis"] in (
+        assert m["fit_level"] in ("perfect", "good", "marginal") and m["estimate_confidence"] in (
             "measured",
             "estimated",
         )
@@ -110,7 +119,7 @@ def test_cli_system_and_info(capsys):
 
 def test_cli_text_output(capsys):
     assert cli.main(["fit", "--vram", "8", "--no-cache"]) == 0
-    assert "image_sdxl_simple" in capsys.readouterr().out
+    assert "SDXL" in capsys.readouterr().out
 
 
 def test_fit_is_not_cut_by_recommend_default(capsys):

@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 from . import __version__, safety
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
+from .groups import model_precision
 from .hf import (
     UNVERIFIED,
     HfClient,
@@ -44,6 +45,7 @@ from .hf import (
     upstream_candidates,
 )
 from .models import ModelEntry, ModelFile, Template
+from .tasks import tool_task_from_title
 
 RAW = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates"
 INDEX_URL = f"{RAW}/index.json"
@@ -231,6 +233,10 @@ TOOL_CATEGORIES = {"Image Tools", "Video Tools"}
 
 
 def template_tasks(t: dict[str, Any], modality: str, category: str | None = None) -> list[str]:
+    # 深度・線画・ポーズの地図を作る前処理や音の分離は、タグ(controlnet など)によらず補助ツール
+    tool = tool_task_from_title(t.get("title"), category)
+    if tool:
+        return [tool]
     out: list[str] = []
     for tag in t.get("tags") or []:
         task = TAG_TASKS.get(str(tag).lower())
@@ -271,14 +277,32 @@ def workflow_models(wf: Any) -> list[dict[str, Any]]:
     return out
 
 
+# 上流のテンプレートの誤り(ファイル名と URL・hash が食い違う)を直す表: (名前, 上流の URL) → (URL, sha256)。
+# 直した値は匿名の HEAD の x-linked-etag で確かめたもの
+UPSTREAM_FILE_FIXES = {
+    # image_moss_image_t2i_bboxes: 名前は sft なのに URL・hash が base のもの(2026-10-20 に HEAD で確認)
+    (
+        "moss_image_sft_int8_convrot.safetensors",
+        "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_base_int8_convrot.safetensors",
+    ): (
+        "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+        "b4d1475bc7eeffd7b809e82ea13a1fba1fb85c4e18365af3813722faa5c0fe4f",
+    ),
+}
+
+
 def model_file(m: dict[str, Any]) -> ModelFile:
     directory = m.get("directory")
     h = m.get("hash")
     sha = h.lower() if isinstance(h, str) and str(m.get("hash_type", "")).lower() == "sha256" else None
-    parsed = parse_hf_url(m.get("url"))
+    url = m.get("url")
+    fix = UPSTREAM_FILE_FIXES.get((m["name"], url))
+    if fix:
+        url, sha = fix
+    parsed = parse_hf_url(url)
     return ModelFile(
         name=m["name"],
-        url=m.get("url"),
+        url=url,
         sha256=sha,
         directory=directory,
         repo_id=parsed[0] if parsed else None,
@@ -308,6 +332,7 @@ def template_entry(
             usage=t.get("usage"),
             date=t.get("date"),
             size_bytes=t.get("size") or None,
+            username=t.get("username") or None,
         ),
         params_b=guess_params_b(main.name if main else None, t.get("title"), t["name"]),
         precision=guess_precision(main.name if main else None),
@@ -384,6 +409,7 @@ def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *,
     for e in entries:
         set_entry_license(e)
         set_completeness(e)
+        set_precision(e)
 
 
 def _now() -> str:
@@ -486,6 +512,12 @@ def set_entry_license(e: ModelEntry) -> None:
         e.base_model = mains[0].license_from
 
 
+def set_precision(e: ModelEntry) -> None:
+    """精度は本体のファイル名から読む(groups.model_precision。表のモデルのまとめ方と同じ本体を見る)。
+    ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
+    e.precision = model_precision(e)
+
+
 def set_completeness(e: ModelEntry) -> None:
     """files_complete と size_floor_bytes(docs/schema.md)。
 
@@ -544,7 +576,17 @@ SFW_QUERIES = (
 )
 CAP_UNCENSORED = 30  # 種類ごとの上限(一覧を大きくしすぎない)
 CAP_SFW = {"tts": 20, "sfx": 10}
-MIN_DOWNLOADS = 100
+# 一覧に入れる下限(llmfit の scripts/scrape_hf_models.py にならう。docs/sources.md)。全期間のダウンロード数
+MIN_DOWNLOADS = 10_000
+# 新しく伸びているもの(trendingScore・likes30d の順で拾ったもの)は、全期間 1,000 以上で入れる
+MIN_TRENDING_DOWNLOADS = 1_000
+TRENDING_SORTS = ("trendingScore", "likes30d")
+# 検索の結果に含める項目(全期間のダウンロード数は既定では返らない)
+SEARCH_EXPAND = ("downloads", "downloadsAllTime", "likes", "tags", "pipeline_tag")
+# 試験用・作りかけのリポジトリの名前(llmfit と同じ)
+_TEST_STUB = re.compile(r"tiny-random|tiny-dummy|-random-init|ci-random-|(^|/)test-", re.IGNORECASE)
+_MERGE_TAGS = frozenset({"merge", "mergekit"})
+_ADAPTER_TAGS = frozenset({"lora", "peft", "adapter", "qlora"})
 MIN_MAIN_BYTES = 30_000_000  # 本体がこれより小さいものは、差分(LoRA など)か中身の無いリポジトリとみなす
 MAX_PER_OWNER = 2
 _ADAPTER = re.compile(r"(?<![a-z])(lora|loras|lycoris|locon|adapter|ip-?adapter|embedding)s?(?![a-z])", re.I)
@@ -564,6 +606,9 @@ class Candidate:
     likes: int
     tags: list[str]
     uncensored: bool
+    downloads_all_time: int = 0  # 全期間(検索の結果に無ければ downloads)
+    trending_only: bool = True  # trendingScore・likes30d の検索だけで拾った
+    all_time_known: bool = False  # 検索の結果に downloadsAllTime があった(無ければ直近 30 日の数で代える)
     evidence: list[str] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
 
@@ -600,6 +645,9 @@ def _candidate(item: dict[str, Any], url: str, modality_hint: str | None) -> Can
         modality=modality,
         task=task,
         downloads=int(item.get("downloads") or 0),
+        downloads_all_time=int(item.get("downloadsAllTime") or item.get("downloads") or 0),
+        trending_only="sort=downloads" not in url,
+        all_time_known=item.get("downloadsAllTime") is not None,
         likes=int(item.get("likes") or 0),
         tags=tags,
         uncensored=bool(ev),
@@ -612,12 +660,21 @@ def discover_hf(
     client: HfClient, *, progress: Callable[[str], None], stats: dict[str, Any]
 ) -> list[ModelEntry]:
     queries: list[tuple[str, str | None]] = []  # (url, modality_hint)
+    # 新しく伸びているもの: 同じ絞り込みを trendingScore・likes30d の順でも見る
+    # (無検閲は not-for-all-audiences の
+    # タグだけ)。先に並べる(ダウンロード数の順の検索にも出たら、あとで trending_only を外す)
+    for sort in TRENDING_SORTS:
+        for pipe in UNCENSORED_PIPELINES:
+            queries.append((search_url(filter=_NFAA, pipeline_tag=pipe, sort=sort), None))
+        for mod, params in SFW_QUERIES:
+            queries.append((search_url(**params, sort=sort), mod))
     for pipe in UNCENSORED_PIPELINES:
         queries.append((search_url(filter=_NFAA, pipeline_tag=pipe), None))
         for w in UNCENSORED_SEARCH_WORDS:
             queries.append((search_url(search=w, pipeline_tag=pipe), None))
     for mod, params in SFW_QUERIES:
         queries.append((search_url(**params), mod))
+    queries = [(f"{u}&" + "&".join(f"expand[]={x}" for x in SEARCH_EXPAND), h) for u, h in queries]
 
     def _run(q: tuple[str, str | None]) -> tuple[str, str | None, list[dict[str, Any]] | str]:
         try:
@@ -644,6 +701,9 @@ def discover_hf(
                 old.queries.append(url)
                 old.evidence = sorted(set(old.evidence) | set(c.evidence))
                 old.uncensored = old.uncensored or c.uncensored
+                old.trending_only = old.trending_only and c.trending_only
+                old.downloads_all_time = max(old.downloads_all_time, c.downloads_all_time)
+                old.all_time_known = old.all_time_known or c.all_time_known
             else:
                 cands[c.repo_id] = c
     if network_fail and network_fail == len(queries):
@@ -656,9 +716,15 @@ def discover_hf(
         if safety.is_blocked([c.repo_id, *c.tags], uncensored=c.uncensored):
             excluded += 1
             continue
-        if c.downloads < MIN_DOWNLOADS:
-            skipped["low_downloads"] += 1
-        elif _ADAPTER.search(c.repo_id) or any(t.lower() in ("lora", "peft") for t in c.tags):
+        tags = {t.lower() for t in c.tags}
+        floor = MIN_TRENDING_DOWNLOADS if c.trending_only else MIN_DOWNLOADS
+        if c.downloads_all_time < floor:
+            skipped["skip_downloads"] += 1
+        elif _TEST_STUB.search(c.repo_id):
+            skipped["test_stub"] += 1
+        elif tags & _MERGE_TAGS:
+            skipped["merge"] += 1
+        elif _ADAPTER.search(c.repo_id) or tags & _ADAPTER_TAGS:
             skipped["adapter"] += 1
         elif _COMPONENT.search(c.repo_id):
             skipped["component"] += 1
@@ -730,6 +796,8 @@ def discover_hf(
             "skipped": dict(sorted(skipped.items())),
             "excluded": excluded,
             "failed_queries": len(warnings),
+            # 全期間のダウンロード数が返らず、直近 30 日の数で下限を見た候補の数
+            "all_time_missing": sum(1 for c in cands.values() if not c.all_time_known),
             "warnings": warnings,
         }
     )
@@ -780,10 +848,12 @@ def hf_entry(c: Candidate, info: RepoInfo, client: HfClient | None = None) -> Mo
         updated=(info.last_modified or "")[:10] or None,
         homepage=info.url,
         downloads=info.downloads if info.downloads is not None else c.downloads,
+        downloads_all_time=c.downloads_all_time or None,
         likes=info.likes if info.likes is not None else c.likes,
     )
     set_entry_license(e)
     set_completeness(e)
+    set_precision(e)
     return e
 
 
@@ -853,6 +923,21 @@ def size_check(e: ModelEntry) -> dict[str, Any] | None:
         "index_size": e.template.size_bytes,
         "files_total": total,
         "ratio": round(e.template.size_bytes / total, 3) if total else None,
+    }
+
+
+def count_entries(entries: list[ModelEntry]) -> dict[str, Any]:
+    """sources.counts(docs/schema.md)。"""
+    return {
+        "models": len(entries),
+        "modality": dict(sorted(Counter(e.modality for e in entries).items())),
+        "content": dict(sorted(Counter(e.content for e in entries).items())),
+        "source": dict(sorted(Counter(e.source for e in entries).items())),
+        "license": dict(sorted(Counter(e.license or "null" for e in entries).items())),
+        "license_tier": dict(
+            sorted(Counter(_TIER_NAMES[license_tier(e.license, e.license_name)] for e in entries).items())
+        ),
+        "files_complete_false": sum(1 for e in entries if e.files_complete is False),
     }
 
 
@@ -1046,17 +1131,7 @@ def build_database(
         "within_10pct": sum(1 for c in checks if c["ratio"] and 0.9 <= c["ratio"] <= 1.1),
     }
     entries.sort(key=lambda e: (e.source != "comfyui-template", e.modality, e.id))
-    stats["counts"] = {
-        "models": len(entries),
-        "modality": dict(sorted(Counter(e.modality for e in entries).items())),
-        "content": dict(sorted(Counter(e.content for e in entries).items())),
-        "source": dict(sorted(Counter(e.source for e in entries).items())),
-        "license": dict(sorted(Counter(e.license or "null" for e in entries).items())),
-        "license_tier": dict(
-            sorted(Counter(_TIER_NAMES[license_tier(e.license, e.license_name)] for e in entries).items())
-        ),
-        "files_complete_false": sum(1 for e in entries if e.files_complete is False),
-    }
+    stats["counts"] = count_entries(entries)
     stats["excluded"] = excluded
     stats["warnings"] = warnings
     stats["generator"] = f"genmodelfit {__version__}"

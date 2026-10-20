@@ -1,45 +1,220 @@
 """おすすめ順に並べる。
 
-並べ方: 段階(perfect が先)→ 実測を優先 → 人気(使われた回数・HF のダウンロード数)→ 新しさ。
+並べ方(Issue #17): 動くもの(too_tight でない)→ 自動でおすすめに出せるもの(gate の auto)→ 点数の高い順 → ID。
+点数(0〜100)は 5 つの内訳の重み付きの和(式は docs/schema.md「Score」)。VRAM・メモリを増やしても下がらない。
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 from .db import Database
-from .estimate import GIB, Coefficients, estimate, load_coefficients
+from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients
+from .groups import group_key, index_for, is_community, precision_rank
 from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Estimate, ModelEntry, Settings, SystemInfo
+from .tasks import TOOL_TASKS, is_tool, main_use, parse_modalities, task_codes
+
+if TYPE_CHECKING:
+    from .gate import GatePolicy
 
 # 内容の絞り込み。既定は sfw(無検閲は all / uncensored を指定したときだけ出す)
 CONTENT_FILTERS = ("all", *CONTENT_LEVELS)
 DEFAULT_CONTENT = "sfw"
+
+FIT_LABEL = {"perfect": "Perfect", "good": "Good", "marginal": "Marginal", "too_tight": "Too tight"}
+
+# 点数の内訳の重み(合計 1)。docs/schema.md「Score」と合わせる
+WEIGHTS = {"fit": 0.45, "headroom": 0.15, "readiness": 0.20, "basis": 0.10, "popularity": 0.10}
+FIT_POINTS = {"perfect": 100, "good": 70, "marginal": 35, "too_tight": 0}
+# 準備のできぐあい: gate の条件ごとの重み(通った条件の和。全部通れば 100)
+READINESS_POINTS = {
+    "license": 25,
+    "gated": 15,
+    "official_workflow": 15,
+    "custom_nodes": 15,
+    "comfyui_version": 10,
+    "url_reachable": 5,
+    "sha256": 5,
+    "content": 5,
+    "size_known": 5,
+}
+HEADROOM_FULL = 0.5  # 全部載せで VRAM の半分以上が空けば余裕 100
+
+
+def headroom(e: Estimate, system: SystemInfo) -> float:
+    """VRAM の余裕(0〜100)。全部載せの VRAM(PC によらない値)と比べるので、VRAM が増えれば下がらない。"""
+    v = system.vram_gb
+    if v <= 0 or e.unknown_size or e.vram_gb <= 0 or e.vram_gb >= v:
+        return 0.0
+    return min(100.0, 100.0 * (1 - e.vram_gb / v) / HEADROOM_FULL)
+
+
+def popularity(m: ModelEntry) -> float:
+    """使われた回数(テンプレート)か HF のダウンロード数(÷100)。10 万で 100。"""
+    usage = (m.template.usage or 0) if m.template else 0
+    if not m.template and m.downloads:
+        usage = m.downloads / 100  # HF のダウンロード数を、テンプレートの使用回数と同じくらいの目盛りに直す
+    return min(100.0, 20 * math.log10(1 + usage))
+
+
+def readiness(gate: dict[str, Any] | None) -> float:
+    if not gate:
+        return 0.0
+    if gate.get("auto"):
+        return 100.0
+    return float(sum(READINESS_POINTS.get(c.get("id"), 0) for c in gate.get("checks", []) if c.get("passed")))
+
+
+def score_components(
+    m: ModelEntry, e: Estimate, system: SystemInfo, gate: dict[str, Any] | None = None
+) -> dict[str, float]:
+    return {
+        "fit": float(FIT_POINTS[e.fit]),
+        "headroom": round(headroom(e, system), 1),
+        "readiness": readiness(gate),
+        "basis": 100.0 if e.basis == "measured" else 0.0,
+        "popularity": round(popularity(m), 1),
+    }
+
+
+def total_score(components: dict[str, float]) -> float:
+    return round(sum(WEIGHTS[k] * components[k] for k in WEIGHTS), 1)
+
+
+def _sum_licenses(m: ModelEntry) -> list[str | None]:
+    """ファイルごとのライセンス(重ならないように。不明は None で最後)。ファイルが無ければ一式のもの。"""
+    if not m.files:
+        return [m.license]
+    found = {f.license for f in m.files}
+    return sorted((x for x in found if x is not None), key=str) + ([None] if None in found else [])
+
+
+def license_matches(m: ModelEntry, allowed: Iterable[str] | None) -> bool:
+    """すべてのファイルのライセンスが allowed にあるか(不明は合わない)。allowed が None なら絞らない。"""
+    if allowed is None:
+        return True
+    allow = {a.strip().lower() for a in allowed if a.strip()}
+    lics = _sum_licenses(m)
+    return bool(lics) and all(x is not None and x.lower() in allow for x in lics)
+
+
+def _how(e: Estimate, vram: float) -> tuple[str, str]:
+    """(段階, 載せ方 full / seq / offload)。estimate.gpu_choice と同じ選び方。"""
+    return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram)
+
+
+def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
+    """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU / -。"""
+    if e.unknown_size or e.run_mode == "none":
+        return "-"
+    if e.run_mode == "cpu":
+        return "CPU"
+    if e.run_mode == "offload":
+        return "GPU+RAM"
+    v = system.vram_gb if system is not None else 0.0
+    return "GPU~" if v and _how(e, v)[1] == "seq" else "GPU"
+
+
+def _ram_short(e: Estimate, system: SystemInfo | None) -> bool:
+    return bool(system is not None and system.ram_total_gb and e.ram_gb > system.ram_total_gb)
+
+
+def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
+    """判定の根拠にした VRAM(GiB)。CPU・大きさ不明・GPU が無いときは None。"""
+    vram = system.vram_gb if system is not None else 0.0
+    if e.unknown_size or e.run_mode == "cpu" or vram <= 0:
+        return None
+    level, how = _how(e, vram)
+    pick = {"full": e.vram_gb, "seq": e.vram_sequential_gb or e.vram_gb, "offload": e.vram_offload_gb}
+    if e.fit == "too_tight":
+        # VRAM は足りていてメモリが理由なら、VRAM の側は判定に使った載せ方の値を出す
+        if _ram_short(e, system) and level != "too_tight":
+            return pick[how]
+        return e.vram_offload_gb  # 動かないときは「最低これだけ要る」を出す
+    if e.run_mode == "offload":
+        return e.vram_offload_gb
+    return pick[how]
+
+
+def memory_use(e: Estimate, system: SystemInfo | None) -> tuple[str, float | None, float | None]:
+    """(種類, 要る GiB, ある GiB)。GPU で動かすなら VRAM、CPU で動くならメインメモリ。
+    GPU が要るのに無いときは VRAM の最低限と 0。"""
+    has_gpu = system is not None and system.vram_gb > 0
+    if e.unknown_size:
+        return ("vram" if has_gpu else "ram"), None, None
+    if e.run_mode == "cpu":
+        return "ram", e.ram_gb, system.ram_total_gb if system is not None else None
+    need = vram_need(e, system)
+    if need is None:  # GPU が要るのに無い
+        return "vram", e.vram_offload_gb, 0.0
+    return "vram", need, system.vram_gb if system is not None else None
 
 
 @dataclass
 class Fit:
     model: ModelEntry
     estimate: Estimate
-    score: float
+    score: float = 0.0
     gate: dict[str, Any] | None = None  # 自動でおすすめに出せるか(#3 の gate.evaluate の結果)
+    score_components: dict[str, float] = field(default_factory=dict)
+    system: SystemInfo | None = field(default=None, repr=False, compare=False)
+    group_key: str = ""  # 同じモデル(大きさまで同じ)の鍵(groups.group_key)
+    use: str = ""  # 表に出す用途(tasks.USES の名前)
+    model_name: str = ""  # モデルの表示名(groups.ModelIndex。一覧の中で重ならない)
+    workflows: list[dict[str, Any]] = field(default_factory=list)  # 同じモデルのほかの項目
+    variants: list[dict[str, Any]] = field(default_factory=list)  # 精度ごとの一番良い項目
+
+    @property
+    def auto(self) -> bool:
+        return bool(self.gate and self.gate.get("auto"))
+
+    @property
+    def run_mode_label(self) -> str:
+        return mode_label(self.estimate, self.system)
 
     def to_dict(self, full: bool = False) -> dict[str, Any]:
-        m = self.model
+        """JSON の 1 件(CLI の recommend / fit / search の models と同じ形。docs/schema.md)。"""
+        m, e = self.model, self.estimate
+        kind, need, avail = memory_use(e, self.system)
+        util = round(100 * need / avail, 1) if need is not None and avail else None
         d: dict[str, Any] = {
             "id": m.id,
             "name": m.name,
+            "model_name": self.model_name,
             "modality": m.modality,
             "tasks": m.tasks,
             "content": m.content,
-            "license": m.license,
             "source": m.source,
-            "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,
+            "fit_level": e.fit,
+            "fit_label": FIT_LABEL[e.fit],
+            "run_mode": e.run_mode,
+            "run_mode_label": self.run_mode_label,
             "score": round(self.score, 1),
-            "fit": self.estimate.fit,
-            "estimate": self.estimate.to_dict(),
+            "score_components": dict(self.score_components),
+            "memory_kind": kind,
+            "memory_required_gb": round(need, 2) if need is not None else None,
+            "memory_available_gb": round(avail, 2) if avail is not None else None,
+            "utilization_pct": util,
+            "ram_required_gb": None if e.unknown_size else e.ram_gb,
+            "disk_size_gb": e.disk_gb,
+            "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,
+            "license": m.license,
+            "licenses": _sum_licenses(m),
+            "auto": self.auto,
+            "community": is_community(m),
+            "held_reasons": list((self.gate or {}).get("held_by", [])),
+            "estimate_confidence": e.basis,
+            "notes": list(e.reasons),
+            "files_count": len(m.files),
+            "use": self.use,
+            "precision": m.precision,
+            "group_key": self.group_key,
+            "variants": [dict(v) for v in self.variants],
+            "workflows": [dict(w) for w in self.workflows],
+            "estimate": e.to_dict(),
             "gate": self.gate,
         }
         if full:
@@ -48,91 +223,340 @@ class Fit:
 
 
 def check_filters(
-    *, modality: str | None = None, content: str = DEFAULT_CONTENT, min_fit: str | None = None
-) -> None:
-    """絞り込みの値を確かめる。知らない値は ValueError(組み込み側が誤りに気づけるように)。"""
-    if modality is not None and modality not in MODALITIES:
-        raise ValueError(f"modality が正しくありません: {modality!r}(使えるのは {', '.join(MODALITIES)})")
+    *,
+    modality: str | Iterable[str] | None = None,
+    content: str = DEFAULT_CONTENT,
+    min_fit: str | None = None,
+) -> tuple[str, ...] | None:
+    """絞り込みの値を確かめる。知らない値は ValueError(組み込み側が誤りに気づけるように)。
+    modality は 1 つ・カンマ区切り・並びのどれでもよく、確かめた並びを返す。"""
+    mods = parse_modalities(modality)
     if content not in CONTENT_FILTERS:
         raise ValueError(f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})")
-    # too_tight は動かないので recommend の下限には使えない
-    if min_fit is not None and min_fit not in FIT_LEVELS[:3]:
-        raise ValueError(f"min_fit が正しくありません: {min_fit!r}(使えるのは {', '.join(FIT_LEVELS[:3])})")
+    if min_fit is not None and min_fit not in FIT_LEVELS:
+        raise ValueError(f"min_fit が正しくありません: {min_fit!r}(使えるのは {', '.join(FIT_LEVELS)})")
+    return mods
 
 
-def score(m: ModelEntry, e: Estimate) -> float:
-    """0〜100。段階が大半を決め、同じ段階の中を人気・新しさ・実測で並べる。"""
-    level = {"perfect": 70, "good": 55, "marginal": 30, "too_tight": 0}[e.fit]
-    usage = (m.template.usage or 0) if m.template else 0
-    if not m.template and m.downloads:
-        usage = m.downloads / 100  # HF のダウンロード数を、テンプレートの使用回数と同じくらいの目盛りに直す
-    pop = min(15.0, 3 * math.log10(1 + usage))
-    date = (m.template.date if m.template else None) or m.updated or ""
-    year = int(date[:4]) if date[:4].isdigit() else 2023
-    fresh = max(0.0, min(10.0, (year - 2022) * 2.5))
-    measured = 5.0 if e.basis == "measured" else 0.0
-    return level + pop + fresh + measured
+def _license_list(license: str | Iterable[str] | None) -> list[str] | None:
+    """--license / license=: カンマ区切りの文字列か並び。空なら ValueError。"""
+    if license is None:
+        return None
+    items = license.split(",") if isinstance(license, str) else list(license)
+    out = [x.strip().lower() for x in items if x and x.strip()]
+    if not out:
+        raise ValueError("license が空です(例: apache-2.0,mit)")
+    return out
+
+
+def _check_limit(limit: int | None, name: str = "limit") -> None:
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
+        raise ValueError(f"{name} は 1 以上の整数か None です: {limit!r}")
+
+
+def sort_key(f: Fit) -> tuple:
+    """おすすめ順: 動くもの → auto → 公式(利用者のテンプレートは後)→ 点数 → ID。"""
+    return (f.estimate.fit == "too_tight", not f.auto, is_community(f.model), -round(f.score, 1), f.model.id)
+
+
+# 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
+REP_USE_ORDER = ("gen", "edit", "i2v", "lipsync", "motion", "voice", "upscale", "tool")
+
+
+def variant_key(f: Fit) -> tuple:
+    """同じモデルの中で表に出す 1 件を選ぶ順: 用途(--task があればそれに合う用途の中で、生成 → 編集 → …
+    → 高解像度化 → 補助ツール)→ 段階が良い → 逃がさない載せ方(GPU → GPU+RAM → CPU)
+    → 精度が高い → おすすめ順。"""
+    use = REP_USE_ORDER.index(f.use) if f.use in REP_USE_ORDER else len(REP_USE_ORDER)
+    # 利用者のテンプレートは、公式のワークフローがあれば代表にしない
+    community = is_community(f.model)
+    slow = {"gpu": 0, "offload": 1, "cpu": 2}.get(f.estimate.run_mode, 3)  # 同じ段階なら逃がさないほう(速い)
+    return (
+        community,
+        use,
+        FIT_LEVELS.index(f.estimate.fit),
+        slow,
+        precision_rank(f.model.precision),
+        *sort_key(f),
+    )
+
+
+def _gate(m: ModelEntry, policy: GatePolicy | None, db: Database) -> dict[str, Any]:
+    from .gate import evaluate_offline
+
+    return evaluate_offline(m, policy, sources=db.sources).to_dict()
+
+
+def judge(
+    m: ModelEntry,
+    system: SystemInfo,
+    db: Database,
+    *,
+    settings: Settings | None = None,
+    coefficients: Coefficients | None = None,
+    with_limits: bool = False,
+    policy: GatePolicy | None = None,
+) -> Fit:
+    """1 モデルの判定・gate・点数。"""
+    c = coefficients or load_coefficients()
+    e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
+    g = _gate(m, policy, db)
+    comps = score_components(m, e, system, g)
+    idx = index_for(db)
+    key = idx.key_of.get(m.id) or group_key(m)
+    name = idx.name_of.get(key) or m.name
+    return Fit(m, e, total_score(comps), g, comps, system, group_key=key, use=main_use(m), model_name=name)
 
 
 def evaluate(
     db: Database,
     system: SystemInfo,
     *,
-    modality: str | None = None,
+    modality: str | Iterable[str] | None = None,
     content: str = DEFAULT_CONTENT,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     models: Iterable[ModelEntry] | None = None,
     with_limits: bool = False,
+    policy: GatePolicy | None = None,
 ) -> list[Fit]:
-    check_filters(modality=modality, content=content)
+    """種類と内容で絞って全部を判定し、おすすめ順に並べる(too_tight も含む。まとめない)。"""
+    mods = check_filters(modality=modality, content=content)
     c = coefficients or load_coefficients()
-    out: list[Fit] = []
-    for m in models if models is not None else db.models:
-        if modality and m.modality != modality:
-            continue
-        if content != "all" and m.content != content:
-            continue
-        e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
-        out.append(Fit(m, e, score(m, e)))
-    # 段階を最優先にする(実測や人気の加点で、下の段階が上に来ないように)
-    out.sort(key=lambda f: (FIT_LEVELS.index(f.estimate.fit), -f.score, f.model.id))
+    out = [
+        judge(m, system, db, settings=settings, coefficients=c, with_limits=with_limits, policy=policy)
+        for m in (models if models is not None else db.models)
+        if (not mods or m.modality in mods) and (content == "all" or m.content == content)
+    ]
+    out.sort(key=sort_key)
     return out
 
 
-# 「つくる」モデルではない補助ツールの作業(recommend は既定で外す。fit・info には出る)
-TOOL_TASKS = frozenset({"tool", "estimate", "matting", "upscale", "interp", "segment"})
+def matches_query(m: ModelEntry, query: str) -> bool:
+    q = query.strip().lower()
+    return q in m.id.lower() or q in m.name.lower()
 
 
-def is_tool(m: ModelEntry) -> bool:
-    return bool(m.tasks) and all(t in TOOL_TASKS for t in m.tasks)
+@dataclass
+class Selection:
+    """絞り込みの結果。
+
+    matched: 件数(limit・per_modality)で切る前の行の数(まとめたときはモデルの数)
+    hidden: 外した理由ごとの件数。1 件は最初に当たった理由で 1 回だけ数える。
+        matched + hidden の合計 = 調べた項目の数(search は語に合った項目の数、それ以外は一覧の全部)
+    groups: 種類ごとの {modality, matched, shown}(MODALITIES の順。0 件の種類も入る)
+    """
+
+    fits: list[Fit]
+    matched: int
+    hidden: dict[str, int]
+    groups: list[dict[str, Any]] = field(default_factory=list)
+    considered: int = 0  # 調べた項目の数
+
+
+# hidden のキー(数える順)。docs/schema.md
+HIDDEN_KEYS = (
+    "modality",
+    "uncensored",
+    "sfw",
+    "tools",
+    "task",
+    "license",
+    "size_unknown",
+    "too_tight",
+    "below_min_fit",
+    "held",
+    "same_model",
+)
+
+
+def _member_dict(f: Fit, matched: bool) -> dict[str, Any]:
+    _, need, _ = memory_use(f.estimate, f.system)
+    return {
+        "id": f.model.id,
+        "name": f.model.name,
+        "tasks": list(f.model.tasks),
+        "use": f.use,
+        "precision": f.model.precision,
+        "fit_level": f.estimate.fit,
+        "memory_required_gb": round(need, 2) if need is not None else None,
+        "disk_size_gb": f.estimate.disk_gb,
+        "auto": f.auto,
+        "matched": matched,
+    }
+
+
+def select(
+    db: Database,
+    system: SystemInfo,
+    *,
+    query: str | None = None,
+    modality: str | Iterable[str] | None = None,
+    content: str = DEFAULT_CONTENT,
+    min_fit: str | None = None,
+    license: str | Iterable[str] | None = None,
+    task: str | Iterable[str] | None = None,
+    include_tools: bool = True,
+    auto_only: bool = False,
+    drop_unknown_size: bool = False,
+    group: bool = True,
+    limit: int | None = None,
+    per_modality: int | None = None,
+    settings: Settings | None = None,
+    coefficients: Coefficients | None = None,
+    with_limits: bool = False,
+    policy: GatePolicy | None = None,
+) -> Selection:
+    """recommend / fit / search の共通の絞り込み。
+
+    group=True なら同じモデル(groups.group_key: 大きさまで同じで、精度か使い方だけが違う)を 1 行にまとめ、
+    段階が良く精度が高いものを出す(variant_key)。per_modality を渡すと種類ごとに上位その数だけ、
+    種類の順(MODALITIES)に並べる。query に合わないものは数えない(hidden にも入れない)。
+    """
+    mods = check_filters(modality=modality, content=content, min_fit=min_fit)
+    allow = _license_list(license)
+    _check_limit(limit)
+    _check_limit(per_modality, "per_modality")
+    if query is not None and not query.strip():
+        raise ValueError("query が空です")
+    codes = task_codes(task.split(",") if isinstance(task, str) else task) if task is not None else None
+    if codes and codes & TOOL_TASKS:
+        include_tools = True  # 補助ツールの用途を指定したら、補助ツールを外さない
+    hidden = dict.fromkeys(HIDDEN_KEYS, 0)
+    c = coefficients or load_coefficients()
+    allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1] if min_fit else FIT_LEVELS
+    judged: dict[str, Fit] = {}
+
+    def get(m: ModelEntry) -> Fit:
+        if m.id not in judged:
+            judged[m.id] = judge(
+                m, system, db, settings=settings, coefficients=c, with_limits=with_limits, policy=policy
+            )
+        return judged[m.id]
+
+    considered = 0
+    passed: list[Fit] = []
+    for m in db.models:
+        if query is not None and not matches_query(m, query):
+            continue
+        considered += 1
+        if mods and m.modality not in mods:
+            hidden["modality"] += 1
+            continue
+        if content != "all" and m.content != content:
+            hidden[m.content] = hidden.get(m.content, 0) + 1
+            continue
+        if not include_tools and is_tool(m):
+            hidden["tools"] += 1
+            continue
+        if codes is not None and not codes & set(m.tasks):
+            hidden["task"] += 1
+            continue
+        if not license_matches(m, allow):
+            hidden["license"] += 1
+            continue
+        f = get(m)
+        e = f.estimate
+        if e.unknown_size and (drop_unknown_size or e.fit not in allowed):
+            hidden["size_unknown"] += 1
+            continue
+        if e.fit not in allowed:
+            hidden["too_tight" if e.fit == "too_tight" else "below_min_fit"] += 1
+            continue
+        if auto_only and not f.auto:
+            hidden["held"] += 1
+            continue
+        if codes:
+            f.use = main_use(m, codes)
+        passed.append(f)
+
+    # 同じモデル(group_key)の仲間。表に出さない仲間も workflows に入れる
+    members = index_for(db).members
+    passed_ids = {f.model.id for f in passed}
+    by_key: dict[str, list[Fit]] = {}
+    for f in passed:
+        by_key.setdefault(f.group_key, []).append(f)
+    rows: list[Fit] = []
+    for key, fits in by_key.items():
+        fits.sort(key=variant_key)
+        reps = fits[:1] if group else fits
+        hidden["same_model"] += len(fits) - len(reps)
+        if group:
+            # 行の点数 = 代表と同じ用途・同じ段階の仲間(絞り込みに合うもの)の点数の一番高いもの。
+            # ほかの値はすべて代表のもの(代表が高い精度へ替わっても点数が下がらないように)
+            same = [x for x in fits if x.use == reps[0].use and x.estimate.fit == reps[0].estimate.fit]
+            top = max(same, key=lambda x: x.score)
+            reps = [replace(reps[0], score=top.score, score_components=dict(top.score_components))]
+        for rep in reps:
+            others = [get(m) for m in members[key] if m.id != rep.model.id]
+            others.sort(key=lambda x: (x.model.id not in passed_ids, *variant_key(x)))
+            rep.workflows = [_member_dict(o, o.model.id in passed_ids) for o in others]
+            best: dict[str | None, Fit] = {rep.model.precision: rep}
+            for v in fits:  # 精度ごとの一番良いもの(今の絞り込みに合うものから)
+                best.setdefault(v.model.precision, v)
+            rep.variants = [
+                {
+                    "precision": v.model.precision,
+                    "workflow_id": v.model.id,
+                    "memory_required_gb": _member_dict(v, True)["memory_required_gb"],
+                    "fit_level": v.estimate.fit,
+                    "auto": v.auto,
+                    "disk_size_gb": v.estimate.disk_gb,
+                }
+                for v in sorted(best.values(), key=lambda v: precision_rank(v.model.precision))
+            ]
+        rows += reps
+    rows.sort(key=sort_key)
+    matched = len(rows)
+    counts = {mod: sum(1 for f in rows if f.model.modality == mod) for mod in MODALITIES}
+    if per_modality:
+        shown = [f for mod in MODALITIES for f in [r for r in rows if r.model.modality == mod][:per_modality]]
+    else:
+        shown = rows[:limit] if limit else rows
+    groups = [
+        {"modality": mod, "matched": counts[mod], "shown": sum(1 for f in shown if f.model.modality == mod)}
+        for mod in MODALITIES
+        if not mods or mod in mods
+    ]
+    return Selection(shown, matched, {k: v for k, v in hidden.items() if v}, groups, considered)
 
 
 def recommend(
     db: Database,
     system: SystemInfo,
     *,
-    modality: str | None = None,
+    modality: str | Iterable[str] | None = None,
     content: str = DEFAULT_CONTENT,
     min_fit: str = "marginal",
+    license: str | Iterable[str] | None = None,
+    task: str | Iterable[str] | None = None,
+    include_tools: bool = False,
+    auto_only: bool = False,
+    group: bool = True,
     limit: int | None = 10,
+    per_modality: int | None = None,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     with_limits: bool = False,
+    policy: GatePolicy | None = None,
 ) -> list[Fit]:
-    check_filters(modality=modality, content=content, min_fit=min_fit)
-    allowed = FIT_LEVELS[: FIT_LEVELS.index(min_fit) + 1]
-    fits = [
-        f
-        for f in evaluate(
-            db,
-            system,
-            modality=modality,
-            content=content,
-            settings=settings,
-            coefficients=coefficients,
-            with_limits=with_limits,
-        )
-        if f.estimate.fit in allowed and not f.estimate.unknown_size  # 大きさが分からないものは出さない
-    ]
-    return fits[:limit] if limit else fits
+    """おすすめ順(大きさが分からないものは出さない)。CLI の recommend と同じ既定。"""
+    return select(
+        db,
+        system,
+        modality=modality,
+        content=content,
+        min_fit=min_fit,
+        license=license,
+        task=task,
+        include_tools=include_tools,
+        auto_only=auto_only,
+        drop_unknown_size=True,
+        group=group,
+        limit=limit,
+        per_modality=per_modality,
+        settings=settings,
+        coefficients=coefficients,
+        with_limits=with_limits,
+        policy=policy,
+    ).fits
