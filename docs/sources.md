@@ -76,6 +76,8 @@ HF の匿名の API は **5 分あたり 500 回まで**(応答の `ratelimit-po
 さらにタグによらず、道具の分類で題が深度・法線・線画・ポーズ・形状の地図(`Depth Map: …`、`Depth Estimation: …`、
 `Lineart Map: …`)や切り分け(Segmentation)のものは **`estimate`**、題が音の分離(`Audio Separation`)のものは
 **`separate`** にする(`tasks.tool_task_from_title`。タグが ControlNet / Text to Image でも、生成ではない前処理なので)。
+分類によらず、題が MoGe で始まるもの・Geometry Estimation のものも **`estimate`**(MoGe は写真から形を推す単眼の形状推定。
+メッシュを出すが生成ではない)。
 
 上流のタグの誤り・ゆれ(`Depth` と `Depth Estimation` が混在する、道具に `Text to Image` が付いているなど)は直さず、
 そのまま対応表に当てる(表に足すのは名前がはっきりしたものだけ)。

@@ -42,6 +42,8 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 
 ## 形
 
+- 段階は動かし方で使うメモリの使用率(60 / 85 / 98%。載せ替えは good まで、逃がす・CPU は marginal まで。
+  llmfit にならう。2026-10-20 に利用者が決めた。`estimate.FIT_BANDS`)
 - 表・JSON では同じモデル(本体の系統 + 大きさ。精度・使い方だけ違う項目)を 1 行にまとめる(`groups.py`。
   鍵の決め方を変えたら docs/schema.md「Models」と tests/test_groups.py の名前の表を直す)。用途の表は `tasks.py`
 - データの形は `src/genmodelfit/models.py` が正本。変えたら `docs/schema.md` と `SCHEMA_VERSION` も直す

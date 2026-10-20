@@ -48,9 +48,15 @@ ComfyUI は「文章の読み取り(テキストエンコーダ)→ 生成(本�
 - **精度の指定**(`Settings.precision`、CLI の `--precision`): 本体の重みだけを換算する(例: bf16 → fp8 で半分)。
   大文字・小文字や書き方の違い(`BF16`、`float16`、`gguf-Q4_K_M`)はそろえてから比べる。
   元の精度は `ModelEntry.precision`、無ければ本体のファイル名(`bf16` / `fp8` / `int8` など)から読む。分からなければ換算しない
-- **段階**: perfect = 全部載せが VRAM の 90% 以内 / good = 全部載せが VRAM 以内、または順に載せ替えれば載る /
-  marginal = 逃がせば載る、GPU 無しで CPU、またはメインメモリが少し足りない(下)/
-  too_tight = 逃がしても載らない、メインメモリが大きく足りない、または**大きさが分からない**(下)。
+- **段階**(2026-10-20 から。llmfit の docs/how-it-works.md「Fit analysis」にならう): 動かし方で使う置き場所
+  (GPU なら VRAM、CPU ならメインメモリ)の使用率で、60% 以下 perfect / 85% 以下 good / 98% 以下 marginal /
+  それより上 too_tight。動かし方ごとの上限: 全部 GPU は無し、順に載せ替える(GPU~)は good まで、逃がす(GPU+RAM)と
+  CPU は marginal まで。一番良い段階の動かし方を取る。メインメモリの確かめ(下)はそのあと。大きさが分からなければ
+  too_tight(下)。以前は「全部載せが VRAM の 90% 以内なら perfect、VRAM 以内なら good」だった。
+  同梱の一覧での変わり方(全 341 件): 8 GB / 32 GB は perfect 44 → 23、good 22 → 32、marginal 87 → 97、
+  too_tight 188 → 189。16 GB / 32 GB は perfect 95 → 66、good 67 → 76、marginal 107 → 124、too_tight 72 → 75。
+  AI生成キットの推奨の VRAM(8 GB)で、Z-Image Turbo int8 と Wan 2.1 1.3B は使用率 96〜97% なので marginal になる
+  (GPU で動くことは変わらない。tests/test_estimate.py)。
   逃がしても GPU に載らないときは、GPU が無いときの判定(小さく CPU で動く種類なら marginal)とも比べて良いほうを取る
   (小さな GPU を足すと CPU で動くものまで動かない判定になり、VRAM を増やして段階が下がっていた。#17)
 

@@ -63,7 +63,8 @@ part of the id or name (case-insensitive); entries that do not match are not cou
 `hidden` reasons, each entry counted once under the first reason that applies, in this order:
 `modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
 `task` (other uses than `--task`), `license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good /
-marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into another row of the same model).
+marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into another row of the same model;
+the text header says "N more workflows merged into their models").
 **`matched` + the sum of `hidden` = the number of entries looked at** (every entry of the list; for `search`, the entries
 whose id or name matched). Tested in `tests/test_cli_json.py`.
 
@@ -94,13 +95,38 @@ automatically), and **workflows** are uses of that model. `group_key` is built f
    `wan2.1_t2v_1.3B_fp16` → `… 1.3b 2.1 t2v wan`, `wan2.1_t2v_14B_fp8_scaled` → `… 14b 2.1 t2v wan` (different).
    The test table is `tests/test_groups.py`.
 
-Which entry is shown for a model: among the entries that passed the filters, the best fit level first, then the
-higher precision (bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 > lower; unknown precision counts as full
-precision), then the order above. So on 8 GB Z-Image Turbo shows its int8 workflow (good) and on 24 GB the bf16 one, and
-with `--task edit` the representative is an edit workflow. The shown entry's `auto`, score and VRAM are used for the
-order.
+After the per-entry key, the whole list is looked at (`groups.build_index`):
 
-On the bundled list (341 entries) this gives 225 models (188 with content `sfw`); 52 of them have more than one entry.
+- An entry with two main files of different names (FLUX.2 klein 4B text-to-image loads both `klein-base-4b` and
+  `klein-4b`) joins the model of one of them if that model exists on its own: the one without `base`, then by name.
+  Otherwise the names stay joined with `+` (Ideogram 4 with its unconditional pair).
+- Entries whose main files have the **same sha256** are the same model (the same file under another name or repo, e.g.
+  Stable Audio Open 1.0 in the template and in two HF repos). Upstream records whose file name and URL / hash disagree
+  are corrected first (`update.UPSTREAM_FILE_FIXES`, checked with an anonymous HEAD).
+- `params_b` is added to the key only for generic HF file names (`model.safetensors`) without a size word; template
+  `params_b` comes from the title and can be the language model's size (ACE-Step 1.5 "4B LM").
+
+Precision (`ModelEntry.precision`) is read from the main file used for the key (`groups.model_precision`; `update` uses
+the same function), e.g. `w4a8` for the 10Eros W4A8 file.
+
+**Display name** (`model_name`, the table's Model column): the members' names before `:` without precision words
+(`Z-Image-Turbo Int8: Text to Image` → `Z-Image-Turbo`); the one containing most words of the key, preferring official
+templates, then the most common, the shortest. Names are unique over the list (on a clash the type, then key words, then
+an id are added). `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
+others.
+
+Which entry is shown for a model (`recommend.variant_key`): among the entries that passed the filters,
+1. the use: `gen` → `edit` → `i2v` → `lipsync` → `motion` → `voice` → `upscale` → `tool` (with `--task`, among the
+   matching uses) — so a tool or upscale workflow that shares the weights never stands for the model,
+2. the better fit level, 3. no offload (`GPU` / `GPU~` before `GPU+RAM` before CPU — same level, faster),
+4. the higher precision (bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 / 4-bit > lower; unknown precision counts
+   as full precision), 5. the order above.
+So on 8 GB Z-Image Turbo shows its int8 workflow (swapped, `marginal`) rather than bf16 (offload, `marginal`); with
+`--task edit` the representative is an edit workflow. **The row's `score` (and `score_components`) is the highest score
+among the model's entries that passed the filters**, so the score never drops when more VRAM switches the
+representative to a higher precision; the order uses that score and the shown entry's `auto`.
+
+On the bundled list (341 entries) this gives 219 models; 54 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
@@ -121,7 +147,7 @@ The six big types stay the top level. Uses are sub-divisions inside a type, from
 An entry matches when one of its tasks is in the set. `use` (JSON) / the table's Use column is the matching use, else
 the first of tool, upscale, lipsync, motion, voice, edit, gen, i2v that the entry has.
 Utility tools (`upscale` and `tool`, plus Image / Video Tools templates whose title is a depth / normal / line-art /
-pose / geometry map or a segmentation, and any audio separation) are hidden by `recommend` unless `--include-tools` or a
+pose / geometry map or a segmentation, any audio separation, and MoGe / geometry estimation even under 3D Model) are hidden by `recommend` unless `--include-tools` or a
 tool use is given in `--task`.
 
 `genmodelfit types --json`: `filters` (`content`), `types` (`[{modality, label, label_ja, models, workflows, uses: {use:
@@ -161,6 +187,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 | `use` | str | the use shown (Uses below) |
 | `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = not stated, usually full precision) |
 | `group_key` | str | the model this entry belongs to (Models below) |
+| `model_name` | str | the model's display name (unique over the list; `info` accepts it) |
 | `variants` | object[] | per precision, the best entry that passed the filters: `{precision, workflow_id, memory_required_gb, fit_level, auto, disk_size_gb}`, best precision first (always includes this entry) |
 | `workflows` | object[] | **all** other entries of the same model, also those filtered out: `{id, name, tasks, use, precision, fit_level, memory_required_gb, disk_size_gb, auto, matched}` (`matched`: passed the current filters), best first |
 | `estimate` | Estimate | full estimate (below; `limits` with `--limits`) |
@@ -220,14 +247,24 @@ smallest tried value does not reach `good`):
 | `max_seconds` | int \| null | music / sfx / tts: length in seconds (step 5, up to 600) |
 | `at_cap` | str[] | keys that reached the end of the searched range (the real limit is higher) |
 
-Fit levels / 段階:
+Fit levels / 段階 — by the **utilization of the memory pool of the run mode** (required / available; VRAM on the
+GPU, RAM on the CPU), as in llmfit (`docs/how-it-works.md`, "Fit analysis"; adopted 2026-10-20):
 
-| level | meaning |
+| utilization | level |
 |---|---|
-| `perfect` | everything fits in VRAM with ≥10% headroom / 余裕をもって全部載る |
-| `good` | everything fits with little headroom, or fits when parts are swapped stage by stage / 全部載る(余裕は少ない)、または順に載せ替えれば載る |
-| `marginal` | runs only by offloading to RAM, on CPU, or with a small RAM shortfall (page file); slow / 逃がせば動く・CPU・メモリが少し足りない。遅い. A model that does not fit a (small) GPU even with offloading is also judged as if there were no GPU, and the better result is used, so adding VRAM never lowers the level |
-| `too_tight` | does not run (VRAM, or RAM short by more than 1.5×), **or cannot be judged because the size is unknown** (`unknown_size: true`) / 動かない、または大きさが分からず判定できない |
+| ≤ 60% | `perfect` |
+| ≤ 85% | `good` |
+| ≤ 98% | `marginal` |
+| > 98% | `too_tight` |
+
+Caps per run mode: all on the GPU (`GPU`) none; parts swapped stage by stage (`GPU~`) at most `good`; offload to RAM
+(`GPU+RAM`) and CPU at most `marginal`. The run mode with the best level is used (ties: all-in → swapped → offload).
+The RAM check is applied afterwards as before (short by up to 1.5× → at most `marginal`, more → `too_tight`). A model
+that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
+`marginal`), and the better result is used, so adding VRAM never lowers the level. `too_tight` also covers models whose
+size is unknown (`unknown_size: true`). Constants: `estimate.FIT_BANDS`.
+動かし方で使う置き場所の使用率で決める(60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight)。
+載せ替えは good まで、逃がす・CPU は marginal まで。
 
 ## Gate
 
@@ -252,7 +289,9 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 ## info
 
 `model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]), `group_key`, `same_model` (the other
-entries of the same model, each like a `workflows` item, judged for this PC, best first).
+entries of the same model, each like a `workflows` item, judged for this PC, best first), `model_name`.
+`info <query>` also accepts a model's display name (exact, case-insensitive): then the model's best workflow for
+this PC is shown.
 
 How `info <query>` picks the model / モデルの選び方:
 

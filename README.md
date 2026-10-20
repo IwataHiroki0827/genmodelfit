@@ -12,37 +12,37 @@ llmfit に着想を得た、生成モデル向けのツールです(llmfit の�
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 12 of 89 (252 hidden: uncensored 39, tools 32, size unknown 5, too tight 152, same
-    model 24)
-== image (画像): top 2 of 45  (-m image for more)
+Recommended: 12 of 84 (231 hidden: uncensored 39, tools 34, size unknown 5, too tight 153; 26 more
+    workflows merged into their models)
+== image (画像): top 2 of 43  (-m image for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Good      image_z_image_turbo_int8  gen+5   int8    66  7.6m  96% GPU~    11.3 apache-2.0 yes
-● Marginal  image_flux2_k…b_distilled edit    fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
+● Marginal  Z-Image-Turbo             gen+5   int8    54  7.6m  96% GPU~    11.3 apache-2.0 yes
+● Marginal  FLUX.2 [Klein] 4B         gen+1   -       41   7.5  94% GPU+RAM 22.2 apache-2.0 yes
 == video (動画): top 2 of 5  (-m video for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Good      text_to_video_wan         gen     fp16    66  7.8m  97% GPU~     9.2 apache-2.0 yes
-● Marginal  wan2.1_fun_control        edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
-== music (音楽): top 2 of 10  (-m music for more)
+● Marginal  Wan 2.1 Text to Video     gen     fp16    50  7.8m  97% GPU~     9.2 apache-2.0 yes
+● Marginal  Wan 2.1 ControlNet        edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
+== music (音楽): top 2 of 9  (-m music for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Good      audio_ace_ste…_checkpoint gen+1   -       65  6.0m  76% GPU~     9.3 mit        yes
-● Good      audio_ace_ste…m2m_editing edit+2  -       54   6.9  86% GPU~     7.2 apache-2.0 yes
-== sfx (効果音): top 2 of 4  (-m sfx for more)
+● Good      ACE-Step 1.5 …eration AIO gen+2   -       65  6.0m  76% GPU~     9.3 mit        yes
+● Marginal  ACE-Step 1.5XL Turbo      gen     bf16    40   5.2  65% GPU+RAM 18.5 mit        yes
+== sfx (効果音): top 2 of 3  (-m sfx for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   hf:stabilitya…3-small-sfx gen     -       68   3.6  45% GPU      2.1 other      license
-● Perfect   audio_stable_…dio_example gen+1   -       67   6.8  85% GPU      5.3 other      license
+● Perfect   stable-audio-3-small-sfx  gen     -       68   3.6  45% GPU      2.1 other      license
+● Good      stable-audio-open-1.0     gen+2   -       54   4.9  61% GPU~     5.3 other      license
 == tts (読み上げ): top 2 of 16  (-m tts for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   hf:ResembleAI/chatterbox  gen     -       80   3.5  44% GPU      2.0 mit        workflow
-● Perfect   hf:Qwen/Qwen3…CustomVoice gen     -       80   3.2  40% GPU      1.7 apache-2.0 workflow
-== 3d (3D): top 2 of 9  (-m 3d for more)
+● Perfect   chatterbox                gen     -       80   3.5  44% GPU      2.0 mit        workflow
+● Perfect   Qwen3-TTS-12H…CustomVoice gen     -       80   3.2  40% GPU      1.7 apache-2.0 workflow
+== 3d (3D): top 2 of 8  (-m 3d for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   3d_moge_persp…ive_to_mesh gen+1   fp16    92  2.1m  26% GPU      0.6 mit        size
-● Perfect   3d_hunyuan3d_…ge_to_model gen     fp16    78  6.7m  84% GPU      4.6 other      license
+● Good      HY 3D 2.0                 gen     fp16    64  6.7m  84% GPU      4.6 other      license
+● Good      TripoSplat                gen     fp16    57   5.8  72% GPU      3.5 other      license
 Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
-Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).
+Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
 Note: 39 uncensored model(s) hidden; add --content all to show them.
 ```
 
@@ -57,17 +57,17 @@ chosen (`Prec`; like llmfit's best quant). Narrow down inside a type with `--tas
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -m image --task edit -n 3
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 3 of 18 (323 hidden: other types 169, uncensored 30, tools 19, other uses 63, too
-    tight 40, same model 2)
+Recommended: 3 of 18 (321 hidden: other types 169, uncensored 30, tools 19, other uses 63, too
+    tight 40; 2 more workflows merged into their models)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Marginal  image_flux2_k…b_distilled edit    fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
-● Marginal  image_flux2_k…dit_4b_base edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
-● Marginal  image_z_image…_controlnet edit+5  bf16    41   7.5  93% GPU+RAM 22.2 apache-2.0 yes
+● Marginal  FLUX.2 [Klein] 4B         edit+1  fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
+● Marginal  FLUX.2 [Klein] 4B (base)  edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
+● Marginal  Z-Image-Turbo             edit+5  bf16    41   7.5  93% GPU+RAM 22.2 apache-2.0 yes
 Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
-Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).
+Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
 Note: 30 uncensored model(s) hidden; add --content all to show them.
 ```
 
@@ -148,12 +148,15 @@ gmf.search("flux", license=["apache-2.0", "mit"])
 
 ## Fit levels / 段階
 
-| level | meaning |
-|---|---|
-| **Perfect** | everything fits in VRAM with headroom / 余裕をもって全部 GPU に載る |
-| **Good** | fits all at once, or when parts are loaded one at a time (Mode `GPU~`) / 全部、または部品を順に載せ替えれば載る |
-| **Marginal** | runs by offloading weights to RAM (Mode `GPU+RAM`, slow), on CPU, or with slightly too little RAM / メインメモリへ逃がせば動く(遅い) |
-| **Too tight** | does not run (VRAM or RAM) / 動かない |
+Like llmfit, the level comes from the utilization of the memory the run mode uses (VRAM on the GPU, RAM on CPU):
+llmfit と同じく、動かし方で使うメモリの使用率で決めます。
+
+| level | utilization / 使用率 | note |
+|---|---|---|
+| **Perfect** | ≤ 60% | all on the GPU only / 全部 GPU に載るときだけ |
+| **Good** | ≤ 85% | also when parts are swapped in turn (Mode `GPU~`) / 部品を順に載せ替えるときもここまで |
+| **Marginal** | ≤ 98% | also offload to RAM (Mode `GPU+RAM`, slow), CPU, or slightly too little RAM / 逃がす・CPU・メモリが少し足りない |
+| **Too tight** | > 98% | does not run / 動かない |
 
 Every estimate says whether it is **measured** (`m` after the VRAM figure, a real run) or **estimated** (formula).
 Measured values win. Models whose download size is unknown are not judged (shown as `?`).
