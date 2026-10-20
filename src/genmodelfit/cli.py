@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import sys
 from typing import Any
 
@@ -16,7 +18,7 @@ from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
 from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import evaluate, recommend
+from .recommend import evaluate, is_tool, recommend
 
 
 class CliError(RuntimeError):
@@ -137,10 +139,10 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str) -> None:
+def _print_fits(fits, title: str, system: SystemInfo | None = None) -> None:
     from .table import print_fit_table
 
-    print_fit_table(fits, title=title)
+    print_fit_table(fits, title=title, system=system)
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
@@ -152,14 +154,16 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         modality=args.modality,
         content=args.content,
         min_fit=args.min_fit,
-        limit=None if args.auto_only else limit,  # --auto-only は保留を除いてから件数を絞る
+        limit=None,  # 保留・補助ツールを除いてから件数を絞る
         settings=_settings(args),
         with_limits=args.limits,
     )
+    if not args.include_tools:
+        fits = [f for f in fits if not is_tool(f.model)]
     _attach_gate(fits, args, db)
     if args.auto_only:
         fits = [f for f in fits if f.gate and f.gate.get("auto")]
-        fits = fits[:limit] if limit else fits
+    fits = fits[:limit] if limit else fits
     if args.json:
         _out(
             _envelope(
@@ -172,12 +176,13 @@ def cmd_recommend(args: argparse.Namespace) -> int:
                     "min_fit": args.min_fit,
                     "limit": args.limit if args.limit is not None else 10,
                     "auto_only": args.auto_only,
+                    "include_tools": args.include_tools,
                 },
                 models=[f.to_dict() for f in fits],
             )
         )
         return 0
-    _print_fits(fits, "Recommended")
+    _print_fits(fits, "Recommended", s)
     return 0
 
 
@@ -199,7 +204,7 @@ def cmd_fit(args: argparse.Namespace) -> int:
     if args.json:
         _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
         return 0
-    _print_fits(fits, "All models")
+    _print_fits(fits, "All models", s)
     return 0
 
 
@@ -439,6 +444,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("recommend", parents=[common, filt, gate], help="おすすめ順に出す")
     sp.add_argument("--min-fit", choices=FIT_LEVELS[:3], default="marginal")
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
+    sp.add_argument(
+        "--include-tools",
+        action="store_true",
+        help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
+    )
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件は cmd_recommend で決める(親の引数は fit と共有なので)
 
     sp = sub.add_parser("fit", parents=[common, filt, gate], help="すべてのモデルの判定を表で出す")
@@ -493,6 +503,11 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _quiet_stdout() -> None:
+    with contextlib.suppress(OSError):  # 終了時の flush で再び落ちないように
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # Windows の cp932 でも落ちないように
@@ -500,6 +515,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except BrokenPipeError:  # | head などで出力を途中で閉じられた
+        _quiet_stdout()
+        return 0
+    except OSError as e:
+        if getattr(e, "errno", None) == 22 and not sys.stdout.isatty():  # Windows でパイプを閉じられたとき
+            _quiet_stdout()
+            return 0
+        raise
     except (CliError, DatabaseError) as e:
         if getattr(args, "json", False):
             _out({"genmodelfit": __version__, "command": args.command, "error": str(e)})
