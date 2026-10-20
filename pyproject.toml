@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "pyyaml>=6"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pyyaml>=6"]  # pytest-cov は MIT
 
 [project.scripts]
 genmodelfit = "genmodelfit.cli:main"

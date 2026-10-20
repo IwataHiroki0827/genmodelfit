@@ -29,9 +29,49 @@ jobs:
           uv run --no-sync ruff check .
           uv run --no-sync ruff format --check .
       - name: Test
-        run: uv run --no-sync pytest -q
+        # 網羅率は表示だけ(下限はまだ決めない)
+        run: uv run --no-sync pytest -q --cov=genmodelfit --cov-report=term
       - name: CLI smoke
         run: |
           uv run --no-sync genmodelfit system --json --vram 8 --ram 32
           uv run --no-sync genmodelfit recommend --json --vram 8 --ram 32 --no-cache -n 3
           uv run --no-sync genmodelfit fit --vram 16 --ram 32 --no-cache
+
+  # wheel を作り、dev 依存の無いまっさらな venv に入れて、利用者と同じ形で主なコマンドを通す
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: uv build --wheel --out-dir dist
+      - name: Install into a fresh venv
+        run: |
+          venv="$RUNNER_TEMP/wheel-venv"
+          uv venv --python 3.12 "$venv"
+          if [ -d "$venv/Scripts" ]; then bin="$venv/Scripts"; else bin="$venv/bin"; fi
+          uv pip install --python "$bin/python" dist/*.whl
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: Commands
+        working-directory: ${{ runner.temp }}
+        env:
+          GENMODELFIT_CACHE_DIR: ${{ runner.temp }}/gmf-cache
+        run: |
+          set -euo pipefail
+          genmodelfit --version
+          genmodelfit system --json > /dev/null
+          genmodelfit recommend --json --vram 8 --ram 32 --no-cache -n 3 > /dev/null
+          genmodelfit fit --vram 16 --ram 32 --no-cache
+          genmodelfit info image_z_image_turbo_int8 --vram 8 --ram 32
+          python -c "import genmodelfit as g; print(len(g.recommend(limit=3)))"
+          # dev の依存(pytest など)が入っていないこと
+          if python -c "import pytest" 2>/dev/null; then echo "pytest が入っている" >&2; exit 1; fi
