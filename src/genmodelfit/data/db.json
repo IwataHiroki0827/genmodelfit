@@ -159,10 +159,10 @@
    "within_10pct": 215
   },
   "counts": {
-   "models": 327,
+   "models": 326,
    "modality": {
     "3d": 10,
-    "image": 164,
+    "image": 163,
     "music": 15,
     "sfx": 3,
     "tts": 20,
@@ -170,11 +170,11 @@
    },
    "content": {
     "sfw": 300,
-    "uncensored": 27
+    "uncensored": 26
    },
    "source": {
     "comfyui-template": 278,
-    "huggingface": 49
+    "huggingface": 48
    },
    "license": {
     "apache-2.0": 113,
@@ -186,18 +186,18 @@
     "mit": 19,
     "null": 58,
     "openrail++": 4,
-    "other": 116
+    "other": 115
    },
    "license_tier": {
     "non_commercial": 53,
-    "other": 73,
+    "other": 72,
     "permissive": 132,
     "unknown": 58,
     "use_restricted": 11
    },
    "files_complete_false": 26
   },
-  "excluded": 2,
+  "excluded": 3,
   "warnings": [],
   "generator": "genmodelfit 0.3.0",
   "sampler_stages": {
@@ -43623,81 +43623,6 @@
    "workflow_precision": null,
    "precision_source": null,
    "total_size_bytes": 4265314986
-  },
-  {
-   "id": "hf:Laxhar/noobai-XL-1.1",
-   "name": "noobai-XL-1.1",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "NoobAI-XL-v1.1.safetensors",
-     "url": "https://huggingface.co/Laxhar/noobai-XL-1.1/resolve/main/NoobAI-XL-v1.1.safetensors",
-     "sha256": "6681e8e4b134c81f16533acedb0d406d7e5e366e1624b4105178c64d00b05d51",
-     "size_bytes": 7105349958,
-     "directory": null,
-     "repo_id": "Laxhar/noobai-XL-1.1",
-     "license": "other",
-     "license_name": "fair-ai-public-license-1.0-sd",
-     "gated": false,
-     "role": "main",
-     "license_from": "Laxhar/noobai-XL-1.1",
-     "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-     "repo_license": null,
-     "license_path": [
-      "Laxhar/noobai-XL-1.1",
-      "Laxhar/noobai-XL-1.0",
-      "Laxhar/noobai-XL-0.77",
-      "Laxhar/noobai-XL-0.75",
-      "Laxhar/noobai-XL-0.6",
-      "Laxhar/noobai-XL-0.5",
-      "OnomaAIResearch/Illustrious-xl-early-release-v0",
-      "KBlueLeaf/kohaku-xl-beta5"
-     ],
-     "license_evidence": [
-      "family:illustrious-noobai"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-20T22:40:07Z",
-     "header_precision": "bf16",
-     "header_params": 3468837868,
-     "repo_precision": null,
-     "repo_precision_source": null
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "bf16",
-   "license": "other",
-   "license_url": "https://freedevproject.org/faipl-1.0-sd/",
-   "base_model": "Laxhar/noobai-XL-1.0",
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
-   ],
-   "updated": "2025-09-08",
-   "homepage": "https://huggingface.co/Laxhar/noobai-XL-1.1",
-   "downloads": 241764,
-   "likes": 189,
-   "downloads_all_time": 1088902,
-   "license_name": "fair-ai-public-license-1.0-sd",
-   "license_evidence": [],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "comfy_family": "sd",
-   "comfy_vae": "kl",
-   "sampler_stages": null,
-   "workflow_precision": null,
-   "precision_source": "header",
-   "total_size_bytes": 7105349958
   },
   {
    "id": "hf:Meina/MeinaHentai",

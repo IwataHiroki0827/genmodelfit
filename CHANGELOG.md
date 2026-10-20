@@ -60,7 +60,7 @@ All notable changes to this project are documented here. The format is based on
   are recognized by name (`-GGUF`, `-Q8_0`, `_K_M`, `-fp8`, `-nf4`, `-int8`, `_diffusers`, `-Quantized`, …) and
   only the most downloaded is kept; uncensored models also need 100 downloads in the last 30 days.
   HF の選び方を締めた(伸びている条件・名前の merge・量子化の写し・無検閲は直近 30 日も使われているもの)。
-- The bundled list was rebuilt with these rules (327 entries: HF 49, uncensored 27; auto 99 unchanged).
+- The bundled list was rebuilt with these rules (326 entries: HF 48, uncensored 26; auto 99 unchanged).
   Added: 6 uncensored HF models that meet the rules and the new official template `video_fasth3_ominiref_r2v`;
   removed: `hf:0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF` (a quantized copy of
   `hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized`) and `hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting`
@@ -74,7 +74,7 @@ All notable changes to this project are documented here. The format is based on
 
 - Exclusion (safety): uncensored models whose ID, name, tags or card mention a dataset known to include a category
   of sexual content involving minors (`DATASET_TERMS`: e621) are excluded, even when that is not their purpose
-  (owner decision, 2026-10-21; `hf:hearmeneigh/sd21-e621-rising-v2` removed from the bundled list).
+  (owner decision, 2026-10-21; `hf:hearmeneigh/sd21-e621-rising-v2` and `hf:Laxhar/noobai-XL-1.1` — its card says it was trained on the full Danbooru and e621 datasets — removed from the bundled list).
   学習データに未成年の性的表現の分類を含む画像の集まり(e621)を使う無検閲のモデルは外す(安全側)。
 
 - When a Hugging Face repo was renamed, `update` applied the license-source table with the new name from the API

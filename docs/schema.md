@@ -307,7 +307,7 @@ becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48
 Tested in `tests/test_groups.py`.
 逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
 
-On the bundled list (327 entries, 2026-10-21) this gives 208 models; 55 of them have more than one entry.
+On the bundled list (326 entries, 2026-10-21) this gives 207 models; 55 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
