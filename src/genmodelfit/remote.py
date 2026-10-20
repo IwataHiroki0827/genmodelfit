@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """配布された一覧(GitHub Release の data-latest)を取り込む。`genmodelfit update --from-release`。
 
 手順: db.json と db.json.sig を取る → 同梱の信じる公開鍵のどれかで署名を確かめる →
@@ -22,8 +26,8 @@ from typing import Any
 
 import requests
 
-from . import __version__
 from .db import Database, DatabaseError, cache_dir, cached_db_path, parse_db
+from .fetch import make_session
 from .signing import SigningError, decode_sig, verify
 
 RELEASE_BASE_URL = "https://github.com/laxshmate/genmodelfit/releases/download/data-latest"
@@ -40,12 +44,16 @@ def state_path() -> Path:
     return cache_dir() / STATE_NAME
 
 
+def _http_get(url: str, **kw: Any) -> requests.Response:
+    """GET(~/.netrc の資格情報は送らない。fetch.make_session)。試験で差し替える。"""
+    with make_session() as s:
+        return s.get(url, **kw)
+
+
 def _get(url: str, timeout: float) -> bytes:
     """url を取る。MAX_BYTES を超えたら読むのをやめて RemoteError。"""
     try:
-        r = requests.get(
-            url, timeout=timeout, stream=True, headers={"User-Agent": f"genmodelfit/{__version__}"}
-        )
+        r = _http_get(url, timeout=timeout, stream=True)
         try:
             r.raise_for_status()
             length = r.headers.get("Content-Length")
