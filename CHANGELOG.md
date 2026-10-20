@@ -7,6 +7,52 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.1] - Unreleased
+
+Fixes from the owner's review on an RTX 4500 Ada 24 GB / 128 GB RAM PC (Issue #28).
+RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直した版。
+
+### Changed
+
+- **Wan 2.2 14B and other workflows that run several diffusion models one sampler after another** (high_noise →
+  low_noise): the swapped (`GPU~`) and offload estimates count one model (+ its LoRA) at a time, because ComfyUI
+  unloads the unused model before loading the next one (`load_models_gpu` → `free_memory`, ComfyUI commit
+  b1a247c, cited in `docs/schema.md`). Wan 2.2 14B I2V at 832×480×81: swapped 35.5 → 21.0 GiB, offload 18.1 → 12.3 GiB.
+  On 24 GB it now runs on the GPU with parts swapped (`GPU~`, `marginal` at 87 %) instead of `GPU+RAM`; on 16 GB it is
+  `marginal` with offload instead of `too_tight`. The sets come from the template graph (`sampler_stages`, new) or
+  from `*high_noise*` / `*low_noise*` file names.
+- **Precision choice within a model**: among the variants that run on the GPU without offload (Good or better, `GPU`
+  or `GPU~`), the highest precision is shown, like llmfit; only when none does, the better level wins as before.
+  Z-Image Turbo on 24 GB now shows bf16 instead of int8. The row's score is taken from the same use and the same tier
+  (runs without offload = one tier), so it never drops when VRAM grows.
+- **Unknown licenses are hidden by default** from `recommend`, `fit`, `search`, `gmf.recommend()` and `gmf.search()`
+  (`hidden.license_unknown`); `--include-unknown-license` / `include_unknown_license=True` shows them; `info <id>`
+  still shows them.
+- **Models whose size is unknown show `?`** (`fit_level: "unknown"`, `fit_label: "?"`) instead of "Too tight";
+  `fit` lists them last, `recommend` still hides them.
+- **Community templates** come after official ones only within the same auto group and fit level (they used to come
+  after every official row, so a Good community model appeared after Marginal ones).
+- TTS GGUF repositories (llama.cpp-style runtimes: VieNeu-TTS v3 Turbo, Qwen3-TTS GGUF, Higgs Audio v3 Studio,
+  Drama-3) are no longer marked incomplete for lacking a text encoder / VAE, so they are judged.
+- OS shown as `Windows 11` on Python 3.10 / 3.11 too (build number ≥ 22000).
+
+### Added
+
+- Precision from the files themselves: `update` (and the new `update --inspect-only`, `--offline` for the cache only)
+  reads the safetensors JSON header / GGUF header of the main weight files with HTTP Range requests (never the
+  weights), caches them in `file_headers.json`, and stores `ModelFile.header_precision` / `header_params`. On the
+  bundled list, entries with unknown precision went from 97 to 25 (sfw: 90 → 25; the rest are gated repos, 401, or
+  have no main file on Hugging Face).
+- `ModelEntry.sampler_stages`, `ModelFile.header_precision`, `ModelFile.header_params` (optional; `schema_version`
+  stays 1). `sources.file_headers`, `sources.sampler_stages`.
+- README: how to install so that the `genmodelfit` command is found (pipx / uv tool, the pip "not on PATH" warning,
+  and `python -m genmodelfit`, which always works). Also in `genmodelfit --help`.
+
+### Data
+
+- Bundled list: HEADs re-checked on 2026-10-20T10:33:07Z (valid until 2026-11-19T10:33:07Z); precision from file
+  headers; `sampler_stages` from the 277 official templates (19 with several sampler sets).
+
 ## [0.1.0] - 2026-10-20
 
 First public release. / 最初の公開版。

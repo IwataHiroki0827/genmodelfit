@@ -87,9 +87,44 @@ offloading to system RAM, so they need their own database and scoring.
 
 ## Install / 入れ方
 
+Recommended: install it as a command-line tool with [pipx](https://pipx.pypa.io/) or
+[uv](https://docs.astral.sh/uv/). They put `genmodelfit` on PATH for you (run the PATH command once, then open a new
+terminal):
+
+```
+pipx install genmodelfit        # once: pipx ensurepath
+uv tool install genmodelfit     # once: uv tool update-shell
+```
+
+Or with pip:
+
 ```
 pip install genmodelfit
 ```
+
+**`python -m genmodelfit …` always works**, whatever PATH says (e.g. `python -m genmodelfit recommend`; on Windows
+also `py -m genmodelfit …`). Use it when `genmodelfit` is "not recognized" / "command not found".
+
+If pip printed *"WARNING: The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH"*, the command
+was installed but that folder is not on PATH. Common cases:
+
+- Python from python.org installed without "Add python.exe to PATH" → the `Scripts` folder of that Python is not on PATH.
+- pip fell back to a user install (no write access to the system Python) → the command is in
+  `%APPDATA%\Python\Python3XX\Scripts` (Windows) or `~/.local/bin` (Linux), which is often not on PATH.
+- Microsoft Store Python → its `Scripts` folder lives deep under `%LOCALAPPDATA%\Packages\…` and is not on PATH.
+- Installed into a virtual environment that is not activated → activate it (`.venv\Scripts\activate` /
+  `source .venv/bin/activate`) or run `.venv\Scripts\genmodelfit`.
+
+Fix: add the folder named in the warning to PATH (or use pipx / uv above, or `python -m genmodelfit`).
+**A terminal opened before PATH changed does not see the change: open a new one.**
+
+おすすめは pipx か uv でコマンドとして入れる方法です(PATH を通すコマンドを 1 回だけ実行し、端末を開き直す)。
+pip で入れた場合も、**`python -m genmodelfit …` は PATH に関係なく必ず動きます**(Windows は `py -m genmodelfit …` も可)。
+pip が「The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH」と出したら、コマンドは入っていますが、
+その場所に PATH が通っていません。よくあるのは、python.org の Python を「Add python.exe to PATH」なしで入れた、
+書き込めないため利用者ごとの場所(Windows は `%APPDATA%\Python\Python3XX\Scripts`、Linux は `~/.local/bin`)に入った、
+Microsoft Store の Python、仮想環境を有効にしていない、の 4 つです。警告に出た場所を PATH に足すか、pipx / uv か
+`python -m genmodelfit` を使ってください。**PATH を変える前に開いた端末には反映されないので、新しい端末を開いてください。**
 
 From source / ソースから:
 
@@ -242,7 +277,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
   locally (`nvidia-smi`, psutil). This is tested with every socket blocked.
 - `genmodelfit update --from-release` only downloads `db.json` and `db.json.sig` from this project's GitHub release.
 - `genmodelfit update` only reads public data with GET / HEAD: the ComfyUI workflow templates and releases on
-  GitHub, the Hugging Face Hub API, and the model download URLs (HEAD only; no weights are downloaded).
+  GitHub, the Hugging Face Hub API, and the model download URLs (HEAD, plus a ranged GET of the first bytes of the
+  main weight files to read their header — dtype and tensor shapes; no weights are downloaded).
 - `genmodelfit bench` talks only to the ComfyUI URL you give with `--url` (plus the official template files on
   GitHub when ComfyUI does not have them).
 - Hardware information (GPU name, VRAM, RAM, CPU, disk) is read locally with `nvidia-smi` and psutil and is
@@ -258,8 +294,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 - `recommend`・`fit`・`search`・`info`・`system`・`types`・`gate` と Python の関数は**ネットにつなぎません**
   (PC の情報は手元で読みます。通信をふさいだ試験で確かめています)。
 - `update --from-release` は、このプロジェクトの GitHub Release から `db.json` と署名だけを取ります。
-- `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD。
-  モデル本体は落としません)。
+- `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD と、
+  本体のファイルの先頭の見出し(dtype・テンソルの形)だけの Range 要求。モデル本体は落としません)。
 - `bench` は `--url` で指定した ComfyUI とだけ話します(ComfyUI に無い公式テンプレートは GitHub から取ります)。
 - PC の情報(GPU の名前・VRAM・メモリ・CPU・空き)は `nvidia-smi` と psutil で手元で読むだけで、**送りません**。
   `bench` の実測は手元に保存するだけで、利用者が自分で Pull Request を出したときだけ共有されます
