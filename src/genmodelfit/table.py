@@ -42,6 +42,10 @@ MIN_AUTO_WIDTH = 70  # これ未満では Auto 列も外す
 def make_console(file=None, width: int | None = None) -> Console:
     out = file or sys.stdout
     if width is None:
+        cols = os.environ.get("COLUMNS", "")  # パイプの先でも幅を指定できるように(shutil と同じ考え方)
+        if cols.isdigit() and int(cols) > 0:
+            width = int(cols)
+    if width is None:
         try:
             width = os.get_terminal_size(out.fileno()).columns
         except (OSError, AttributeError, ValueError):

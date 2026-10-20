@@ -555,9 +555,15 @@ def _quiet_stdout() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")  # Windows の cp932 でも落ちないように
+    for stream in (sys.stdout, sys.stderr):  # Windows の cp932 でも落ちず、組み込み側が UTF-8 で読めるように
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(AttributeError, ValueError, OSError):
+                stream.reconfigure(encoding="utf-8")
     parser = build_parser()
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:  # 引数なしは使い方の全文を出して正常に終わる(初めて試す人向け)
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
     try:
         return args.func(args)
