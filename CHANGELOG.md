@@ -23,6 +23,35 @@ All notable changes to this project are documented here. The format is based on
   fails unless run by hand with `allow_partial` and only HF repos failed transiently. docs/release.md.
   毎週、作り直した一覧を PR にする(自動ではマージしない。配るのはマージした一覧だけ)。
 
+- Measurement submissions from users (Issue #34). `genmodelfit bench … --submission PATH` and
+  `genmodelfit contrib make --from <bench result>` write a submission file (`contrib_schema` 1:
+  `data/contrib/<gpu>/<date>-<sha8>.json`) with the GPU name / VRAM / generation / compute capability / driver, the ComfyUI
+  version, the OS family, RAM rounded to GiB and the results — never host / user names, paths, GPU UUID, PCI address,
+  IP, CPU name or exact times (the note is scrubbed). genmodelfit sends nothing; users open the pull request themselves.
+  `contrib show` prints exactly what will be shared with a privacy checklist; `contrib validate` checks schema, value
+  ranges, privacy patterns, GPU name / generation consistency, file name and duplicates (exit 0 / 1 / 2);
+  `.github/workflows/contrib.yml` runs it on pull requests touching `data/contrib/**` (read-only, the tool installed
+  from the base commit, results in the job summary). `contrib aggregate` groups submissions by model, settings and GPU
+  with median / MAD outlier removal into the new bundled `measurements_community.json` (empty for now), and
+  `--report` re-runs the calibration and flags errors above a threshold (default 25%, exit 3 with `--fail-on-breach`)
+  for the weekly job of #19.
+- `Estimate.basis_detail` (`measured` > `measured_community` > `calibrated` > `estimated`); `basis` stays
+  `measured` / `estimated`. Community measurements are used only when at least two consistent submissions agree (and
+  no OOM), rank after the maintainer's measurements at the same settings, and can only raise the needs (never lower
+  VRAM / RAM, never improve a level, never raise the score: `basis` points 0 like estimates). `validate` marks
+  implausible values (more than 40% from the formula, below the weights with `offload: none`), values that would raise
+  the estimate by more than 15% or change a level at common VRAM / RAM sizes, unknown models and unknown GPUs as
+  review-required; approval is per submission (`--allow-review <sha8>` or the maintainers' `data/contrib/REVIEWED`).
+  Unapproved community rows raise needs by at most 15% and are ignored where they would change the level.
+  `aggregate --report` lists the level changes caused by community data.
+- `torch_reserved` measurements (bench; without the CUDA context) are now lower bounds: below the formula they no
+  longer lower the estimate (the bundled RTX 3070 rows for BiRefNet and MoGe now use the formula value).
+  `Measurement.origin` / `n_submissions` / `consistent` (optional fields).
+- `python -m genmodelfit.calibrate` also writes the check rows (measurements in another `vram_metric`, such as the
+  RTX 3070 runs) to `calibration.json` (`check`) and the accuracy table; LOO rows carry `gpu_name` and `origin`.
+  Coefficients are unchanged.
+  利用者の実測の提出(作る・見る・検査・まとめ・毎週の精度の点検)と、根拠の段階 `basis_detail` を足した。
+
 ### Changed
 
 - Hugging Face selection (Issue #19): the 1,000 all-time floor for models found only by the trending / likes30d
@@ -31,7 +60,7 @@ All notable changes to this project are documented here. The format is based on
   are recognized by name (`-GGUF`, `-Q8_0`, `_K_M`, `-fp8`, `-nf4`, `-int8`, `_diffusers`, `-Quantized`, …) and
   only the most downloaded is kept; uncensored models also need 100 downloads in the last 30 days.
   HF の選び方を締めた(伸びている条件・名前の merge・量子化の写し・無検閲は直近 30 日も使われているもの)。
-- The bundled list was rebuilt with these rules (328 entries: HF 50, uncensored 28; auto 99 unchanged).
+- The bundled list was rebuilt with these rules (327 entries: HF 49, uncensored 27; auto 99 unchanged).
   Added: 6 uncensored HF models that meet the rules and the new official template `video_fasth3_ominiref_r2v`;
   removed: `hf:0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF` (a quantized copy of
   `hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized`) and `hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting`
@@ -43,12 +72,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Exclusion (safety): uncensored models whose ID, name, tags or card mention a dataset known to include a category
+  of sexual content involving minors (`DATASET_TERMS`: e621) are excluded, even when that is not their purpose
+  (owner decision, 2026-10-21; `hf:hearmeneigh/sd21-e621-rising-v2` removed from the bundled list).
+  学習データに未成年の性的表現の分類を含む画像の集まり(e621)を使う無検閲のモデルは外す(安全側)。
+
 - When a Hugging Face repo was renamed, `update` applied the license-source table with the new name from the API
   while re-applying it uses the name in the file URL, so the two disagreed (`license_path`). Both now use the URL's
   name. Found by the first weekly rebuild (Comfy-Org/flux2-klein-9B → vae-text-encorder-for-flux-klein-9b).
   リポジトリの名前が変わったとき、出どころの表をファイルの URL の名前で当てるようにした。
 - Tests no longer pin numbers of the bundled list (uncensored count, HEAD check date) so that the weekly rebuild
   can pass them.
+
 
 ## [0.3.0] - 2026-10-21
 

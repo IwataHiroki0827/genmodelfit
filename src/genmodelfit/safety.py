@@ -227,6 +227,13 @@ def _card_sentences(card_text: str) -> list[str]:
     return out
 
 
+# 学習データに未成年の性的表現の分類を含むことが知られている画像の集まり。無検閲のモデルの ID・名前・タグ・
+# 説明文にこの名前があれば外す(目的が未成年でなくても、出力に含まれうるため。
+# 2026-10-21 オーナーの判断で安全側)
+DATASET_TERMS = ("e621",)
+_DATASET = _pattern(DATASET_TERMS)
+
+
 def blocked_terms(names: Iterable[str], card_text: str = "", *, uncensored: bool) -> list[str]:
     """外す理由になった語の一覧(空なら残してよい)。
 
@@ -242,6 +249,7 @@ def blocked_terms(names: Iterable[str], card_text: str = "", *, uncensored: bool
     if uncensored:
         found |= set(_live_hits(_CONTEXT, short, negation=False))
         found |= set(_live_hits(_ABBR, short, negation=False))
+        found |= {f"dataset:{h}" for h in _live_hits(_DATASET, f"{short}\n{card_text}", negation=False)}
     for sentence in _card_sentences(card_text):
         found |= set(_live_hits(_STRONG, sentence, negation=True))
         if _live_hits(_SEXUAL, sentence, negation=True):

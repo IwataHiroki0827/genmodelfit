@@ -159,10 +159,10 @@
    "within_10pct": 215
   },
   "counts": {
-   "models": 328,
+   "models": 327,
    "modality": {
     "3d": 10,
-    "image": 165,
+    "image": 164,
     "music": 15,
     "sfx": 3,
     "tts": 20,
@@ -170,11 +170,11 @@
    },
    "content": {
     "sfw": 300,
-    "uncensored": 28
+    "uncensored": 27
    },
    "source": {
     "comfyui-template": 278,
-    "huggingface": 50
+    "huggingface": 49
    },
    "license": {
     "apache-2.0": 113,
@@ -184,7 +184,7 @@
     "gemma": 1,
     "llama3.1": 5,
     "mit": 19,
-    "null": 59,
+    "null": 58,
     "openrail++": 4,
     "other": 116
    },
@@ -192,12 +192,12 @@
     "non_commercial": 53,
     "other": 73,
     "permissive": 132,
-    "unknown": 59,
+    "unknown": 58,
     "use_restricted": 11
    },
    "files_complete_false": 26
   },
-  "excluded": 1,
+  "excluded": 2,
   "warnings": [],
   "generator": "genmodelfit 0.3.0",
   "sampler_stages": {
@@ -44444,74 +44444,6 @@
    "workflow_precision": null,
    "precision_source": "header",
    "total_size_bytes": 2132625431
-  },
-  {
-   "id": "hf:hearmeneigh/sd21-e621-rising-v2",
-   "name": "sd21-e621-rising-v2",
-   "modality": "image",
-   "tasks": [
-    "t2i"
-   ],
-   "source": "huggingface",
-   "files": [
-    {
-     "name": "sd21-e621-rising-v2-epoch-29.bf16.safetensors",
-     "url": "https://huggingface.co/hearmeneigh/sd21-e621-rising-v2/resolve/main/sd21-e621-rising-v2-epoch-29.bf16.safetensors",
-     "sha256": "8a375c3821eeba1ae43dea87a5de3875ee5150c672b291794eb7ce41e383efc1",
-     "size_bytes": 2580069910,
-     "directory": null,
-     "repo_id": "hearmeneigh/sd21-e621-rising-v2",
-     "license": null,
-     "license_name": null,
-     "gated": false,
-     "role": "main",
-     "license_from": "hearmeneigh/sd21-e621-rising-v2",
-     "license_url": null,
-     "repo_license": null,
-     "license_path": [
-      "hearmeneigh/sd21-e621-rising-v2"
-     ],
-     "license_evidence": [
-      "license_unverified: hearmeneigh/sd21-e621-rising-v2 にライセンスの記載がありません"
-     ],
-     "head_status": 302,
-     "head_checked_at": "2026-10-20T22:40:07Z",
-     "header_precision": "bf16",
-     "header_params": 1289952504,
-     "repo_precision": null,
-     "repo_precision_source": null
-    }
-   ],
-   "template": null,
-   "params_b": null,
-   "precision": "bf16",
-   "license": null,
-   "license_url": null,
-   "base_model": null,
-   "content": "uncensored",
-   "content_evidence": [
-    "hf-tag:not-for-all-audiences"
-   ],
-   "discovered_from": [
-    "https://huggingface.co/api/models?direction=-1&filter=not-for-all-audiences&limit=100&pipeline_tag=text-to-image&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
-   ],
-   "updated": "2023-11-02",
-   "homepage": "https://huggingface.co/hearmeneigh/sd21-e621-rising-v2",
-   "downloads": 300,
-   "likes": 29,
-   "downloads_all_time": 28854,
-   "license_name": null,
-   "license_evidence": [
-    "license_unverified: hearmeneigh/sd21-e621-rising-v2 にライセンスの記載がありません(sd21-e621-rising-v2-epoch-29.bf16.safetensors)"
-   ],
-   "files_complete": true,
-   "size_floor_bytes": null,
-   "comfy_family": null,
-   "comfy_vae": null,
-   "sampler_stages": null,
-   "workflow_precision": null,
-   "precision_source": "header",
-   "total_size_bytes": 2580069910
   },
   {
    "id": "hf:kkkkk26/lustify_v9",

@@ -477,6 +477,7 @@ MMAudio・AudioLDM・Stable Audio Open の系統で music の語が無いもの)
 |---|---|---|
 | STRONG | loli(s)・lolicon(s)・loli con・lolita(s)・shota(s)・shotacon(s)・shota con・jailbait・preteen(s)・pedo・pedophile・pedophilia・paedophile・paedophilia・toddlercon・underage、ロリ・ロリコン・ロリータ・ショタ・ショタコン・児童ポルノ | すべてのモデルの ID・名前・タグ、モデルカード・説明 |
 | CONTEXT | child・children・kid(s)・minor(s)・teen(s)・teenage(r/rs)・schoolgirl(s)・school girl(s)・schoolboy(s)・school boy(s)・little girl(s) / boy(s)・young girl(s) / boy(s)・toddler・infant・cub・jk、幼女・児童・女子小学生・女子中学生・小学生・中学生、JC・JS(大文字のときだけ) | 無検閲のモデルの ID・名前・タグにあれば外す。カードでは、同じ文に性的な語(sex・nude・naked・porn・erotic・nsfw・explicit・lewd・hentai・topless・エロ・ヌード・裸・性的・アダルト・R18 など)があるとき(無検閲の印の無いモデルにも当てる) |
+| DATASET | e621(学習データに未成年の性的表現の分類を含むことが知られている画像の集まり。2026-10-21 オーナーの判断) | 無検閲のモデルの ID・名前・タグ・モデルカードにあれば外す(目的が未成年でなくても、出力に含まれうるため) |
 
 - 語は英数字の境界で照合する(`minor` は `minority`、`kid` は `kidney`、`teen` は `fifteen` に当たらない。
   `Loli-XL` や `shota_v2` には当たる)。カタカナの語は前後がカタカナでないときだけ(ロリ は カロリー・ロリポップに

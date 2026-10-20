@@ -1,0 +1,37 @@
+{
+ "contrib_schema": 1,
+ "kind": "genmodelfit-measurement",
+ "tool": {
+  "name": "genmodelfit",
+  "version": "0.3.0"
+ },
+ "date": "2026-10-20",
+ "system": {
+  "os_family": "windows",
+  "ram_total_gb": 32,
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 3070",
+   "vram_gb": 8.0,
+   "arch": "ampere",
+   "compute_capability": "8.6",
+   "driver": "566.03"
+  }
+ },
+ "comfyui_version": "0.40.0",
+ "measurement": {
+  "model_id": "image_sdxl_simple",
+  "settings": {
+   "width": 832,
+   "height": 832,
+   "steps": 20
+  },
+  "outcome": "ok",
+  "standard": true,
+  "offload": "dynamic",
+  "peak_vram_gb": 6.9,
+  "peak_ram_gb": 7.4,
+  "seconds": 41.2,
+  "vram_metric": "torch_reserved",
+  "note": "SYNTHETIC TEST FIXTURE(試験用の架空の値。実測ではない)"
+ }
+}

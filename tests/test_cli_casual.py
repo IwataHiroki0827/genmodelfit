@@ -24,6 +24,7 @@ SUBCOMMANDS = [
     "bench",
     "download",
     "diff",
+    "contrib",
 ]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
