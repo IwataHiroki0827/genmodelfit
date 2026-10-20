@@ -26,7 +26,7 @@ from genmodelfit.hf import (
     strictest,
 )
 from genmodelfit.models import ModelEntry, Template
-from genmodelfit.recommend import score
+from genmodelfit.recommend import popularity
 from genmodelfit.update import (
     UpstreamFormatError,
     audio_modality,
@@ -300,18 +300,14 @@ def test_parse_hf_url():
     assert parse_hf_url("https://civitai.com/api/download/models/1") is None
 
 
-def test_score_uses_downloads_for_hf():
-    from genmodelfit.models import Estimate
-
-    est = Estimate(
-        vram_gb=1, vram_offload_gb=1, ram_gb=1, disk_gb=1, basis="estimated", fit="perfect", run_mode="gpu"
-    )
+def test_popularity_uses_downloads_for_hf():
     few = ModelEntry(id="hf:a/b", name="b", modality="image", source="huggingface", downloads=100)
     many = ModelEntry(id="hf:a/c", name="c", modality="image", source="huggingface", downloads=1_000_000)
-    assert score(many, est) > score(few, est)
+    assert popularity(many) > popularity(few)
+    assert popularity(few) >= 0 and popularity(many) <= 100
     t = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", usage=0), downloads=10**9)
-    assert score(t, est) == score(
-        ModelEntry(id="u", name="u", modality="image", template=Template(name="u")), est
+    assert popularity(t) == popularity(
+        ModelEntry(id="u", name="u", modality="image", template=Template(name="u"))
     )
 
 

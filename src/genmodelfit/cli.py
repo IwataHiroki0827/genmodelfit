@@ -19,7 +19,7 @@ from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
 from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, evaluate, is_tool, recommend
+from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, select
 
 
 class CliError(RuntimeError):
@@ -140,82 +140,96 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str, system: SystemInfo | None = None, notes: list[str] | None = None) -> None:
+def _license_list(text: str) -> list[str]:
+    items = [x.strip().lower() for x in text.split(",") if x.strip()]
+    if not items:
+        raise argparse.ArgumentTypeError(
+            "ライセンスを 1 つ以上、カンマ区切りで指定してください(例: apache-2.0,mit)"
+        )
+    return items
+
+
+def _select(args: argparse.Namespace, s: SystemInfo, db: Database, **kw: Any):
+    return select(
+        db,
+        s,
+        modality=args.modality,
+        content=args.content,
+        license=args.license,
+        settings=_settings(args),
+        with_limits=args.limits,
+        policy=_policy(args),
+        **kw,
+    )
+
+
+def _filters(args: argparse.Namespace, min_fit: str | None, limit: int | None) -> dict[str, Any]:
+    return {
+        "modality": args.modality,
+        "content": args.content,
+        "min_fit": min_fit,
+        "license": args.license,
+        "limit": limit,
+    }
+
+
+def _show(args, command: str, title: str, s: SystemInfo, db: Database, sel, filters: dict[str, Any]) -> int:
+    if args.json:
+        _out(
+            _envelope(
+                command,
+                s,
+                db,
+                filters=filters,
+                matched=sel.matched,
+                hidden=sel.hidden,
+                models=[f.to_dict() for f in sel.fits],
+            )
+        )
+        return 0
     from .table import print_fit_table
 
-    print_fit_table(fits, title=title, system=system, notes=notes or ())
+    print_fit_table(sel.fits, title=title, system=s, matched=sel.matched, hidden=sel.hidden)
+    return 0
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
     limit = args.limit if args.limit is not None else 10
-    fits = recommend(
-        db,
+    min_fit = args.min_fit or "marginal"
+    sel = _select(
+        args,
         s,
-        modality=args.modality,
-        content=args.content,
-        min_fit=args.min_fit,
-        limit=None,  # 保留・補助ツールを除いてから件数を絞る
-        settings=_settings(args),
-        with_limits=args.limits,
+        db,
+        min_fit=min_fit,
+        include_tools=args.include_tools,
+        auto_only=args.auto_only,
+        drop_unknown_size=True,
+        limit=limit,
     )
-    if not args.include_tools:
-        fits = [f for f in fits if not is_tool(f.model)]
-    _attach_gate(fits, args, db)
-    if args.auto_only:
-        fits = [f for f in fits if f.gate and f.gate.get("auto")]
-    fits = fits[:limit] if limit else fits
-    if args.json:
-        _out(
-            _envelope(
-                "recommend",
-                s,
-                db,
-                filters={
-                    "modality": args.modality,
-                    "content": args.content,
-                    "min_fit": args.min_fit,
-                    "limit": args.limit if args.limit is not None else 10,
-                    "auto_only": args.auto_only,
-                    "include_tools": args.include_tools,
-                },
-                models=[f.to_dict() for f in fits],
-            )
-        )
-        return 0
-    _print_fits(fits, "Recommended", s)
-    return 0
+    filters = _filters(args, min_fit, limit) | {
+        "auto_only": args.auto_only,
+        "include_tools": args.include_tools,
+    }
+    return _show(args, "recommend", "Recommended", s, db, sel, filters)
 
 
 def cmd_fit(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    fits = evaluate(
-        db,
-        s,
-        modality=args.modality,
-        content=args.content,
-        settings=_settings(args),
-        with_limits=args.limits,
-    )
-    if args.perfect:
-        fits = [f for f in fits if f.estimate.fit == "perfect"]
-    if args.limit:
-        fits = fits[: args.limit]
-    _attach_gate(fits, args, db)
-    if args.json:
-        _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
-        return 0
-    notes = []
-    if args.content == "sfw":  # 既定で隠した無検閲の数を表の下で知らせる(文字の表示だけ)
-        hidden = sum(
-            1
-            for m in db.models
-            if m.content == "uncensored" and (not args.modality or m.modality == args.modality)
-        )
-        if hidden:
-            notes.append(f"uncensored hidden: {hidden} (--content all)")
-    _print_fits(fits, "All models", s, notes)
-    return 0
+    min_fit = "perfect" if args.perfect else args.min_fit
+    sel = _select(args, s, db, min_fit=min_fit, limit=args.limit)
+    return _show(args, "fit", "All models", s, db, sel, _filters(args, min_fit, args.limit))
+
+
+def cmd_search(args: argparse.Namespace) -> int:
+    """ID・名前の一部で探す(大文字小文字を区別しない)。0 件でも終了コード 0。"""
+    s, db = _system(args), _db(args)
+    query = args.query.strip()
+    if not query:
+        raise CliError("探す語が空です")
+    sel = _select(args, s, db, query=query, min_fit=args.min_fit, limit=args.limit)
+    filters = {"query": query} | _filters(args, args.min_fit, args.limit)
+    return _show(args, "search", f'Search "{query}"', s, db, sel, filters)
 
 
 class AmbiguousModel(CliError):
@@ -510,11 +524,6 @@ def _gate_for(model, args, db: Database | None = None) -> dict[str, Any] | None:
     return evaluate_offline(model, _policy(args), sources=db.sources if db else None).to_dict()
 
 
-def _attach_gate(fits, args, db: Database | None = None) -> None:
-    for f in fits:
-        f.gate = _gate_for(f.model, args, db)
-
-
 # --- 引数 ---------------------------------------------------------------------------------------
 
 
@@ -538,6 +547,93 @@ def _head_age(v: str) -> int | None:
     if n < 0:
         raise argparse.ArgumentTypeError(f"0 以上を指定してください: {v}")
     return n
+
+
+_JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, database: {...}, filters: {...},
+  matched, hidden: {reason: count}, models: [{ id, name, modality, tasks, content,
+  fit_level, fit_label, run_mode, run_mode_label, score, score_components { fit, headroom,
+  readiness, basis, popularity }, memory_kind, memory_required_gb, memory_available_gb,
+  utilization_pct, ram_required_gb, disk_size_gb, license, licenses, auto, held_reasons,
+  estimate_confidence, notes, files_count, estimate, gate }] }
+  Details: docs/schema.md"""
+
+_COMMON_HELP = """PRECONDITIONS:
+  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.
+  The bundled model list is used unless `genmodelfit update` stored a newer one (--no-cache).
+
+SIDE EFFECTS:
+  None - read-only. No network access.
+
+EXIT CODES:
+  0  Success{zero}
+  1  Error (e.g. a broken --db file; with --json the error is in "error")
+  2  Usage error (unknown option or value)
+"""
+
+HELP = {
+    "recommend": """Recommend generation models for this PC, best first.
+この PC に合う生成モデルを、おすすめ順に出す。
+
+Order: models that run, then auto-recommendable ones (gate: Auto=yes), then Score (0-100),
+then id. Uncensored models and utility tools are hidden unless asked. The default output is a
+table (llmfit uses JSON by default); add --json for apps.
+並べ方: 動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
+
+"""
+    + _COMMON_HELP.format(zero="")
+    + """
+AGENT USAGE:
+  genmodelfit recommend --json
+  genmodelfit recommend -m image -n 5 --min-fit good --json
+  genmodelfit recommend --auto-only --comfyui-version 0.40.0 --json
+  genmodelfit recommend --license apache-2.0,mit --vram 8 --ram 32 --json
+
+"""
+    + _JSON_FIELDS,
+    "fit": """Judge every model for this PC (too tight ones included), in the same order as recommend.
+すべてのモデルをこの PC で判定して表にする(動かないものも、recommend と同じ並べ方で)。
+
+"""
+    + _COMMON_HELP.format(zero="")
+    + """
+AGENT USAGE:
+  genmodelfit fit --json
+  genmodelfit fit -m video --min-fit good -n 20
+  genmodelfit fit --content all --vram 12 --ram 32 --json
+
+"""
+    + _JSON_FIELDS,
+    "search": """Search models by a part of the id or name (case-insensitive) and judge them for this PC.
+ID・名前の一部で探し(大文字小文字は区別しない)、この PC での判定を出す。
+--content applies (default sfw). With no match the list is empty and the exit code is 0.
+
+"""
+    + _COMMON_HELP.format(zero=" (also when nothing matches: empty models / 「no match」)")
+    + """
+AGENT USAGE:
+  genmodelfit search flux --json
+  genmodelfit search wan -m video --min-fit good
+  genmodelfit search sdxl --content all --json
+
+"""
+    + _JSON_FIELDS.replace("filters: {...}", "filters: {query, ...}"),
+    "info": """Show one model: files, licenses, estimate, limits on this PC, and the gate checks.
+1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動おすすめの条件)。
+An exact id always matches (uncensored included). Otherwise a part of the id or name is
+searched within --content; several matches are an error that lists the candidates.
+
+"""
+    + _COMMON_HELP.format(zero="").replace(
+        "1  Error (", "1  Error: no such model, several matches (candidates listed), or ("
+    )
+    + """
+AGENT USAGE:
+  genmodelfit info image_z_image_turbo_int8 --json
+  genmodelfit info sdxlturbo --vram 8 --ram 32
+
+  JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
+  gate, measurements } / on error: { error, candidates? }. Details: docs/schema.md""",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -601,21 +697,46 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
     sp.set_defaults(func=cmd_system)
 
-    sp = sub.add_parser("recommend", parents=[common, filt, gate], help="おすすめ順に出す")
-    sp.add_argument("--min-fit", choices=FIT_LEVELS[:3], default="marginal")
+    sel = argparse.ArgumentParser(add_help=False)
+    sel.add_argument(
+        "--min-fit",
+        choices=FIT_LEVELS,
+        help="この段階以上だけ出す(recommend の既定は marginal、fit / search は全部)",
+    )
+    sel.add_argument(
+        "--license",
+        type=_license_list,
+        metavar="LIST",
+        help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
+    )
+
+    def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
+        return sub.add_parser(
+            name,
+            parents=parents,
+            help=help_text,
+            description=HELP[name],
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+
+    sp = sub_parser("recommend", "おすすめ順に出す", [common, filt, sel, gate])
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
     sp.add_argument(
         "--include-tools",
         action="store_true",
         help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
     )
-    sp.set_defaults(func=cmd_recommend)  # 既定の 10 件は cmd_recommend で決める(親の引数は fit と共有なので)
+    sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
 
-    sp = sub.add_parser("fit", parents=[common, filt, gate], help="すべてのモデルの判定を表で出す")
-    sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ")
+    sp = sub_parser("fit", "すべてのモデルの判定を表で出す", [common, filt, sel, gate])
+    sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ(--min-fit perfect と同じ)")
     sp.set_defaults(func=cmd_fit)
 
-    sp = sub.add_parser("info", parents=[common, filt, gate], help="1 つのモデルの詳細")
+    sp = sub_parser("search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate])
+    sp.add_argument("query", help="探す語(ID・名前の一部。大文字小文字は区別しない)")
+    sp.set_defaults(func=cmd_search)
+
+    sp = sub_parser("info", "1 つのモデルの詳細", [common, filt, gate])
     sp.add_argument("model", help="モデルの ID または名前の一部")
     sp.set_defaults(func=cmd_info)
 

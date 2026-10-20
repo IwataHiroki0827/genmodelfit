@@ -11,8 +11,10 @@ from rich.cells import cell_len
 
 from genmodelfit import __version__, cli
 
-SUBCOMMANDS = ["system", "recommend", "fit", "info", "update", "gate", "bench"]
+SUBCOMMANDS = ["system", "recommend", "fit", "search", "info", "update", "gate", "bench"]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
+
+HEADER = ["Status", "Model", "Type", "Score", "VRAM", "Mem%", "Mode", "Disk", "License", "Auto"]
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +85,8 @@ TABLE_COMMANDS = [
     ["recommend", *HW, "--content", "all", "--include-tools", "-n", "100"],
     ["fit", *HW, "--content", "all"],
     ["fit", "--vram", "0", "--ram", "16", "--no-cache"],
+    ["search", "flux", *HW, "--content", "all"],
+    ["search", "no_such_model_xyz", *HW],
     ["gate", "--no-cache", "--only-held"],
     ["system", "--vram", "8", "--ram", "32"],
     ["info", "image_sdxl_simple", *HW],
@@ -109,9 +113,41 @@ def test_width(cache, args, columns):
 
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
-    assert "uncensored hidden: 39 (--content all)" in out  # 同梱の無検閲は 39 件
+    assert "All models: 302 (39 hidden: uncensored 39)" in out  # 同梱の無検閲は 39 件
+    assert "add --content all" in out
     assert "hidden" not in run_cli(["fit", *HW, "--content", "all"], cache).stdout.decode("utf-8")
-    assert "hidden" not in run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")  # 3D には無い
+    out = run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")
+    assert "uncensored" not in out and "other types" in out  # 3D には無検閲が無い。ほかの種類は隠した数に出す
+
+
+def test_pc_line_comes_first(cache):
+    out = run_cli(["recommend", *HW, "-n", "3"], cache).stdout.decode("utf-8").splitlines()
+    assert out[0] == "PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)"
+    assert out[1].startswith("Recommended: 3 of ") and "hidden: uncensored 39, tools " in out[1]
+    assert out[2].split() == [
+        "Status",
+        "Model",
+        "Type",
+        "Score",
+        "VRAM",
+        "Mem%",
+        "Mode",
+        "Disk",
+        "License",
+        "Auto",
+    ]
+
+
+def test_search(cache):
+    r = run_cli(["search", "FLUX", *HW], cache)
+    out = r.stdout.decode("utf-8")
+    assert r.returncode == 0 and r.stderr == b""
+    assert 'Search "FLUX": ' in out and "flux_schnell" in out and "hidden: uncensored" in out
+    # 合わなくても終了コード 0。stdout に「no match」
+    r = run_cli(["search", "no_such_model_xyz", *HW], cache)
+    assert r.returncode == 0 and "no match" in r.stdout.decode("utf-8")
+    r = run_cli(["search", "  ", *HW], cache)
+    assert r.returncode == 1 and "空" in r.stderr.decode("utf-8")
 
 
 def test_info_partial_match(cache):
@@ -137,7 +173,7 @@ def test_info_partial_match(cache):
 
 def test_python_m(cache):
     r = run_cli(["recommend", *HW, "-n", "3"], cache)
-    assert r.returncode == 0 and "Recommended (3)" in r.stdout.decode("utf-8")
+    assert r.returncode == 0 and "Recommended: 3 of " in r.stdout.decode("utf-8")
 
 
 def test_console_script(cache):
@@ -147,7 +183,7 @@ def test_console_script(cache):
     env = child_env(cache)
     args = [exe, "recommend", *HW, "-n", "3"]
     r = subprocess.run(args, capture_output=True, env=env, timeout=120, check=False)
-    assert r.returncode == 0 and "Recommended (3)" in r.stdout.decode("utf-8")
+    assert r.returncode == 0 and "Recommended: 3 of " in r.stdout.decode("utf-8")
     r = subprocess.run([exe, "--version"], capture_output=True, env=env, timeout=60, check=False)
     assert r.stdout.decode("utf-8").strip() == f"genmodelfit {__version__}"
 
@@ -165,3 +201,14 @@ def test_info_hint_names_the_hidden_content_and_strips_spaces():
     else:
         raise AssertionError("uncensored では sfw の候補を出さない")
     assert resolve_model(db, "  image_sdxl_simple ").id == "image_sdxl_simple"
+
+
+@pytest.mark.parametrize("name", ["recommend", "fit", "search", "info"])
+def test_help_has_agent_sections(cache, name):
+    """llmfit と同じく、ヘルプに前提・副作用・終了コード・使い方の例・JSON の項目を書く。"""
+    out = run_cli([name, "--help"], cache, COLUMNS="100").stdout.decode("utf-8")
+    for section in ("PRECONDITIONS:", "SIDE EFFECTS:", "EXIT CODES:", "AGENT USAGE:", "docs/schema.md"):
+        assert section in out, (name, section)
+    assert f"genmodelfit {name} " in out.split("AGENT USAGE:")[1]
+    if name != "info":
+        assert "score_components" in out and "held_reasons" in out

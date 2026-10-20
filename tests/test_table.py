@@ -9,6 +9,8 @@ from genmodelfit.models import Estimate, Gpu, ModelEntry, SystemInfo
 from genmodelfit.recommend import Fit
 from genmodelfit.table import make_console, print_fit_table
 
+HEADER = ["Status", "Model", "Type", "Score", "VRAM", "Mem%", "Mode", "Disk", "License", "Auto"]
+
 
 @pytest.fixture(autouse=True)
 def _isolated_cache(tmp_path, monkeypatch):
@@ -55,16 +57,20 @@ def test_compact_when_narrow():
     assert "License" not in out
 
 
+def row_of(out: str, mid: str) -> str:
+    return next(line for line in out.splitlines() if f" {mid} " in line + " ")
+
+
 def test_held_reason_and_uncensored_marker():
     gate = {"auto": False, "checks": [{"id": "license", "passed": False}, {"id": "gated", "passed": True}]}
     out = render([fit("x", gate=gate, content="uncensored"), fit("y", gate={"auto": True, "checks": []})])
-    assert "held:license" in out and "yes" in out
+    assert row_of(out, "x").rstrip().endswith("license") and row_of(out, "y").rstrip().endswith("yes")
     assert "[U] x" in out and "[U] = uncensored" in out
 
 
 def test_offload_marked():
-    out = render([fit("x", "marginal", mode="offload")])
-    assert "4.0*" in out
+    row = row_of(render([fit("x", "marginal", mode="offload")]), "x")
+    assert " 4.0 " in row and "GPU+RAM" in row and "50%" in row
 
 
 def test_no_color_codes_when_not_terminal():
@@ -84,9 +90,11 @@ def test_cli_json_has_no_table(capsys):
 def test_cli_table_real_db(capsys):
     assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all"]) == 0
     out = capsys.readouterr().out
-    assert "image_sdxl_simple" in out and "PC: " in out
+    lines = out.splitlines()
+    assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
+    assert "image_sdxl_simple" in out
     n = len(load(use_cache=False).models)  # 長い ID は省略記号で詰めるので、行数で確かめる
-    rows = [x for x in out.splitlines() if x.split(" ", 1)[0] in ("Perfect", "Good", "Marginal", "Too")]
+    rows = [x for x in lines if x.startswith("● ")]
     assert len(rows) == n
 
 
@@ -96,38 +104,85 @@ def test_sequential_and_too_tight_show_the_figure_used():
     tight = fit("tight", "too_tight", mode="none")
     tight.estimate.vram_gb, tight.estimate.vram_offload_gb = 23.9, 9.7
     out = render([seq, tight])
-    assert "7.2~" in out and "+0.8" in out
-    assert "9.7*" in out and "-1.7" in out
+    assert " 7.2 " in row_of(out, "seq") and "GPU~" in row_of(out, "seq") and "90%" in row_of(out, "seq")
+    row = row_of(out, "tight")
+    assert " 9.7 " in row and "121%" in row and "● Too tight" in row
 
 
 def test_unknown_size_shows_question_mark():
     f = fit("nosize", "too_tight", mode="none")
     f.estimate.unknown_size = True
     f.estimate.vram_gb = f.estimate.vram_offload_gb = 0.0
-    out = render([f])
-    row = next(line for line in out.splitlines() if "nosize" in line)
+    row = row_of(render([f]), "nosize")
     assert " ? " in row + " " and "0.0" not in row
 
 
-def test_ram_limited_rows_say_ram_not_vram_headroom():
+def test_ram_limited_rows_say_ram():
     f = fit("ramcut", "too_tight", mode="none")
     f.estimate.vram_gb, f.estimate.vram_offload_gb, f.estimate.ram_gb = 7.0, 4.0, 40.0
-    row = next(x for x in render([f], system=pc(12)).splitlines() if "ramcut" in x)
-    assert "RAM" in row and "+5.0" not in row and "7.0" in row
+    row = row_of(render([f], system=pc(12)), "ramcut")
+    assert " RAM " in row and "7.0" in row
 
 
-def test_no_gpu_too_tight_says_gpu():
+def test_no_gpu_too_tight_shows_the_minimum_vram():
     f = fit("needgpu", "too_tight", mode="none")
     nogpu = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[])
-    row = next(x for x in render([f], system=nogpu).splitlines() if "needgpu" in x)
-    assert " GPU " in row + " " and "*" not in row
+    out = render([f], system=nogpu)
+    assert out.startswith("PC: no GPU (CPU only), RAM 32.0 GiB")
+    row = row_of(out, "needgpu")
+    assert " 4.0 " in row and "%" not in row
 
 
-def test_room_never_negative_zero_and_matches_shown_values():
+def test_over_100_percent_never_shows_100():
     f = fit("zero", "too_tight", mode="none")
-    f.estimate.vram_offload_gb = 8.04
-    out = render([f])
-    assert "-0.0" not in out and "+0.0" in out
+    f.estimate.vram_offload_gb = 8.04  # 100.5%
+    assert "101%" in row_of(render([f]), "zero")
+    g = fit("full")
+    g.estimate.vram_gb = 7.99  # 99.9%: 載るので 100% と出す(101% にはしない)
+    assert "100%" in row_of(render([g]), "full")
+
+
+def test_measured_mark_and_status_mark():
+    f = fit("m1", "perfect")
+    f.estimate.basis, f.estimate.vram_gb = "measured", 3.0
+    row = row_of(render([f]), "m1")
+    assert row.startswith("● Perfect") and " 3.0m " in row
+
+
+def test_header_hidden_and_count():
+    buf = io.StringIO()
+    hidden = {"uncensored": 3, "tools": 2}
+    print_fit_table(
+        [fit("a")], title="Recommended", system=pc(), console=make_console(buf), matched=5, hidden=hidden
+    )
+    lines = buf.getvalue().splitlines()
+    assert lines[0] == "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB"
+    assert lines[1] == "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)"
+    assert any("--content all" in x for x in lines)
+
+
+@pytest.mark.parametrize("width", [60, 70, 80, 90, 99, 100])
+def test_columns_drop_in_order_when_narrow(width):
+    long = "hf:someone/" + "very-long-model-name-" * 6
+    out = render([fit(long), fit("b", "too_tight")], width=width)
+    assert all(cell_len(x) <= width for x in out.splitlines()), width
+    header = next(x for x in out.splitlines() if x.startswith("Status"))
+    assert "Model" in header and "VRAM" in header and "Mode" in header
+    if width <= 80:  # 狭いときは License から外す
+        assert "License" not in header and ("Disk" in header) == (width >= 80)
+    if width == 100:
+        assert header.split() == [
+            "Status",
+            "Model",
+            "Type",
+            "Score",
+            "VRAM",
+            "Mem%",
+            "Mode",
+            "Disk",
+            "License",
+            "Auto",
+        ]
 
 
 def test_middle_ellipsis_and_distinct_names():
@@ -143,8 +198,8 @@ def test_middle_ellipsis_and_distinct_names():
 
 def test_held_label_is_short():
     gate = {"auto": False, "checks": [{"id": "official_workflow", "passed": False}]}
-    assert "held:workflow" in render([fit("w", gate=gate)])
-    assert "held " in render([fit("w2", gate={"auto": False, "checks": []})]) + " "
+    assert row_of(render([fit("w", gate=gate)]), "w").rstrip().endswith(" workflow")
+    assert row_of(render([fit("w2", gate={"auto": False, "checks": []})]), "w2").rstrip().endswith(" held")
 
 
 def test_recommend_excludes_tools_unless_asked(capsys):

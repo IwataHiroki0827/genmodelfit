@@ -34,14 +34,31 @@ FIT = {
     "modality",
     "tasks",
     "content",
-    "license",
     "source",
-    "total_size_gb",
+    "fit_level",
+    "fit_label",
+    "run_mode",
+    "run_mode_label",
     "score",
-    "fit",
+    "score_components",
+    "memory_kind",
+    "memory_required_gb",
+    "memory_available_gb",
+    "utilization_pct",
+    "ram_required_gb",
+    "disk_size_gb",
+    "total_size_gb",
+    "license",
+    "licenses",
+    "auto",
+    "held_reasons",
+    "estimate_confidence",
+    "notes",
+    "files_count",
     "estimate",
     "gate",
 }
+SCORE_COMPONENTS = {"fit", "headroom", "readiness", "basis", "popularity"}
 ESTIMATE = {
     "vram_gb",
     "vram_sequential_gb",
@@ -70,7 +87,21 @@ CHECK_IDS = [
     "content",
     "size_known",
 ]
-RECOMMEND_FILTERS = {"modality", "content", "min_fit", "limit", "auto_only", "include_tools"}
+FIT_FILTERS = {"modality", "content", "min_fit", "license", "limit"}
+RECOMMEND_FILTERS = FIT_FILTERS | {"auto_only", "include_tools"}
+SEARCH_FILTERS = FIT_FILTERS | {"query"}
+LIST_KEYS = ENVELOPE | {"system", "database", "filters", "matched", "hidden", "models"}
+HIDDEN_KEYS = {
+    "modality",
+    "uncensored",
+    "sfw",
+    "tools",
+    "license",
+    "size_unknown",
+    "too_tight",
+    "below_min_fit",
+    "held",
+}
 MODEL_ENTRY = {
     "id",
     "name",
@@ -176,8 +207,29 @@ def check_system(d: dict) -> None:
 def check_fit(item: dict) -> None:
     assert set(item) == FIT
     check_estimate(item["estimate"])
-    assert item["fit"] == item["estimate"]["fit"]
     check_gate(item["gate"])
+    e, g = item["estimate"], item["gate"]
+    assert item["fit_level"] == e["fit"] and item["run_mode"] == e["run_mode"]
+    assert item["fit_label"] == {"perfect": "Perfect", "good": "Good", "marginal": "Marginal"}.get(
+        item["fit_level"], "Too tight"
+    )
+    assert item["run_mode_label"] in ("GPU", "GPU~", "GPU+RAM", "CPU", "-")
+    assert item["estimate_confidence"] == e["basis"] and item["notes"] == e["reasons"]
+    assert item["auto"] == g["auto"] and item["held_reasons"] == g["held_by"]
+    assert set(item["score_components"]) == SCORE_COMPONENTS
+    assert 0 <= item["score"] <= 100 and all(0 <= v <= 100 for v in item["score_components"].values())
+    assert item["memory_kind"] in ("vram", "ram")
+    if item["utilization_pct"] is not None:
+        pct = 100 * item["memory_required_gb"] / item["memory_available_gb"]
+        assert abs(item["utilization_pct"] - pct) < 0.2
+    assert isinstance(item["licenses"], list) and item["files_count"] >= 0
+    assert item["ram_required_gb"] == (None if e["unknown_size"] else e["ram_gb"])
+
+
+def check_order(models: list[dict]) -> None:
+    """動くもの → auto → 点数 → ID の順。"""
+    keys = [(m["fit_level"] == "too_tight", not m["auto"], -m["score"], m["id"]) for m in models]
+    assert keys == sorted(keys)
 
 
 def check_estimate(e: dict) -> None:
@@ -204,32 +256,73 @@ def test_system(cache):
 
 def test_recommend(cache):
     d = call(["recommend", *HW, "-n", "5"], cache)
-    assert set(d) == ENVELOPE | {"system", "database", "filters", "models"}
+    assert set(d) == LIST_KEYS
     check_system(d)
     assert set(d["database"]) == DATABASE and d["database"]["origin"] == "bundled"
     assert set(d["filters"]) == RECOMMEND_FILTERS
     assert d["filters"]["content"] == "sfw" and d["filters"]["limit"] == 5  # 実際に使った値を出す
-    assert 0 < len(d["models"]) <= 5
+    assert d["filters"]["min_fit"] == "marginal" and d["filters"]["license"] is None
+    assert 0 < len(d["models"]) <= 5 < d["matched"]
+    assert set(d["hidden"]) <= HIDDEN_KEYS and d["hidden"]["uncensored"] == 39
     for m in d["models"]:
         check_fit(m)
-        assert m["fit"] != "too_tight" and m["content"] == "sfw"
+        assert m["fit_level"] != "too_tight" and m["content"] == "sfw"
+    check_order(d["models"])
+    assert d["models"][0]["auto"]  # 自動でおすすめに出せるものが先
     d = call(["recommend", *HW, "-n", "500", "--content", "all", "--limits"], cache)
-    assert d["filters"]["content"] == "all"
+    assert d["filters"]["content"] == "all" and "uncensored" not in d["hidden"]
     assert any(m["content"] == "uncensored" for m in d["models"])
     assert any(m["estimate"]["limits"] for m in d["models"])
     for m in d["models"]:
         check_fit(m)
+    check_order(d["models"])
+    assert len(d["models"]) == d["matched"]
 
 
 def test_fit(cache):
     d = call(["fit", *HW], cache)
-    assert set(d) == ENVELOPE | {"system", "database", "models"}
+    assert set(d) == LIST_KEYS
+    assert set(d["filters"]) == FIT_FILTERS and d["filters"]["min_fit"] is None
     sfw = sum(1 for m in load_db(use_cache=False).models if m.content == "sfw")
-    assert len(d["models"]) == sfw < d["database"]["models"]  # 既定は sfw
+    assert len(d["models"]) == sfw == d["matched"] < d["database"]["models"]  # 既定は sfw
+    assert d["hidden"] == {"uncensored": d["database"]["models"] - sfw}
     for m in d["models"]:
         check_fit(m)
+    check_order(d["models"])
     every = call(["fit", *HW, "--content", "all"], cache)
-    assert len(every["models"]) == every["database"]["models"]
+    assert len(every["models"]) == every["database"]["models"] and every["hidden"] == {}
+
+
+def test_min_fit_and_license(cache):
+    good = call(["fit", *HW, "--min-fit", "good"], cache)
+    assert good["models"] and all(m["fit_level"] in ("perfect", "good") for m in good["models"])
+    assert good["hidden"]["too_tight"] and good["hidden"]["below_min_fit"]
+    tight = call(["recommend", *HW, "--min-fit", "too_tight", "-n", "500"], cache)
+    assert any(m["fit_level"] == "too_tight" for m in tight["models"])
+    assert all(m["estimate"]["unknown_size"] is False for m in tight["models"])  # 大きさ不明は出さない
+    lic = call(["fit", *HW, "--license", "Apache-2.0, MIT"], cache)
+    assert lic["filters"]["license"] == ["apache-2.0", "mit"] and lic["hidden"]["license"]
+    assert lic["models"] and all(set(m["licenses"]) <= {"apache-2.0", "mit"} for m in lic["models"])
+    every = call(["fit", *HW], cache)
+    unknown = [m for m in every["models"] if None in m["licenses"]]
+    assert unknown and not {m["id"] for m in unknown} & {m["id"] for m in lic["models"]}  # 不明は合わない
+    r = run_cli(["fit", *HW, "--license", " , "], cache)
+    assert r.returncode == 2
+
+
+def test_search(cache):
+    d = call(["search", "FLUX", *HW], cache)
+    assert d["command"] == "search" and set(d) == LIST_KEYS
+    assert set(d["filters"]) == SEARCH_FILTERS and d["filters"]["query"] == "FLUX"
+    assert d["models"] and all("flux" in (m["id"] + m["name"]).lower() for m in d["models"])
+    assert all(m["content"] == "sfw" for m in d["models"]) and d["hidden"].get("uncensored")
+    for m in d["models"]:
+        check_fit(m)
+    check_order(d["models"])
+    every = call(["search", "flux", *HW, "--content", "all"], cache)
+    assert len(every["models"]) == len(d["models"]) + d["hidden"]["uncensored"]
+    none = call(["search", "no_such_model_xyz", *HW], cache)  # 0 件でも終了コード 0
+    assert none["models"] == [] and none["matched"] == 0 and none["hidden"] == {}
 
 
 def test_info(cache):
