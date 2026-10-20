@@ -11,6 +11,10 @@ paths, user names, host names or prompts. One model per PR is easiest to review.
 but they must keep `outcome: "oom"` (bench prints them and does not save them unless you pass `--save-failed` or
 `--output`).
 
+**License of contributions:** genmodelfit (code and bundled data) is under MPL-2.0. By opening a pull request you
+agree that your contribution (code, measurements or other data) is licensed under MPL-2.0 like the rest of the
+project. There is no CLA.
+
 ## 1. 測る
 
 1. ComfyUI を起動します(ふだん使っているもので構いません)。**ほかの生成が動いていないとき**に測ってください。
@@ -22,7 +26,7 @@ but they must keep `outcome: "oom"` (bench prints them and does not save them un
 3. 測ります
 
 ```powershell
-pip install git+https://github.com/laxshmate/genmodelfit
+pip install genmodelfit
 genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 768x768 --steps 6
 genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 512x512 --frames 49 --steps 20
 genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 20 --steps 8
@@ -116,4 +120,14 @@ bench は、最後まで動いた標準の結果を `<キャッシュ>/measureme
 
 コードの変更も歓迎します。依存を足すときは MIT / Apache-2.0 / BSD のものだけにしてください
 (このツールを組み込むアプリがソースを公開せずに配布するため)。ComfyUI のコード(GPL-3.0)は import せず、
-HTTP だけで話します。
+HTTP だけで話します。新しい `.py` ファイルの先頭には、ほかのファイルと同じ MPL-2.0 の表示(3 行)を入れてください。
+
+## ライセンス / License
+
+genmodelfit のコードと同梱のデータ(db.json・実測・係数)は [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) です。
+送っていただく修正・実測・データも、**MPL-2.0 で出していただいたものとして受け入れます**
+(Pull Request を出すことで、これに同意したことになります)。CLA(著作権の譲渡や追加の許諾の書類)はありません。
+自分で書いたもの、または MPL-2.0 で出してよいものだけを送ってください。
+
+Contributions are accepted under MPL-2.0 (inbound = outbound). No CLA is required. Only submit work you wrote
+yourself or are allowed to release under MPL-2.0.

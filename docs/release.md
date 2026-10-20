@@ -5,7 +5,7 @@
 | 流れ | 何を配る | きっかけ | 配り先 |
 |---|---|---|---|
 | 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push → ユーザの承認 | PyPI と GitHub Release |
-| データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main からの手動実行(毎日の実行は Issue #2 の後) | GitHub Release `data-latest` |
+| データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
 
 データの配布は `v*` のタグではないので、PyPI には出ません。
 
@@ -22,24 +22,55 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
 設定の確認: `gh api repos/laxshmate/genmodelfit/environments` と
 `gh secret list -R laxshmate/genmodelfit`(空であること)・`gh secret list --env data-signing -R laxshmate/genmodelfit`。
 
-## 版を出す手順
+## 最初の公開(v0.1.0)の手順 — ユーザが行う
 
-**公開はユーザの承認を得てから。Claude は承認なしにタグを push しない。**
+**公開はユーザの承認を得てから。Claude は承認なしにタグを push しない・PR をマージしない。**
+2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`)と `data-signing`(`main` だけ・
+シークレット `GENMODELFIT_SIGNING_KEY` あり)はそろっている。リポジトリ全体のシークレットは空。PyPI の
+`genmodelfit` はまだ無い(404)。
 
-1. `pyproject.toml` の `version` と `src/genmodelfit/__init__.py` の `__version__` を同じ値にして PR で main に入れる(例 `0.1.0`)。
-2. 承認後、main の先頭にタグを付けて push する。
+1. **PR をマージする**(この順。どれも前の PR のブランチから作ってある):
+   #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #17 → #18(この Issue の PR)。
+   CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする。
+2. **一覧を配る**: #18 のマージで main の `src/genmodelfit/data/db.json` が変わっていれば、push で
+   `.github/workflows/data.yml` が動く。動いていなければ Actions の「Data」→「Run workflow」(ブランチ main)で動かす。
+   緑になったら、Release `data-latest` に `db.json` と `db.json.sig` があることを確かめる。
+
+   ```powershell
+   gh release view data-latest -R laxshmate/genmodelfit
+   ```
+3. **タグを push する**(版の正本は `src/genmodelfit/_version.py`。`0.1.0` になっていること):
 
    ```powershell
    git switch main; git pull
    git tag v0.1.0
    git push origin v0.1.0
    ```
-3. `.github/workflows/release.yml` が次の順に進む。
-   - test: ruff と pytest
-   - build: タグと両方の版が一致するか確認 → `uv build` → `twine check --strict`
-   - publish: environment `pypi` で**ユーザの承認を待つ**。承認されたら PyPI に公開(Trusted Publishing。API トークンは使わない)
-   - github-release: 同じ dist を付けた GitHub Release を作る
-4. Actions の画面で全部緑になったら、`pip install genmodelfit==0.1.0` で確かめる。
+4. `.github/workflows/release.yml` が次の順に進む。
+   - test: ruff と pytest(3.12)
+   - build: `uv build` → タグと `_version.py`・wheel / sdist の名前の版が一致するか確認 → `twine check --strict`
+   - publish: environment `pypi` で**ユーザの承認を待つ**。Actions の画面の「Review deployments」で `pypi` を承認すると、
+     PyPI に公開する(Trusted Publishing。API トークンは使わない)
+   - github-release: 同じ dist を付けた GitHub Release `v0.1.0` を作る
+5. **確かめる**(まっさらな venv で。キャッシュも別の場所にする):
+
+   ```powershell
+   uv venv -p 3.12 $env:TEMP\gmf-check
+   uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==0.1.0
+   $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
+   & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit 0.1.0
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data の欄: List: bundled …
+   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # 署名を確かめて取り込む
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release、HEAD checks の期限
+   & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
+   ```
+6. AI生成キット(laxshmate/local_model_ai_gen_kit)の Issue #8 に公開を知らせる。
+
+## 次からの版を出す手順
+
+1. `src/genmodelfit/_version.py` の `__version__` を上げ(pyproject.toml は hatch がここから読む)、
+   `CHANGELOG.md` に書いて PR で main に入れる。
+2. 承認後、main の先頭にタグ `v<版>` を付けて push する(上の 3〜5 と同じ)。
 
 手動実行(workflow_dispatch)はビルドまでで、公開しない。タグを選んで手動実行しても、publish と github-release は
 `github.event_name == 'push'` の条件で飛ばす。タグを打つ前の試し用。
@@ -52,21 +83,20 @@ environment `pypi` の Trusted Publisher を事前登録してある。事前登
 
 ## データの配布
 
-`.github/workflows/data.yml` は 3 つのジョブに分かれる。
+`.github/workflows/data.yml` は、**main にコミットされた `src/genmodelfit/data/db.json` をそのまま**署名して配る
+(上流から作り直さない。作り直して PR にする流れと毎日の実行は Issue #19)。きっかけは、main の db.json が変わった
+push と手動実行。
 
-1. build-data: `genmodelfit update --output dist-data/db.json` で一覧を作る(`contents: read`)
-2. sign: environment `data-signing` で署名し、同梱の公開鍵で確かめる(`contents: read`。秘密鍵はこのジョブの署名のステップだけ)
-3. upload: Release `data-latest`(prerelease)の `db.json` と `db.json.sig` を置き換える(ここだけ `contents: write`)
+1. sign: environment `data-signing`(main だけ)で、コミットされた一覧を読めることを確かめ、署名し、同梱の公開鍵で
+   確かめる(`contents: read`。秘密鍵はこのジョブの「署名する」ステップだけ)。main 以外のブランチを選んだ手動実行は
+   `if: github.ref == 'refs/heads/main'` で動かない
+2. upload: Release `data-latest`(prerelease)の `db.json` と `db.json.sig` を置き換える(ここだけ `contents: write`)
 
-checkout は `persist-credentials: false`。`genmodelfit.update` は Issue #2 で入る。それまでは「まだありません」と
-明示して失敗する(動かさなくてよい)。
+checkout は `persist-credentials: false`。
 
-**毎日の実行(schedule)は今は外してある。Issue #2 が入ったら data.yml の `on:` に次を戻す。**
-
-```yaml
-  schedule:
-    - cron: "17 3 * * *" # 毎日 03:17 UTC
-```
+同梱の一覧の HEAD の確認は 30 日で切れる(切れると自動のおすすめが 0 件になる)。切れる前に
+`genmodelfit update --heads-only --no-cache --output src/genmodelfit/data/db.json` で取り直して PR にし、main に入れると
+data.yml が配り直す。今の一覧の期限は `genmodelfit system --no-cache` の Data の欄(`valid until`)で分かる。
 
 使う側:
 
