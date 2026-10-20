@@ -152,6 +152,8 @@ _NAME_PRECISION = re.compile(
     re.IGNORECASE,
 )
 _NAME_SKIP_WORDS = frozenset({"diffusion", "pytorch", "model", "models", "v"})
+# 当たりの数に数えない一般の語(名前の範囲もここまで延ばさない)
+_GENERIC_WORDS = frozenset({"image", "video", "audio"})
 
 
 def is_community(m: ModelEntry) -> bool:
@@ -164,9 +166,40 @@ def _flat(text: str) -> str:
     return re.sub(r"[-_. ]+", "", text.lower())
 
 
+_MODALITY_SUFFIX = {
+    "image": "image",
+    "video": "video",
+    "music": "music",
+    "sfx": "sfx",
+    "tts": "tts",
+    "3d": "3D",
+}
+# 重なりを分けるときの鍵の語の言い換え
+_WORD_NAMES = {"fl2va": "first/last frame", "ref2va": "reference", "mv": "multiview"}
+# 決まりでは良い名前にならないものだけ、項目の ID → 表示名
+# (docs/schema.md「Models」。tests/test_groups.py が確かめる)
+NAME_OVERRIDES = {
+    # 利用者のテンプレート 2 件だけのモデル
+    "template_rob_split_stack_qwen_multi_wan22": "Qwen Image Edit 2511 (video)",
+    # 本体はこの SD1.5 のチェックポイント
+    "template_animate_diff_loops": "realismByStableYogi v4 LCM (AnimateDiff)",
+    "templates-wan2_1_infinitetalk_music": "Wan 2.1 InfiniteTalk",
+    "templates_liveportrait.app": "LivePortrait",
+    "audio_melbandroformer_audio_separation": "MelBand RoFormer",
+    "utility_video_upscale": "Video Upscale (Wan 2.2)",
+    "hf:Serveurperso/Qwen3-TTS-GGUF": "Qwen3-TTS 0.6B CustomVoice (GGUF)",
+    "hf:ResembleAI/chatterbox": "Chatterbox",
+    "image_anima_preview": "Anima Preview 3 Base",
+}
+
+
 def _word_label(w: str) -> str:
     if _SIZE.match(w):
         return w[:-1] + w[-1].upper()
+    if w in ("sft", "hd"):
+        return w.upper()
+    if re.fullmatch(r"\d+(\.\d+)+", w):  # 足す版は v を付ける(Kokoro-82M v1.0)
+        return "v" + w
     if re.fullmatch(r"[a-z]\d[a-z]+|[a-z]+\d[a-z]", w):  # t2v・i2v・ti2v
         return w.upper()
     return w if any(ch.isdigit() for ch in w) else w.capitalize()
@@ -175,7 +208,7 @@ def _word_label(w: str) -> str:
 # 表示名に足してよい鍵の語(大きさ・版・種類)。それ以外の語(ファイル名の細かい語)は足さない
 _APPEND_WORDS = frozenset(
     {"turbo", "distilled", "distill", "dev", "base", "schnell", "fill", "lite", "sft", "xl", "large",
-     "medium", "small", "i2v", "t2v", "ti2v", "flf2v", "s2v", "480p", "720p", "1080p"}
+     "medium", "small", "i2v", "t2v", "ti2v", "flf2v", "s2v", "480p", "720p", "1080p", "preview"}
 )  # fmt: skip
 # 使い方の言い回し(モデルの名前ではない)。「LTX-2 Text to Video (Distilled)」→「LTX-2 Distilled」
 _USE_PHRASE = re.compile(
@@ -207,15 +240,23 @@ def _span_name(text: str, words: set[str]) -> tuple[int, str]:
                 break
     if not pieces:
         return 0, ""
-    end = max(hit_at.values()) if hit_at else len(pieces) - 1
+    scored = [w for w in hit_at if w not in _GENERIC_WORDS]
+    end = max(hit_at[w] for w in scored) if scored else (max(hit_at.values()) if hit_at else len(pieces) - 1)
+    generic_at = {hit_at[w] for w in hit_at if w in _GENERIC_WORDS}
+    while end + 1 in generic_at:  # すぐ後ろの一般の語は名前に含める(Qwen Image・Hunyuan Video)
+        end += 1
     name = " ".join(pieces[: end + 1])
     missing = sorted(
         (w for w in words if w not in hit_at and _appendable(w) and _flat(w) not in _flat(name)),
         key=lambda w: (not _SIZE.match(w), w),
     )
-    if missing:
-        name += " " + " ".join(_word_label(w) for w in missing)
-    return len(hit_at), name.strip(" -_,")
+    for w in missing:
+        label = _word_label(w)
+        if label.startswith("v") and not re.search(r"\d[a-zA-Z]?$", name):
+            label = label[1:]  # 前が数字(82M・14B)のときだけ v を付けて区別する(Kokoro-82M v1.0、SAM 3.1)
+        name += " " + label
+    name = re.sub(r"\bWan(\d)", r"Wan \1", name)  # Wan2.1 → Wan 2.1(書き方をそろえる)
+    return len(scored), name.strip(" -_,")
 
 
 def display_name(key: str, members: list[ModelEntry]) -> str:
@@ -307,35 +348,88 @@ def build_index(models: Iterable[ModelEntry]) -> ModelIndex:
         else:
             by_sha[sk] = k
     key_of = {i: root(k) for i, k in key_of.items()}
+    # ファイルの一覧が無いテンプレート(カスタムノードが自分で重みを取るもの)は、名前の語が
+    # 同じ種類・同じ内容のモデル 1 つだけに当たればそこへ寄せる(当たらなければ自分だけのモデル)
+    known: dict[tuple[str, str], list[tuple[str, set[str]]]] = {}
+    for k in set(key_of.values()):
+        mod, content, words = k.split(":", 2)
+        if not words.startswith("id:"):
+            known.setdefault((mod, content), []).append((k, set(words.replace(" + ", " ").split())))
+    for m in models:
+        if m.files or not key_of[m.id].split(":", 2)[2].startswith("id:"):
+            continue
+        for part in reversed(m.name.split(":")):
+            want = set(family_tokens(_USE_PHRASE.sub("", clean_name(part))))
+            if not want:
+                continue
+            hits = [k for k, ws in known.get((m.modality, m.content), []) if want <= ws]
+            if len(hits) == 1:
+                key_of[m.id] = hits[0]
+                break
     members: dict[str, list[ModelEntry]] = {}
     for m in models:
         members.setdefault(key_of[m.id], []).append(m)
     # 表示名(docs/schema.md「Models」、display_name): 仲間の名前を「:」の前後に分けた候補のうち、
     # 鍵の語(系統・版・大きさ)を一番多く含むもの → 公式のテンプレート → 短いもの。その中の鍵の語を含む範囲に、
     # 含まれない鍵の語(大きさ・turbo など)を足す。「Image Upscale: SeedVR2 3B」は「SeedVR2 3B」になる
-    name_of = {k: display_name(k, ms) for k, ms in members.items()}
-    # 重なったら: 種類が違えば種類 → 鍵の語 → それでも重なれば ID
-    for step in ("modality", "words", "modality", "id"):
+    # 種類だけが違う同じ語のモデル(SAM 3.1 の 3D・画像・動画など)は、仲間をまとめて 1 つの名前を選び、
+    # 種類を足す
+    by_words: dict[tuple[str, str], list[str]] = {}
+    for k in members:
+        _mod, content, words = k.split(":", 2)
+        by_words.setdefault((content, words), []).append(k)
+    name_of: dict[str, str] = {}
+    for keys in by_words.values():
+        pool = [m for k in keys for m in members[k]]
+        name = display_name(keys[0], pool)
+        official = [k for k in keys if not all(is_community(m) for m in members[k])]
+        for k in keys:
+            # 公式のものを含むのが 1 つだけなら、その種類には足さない(利用者のテンプレートだけの種類に足す)
+            plain = len(keys) == 1 or (len(official) == 1 and k == official[0])
+            name_of[k] = name if plain else f"{name} ({_MODALITY_SUFFIX.get(k.split(':', 1)[0])})"
+    for k, ms in members.items():
+        if k.split(":", 2)[2].startswith("id:") and not any(m.files for m in ms):
+            name_of[k] = f"{name_of[k]} (files unknown)"
+    # 版の数字だけが違う兄弟(MoGe と MoGe 3)があれば、数字の無い名前に鍵の 1 桁の版を足す(MoGe 2)
+    lowered = {n.lower() for n in name_of.values()}
+    for k, n in list(name_of.items()):
+        digits = [w for w in k.rsplit(":", 1)[-1].split() if re.fullmatch(r"\d", w)]
+        base = n.split(" (", 1)[0]
+        if (
+            digits
+            and not re.search(r"\d", base)
+            and any(
+                x.startswith(base.lower() + " ") and x[len(base) + 1 : len(base) + 2].isdigit()
+                for x in lowered
+            )
+        ):
+            name_of[k] = base + f" {digits[0]}" + n[len(base) :]
+    # 名前の決まりで良い名前にならないもの(利用者のテンプレート・題の情報が乏しいもの)は、
+    # 項目の ID で上書きする
+    for k, ms in members.items():
+        for m in ms:
+            if m.id in NAME_OVERRIDES:
+                name_of[k] = NAME_OVERRIDES[m.id]
+                break
+    # 重なったら: 鍵の語(fl2va → first/last frame)→ それでも重なれば番号
+    for step in ("words", "number"):
         seen: dict[str, list[str]] = {}
         for k, n in name_of.items():
             seen.setdefault(n.lower(), []).append(k)
         for keys in seen.values():
             if len(keys) < 2:
                 continue
-            for k in keys:
-                if step == "modality":
-                    if len({x.split(":", 1)[0] for x in keys}) == len(keys):
-                        name_of[k] = f"{name_of[k]} ({k.split(':', 1)[0]})"
-                elif step == "words":
+            for i, k in enumerate(sorted(keys)):
+                if step == "words":
                     words = k.rsplit(":", 1)[-1].replace(" + ", " ").split()
                     left = [
                         w for w in words if _flat(w) not in _flat(name_of[k]) and w not in _NAME_SKIP_WORDS
                     ]
                     extra = [w for w in left if _appendable(w)] or [w for w in left if not w.isdigit()]
                     if extra:
-                        name_of[k] = f"{name_of[k]} ({' '.join(extra)})"
-                else:
-                    name_of[k] = f"{name_of[k]} [{members[k][0].id}]"
+                        name_of[k] = f"{name_of[k]} ({' '.join(_WORD_NAMES.get(w, w) for w in extra)})"
+                elif i:
+                    name_of[k] = f"{name_of[k]} #{i + 1}"
     return ModelIndex(key_of, name_of, members)
 
 

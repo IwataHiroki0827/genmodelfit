@@ -55,7 +55,9 @@
     "skip_downloads": 239
    },
    "excluded": 0,
-   "failed_queries": 0
+   "failed_queries": 0,
+   "all_time_missing": 0,
+   "all_time_note": "2026-10-20 に同梱の HF の 46 件すべての全期間のダウンロード数を API で取り直した"
   },
   "civitai": "使っていません(利用規約。docs/sources.md)",
   "head_check": {

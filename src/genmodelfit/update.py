@@ -613,6 +613,7 @@ class Candidate:
     uncensored: bool
     downloads_all_time: int = 0  # 全期間(検索の結果に無ければ downloads)
     trending_only: bool = True  # trendingScore・likes30d の検索だけで拾った
+    all_time_known: bool = False  # 検索の結果に downloadsAllTime があった(無ければ直近 30 日の数で代える)
     evidence: list[str] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
 
@@ -651,6 +652,7 @@ def _candidate(item: dict[str, Any], url: str, modality_hint: str | None) -> Can
         downloads=int(item.get("downloads") or 0),
         downloads_all_time=int(item.get("downloadsAllTime") or item.get("downloads") or 0),
         trending_only="sort=downloads" not in url,
+        all_time_known=item.get("downloadsAllTime") is not None,
         likes=int(item.get("likes") or 0),
         tags=tags,
         uncensored=bool(ev),
@@ -663,19 +665,20 @@ def discover_hf(
     client: HfClient, *, progress: Callable[[str], None], stats: dict[str, Any]
 ) -> list[ModelEntry]:
     queries: list[tuple[str, str | None]] = []  # (url, modality_hint)
+    # 新しく伸びているもの: 同じ絞り込みを trendingScore・likes30d の順でも見る
+    # (無検閲は not-for-all-audiences の
+    # タグだけ)。先に並べる(ダウンロード数の順の検索にも出たら、あとで trending_only を外す)
+    for sort in TRENDING_SORTS:
+        for pipe in UNCENSORED_PIPELINES:
+            queries.append((search_url(filter=_NFAA, pipeline_tag=pipe, sort=sort), None))
+        for mod, params in SFW_QUERIES:
+            queries.append((search_url(**params, sort=sort), mod))
     for pipe in UNCENSORED_PIPELINES:
         queries.append((search_url(filter=_NFAA, pipeline_tag=pipe), None))
         for w in UNCENSORED_SEARCH_WORDS:
             queries.append((search_url(search=w, pipeline_tag=pipe), None))
     for mod, params in SFW_QUERIES:
         queries.append((search_url(**params), mod))
-    # 新しく伸びているもの: 同じ絞り込みを trendingScore・likes30d の順でも見る
-    # (無検閲は not-for-all-audiences のタグだけ)
-    for sort in TRENDING_SORTS:
-        for pipe in UNCENSORED_PIPELINES:
-            queries.append((search_url(filter=_NFAA, pipeline_tag=pipe, sort=sort), None))
-        for mod, params in SFW_QUERIES:
-            queries.append((search_url(**params, sort=sort), mod))
     queries = [(f"{u}&" + "&".join(f"expand[]={x}" for x in SEARCH_EXPAND), h) for u, h in queries]
 
     def _run(q: tuple[str, str | None]) -> tuple[str, str | None, list[dict[str, Any]] | str]:
@@ -705,6 +708,7 @@ def discover_hf(
                 old.uncensored = old.uncensored or c.uncensored
                 old.trending_only = old.trending_only and c.trending_only
                 old.downloads_all_time = max(old.downloads_all_time, c.downloads_all_time)
+                old.all_time_known = old.all_time_known or c.all_time_known
             else:
                 cands[c.repo_id] = c
     if network_fail and network_fail == len(queries):
@@ -797,6 +801,8 @@ def discover_hf(
             "skipped": dict(sorted(skipped.items())),
             "excluded": excluded,
             "failed_queries": len(warnings),
+            # 全期間のダウンロード数が返らず、直近 30 日の数で下限を見た候補の数
+            "all_time_missing": sum(1 for c in cands.values() if not c.all_time_known),
             "warnings": warnings,
         }
     )

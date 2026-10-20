@@ -161,8 +161,15 @@ name before `:`, after `:` and both joined, without precision / packaging words 
 `AIO`, …) and use phrases (`Text to Video`, `Depth Estimation`, `Image Upscale`, …). The candidate containing most words
 of the key wins (official templates before community templates and HF repos, then the shorter); it is cut after the
 last key word it contains, and missing size / version / variant words of the key are added (`ACE Step v1 3.5B`,
-`Hunyuan Video 1.5 720p T2V`, `Image Upscale: SeedVR2 7B Int8` → `SeedVR2 7B`). Names are unique over the list (on a
-clash the type, then key words, then an id are added). `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
+`Hunyuan Video 1.5 720p T2V`, `Image Upscale: SeedVR2 7B Int8` → `SeedVR2 7B`). A version added this way gets a `v`
+when it follows a number (`Kokoro-82M v1.0`); `Wan2.1` is written `Wan 2.1`. Models whose key words are the same
+except the type share one name plus the type (`SAM 3.1 (3D)` / `(image)` / `(video)`; no suffix on the only type
+that has official templates). A name without digits gets its one-digit version when a sibling differs only by a
+version (`MoGe 2` beside `MoGe 3`). File-less templates join the one model of the same type whose key contains all
+words of their model name (`Frame Interpolation: FILM` → `FILM`); otherwise they are their own model named
+`<name> (files unknown)`. Remaining clashes get key words (`fl2va` → `first/last frame`), then `#2`. A small table
+`groups.NAME_OVERRIDES` (entry id → name; community templates and a few HF repos whose titles carry no model name)
+overrides the result; `tests/test_groups.py` checks it. Ids never appear in names. `genmodelfit info <model name>` (case-insensitive) shows the model's best workflow for this PC and the
 others.
 
 Which entry is shown for a model (`recommend.variant_key`): among the entries that passed the filters,
@@ -178,7 +185,7 @@ So on 8 GB Z-Image Turbo shows its int8 workflow (swapped, `marginal`) rather th
 among the model's entries that passed the filters and have the same use and the same fit level as the shown entry**;
 everything else on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
 
-On the bundled list (323 entries) this gives 205 models; 54 of them have more than one entry.
+On the bundled list (323 entries) this gives 204 models; 55 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 

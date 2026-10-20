@@ -19,5 +19,15 @@
   "pipeline_tag": "text-to-speech",
   "createdAt": "2024-12-26T00:20:08.000Z",
   "modelId": "hexgrad/Kokoro-82M"
+ },
+ {
+  "id": "dual/both-voice",
+  "downloads": 5000,
+  "downloadsAllTime": 5000,
+  "likes": 50,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech"
  }
 ]

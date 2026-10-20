@@ -484,11 +484,16 @@ def test_hf_selection_rules_like_llmfit(built):
 
     assert (MIN_DOWNLOADS, MIN_TRENDING_DOWNLOADS) == (10_000, 1_000)
     skipped = built.sources["huggingface-search"]["skipped"]
-    # rare-nsfw-xl(全期間 9,999)と brand-new-voice(trending だけ、900)
-    assert skipped["skip_downloads"] == 2
+    # rare-nsfw-xl(全期間 9,999)、brand-new-voice(trending だけ、900)、both-voice(全期間 5,000。
+    # trending の検索にも
+    # 出るが、ダウンロード数の順の検索にも出たので下限は 10,000)
+    assert skipped["skip_downloads"] == 3
     assert skipped["test_stub"] == 1 and skipped["merge"] == 1 and skipped["adapter"] == 1
-    # new-voice(trending だけ、1,500)は下限を通る(試験のフォルダにリポジトリの情報が無いので取れずに数える)
-    assert skipped["fetch_failed"] == 1
+    # new-voice(trending だけ、1,500)と meina-like-xl(直近 30 日 2,000・全期間 50,000)は下限を通る
+    # (試験のフォルダにリポジトリの情報が無いので、取れなかった数に入る)
+    assert skipped["fetch_failed"] == 2
+    st = built.sources["huggingface-search"]
+    assert st["all_time_missing"] >= 1  # downloadsAllTime の無い結果(直近 30 日の数で代えた)を数える
     ids = {e.id for e in built.models}
     assert not {"hf:example-org/tiny-random-nsfw-xl", "hf:example-org/nsfw-merge-xl"} & ids
     k = built.get(

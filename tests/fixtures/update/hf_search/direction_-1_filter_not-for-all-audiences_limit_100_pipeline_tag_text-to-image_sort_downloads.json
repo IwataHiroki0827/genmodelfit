@@ -102,5 +102,16 @@
    "text-to-image"
   ],
   "pipeline_tag": "text-to-image"
+ },
+ {
+  "id": "oldie/meina-like-xl",
+  "downloads": 2000,
+  "downloadsAllTime": 50000,
+  "likes": 5,
+  "tags": [
+   "not-for-all-audiences",
+   "text-to-image"
+  ],
+  "pipeline_tag": "text-to-image"
  }
 ]

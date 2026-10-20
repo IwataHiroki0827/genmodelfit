@@ -272,7 +272,9 @@ CLAUDE.md の決まり: 無検閲のモデルも一覧から外さず、`content
 text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audiences` と `search=uncensored|nsfw|abliterated`
 で、ダウンロード数の多い順に 100 件ずつ取る。新しく伸びているものを拾うため、`filter=not-for-all-audiences` と
 テンプレートで足りない種類の検索は `sort=trendingScore` と `sort=likes30d` でも取る。どの検索も
-`expand[]=downloadsAllTime` で全期間のダウンロード数を受け取る。根拠(`hf-tag:not-for-all-audiences` か名前の `name:<語>`)の
+`expand[]=downloadsAllTime` で全期間のダウンロード数を受け取る(返らなければ直近 30 日の数で代え、その候補の数を
+`sources.huggingface-search.all_time_missing` に残す)。trending の検索を先に並べ、ダウンロード数の順の検索にも
+出たものは trending だけのものとして扱わない(下限は 10,000)。根拠(`hf-tag:not-for-all-audiences` か名前の `name:<語>`)の
 あるものだけを候補にし、次の順に絞る:
 
 1. 除外の判定(下)に当たるものを外す(数だけ数える)
