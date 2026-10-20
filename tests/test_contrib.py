@@ -233,9 +233,14 @@ def test_bench_submission_has_no_pc_identity(sentinel_pc, outbound, tmp_path, ca
     assert sub["system"]["gpu"]["name"] == "NVIDIA GeForce RTX 3070"  # 測った GPU(ComfyUI が返した名前)
     assert sub["system"]["gpu"]["arch"] == "ampere"
     r = contrib.validate_files([path], db)[0]
-    # 偽の ComfyUI はすぐ終わる(0 秒)ので、時間の値だけが範囲の外になる。名前・個人の情報などは通る
-    assert sub["measurement"]["seconds"] == 0.0
-    assert [e["code"] for e in r.errors] == ["value"] and "seconds" in r.errors[0]["message"], r.errors
+    # 偽の ComfyUI はすぐ終わる。時計の細かさで 0.0 にも 0.1 にもなる(Windows)ので、0.1 未満なら時間の値だけが
+    # 範囲の外になり、0.1 以上なら誤りは無い。どちらでも名前・個人の情報などは通る
+    secs = sub["measurement"]["seconds"]
+    assert secs < 1.0
+    if secs < 0.1:
+        assert [e["code"] for e in r.errors] == ["value"] and "seconds" in r.errors[0]["message"], r.errors
+    else:
+        assert r.errors == [], r.errors
     checks = contrib.privacy_checklist(sub, text)
     assert all(c["ok"] is not False for c in checks), checks
 
