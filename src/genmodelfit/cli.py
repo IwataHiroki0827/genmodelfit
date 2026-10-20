@@ -140,10 +140,10 @@ def cmd_system(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_fits(fits, title: str, system: SystemInfo | None = None) -> None:
+def _print_fits(fits, title: str, system: SystemInfo | None = None, notes: list[str] | None = None) -> None:
     from .table import print_fit_table
 
-    print_fit_table(fits, title=title, system=system)
+    print_fit_table(fits, title=title, system=system, notes=notes or ())
 
 
 def cmd_recommend(args: argparse.Namespace) -> int:
@@ -205,21 +205,62 @@ def cmd_fit(args: argparse.Namespace) -> int:
     if args.json:
         _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
         return 0
-    _print_fits(fits, "All models", s)
+    notes = []
+    if args.content == "sfw":  # 既定で隠した無検閲の数を表の下で知らせる(文字の表示だけ)
+        hidden = sum(
+            1
+            for m in db.models
+            if m.content == "uncensored" and (not args.modality or m.modality == args.modality)
+        )
+        if hidden:
+            notes.append(f"uncensored hidden: {hidden} (--content all)")
+    _print_fits(fits, "All models", s, notes)
     return 0
+
+
+class AmbiguousModel(CliError):
+    def __init__(self, query: str, candidates: list) -> None:
+        super().__init__(f"「{query}」に合うモデルが {len(candidates)} 件あります。ID で指定してください")
+        self.candidates = candidates
+
+
+def resolve_model(db: Database, query: str, content: str = DEFAULT_CONTENT):
+    """ID がそのまま合えば(内容によらず)そのモデル。合わなければ ID・名前の一部で探す。
+
+    一部で探すときは content で絞る(既定 sfw なので無検閲は出ない)。1 件だけならそれ、
+    2 件以上なら AmbiguousModel(先頭を黙って選ばない)、0 件なら CliError。
+    """
+    exact = db.get(query)
+    if exact is not None:
+        return exact
+    q = query.lower()
+    hits = [m for m in db.models if q in m.id.lower() or q in m.name.lower()]
+    shown = [m for m in hits if content == "all" or m.content == content]
+    if len(shown) == 1:
+        return shown[0]
+    if shown:
+        raise AmbiguousModel(query, shown)
+    if hits:
+        raise CliError(
+            f"モデルが見つかりません: {query}(無検閲のモデルなら {len(hits)} 件あります。"
+            "--content all を付けるか ID で指定してください)"
+        )
+    raise CliError(f"モデルが見つかりません: {query}")
+
+
+def _emit(lines: list[str]) -> None:
+    """info の文を幅(COLUMNS か端末、最大 100 桁)に収めて出す。"""
+    from .table import output_width, wrap_line
+
+    width = output_width()
+    for line in lines:
+        for part in wrap_line(line, width):
+            print(part)
 
 
 def cmd_info(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    hits = db.find(args.model)
-    if not hits:
-        raise CliError(f"モデルが見つかりません: {args.model}")
-    if len(hits) > 1 and not args.json:
-        print(f"{len(hits)} 件見つかりました。ID で指定してください:")
-        for m in hits[:30]:
-            print(f"  {m.id}  ({m.name})")
-        return 0
-    m = hits[0]
+    m = resolve_model(db, args.model, args.content)
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
@@ -236,33 +277,33 @@ def cmd_info(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    print(f"{m.name}  [{m.id}]")
-    print(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
-    print(f"  license:  {m.license or 'unknown'}  source: {m.source}")
+    out = [f"{m.name}  [{m.id}]"]
+    out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
+    out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
-    print(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
+    out.append(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
-        print(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
-    print(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
+        out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
+    out.append(f"  fit:      {e.fit}  ({e.basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
-        print("  VRAM:     unknown (weight sizes are not known)")
+        out.append("  VRAM:     unknown (weight sizes are not known)")
     else:
-        print(
+        out.append(
             f"  VRAM:     {e.vram_gb:.1f} GB all-in-GPU{seq} / {e.vram_offload_gb:.1f} GB with offload;"
             f" RAM {e.ram_gb:.1f} GB"
         )
     if e.limits:
-        print(f"  limits:   {format_limits(e.limits)}")
-    for r in e.reasons:
-        print(f"  - {r}")
+        out.append(f"  limits:   {format_limits(e.limits)}")
+    out += [f"  - {r}" for r in e.reasons]
     if gate:
         target = gate.get("comfyui_version") or "?"
-        print(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
+        out.append(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
-            print(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+            out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
+    _emit(out)
     return 0
 
 
@@ -689,10 +730,18 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         raise
     except (CliError, DatabaseError) as e:
+        cands = getattr(e, "candidates", None)
         if getattr(args, "json", False):
-            _out({"genmodelfit": __version__, "command": args.command, "error": str(e)})
+            err: dict[str, Any] = {"genmodelfit": __version__, "command": args.command, "error": str(e)}
+            if cands is not None:
+                err["candidates"] = [{"id": m.id, "name": m.name, "content": m.content} for m in cands]
+            _out(err)
         else:
             print(f"error: {e}", file=sys.stderr)
+            for m in (cands or [])[:30]:
+                print(f"  {m.id}  ({m.name})", file=sys.stderr)
+            if cands and len(cands) > 30:
+                print(f"  …ほか {len(cands) - 30} 件(--json で全部)", file=sys.stderr)
         return 1
 
 

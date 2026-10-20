@@ -18,6 +18,7 @@ Every command with `--json` prints one object:
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
+| `candidates` | object[] | only when `info` matched several models (see info) |
 
 ## System
 
@@ -123,6 +124,17 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 ## info
 
 `model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]).
+
+How `info <query>` picks the model / モデルの選び方:
+
+- An exact id always matches, whatever its content (uncensored included). / ID がそのまま合えば内容によらず出す
+- Otherwise the query is matched as a part of the id or name (case-insensitive), **filtered by `--content`
+  (default `sfw`)**. Exactly one match → that model. / それ以外は ID・名前の一部で探し、`--content` で絞る(既定 sfw)。1 件ならそれ
+- Two or more matches → never picks one: exit code 1. Text mode lists the candidates on stderr; `--json` prints
+  the envelope with `error` and `candidates` (`[{"id", "name", "content"}]`, all of them). / 2 件以上は選ばずに終了コード 1
+- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--content all`).
+
+Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwise.
 
 ### ModelEntry
 

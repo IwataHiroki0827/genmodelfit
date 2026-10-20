@@ -9,6 +9,8 @@ Python から:
 
 from __future__ import annotations
 
+import logging
+
 from .db import Database
 from .db import load as load_db
 from .estimate import estimate
@@ -27,6 +29,9 @@ from .models import (
 from .recommend import Fit, evaluate
 
 __version__ = "0.1.0.dev0"
+
+# 途中経過は logging に出す。組み込み側が設定しなければ何も出ない
+logging.getLogger("genmodelfit").addHandler(logging.NullHandler())
 
 
 def system(vram_gb: float | None = None, ram_gb: float | None = None) -> SystemInfo:
@@ -63,6 +68,7 @@ def recommend(
 
 
 def info(model_id: str, *, db: Database | None = None) -> ModelEntry | None:
+    """ID がそのまま合うモデル(内容によらず)。一部だけの一致では探さない。無ければ None。"""
     return (db or load_db()).get(model_id)
 
 

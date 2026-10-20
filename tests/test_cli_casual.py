@@ -85,21 +85,54 @@ TABLE_COMMANDS = [
     ["fit", "--vram", "0", "--ram", "16", "--no-cache"],
     ["gate", "--no-cache", "--only-held"],
     ["system", "--vram", "8", "--ram", "32"],
+    ["info", "image_sdxl_simple", *HW],
+    ["info", "hf:Heartsync/NSFW-Uncensored", *HW],  # 理由の文が長い
+    ["info", "templates_purz_animatediff_simple_weighted_ipadapters_looping_animation", *HW],  # 一番長い ID
+    ["info", "template_rob_split_stack_qwen_multi_wan22", *HW],  # ファイルが一番多い(11)
 ]
+# 文だけのコマンド(幅を見ない)。短い行しか出さない
+_PLAIN = ("gate", "system")
 
 
 @pytest.mark.parametrize("args", TABLE_COMMANDS, ids=lambda a: " ".join(a[:2]))
-@pytest.mark.parametrize("columns", [100, 60])
+@pytest.mark.parametrize("columns", [100, 60, 250])
 def test_width(cache, args, columns):
+    """表と info は端末の幅(最大 100 桁)に収める。全角は 2 桁で数える。"""
     r = run_cli(args, cache, COLUMNS=str(columns))
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     lines = r.stdout.decode("utf-8").splitlines()
     assert lines
-    if args[0] in ("recommend", "fit"):  # 表は端末の幅に収める(全角は 2 桁で数える)
-        widest = max(cell_len(x.rstrip()) for x in lines)
-        assert widest <= columns, max(lines, key=cell_len)
-    else:
-        assert max(cell_len(x) for x in lines) <= 100
+    limit = 100 if args[0] in _PLAIN else min(columns, 100)
+    widest = max(lines, key=lambda x: cell_len(x.rstrip()))
+    assert cell_len(widest.rstrip()) <= limit, widest
+
+
+def test_fit_says_uncensored_hidden(cache):
+    out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
+    assert "uncensored hidden: 39 (--content all)" in out  # 同梱の無検閲は 39 件
+    assert "hidden" not in run_cli(["fit", *HW, "--content", "all"], cache).stdout.decode("utf-8")
+    assert "hidden" not in run_cli(["fit", *HW, "-m", "3d"], cache).stdout.decode("utf-8")  # 3D には無い
+
+
+def test_info_partial_match(cache):
+    # ID がそのまま合えば、無検閲でも出す
+    r = run_cli(["info", "hf:Heartsync/NSFW-Uncensored", *HW], cache)
+    assert r.returncode == 0 and "content: uncensored" in r.stdout.decode("utf-8")
+    # 一部の一致が 1 件だけなら、それを出す
+    r = run_cli(["info", "sdxlturbo", *HW], cache)
+    assert r.returncode == 0 and "[sdxlturbo_example]" in r.stdout.decode("utf-8")
+    # 2 件以上は先頭を黙って選ばない。候補は stderr、終了コードは 1。既定(sfw)では無検閲を候補に出さない
+    r = run_cli(["info", "sdxl", *HW], cache)
+    err = r.stderr.decode("utf-8")
+    assert r.returncode == 1 and r.stdout == b""
+    assert "ID で指定してください" in err and "image_sdxl_simple" in err
+    assert "lustify" not in err.lower() and "nova-furry" not in err
+    r = run_cli(["info", "sdxl", *HW, "--content", "all"], cache)
+    assert r.returncode == 1 and "lustify" in r.stderr.decode("utf-8").lower()
+    # 無検閲にしか合わないときは、--content all を案内する
+    r = run_cli(["info", "Qwen-Image-2.1", *HW], cache)
+    err = r.stderr.decode("utf-8")
+    assert r.returncode == 1 and r.stdout == b"" and "--content all" in err
 
 
 def test_python_m(cache):

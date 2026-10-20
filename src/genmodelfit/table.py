@@ -15,6 +15,7 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
+from rich.cells import cell_len
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -39,18 +40,47 @@ FULL_WIDTH = 88  # これ未満では License 列を外す
 MIN_AUTO_WIDTH = 70  # これ未満では Auto 列も外す
 
 
+def output_width(file=None) -> int:
+    """出力の幅(桁)。COLUMNS → 端末の幅 → 100 の順に見て、100 を超えない。"""
+    out = file or sys.stdout
+    cols = os.environ.get("COLUMNS", "")  # パイプの先でも幅を指定できるように(shutil と同じ考え方)
+    if cols.isdigit() and int(cols) > 0:
+        return min(int(cols), MAX_WIDTH)
+    try:
+        return min(os.get_terminal_size(out.fileno()).columns, MAX_WIDTH)
+    except (OSError, AttributeError, ValueError):
+        return MAX_WIDTH
+
+
+def wrap_line(text: str, width: int) -> list[str]:
+    """1 行を幅に収まるように折り返す(全角は 2 桁)。続きの行は元の字下げ + 4 桁。"""
+    if cell_len(text) <= width:
+        return [text]
+    lead = len(text) - len(text.lstrip(" "))
+    pad = " " * min(lead + 4, max(0, width // 2))
+    out: list[str] = []
+    rest = text
+    while rest:
+        prefix = pad if out else ""
+        room = width - cell_len(prefix)
+        n, used = 0, 0
+        while n < len(rest) and used + cell_len(rest[n]) <= room:
+            used += cell_len(rest[n])
+            n += 1
+        if n < len(rest):
+            cut = rest.rfind(" ", 0, n)  # 英数字の語の途中で切らない(空白があれば)
+            if cut > len(prefix.strip()) and cut > n // 2:
+                n = cut + 1
+        n = max(n, 1)
+        out.append(prefix + rest[:n].rstrip(" "))
+        rest = rest[n:].lstrip(" ")
+    return out
+
+
 def make_console(file=None, width: int | None = None) -> Console:
     out = file or sys.stdout
-    if width is None:
-        cols = os.environ.get("COLUMNS", "")  # パイプの先でも幅を指定できるように(shutil と同じ考え方)
-        if cols.isdigit() and int(cols) > 0:
-            width = int(cols)
-    if width is None:
-        try:
-            width = os.get_terminal_size(out.fileno()).columns
-        except (OSError, AttributeError, ValueError):
-            width = MAX_WIDTH
-    return Console(file=out, width=min(width, MAX_WIDTH), soft_wrap=False, highlight=False)
+    width = output_width(out) if width is None else min(width, MAX_WIDTH)
+    return Console(file=out, width=width, soft_wrap=False, highlight=False)
 
 
 def _auto_cell(gate: dict[str, Any] | None) -> Text:
@@ -219,21 +249,26 @@ def build_table(
     return t
 
 
-def print_fit_table(fits, title: str = "", system=None, console: Console | None = None) -> None:
+def print_fit_table(
+    fits, title: str = "", system=None, console: Console | None = None, notes: Sequence[str] = ()
+) -> None:
+    """notes は表の下に足す一行の注意(例: 隠した無検閲の数)。"""
     con = console or make_console()
     vram = system.vram_gb if system is not None else 0.0
     head = f"{title} ({len(fits)})" if title else None
     if not fits:
         con.print(f"{head}: (該当なし)" if head else "(該当なし)")
+        for n in notes:
+            con.print(Text(n, style="dim"), overflow="ellipsis", no_wrap=True)
         return
     con.print(build_table(fits, vram, width=con.width, title=head, system=system))
-    notes = [
+    legend = [
         "VRAM: GiB needed. ~ parts one at a time, * offload to RAM, ? size unknown. Basis: meas. = measured",
         "Room: this PC's VRAM minus need (GiB). RAM = not enough system RAM",
     ]
     if any(f.model.content == "uncensored" for f in fits):
-        notes.append("[U] = uncensored")
-    for n in notes:
+        legend.append("[U] = uncensored")
+    for n in [*legend, *notes]:
         con.print(Text(n, style="dim"), overflow="ellipsis", no_wrap=True)
     if system is not None:
         g = system.best_gpu

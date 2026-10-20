@@ -268,3 +268,16 @@ def test_gate(cache):
 def test_error_is_json(cache):
     d = call(["info", "no_such_model_xyz", *HW], cache, code=1)
     assert set(d) == ENVELOPE | {"error"} and "no_such_model_xyz" in d["error"]
+
+
+def test_info_ambiguous_is_error_with_candidates(cache):
+    d = call(["info", "sdxl", *HW], cache, code=1)
+    assert set(d) == ENVELOPE | {"error", "candidates"}
+    ids = [c["id"] for c in d["candidates"]]
+    assert "image_sdxl_simple" in ids and len(ids) >= 2
+    assert all(set(c) == {"id", "name", "content"} and c["content"] == "sfw" for c in d["candidates"])
+    every = call(["info", "sdxl", *HW, "--content", "all"], cache, code=1)
+    assert any(c["content"] == "uncensored" for c in every["candidates"])
+    # 無検閲にしか合わないものは黙って選ばない
+    d = call(["info", "Qwen-Image-2.1", *HW], cache, code=1)
+    assert set(d) == ENVELOPE | {"error"} and "--content all" in d["error"]
