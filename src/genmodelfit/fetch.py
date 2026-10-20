@@ -139,7 +139,14 @@ class HttpFetcher:
             self._sleep(wait)
 
     def _request(
-        self, method: str, url: str, *, redirects: bool = True, raise_4xx: bool = True
+        self,
+        method: str,
+        url: str,
+        *,
+        redirects: bool = True,
+        raise_4xx: bool = True,
+        headers: dict[str, str] | None = None,
+        stream: bool = False,
     ) -> requests.Response:
         last: Exception | None = None
         host = urlsplit(url).netloc
@@ -151,7 +158,14 @@ class HttpFetcher:
             with self._lock:
                 self.requests += 1
             try:
-                resp = self._session().request(method, url, timeout=self._timeout, allow_redirects=redirects)
+                resp = self._session().request(
+                    method,
+                    url,
+                    timeout=self._timeout,
+                    allow_redirects=redirects,
+                    headers=headers,
+                    stream=stream,
+                )
             except (requests.ConnectionError, requests.Timeout) as e:
                 last = e
                 self._sleep(float(2**attempt))
@@ -210,6 +224,22 @@ class HttpFetcher:
             if v and v.isdigit():
                 return int(v)
         return None
+
+    def get_range(self, url: str, start: int, end: int) -> bytes:
+        """start〜end バイト目(end を含む)だけを Range 要求で読む(重みのファイルの見出し用)。
+        相手が Range を無視して全体を返しても、要る分だけ読んで切る(重み本体を落とさない)。"""
+        want = end - start + 1
+        resp = self._request("GET", url, headers={"Range": f"bytes={start}-{end}"}, stream=True)
+        try:
+            skip = start if resp.status_code == 200 else 0  # Range を無視された: 先頭から数えて読み飛ばす
+            buf = bytearray()
+            for chunk in resp.iter_content(chunk_size=65536):
+                buf += chunk
+                if len(buf) >= skip + want:
+                    break
+            return bytes(buf[skip : skip + want])
+        finally:
+            resp.close()
 
     def head_status(self, url: str) -> int | None:
         """匿名の HEAD の応答コード。4xx もそのまま返す。

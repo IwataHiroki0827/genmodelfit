@@ -17,6 +17,15 @@ MODALITIES = ("image", "video", "music", "sfx", "tts", "3d")
 CONTENT_LEVELS = ("sfw", "uncensored")
 # 適合の段階(良い順)
 FIT_LEVELS = ("perfect", "good", "marginal", "too_tight")
+# 大きさが分からず判定できないときの印(段階ではない。表では「?」。並べるときは too_tight の後ろ。0.1.1)
+FIT_UNKNOWN = "unknown"
+
+
+def fit_rank(fit: str) -> int:
+    """段階の順位(0 = perfect)。判定できない(FIT_UNKNOWN)は一番後ろ。"""
+    return FIT_LEVELS.index(fit) if fit in FIT_LEVELS else len(FIT_LEVELS)
+
+
 # 推定の根拠
 BASIS = ("measured", "estimated")
 # 実測の結果。ok=最後まで動いた、oom=メモリ不足で失敗、error=ほかの理由で失敗
@@ -52,6 +61,10 @@ class ModelFile:
     license_evidence: list[str] = field(default_factory=list)
     head_status: int | None = None  # 匿名の HEAD(転送を追わない)の応答コード(None=未確認)
     head_checked_at: str | None = None  # その HEAD を送った日時(UTC, ISO 8601)
+    # ファイルの見出し(safetensors の JSON・GGUF の頭)から読んだ精度と要素の数(update の --inspect-only。
+    # 重み本体は落とさない)。None は読んでいない・読めない。後から足した項目(0.1.1)
+    header_precision: str | None = None
+    header_params: int | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
@@ -114,6 +127,10 @@ class ModelEntry:
     # bf16 を持たない GPU で fp32 で計算するかを決めるのに使う(docs/hardware.md「精度」)。後から足した項目
     comfy_family: str | None = None
     comfy_vae: str | None = None
+    # ワークフローの中で、サンプラーごとに使う本体の組(ファイル名。本体 + その本体に掛ける LoRA など)。
+    # 2 つ以上あれば ComfyUI は順に動かす(Wan 2.2 14B の high_noise → low_noise など)。テンプレートの
+    # つながりから update が求める(workflow.sampler_stages)。None は調べていない、[] は 1 組だけ。0.1.1
+    sampler_stages: list[list[str]] | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
@@ -291,14 +308,14 @@ class Estimate:
     ram_gb: float  # 判定した動かし方で要るメインメモリ(GiB)
     disk_gb: float | None
     basis: str  # measured / estimated
-    fit: str  # FIT_LEVELS
+    fit: str  # FIT_LEVELS、大きさが分からないときは FIT_UNKNOWN
     run_mode: str  # gpu / offload / cpu / none
     reasons: list[str] = field(default_factory=list)
     measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
     vram_sequential_gb: float | None = None  # 部品を段ごとに載せ替えたときの最大 VRAM
     settings: dict[str, Any] | None = None  # 判定に使った設定(省いた項目は既定や実測の設定で埋めたもの)
     limits: dict[str, Any] | None = None  # この PC で good 以上になる最大の設定(info で出す)
-    unknown_size: bool = False  # 重みの大きさが分からず判定できない(fit は too_tight、VRAM の値は 0)
+    unknown_size: bool = False  # 重みの大きさが分からず判定できない(fit は FIT_UNKNOWN、VRAM の値は 0)
     # GPU で動く判定だが、今の空き VRAM(nvidia-smi の memory.free)では足りない(ほかのアプリを閉じれば動く)。
     # 段階は総量で決めるので、これは知らせるだけ
     vram_free_short: bool = False

@@ -7,6 +7,7 @@
 - 公式テンプレート(画面用の形式)を、サーバーの `/object_info` を見て API 形式に直す
 - 設定(幅・高さ・フレーム数・音声の長さ・ステップ数)を入力の名前で書き換える
 - 実際に使う設定を API 形式のワークフローから読み取る
+- サンプラーごとに使う本体の組を、画面用の形式のつながりから読み取る(update が見積もりのために使う)
 
 ComfyUI のコードは import しない(GPL のため)。ここでは JSON だけを扱う。
 """
@@ -273,6 +274,90 @@ class Conversion:
     warnings: list[str] = field(default_factory=list)
 
 
+def _flat_graph(ui: dict[str, Any]) -> tuple[list[_Node], dict[tuple[str, int], tuple[str, int] | None]]:
+    if not isinstance(ui, dict) or not isinstance(ui.get("nodes"), list):
+        raise WorkflowError("ワークフローの形が違います(nodes がありません)")
+    defs = {
+        str(sg.get("id")): sg
+        for sg in ((ui.get("definitions") or {}).get("subgraphs") or [])
+        if isinstance(sg, dict) and sg.get("id")
+    }
+    flat: list[_Node] = []
+    alias: dict[tuple[str, int], tuple[str, int] | None] = {}
+    _flatten(ui["nodes"], _links_map(ui.get("links")), defs, "", flat, alias)
+    return flat, alias
+
+
+# 本体(MODEL)を受け取って生成するノード。KSampler / KSamplerAdvanced / SamplerCustom / CFGGuider など
+_SAMPLER = re.compile(r"sampler|guider", re.IGNORECASE)
+
+
+def sampler_stages(ui: dict[str, Any]) -> list[list[str]]:
+    """サンプラー(と CFGGuider などの guider)ごとに、MODEL の入力をさかのぼって読み込むモデルのファイル名を
+    集める(UNETLoader の本体・LoraLoaderModelOnly の LoRA・ModelPatchLoader など)。
+
+    返すのは、ファイルの組が違うサンプラーごとの組(出てきた順。同じ組は 1 回。ファイルの無い組は除く)。
+    無効(mute)のノードは使わず、素通し(bypass)のノードは飛ばしてその先をたどる。ComfyUI はサンプラーを
+    1 つずつ動かし、次のサンプラーの本体を載せるとき前の本体を降ろす(estimate.EXPERT_SOURCE)。
+    読めない形は WorkflowError。"""
+    flat, alias = _flat_graph(ui)
+    by_id = {n.id: n for n in flat}
+
+    def resolve(src: tuple[str, int] | None, depth: int = 0) -> str | None:
+        """つながりの元のノード ID(サブグラフの出入り口・Reroute・素通しを越える)。"""
+        if src is None or depth > 64:
+            return None
+        if src in alias:
+            return resolve(alias[src], depth + 1)
+        node = by_id.get(src[0])
+        if node is None or node.mode == MODE_NEVER or node.type == PRIMITIVE:
+            return None
+        if node.type == REROUTE:
+            return resolve(node.inputs[0].src if node.inputs else None, depth + 1)
+        if node.mode == MODE_BYPASS:
+            want = node.output_types[src[1]] if src[1] < len(node.output_types) else None
+            for i in node.inputs:
+                if i.src is not None and i.type == want:
+                    return resolve(i.src, depth + 1)
+            return None
+        return node.id
+
+    def files_of(node: _Node) -> set[str]:
+        values = node.widgets_values
+        vals = list(values.values()) if isinstance(values, dict) else list(values or [])
+        vals += list(node.widget_overrides.values())
+        return {
+            v.replace("\\", "/").rsplit("/", 1)[-1]
+            for v in vals
+            if isinstance(v, str) and MODEL_FILE_EXT.search(v)
+        }
+
+    out: list[list[str]] = []
+    seen: set[frozenset[str]] = set()
+    for n in flat:
+        if n.mode in (MODE_NEVER, MODE_BYPASS) or not _SAMPLER.search(n.type):
+            continue
+        starts = [i.src for i in n.inputs if i.type == "MODEL" and i.src is not None]
+        if not starts:
+            continue
+        found: set[str] = set()
+        visited: set[str] = set()
+        stack = [resolve(s) for s in starts]
+        while stack:
+            nid = stack.pop()
+            if nid is None or nid in visited:
+                continue
+            visited.add(nid)
+            node = by_id[nid]
+            found |= files_of(node)
+            stack += [resolve(i.src) for i in node.inputs if i.type == "MODEL" and i.src is not None]
+        key = frozenset(found)
+        if found and key not in seen:
+            seen.add(key)
+            out.append(sorted(found))
+    return out
+
+
 def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
     """画面用の形式(テンプレート)を API 形式に直す。直せないときは WorkflowError。"""
     try:
@@ -287,16 +372,7 @@ def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
 
 
 def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
-    if not isinstance(ui, dict) or not isinstance(ui.get("nodes"), list):
-        raise WorkflowError("ワークフローの形が違います(nodes がありません)")
-    defs = {
-        str(sg.get("id")): sg
-        for sg in ((ui.get("definitions") or {}).get("subgraphs") or [])
-        if isinstance(sg, dict) and sg.get("id")
-    }
-    flat: list[_Node] = []
-    alias: dict[tuple[str, int], tuple[str, int] | None] = {}
-    _flatten(ui["nodes"], _links_map(ui.get("links")), defs, "", flat, alias)
+    flat, alias = _flat_graph(ui)
     by_id = {n.id: n for n in flat}
     warnings: list[str] = []
 
