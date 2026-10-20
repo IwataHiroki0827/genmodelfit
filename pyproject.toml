@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "genmodelfit"
+version = "0.1.0.dev0"
+description = "Right-size image / video / audio / 3D generation models to your PC (inspired by llmfit)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Laxshmate", email = "laxshmate@gmail.com" }]
+requires-python = ">=3.10"
+keywords = ["comfyui", "diffusion", "vram", "stable-diffusion", "video-generation", "hardware", "llmfit"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# 依存は MIT / Apache-2.0 / BSD のものだけ(CLAUDE.md)
+dependencies = [
+  "requests>=2.31",      # Apache-2.0
+  "psutil>=5.9",         # BSD-3-Clause
+  "platformdirs>=4.0",   # MIT
+  "rich>=13.0",          # MIT
+]
+
+[project.optional-dependencies]
+sign = ["cryptography>=42"]  # Apache-2.0 OR BSD-3-Clause
+dev = ["pytest>=8", "ruff>=0.6", "cryptography>=42"]
+
+[project.scripts]
+genmodelfit = "genmodelfit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/laxshmate/genmodelfit"
+Issues = "https://github.com/laxshmate/genmodelfit/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/genmodelfit"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "README.md", "LICENSE", "CLAUDE.md"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # 日本語の全角文字を許す
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: 実ネットワークに触るテスト(既定では飛ばす。GENMODELFIT_NETWORK_TESTS=1 で実行)"]
