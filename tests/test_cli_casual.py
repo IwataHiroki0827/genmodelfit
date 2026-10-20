@@ -12,7 +12,7 @@ from rich.cells import cell_len
 
 from genmodelfit import __version__, cli
 
-SUBCOMMANDS = ["system", "recommend", "fit", "search", "types", "info", "update", "gate", "bench"]
+SUBCOMMANDS = ["system", "recommend", "fit", "search", "types", "info", "update", "gate", "bench", "download"]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
 HEADER = [
@@ -111,6 +111,8 @@ TABLE_COMMANDS = [
     ["info", "hf:Heartsync/NSFW-Uncensored", *HW],  # 理由の文が長い
     ["info", "templates_purz_animatediff_simple_weighted_ipadapters_looping_animation", *HW],  # 一番長い ID
     ["info", "template_rob_split_stack_qwen_multi_wan22", *HW],  # ファイルが一番多い(11)
+    ["download", "Z-Image-Turbo", "--list", *HW],
+    ["download", "template_rob_split_stack_qwen_multi_wan22", "--list", *HW],
 ]
 # 文だけのコマンド(幅を見ない)。短い行しか出さない
 _PLAIN = ("gate", "system")

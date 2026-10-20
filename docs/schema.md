@@ -14,7 +14,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
@@ -31,6 +31,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`) |
+| `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
 `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`, proxy / CA environment variables honored, `~/.netrc`
@@ -608,6 +609,79 @@ How bench fills Measurement / 測り方:
 - `offload`: read from the ComfyUI log: `dynamic` / `partial` / `lowvram` / `none` / `oom`, or null when unknown.
 - `--set` values: only numbers are written to `note`; for other values only the input name is kept.
 - The saved file is `{"measurements": [Measurement]}` and holds no paths, user names or prompts.
+
+## download
+
+`genmodelfit download <model> --json` prints the envelope (with `system` and `database`) plus the keys below.
+`--list --json` prints the plan only (`listed: true`, `result: null`; no network access, nothing written, exit 0 even
+when `plan.ok` is false). Downloading with `--json` needs `--yes`. On failure (exit 1, or 130 after Ctrl-C) `error` is
+set, `result` is null and `plan` is the plan (when it was made). A model that is not found or matches several
+models gives `error` (and `candidates`) without `plan`.
+Python: `gmf.plan_download(...)` returns `DownloadPlan` (`.to_dict()` is `plan`), `gmf.download(...)` returns
+`DownloadResult` (`.to_dict()` is `result`).
+
+| key | type | meaning |
+|---|---|---|
+| `listed` | bool | true for `--list` (nothing downloaded) |
+| `plan` | DownloadPlan | what is (or would be) downloaded |
+| `result` | DownloadResult \| null | what happened; null for `--list` and on failure |
+
+DownloadPlan:
+
+| key | type | meaning |
+|---|---|---|
+| `model_id`, `name` | str | the workflow (list entry) chosen |
+| `model_name` | str | the model name shown in the tables |
+| `modality`, `content`, `precision` | str / str / str \| null | as in ModelEntry |
+| `fit_level`, `run_mode_label`, `auto` | str / str / bool | the judgement on this PC (as in `recommend`) |
+| `chosen` | str | why this workflow was chosen (Japanese) |
+| `layout` | str | `comfyui` (`--comfyui-dir`: `root` is `<dir>/models`) / `output` (`--output-dir` or the default; same layout) |
+| `root` | str | absolute path of the folder files go into (`<root>/<directory>/<name>`) |
+| `files` | PlannedFile[] | one per file of the workflow |
+| `total_bytes` | int | sum of the file sizes |
+| `download_bytes` | int | still to download (minus files already there and `.part` bytes) |
+| `present_bytes` | int | files already there with the right sha256 |
+| `disk_free_bytes` | int \| null | free space at `root` (or its nearest existing parent) |
+| `disk_needed_bytes` | int | `download_bytes` + `margin_bytes` (0 when nothing to download) |
+| `margin_bytes` | int | 1 GiB |
+| `budget_bytes` | int \| null | `--budget` in bytes |
+| `blocked` | str[] | why it will not download (Japanese). Empty = can download |
+| `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
+| `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto` |
+| `license_url` | str \| null | the model's license page |
+| `ok` | bool | `blocked` is empty |
+
+PlannedFile:
+
+| key | type | meaning |
+|---|---|---|
+| `name` | str | file name in the list (may contain ComfyUI subfolders, `/`) |
+| `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the list has no directory); "" when refused |
+| `dest` | str | absolute destination path; "" when refused |
+| `url`, `sha256`, `size_bytes`, `directory`, `role` | | from ModelFile |
+| `license`, `license_name` | str \| null | the license used for the check (gate's conservative reading; null = unknown) |
+| `license_url` | str \| null | where the license text is |
+| `license_note` | str \| null | why the license differs from the list's value, or why it could not be confirmed |
+| `license_allowed` | bool | on the license allowlist (gate default or `--license-allowlist`) |
+| `gated` | bool \| null | access request needed (also when the upstream of a component asks for it) |
+| `status` | str | `download` / `resume` (a `.part` exists) / `present` (already there, sha256 matches) / `conflict` (a different file has the name; never overwritten) / `unavailable` (see `reason`) |
+| `part_bytes` | int | size of the existing `.part` |
+| `remaining_bytes` | int | bytes still to download for this file |
+| `reason` | str \| null | why `conflict` / `unavailable` (Japanese) |
+| `verified` | bool | for `present`: the sha256 was measured while planning (false with `verify_existing=False`: size only). `download` always measures existing files again before skipping them |
+
+DownloadResult:
+
+| key | type | meaning |
+|---|---|---|
+| `model_id`, `root` | str | as in the plan |
+| `downloaded` | str[] | `relpath` of the files downloaded (sha256 checked) |
+| `resumed` | str[] | of those, continued from a `.part` with HTTP Range |
+| `restarted` | str[] | of those, started over because the server ignored Range |
+| `skipped` | str[] | already there; the sha256 was measured in this run and matched |
+| `bytes_downloaded` | int | bytes received in this run |
+| `seconds` | float | wall time |
+| `files` | object[] | `relpath`, `dest`, `sha256` of every file |
 
 ## Database file (`db.json`)
 

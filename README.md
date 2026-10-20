@@ -149,6 +149,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 | `genmodelfit gate` | how many models can be auto-recommended, and why the rest are held / 自動でおすすめに出せる数と保留の理由 |
 | `genmodelfit update` | rebuild the model list from upstream / 一覧を上流から作り直す |
 | `genmodelfit update --from-release` | fetch the signed model list published by this project / 署名付きの配布の一覧を取り込む |
+| `genmodelfit download <model> [--comfyui-dir DIR] [--list]` | download all files of the model for this PC (precision chosen like `recommend`), after showing licenses, sizes and free disk and asking you; sha256-checked, resumable ([below](#download--モデルを落とす)) / この PC に合う精度でモデルのファイルを落とす(ライセンス・大きさ・空きを見せて同意を取る。sha256 で確かめ、続きから再開できる) |
 | `genmodelfit bench <template> --url URL` | measure VRAM / RAM / time on a running ComfyUI / 動いている ComfyUI で実測 |
 
 Common options / 共通の指定:
@@ -234,6 +235,91 @@ st = gmf.data_status()  # is the model list fresh enough for auto-recommendation
 if st.expired:  # HEAD checks older than 30 days → auto-recommendations drop / 期限切れ
     print("run: genmodelfit update --from-release", st.expires_at, st.auto_count)
 ```
+
+## Download / モデルを落とす
+
+```
+genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
+genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
+genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
+```
+
+- **Which files**: all files of one workflow. A model name (as in the tables) picks the workflow and precision like
+  `recommend`: the highest precision that runs on this PC without offloading. A workflow id is used as is.
+  `--precision int8` picks a precision; `--budget 15` (GB) caps the download (files already there are not counted).
+- **Where**: `--comfyui-dir` puts each file in the ComfyUI folder the template names
+  (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, …; subfolders in the file name are kept).
+  `--output-dir` (default: genmodelfit's user data folder, `models`) uses the same layout, so it can be added to
+  ComfyUI's `extra_model_paths.yaml`.
+- **Consent first**: before anything is downloaded you see every file with its license and the license URL, licenses
+  that are not on the allowlist (commercial use without use restrictions; [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md))
+  are marked, then the total size and the free disk, and you are asked `[y/N]`. `--yes` skips the question
+  (required with `--json`). Read the terms of each file before you use the model.
+- **Not downloaded**: gated files (genmodelfit never handles logins or tokens; request access on the model page and
+  download them yourself), uncensored models unless you pass `--content all` (or `uncensored`), files whose license is
+  unknown unless you pass `--include-unknown-license`, files without a sha256 or size in the list, hosts other than
+  Hugging Face / GitHub.
+- **Safety**: every file is checked with the sha256 in the list while it is written; a mismatch deletes it and fails.
+  A download goes to `<file>.part` first; after Ctrl-C or a network error run the same command again and it resumes
+  with an HTTP Range request (if the server ignores Range it starts over, at most 3 times). Files already there are
+  hashed again right before they are skipped; a different file with the same name is never overwritten. A
+  `<file>.lock` next to it stops two downloads of the same file at once (a lock left by a process that is gone is
+  cleaned up). It does not start unless the free disk is
+  the download + 1 GB. Nothing is written outside the destination: names with `..`, absolute paths, drive letters,
+  `\`, reserved Windows names (also as folder names), control / bidi characters, and symbolic links / junctions
+  that lead outside are refused.
+- **Network**: only the URLs in the list (checked anonymously with HEAD), https only. Every redirect must stay on
+  the hosts below; a URL that could be read as two different hosts (`\`, spaces, control characters, `%` or `@`
+  in the host, non-ASCII hosts) is refused before any connection, and the host is read the way requests / urllib3
+  read it. Allowed:
+  `huggingface.co` / `*.hf.co` (CDN, Xet) / `github.com` / `objects.githubusercontent.com` /
+  `release-assets.githubusercontent.com`. No `~/.netrc` credentials, no tokens, nothing about this PC (User-Agent and
+  Range only). Waits for `Retry-After` on 429 / 503.
+
+- **落とすもの**: 1 つのワークフローの全部のファイル。モデル名(表の Model)なら、`recommend` と同じく、この PC で
+  逃がさずに載る中で一番精度の高いワークフローを選びます。ID を指定すればそのまま。`--precision` で精度を、
+  `--budget`(GB)で落とす量の上限を決められます(既にあるファイルは数えません)。
+- **置き場所**: `--comfyui-dir` なら、テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・
+  `checkpoints` など)に置きます。`--output-dir`(既定は genmodelfit のデータのフォルダの `models`)も同じ並びです。
+- **先に同意**: 落とす前に、ファイルごとのライセンスと原文の URL(許可リストに無いものは印付き)・合計の大きさ・空きを
+  出して `[y/N]` で尋ねます。`--yes` で省けます(`--json` で落とすときは必須)。使う前に各ファイルの条件を読んでください。
+- **落とさないもの**: gated(ログインや利用申請が要る。genmodelfit はログイン情報を扱いません)、無検閲のモデル
+  (`--content all` か `uncensored` を明示したときだけ)、ライセンス不明(`--include-unknown-license` のときだけ)、
+  一覧に sha256・大きさの無いもの、Hugging Face・GitHub 以外の取得先。
+- **安全**: 書きながら sha256 を計り、合わなければ消して失敗にします。途中は `<名前>.part` に書き、Ctrl-C や通信の失敗の
+  あとで同じコマンドを実行すると HTTP Range で続きから落とします(相手が Range に応じなければ最初から。3 回まで)。
+  既にあるファイルは飛ばす直前に sha256 を計り直し、同じ名前の別のファイルは上書きしません。同じファイルを
+  2 つの download が同時に書かないよう `<名前>.lock` を置きます(止まったプロセスの残りは片付けます)。空きが「落とす量 + 1 GB」に足りなければ
+  始めません。置き場所の外には書きません(`..`・絶対パス・ドライブ名・`\`・Windows の予約名・外へ出るリンクを拒みます)。
+- **通信**: 一覧の URL(匿名の HEAD で確かめたもの)だけを https で使い、転送先は Hugging Face(CDN・Xet を含む)と
+  GitHub の決めたホストだけ。2 通りのホストに読める URL(`\`・空白・制御文字・ホストの中の `%` や `@`・ASCII でない
+  ホスト)は、つなぐ前に拒みます。`~/.netrc` もトークンも使わず、PC の情報も送りません。
+
+Python:
+
+```python
+import genmodelfit as gmf
+
+plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir=r"C:\ComfyUI")  # no network, writes nothing
+for f in plan.files:  # status: download / resume / present / conflict / unavailable
+    print(f.relpath, f.size_bytes, f.license, f.license_url, f.status)
+print(plan.blocked, plan.warnings, plan.download_bytes, plan.disk_free_bytes)
+
+
+def ask(plan) -> bool:  # show licenses, URLs, total and free disk; True to go on
+    ...
+
+
+def show(p):  # gmf.DownloadProgress
+    print(p.phase, p.name, p.done_bytes, p.total_bytes)
+
+
+result = gmf.download(plan, confirm=ask, progress=show)
+# or gmf.download("Z-Image-Turbo", yes=True, comfyui_dir=...) when the app already asked
+```
+
+The library prints nothing. `gmf.download` raises `gmf.DownloadRefused` (blocked, no consent), `gmf.DownloadError`
+(network, sha256 mismatch, disk) and lets `KeyboardInterrupt` through, keeping the `.part` file for the next call.
 
 ## Hardware / ハードウェアの検出
 
@@ -326,13 +412,15 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
   main weight files to read their header — dtype and tensor shapes; no weights are downloaded).
 - `genmodelfit bench` talks only to the ComfyUI URL you give with `--url` (plus the official template files on
   GitHub when ComfyUI does not have them).
+- `genmodelfit download` (and `gmf.download()`) only GETs the model URLs in the list, over https, following
+  redirects only to Hugging Face / GitHub hosts; `--list` and `gmf.plan_download()` make no network access.
 - Hardware information (GPU name, VRAM, RAM, CPU, disk) is read locally with `nvidia-smi` and psutil and is
   **never sent**. Measurements from `bench` are saved only on your PC; they are shared only if you open a pull
   request yourself ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
   Saved measurements hold no host name, user name, paths or GPU UUID.
 - No telemetry. No hardware information, measurements, prompts or other user content is ever sent anywhere.
   Tests replace the PC's details with marker strings and check that no request URL, header or body of `update`,
-  `update --from-release` or `bench` contains them.
+  `update --from-release`, `bench` or `download` contains them.
   Requests carry the User-Agent `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`, and never the
   credentials in your `~/.netrc` (proxy and certificate settings such as `HTTPS_PROXY` are still honored).
 
@@ -342,6 +430,8 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 - `update` は公開の情報を読むだけです(GitHub の ComfyUI テンプレート、Hugging Face Hub の API、モデルの URL への HEAD と、
   本体のファイルの先頭の見出し(dtype・テンソルの形)だけの Range 要求。モデル本体は落としません)。
 - `bench` は `--url` で指定した ComfyUI とだけ話します(ComfyUI に無い公式テンプレートは GitHub から取ります)。
+- `download` は一覧のモデルの URL へ https の GET を送るだけです(転送先は Hugging Face・GitHub の決めたホストだけ)。
+  `--list` と `gmf.plan_download()` は通信しません。
 - PC の情報(GPU の名前・VRAM・メモリ・CPU・空き)は `nvidia-smi` と psutil で手元で読むだけで、**送りません**。
   `bench` の実測は手元に保存するだけで、利用者が自分で Pull Request を出したときだけ共有されます
   (保存する実測に PC の名前・ユーザー名・パス・GPU の UUID は入りません)。
