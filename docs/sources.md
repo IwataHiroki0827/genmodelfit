@@ -73,6 +73,9 @@ HF の匿名の API は **5 分あたり 500 回まで**(応答の `ratelimit-po
 当てはまるタグが無ければ種類の既定(image → t2i、video → t2v、3d → i23d、tts → tts、音 → t2a)。
 ただし分類が **Image Tools / Video Tools**(道具)のものは、生成ではないので既定を **`tool`** にする
 (`Depth`・`Pose Map` など表に無いタグの道具を t2i / t2v と言わないため)。
+さらにタグによらず、道具の分類で題が深度・法線・線画・ポーズ・形状の地図(`Depth Map: …`、`Depth Estimation: …`、
+`Lineart Map: …`)や切り分け(Segmentation)のものは **`estimate`**、題が音の分離(`Audio Separation`)のものは
+**`separate`** にする(`tasks.tool_task_from_title`。タグが ControlNet / Text to Image でも、生成ではない前処理なので)。
 
 上流のタグの誤り・ゆれ(`Depth` と `Depth Estimation` が混在する、道具に `Text to Image` が付いているなど)は直さず、
 そのまま対応表に当てる(表に足すのは名前がはっきりしたものだけ)。

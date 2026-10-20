@@ -31,7 +31,7 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
-.venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | info <id> | update | bench <template> | gate
+.venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | bench <template> | gate
 .venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
 ```
@@ -42,6 +42,8 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 
 ## 形
 
+- 表・JSON では同じモデル(本体の系統 + 大きさ。精度・使い方だけ違う項目)を 1 行にまとめる(`groups.py`。
+  鍵の決め方を変えたら docs/schema.md「Models」と tests/test_groups.py の名前の表を直す)。用途の表は `tasks.py`
 - データの形は `src/genmodelfit/models.py` が正本。変えたら `docs/schema.md` と `SCHEMA_VERSION` も直す
 - 一覧のモデル ID: 公式テンプレート由来はテンプレート名そのまま(例 `image_z_image_turbo_int8`)、
   Hugging Face 由来は `hf:<owner>/<repo>`

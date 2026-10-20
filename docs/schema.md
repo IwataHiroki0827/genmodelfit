@@ -14,7 +14,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `info` / `update` / `bench` / `gate` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). Not in `system` / `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
@@ -40,28 +40,93 @@ The three commands print the same shape (Issue #17, modeled on llmfit's `recomme
 
 | key | type | meaning |
 |---|---|---|
-| `filters` | object | values actually used: `modality`, `content`, `min_fit`, `license` (str[] \| null), `limit`; `recommend` adds `auto_only`, `include_tools`; `search` adds `query` |
-| `matched` | int | models that passed every filter, before `limit` |
-| `hidden` | object | why the other models are not shown: `{reason: count}`, only reasons with a count (below) |
+| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `search` adds `query` |
+| `matched` | int | rows that passed every filter, before `limit` / `per_type` (models; workflows with `--all-workflows`) |
+| `hidden` | object | why the other entries are not shown: `{reason: count}`, only reasons with a count (below) |
+| `groups` | object[] | per type, in the order image, video, music, sfx, tts, 3d (only the `-m` types when given): `{modality, matched, shown}` |
 | `models` | Fit[] | best first (order below) |
 
-`recommend` defaults: `min_fit` `marginal`, `limit` 10, utility tools hidden, models with unknown size never shown.
-`fit` and `search` show every level by default (`--min-fit` to narrow) and no limit. `search <query>` matches a part of
-the id or name (case-insensitive); models that do not match are not counted in `hidden`. With no match it prints
-`models: []` and exits 0 (text mode prints `(no match / 該当なし)`).
+**One item per model** (below, "Models"): entries that differ only in precision or in workflow (text-to-image, edit,
+LoRA, …) are collapsed into one item; the others are listed in `workflows` / `variants`. `--all-workflows`
+(`all_workflows=True` in Python) gives one item per list entry as before.
+
+`recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
+`-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
+and has `matched: 0` in `groups`. With `-m` or `--task` it is one list, `-n` default 10. In JSON `models` is ordered by
+type, then by the order below. Other defaults: `min_fit` `marginal`, utility tools hidden, models with unknown size never
+shown. `fit` and `search` show every level by default (`--min-fit` to narrow) and no limit. `search <query>` matches a
+part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
+`models: []` and exits 0 (text mode prints `(no match / 該当なし)`); a blank query exits 1.
 `content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
 既定は sfw。無検閲は `--content all|uncensored` のときだけ出す。
 
-`hidden` reasons, each model counted once under the first reason that applies, in this order:
+`hidden` reasons, each entry counted once under the first reason that applies, in this order:
 `modality` (other `-m`), `uncensored` / `sfw` (by `--content`), `tools` (recommend without `--include-tools`),
-`license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good / marginal below `--min-fit`),
-`held` (`--auto-only`).
+`task` (other uses than `--task`), `license` (`--license`), `size_unknown`, `too_tight`, `below_min_fit` (perfect / good /
+marginal below `--min-fit`), `held` (`--auto-only`), `same_model` (collapsed into another row of the same model).
+**`matched` + the sum of `hidden` = the number of entries looked at** (every entry of the list; for `search`, the entries
+whose id or name matched). Tested in `tests/test_cli_json.py`.
 
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
 **Order / 並べ方**: models that run (`fit_level` is not `too_tight`) → `auto: true` → `score` (desc) → `id`.
 動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
+
+### Models / モデルのまとめ方
+
+Like llmfit: a different **size** is a different model, a different **precision** is the same model (chosen
+automatically), and **workflows** are uses of that model. `group_key` is built from the main weights
+(`src/genmodelfit/groups.py`):
+
+1. Main files = role `main` (by the estimator's rule: ComfyUI folder → `role` → HF folder → name). Text encoders
+   (umt5, …) and VAEs are never the key. With several main files, the largest one and those ≥95% of its size (a pair
+   such as Wan 2.2 high / low noise); without any, the largest file that is not a text encoder / VAE / clip_vision;
+   without files, the entry itself.
+2. From each file name (the repo name instead for generic names such as `model.safetensors`), drop the extension,
+   shard numbers, GGUF quant tags (`Q4_K_M`, `Q8_0`, …) and precision / packaging words (`fp16`, `bf16`, `fp8`,
+   `e4m3fn`, `scaled`, `mixed`, `int8`, `int4`, `nf4`, `nvfp4`, `w4a8`, `convrot`, `kj`, `comfy`, `transformer`, `only`,
+   `pruned`, `aio`, `high`, `low`, `noise`, …). Keep version, size and variant words (`2.1`, `1.5`, `14b`, `1.3b`,
+   `turbo`, `dev`, `distilled`, `base`, `edit`). `wan2_1` is read as `wan 2.1`, `v1.5` as `1.5`, `ace_step` as
+   `acestep`. If no size word is left, `params_b` is added (`4b`).
+3. Words are sorted and joined; the key is `<modality>:<content>:<words>`, so different types or content marks never
+   share a model. Examples: `z_image_turbo_bf16` and `z_image_turbo_int8_convrot` → `image:sfw:image turbo z`;
+   `wan2.1_t2v_1.3B_fp16` → `… 1.3b 2.1 t2v wan`, `wan2.1_t2v_14B_fp8_scaled` → `… 14b 2.1 t2v wan` (different).
+   The test table is `tests/test_groups.py`.
+
+Which entry is shown for a model: among the entries that passed the filters, the best fit level first, then the
+higher precision (bf16 / fp16 / fp32 > fp8 > int8 > GGUF Q8 > Q6 > Q5 > Q4 > lower; unknown precision counts as full
+precision), then the order above. So on 8 GB Z-Image Turbo shows its int8 workflow (good) and on 24 GB the bf16 one, and
+with `--task edit` the representative is an edit workflow. The shown entry's `auto`, score and VRAM are used for the
+order.
+
+On the bundled list (341 entries) this gives 226 models; 51 of them have more than one entry.
+
+### Uses / 用途(`--task`, `genmodelfit types`)
+
+The six big types stay the top level. Uses are sub-divisions inside a type, from the entry's `tasks`:
+
+| use | English | 日本語 | task codes |
+|---|---|---|---|
+| `gen` (alias `generate`) | generate from text (3D: from an image) | 文章から作る(3D は画像から) | t2i, t2v, t2a, tts, t23d, i23d |
+| `edit` | edit / transform / control | 編集・変換・形の指定 | i2i, inpaint, outpaint, relight, control, v2v, a2a |
+| `i2v` | image to video | 画像から動画 | i2v, flf2v, ref2v |
+| `lipsync` | lip sync / audio to video | 口の動き・音から動画 | lipsync, a2v |
+| `motion` | motion control | 動きの指定 | motion |
+| `voice` | voice conversion | 声の変換 | vc |
+| `upscale` | upscale / restore | 高解像度化 | upscale |
+| `tool` | utility tool (depth, pose, mask, …) | 補助ツール | tool, estimate, matting, interp, segment, separate |
+
+`--task` takes use names, aliases or task codes, comma-separated (`--task edit`, `--task i2v,lipsync`, `--task t2i`).
+An entry matches when one of its tasks is in the set. `use` (JSON) / the table's Use column is the matching use, else
+the first of tool, upscale, lipsync, motion, voice, edit, gen, i2v that the entry has.
+Utility tools (`upscale` and `tool`, plus Image / Video Tools templates whose title is a depth / normal / line-art /
+pose / geometry map or a segmentation, and any audio separation) are hidden by `recommend` unless `--include-tools` or a
+tool use is given in `--task`.
+
+`genmodelfit types --json`: `filters` (`content`), `types` (`[{modality, label, label_ja, models, workflows, uses: {use:
+workflows}}]`; `models` = number of models as above, `workflows` = list entries; an entry with two uses counts in both),
+`uses` (`[{use, label, label_ja, tasks}]`), `aliases`.
 
 ### Fit (one item of `models`)
 
@@ -93,6 +158,11 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.searc
 | `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`) |
 | `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
 | `files_count` | int | download files listed |
+| `use` | str | the use shown (Uses below) |
+| `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = not stated, usually full precision) |
+| `group_key` | str | the model this entry belongs to (Models below) |
+| `variants` | object[] | per precision, the best entry that passed the filters: `{precision, workflow_id, memory_required_gb, fit_level, auto, disk_size_gb}`, best precision first (always includes this entry) |
+| `workflows` | object[] | **all** other entries of the same model, also those filtered out: `{id, name, tasks, use, precision, fit_level, memory_required_gb, disk_size_gb, auto, matched}` (`matched`: passed the current filters), best first |
 | `estimate` | Estimate | full estimate (below; `limits` with `--limits`) |
 | `gate` | Gate | full gate result (below) |
 
@@ -156,7 +226,7 @@ Fit levels / 段階:
 |---|---|
 | `perfect` | everything fits in VRAM with ≥10% headroom / 余裕をもって全部載る |
 | `good` | everything fits with little headroom, or fits when parts are swapped stage by stage / 全部載る(余裕は少ない)、または順に載せ替えれば載る |
-| `marginal` | runs only by offloading to RAM, on CPU, or with a small RAM shortfall (page file); slow / 逃がせば動く・CPU・メモリが少し足りない。遅い |
+| `marginal` | runs only by offloading to RAM, on CPU, or with a small RAM shortfall (page file); slow / 逃がせば動く・CPU・メモリが少し足りない。遅い. A model that does not fit a (small) GPU even with offloading is also judged as if there were no GPU, and the better result is used, so adding VRAM never lowers the level |
 | `too_tight` | does not run (VRAM, or RAM short by more than 1.5×), **or cannot be judged because the size is unknown** (`unknown_size: true`) / 動かない、または大きさが分からず判定できない |
 
 ## Gate
@@ -181,7 +251,8 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 
 ## info
 
-`model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]).
+`model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]), `group_key`, `same_model` (the other
+entries of the same model, each like a `workflows` item, judged for this PC, best first).
 
 How `info <query>` picks the model / モデルの選び方:
 

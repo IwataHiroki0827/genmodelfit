@@ -10,20 +10,65 @@ llmfit に着想を得た、生成モデル向けのツールです(llmfit の�
 > Status: v0.1 in development (not on PyPI yet). / 状態: v0.1 を開発中(PyPI には未公開)。
 
 ```
-$ genmodelfit recommend --vram 8 --ram 32 -n 5
+$ genmodelfit recommend --vram 8 --ram 32 -n 2
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 5 of 119 (222 hidden: uncensored 39, tools 25, size unknown 5, too tight 153)
-Status      Model                            Type  Score  VRAM Mem% Mode    Disk License    Auto
-● Good      image_z_image_turbo_int8         image    66  7.6m  96% GPU~    11.3 apache-2.0 yes
-● Good      text_to_video_wan                video    66  7.8m  97% GPU~     9.2 apache-2.0 yes
-● Good      audio_ace_step_1_5_checkpoint    music    65  6.0m  76% GPU~     9.3 mit        yes
-● Good      audio_ace_step_1_5_split         music    55   6.0  76% GPU~     9.3 mit        yes
-● Good      audio_ace_step_1_m2m_editing     music    54   6.9  86% GPU~     7.2 apache-2.0 yes
+Recommended: 12 of 89 (252 hidden: uncensored 39, tools 32, size unknown 5, too tight 152, same
+    model 24)
+== image (画像): top 2 of 45  (-m image for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Good      image_z_image_turbo_int8  gen+5   int8    66  7.6m  96% GPU~    11.3 apache-2.0 yes
+● Marginal  image_flux2_k…b_distilled edit    fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
+== video (動画): top 2 of 5  (-m video for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Good      text_to_video_wan         gen     fp16    66  7.8m  97% GPU~     9.2 apache-2.0 yes
+● Marginal  wan2.1_fun_control        edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
+== music (音楽): top 2 of 10  (-m music for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Good      audio_ace_ste…_checkpoint gen+1   -       65  6.0m  76% GPU~     9.3 mit        yes
+● Good      audio_ace_ste…m2m_editing edit+2  -       54   6.9  86% GPU~     7.2 apache-2.0 yes
+== sfx (効果音): top 2 of 4  (-m sfx for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Perfect   hf:stabilitya…3-small-sfx gen     -       68   3.6  45% GPU      2.1 other      license
+● Perfect   audio_stable_…dio_example gen+1   -       67   6.8  85% GPU      5.3 other      license
+== tts (読み上げ): top 2 of 16  (-m tts for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Perfect   hf:ResembleAI/chatterbox  gen     -       80   3.5  44% GPU      2.0 mit        workflow
+● Perfect   hf:Qwen/Qwen3…CustomVoice gen     -       80   3.2  40% GPU      1.7 apache-2.0 workflow
+== 3d (3D): top 2 of 9  (-m 3d for more)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Perfect   3d_moge_persp…ive_to_mesh gen+1   fp16    92  2.1m  26% GPU      0.6 mit        size
+● Perfect   3d_hunyuan3d_…ge_to_model gen     fp16    78  6.7m  84% GPU      4.6 other      license
 Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
+One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).
 Note: 39 uncensored model(s) hidden; add --content all to show them.
+```
+
+Without `-m` / `--task`, `recommend` shows each of the six types (image, video, music, sfx, tts, 3d). One row is
+one **model**: workflows that use the same weights (same family and size) in another precision or for another use
+are folded into it (`+5` = five more workflows; `--all-workflows` lists them), and the best precision that fits is
+chosen (`Prec`; like llmfit's best quant). Narrow down inside a type with `--task`:
+`-m` も `--task` も無ければ 6 つの種類ごとに出します。1 行は 1 つの**モデル**で、同じ重み(系統と大きさが同じ)を
+別の精度・別の使い方で使うワークフローはまとめ(`+5` = ほかに 5 つ。`--all-workflows` で全部)、載る中で一番良い精度を
+選びます。種類の中は `--task` で絞ります。
+
+```
+$ genmodelfit recommend --vram 8 --ram 32 -m image --task edit -n 3
+PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
+Recommended: 3 of 18 (323 hidden: other types 169, uncensored 30, tools 19, other uses 63, too
+    tight 40, same model 2)
+Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
+● Marginal  image_flux2_k…b_distilled edit    fp8     41   4.5  56% GPU+RAM 11.6 apache-2.0 yes
+● Marginal  image_flux2_k…dit_4b_base edit    fp8     41   4.5  56% GPU+RAM 11.5 apache-2.0 yes
+● Marginal  image_z_image…_controlnet edit+5  bf16    41   7.5  93% GPU+RAM 22.2 apache-2.0 yes
+Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.
+Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
+Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
+One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
+Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).
+Note: 30 uncensored model(s) hidden; add --content all to show them.
 ```
 
 The default output is a table for people; add `--json` for apps and agents (llmfit prints JSON by default
@@ -54,10 +99,11 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 | command | what it does / 内容 |
 |---|---|
 | `genmodelfit system` | detected GPU / RAM / disk / この PC の GPU・メモリ・空き |
-| `genmodelfit recommend [-m image] [-n 5] [--auto-only]` | best models for this PC (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
+| `genmodelfit recommend [-m image,video] [--task edit] [-n 5] [--auto-only]` | best models for this PC: per type without `-m` / `--task` (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順。`-m`・`--task` が無ければ種類ごと(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
 | `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
 | `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
-| `genmodelfit info <id>` | files, licenses, estimate, limits, gate checks / 1 つのモデルの詳細 |
+| `genmodelfit types` | the six types, the uses inside each (`--task` names) and counts / 種類と、その中の用途と数 |
+| `genmodelfit info <id>` | files, licenses, estimate, limits, gate checks, other workflows of the same model / 1 つのモデルの詳細 |
 | `genmodelfit gate` | how many models can be auto-recommended, and why the rest are held / 自動でおすすめに出せる数と保留の理由 |
 | `genmodelfit update` | rebuild the model list from upstream / 一覧を上流から作り直す |
 | `genmodelfit update --from-release` | fetch the signed model list published by this project / 署名付きの配布の一覧を取り込む |
@@ -68,12 +114,16 @@ Common options / 共通の指定:
 - `--json` — machine-readable output for apps and agents ([docs/schema.md](docs/schema.md)) / アプリ向けの JSON
 - `--vram 12 --ram 32` — judge for another PC / 別の PC を想定して判定
 - `--width 1024 --height 1024`, `--frames 81`, `--length 30`, `--precision fp8` — judge a specific setting / 設定を指定して判定
+- `-m image,video` — types / 種類(カンマ区切り可)
+- `--task edit` — uses inside a type: `gen`, `edit`, `i2v`, `lipsync`, `motion`, `voice`, `upscale`, `tool`, or task codes
+  such as `t2i` (`genmodelfit types`) / 種類の中の用途
+- `--all-workflows` — one row per workflow instead of one per model / モデルにまとめず、ワークフローごとに出す
 - `--content sfw|all|uncensored` — filter by content mark (below; default `sfw`) / 内容の印で絞る(既定は `sfw`)
 - `--min-fit perfect|good|marginal|too_tight` — only this level or better (recommend: `marginal` by default) / この段階以上だけ
 - `--license apache-2.0,mit` — every file's license must be in the list; unknown never matches / すべてのファイルのライセンスがこの中にあるものだけ
 - `--comfyui-version 0.40.0` — the ComfyUI version your app runs, for the gate / 使う ComfyUI の版(自動おすすめの判定用)
 
-Order / 並べ方: models that run, then auto-recommendable ones (`Auto yes`), then **Score** (0–100: fit level,
+Order / 並べ方 (in each type): models that run, then auto-recommendable ones (`Auto yes`), then **Score** (0–100: fit level,
 VRAM headroom, readiness for auto-recommendation, measured or not, popularity; formula in
 [docs/schema.md](docs/schema.md#score--点数)), then id. The first lines show this PC and how many models were hidden
 and why (`uncensored`, `tools`, `too tight`, …). `--help` of each command lists preconditions, exit codes and examples.
@@ -85,8 +135,13 @@ Python:
 import genmodelfit as gmf
 
 pc = gmf.system()
-for f in gmf.recommend(modality="image", limit=5, comfyui_version="0.40.0"):
-    print(f.model.id, f.score, f.auto, f.estimate.fit, f.estimate.vram_gb, f.estimate.basis)
+for f in gmf.recommend(modality="image", task="edit", limit=5, comfyui_version="0.40.0"):
+    print(
+        f.model.id, f.model.precision, f.score, f.auto, f.estimate.fit, f.estimate.vram_gb, f.estimate.basis
+    )
+    print(
+        [w["id"] for w in f.workflows]
+    )  # other workflows of the same model / 同じモデルのほかのワークフロー
     f.to_dict()  # the same dict as one item of `recommend --json` / `--json` の 1 件と同じ
 gmf.search("flux", license=["apache-2.0", "mit"])
 ```
