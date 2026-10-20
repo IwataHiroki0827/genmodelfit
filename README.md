@@ -32,7 +32,7 @@ Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk
 ● Good      stable-audio-open-1.0     gen+1   -       54   4.9  61% GPU~     5.3 other      license
 == tts (読み上げ): top 2 of 16  (-m tts for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   chatterbox                gen     -       80   3.5  44% GPU      2.0 mit        workflow
+● Perfect   Chatterbox                gen     -       80   3.5  44% GPU      2.0 mit        workflow
 ● Perfect   Qwen3-TTS-12H…CustomVoice gen     -       80   3.2  40% GPU      1.7 apache-2.0 workflow
 == 3d (3D): top 2 of 8  (-m 3d for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
@@ -164,7 +164,7 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 ## Data sources / データ源
 
-The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 205 models.
+The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 204 models.
 Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
 ones), and merges and test stubs are skipped ([docs/sources.md](docs/sources.md)).
 llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。

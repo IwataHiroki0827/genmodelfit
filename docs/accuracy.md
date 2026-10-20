@@ -53,7 +53,7 @@ ComfyUI は「文章の読み取り(テキストエンコーダ)→ 生成(本�
   それより上 too_tight。動かし方ごとの上限: 全部 GPU は無し、順に載せ替える(GPU~)は good まで、逃がす(GPU+RAM)と
   CPU は marginal まで。一番良い段階の動かし方を取る。メインメモリの確かめ(下)はそのあと。大きさが分からなければ
   too_tight(下)。以前は「全部載せが VRAM の 90% 以内なら perfect、VRAM 以内なら good」だった。
-  同梱の一覧での変わり方(その時点の全 341 件): 8 GB / 32 GB は perfect 44 → 23、good 22 → 32、marginal 87 → 97、
+  同梱の一覧での変わり方(段階を変えた時点の一覧の全 341 件。HF の下限を上げる前。今の一覧は 323 件): 8 GB / 32 GB は perfect 44 → 23、good 22 → 32、marginal 87 → 97、
   too_tight 188 → 189。16 GB / 32 GB は perfect 95 → 66、good 67 → 76、marginal 107 → 124、too_tight 72 → 75。
   AI生成キットの推奨の VRAM(8 GB)で、Z-Image Turbo int8 と Wan 2.1 1.3B は使用率 96〜97% なので marginal になる
   (GPU で動くことは変わらない。tests/test_estimate.py)。
