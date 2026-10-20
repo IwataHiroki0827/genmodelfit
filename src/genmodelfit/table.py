@@ -57,10 +57,10 @@ COLUMN_WIDTH = {
     "Status": 11,
     "Type": 5,
     "Score": 5,
-    "VRAM": 6,
+    "VRAM": 5,
     "Mem%": 4,
     "Mode": 7,
-    "Disk": 5,
+    "Disk": 4,
     "License": 10,
     "Auto": 8,
 }
@@ -181,17 +181,24 @@ def _auto_cell(gate: dict[str, Any] | None) -> Text:
     return Text(CHECK_LABEL.get(failed[0], failed[0]), style="yellow")
 
 
+def _gb(v: float) -> str:
+    """GiB の値を 4 桁に収める(100 以上は整数、1000 以上は 999+)。"""
+    if v < 99.95:
+        return f"{v:.1f}"
+    return f"{v:.0f}" if v < 999.5 else "999+"
+
+
 def _vram_cell(e, system) -> Text:
     if e.unknown_size:
         return Text("?")
     need = vram_need(e, system)
     if need is None:
         if e.fit == "too_tight":  # GPU が無くて動かない: 最低これだけの VRAM が要る
-            return Text(f"{e.vram_offload_gb:.1f}", style="red")
+            return Text(_gb(e.vram_offload_gb), style="red")
         return Text("-", style="dim")
     if e.basis == "measured":
-        return Text.assemble(f"{need:.1f}", ("m", "bold"))
-    return Text(f"{need:.1f}")
+        return Text.assemble(_gb(need), ("m", "bold"))
+    return Text(_gb(need))
 
 
 def _mem_cell(e, system) -> Text:
@@ -244,7 +251,7 @@ def build_table(fits: Sequence, width: int = MAX_WIDTH, system=None) -> Table:
             "VRAM": _vram_cell(e, system),
             "Mem%": _mem_cell(e, system),
             "Mode": Text(mode_label(e, system), style="red" if e.fit == "too_tight" else ""),
-            "Disk": Text(f"{e.disk_gb:.1f}" if e.disk_gb else "?"),
+            "Disk": Text(_gb(e.disk_gb) if e.disk_gb else "?"),
             "License": Text(m.license or "?"),
             "Auto": _auto_cell(f.gate),
         }
@@ -277,11 +284,11 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 
 def legend(fits: Sequence, hidden: Mapping[str, int]) -> list[str]:
-    out = [
-        "Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed; m = measured, others",
-        "  are rough estimates. Mem%: share of VRAM (of RAM for CPU); RAM = not enough system RAM.",
-        "Mode: GPU = all on GPU, GPU~ = parts swapped in turn, GPU+RAM = offload (slow), CPU (slow),",
-        "  - = does not run. Auto: yes = can be auto-recommended, else the first check that held it.",
+    out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
+        "Order: runs first, then Auto=yes, then Score (0-100). VRAM: GiB needed, m = measured.",
+        "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
+        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.",
+        "Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md).",
     ]
     if any(f.model.content == "uncensored" for f in fits):
         out.append("[U] = uncensored")
@@ -289,7 +296,6 @@ def legend(fits: Sequence, hidden: Mapping[str, int]) -> list[str]:
         out.append(
             f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --content all to show them."
         )
-    out.append("Details: genmodelfit info <id>. JSON for apps: --json (docs/schema.md).")
     return out
 
 
