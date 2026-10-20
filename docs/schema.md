@@ -164,9 +164,45 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
-`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome` (`ok` / `oom` / `error`, default `ok`),
-`standard` (bool, default true; false when a custom workflow or extra overrides were used). Only `outcome: "ok"` and
-`standard: true` measurements are used for estimates and calibration.
+`comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`.
+
+| key | type | meaning |
+|---|---|---|
+| `gpu_vram_gb` | float | total VRAM. bench stores `/system_stats` `vram_total` in GiB rounded to 2 decimals (e.g. `7.99`); older bundled rows hold the nominal size (`16`) |
+| `offload` | str \| null | how ComfyUI placed the model: `none` (all on GPU) / `dynamic` (dynamic VRAM) / `partial` (partially loaded) / `lowvram` (`--lowvram` / `--novram`) / `oom` (ran out of memory) |
+| `outcome` | str | `ok` (finished) / `oom` (out of memory) / `error` (failed for another reason). Default `"ok"` |
+| `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`) |
+| `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
+
+`outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
+as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements with `outcome == "ok"` and
+`standard != false`; OOM rows are still welcome as data but must keep `outcome: "oom"`.
+後から足した任意の項目。無い古い行は ok・標準として読む。見積もりは ok かつ標準の実測だけを使う。
+
+## bench
+
+`genmodelfit bench <template> --json` prints the envelope (without `system` / `database`) plus:
+
+| key | type | meaning |
+|---|---|---|
+| `measurement` | Measurement | the result (also saved to `saved_to` when saved) |
+| `saved_to` | str \| null | where the JSON was written (`--output`, default `<cache>/measurements/<model>_<gpu>_<UTC>.json`); null when not saved |
+| `not_saved` | str | only when not saved: why (failed or non-standard results are not cached unless `--save-failed` / `--save-nonstandard` / `--output`) |
+| `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
+| `warnings` | str[] | settings that could not be applied, uploaded inputs, … (Japanese) |
+| `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
+
+How bench fills Measurement / 測り方:
+
+- `peak_vram_gb`: max of `/system_stats` `devices[0].torch_vram_total` polled every 0.2 s (the ComfyUI process,
+  without the CUDA context). The GPU-wide `nvidia-smi` delta from the pre-run baseline goes to `note`.
+- `peak_ram_gb`: max resident memory of the process listening on the port (and its children), only when its
+  command line contains `main.py` or `comfy`; null when remote or not identified.
+- `seconds`: wall time from submit to completion, including model loading. `/free` is sent first only with `--free`;
+  without it the pre-run torch allocation is written to `note` and a warning is printed.
+- `offload`: read from the ComfyUI log: `dynamic` / `partial` / `lowvram` / `none` / `oom`, or null when unknown.
+- `--set` values: only numbers are written to `note`; for other values only the input name is kept.
+- The saved file is `{"measurements": [Measurement]}` and holds no paths, user names or prompts.
 
 ## Database file (`db.json`)
 

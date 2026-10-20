@@ -15,6 +15,8 @@ CONTENT_LEVELS = ("sfw", "uncensored")
 FIT_LEVELS = ("perfect", "good", "marginal", "too_tight")
 # 推定の根拠
 BASIS = ("measured", "estimated")
+# 実測の結果。ok=最後まで動いた、oom=メモリ不足で失敗、error=ほかの理由で失敗
+OUTCOMES = ("ok", "oom", "error")
 
 
 def _from_dict(cls, data: dict[str, Any]):
@@ -174,12 +176,17 @@ class Measurement:
     seconds: float | None = None
     driver: str | None = None
     comfyui_version: str | None = None
-    offload: str | None = None  # none / dynamic / lowvram など(ComfyUI の動き)
+    offload: str | None = None  # none / dynamic / partial / lowvram / oom(ComfyUI の動き)
     source: str = ""  # 誰がどこで測ったか
     date: str | None = None
     note: str | None = None
-    outcome: str = "ok"  # ok / oom / error(ok 以外は見積もりにも合わせ直しにも使わない)
-    standard: bool = True  # False = 独自のワークフローや追加の上書きで測った(見積もりに使わない)
+    # 以下は後から足した項目(無い古い行は ok・標準として読む)
+    outcome: str = "ok"  # OUTCOMES。ok 以外は「動く」根拠に使わない
+    standard: bool = True  # 公式テンプレートのまま(幅・高さ・フレーム数・長さ・ステップ数だけ変えた)か
+    # peak_vram_gb の測り方。torch_reserved = ComfyUI のプロセスの torch の確保量の最大
+    # (bench。CUDA の文脈は含まない)。
+    # None = 記録が無い(AI生成キットで測った RTX 5080 の 9 件)。測り方が違う値どうしで係数を合わせない
+    vram_metric: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:
