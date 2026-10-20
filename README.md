@@ -24,16 +24,16 @@ Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk
 ● Marginal  Wan 2.1 ControlNet 1.3B   edit    bf16    39   7.7  96% GPU+RAM 10.6 mit        yes
 == music (音楽): top 2 of 9  (-m music for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Good      ACE-Step 1.5 Turbo        gen+2   -       65  6.0m  76% GPU~     9.3 mit        yes
+● Good      ACE-Step 1.5 Turbo        gen+2   ?       65  6.0m  76% GPU~     9.3 mit        yes
 ● Marginal  ACE-Step 1.5XL Turbo      gen     bf16    40   5.2  65% GPU+RAM 18.5 mit        yes
 == sfx (効果音): top 2 of 2  (-m sfx for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   stable-audio-3-small-sfx  gen     -       68   3.6  45% GPU      2.1 other      license
-● Good      stable-audio-open-1.0     gen+1   -       54   4.9  61% GPU~     5.3 other      license
+● Perfect   stable-audio-3-small-sfx  gen     ?       68   3.6  45% GPU      2.1 other      license
+● Good      stable-audio-open-1.0     gen+1   ?       54   4.9  61% GPU~     5.3 other      license
 == tts (読み上げ): top 2 of 16  (-m tts for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
-● Perfect   Chatterbox                gen     -       80   3.5  44% GPU      2.0 mit        workflow
-● Perfect   Qwen3-TTS-12H…CustomVoice gen     -       80   3.2  40% GPU      1.7 apache-2.0 workflow
+● Perfect   Chatterbox                gen     ?       80   3.5  44% GPU      2.0 mit        workflow
+● Perfect   Qwen3-TTS-12H…CustomVoice gen     ?       80   3.2  40% GPU      1.7 apache-2.0 workflow
 == 3d (3D): top 2 of 8  (-m 3d for more)
 Status      Model                     Use     Prec Score  VRAM Mem% Mode    Disk License    Auto
 ● Good      HY 3D 2.0                 gen     fp16    64  6.7m  84% GPU      4.6 other      license
@@ -43,6 +43,7 @@ Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (s
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
+? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).
 Note: 24 uncensored model(s) hidden; add --content all to show them.
 ```
 
@@ -68,6 +69,7 @@ Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (s
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Auto: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
+? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).
 Note: 19 uncensored model(s) hidden; add --content all to show them.
 ```
 

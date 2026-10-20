@@ -37,7 +37,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from .db import bundled_text
-from .models import FIT_UNKNOWN, Estimate, Measurement, ModelEntry, ModelFile, Settings, SystemInfo
+from .models import (
+    FIT_UNKNOWN,
+    RUN_UNKNOWN,
+    Estimate,
+    Measurement,
+    ModelEntry,
+    ModelFile,
+    Settings,
+    SystemInfo,
+)
 
 GIB = 1024**3  # 大きさはすべて GiB で扱う(nvidia-smi の MiB / 1024、psutil のバイト / 2^30 と同じ単位)
 
@@ -974,7 +983,7 @@ def _unknown_estimate(entry: ModelEntry, parts: Parts, s: Settings) -> Estimate:
         disk_gb=None,
         basis="estimated",
         fit=FIT_UNKNOWN,
-        run_mode="none",
+        run_mode=RUN_UNKNOWN,
         reasons=[UNKNOWN_SIZE_REASON, *parts.notes],
         measured_on=None,
         vram_sequential_gb=None,

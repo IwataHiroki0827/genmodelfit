@@ -379,18 +379,24 @@ class HeaderCache:
 
 
 def target_files(entries: Iterable[ModelEntry], *, mains_only: bool = True) -> list[ModelFile]:
-    """見出しを読むファイル(Hugging Face の safetensors / GGUF。既定は本体だけ)。"""
+    """見出しを読むファイル(Hugging Face の safetensors / GGUF。既定は本体だけ)。
+
+    本体は役割が main のものと、groups.main_files が本体とみなすもの(役割が main のファイルが無ければ、
+    テキストエンコーダ・VAE 以外で一番大きいファイル。背景の除去・深度の推定などの道具の重みは
+    役割が other なので、#30 で足した)。"""
     from .estimate import _role_of
+    from .groups import main_files
     from .hf import parse_hf_url
 
     out = []
     for e in entries:
+        picked = main_files(e) if mains_only else []
         for f in e.files:
+            if mains_only and _role_of(f) != "main" and not any(f is g for g in picked):
+                continue
             if not f.url or not parse_hf_url(f.url):
                 continue
             if not f.url.split("?", 1)[0].lower().endswith(WEIGHT_EXTS):
-                continue
-            if mains_only and _role_of(f) != "main":
                 continue
             out.append(f)
     return out

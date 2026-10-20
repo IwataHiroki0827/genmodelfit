@@ -59,12 +59,12 @@ def levels(db):
                 e = f.estimate
                 assert e.fit in (*FIT_LEVELS, FIT_UNKNOWN), (f.model.id, e.fit)
                 if e.unknown_size:  # 「?」の印: 判定しない
-                    assert e.fit == FIT_UNKNOWN and e.run_mode == "none", f.model.id
+                    assert e.fit == FIT_UNKNOWN and e.run_mode == "unknown", f.model.id
                 else:
                     assert e.run_mode in ("gpu", "offload", "cpu", "none"), f.model.id
                     assert e.vram_gb > 0 or e.ram_gb > 0, f.model.id
                 if not v:
-                    assert e.run_mode in ("cpu", "none"), f.model.id
+                    assert e.run_mode in ("cpu", "none", "unknown"), f.model.id
             out[(v, r)] = {f.model.id: fit_rank(f.estimate.fit) for f in fits}
             scores[(v, r)] = {f.model.id: f.score for f in fits}
             for f in fits:

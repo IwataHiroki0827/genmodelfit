@@ -11,6 +11,9 @@
   絵文字は Windows の端末(cp932)で幅が崩れるので使わない
 - VRAM は判定に使った値(m = 実測)。Mode は GPU / GPU~(部品を順に載せ替え)/ GPU+RAM(逃がす)/ CPU / -(動かない)
 - Auto は自動でおすすめに出せれば yes、出せなければ最初に落ちた条件の短い名前
+- 「?」は分からない(精度・ライセンス・大きさ = 判定していない)、「-」は当てはまらない
+  (動かないので Mode が無い、CPU で動くので VRAM が無い、GPU が無いので Mem% が無い、など)。
+  #30 で使い分けをそろえた
 """
 
 from __future__ import annotations
@@ -223,6 +226,8 @@ def _vram_cell(e, system) -> Text:
 
 
 def _mem_cell(e, system) -> Text:
+    if e.unknown_size:
+        return Text("?")
     if _ram_short(e, system):  # メモリが理由(VRAM の割合だけだと足りているように見えるので)
         return Text("RAM", style="red" if e.fit == "too_tight" else "yellow")
     _, need, avail = memory_use(e, system)
@@ -236,7 +241,7 @@ def _mem_cell(e, system) -> Text:
 
 
 def _use_cell(f, grouped: bool) -> Text:
-    use = getattr(f, "use", "") or "-"
+    use = getattr(f, "use", "") or "?"  # 用途が分からない
     n = len(getattr(f, "workflows", []) or []) if grouped else 0
     return Text.assemble(use, (f"+{n}", "dim") if n else "")
 
@@ -382,8 +387,9 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True, orde
             f"Note: {hidden['license_unknown']} model(s) with an unknown license hidden;"
             " add --include-unknown-license to show them."
         )
+    out.append("? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).")
     if any(f.estimate.unknown_size for f in fits):
-        out.append("? = size unknown, not judged (after the levels that run, before Too tight).")
+        out.append("Status ? = size unknown, not judged (after the levels that run, before Too tight).")
     return out
 
 

@@ -621,3 +621,102 @@ def effective_settings(api: dict[str, dict[str, Any]], precision: str | None = N
         precision=precision,
         batch=batch,
     )
+
+
+# --- 本体の読み込みノードから精度を推す(update が使う。#30) ------------------------------------------
+
+# 本体を読み込むノードの型(優先する順)。公式テンプレートで本体を読むもの。ここに無い型からは推さない
+MAIN_LOADERS = (
+    "UNETLoader",
+    "UnetLoaderGGUF",
+    "CheckpointLoaderSimple",
+    "CheckpointLoader",
+    "ImageOnlyCheckpointLoader",
+    "WanVideoModelLoader",
+    "SeedVR2LoadDiTModel",
+    "MelBandRoFormerModelLoader",
+    "DownloadAndLoadGIMMVFIModel",
+    "DownloadAndLoadDepthAnythingV2Model",
+    "LoadDA3Model",
+    "LoadBackgroundRemovalModel",
+    "FILM VFI",
+    "DownloadAndLoadLivePortraitModels",
+)
+# 読み込むときに重みをこの形式に変える指定(UNETLoader の weight_dtype、WanVideoModelLoader の quantization)
+LOAD_CAST = {
+    "fp8_e4m3fn": "fp8",
+    "fp8_e4m3fn_fast": "fp8",
+    "fp8_e5m2": "fp8",
+    "fp8_e4m3fn_scaled": "fp8",
+    "fp8_e4m3fn_scaled_fast": "fp8",
+    "fp8_e5m2_scaled": "fp8",
+}
+# 読み込む精度の指定(WanVideoModelLoader の base_precision、GIMM-VFI の precision など)。
+# default / auto / disabled は指定なし(ファイルのまま・GPU しだい)なので推さない
+LOAD_DTYPE = {
+    "fp32": "fp32",
+    "float32": "fp32",
+    "fp16": "fp16",
+    "float16": "fp16",
+    "fp16_fast": "fp16",
+    "bf16": "bf16",
+    "bfloat16": "bf16",
+}
+
+
+def _node_values(node: _Node) -> list[Any]:
+    values = node.widgets_values
+    vals = list(values.values()) if isinstance(values, dict) else list(values or [])
+    return vals + list(node.widget_overrides.values())
+
+
+def _node_files(node: _Node) -> list[str]:
+    return [
+        v.replace("\\", "/").rsplit("/", 1)[-1]
+        for v in _node_values(node)
+        if isinstance(v, str) and MODEL_FILE_EXT.search(v)
+    ]
+
+
+def node_precision(node: _Node) -> str | None:
+    """1 つの読み込みノードの指定から精度を推す。
+
+    1. 読み込むときに fp8 に変える指定(weight_dtype / quantization が fp8_*)→ fp8
+    2. 読み込むファイル名の精度の語(hf.guess_precision。fp16・bf16・fp8・int8・GGUF の Q8_0 など)
+    3. 読み込む精度の指定(base_precision の fp16_fast・precision の fp32 など)
+    どれも無ければ None(default・auto だけのノード、精度の語の無いファイル)。"""
+    from .hf import guess_precision
+
+    vals = [v.strip().lower() for v in _node_values(node) if isinstance(v, str)]
+    for v in vals:
+        if v in LOAD_CAST:
+            return LOAD_CAST[v]
+    for f in _node_files(node):
+        p = guess_precision(f)
+        if p:
+            return p
+    for v in vals:
+        if v in LOAD_DTYPE:
+            return LOAD_DTYPE[v]
+    return None
+
+
+def loader_precision(ui: dict[str, Any], main_names: set[str] | None = None) -> str | None:
+    """画面用の形式のテンプレートから、本体の読み込みノード(MAIN_LOADERS)の指定で精度を推す。
+
+    main_names(本体のファイル名。小文字)があれば、そのファイルを読み込むノードを使う。無ければ(ファイルの一覧が
+    無いテンプレート)MAIN_LOADERS の順で最初に見つかったノード。無効(mute)・素通し(bypass)のノードは使わない。
+    推せないとき・読めない形のときは None。"""
+    try:
+        flat, _alias = _flat_graph(ui)
+    except (WorkflowError, KeyError, TypeError, ValueError, AttributeError):
+        return None
+    loaders = [n for n in flat if n.type in MAIN_LOADERS and n.mode not in (MODE_NEVER, MODE_BYPASS)]
+    if main_names:
+        hits = [n for n in loaders if {f.lower() for f in _node_files(n)} & main_names]
+        if hits:
+            return node_precision(hits[0])
+        if any(_node_files(n) for n in loaders):
+            return None  # 本体ではないファイルを読むノードから推さない
+    loaders.sort(key=lambda n: MAIN_LOADERS.index(n.type))
+    return node_precision(loaders[0]) if loaders else None

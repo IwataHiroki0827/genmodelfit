@@ -21,6 +21,14 @@ FIT_LEVELS = ("perfect", "good", "marginal", "too_tight")
 FIT_UNKNOWN = "unknown"
 
 
+# 動かし方(Estimate.run_mode)。none = 動かない(表では「-」= 当てはまらない)、unknown = 大きさが分からず
+# 判定していない(表では「?」= 分からない)。0.2.0 から unknown を分けた(それまでは none)
+RUN_MODES = ("gpu", "offload", "cpu", "none", "unknown")
+RUN_UNKNOWN = "unknown"
+# 精度の出どころ(ModelEntry.precision_source。0.2.0、#30)。上ほど確か。見出しの精度はほかで上書きしない
+PRECISION_SOURCES = ("header", "filename", "hf_api", "config", "workflow")
+
+
 def fit_rank(fit: str) -> int:
     """段階の順位(0 = perfect)。判定できない(FIT_UNKNOWN)は一番後ろ。"""
     return FIT_LEVELS.index(fit) if fit in FIT_LEVELS else len(FIT_LEVELS)
@@ -65,6 +73,11 @@ class ModelFile:
     # 重み本体は落とさない)。None は読んでいない・読めない。後から足した項目(0.1.1)
     header_precision: str | None = None
     header_params: int | None = None
+    # 見出しも名前も精度を示さないとき、置き場所のリポジトリから読んだ精度(#30、0.2.0)。
+    # repo_precision_source は hf_api(Hub API の safetensors の dtype ごとの要素の数。一つの dtype が
+    # 9 割以上のときだけ)か config(config.json の torch_dtype / dtype)。None は読んでいない・読めない
+    repo_precision: str | None = None
+    repo_precision_source: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
@@ -131,6 +144,12 @@ class ModelEntry:
     # 2 つ以上あれば ComfyUI は順に動かす(Wan 2.2 14B の high_noise → low_noise など)。テンプレートの
     # つながりから update が求める(workflow.sampler_stages)。None は調べていない、[] は 1 組だけ。0.1.1
     sampler_stages: list[list[str]] | None = None
+    # 公式テンプレートの本体の読み込みノード(UNETLoader の weight_dtype、WanVideoModelLoader の quantization、
+    # 読み込むファイル名など)から推した精度(workflow.loader_precision。#30、0.2.0)。
+    # None は推せない・調べていない
+    workflow_precision: str | None = None
+    # precision をどこから決めたか(PRECISION_SOURCES。None は精度が分からない・古いデータ)。#30、0.2.0
+    precision_source: str | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
@@ -309,7 +328,7 @@ class Estimate:
     disk_gb: float | None
     basis: str  # measured / estimated
     fit: str  # FIT_LEVELS、大きさが分からないときは FIT_UNKNOWN
-    run_mode: str  # gpu / offload / cpu / none
+    run_mode: str  # RUN_MODES。gpu / offload / cpu / none(動かない)/ unknown(大きさが分からず判定していない)
     reasons: list[str] = field(default_factory=list)
     measured_on: str | None = None  # basis が measured のとき、どの GPU で測ったか
     vram_sequential_gb: float | None = None  # 部品を段ごとに載せ替えたときの最大 VRAM
@@ -321,4 +340,10 @@ class Estimate:
     vram_free_short: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする
+        (Python の属性は計算のため 0.0 のまま。unknown_size を見る)。"""
+        d = asdict(self)
+        if self.unknown_size:
+            for k in ("vram_gb", "vram_offload_gb", "ram_gb", "vram_sequential_gb"):
+                d[k] = None
+        return d

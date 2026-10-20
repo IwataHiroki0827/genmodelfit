@@ -141,8 +141,11 @@ def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
 
 
 def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
-    """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU / -。"""
-    if e.unknown_size or e.run_mode == "none":
+    """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU /
+    -(動かない = 当てはまらない)/ ?(大きさが分からず判定していない = 分からない。#30)。"""
+    if e.unknown_size:
+        return "?"
+    if e.run_mode == "none":
         return "-"
     if e.run_mode == "cpu":
         return "CPU"
@@ -177,8 +180,10 @@ def memory_use(e: Estimate, system: SystemInfo | None) -> tuple[str, float | Non
     """(種類, 要る GiB, ある GiB)。GPU で動かすなら VRAM、CPU で動くならメインメモリ。
     GPU が要るのに無いときは VRAM の最低限と 0。"""
     has_gpu = system is not None and system.vram_gb > 0
-    if e.unknown_size:
-        return ("vram" if has_gpu else "ram"), None, None
+    if e.unknown_size:  # 要る量は分からないが、ある量は分かる(#30)
+        if has_gpu:
+            return "vram", None, system.vram_gb
+        return "ram", None, system.ram_total_gb if system is not None else None
     if e.run_mode == "cpu":
         return "ram", e.ram_gb, system.ram_total_gb if system is not None else None
     need = vram_need(e, system)
@@ -246,6 +251,7 @@ class Fit:
             "files_count": len(m.files),
             "use": self.use,
             "precision": m.precision,
+            "precision_source": m.precision_source,
             "group_key": self.group_key,
             "variants": [dict(v) for v in self.variants],
             "workflows": [dict(w) for w in self.workflows],
@@ -507,6 +513,7 @@ def _member_dict(f: Fit, matched: bool) -> dict[str, Any]:
         "tasks": list(f.model.tasks),
         "use": f.use,
         "precision": f.model.precision,
+        "precision_source": f.model.precision_source,
         "fit_level": f.estimate.fit,
         "memory_required_gb": round(need, 2) if need is not None else None,
         "disk_size_gb": f.estimate.disk_gb,

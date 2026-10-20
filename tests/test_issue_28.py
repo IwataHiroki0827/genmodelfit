@@ -278,12 +278,12 @@ def _tts_gguf_unknown() -> ModelEntry:
 def test_unknown_size_is_unknown_not_too_tight(db):
     m = _tts_gguf_unknown()
     e = estimate(m, pc(24))
-    assert e.unknown_size and e.fit == FIT_UNKNOWN and e.run_mode == "none"
+    assert e.unknown_size and e.fit == FIT_UNKNOWN and e.run_mode == "unknown"  # 0.2.0 から none と分けた
     from genmodelfit.recommend import judge
 
     f = judge(m, pc(24), db)
     d = f.to_dict()
-    assert d["fit_level"] == "unknown" and d["fit_label"] == "?" and d["run_mode_label"] == "-"
+    assert d["fit_level"] == "unknown" and d["fit_label"] == "?" and d["run_mode_label"] == "?"
     con = make_console(width=100)
     with con.capture() as cap:
         con.print(build_table([f], system=pc(24)))

@@ -137,7 +137,7 @@ def test_precision_rank_and_label():
     order = ["bf16", "fp8", "int8", "gguf-q8_0", "gguf-q6_k", "gguf-q5_k_m", "gguf-q4_k_m", "nvfp4"]
     assert [precision_rank(p) for p in order] == sorted(precision_rank(p) for p in order)
     assert precision_rank(None) == precision_rank("fp16") == precision_rank("gguf-bf16") == 0
-    assert [precision_label(p) for p in ("gguf-q4_k_m", "fp8", None)] == ["q4", "fp8", "-"]
+    assert [precision_label(p) for p in ("gguf-q4_k_m", "fp8", None)] == ["q4", "fp8", "?"]
 
 
 def test_precision_auto_selection(db):
