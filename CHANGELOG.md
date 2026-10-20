@@ -27,7 +27,7 @@ All notable changes to this project are documented here. The format is based on
   JSON: docs/schema.md "download".
   モデルを落とす `download` を足した(同意・sha256・続きから・ComfyUI のフォルダ)。
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-10-20
 
 Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30). The JSON output changes in a way that
 can break apps (below), so this is a minor release under 0.x semver (owner's decision).
