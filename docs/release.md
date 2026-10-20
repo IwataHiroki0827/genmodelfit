@@ -22,16 +22,20 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
 設定の確認: `gh api repos/laxshmate/genmodelfit/environments` と
 `gh secret list -R laxshmate/genmodelfit`(空であること)・`gh secret list --env data-signing -R laxshmate/genmodelfit`。
 
-## 最初の公開(v0.1.0)の手順 — ユーザが行う
+## 最初の公開(v0.1.0)の手順
 
-**公開はユーザの承認を得てから。Claude は承認なしにタグを push しない・PR をマージしない。**
+**公開はユーザの承認を得てから。** 2026-10-20 にユーザが v0.1.0 のマージ(Claude が行う)と公開を承認した。
+環境 `pypi` の承認(Review deployments)はユーザが押す。
 2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`)と `data-signing`(`main` だけ・
 シークレット `GENMODELFIT_SIGNING_KEY` あり)はそろっている。リポジトリ全体のシークレットは空。PyPI の
 `genmodelfit` はまだ無い(404)。
 
 1. **PR をマージする**(この順。どれも前の PR のブランチから作ってある):
-   #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #17 → #18(この Issue の PR)。
-   CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする。
+   PR #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #20(Issue #17)→ #18 の PR → #21 の PR。
+   - 積み重ねた PR は、土台が前の PR のブランチになっている。そのままマージすると main ではなく前のブランチに入るので、
+     **マージする前に土台を main に付け替える**(`gh pr edit <番号> --base main`)。付け替えると差分はその PR の分だけになる。
+   - **squash や rebase でマージしない**(普通のマージコミット)。squash すると後ろの PR の履歴と合わなくなる。
+   - 付け替えたあと CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする。
 2. **一覧を配る**: #18 のマージで main の `src/genmodelfit/data/db.json` が変わっていれば、push で
    `.github/workflows/data.yml` が動く。動いていなければ Actions の「Data」→「Run workflow」(ブランチ main)で動かす。
    緑になったら、Release `data-latest` に `db.json` と `db.json.sig` があることを確かめる。

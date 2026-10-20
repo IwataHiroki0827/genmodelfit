@@ -275,7 +275,10 @@ See [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/a
 genmodelfit is licensed under the [Mozilla Public License 2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) (MPL-2.0), and so is the bundled data
 (`db.json`, measurements, calibration). MPL-2.0 is a file-level copyleft: if you distribute modified genmodelfit
 files, you must make those files' source available under MPL-2.0; you may use genmodelfit unmodified (or import it)
-in a larger work under any license, including closed-source apps, as long as you keep its license notices.
+in a larger work under any license, including closed-source apps. When you distribute genmodelfit inside your
+app (for example in a PyInstaller exe), keep its license notices and tell your users where its source code is
+available (https://github.com/laxshmate/genmodelfit, MPL-2.0 §3.2); the same applies to `certifi` (MPL-2.0).
+アプリに同梱して配るときは、ライセンスの表示を残し、genmodelfit(と certifi)のソースの入手先を利用者に知らせてください。
 Parts of the data come from [ComfyUI workflow templates](https://github.com/Comfy-Org/workflow_templates) (MIT) and
 the Hugging Face Hub API; see [THIRD_PARTY_NOTICES](https://github.com/laxshmate/genmodelfit/blob/main/THIRD_PARTY_NOTICES). Model licenses are reported, not granted.
 

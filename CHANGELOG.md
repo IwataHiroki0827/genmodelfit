@@ -16,7 +16,7 @@ First public release. / 最初の公開版。
 - Hardware detection (`genmodelfit system`, `gmf.system()`): NVIDIA GPUs via `nvidia-smi`, RAM, free disk;
   `--vram` / `--ram` to judge another PC. Other PCs are judged as CPU-only.
 - Bundled model list (`db.json`): 323 entries (image, video, music, sound effects, TTS, 3D) built from the official
-  ComfyUI workflow templates and the Hugging Face Hub API, folded into 205 models. Hugging Face models need at least
+  ComfyUI workflow templates and the Hugging Face Hub API, folded into 204 models. Hugging Face models need at least
   10,000 all-time downloads (1,000 for trending ones), like llmfit.
 - Memory estimates per component and stage, with swapping in turn, offload to RAM and CPU run modes; every estimate
   says whether it is `measured` or `estimated`. Calibration on real runs (`python -m genmodelfit.calibrate`,
