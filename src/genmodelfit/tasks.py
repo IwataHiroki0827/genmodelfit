@@ -62,6 +62,9 @@ PREPROCESS_TITLE = re.compile(
 )
 # 音の分離(ボーカルと伴奏を分けるなど)は生成ではない
 SEPARATION_TITLE = re.compile(r"\b(audio|stem|vocals?|source) separation\b", re.IGNORECASE)
+# 単眼の形状推定(MoGe: Monocular Geometry Estimation)。メッシュも出すが、写真から形を推すもので生成ではない。
+# 分類が 3D Model でも補助ツールにする
+ESTIMATOR_TITLE = re.compile(r"^\s*moge\b|\bgeometry estimation\b", re.IGNORECASE)
 TOOL_CATEGORIES = frozenset({"Image Tools", "Video Tools"})
 
 
@@ -70,6 +73,8 @@ def tool_task_from_title(title: str | None, category: str | None) -> str | None:
     t = title or ""
     if SEPARATION_TITLE.search(t):
         return "separate"
+    if ESTIMATOR_TITLE.search(t):
+        return "estimate"
     if category in TOOL_CATEGORIES and PREPROCESS_TITLE.search(t):
         return "estimate"
     return None

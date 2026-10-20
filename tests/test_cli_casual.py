@@ -131,7 +131,11 @@ def test_width(cache, args, columns):
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
     # 同梱の無検閲は 39 件。同じモデルの別のワークフローは「same model」に数える
-    assert "All models: " in out and "hidden: uncensored 39, same model " in out
+    assert (
+        "All models: " in out
+        and "(39 hidden: uncensored 39; " in out
+        and " more workflows merged into their models)" in out
+    )
     assert "add --content all" in out
     out = run_cli(["fit", *HW, "--content", "all", "--all-workflows"], cache).stdout.decode("utf-8")
     assert "hidden" not in out
@@ -163,7 +167,7 @@ def test_search(cache):
     r = run_cli(["search", "FLUX", *HW], cache)
     out = r.stdout.decode("utf-8")
     assert r.returncode == 0 and r.stderr == b""
-    assert 'Search "FLUX": ' in out and "flux_schnell" in out and "hidden: uncensored" in out
+    assert 'Search "FLUX": ' in out and "Flux.1 Schnell" in out and "hidden: uncensored" in out
     # 合わなくても終了コード 0。stdout に「no match」
     r = run_cli(["search", "no_such_model_xyz", *HW], cache)
     assert r.returncode == 0 and "no match" in r.stdout.decode("utf-8")

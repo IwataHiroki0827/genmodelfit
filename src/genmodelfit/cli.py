@@ -372,13 +372,34 @@ def _emit(lines: list[str]) -> None:
             print(part)
 
 
+def _by_model_name(db: Database, s: SystemInfo, args: argparse.Namespace, query: str):
+    """モデルの表示名(大文字小文字を区別しない)に合えば、そのモデルの中でこの PC に一番合うワークフロー。"""
+    from .groups import index_for
+    from .recommend import judge, variant_key
+
+    if db.get(query.strip()) is not None:
+        return None  # ID がそのまま合うなら ID を優先
+    idx = index_for(db)
+    key = idx.find(query)
+    if key is None:
+        return None
+    c = load_coefficients()
+    fits = [
+        judge(m, s, db, settings=_settings(args), coefficients=c, policy=_policy(args))
+        for m in idx.members[key]
+    ]
+    return min(fits, key=variant_key).model
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
-    m = resolve_model(db, args.model, args.content)
+    m = _by_model_name(db, s, args, args.model) or resolve_model(db, args.model, args.content)
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c, with_limits=True)
     gate = _gate_for(m, args, db)
     key, same = same_model(db, s, m, args)
+    from .groups import index_for
+
     if args.json:
         _out(
             _envelope(
@@ -390,11 +411,18 @@ def cmd_info(args: argparse.Namespace) -> int:
                 gate=gate,
                 measurements=[vars(x) | {"settings": vars(x.settings)} for x in db.measurements_for(m.id)],
                 group_key=key,
+                model_name=index_for(db).name_of.get(key),
                 same_model=same,
             )
         )
         return 0
+    from .groups import index_for
+
     out = [f"{m.name}  [{m.id}]"]
+    out.append(
+        f"  model:    {index_for(db).name_of.get(key, m.name)}"
+        f"  ({len(same) + 1} workflow(s) use these weights)"
+    )
     out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '-'}  content: {m.content}")
     out.append(f"  license:  {m.license or 'unknown'}  source: {m.source}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "size unknown"
@@ -433,15 +461,16 @@ def cmd_info(args: argparse.Namespace) -> int:
 
 def same_model(db: Database, s: SystemInfo, m, args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
     """同じモデル(groups.group_key)のほかのワークフロー。この PC での判定つき、良い順。"""
-    from .groups import group_key
+    from .groups import index_for
     from .recommend import _member_dict, judge, variant_key
 
-    key = group_key(m)
+    idx = index_for(db)
+    key = idx.key_of[m.id]
     c = load_coefficients()
     others = [
         judge(o, s, db, settings=_settings(args), coefficients=c, policy=_policy(args))
-        for o in db.models
-        if o.id != m.id and group_key(o) == key
+        for o in idx.members[key]
+        if o.id != m.id
     ]
     others.sort(key=variant_key)
     return key, [_member_dict(o, True) for o in others]
@@ -674,7 +703,8 @@ def _head_age(v: str) -> int | None:
 
 
 _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, database: {...}, filters: {...},
-  matched, hidden: {reason: count}, groups: [{modality, matched, shown}], models: [{ id, name,
+  matched, hidden: {reason: count}, groups: [{modality, matched, shown}],
+  models: [{ id, name, model_name,
   modality, tasks, use, content, source, fit_level, fit_label, run_mode, run_mode_label, score,
   score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
   memory_required_gb, memory_available_gb, utilization_pct, ram_required_gb, disk_size_gb,

@@ -9,7 +9,14 @@ import pytest
 from clihelp import run_cli
 
 from genmodelfit import cli, load_db
-from genmodelfit.groups import family_tokens, group_key, precision_label, precision_rank
+from genmodelfit.groups import (
+    build_index,
+    family_tokens,
+    group_key,
+    model_precision,
+    precision_label,
+    precision_rank,
+)
 from genmodelfit.models import Gpu, ModelEntry, SystemInfo
 from genmodelfit.recommend import recommend, select
 from genmodelfit.tasks import is_tool, main_use, task_codes, uses_of
@@ -129,10 +136,16 @@ def test_precision_rank_and_label():
 
 
 def test_precision_auto_selection(db):
-    """良い段階が先、同じ段階なら高い精度。8 GB では Z-Image Turbo は int8(good)、24 GB では bf16。"""
-    ids = {f.model.id for f in recommend(db, pc(8), modality="image", limit=None)}
-    assert "image_z_image_turbo_int8" in ids and "image_z_image_turbo" not in ids
-    big = {f.model.id: f for f in recommend(db, pc(24, 64), modality="image", limit=None)}
+    """良い段階が先、同じ段階なら逃がさないほう、それも同じなら高い精度。
+    8 GB: int8(載せ替えて marginal)と bf16(逃がして marginal)→ int8。24 GB: int8 が perfect → int8。
+    48 GB: どちらも perfect → bf16。"""
+    for v, want, other in (
+        (8, "image_z_image_turbo_int8", "image_z_image_turbo"),
+        (24, "image_z_image_turbo_int8", "image_z_image_turbo"),
+    ):
+        ids = {f.model.id for f in recommend(db, pc(v, 64), modality="image", limit=None)}
+        assert want in ids and other not in ids, v
+    big = {f.model.id: f for f in recommend(db, pc(48, 64), modality="image", limit=None)}
     assert "image_z_image_turbo" in big and "image_z_image_turbo_int8" not in big
     f = big["image_z_image_turbo"]
     assert [v["precision"] for v in f.variants] == ["bf16", "int8"]
@@ -234,3 +247,197 @@ def test_broken_db_in_subprocess_has_no_traceback(tmp_path):
     r = run_cli(["recommend", "--db", str(p), "--json"], tmp_path / "cache")
     assert r.returncode == 1 and b"Traceback" not in r.stderr
     assert "error" in json.loads(r.stdout.decode("utf-8"))
+
+
+# --- 3 回目の指摘(代表の選び方・精度・sha256・表示名・段階の帯)-----------------------------------
+
+
+def _row(sel, key):
+    return next(f for f in sel.fits if f.group_key == key)
+
+
+def test_representative_prefers_generation_over_tools(db):
+    idx = build_index(db.models)
+    sel = select(db, pc(8))  # fit と同じ(補助ツールも含む)
+    assert _row(sel, idx.key_of["image_qwen_image_2_1_t2i"]).model.id == "image_qwen_image_2_1_t2i"
+    assert _row(sel, idx.key_of["image_qwen_image_edit_2509"]).model.id.startswith(("image_qwen", "template"))
+    assert not _row(sel, idx.key_of["image_qwen_image_edit_2509"]).model.id.startswith("image_marigold")
+    z = _row(sel, idx.key_of["image_z_image_turbo"])
+    assert z.use == "gen" and z.model.id == "image_z_image_turbo_int8"
+    # 道具だけのモデルは道具のまま出る
+    assert _row(sel, idx.key_of["utility_seedvr2_3b_int8_upscale_image"]).use == "upscale"
+    music = recommend(db, pc(12), modality="music", limit=3)
+    assert all(f.use == "gen" for f in music)
+
+
+def test_row_score_never_drops_with_more_vram(db):
+    """行の点数 = 仲間の一番高い点数。代表が高い精度へ替わっても下がらない。"""
+    prev: dict[str, float] = {}
+    for v in (0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48):
+        rows = {f.group_key: f.score for f in select(db, pc(v, 64)).fits}
+        assert all(rows[k] >= prev[k] for k in prev if k in rows), v
+        prev = rows
+
+
+PRECISION_FIXED = {  # 本体のファイル名から読む精度(同梱の一覧も直した)
+    "templates_mjm_airt_machIne": "fp8",
+    "template_rob_split_stack_qwen_multi_wan22": "bf16",
+    "video_ltx2_canny_to_video": None,
+    "video_ltx2_depth_to_video": None,
+    "video_ltx2_pose_to_video": None,
+    "utility_void_video_inpainting": None,
+    "flux_depth_lora_example": "fp8",
+    "templates_hellorob_facegen_skindetail_upscale": "bf16",
+    "hf:JoaoZaokk/10Eros-v1.5-W4A8-ConvRot": "w4a8",
+}
+
+
+@pytest.mark.parametrize(("mid", "want"), sorted(PRECISION_FIXED.items()))
+def test_precision_comes_from_the_main_file(db, mid, want):
+    m = db.get(mid)
+    assert model_precision(m) == want and m.precision == want
+
+
+def test_bundled_precision_matches_update_rule(db):
+    assert [m.id for m in db.models if m.precision != model_precision(m)] == []
+    assert precision_rank("w4a8") == precision_rank("gguf-q4_k_m") > precision_rank("int8")
+
+
+def test_same_sha256_is_the_same_model(db):
+    idx = build_index(db.models)
+    k = idx.key_of
+    assert k["hf:AEmotionStudio/stable-audio-open-models"] == k["hf:stabilityai/stable-audio-open-1.0"]
+    assert k["hf:stabilityai/stable-audio-open-1.0"] == k["audio_stable_audio_example"]
+    assert (
+        k["audio_ace_step_1_5_split"]
+        == k["audio_ace_step_1_5_split_4b"]
+        == k["audio_ace_step_1_5_checkpoint"]
+    )
+    assert k["audio_ace_step_1_5_split"] != k["audio_ace_step_1_t2a_song"]
+
+
+def test_two_main_files_join_an_existing_model(db):
+    """FLUX.2 klein 4B の文章から画像は base と distilled の両方を載せる
+    → distilled(base でないほう)のモデルへ寄せる。"""
+    k = build_index(db.models).key_of
+    assert k["image_flux2_klein_text_to_image"] == k["image_flux2_klein_image_edit_4b_distilled"]
+    assert k["image_flux2_klein_text_to_image"] != k["image_flux2_klein_image_edit_4b_base"]
+    assert k["image_ideogram4_t2i"] == k["image_ideogram4_t2i_int8"]  # 片方だけのモデルが無ければつないだまま
+
+
+def test_params_b_only_for_generic_hf_names():
+    from genmodelfit.models import ModelFile
+
+    t = ModelEntry(
+        id="t",
+        name="t",
+        modality="music",
+        params_b=4,
+        files=[ModelFile(name="acestep_v1.5_turbo.safetensors", directory="diffusion_models", size_bytes=10)],
+    )
+    assert "4b" not in group_key(t)  # 題から推した params_b(言語モデルの大きさのことがある)は使わない
+    h1 = ModelEntry(
+        id="hf:o/voice",
+        name="voice",
+        modality="tts",
+        params_b=1.0,
+        source="huggingface",
+        files=[ModelFile(name="model.safetensors", repo_id="o/voice", size_bytes=10)],
+    )
+    h2 = ModelEntry(
+        id="hf:p/voice",
+        name="voice",
+        modality="tts",
+        params_b=3.0,
+        source="huggingface",
+        files=[ModelFile(name="model.safetensors", repo_id="p/voice", size_bytes=10)],
+    )
+    assert group_key(h1).endswith("voice 1b") and group_key(h1) != group_key(h2)
+
+
+def test_moss_sft_is_not_merged_with_base(db):
+    k = build_index(db.models).key_of
+    assert k["image_moss_image_t2i_bboxes"] == k["image_moss_image_t2i"] != k["image_moss_image_base_t2i"]
+    from genmodelfit.update import model_file
+
+    base = "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_base_int8_convrot.safetensors"
+    f = model_file(
+        {
+            "name": "moss_image_sft_int8_convrot.safetensors",
+            "url": base,
+            "directory": "diffusion_models",
+            "hash": "f601c1e1161915fb3fea003da0c1782e374dd960fbb3978bc0e4e3fa1f2d8e6f",
+            "hash_type": "SHA256",
+        }
+    )
+    assert f.url.endswith("moss_image_sft_int8_convrot.safetensors") and f.sha256.startswith("b4d1475b")
+
+
+def test_moge_is_a_tool(db):
+    for mid in ("3d_moge_perspective_to_mesh", "3d_moge_panorama_to_mesh"):
+        assert is_tool(db.get(mid)) and db.get(mid).tasks == ["estimate"]
+    top = recommend(db, pc(8), modality="3d", limit=1)
+    assert top and top[0].use == "gen" and "moge" not in top[0].model.id
+
+
+def test_model_names_are_unique_and_readable(db):
+    idx = build_index(db.models)
+    names = [n.lower() for n in idx.name_of.values()]
+    assert len(names) == len(set(names))
+    by_id = {mid: idx.name_of[k] for mid, k in idx.key_of.items()}
+    assert by_id["image_z_image_turbo_int8"] == "Z-Image-Turbo"
+    assert by_id["image_flux2_klein_text_to_image"] == "FLUX.2 [Klein] 4B"
+    assert idx.find("z-image-turbo") == idx.key_of["image_z_image_turbo"]
+
+
+def test_info_accepts_the_model_name(capsys):
+    assert cli.main(["info", "z-image-turbo", "--vram", "8", "--ram", "32", "--no-cache", "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["model_name"] == "Z-Image-Turbo" and d["model"]["id"] == "image_z_image_turbo_int8"
+    assert {w["id"] for w in d["same_model"]} >= {
+        "image_z_image_turbo",
+        "image_z_image_turbo_fun_union_controlnet",
+    }
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"files": "zz"},
+        {"files": [{"name": "a", "size_bytes": "big"}]},
+        {"tasks": "t2i"},
+        {"files": [{"name": 3}]},
+        {"params_b": "4b"},
+    ],
+)
+def test_db_types_are_checked(tmp_path, capsys, bad):
+    entry = {
+        "id": "x",
+        "name": "x",
+        "modality": "image",
+        "content": "sfw",
+        "tasks": ["t2i"],
+        "files": [],
+    } | bad
+    p = tmp_path / "db.json"
+    p.write_text(json.dumps({"schema_version": 1, "models": [entry]}), encoding="utf-8")
+    assert cli.main(["fit", "--db", str(p), "--json"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert "models[0]" in out["error"]
+
+
+def test_fit_bands():
+    from genmodelfit.estimate import fit_band, gpu_choice
+
+    assert [fit_band(x, 100) for x in (60, 61, 85, 86, 98, 99)] == [
+        "perfect",
+        "good",
+        "good",
+        "marginal",
+        "marginal",
+        "too_tight",
+    ]
+    assert gpu_choice(5, 5, 2, 10) == ("perfect", "full")  # 50%
+    assert gpu_choice(12, 5, 2, 10) == ("good", "seq")  # 載せ替えは 50% でも good まで
+    assert gpu_choice(12, 11, 5, 10) == ("marginal", "offload")  # 逃がすのは marginal まで
+    assert gpu_choice(12, 11, 9.9, 10) == ("too_tight", "full")

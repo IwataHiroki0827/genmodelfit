@@ -388,7 +388,7 @@
    "name": "MoGe: Panorama to Mesh",
    "modality": "3d",
    "tasks": [
-    "i23d"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -453,7 +453,7 @@
    "name": "MoGe: Perspective Geometry Estimation",
    "modality": "3d",
    "tasks": [
-    "i23d"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -2081,7 +2081,7 @@
     "size_bytes": 35433480192
    },
    "params_b": null,
-   "precision": null,
+   "precision": "fp8",
    "license": null,
    "license_url": null,
    "base_model": "jingheya/lotus-depth-d-v1-1",
@@ -10304,7 +10304,7 @@
    "name": "Depth Estimation: Marigold V2",
    "modality": "image",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -11165,8 +11165,8 @@
    "files": [
     {
      "name": "moss_image_sft_int8_convrot.safetensors",
-     "url": "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_base_int8_convrot.safetensors",
-     "sha256": "f601c1e1161915fb3fea003da0c1782e374dd960fbb3978bc0e4e3fa1f2d8e6f",
+     "url": "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+     "sha256": "b4d1475bc7eeffd7b809e82ea13a1fba1fb85c4e18365af3813722faa5c0fe4f",
      "size_bytes": 5413698958,
      "directory": "diffusion_models",
      "repo_id": "Comfy-Org/MOSS-Image",
@@ -17543,7 +17543,7 @@
     "size_bytes": 27809913242
    },
    "params_b": null,
-   "precision": null,
+   "precision": "bf16",
    "license": null,
    "license_url": null,
    "base_model": null,
@@ -18634,7 +18634,7 @@
    "name": "Pose Detection: SDPose Multi-Person",
    "modality": "image",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -18725,7 +18725,7 @@
    "name": "Pose Map: SDPose-OOD",
    "modality": "image",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -23069,7 +23069,7 @@
     "size_bytes": 21474836480
    },
    "params_b": 14.0,
-   "precision": "fp8",
+   "precision": "bf16",
    "license": "apache-2.0",
    "license_url": "https://huggingface.co/Wan-AI/Wan2.1-T2V-14B",
    "base_model": "Wan-AI/Wan2.2-I2V-A14B",
@@ -23703,7 +23703,7 @@
     "size_bytes": 60129542144
    },
    "params_b": null,
-   "precision": "bf16",
+   "precision": "fp8",
    "license": "cc-by-nc-sa-4.0",
    "license_url": "https://huggingface.co/Kim2091/UltraSharp",
    "base_model": "Tongyi-MAI/Z-Image-Turbo",
@@ -24587,7 +24587,7 @@
    "name": "Pose Map: DWPose OpenPose",
    "modality": "video",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [],
@@ -24740,7 +24740,7 @@
    "name": "Pose Detection: SDPose Multi-Person",
    "modality": "video",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -24831,7 +24831,7 @@
    "name": "Pose Map: SDPose-OOD",
    "modality": "video",
    "tasks": [
-    "tool"
+    "estimate"
    ],
    "source": "comfyui-template",
    "files": [
@@ -25317,7 +25317,7 @@
     "size_bytes": 34252364186
    },
    "params_b": null,
-   "precision": "fp16",
+   "precision": null,
    "license": null,
    "license_url": null,
    "base_model": "facebook/sam3",
@@ -28915,7 +28915,7 @@
     "size_bytes": 38010460570
    },
    "params_b": 19.0,
-   "precision": "fp8",
+   "precision": null,
    "license": "other",
    "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
@@ -29141,7 +29141,7 @@
     "size_bytes": 38010460570
    },
    "params_b": 19.0,
-   "precision": "fp8",
+   "precision": null,
    "license": null,
    "license_url": null,
    "base_model": null,
@@ -29778,7 +29778,7 @@
     "size_bytes": 38010460570
    },
    "params_b": 19.0,
-   "precision": "fp8",
+   "precision": null,
    "license": "other",
    "license_url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE",
    "base_model": null,
@@ -40771,7 +40771,7 @@
    ],
    "template": null,
    "params_b": null,
-   "precision": "int8",
+   "precision": "w4a8",
    "license": null,
    "license_url": null,
    "base_model": "TenStrip/LTX2.3-10Eros",

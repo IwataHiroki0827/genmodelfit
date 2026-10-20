@@ -5,7 +5,7 @@ from rich.cells import cell_len
 
 from genmodelfit import cli
 from genmodelfit.db import load
-from genmodelfit.groups import group_key
+from genmodelfit.groups import build_index
 from genmodelfit.models import Estimate, Gpu, ModelEntry, SystemInfo
 from genmodelfit.recommend import Fit
 from genmodelfit.table import make_console, print_fit_table
@@ -106,14 +106,15 @@ def test_cli_table_real_db(capsys):
     out = capsys.readouterr().out
     lines = out.splitlines()
     assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
-    assert "image_sdxl_simple" in out
+    assert "SDXL" in out and "image_sdxl_simple" not in out  # まとめた表はモデルの表示名
     db = load(use_cache=False)  # 長い ID は省略記号で詰めるので、行数で確かめる
     rows = [x for x in lines if x.startswith("● ")]
-    assert len(rows) == len({group_key(m) for m in db.models})  # 1 行 = 1 モデル
+    assert len(rows) == len(build_index(db.models).members)  # 1 行 = 1 モデル
     every = ["fit", "--vram", "8", "--ram", "32", "--no-cache", "--content", "all", "--all-workflows"]
     assert cli.main(every) == 0
-    rows = [x for x in capsys.readouterr().out.splitlines() if x.startswith("● ")]
-    assert len(rows) == len(db.models)
+    out = capsys.readouterr().out
+    rows = [x for x in out.splitlines() if x.startswith("● ")]
+    assert len(rows) == len(db.models) and "image_sdxl_simple" in out  # ワークフローごとなら ID
 
 
 def test_sequential_and_too_tight_show_the_figure_used():
@@ -155,9 +156,9 @@ def test_over_100_percent_never_shows_100():
     f = fit("zero", "too_tight", mode="none")
     f.estimate.vram_offload_gb = 8.04  # 100.5%
     assert "101%" in row_of(render([f]), "zero")
-    g = fit("full")
-    g.estimate.vram_gb = 7.99  # 99.9%: 載るので 100% と出す(101% にはしない)
-    assert "100%" in row_of(render([g]), "full")
+    g = fit("full", "marginal")
+    g.estimate.vram_gb = 7.84  # 98%: 全部 GPU に載る一番上(段階は marginal)
+    assert " 98%" in row_of(render([g]), "full")
 
 
 def test_measured_mark_and_status_mark():

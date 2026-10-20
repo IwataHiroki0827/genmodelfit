@@ -52,7 +52,7 @@ HIDDEN_LABEL = {
     "below_min_fit": "below --min-fit",
     "held": "held",
     "task": "other uses",
-    "same_model": "same model",
+    "same_model": "merged into their models",
 }
 MAX_WIDTH = 100
 MIN_NAME_WIDTH = 24  # モデル名がこれより狭くなるなら列を外す
@@ -254,14 +254,19 @@ def build_table(
             overflow="ellipsis",
             width=COLUMN_WIDTH[c],
         )
-    shown = distinct_names([f.model.id for f in fits if f.model.content != "uncensored"], name_w)
-    shown_u = distinct_names([f.model.id for f in fits if f.model.content == "uncensored"], name_w - 4)
+
+    # まとめた表はモデルの表示名(一覧の中で重ならない)、--all-workflows はワークフローの ID
+    def label(f) -> str:
+        return (getattr(f, "model_name", "") or f.model.id) if grouped else f.model.id
+
+    shown = distinct_names([label(f) for f in fits if f.model.content != "uncensored"], name_w)
+    shown_u = distinct_names([label(f) for f in fits if f.model.content == "uncensored"], name_w - 4)
     for f in fits:
         e, m = f.estimate, f.model
         if m.content == "uncensored":
-            name = Text.assemble(("[U] ", "magenta"), shown_u[m.id])
+            name = Text.assemble(("[U] ", "magenta"), shown_u[label(f)])
         else:
-            name = Text(shown[m.id])
+            name = Text(shown[label(f)])
         cells = {
             "Type": Text(m.modality),
             "Use": _use_cell(f, grouped),
@@ -301,12 +306,19 @@ def pc_line(system) -> str:
 
 
 def hidden_text(hidden: Mapping[str, int]) -> str:
-    """「(N hidden: uncensored 39, tools 20)」。隠したものが無ければ空。"""
-    n = sum(hidden.values())
-    if not n:
-        return ""
-    parts = ", ".join(f"{HIDDEN_LABEL.get(k, k)} {v}" for k, v in hidden.items() if v)
-    return f"({n} hidden: {parts})"
+    """「(N hidden: uncensored 39, tools 20; 24 more workflows merged into their models)」。
+    何も無ければ空。"""
+    merged = hidden.get("same_model", 0)
+    rest = {k: v for k, v in hidden.items() if v and k != "same_model"}
+    parts = []
+    if rest:
+        parts.append(
+            f"{sum(rest.values())} hidden: "
+            + ", ".join(f"{HIDDEN_LABEL.get(k, k)} {v}" for k, v in rest.items())
+        )
+    if merged:
+        parts.append(f"{merged} more workflows merged into their models")
+    return f"({'; '.join(parts)})" if parts else ""
 
 
 def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> list[str]:
@@ -320,7 +332,7 @@ def legend(fits: Sequence, hidden: Mapping[str, int], grouped: bool = True) -> l
             "One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows)."
         )
     out.append(
-        "Estimates without m are rough. Details: genmodelfit info <id>. Apps: --json (docs/schema.md)."
+        "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
     )
     if any(f.model.content == "uncensored" for f in fits):
         out.append("[U] = uncensored")

@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from .db import Database
-from .estimate import GIB, Coefficients, estimate, load_coefficients
-from .groups import group_key, precision_rank
+from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients
+from .groups import group_key, index_for, precision_rank
 from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Estimate, ModelEntry, Settings, SystemInfo
 from .tasks import TOOL_TASKS, is_tool, main_use, parse_modalities, task_codes
 
@@ -101,6 +101,11 @@ def license_matches(m: ModelEntry, allowed: Iterable[str] | None) -> bool:
     return bool(lics) and all(x is not None and x.lower() in allow for x in lics)
 
 
+def _how(e: Estimate, vram: float) -> tuple[str, str]:
+    """(段階, 載せ方 full / seq / offload)。estimate.gpu_choice と同じ選び方。"""
+    return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram)
+
+
 def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
     """表の Mode と JSON の run_mode_label。GPU / GPU~(部品を順に載せ替え)/ GPU+RAM / CPU / -。"""
     if e.unknown_size or e.run_mode == "none":
@@ -110,10 +115,7 @@ def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
     if e.run_mode == "offload":
         return "GPU+RAM"
     v = system.vram_gb if system is not None else 0.0
-    seq = e.vram_sequential_gb
-    if v and e.vram_gb > v and seq is not None and seq <= v:
-        return "GPU~"
-    return "GPU"
+    return "GPU~" if v and _how(e, v)[1] == "seq" else "GPU"
 
 
 def _ram_short(e: Estimate, system: SystemInfo | None) -> bool:
@@ -125,20 +127,16 @@ def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
     vram = system.vram_gb if system is not None else 0.0
     if e.unknown_size or e.run_mode == "cpu" or vram <= 0:
         return None
-    seq = e.vram_sequential_gb
+    level, how = _how(e, vram)
+    pick = {"full": e.vram_gb, "seq": e.vram_sequential_gb or e.vram_gb, "offload": e.vram_offload_gb}
     if e.fit == "too_tight":
         # VRAM は足りていてメモリが理由なら、VRAM の側は判定に使った載せ方の値を出す
-        if _ram_short(e, system) and e.vram_offload_gb <= vram:
-            if e.vram_gb <= vram:
-                return e.vram_gb
-            if seq is not None and seq <= vram:
-                return seq
+        if _ram_short(e, system) and level != "too_tight":
+            return pick[how]
         return e.vram_offload_gb  # 動かないときは「最低これだけ要る」を出す
     if e.run_mode == "offload":
         return e.vram_offload_gb
-    if e.vram_gb > vram and seq is not None and seq <= vram:
-        return seq
-    return e.vram_gb
+    return pick[how]
 
 
 def memory_use(e: Estimate, system: SystemInfo | None) -> tuple[str, float | None, float | None]:
@@ -165,6 +163,7 @@ class Fit:
     system: SystemInfo | None = field(default=None, repr=False, compare=False)
     group_key: str = ""  # 同じモデル(大きさまで同じ)の鍵(groups.group_key)
     use: str = ""  # 表に出す用途(tasks.USES の名前)
+    model_name: str = ""  # モデルの表示名(groups.ModelIndex。一覧の中で重ならない)
     workflows: list[dict[str, Any]] = field(default_factory=list)  # 同じモデルのほかの項目
     variants: list[dict[str, Any]] = field(default_factory=list)  # 精度ごとの一番良い項目
 
@@ -184,6 +183,7 @@ class Fit:
         d: dict[str, Any] = {
             "id": m.id,
             "name": m.name,
+            "model_name": self.model_name,
             "modality": m.modality,
             "tasks": m.tasks,
             "content": m.content,
@@ -257,9 +257,17 @@ def sort_key(f: Fit) -> tuple:
     return (f.estimate.fit == "too_tight", not f.auto, -round(f.score, 1), f.model.id)
 
 
+# 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
+REP_USE_ORDER = ("gen", "edit", "i2v", "lipsync", "motion", "voice", "upscale", "tool")
+
+
 def variant_key(f: Fit) -> tuple:
-    """同じモデルの中で表に出す 1 件を選ぶ順: 段階が良い → 精度が高い → おすすめ順。"""
-    return (FIT_LEVELS.index(f.estimate.fit), precision_rank(f.model.precision), *sort_key(f))
+    """同じモデルの中で表に出す 1 件を選ぶ順: 用途(--task があればそれに合う用途の中で、生成 → 編集 → …
+    → 高解像度化 → 補助ツール)→ 段階が良い → 逃がさない載せ方(GPU → GPU+RAM → CPU)
+    → 精度が高い → おすすめ順。"""
+    use = REP_USE_ORDER.index(f.use) if f.use in REP_USE_ORDER else len(REP_USE_ORDER)
+    slow = {"gpu": 0, "offload": 1, "cpu": 2}.get(f.estimate.run_mode, 3)  # 同じ段階なら逃がさないほう(速い)
+    return (use, FIT_LEVELS.index(f.estimate.fit), slow, precision_rank(f.model.precision), *sort_key(f))
 
 
 def _gate(m: ModelEntry, policy: GatePolicy | None, db: Database) -> dict[str, Any]:
@@ -283,7 +291,10 @@ def judge(
     e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
     g = _gate(m, policy, db)
     comps = score_components(m, e, system, g)
-    return Fit(m, e, total_score(comps), g, comps, system, group_key=group_key(m), use=main_use(m))
+    idx = index_for(db)
+    key = idx.key_of.get(m.id) or group_key(m)
+    name = idx.name_of.get(key) or m.name
+    return Fit(m, e, total_score(comps), g, comps, system, group_key=key, use=main_use(m), model_name=name)
 
 
 def evaluate(
@@ -449,9 +460,7 @@ def select(
         passed.append(f)
 
     # 同じモデル(group_key)の仲間。表に出さない仲間も workflows に入れる
-    members: dict[str, list[ModelEntry]] = {}
-    for m in db.models:
-        members.setdefault(group_key(m), []).append(m)
+    members = index_for(db).members
     passed_ids = {f.model.id for f in passed}
     by_key: dict[str, list[Fit]] = {}
     for f in passed:
@@ -461,6 +470,11 @@ def select(
         fits.sort(key=variant_key)
         reps = fits[:1] if group else fits
         hidden["same_model"] += len(fits) - len(reps)
+        if group:
+            # 行の点数 = 絞り込みに合う仲間の点数の一番高いもの
+            # (代表が高い精度へ替わっても、VRAM を増やして点数が下がらないように)
+            top = max(fits, key=lambda x: x.score)
+            reps = [replace(reps[0], score=top.score, score_components=dict(top.score_components))]
         for rep in reps:
             others = [get(m) for m in members[key] if m.id != rep.model.id]
             others.sort(key=lambda x: (x.model.id not in passed_ids, *variant_key(x)))

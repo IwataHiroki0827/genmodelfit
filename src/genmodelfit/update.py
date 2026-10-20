@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 from . import __version__, safety
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
+from .groups import model_precision
 from .hf import (
     UNVERIFIED,
     HfClient,
@@ -276,14 +277,32 @@ def workflow_models(wf: Any) -> list[dict[str, Any]]:
     return out
 
 
+# 上流のテンプレートの誤り(ファイル名と URL・hash が食い違う)を直す表: (名前, 上流の URL) → (URL, sha256)。
+# 直した値は匿名の HEAD の x-linked-etag で確かめたもの
+UPSTREAM_FILE_FIXES = {
+    # image_moss_image_t2i_bboxes: 名前は sft なのに URL・hash が base のもの(2026-10-20 に HEAD で確認)
+    (
+        "moss_image_sft_int8_convrot.safetensors",
+        "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_base_int8_convrot.safetensors",
+    ): (
+        "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+        "b4d1475bc7eeffd7b809e82ea13a1fba1fb85c4e18365af3813722faa5c0fe4f",
+    ),
+}
+
+
 def model_file(m: dict[str, Any]) -> ModelFile:
     directory = m.get("directory")
     h = m.get("hash")
     sha = h.lower() if isinstance(h, str) and str(m.get("hash_type", "")).lower() == "sha256" else None
-    parsed = parse_hf_url(m.get("url"))
+    url = m.get("url")
+    fix = UPSTREAM_FILE_FIXES.get((m["name"], url))
+    if fix:
+        url, sha = fix
+    parsed = parse_hf_url(url)
     return ModelFile(
         name=m["name"],
-        url=m.get("url"),
+        url=url,
         sha256=sha,
         directory=directory,
         repo_id=parsed[0] if parsed else None,
@@ -389,6 +408,7 @@ def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *,
     for e in entries:
         set_entry_license(e)
         set_completeness(e)
+        set_precision(e)
 
 
 def _now() -> str:
@@ -489,6 +509,12 @@ def set_entry_license(e: ModelEntry) -> None:
     mains = [f for f in e.files if f.role == "main" and f.license_from]
     if mains and e.base_model is None and mains[0].repo_id and mains[0].license_from != mains[0].repo_id:
         e.base_model = mains[0].license_from
+
+
+def set_precision(e: ModelEntry) -> None:
+    """精度は本体のファイル名から読む(groups.model_precision。表のモデルのまとめ方と同じ本体を見る)。
+    ファイルの大きさが分かってから呼ぶ(本体が複数なら大きいほうを見るため)。"""
+    e.precision = model_precision(e)
 
 
 def set_completeness(e: ModelEntry) -> None:
@@ -789,6 +815,7 @@ def hf_entry(c: Candidate, info: RepoInfo, client: HfClient | None = None) -> Mo
     )
     set_entry_license(e)
     set_completeness(e)
+    set_precision(e)
     return e
 
 

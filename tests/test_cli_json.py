@@ -11,7 +11,7 @@ import pytest
 from clihelp import run_cli
 
 from genmodelfit import load_db
-from genmodelfit.groups import group_key
+from genmodelfit.groups import build_index
 
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
@@ -32,6 +32,7 @@ DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {
     "id",
     "name",
+    "model_name",
     "modality",
     "tasks",
     "content",
@@ -351,7 +352,12 @@ def test_fit(cache):
     assert set(d["filters"]) == FIT_FILTERS and d["filters"]["min_fit"] is None
     db = load_db(use_cache=False)
     sfw = [m for m in db.models if m.content == "sfw"]
-    assert d["matched"] == len(d["models"]) == len({group_key(m) for m in sfw})  # 1 行 = 1 モデル
+    idx = build_index(db.models)
+    sfw_models = {idx.key_of[m.id] for m in sfw}
+    assert d["matched"] == len(d["models"]) == len(sfw_models)  # 1 行 = 1 モデル
+    assert {m["model_name"] for m in d["models"]} == {
+        idx.name_of[k] for k in sfw_models
+    }  # 表示名は重ならない
     assert d["hidden"] == {"uncensored": len(db.models) - len(sfw), "same_model": len(sfw) - d["matched"]}
     for m in d["models"]:
         check_fit(m)
@@ -433,6 +439,7 @@ def test_info(cache):
         "gate",
         "measurements",
         "group_key",
+        "model_name",
         "same_model",
     }
     assert d["same_model"] and all(set(w) == WORKFLOW for w in d["same_model"])  # SDXL base は 4 項目
