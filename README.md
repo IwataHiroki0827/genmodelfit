@@ -98,7 +98,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 
 | command | what it does / 内容 |
 |---|---|
-| `genmodelfit system` | detected GPU / RAM / disk / この PC の GPU・メモリ・空き |
+| `genmodelfit system [--all-gpus]` | detected GPU (generation, driver, PyTorch builds, ComfyUI precision), RAM, page file, disk; `--all-gpus` also lists non-NVIDIA adapters / この PC の GPU(世代・ドライバ・精度)・メモリ・ページファイル・空き |
 | `genmodelfit recommend [-m image,video] [--task edit] [-n 5] [--auto-only]` | best models for this PC: per type without `-m` / `--task` (utility tools such as depth/pose/upscale only with `--include-tools`) / おすすめ順。`-m`・`--task` が無ければ種類ごと(深度・ポーズ・拡大などの補助ツールは `--include-tools` のときだけ) |
 | `genmodelfit fit [-m video] [--min-fit good]` | every model with its fit level, same order / すべての判定の表(同じ並べ方) |
 | `genmodelfit search <text>` | models whose id or name contains the text, judged for this PC (exit 0 even with no match) / ID・名前の一部で探す |
@@ -145,6 +145,20 @@ for f in gmf.recommend(modality="image", task="edit", limit=5, comfyui_version="
     f.to_dict()  # the same dict as one item of `recommend --json` / `--json` の 1 件と同じ
 gmf.search("flux", license=["apache-2.0", "mit"])
 ```
+
+## Hardware / ハードウェアの検出
+
+- Only NVIDIA GPUs confirmed by `nvidia-smi` are used for judging (v0.1). A GPU is judged as **CPU** when no PyTorch
+  CUDA build supports its generation (Kepler and older) or its driver is too old for all of them (CUDA 12 builds need
+  527.41+ on Windows / 525.60.13+ on Linux; CUDA 13 builds need 580+). The reason is shown in `system` and `--json`.
+- On GPUs where ComfyUI computes in fp32 (Maxwell, some Pascal, GTX 16xx, T1000 …) working memory and the VAE are doubled.
+- The level uses total VRAM; when the VRAM free right now is not enough, a note says to close other apps (`vram_free_short`).
+- When the RAM is short, a fixed-size page file / swap sets how far "slow but runs" goes (system-managed: 1.5× RAM).
+- AMD / Intel GPUs are reported (Windows: WMI + registry, Linux: `lspci`) but never used for judging. Host name,
+  user name, GPU UUID and PCI ids are not collected. Details and sources: [docs/hardware.md](docs/hardware.md).
+
+判定に使うのは nvidia-smi で確かめた NVIDIA の GPU だけ。今の PyTorch が動かない世代(Kepler 以前)・古いドライバは CPU として判定し、
+理由を出します。AMD・Intel の GPU は知らせるだけです。出典と細かい決まりは [docs/hardware.md](docs/hardware.md)。
 
 ## Fit levels / 段階
 

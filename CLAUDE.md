@@ -57,6 +57,20 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
   出た表で docs/accuracy.md を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
 - キャッシュ: platformdirs の user_cache_dir(`GENMODELFIT_CACHE_DIR` で変えられる)
 
+## ハードウェアの検出(2026-10-20、#21。docs/hardware.md が正本)
+
+- 判定に使う GPU は nvidia-smi で確かめた NVIDIA の GPU だけ(backend `cuda` の最大の 1 枚)。PyTorch の CUDA 版のビルドが
+  どれも対応しない世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
+  世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
+- NVIDIA 以外の GPU(WMI・レジストリ・lspci)は知らせるだけで**判定に使わない**。NVIDIA の GPU があるときは既定で調べない
+  (PowerShell の起動に約 1 秒)。`system --all-gpus` で調べる
+- 精度の直しは ComfyUI のコード(should_use_fp16 など)で確かなところだけ。VRAM の量で変わる動き(fp32・fp16 に広げる)は
+  見積もりに入れず注意だけにする(入れると VRAM を増やして段階が下がる)。ComfyUI の版を上げたら名前の一覧と分岐を読み直す
+- 段階は VRAM の総量で決め、今の空きが足りなければ `vram_free_short` と理由で知らせるだけ
+- PC 名・ユーザ名・GPU の UUID・PCI の差し場所や個体の ID を読まない・出さない
+- 試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない(tests/conftest.py の `_no_real_hardware`)。
+  出力はフィクスチャ(tests/fixtures/hardware)で差し替え、検出は失敗しても例外を出さない
+
 ## 共用マシン
 
 - GPU は他の作業と共用。bench の前に nvidia-smi で空きを確かめ、他のプロセスが使っていたら測らない
