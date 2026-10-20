@@ -13,6 +13,8 @@ MIT で公開。使う側の代表は AI生成キット(laxshmate/local_model_ai
 - 持つのはモデルの**情報**だけ。モデル本体は持たない・配らない
 - 無検閲のモデルも一覧から外さず、`content: uncensored` の印と根拠(content_evidence)を付ける。
   **未成年の性的表現を目的とするものは除外**する
+  年齢制限があるので、`recommend` / `fit` / `gmf.recommend()` の既定は `sfw`。無検閲は `--content all|uncensored`
+  (Python は `content="all"|"uncensored"`)を指定したときだけ出す(2026-10-20)。`info <id>` は ID を指定するので出す
 - 見積もりには必ず `basis`(measured / estimated)を付ける。実測があれば実測を使う
 - 精度の目標に届かないとき、係数を無理に合わせてごまかさない。docs/accuracy.md に正直に書く
 - REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)

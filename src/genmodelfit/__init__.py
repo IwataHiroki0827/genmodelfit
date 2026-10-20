@@ -37,14 +37,18 @@ def system(vram_gb: float | None = None, ram_gb: float | None = None) -> SystemI
 def recommend(
     *,
     modality: str | None = None,
-    content: str = "all",
+    content: str = "sfw",
     min_fit: str = "marginal",
     limit: int | None = 10,
     settings: Settings | None = None,
     system_info: SystemInfo | None = None,
     db: Database | None = None,
 ) -> list[Fit]:
-    """おすすめ順の一覧(先頭が一番のおすすめ)。"""
+    """おすすめ順の一覧(先頭が一番のおすすめ)。
+
+    content の既定は sfw。無検閲のモデルも含めるなら "all"、無検閲だけなら "uncensored"。
+    知らない modality / content / min_fit は ValueError。
+    """
     from .recommend import recommend as _recommend
 
     return _recommend(

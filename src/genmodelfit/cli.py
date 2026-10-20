@@ -17,8 +17,8 @@ from .db import Database, DatabaseError
 from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
-from .models import CONTENT_LEVELS, FIT_LEVELS, MODALITIES, Settings, SystemInfo
-from .recommend import evaluate, is_tool, recommend
+from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
+from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, evaluate, is_tool, recommend
 
 
 class CliError(RuntimeError):
@@ -400,9 +400,9 @@ def build_parser() -> argparse.ArgumentParser:
     filt.add_argument("--modality", "-m", choices=MODALITIES)
     filt.add_argument(
         "--content",
-        choices=("all", *CONTENT_LEVELS),
-        default="all",
-        help="sfw / uncensored(無検閲)で絞る。既定は all",
+        choices=CONTENT_FILTERS,
+        default=DEFAULT_CONTENT,
+        help="sfw / uncensored(無検閲)/ all で絞る。既定は sfw(無検閲は all か uncensored のときだけ出す)",
     )
     filt.add_argument("--width", type=_positive_int)
     filt.add_argument("--height", type=_positive_int)
