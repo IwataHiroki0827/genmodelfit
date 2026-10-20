@@ -89,18 +89,20 @@ def _print_fits(fits, title: str) -> None:
 
 def cmd_recommend(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
+    limit = args.limit if args.limit is not None else 10
     fits = recommend(
         db,
         s,
         modality=args.modality,
         content=args.content,
         min_fit=args.min_fit,
-        limit=args.limit if args.limit is not None else 10,
+        limit=None if args.auto_only else limit,  # --auto-only は保留を除いてから件数を絞る
         settings=_settings(args),
     )
-    _attach_gate(fits, args)
+    _attach_gate(fits, args, db)
     if args.auto_only:
         fits = [f for f in fits if f.gate and f.gate.get("auto")]
+        fits = fits[:limit] if limit else fits
     if args.json:
         _out(
             _envelope(
@@ -112,6 +114,7 @@ def cmd_recommend(args: argparse.Namespace) -> int:
                     "content": args.content,
                     "min_fit": args.min_fit,
                     "limit": args.limit if args.limit is not None else 10,
+                    "auto_only": args.auto_only,
                 },
                 models=[f.to_dict() for f in fits],
             )
@@ -128,7 +131,7 @@ def cmd_fit(args: argparse.Namespace) -> int:
         fits = [f for f in fits if f.estimate.fit == "perfect"]
     if args.limit:
         fits = fits[: args.limit]
-    _attach_gate(fits, args)
+    _attach_gate(fits, args, db)
     if args.json:
         _out(_envelope("fit", s, db, models=[f.to_dict() for f in fits]))
         return 0
@@ -149,7 +152,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     m = hits[0]
     c = load_coefficients()
     e = estimate(m, s, _settings(args), db.measurements, c)
-    gate = _gate_for(m, args)
+    gate = _gate_for(m, args, db)
     if args.json:
         _out(
             _envelope(
@@ -179,7 +182,8 @@ def cmd_info(args: argparse.Namespace) -> int:
     for r in e.reasons:
         print(f"  - {r}")
     if gate:
-        print(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}")
+        target = gate.get("comfyui_version") or "?"
+        print(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
             print(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
@@ -202,23 +206,103 @@ def cmd_bench(args: argparse.Namespace) -> int:
     return run_bench(args)
 
 
-# --- 自動でおすすめに出せるか(#3 で実装。無ければ None) ---------------------------------------
+def cmd_gate(args: argparse.Namespace) -> int:
+    from .gate import CHECK_IDS, evaluate_offline, summarize
+
+    db = _db(args)
+    policy = _policy(args)
+    models = [m for m in db.models if not args.modality or m.modality == args.modality]
+    results = [evaluate_offline(m, policy, sources=db.sources) for m in models]
+    summary = summarize(results)
+    shown = results
+    if args.only_auto:
+        shown = [r for r in results if r.auto]
+    elif args.only_held:
+        shown = [r for r in results if not r.auto]
+    target = results[0].comfyui_version if results else (policy.comfyui_version or None)
+    if args.json:
+        _out(
+            _envelope(
+                "gate",
+                None,
+                db,
+                policy=policy.to_dict() | {"comfyui_version": target},
+                filters={"modality": args.modality, "only_auto": args.only_auto, "only_held": args.only_held},
+                summary=summary,
+                models=[{"id": r.model_id} | r.to_dict() for r in shown],
+            )
+        )
+        return 0
+    print(f"=== Auto-recommend gate (ComfyUI {target or '?'}) ===")
+    print(f"models {summary['models']}: auto {summary['auto']} / held {summary['held']}")
+    print("check               failing  first-failing")
+    for cid in CHECK_IDS:
+        print(f"  {cid:<18}{summary['failing'][cid]:>8}  {summary['first_failing'][cid]:>13}")
+    if args.only_auto or args.only_held:
+        print()
+        for r in shown:
+            print(f"  {r.model_id}  {'auto' if r.auto else 'held:' + r.held_by[0]}")
+    return 0
 
 
-def _gate_for(model, args) -> dict[str, Any] | None:
-    try:
-        from .gate import evaluate_offline
-    except ImportError:
-        return None
-    return evaluate_offline(model).to_dict()
+# --- 自動でおすすめに出せるか(gate.py) --------------------------------------------------------
 
 
-def _attach_gate(fits, args) -> None:
+def _policy(args: argparse.Namespace):
+    cached = getattr(args, "_gate_policy", None)
+    if cached is not None:
+        return cached
+    from .gate import DEFAULT_LICENSE_ALLOWLIST, DEFAULT_MAX_HEAD_AGE_DAYS, GatePolicy, load_allowlist
+
+    allow = DEFAULT_LICENSE_ALLOWLIST
+    if getattr(args, "license_allowlist", None):
+        allow = load_allowlist(args.license_allowlist)
+        if not allow:
+            raise CliError("--license-allowlist が空です")
+    policy = GatePolicy(
+        license_allowlist=allow,
+        comfyui_version=getattr(args, "comfyui_version", None),
+        allow_uncensored=bool(getattr(args, "allow_uncensored_auto", False)),
+        max_head_age_days=getattr(args, "max_head_age_days", DEFAULT_MAX_HEAD_AGE_DAYS),
+    )
+    args._gate_policy = policy  # fit では全モデルで使うので、許可リストのファイルを読むのは 1 回だけ
+    return policy
+
+
+def _gate_for(model, args, db: Database | None = None) -> dict[str, Any] | None:
+    from .gate import evaluate_offline
+
+    return evaluate_offline(model, _policy(args), sources=db.sources if db else None).to_dict()
+
+
+def _attach_gate(fits, args, db: Database | None = None) -> None:
     for f in fits:
-        f.gate = _gate_for(f.model, args)
+        f.gate = _gate_for(f.model, args, db)
 
 
 # --- 引数 ---------------------------------------------------------------------------------------
+
+
+def _positive_int(v: str) -> int:
+    try:
+        n = int(v)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"整数ではありません: {v}") from None
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"1 以上を指定してください: {v}")
+    return n
+
+
+def _head_age(v: str) -> int | None:
+    if v.strip().lower() == "none":
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"日数(整数)か none を指定してください: {v}") from None
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"0 以上を指定してください: {v}")
+    return n
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -243,7 +327,30 @@ def build_parser() -> argparse.ArgumentParser:
     filt.add_argument("--height", type=int)
     filt.add_argument("--frames", type=int, help="動画のコマ数")
     filt.add_argument("--length", type=float, metavar="SEC", help="音声の長さ(秒)")
-    filt.add_argument("--limit", "-n", type=int)
+    filt.add_argument("--limit", "-n", type=_positive_int, help="出す件数(1 以上)")
+
+    gate = argparse.ArgumentParser(add_help=False)
+    gate.add_argument(
+        "--license-allowlist",
+        metavar="LIST|FILE",
+        help="自動のおすすめに許すライセンス(「mit,apache-2.0」か、1 行に 1 つ書いたファイル)。"
+        "既定は docs/gate.md",
+    )
+    gate.add_argument(
+        "--comfyui-version",
+        metavar="VER",
+        help="使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース)",
+    )
+    gate.add_argument(
+        "--max-head-age-days",
+        type=_head_age,
+        default=30,
+        metavar="DAYS",
+        help="HEAD の確認をこの日数まで信じる(既定 30。none で期限なし)",
+    )
+    gate.add_argument(
+        "--allow-uncensored-auto", action="store_true", help="無検閲のモデルも自動のおすすめに出してよい"
+    )
 
     p = argparse.ArgumentParser(prog="genmodelfit", description="Right-size generation models to your PC.")
     p.add_argument("--version", action="version", version=f"genmodelfit {__version__}")
@@ -253,16 +360,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
     sp.set_defaults(func=cmd_system)
 
-    sp = sub.add_parser("recommend", parents=[common, filt], help="おすすめ順に出す")
+    sp = sub.add_parser("recommend", parents=[common, filt, gate], help="おすすめ順に出す")
     sp.add_argument("--min-fit", choices=FIT_LEVELS[:3], default="marginal")
     sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件は cmd_recommend で決める(親の引数は fit と共有なので)
 
-    sp = sub.add_parser("fit", parents=[common, filt], help="すべてのモデルの判定を表で出す")
+    sp = sub.add_parser("fit", parents=[common, filt, gate], help="すべてのモデルの判定を表で出す")
     sp.add_argument("--perfect", "-p", action="store_true", help="perfect だけ")
     sp.set_defaults(func=cmd_fit)
 
-    sp = sub.add_parser("info", parents=[common, filt], help="1 つのモデルの詳細")
+    sp = sub.add_parser("info", parents=[common, filt, gate], help="1 つのモデルの詳細")
     sp.add_argument("model", help="モデルの ID または名前の一部")
     sp.set_defaults(func=cmd_info)
 
@@ -270,6 +377,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--offline-sources", metavar="DIR", help="(試験用)上流の代わりに使うファイル")
     sp.add_argument("--skip-hf", action="store_true", help="Hugging Face を見ない")
     sp.add_argument("--skip-head", action="store_true", help="URL の HEAD 確認を飛ばす")
+    sp.add_argument(
+        "--heads-only",
+        action="store_true",
+        help="今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
+    )
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
     sp.add_argument(
         "--allow-partial",
@@ -283,6 +395,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める",
     )
     sp.set_defaults(func=cmd_update)
+
+    sp = sub.add_parser("gate", parents=[common, gate], help="自動でおすすめに出せるかの集計")
+    sp.add_argument("--modality", "-m", choices=MODALITIES)
+    only = sp.add_mutually_exclusive_group()
+    only.add_argument("--only-auto", action="store_true", help="自動で出せるものの ID も並べる")
+    only.add_argument("--only-held", action="store_true", help="保留のものの ID と理由も並べる")
+    sp.set_defaults(func=cmd_gate)
 
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")
     sp.add_argument("template", help="テンプレート名(モデルの ID)")

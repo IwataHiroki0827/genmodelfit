@@ -3,7 +3,7 @@
 - HttpFetcher: 実際の取得。User-Agent を名乗り、429 / 503 は Retry-After を守って待ち、失敗は数回やり直す
 - DirFetcher: 試験用。URL を決まった規則でファイル名に直し、フォルダから読む(`update --offline-sources DIR`)
 
-どちらも get_json / get_text / head_size を持つ(update は Fetcher の形だけを使う)。
+どちらも get_json / get_text / head_size / head_status を持つ(update は Fetcher の形だけを使う)。
 """
 
 from __future__ import annotations
@@ -13,9 +13,10 @@ import json
 import re
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 import requests
 
@@ -56,6 +57,8 @@ class Fetcher(Protocol):
     def get_text(self, url: str) -> str: ...
 
     def head_size(self, url: str) -> int | None: ...
+
+    def head_status(self, url: str) -> int | None: ...
 
 
 def _retry_after(resp: requests.Response, attempt: int) -> float:
@@ -100,7 +103,9 @@ class HttpFetcher:
                 return
             self._sleep(wait)
 
-    def _request(self, method: str, url: str) -> requests.Response:
+    def _request(
+        self, method: str, url: str, *, redirects: bool = True, raise_4xx: bool = True
+    ) -> requests.Response:
         last: Exception | None = None
         host = urlsplit(url).netloc
         attempt = limited = 0
@@ -111,7 +116,7 @@ class HttpFetcher:
             with self._lock:
                 self.requests += 1
             try:
-                resp = self._session().request(method, url, timeout=self._timeout, allow_redirects=True)
+                resp = self._session().request(method, url, timeout=self._timeout, allow_redirects=redirects)
             except (requests.ConnectionError, requests.Timeout) as e:
                 last = e
                 self._sleep(float(2**attempt))
@@ -138,7 +143,7 @@ class HttpFetcher:
                 self._sleep(_retry_after(resp, attempt))
                 attempt += 1
                 continue
-            if resp.status_code >= 400:
+            if resp.status_code >= 400 and raise_4xx:
                 raise FetchError(url, f"HTTP {resp.status_code}", resp.status_code)
             return resp
         if isinstance(last, FetchError):
@@ -171,6 +176,42 @@ class HttpFetcher:
                 return int(v)
         return None
 
+    def head_status(self, url: str) -> int | None:
+        """匿名の HEAD の応答コード。4xx もそのまま返す。
+        429・5xx は待ってやり直し、それでも駄目なら FetchError。
+
+        転送は基本的に追わない(LFS は 302 で CDN へ、LFS でない小さいファイルは 307 で
+        /api/resolve-cache へ)。ただし 307 で転送先が /api/resolve-cache でないもの(リポジトリの名前が
+        変わったもの)は、無いファイルでも 307 を返すので、転送先に 1 回だけ HEAD を送ってその応答を返す。
+        その先がまた別の転送なら None(未確認)。
+        """
+        resp = self._request("HEAD", url, redirects=False, raise_4xx=False)
+        return follow_rename(url, resp.status_code, resp.headers.get("location"), self._hop)
+
+    def _hop(self, url: str) -> tuple[int, str | None]:
+        resp = self._request("HEAD", url, redirects=False, raise_4xx=False)
+        return resp.status_code, resp.headers.get("location")
+
+
+def is_resolve_cache(location: str | None) -> bool:
+    """HF の LFS でないファイルの転送先(/api/resolve-cache/…)か。"""
+    return bool(location) and urlsplit(location).path.startswith("/api/resolve-cache/")
+
+
+def follow_rename(
+    url: str, status: int, location: str | None, hop: Callable[[str], tuple[int, str | None]]
+) -> int | None:
+    """307 の転送先が /api/resolve-cache でなければ 1 回だけ追う(Fetcher.head_status の規則)。"""
+    if status != 307 or is_resolve_cache(location):
+        return status
+    if not location:
+        return None
+    nxt = urljoin(url, location)
+    status2, location2 = hop(nxt)
+    if status2 in (301, 302, 303, 307, 308) and not (status2 == 302 or is_resolve_cache(location2)):
+        return None
+    return status2
+
 
 # --- 試験用: URL ↔ ファイル ---------------------------------------------------------------------
 
@@ -201,9 +242,12 @@ def url_to_relpath(url: str) -> str:
 class DirFetcher:
     """フォルダに置いたファイルを上流の代わりに返す。無いファイルは 404 と同じ扱い。"""
 
-    def __init__(self, root: str | Path, *, sizes: dict[str, int] | None = None):
+    def __init__(
+        self, root: str | Path, *, sizes: dict[str, int] | None = None, statuses: dict[str, int] | None = None
+    ):
         self.root = Path(root)
         self.sizes = sizes or {}
+        self.statuses = statuses or {}
         self.requests = 0
 
     def _path(self, url: str) -> Path:
@@ -225,6 +269,9 @@ class DirFetcher:
 
     def head_size(self, url: str) -> int | None:
         return self.sizes.get(url)
+
+    def head_status(self, url: str) -> int | None:
+        return self.statuses.get(url)
 
 
 class RecordingFetcher:
@@ -251,3 +298,6 @@ class RecordingFetcher:
 
     def head_size(self, url: str) -> int | None:
         return self.inner.head_size(url)
+
+    def head_status(self, url: str) -> int | None:
+        return self.inner.head_status(url)

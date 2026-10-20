@@ -28,7 +28,7 @@ llmfit に着想を得た、生成モデル向けの判定ツールです(llmfit
   and are labelled as such.
 - **Auto-promotion gate** — a model is recommended automatically only when machine-checkable conditions hold
   (commercial-use license on an allowlist, no gating, official workflow without custom nodes, reachable URLs with hashes).
-  Anything else (e.g. `license: other`) is held for human review.
+  Anything else (e.g. `license: other`) is held for human review. See [docs/gate.md](docs/gate.md) and `genmodelfit gate`.
 - **CLI with JSON output** and a Python API, so apps can embed it.
 
 ## License

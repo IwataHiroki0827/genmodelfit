@@ -49,12 +49,15 @@ from .models import ModelEntry, ModelFile, Template
 RAW = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates"
 INDEX_URL = f"{RAW}/index.json"
 INDEX_PAGE = "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+# 自動のおすすめの判定(gate)で、テンプレートの minComfyUIVersion と比べる版。認証なしで 1 回だけ取る
+COMFYUI_RELEASE_URL = "https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest"
+COMFYUI_RELEASES_PAGE = "https://github.com/Comfy-Org/ComfyUI/releases"
 
 # テンプレートの失敗がこの割合を超えたら、上流の形が変わったとみなして止める
 MAX_FAIL_RATIO = 0.30
 # ライセンスの決め方の版。前の一覧から値を引き継ぐ(一部が取れなかったとき)のは、同じ版で作った一覧からだけ
 # (古い決め方の寛容すぎる値を持ち込まないため)。決め方を変えたら上げる
-LICENSE_POLICY = 2
+LICENSE_POLICY = 3
 # 一式がそろっていないとみなす割合(ファイルの合計 / index の size)
 COMPLETE_RATIO = 0.5
 # sources.counts.license_tier の名前(hf.license_tier の段階)
@@ -382,6 +385,66 @@ def enrich_files(entries: list[ModelEntry], client: HfClient, fetch: Fetcher, *,
     for e in entries:
         set_entry_license(e)
         set_completeness(e)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def check_heads(
+    entries: list[ModelEntry], fetch: Fetcher, *, workers: int = 8, checked_at: str | None = None
+) -> dict[str, Any]:
+    """すべてのファイルの URL に匿名の HEAD を送り(転送は追わない)、応答コードを記録する
+    (gate の url_reachable)。
+
+    送るのは Hugging Face の URL だけ(Civitai などには送らない。docs/sources.md)。同じ URL は 1 回だけ。
+    同時に 8 本まで。429 は HttpFetcher が Retry-After を守って待つ。つながらなかったものは None(未確認)。
+    """
+    when = checked_at or _now()
+    urls = sorted({f.url for e in entries for f in e.files if f.url and parse_hf_url(f.url)})
+
+    def _one(url: str) -> int | None:
+        try:
+            return fetch.head_status(url)
+        except FetchError:
+            return None
+
+    with ThreadPoolExecutor(max(1, min(8, workers))) as ex:
+        result = dict(zip(urls, ex.map(_one, urls), strict=True))
+    skipped: Counter[str] = Counter()
+    for e in entries:
+        for f in e.files:
+            if f.url in result:
+                f.head_status = result[f.url]
+                f.head_checked_at = when if result[f.url] is not None else None
+            else:
+                f.head_status, f.head_checked_at = None, None
+                if f.url:
+                    skipped[f.url.split("/")[2] if "://" in f.url else "?"] += 1
+    status = Counter(str(v) for v in result.values() if v is not None)
+    return {
+        "checked_at": when,
+        "urls": len(urls),
+        "status": dict(sorted(status.items())),
+        "unchecked": sum(1 for v in result.values() if v is None),
+        "not_sent": dict(sorted(skipped.items())),  # HEAD を送らなかったファイル(ホストごと、のべ数)
+    }
+
+
+def latest_comfyui(fetch: Fetcher) -> tuple[dict[str, Any], str | None]:
+    """ComfyUI の最新のリリースの版(tag)。取れなければ版は None と警告。"""
+    info: dict[str, Any] = {"latest_release": None, "url": COMFYUI_RELEASES_PAGE, "checked_at": _now()}
+    try:
+        data = fetch.get_json(COMFYUI_RELEASE_URL)
+    except FetchError as e:
+        return info, f"ComfyUI の最新の版を取得できません: {e}"
+    tag = data.get("tag_name") if isinstance(data, dict) else None
+    if not isinstance(tag, str) or not tag:
+        return info, "ComfyUI の最新の版を読めません(tag_name がありません)"
+    info["latest_release"] = tag
+    if isinstance(data.get("html_url"), str):
+        info["url"] = data["html_url"]
+    return info, None
 
 
 def set_file_license(f: ModelFile, res: Resolved) -> None:
@@ -966,6 +1029,13 @@ def build_database(
     if hf_stats:
         stats["huggingface-search"] = hf_stats
     stats["civitai"] = "使っていません(利用規約。docs/sources.md)"
+    if hf and head:
+        say("ファイルの URL に匿名の HEAD を送っています(自動のおすすめの判定に使う)")
+        stats["head_check"] = check_heads(entries, fetch, workers=workers)
+    say("ComfyUI の最新の版を確かめています")
+    stats["comfyui"], warn = latest_comfyui(fetch)
+    if warn:
+        warnings.append(warn)
     checks = [c for c in (size_check(e) for e in entries) if c]
     stats["size_check"] = {
         "templates": len(checks),
@@ -1017,6 +1087,8 @@ def run_update(args: argparse.Namespace) -> int:
         if src
         else HttpFetcher(rate_limit_budget=RATE_LIMIT_BUDGET if budget is None else budget)
     )
+    if getattr(args, "heads_only", False):
+        return run_heads_only(args, fetch, out_path, say)
     try:
         db = build_database(
             fetch,
@@ -1058,6 +1130,43 @@ def run_update(args: argparse.Namespace) -> int:
     if db.sources.get("partial"):
         pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
         print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
+    return 0
+
+
+def run_heads_only(
+    args: argparse.Namespace, fetch: Fetcher, out_path: Path, say: Callable[[str], None]
+) -> int:
+    """今の一覧(--db / キャッシュ / 同梱)をそのまま使い、HEAD と ComfyUI の版の確認だけをやり直す。"""
+    from .db import DatabaseError
+    from .db import load as load_db
+
+    try:
+        db = load_db(getattr(args, "db", None), use_cache=not getattr(args, "no_cache", False))
+    except (DatabaseError, OSError, ValueError) as e:
+        return _fail(args, f"一覧を読めません: {e}")
+    say(f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています")
+    stats = check_heads(db.models, fetch)
+    if stats["urls"] and stats["unchecked"] == stats["urls"]:
+        return _fail(args, "HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)")
+    db.sources["head_check"] = stats
+    prev_comfy = db.sources.get("comfyui") if isinstance(db.sources.get("comfyui"), dict) else None
+    db.sources["comfyui"], warn = latest_comfyui(fetch)
+    if warn and prev_comfy and prev_comfy.get("latest_release"):
+        # 取れなかったときは前に記録した版を残す(None で上書きすると gate の版の条件が全部保留になる)
+        db.sources["comfyui"] = prev_comfy
+        warn = f"{warn}(前に記録した {prev_comfy['latest_release']} を残しました)"
+    warnings = [w for w in db.sources.get("warnings", []) if not w.startswith("ComfyUI の最新の版")]
+    db.sources["warnings"] = warnings + ([warn] if warn else [])
+    db.save(out_path)
+    if getattr(args, "json", False):
+        from .cli import _envelope, _out
+
+        db.origin = "path"
+        _out(_envelope("update", None, db, output=str(out_path), sources=db.sources))
+        return 0
+    print(f"HEAD の結果を書き出しました: {out_path}")
+    print(f"  URL {stats['urls']} 件: " + ", ".join(f"{k} {v}" for k, v in stats["status"].items()))
+    print(f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {db.sources['comfyui']['latest_release']}")
     return 0
 
 
