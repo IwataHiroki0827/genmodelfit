@@ -852,6 +852,204 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- download(#31) -------------------------------------------------------------------------------
+
+
+def _gb(n: int | None) -> str:
+    return f"{n / GIB:.2f} GB" if n is not None else "?"
+
+
+def format_plan(plan, *, consent: bool = False) -> list[str]:
+    """download --list と同意の画面の文(人が読む形。幅は _emit で 100 桁までに折り返す)。"""
+    from .downloader import license_label
+
+    out = [f"{plan.model_name}  [{plan.model_id}]"]
+    out.append(
+        f"  workflow:  {plan.name}  ({plan.modality}, {plan.content}, precision {plan.precision or '?'})"
+    )
+    out.append(f"  this PC:   {plan.fit_level} ({plan.run_mode_label}); {plan.chosen}")
+    where = "ComfyUI models folder" if plan.layout == "comfyui" else "models folder (ComfyUI layout)"
+    out.append(f"  to:        {plan.root}  ({where}: <folder>/<file>)")
+    out.append(f"  files ({len(plan.files)}; GB = GiB):")
+    for f in plan.files:
+        state = {"download": "", "resume": f"  resume from {_gb(f.part_bytes)}", "present": "  already there"}
+        mark = state.get(f.status, f"  {f.status.upper()}")
+        out.append(f"    - {f.relpath or f.name}  {_gb(f.size_bytes)}{mark}")
+        lic = license_label(f)
+        if f.license is None:
+            lic += " (UNKNOWN)"
+        elif not f.license_allowed:
+            lic += " (not on the allowlist: read the terms)"
+        out.append(f"        license: {lic}" + (f"  {f.license_url}" if f.license_url else ""))
+        if f.license_note:
+            out.append(f"        note: {f.license_note}")
+        if f.reason:
+            out.append(f"        {f.status}: {f.reason}")
+    out.append(
+        f"  total:     {_gb(plan.total_bytes)}; to download {_gb(plan.download_bytes)}"
+        f" (already there {_gb(plan.present_bytes)})"
+    )
+    free = _gb(plan.disk_free_bytes) if plan.disk_free_bytes is not None else "unknown"
+    out.append(f"  disk:      {free} free; needs {_gb(plan.disk_needed_bytes)} (to download + 1 GB)")
+    if plan.budget_bytes is not None:
+        out.append(f"  budget:    {_gb(plan.budget_bytes)} (--budget)")
+    if plan.license_url:
+        out.append(f"  terms:     {plan.license_url}")
+    if plan.alternatives:
+        alts = ", ".join(
+            f"{a['precision'] or '?'}/{a['use']} {a['fit_level']} {_gb(a['size_bytes'])} [{a['id']}]"
+            for a in plan.alternatives[:3]
+        )
+        more = f" (+{len(plan.alternatives) - 3} more)" if len(plan.alternatives) > 3 else ""
+        out.append(f"  others:    {alts}{more}")
+    for w in plan.warnings:
+        out.append(f"  注意: {w}")
+    for b in plan.blocked:
+        out.append(f"  落とせません: {b}")
+    if consent and not plan.blocked:
+        out.append("")
+        out.append(
+            "上のファイルを、それぞれのライセンス・利用条件(URL)に従って使うことに同意して落としますか?"
+        )
+    return out
+
+
+class _ProgressLine:
+    """進み具合を stderr の 1 行に出す(端末なら 0.5 秒に 1 回まで書き換え、
+    端末でなければ 10% ごとに 1 行)。"""
+
+    def __init__(self) -> None:
+        import time
+
+        self._time = time.monotonic
+        self._last = 0.0
+        self._pct = -1
+        self._tty = sys.stderr.isatty()
+
+    def __call__(self, p) -> None:
+        if p.message:
+            self._end()
+            print(f"  {p.name}: {p.message}", file=sys.stderr, flush=True)
+            return
+        if p.phase not in ("download", "check", "verify"):
+            return
+        now = self._time()
+        pct = int(100 * p.done_bytes / p.total_bytes) if p.total_bytes else 0
+        text = (
+            f"[{p.file_index}/{p.file_count}] {p.phase} {p.name[-40:]}  "
+            f"{p.file_bytes / GIB:.2f}/{(p.file_total or 0) / GIB:.2f} GB  (all {pct}%)"
+        )
+        if self._tty:
+            if now - self._last >= 0.5 or p.phase != "download":
+                sys.stderr.write("\r" + text[:99].ljust(99))
+                sys.stderr.flush()
+                self._last = now
+        elif pct // 10 != self._pct // 10:
+            print(text, file=sys.stderr, flush=True)
+        self._pct = pct
+
+    def _end(self) -> None:
+        if self._tty and self._last:
+            sys.stderr.write("\n")
+            self._last = 0.0
+
+    def close(self) -> None:
+        self._end()
+
+
+def _ask(lines: list[str]) -> bool:
+    """同意を尋ねる(y / yes だけを同意とみなす)。入力が無い(パイプ・EOF)なら同意しない。"""
+    _emit(lines)
+    try:
+        ans = input("[y/N] ")
+    except EOFError:
+        return False
+    return ans.strip().lower() in ("y", "yes")
+
+
+def cmd_download(args: argparse.Namespace) -> int:
+    from .downloader import DownloadError, ModelNotFound, download, plan_download
+
+    if args.json and not args.list and not args.yes:
+        raise CliError(
+            "--json で落とすときは --yes が要ります(同意を尋ねられないため。先に --list で確かめる)"
+        )
+    s, db = _system(args), _db(args)
+    try:
+        plan = plan_download(
+            args.model,
+            precision=args.precision,
+            budget_gb=args.budget,
+            output_dir=args.output_dir,
+            comfyui_dir=args.comfyui_dir,
+            content=args.content,
+            include_unknown_license=args.include_unknown_license,
+            system_info=s,
+            db=db,
+            policy=_policy(args),
+        )
+    except ModelNotFound as e:
+        err = CliError(str(e))
+        err.candidates = e.candidates or None  # type: ignore[attr-defined]
+        raise err from e
+    except DownloadError as e:
+        raise CliError(str(e)) from e
+
+    def fail(e: Exception, code: int = 1) -> int:
+        if args.json:
+            _out(_envelope("download", s, db, listed=False, plan=plan.to_dict(), result=None, error=str(e)))
+        else:
+            print(f"error: {e}", file=sys.stderr)
+        return code
+
+    if args.list:
+        if args.json:
+            _out(_envelope("download", s, db, listed=True, plan=plan.to_dict(), result=None))
+        else:
+            _emit(format_plan(plan))
+        return 0
+    if plan.blocked:
+        if not args.json:
+            _emit(format_plan(plan))
+        return fail(DownloadError("落とせません: " + " / ".join(plan.blocked)))
+    if not args.yes:
+        if not _ask(format_plan(plan, consent=True)):
+            print("落としませんでした(同意がありません)", file=sys.stderr)
+            return 1
+    elif not args.json:
+        _emit(format_plan(plan))
+    show = None if args.json else _ProgressLine()
+    try:
+        result = download(plan, progress=show, yes=True)
+    except KeyboardInterrupt:
+        if show:
+            show.close()
+        return fail(
+            DownloadError(
+                "中断しました。途中までのファイル(.part)は残してあり、"
+                "同じコマンドでもう一度実行すると続きから落とします"
+            ),
+            130,
+        )
+    except DownloadError as e:
+        if show:
+            show.close()
+        return fail(e)
+    if show:
+        show.close()
+    if args.json:
+        _out(_envelope("download", s, db, listed=False, plan=plan.to_dict(), result=result.to_dict()))
+        return 0
+    print(
+        f"落としました: {len(result.downloaded)} 件(続きから {len(result.resumed)} 件)、"
+        f"既にあった {len(result.skipped)} 件、{result.bytes_downloaded / GIB:.2f} GB、"
+        f"{result.seconds:.0f} 秒。"
+        "sha256 はすべて一覧と一致"
+    )
+    print(f"置き場所: {plan.root}")
+    return 0
+
+
 # --- 自動でおすすめに出せるか(gate.py) --------------------------------------------------------
 
 
@@ -1055,6 +1253,53 @@ EXIT CODES:
   1  Error (network, bad signature, older list, ...; with --json the error is in "error")
   2  Usage error
 """,
+    "download": """Download the files of a model for this PC (all files of one workflow), checking sha256.
+モデルのファイルを落とす(1 つのワークフローの全部のファイル。sha256 で確かめる)。
+
+MODEL is a model name (as in the tables), a workflow id, or a part of either (like info).
+For a model name, the workflow and precision are chosen like recommend: the highest precision
+that runs on this PC without offloading (--precision picks one; --budget caps the download).
+Files go to <--comfyui-dir>/models/<folder>/<file> (the folder comes from the template:
+diffusion_models, text_encoders, vae, loras, checkpoints, ...), or the same layout under
+--output-dir (default: the user data folder of genmodelfit, "models").
+Before downloading, the files, each license and its URL, the total size and the free disk are
+shown and you are asked to agree (--yes skips the question).
+Refused: gated files (no login is used), uncensored models unless --content all|uncensored,
+files with an unknown license unless --include-unknown-license, too little disk (needs the
+download + 1 GB), names that would land outside the folder, hosts other than Hugging Face /
+GitHub.
+
+PRECONDITIONS:
+  Network access to huggingface.co (or github.com) for the download. --list needs none.
+
+SIDE EFFECTS:
+  Network: GET of the listed URLs only (https; every redirect must stay on Hugging Face /
+  GitHub hosts). Nothing about this PC is sent (User-Agent: genmodelfit/<version>; no
+  ~/.netrc credentials, no tokens). Writes only inside the destination folder: <file>.part
+  while downloading (kept on Ctrl-C or failure; the next run resumes it with HTTP Range),
+  renamed to <file> after the sha256 matches. A sha256 mismatch deletes the file. Existing
+  files whose sha256 matches are skipped; other existing files are never overwritten.
+  --list: no network access and nothing is written.
+
+EXIT CODES:
+  0  Success (also --list, even when the plan is blocked: see "blocked")
+  1  Error: no such model / several matches, refused (see above), declined, network,
+     sha256 mismatch (with --json the error is in "error")
+  2  Usage error
+  130  Interrupted (Ctrl-C); run again to resume
+
+AGENT USAGE:
+  genmodelfit download "Z-Image-Turbo" --list --json
+  genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI --yes --json
+  genmodelfit download image_z_image_turbo_int8 --output-dir D:/models --budget 15 --yes
+
+  JSON (--json): { genmodelfit, command, system, database, listed, plan: { model_id, name,
+  model_name, precision, fit_level, layout, root, files: [{ name, relpath, dest, url, sha256,
+  size_bytes, directory, license, license_url, license_allowed, gated, status, part_bytes,
+  remaining_bytes, reason }], total_bytes, download_bytes, disk_free_bytes,
+  disk_needed_bytes, blocked, warnings, alternatives, ok }, result: { downloaded, resumed,
+  restarted, skipped, bytes_downloaded, seconds, files } | null, error? }.
+  Details: docs/schema.md""",
 }
 
 
@@ -1279,6 +1524,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める",
     )
     sp.set_defaults(func=cmd_update)
+
+    sp = sub_parser(
+        "download", "モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)", [common, gate]
+    )
+    sp.add_argument("model", help="モデルの名前(表の Model)・ワークフローの ID・その一部")
+    sp.add_argument("--precision", metavar="PREC", help="精度を指定する(例: fp8 / bf16 / int8 / gguf-q8_0)")
+    sp.add_argument(
+        "--budget", type=_positive_float, metavar="GB", help="落とす量の上限(GB。既にあるファイルは数えない)"
+    )
+    sp.add_argument(
+        "--list", action="store_true", help="落とすファイルと合計を出すだけ(落とさない・通信しない)"
+    )
+    where = sp.add_mutually_exclusive_group()
+    where.add_argument("--output-dir", metavar="DIR", help="置き場所(ComfyUI の models と同じ並びで置く)")
+    where.add_argument(
+        "--comfyui-dir", metavar="DIR", help="ComfyUI のフォルダ。models/<diffusion_models など>/ に置く"
+    )
+    sp.add_argument("--yes", "-y", action="store_true", help="同意の確認を省く(--json で落とすときは必須)")
+    sp.add_argument(
+        "--content",
+        choices=CONTENT_FILTERS,
+        default=DEFAULT_CONTENT,
+        help="無検閲のモデルは all か uncensored を明示したときだけ落とす(既定 sfw)",
+    )
+    sp.add_argument(
+        "--include-unknown-license",
+        action="store_true",
+        help="ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる)",
+    )
+    sp.set_defaults(func=cmd_download)
 
     sp = sub.add_parser("gate", parents=[common, gate], help="自動でおすすめに出せるかの集計")
     sp.add_argument("--modality", "-m", choices=MODALITIES)

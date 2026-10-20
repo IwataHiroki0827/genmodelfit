@@ -12,6 +12,8 @@ Python から:
         fit.to_dict()  # `recommend --json` の models の 1 件と同じ形
     if gmf.data_status().expired:  # 同梱・取り込んだ一覧の HEAD の確認が古い(30 日)
         ...
+    plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir="C:/ComfyUI")  # 落とさずに計画だけ(通信しない)
+    gmf.download(plan, confirm=ask_user, progress=show)  # 同意を取ってから落とす(sha256 で確かめる)
 """
 
 from __future__ import annotations
@@ -23,6 +25,14 @@ from datetime import datetime
 from ._version import __version__
 from .db import Database
 from .db import load as load_db
+from .downloader import (
+    DownloadError,
+    DownloadPlan,
+    DownloadProgress,
+    DownloadRefused,
+    DownloadResult,
+    plan_download,
+)
 from .estimate import estimate
 from .hardware import detect
 from .models import (
@@ -228,12 +238,36 @@ def info(model_id: str, *, db: Database | None = None) -> ModelEntry | None:
     return (db or load_db()).get(model_id)
 
 
+def download(
+    plan_or_model, *, progress=None, confirm=None, yes: bool = False, **plan_kwargs
+) -> DownloadResult:
+    """モデルを落とす(CLI の `download`)。何も表示しない。
+
+    plan_or_model: plan_download() の計画、またはモデルの名前・ID
+    (そのときは plan_kwargs を plan_download に渡す。
+    precision / budget_gb / output_dir / comfyui_dir / content / include_unknown_license など)。
+    confirm(plan) -> bool で利用者の同意を取る(ライセンス・利用条件の URL・大きさ・空きを見せる)。
+    confirm を渡さないときは yes=True で同意済みを示す(どちらも無ければ DownloadRefused)。
+    progress(DownloadProgress) で進み具合を受け取る。止める理由(gated・無検閲・ライセンス不明・空き不足・
+    置き場所の外・許していない取得先)は DownloadRefused / DownloadError(.plan に計画)。
+    中断(KeyboardInterrupt)は .part を残すので、もう一度呼ぶと続きから落とす。
+    """
+    from .downloader import download as _download
+
+    return _download(plan_or_model, progress=progress, confirm=confirm, yes=yes, **plan_kwargs)
+
+
 __all__ = [
     "CONTENT_LEVELS",
     "FIT_LEVELS",
     "MODALITIES",
     "DataStatus",
     "Database",
+    "DownloadError",
+    "DownloadPlan",
+    "DownloadProgress",
+    "DownloadRefused",
+    "DownloadResult",
     "Estimate",
     "Fit",
     "Measurement",
@@ -244,11 +278,13 @@ __all__ = [
     "__version__",
     "data_status",
     "detect",
+    "download",
     "estimate",
     "evaluate",
     "fit_list",
     "info",
     "load_db",
+    "plan_download",
     "recommend",
     "search",
     "system",

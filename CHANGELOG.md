@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `genmodelfit download <model>` and `gmf.plan_download()` / `gmf.download()` (Issue #31): download all files of a
+  model's workflow, with the precision chosen like `recommend` (`--precision`, `--budget GB`), into a ComfyUI folder by
+  each file's template folder (`--comfyui-dir`) or the same layout elsewhere (`--output-dir`). `--list` shows the plan
+  without any network access. Before downloading it shows every file's license and URL, the total size and the free
+  disk and asks for consent (`--yes` to skip). sha256 is checked while writing (a mismatch deletes the file),
+  `.part` files resume with HTTP Range, files already there are skipped, and it needs the download + 1 GB free.
+  Gated files, uncensored models (unless `--content all|uncensored`) and unknown licenses (unless
+  `--include-unknown-license`) are refused; only https URLs on Hugging Face / GitHub hosts are followed (each
+  redirect is checked); nothing is written outside the destination. JSON: docs/schema.md "download".
+  モデルを落とす `download` を足した(同意・sha256・続きから・ComfyUI のフォルダ)。
+
 ## [0.2.0] - Unreleased
 
 Fewer unknowns in the table and a clear meaning for `?` and `-` (Issue #30). The JSON output changes in a way that

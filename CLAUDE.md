@@ -31,6 +31,9 @@
   `evaluate_offline` で判定する(期限の式を別に持たない)
 - HTTP は必ず `fetch.make_session()`(User-Agent を付け、~/.netrc の資格情報を送らない。プロキシの環境変数は使う)。
   読むだけのコマンドと Python の関数はネットに触らない(README「Privacy」、tests/test_privacy.py・test_embedding.py)
+- `download`(#31、`downloader.py`)は一覧の URL だけを https で落とし、転送先は `HOST_POLICY` のホストだけ。
+  同意(confirm / yes)・sha256・`.part` の続き・置き場所の外に書かない・gated / 無検閲 / ライセンス不明を落とさない、
+  の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
 - REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
 

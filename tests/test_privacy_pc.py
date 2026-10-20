@@ -206,3 +206,39 @@ def test_bench_sends_no_pc_info_and_saves_none(sentinel_pc, outbound):
     assert absolute.search(json.dumps({"p": str(path)})) and absolute.search('"/home/x/"')  # 検査が効く
     assert not absolute.search(text)  # 絶対パスが無い
     assert m.source == f"genmodelfit bench {__version__}"  # --source が無ければ道具の名前だけ
+
+
+def test_download_sends_no_pc_info(sentinel_pc, outbound, tmp_path):
+    """download(#31): 送るのは一覧の URL への GET(User-Agent・Range)だけ。
+    PC の情報も置き場所のパスも送らない。"""
+    import hashlib
+
+    from genmodelfit.db import Database
+    from genmodelfit.models import ModelEntry, ModelFile, Template
+
+    forbidden, home = sentinel_pc
+    log, files = outbound
+    body = b"tiny-weights" * 1000
+    files["tiny_privacy.safetensors"] = body
+    f = ModelFile(
+        name="tiny_privacy.safetensors",
+        url="https://huggingface.co/example/tiny/resolve/main/tiny_privacy.safetensors",
+        sha256=hashlib.sha256(body).hexdigest(),
+        size_bytes=len(body),
+        directory="vae",
+        license="mit",
+        gated=False,
+        role="vae",
+    )
+    m = ModelEntry(
+        id="test_privacy", name="Privacy", modality="image", files=[f], template=Template(name="x")
+    )
+    comfy = home / "ComfyUI"  # 置き場所のパスにユーザー名が入る
+    (comfy / "models").mkdir(parents=True)
+    res = gmf.download(
+        "test_privacy", yes=True, db=Database(models=[m]), comfyui_dir=comfy
+    )  # PC は sentinel で調べる
+    assert (comfy / "models" / "vae" / "tiny_privacy.safetensors").read_bytes() == body
+    assert res.downloaded == ["vae/tiny_privacy.safetensors"]
+    assert [e.split("\n", 1)[0] for e in log] == [f"GET {f.url}"]
+    _assert_clean(log, forbidden)
