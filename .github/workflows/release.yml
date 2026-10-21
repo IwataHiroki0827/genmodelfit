@@ -1,7 +1,7 @@
 name: Release
 
 # v* のタグを push すると、テスト → ビルド → PyPI へ公開 → GitHub Release の順に進む。
-# 公開は environment pypi の承認(ユーザ)を待ってから。pypi は v* のタグからしか使えない。
+# 公開は environment pypi(承認者なし。v* のタグからしか使えない)。v* のタグは管理者だけが作れる(ルールセット)。
 # 手動実行(workflow_dispatch)はビルドまでで、タグを選んで手動実行しても公開しない(event_name で弾く)。
 # 手順は docs/release.md。
 
