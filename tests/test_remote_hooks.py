@@ -165,7 +165,9 @@ def test_session_auth_is_the_callers_choice_but_not_sent_to_other_hosts(server, 
     s2 = Redirecting()
     s2.auth = ("me", "pw")
     remote._session_get(s2, "http://first.example/db.json", 5)
-    assert calls[0]["auth"] is None and "Authorization" not in calls[0]["headers"]  # session.auth を使う
+    assert (
+        calls[0]["auth"] == ("me", "pw") and "Authorization" not in calls[0]["headers"]
+    )  # session.auth を使う
     assert isinstance(calls[1]["auth"], remote._NoAuth) and calls[1]["headers"]["Authorization"] is None
 
 
@@ -314,3 +316,117 @@ def test_gpu_memory_required_when_too_tight_and_without_gpu(app_db):
     assert d["gpu_memory_required_gb"] > 4.0
     nogpu = gmf.judge_model("image_sdxl_simple", cpu_only=True, ram_gb=64, db=app_db).to_dict()
     assert "gpu_memory_required_gb" in nogpu and nogpu["gpu_memory_required_gb"] is None
+
+
+# --- 点検での指摘(auth の空の値・verify の環境変数・不正な転送先・共有メモリ)----------------
+
+
+class _Redirecting(requests.Session):
+    """1 回目は別のホストへ転送し、2 回目で 200 を返す。get の引数を記録する。"""
+
+    def __init__(self, first_location: str | None) -> None:
+        super().__init__()
+        self.calls: list[dict[str, Any]] = []
+        self.first_location = first_location
+
+    def get(self, url, **kw):
+        self.calls.append({"url": url, **kw})
+        r = requests.Response()
+        r.raw = io.BytesIO()
+        if len(self.calls) == 1 and self.first_location:
+            r.status_code = 302
+            r.headers["Location"] = self.first_location
+        else:
+            r.status_code = 200
+        return r
+
+
+@pytest.mark.parametrize("auth", [None, (), "", ("me", "pw")])
+@pytest.mark.parametrize("cross_host", [False, True])
+def test_session_auth_values_never_fall_back_to_netrc(auth, cross_host):
+    """auth が空(None・()・"")でも、requests に netrc を読ませない(要求の auth が None にならない)。"""
+    loc = "http://other.example/db.json" if cross_host else "/db.json"
+    s = _Redirecting(loc)
+    s.auth = auth
+    remote._session_get(s, "http://first.example/db.json", 5)
+    for i, c in enumerate(s.calls):
+        assert c["auth"] is not None
+        if auth and not (cross_host and i == 1):
+            assert c["auth"] == auth  # 呼び出し側の認証は、同じホストにだけ使う
+        else:
+            assert isinstance(c["auth"], remote._NoAuth)
+    if cross_host:
+        assert s.calls[1]["headers"]["Authorization"] is None
+
+
+@pytest.mark.parametrize("auth", [(), ""])
+def test_empty_session_auth_sends_no_netrc_end_to_end(server, tmp_path, auth):
+    base, seen, _ = server
+    s = RecordingSession()
+    s.auth = auth
+    remote.update_from_release(base + "/redir", session=s, dest=tmp_path / "out.json")
+    assert len(seen) == 4 and not any("authorization" in h for h in seen)
+
+
+def test_session_verify_wins_over_ca_bundle_environment(server, tmp_path, monkeypatch):
+    """環境変数 REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE より、セッションの verify を優先する(requests#3829)。"""
+    base, _, _ = server
+    ca = tmp_path / "app-ca.pem"
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(tmp_path / "env-ca.pem"))
+    monkeypatch.setenv("CURL_CA_BUNDLE", str(tmp_path / "env-curl.pem"))
+    s = RecordingSession()
+    s.verify = str(ca)
+    remote.update_from_release(base, session=s, dest=tmp_path / "out.json")
+    assert s.verifies and all(v == str(ca) for v in s.verifies)
+
+
+def test_session_proxies_win_over_environment(monkeypatch):
+    s = _Redirecting(None)
+    s.proxies["https"] = "http://app-proxy.example:3128"
+    remote._session_get(s, "https://first.example/db.json", 5)
+    assert s.calls[0]["proxies"] == {"https": "http://app-proxy.example:3128"}
+    assert s.proxies == {"https": "http://app-proxy.example:3128"}  # セッションは書き換えない
+
+
+@pytest.mark.parametrize("where", ["first", "redirect"])
+def test_invalid_port_is_a_remote_error(tmp_path, where):
+    bad = "https://x.example:99999/db.json"
+    s = _Redirecting(bad if where == "redirect" else None)
+    with pytest.raises(remote.RemoteError, match="URL が正しくありません"):
+        remote._session_get(s, bad if where == "first" else "https://first.example/db.json", 5)
+    with pytest.raises(remote.RemoteError):
+        remote.update_from_release(
+            "https://x.example:99999",
+            session=_Redirecting(None),
+            dest=tmp_path / "o.json",
+            state_dir=tmp_path / "s",
+        )
+    assert not (tmp_path / "o.json").exists() and not (tmp_path / "s").exists()
+
+
+def test_gpu_memory_required_cpu_equals_too_tight_rule_on_shared_memory(app_db):
+    """共有メモリの GPU(APU)でも、cpu のときは vram_offload_gb(too_tight と同じ規則)。"""
+    from genmodelfit.models import Gpu, SystemInfo
+    from genmodelfit.recommend import judge
+
+    found = 0
+    for vram in (0.5, 1.0, 2.0):
+        g = Gpu(
+            name="AMD Radeon(TM) 8060S Graphics",
+            vendor="amd",
+            vram_total_gb=vram,
+            backend="rocm",
+            compute_dtype="fp16",
+            bf16=True,
+            fp8=False,
+            memory="shared",
+            gfx_target="gfx1151",
+        )
+        system = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
+        for mid in ("image_sdxl_simple", "image_z_image_turbo", "video_wan2_2_5B_ti2v"):
+            f = judge(app_db.get(mid), system, app_db)
+            d = f.to_dict()
+            if d["run_mode"] in ("cpu", "none"):
+                found += 1
+                assert d["gpu_memory_required_gb"] == round(f.estimate.vram_offload_gb, 2), (vram, mid)
+    assert found >= 3

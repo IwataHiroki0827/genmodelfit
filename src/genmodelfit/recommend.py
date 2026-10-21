@@ -201,14 +201,13 @@ def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
 def gpu_need(e: Estimate, system: SystemInfo | None) -> float | None:
     """GPU で動かすのに要る VRAM(GiB)。run_mode が cpu のときも出す(0.7.1、#58)。
     GPU を判定に使っていない・大きさ不明のときは None。cpu 以外は vram_need と同じ値。
-    cpu のときは GPU に載らなかったので、動かし方のうち一番小さい値(動かない判定と同じく「最低これだけ」)。"""
+    cpu のときは GPU に載らなかったので、動かし方のうち一番小さい値(動かない判定と同じ vram_offload_gb)。
+    共有メモリの GPU でも同じ規則(cpu と too_tight で意味を変えない)。"""
     vram = system.vram_gb if system is not None else 0.0
     if e.unknown_size or vram <= 0:
         return None
     if e.run_mode != "cpu":
         return vram_need(e, system)
-    if shared_memory(system):  # 逃がす先が同じメモリなので、逃がす載せ方は数えない
-        return min(e.vram_gb, e.vram_sequential_gb or e.vram_gb)
     return e.vram_offload_gb
 
 

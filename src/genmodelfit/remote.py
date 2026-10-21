@@ -56,6 +56,7 @@ def _http_get(url: str, **kw: Any) -> requests.Response:
 
 
 def _origin(url: str) -> tuple[str, str, int | None]:
+    """(スキーム, ホスト, ポート)。ポートが不正な URL(https://x:99999/)は ValueError。"""
     u = urlsplit(url)
     return (u.scheme, (u.hostname or "").lower(), u.port)
 
@@ -65,14 +66,21 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
 
     - ~/.netrc は読ませない: 要求ごとに何もしない認証を渡す(requests は要求にもセッションにも認証が
       無いときだけ netrc を読む)。転送のたびに requests が netrc を読み直す(rebuild_auth)ので、
-      allow_redirects=False にして転送はここで辿る。session.auth がある場合は呼び出し側の選んだものとして、
-      最初のホストにだけ使う(別のホストへの転送には付けない)。
+      allow_redirects=False にして転送はここで辿る。session.auth が真ならば呼び出し側の選んだものとして、
+      最初のホストにだけ使う(別のホストへの転送には付けない)。空(None・()・"")は無いものとして扱う。
+    - verify と proxies はセッションの値を要求ごとに渡す(渡さないと、環境変数 REQUESTS_CA_BUNDLE などが
+      セッションの verify より先に効く。requests#3829)。プロキシの環境変数は、セッションに無い分だけ使う。
     - User-Agent は要求ごとに固定の値を付ける。セッションのほかのヘッダーは書き換えない。
     """
-    first = _origin(url)
+    try:
+        first = _origin(url)
+    except ValueError as e:
+        raise RemoteError(f"URL が正しくありません: {url}: {e}") from e
     for _ in range(MAX_REDIRECTS + 1):
-        same = _origin(url) == first
-        keep_auth = session.auth is not None and same
+        try:
+            same = _origin(url) == first
+        except ValueError as e:
+            raise RemoteError(f"転送先の URL が正しくありません: {url}: {e}") from e
         headers: dict[str, Any] = {"User-Agent": USER_AGENT}
         if not same:
             headers["Authorization"] = None  # セッションのヘッダーにあっても、別のホストへは送らない
@@ -81,7 +89,9 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
             timeout=timeout,
             stream=True,
             headers=headers,
-            auth=None if keep_auth else _NoAuth(),
+            auth=session.auth if (session.auth and same) else _NoAuth(),
+            verify=session.verify,
+            proxies=dict(session.proxies),
             allow_redirects=False,
         )
         loc = r.headers.get("Location")
