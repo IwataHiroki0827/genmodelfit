@@ -115,6 +115,10 @@ if st.expired:
 
 # 一覧を自分で読むときは、確認待ちのものを除く
 ok = [e for e in gmf.load_db().models if e.review is None or e.review.status == "ok"]
+
+# アプリが調べた GPU で 1 モデルを判定する(世代と精度は genmodelfit が決める)
+fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
+print(fit.to_dict()["fit_level"])  # 互換を守るのは gmf.__all__ の名前だけ
 ```
 
 ### ほかの PC で判定する

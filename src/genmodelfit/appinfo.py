@@ -8,7 +8,8 @@
 - 言語の決め方(`apply_app_fields`。当てるたびに材料から作り直す):
   1) 手の表 `data/overrides.json`(人が一次資料か実機で確かめたもの。書いた種類はこれ)
   2) HF のカードの `language`(取れたものは `card_languages` に保存して持つ)。カードが言語を書いていれば
-     それが上限で、文字を読む部品がすべて英語だけのもの(CLIP・T5)なら en だけ残す。読み上げはカードだけ
+     それが上限で、文字を読む部品がすべて英語だけのもの(CLIP・T5)なら en だけ残す。読み上げはカードだけ。
+     音楽はカードの言語が歌詞のことが多いので、指示は en だけ残し、歌の言語はカードから決めない(#41)
   3) カードが無いときは、文字を読む部品の表(`TEXT_ENCODERS`・`FAMILY_PROMPT`)に当たれば en
      (多言語の部品でも、表だけでは ja を付けない)。
   どれでも決まらなければ空にする(当て推量で ja を付けない)。
@@ -202,7 +203,8 @@ def apply_app_fields(
 def _derived_languages(e: ModelEntry) -> dict[str, list[str]]:
     """カードの言語と部品の表から決める(手の表を当てる前)。
 
-    カードが言語を書いていれば、それが上限(英語だけの部品ならカードの en だけ残す。ほかはカードのまま)。
+    カードが言語を書いていれば、それが上限(英語だけの部品ならカードの en だけ残す。音楽も en だけ。
+    ほかはカードのまま)。
     カードが無ければ部品の表(当たれば en)。読み上げはカードだけ。"""
     card = list(e.card_languages or [])
     if e.modality == "tts":
@@ -212,6 +214,11 @@ def _derived_languages(e: ModelEntry) -> dict[str, list[str]]:
     kind = prompt_kind(e)
     if not card:
         prompt = prompt_from_tables(e)
+    elif e.modality == "music":
+        # 音楽のカードの language は歌詞(歌える言語)のことが多く、指示の言語とは限らない(ACE-Step v1 の
+        # カードは 17 言語で、歌の入らないワークフローにも付いていた。#41)。指示はカードのうち en だけにし、
+        # 歌の言語(speech)もカードからは決めない(歌の入らないワークフローがあるので。手の表で書く)
+        prompt = [x for x in card if x in ENGLISH]
     elif kind == "en":
         prompt = [x for x in card if x in ENGLISH]
     else:
@@ -350,8 +357,77 @@ def merge_manual(entries: list[ModelEntry], manual: list[ModelEntry] | None = No
         set_precision(m)
     ids = {m.id for m in manual} | {f"hf:{r}" for m in manual for r in manual_repos(m)}
     merged = [e for e in entries if e.id not in ids] + manual
+    add_components(merged)
     merged.sort(key=lambda e: (e.source != "comfyui-template", e.modality, e.id))
     return merged
+
+
+# --- 手で足す部品 -------------------------------------------------------------------------------------
+
+
+def components(data: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    """data/manual.json の components(モデルの ID → {evidence, files})。形を確かめる(ValueError)。
+
+    足すファイルは https の url が必須(同じファイルかを URL で見るので、URL の無い行は当てるたびに重なる)。
+    1 つのモデルの中で同じ URL は 1 回だけ。"""
+    data = _bundled_json(MANUAL_FILE) if data is None else data
+    table = data.get("components") or {}
+    out = {k: v for k, v in table.items() if not k.startswith("_")}
+    for mid, row in out.items():
+        if not isinstance(row, dict) or not isinstance(row.get("files"), list) or not row["files"]:
+            raise ValueError(f"components の {mid}: files(1 つ以上)がありません")
+        seen: set[str] = set()
+        for raw in row["files"]:
+            url = raw.get("url") if isinstance(raw, dict) else None
+            if not isinstance(url, str) or not url.startswith("https://") or not raw.get("name"):
+                raise ValueError(f"components の {mid}: ファイルに https の url と name が要ります: {raw!r}")
+            if url in seen:
+                raise ValueError(f"components の {mid}: 同じ url が 2 回あります: {url}")
+            seen.add(url)
+    return out
+
+
+def add_components(entries: list[ModelEntry], table: dict[str, dict[str, Any]] | None = None) -> list[str]:
+    """HF の収集では入らない部品のファイルを、その ID の項目に足す(#40。Stable Audio 3 の T5Gemma など)。
+
+    ライセンスは書いた値を使わず、部品の出どころの表(license_sources.SOURCES。一次資料で確かめた行)で決める。
+    行が無ければ不明(license_unverified)にする(寛容な側に誤らない)。どの部品をそのモデルが使うかの根拠は
+    `manual_component: …` として license_evidence に足す。同じ URL のファイルがすでにあれば足さず、
+    ライセンスだけ表で当て直す(通信で確かめた HEAD・見出しの値はそのまま。何度当てても同じ結果)。
+    足したり当て直したりした項目の ID を返す。"""
+    from .hf import UNVERIFIED, Resolved, parse_hf_url
+    from .license_sources import COMPONENT_EVIDENCE, source_for
+    from .models import ModelFile
+    from .update import set_completeness, set_entry_license, set_file_license, set_precision
+
+    table = components() if table is None else components({"components": table})
+    touched: list[str] = []
+    for e in entries:
+        row = table.get(e.id)
+        if not row:
+            continue
+        by_url = {f.url: f for f in e.files if f.url}
+        for raw in row.get("files") or []:
+            f = by_url.get(raw.get("url"))
+            if f is None:
+                f = ModelFile.from_dict({k: v for k, v in raw.items() if not k.startswith("_")})
+                e.files.append(f)
+            loc = parse_hf_url(f.url) if f.url else None
+            if loc and f.repo_id is None:
+                f.repo_id = loc[0]
+            src = source_for(loc[0], loc[2]) if loc else None
+            if src is None:
+                why = "部品の出どころの表(license_sources)に行がありません"
+                set_file_license(f, Resolved(None, path=[], evidence=[f"{UNVERIFIED}: {why}"]))
+            else:
+                set_file_license(f, src.resolved(loc[0]))
+            if row.get("evidence"):
+                f.license_evidence.append(f"{COMPONENT_EVIDENCE}: {row['evidence']}")
+        set_entry_license(e)
+        set_completeness(e)
+        set_precision(e)
+        touched.append(e.id)
+    return touched
 
 
 def verify_manual_licenses(entries: list[ModelEntry], client: Any) -> list[str]:

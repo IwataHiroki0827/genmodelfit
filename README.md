@@ -115,6 +115,10 @@ if st.expired:
 
 # reading the list yourself: skip entries still waiting for review
 ok = [e for e in gmf.load_db().models if e.review is None or e.review.status == "ok"]
+
+# one model, with the GPU your app detected (generation and precision are decided here)
+fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
+print(fit.to_dict()["fit_level"])  # only names in gmf.__all__ are stable API
 ```
 
 ### Judge another PC

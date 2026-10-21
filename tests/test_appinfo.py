@@ -674,3 +674,195 @@ def test_license_tier_reads_use_restrictions_in_the_name():
     assert (
         license_tier("other", "flux-non-commercial-ethical-restrictions") == TIER_NONCOMMERCIAL
     )  # 非商用が先
+
+
+# --- 音楽のカードの言語(#41) -------------------------------------------------------------------------
+
+
+def test_music_card_languages_only_give_english_prompts():
+    """音楽のカードの language は歌詞の言語のことが多い(ACE-Step v1 は 17 言語)。指示は en だけにし、
+    歌の言語(speech)はカードからは決めない。効果音・画像はカードのまま。"""
+    card = ["en", "zh", "ja", "ko"]
+    music = _entry([("m.safetensors", "main")], tasks=("t2a",), modality="music", id="mu")
+    music.files[0].repo_id = "owner/m"
+    sfx = _entry([("m.safetensors", "main")], tasks=("t2a",), modality="sfx", id="sx")
+    sfx.files[0].repo_id = "owner/m"
+    image = _entry([("m.safetensors", "main")], id="im")
+    image.files[0].repo_id = "owner/m"
+    appinfo.apply_app_fields([music, sfx, image], _FakeClient({"owner/m": card}), table={})
+    assert music.languages == {"prompt": ["en"]}
+    assert sfx.languages == {"prompt": card} and image.languages == {"prompt": card}
+    # カードに en が無ければ、音楽の指示は決めない(キーを付けない)
+    zh = _entry([("m.safetensors", "main")], tasks=("t2a",), modality="music", id="zh")
+    zh.files[0].repo_id = "owner/zh"
+    appinfo.apply_app_fields([zh], _FakeClient({"owner/zh": ["zh"]}), table={})
+    assert zh.languages == {}
+
+
+def test_bundled_music_prompts_are_not_lyric_languages(bundled):
+    by = {m.id: m for m in bundled.models}
+    for mid in ("audio_ace_step_1_t2a_instrumentals", "audio_yue2_text2music"):
+        assert by[mid].languages == {"prompt": ["en"]}, mid
+    # 歌入りの ACE-Step v1 は、歌える言語を手の表に書いた(README の「top 10 well-performing languages」)
+    song = by["audio_ace_step_1_t2a_song"].languages
+    assert song["prompt"] == ["en"] and "ja" in song["speech"] and len(song["speech"]) == 10
+    hand = appinfo.overrides()
+    for m in bundled.models:
+        if m.modality == "music" and m.source != "manual" and m.id not in hand:
+            assert set(m.languages.get("prompt", [])) <= {"en"}, m.id
+            assert "speech" not in m.languages, m.id
+
+
+# --- 手で足す部品(#40) -----------------------------------------------------------------------------
+
+SFX = "hf:stabilityai/stable-audio-3-small-sfx"
+T5GEMMA_URL = (
+    "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors"
+)
+
+
+def _sfx_from_hf():
+    """HF の収集が作る形(本体 1 つだけ。部品が無い)。"""
+    main = ModelFile(
+        name="model.safetensors",
+        url="https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+        sha256="ed9cf1b6172f1a8c2921a9560c21109ff3239524563ced9dce6dcdef41e2f515",
+        size_bytes=2270384940,
+        repo_id="stabilityai/stable-audio-3-small-sfx",
+        license="other",
+        license_name="stable-audio-community",
+        gated=True,
+        role="main",
+    )
+    return ModelEntry(
+        id=SFX,
+        name="stable-audio-3-small-sfx",
+        modality="sfx",
+        tasks=["t2a"],
+        source="huggingface",
+        files=[main],
+    )
+
+
+def test_components_add_t5gemma_with_gemma_terms_from_the_source_table():
+    e = _sfx_from_hf()
+    other = ModelEntry(id="hf:o/other", name="o", modality="sfx", source="huggingface")
+    merged = appinfo.merge_manual([e, other], [])
+    sfx = next(m for m in merged if m.id == SFX)
+    assert [f.name for f in sfx.files] == ["model.safetensors", "t5gemma_b_b_ul2.safetensors"]
+    te = sfx.files[1]
+    assert (te.url, te.directory, te.role, te.repo_id) == (
+        T5GEMMA_URL,
+        "text_encoders",
+        "text_encoder",
+        "Comfy-Org/stable-audio-3",
+    )
+    # ライセンスは書いた値でなく、部品の出どころの表(一次資料で確かめた行)のもの
+    assert (te.license, te.license_from, te.license_url) == (
+        "gemma",
+        "google/t5gemma-b-b-ul2",
+        "https://ai.google.dev/gemma/terms",
+    )
+    assert "license_source:stable-audio-3-t5gemma" in te.license_evidence
+    assert any(
+        x.startswith("manual_component: https://huggingface.co/stabilityai/stable-audio-3-small-sfx")
+        for x in te.license_evidence
+    )
+    # 一式は一番厳しいもの(stable-audio-community)のまま、licenses に両方
+    from genmodelfit.recommend import _sum_licenses
+
+    assert (sfx.license, sfx.license_name) == ("other", "stable-audio-community")
+    assert set(_sum_licenses(sfx)) == {"other", "gemma"}
+    assert sfx.total_size_bytes == 2270384940 + 1187264003
+    assert next(m for m in merged if m.id == "hf:o/other").files == []
+    # 何度当てても同じ(ファイルを重ねない・根拠を重ねない)。HEAD の結果は残す
+    te.head_status, te.head_checked_at = 302, "2026-10-21T00:00:00Z"
+    again = appinfo.merge_manual(merged, [])
+    sfx2 = next(m for m in again if m.id == SFX)
+    assert len(sfx2.files) == 2 and sfx2.files[1].license_evidence == te.license_evidence
+    assert sfx2.files[1].head_status == 302
+
+
+def test_components_without_a_source_row_stay_unknown():
+    """部品の出どころの表に行が無ければ、書いた値があってもライセンスは不明(寛容な側に誤らない)。"""
+    e = _sfx_from_hf()
+    table = {
+        SFX: {
+            "evidence": "x",
+            "files": [
+                {
+                    "name": "mystery.safetensors",
+                    "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/mystery.safetensors",
+                    "sha256": "0" * 64,
+                    "size_bytes": 1,
+                    "directory": "text_encoders",
+                    "role": "text_encoder",
+                    "license": "mit",
+                }
+            ],
+        }
+    }
+    assert appinfo.add_components([e], table) == [SFX]
+    assert e.files[1].license is None
+    from genmodelfit.recommend import license_unknown
+
+    assert license_unknown(e)
+
+
+def test_every_stable_audio_3_entry_has_the_t5gemma_text_encoder(bundled):
+    """Stable Audio 3 は文字を読む部品に T5Gemma(Gemma 利用規約)を使う。どの項目もその部品を持つ。"""
+    sa3 = [m for m in bundled.models if re.search(r"stable[-_]audio[-_]3", m.id)]
+    assert {SFX, "manual:stable-audio-3-small-music", "audio_stable_audio_3_medium"} <= {m.id for m in sa3}
+    for m in sa3:
+        te = [f for f in m.files if f.name.endswith("t5gemma_b_b_ul2.safetensors")]
+        assert te and te[0].license == "gemma" and te[0].role == "text_encoder", m.id
+
+
+def test_bundled_sfx_is_what_merge_manual_rebuilds(bundled):
+    """同梱の一覧の効果音の項目は、HF の収集の形に部品を足したもの(update が作り直しても同じ)。"""
+    rebuilt = next(m for m in appinfo.merge_manual([_sfx_from_hf()], []) if m.id == SFX)
+    have = bundled.get(SFX)
+    keys = (
+        "name",
+        "url",
+        "sha256",
+        "size_bytes",
+        "directory",
+        "role",
+        "license",
+        "license_name",
+        "license_from",
+        "license_url",
+        "license_path",
+        "license_evidence",
+        "repo_license",
+        "gated",
+    )
+    assert [tuple(getattr(f, k) for k in keys) for f in have.files][1:] == [
+        tuple(getattr(f, k) for k in keys) for f in rebuilt.files
+    ][1:]
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        [{"name": "a.safetensors", "role": "text_encoder"}],  # url が無い
+        [{"name": "a.safetensors", "url": "http://huggingface.co/o/r/resolve/main/a.safetensors"}],
+        [{"url": "https://huggingface.co/o/r/resolve/main/a.safetensors"}],  # name が無い
+        [
+            {"name": "a.safetensors", "url": "https://huggingface.co/o/r/resolve/main/a.safetensors"},
+            {"name": "a.safetensors", "url": "https://huggingface.co/o/r/resolve/main/a.safetensors"},
+        ],
+        [],
+    ],
+)
+def test_components_require_a_unique_https_url(files):
+    """URL で同じファイルかを見るので、URL の無い行は当てるたびに重なる。形が崩れた表は読み込みで断る。"""
+    with pytest.raises(ValueError, match="components"):
+        appinfo.components({"components": {SFX: {"evidence": "x", "files": files}}})
+    with pytest.raises(ValueError, match="components"):
+        appinfo.add_components([_sfx_from_hf()], {SFX: {"evidence": "x", "files": files}})
+
+
+def test_bundled_components_are_valid():
+    assert SFX in appinfo.components()
