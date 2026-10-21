@@ -52,6 +52,7 @@ CHECK_LABEL = {
     "sha256": "sha256",
     "content": "content",
     "size_known": "size",
+    "app_runtime": "runtime",
 }
 # 隠した理由の表示名(recommend.HIDDEN_KEYS)
 HIDDEN_LABEL = {

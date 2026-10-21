@@ -1,0 +1,131 @@
+{
+ "_comment": "手の表(update が毎回当てる。#36)。キー=一覧のモデル ID。languages の [] は「その入力・出力が無い」(画像から 3D は指示の文を取らない・歌は入らない)、キーが無いのは「分からない」。根拠は docs/sources.md「言語・動かし方・説明」。description.ja は AI生成キットのカタログの summary(実機で確かめたもの)。_note はカードの誤りを直す行の根拠(update は読まない)",
+ "source": "AI生成キットの catalog.json(2026-10-21)と各モデルのカード",
+ "models": {
+  "image_z_image_turbo_int8": {
+   "languages": {
+    "prompt": [
+     "en",
+     "ja",
+     "zh"
+    ]
+   },
+   "description": {
+    "ja": "短い時間で高画質な写真・イラストをつくれる最新モデルの軽量版です。GPU のメモリが 8 GB 前後の PC 向けです。",
+    "en": "A lightweight build of a recent model that makes high-quality photos and illustrations in a short time. Aimed at PCs with about 8 GB of GPU memory."
+   }
+  },
+  "image_z_image_turbo": {
+   "languages": {
+    "prompt": [
+     "en",
+     "ja",
+     "zh"
+    ]
+   },
+   "description": {
+    "ja": "Z-Image Turbo の、軽量化していない高画質版です。細部の描き込みがいちばん細かく、GPU のメモリが 16 GB 以上の PC 向けです。",
+    "en": "The full-quality, non-quantized Z-Image Turbo. It draws the finest detail and is aimed at PCs with 16 GB or more of GPU memory."
+   }
+  },
+  "image_sdxl_simple": {
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
+   "description": {
+    "ja": "定番の画像モデルです。GPU のメモリが少ない PC でも動きます。",
+    "en": "A long-standing standard image model. It also runs on PCs with little GPU memory."
+   }
+  },
+  "video_wan2_2_5B_ti2v": {
+   "languages": {
+    "prompt": [
+     "en",
+     "ja",
+     "zh"
+    ]
+   },
+   "description": {
+    "ja": "文章から、または画像を動かして動画をつくれます。720p まで対応した高品質なモデルです。",
+    "en": "Makes video from text, or animates an image. A high-quality model that supports up to 720p."
+   }
+  },
+  "text_to_video_wan": {
+   "languages": {
+    "prompt": [
+     "en",
+     "ja",
+     "zh"
+    ]
+   },
+   "description": {
+    "ja": "文章から短い動画をつくる軽量なモデルです。GPU のメモリが 8 GB 前後の PC でも動きます。",
+    "en": "A lightweight model that makes short videos from text. Runs on PCs with around 8 GB of GPU memory."
+   }
+  },
+  "audio_ace_step_1_5_checkpoint": {
+   "languages": {
+    "prompt": [
+     "en"
+    ],
+    "speech": [
+     "en",
+     "ja"
+    ]
+   },
+   "description": {
+    "ja": "ジャンルや雰囲気の説明と歌詞から、歌入りの曲や BGM をつくれます。日本語の歌詞にも対応しています。",
+    "en": "Makes songs with vocals or background music from a description of genre and mood plus lyrics. Japanese lyrics are supported."
+   }
+  },
+  "hf:stabilityai/stable-audio-3-small-sfx": {
+   "languages": {
+    "prompt": [
+     "en"
+    ],
+    "speech": []
+   },
+   "description": {
+    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。",
+    "en": "Makes sound effects and ambient sounds such as rain or a closing door."
+   }
+  },
+  "3d_hunyuan3d_image_to_model": {
+   "languages": {
+    "prompt": []
+   },
+   "description": {
+    "ja": "1枚の画像から 3Dモデル(GLB ファイル)をつくれます。形だけで、色は付きません。",
+    "en": "Makes a 3D model (GLB file) from one image. Shape only, no colors."
+   }
+  },
+  "3d_hunyuan3d-v2.1": {
+   "languages": {
+    "prompt": []
+   },
+   "description": {
+    "ja": "Hunyuan3D の新しい版です。2.0 より細かな形をつくれます。形だけで、色は付きません。",
+    "en": "A newer Hunyuan3D release that makes finer shapes than 2.0. Shape only, no colors."
+   }
+  },
+  "video_wan2_2_14B_s2v": {
+   "_note": "https://huggingface.co/Wan-AI/Wan2.2-S2V-14B のカードの language が es だけ(誤り。本文の指示の例は英語、案内は中国語と英語)。同じ Wan2.2 の https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードの language は en・zh なので、それに合わせる",
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   }
+  },
+  "hf:myshell-ai/MeloTTS-English": {
+   "_note": "https://huggingface.co/myshell-ai/MeloTTS-English のカードの language が ko(誤り。モデル名と本文の表のとおり英語の声)",
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   }
+  }
+ }
+}

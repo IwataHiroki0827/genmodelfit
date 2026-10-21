@@ -20,6 +20,7 @@
 | sha256 | すべてのファイルに 64 桁の sha256 がある |
 | content | 無検閲(uncensored)でない(allow_uncensored で外せる) |
 | size_known | すべてのファイルの大きさが分かる |
+| app_runtime | (runtime が ComfyUI 以外のモデルだけ。ComfyUI の 3 条件の代わり)常に保留。アプリが確かめる |
 
 判定の結果は一覧(db.json)に持たない(毎回ここで計算する)。持つのは update が記録した HEAD の結果だけ。
 """
@@ -57,7 +58,10 @@ CHECK_IDS = (
     "sha256",
     "content",
     "size_known",
+    "app_runtime",
 )
+# runtime が ComfyUI 以外のモデル(手のモデルの piper・irodori-tts。#36)で、ComfyUI の 3 条件の代わりに使う条件
+COMFYUI_CHECKS = ("official_workflow", "custom_nodes", "comfyui_version")
 
 # 商用で使えて、使い方の制限が無いライセンス(理由は docs/gate.md)。
 # openrail 系(使い方の制限)・非商用・売上の基準つきのコミュニティライセンス・llama / gemma の規約・
@@ -466,6 +470,15 @@ def check_custom_nodes(m: ModelEntry) -> Check:
     return Check("custom_nodes", True, "カスタムノードは要らない")
 
 
+def check_app_runtime(m: ModelEntry) -> Check:
+    """ComfyUI 以外の仕組みで動かすモデル。この一覧では動かし方を確かめられないので、常に保留。"""
+    return Check(
+        "app_runtime",
+        False,
+        f"ComfyUI 以外の仕組み({m.runtime})で動かすモデル。動かせるかは使う側(アプリ)が確かめる",
+    )
+
+
 def check_comfyui_version(m: ModelEntry, target: str | None) -> Check:
     if m.template is None:
         return Check("comfyui_version", False, "公式テンプレートではないため確かめられない")
@@ -590,12 +603,18 @@ def evaluate_offline(
     """
     p = policy or GatePolicy()
     target = p.comfyui_version or recorded_comfyui_version(sources)
+    if model.runtime in (None, "comfyui"):
+        runtime_checks = [
+            check_official(model),
+            check_custom_nodes(model),
+            check_comfyui_version(model, target),
+        ]
+    else:
+        runtime_checks = [check_app_runtime(model)]
     checks = [
         check_license(model, p.license_allowlist),
         check_gated(model),
-        check_official(model),
-        check_custom_nodes(model),
-        check_comfyui_version(model, target),
+        *runtime_checks,
         check_url(model, p.max_head_age_days, now),
         check_sha256(model),
         check_content(model, p.allow_uncensored),

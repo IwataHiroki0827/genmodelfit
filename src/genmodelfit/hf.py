@@ -146,7 +146,7 @@ TIER_NONCOMMERCIAL = 5  # 非商用・研究用(cc-by-nc*・*non-commercial*・q
 TIER_OTHER = (
     4  # 独自・利用者数などの条件付き(other・tencent-hunyuan-community・gpl など、下に当たらないもの全部)
 )
-TIER_USE_RESTRICTED = 3  # 用途の制限付き(openrail 系・llama・gemma)
+TIER_USE_RESTRICTED = 3  # 用途の制限付き(openrail 系・llama・gemma・名前に ethical-restrictions を持つ other)
 TIER_ATTRIBUTION = 2  # 表示の義務(cc-by-4.0 など)
 TIER_PERMISSIVE = 1  # 寛容(apache-2.0・mit・bsd など)
 
@@ -157,6 +157,10 @@ _USE_RESTRICTED = re.compile(
     r"^(openrail[\w+.-]*|creativeml-openrail-m|bigscience[\w.-]*|llama[\d.]*|gemma)$"
 )
 
+# 寛容なライセンスにカードの本文が用途の制限を足したもの(Irodori-TTS の「MIT + Ethical Restrictions」)は、
+# other と名前(mit-with-ethical-restrictions など)で持ち、用途の制限付きの段に入れる(#36)
+_USE_RESTRICTED_NAME = re.compile(r"(?<![a-z0-9])(ethical|use)[-_ ]restrictions?(?![a-z0-9])")
+
 
 def license_tier(lic: str | None, name: str | None = None) -> int:
     """ライセンスの段階(TIER_*)。other は license_name(独自ライセンスの名前)も見る。"""
@@ -165,6 +169,8 @@ def license_tier(lic: str | None, name: str | None = None) -> int:
     text = f"{lic} {name or ''}".lower()
     if _NONCOMMERCIAL.search(text):
         return TIER_NONCOMMERCIAL
+    if name and _USE_RESTRICTED_NAME.search(name.lower()):
+        return TIER_USE_RESTRICTED
     if lic in PERMISSIVE:
         return TIER_PERMISSIVE
     if lic in ATTRIBUTION:
@@ -944,6 +950,11 @@ class HfClient:
                 return None
 
         return self._once("repo", self._repos, key, load)
+
+    def cached_repo(self, repo_id: str, revision: str = "main") -> RepoInfo | None:
+        """取得済みのリポジトリの情報(通信しない。まだ取っていなければ None)。"""
+        with self._lock:
+            return self._repos.get((repo_id, revision or "main"))
 
     def failed(self, repo_id: str) -> Failure | None:
         with self._lock:

@@ -387,10 +387,14 @@ def select_files(entry: ModelEntry) -> tuple[list[ModelFile], list[str]]:
     notes: list[str] = []
     cands: list[ModelFile] = []
     skipped_alt = 0
+    # runtime が ComfyUI 以外と決まっているもの(piper の onnx など。#36)は、その形式が本体なので数える
+    own_runtime = entry.runtime not in (None, "comfyui")
     for f in entry.files:
         folder, base = _path(f)
         ext = _ext(base)
-        if (folder and folder.lower() in ALT_RUNTIME_FOLDERS) or ext in ALT_RUNTIME_EXTS:
+        if not own_runtime and (
+            (folder and folder.lower() in ALT_RUNTIME_FOLDERS) or ext in ALT_RUNTIME_EXTS
+        ):
             skipped_alt += 1
             continue
         if ext in NON_WEIGHT_EXTS:

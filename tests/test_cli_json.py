@@ -61,6 +61,9 @@ FIT = {
     "tasks",
     "content",
     "source",
+    "runtime",
+    "languages",
+    "description",
     "fit_level",
     "fit_label",
     "run_mode",
@@ -123,6 +126,8 @@ CHECK_IDS = [
     "content",
     "size_known",
 ]
+# runtime が ComfyUI 以外のモデル(手のモデルの piper・irodori-tts)は、ComfyUI の 3 条件の代わりに app_runtime
+APP_RUNTIME_CHECK_IDS = ["license", "gated", "app_runtime", *CHECK_IDS[5:]]
 FIT_FILTERS = {
     "modality",
     "content",
@@ -199,6 +204,10 @@ MODEL_ENTRY = {
     "sampler_stages",
     "workflow_precision",
     "precision_source",
+    "languages",
+    "runtime",
+    "description",
+    "card_languages",
 }
 MODEL_FILE = {
     "name",
@@ -376,7 +385,7 @@ def check_estimate(e: dict) -> None:
 
 def check_gate(g: dict) -> None:
     assert set(g) == GATE
-    assert [c["id"] for c in g["checks"]] == CHECK_IDS
+    assert [c["id"] for c in g["checks"]] in (CHECK_IDS, APP_RUNTIME_CHECK_IDS)
     assert all(set(c) >= {"id", "passed", "detail"} for c in g["checks"])
 
 

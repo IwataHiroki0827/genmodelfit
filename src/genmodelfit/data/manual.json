@@ -1,0 +1,257 @@
+{
+ "_comment": "手で足すモデル(source: manual。#36)。人気順の収集で拾えないもの。update が取り込み、HEAD・見出しの精度・上流のカードとのライセンスの照合は他のモデルと同じ道に乗せる。ライセンスは一次資料(HF のカード)で確かめた値",
+ "models": [
+  {
+   "id": "manual:tsukuyomi-chan-piper-plus",
+   "name": "Piper Plus Tsukuyomi-chan (6-language)",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "base_model": "ayousanz/piper-plus-base",
+   "content": "sfw",
+   "discovered_from": [
+    "https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan"
+   ],
+   "updated": "2026-10-14",
+   "homepage": "https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan",
+   "runtime": "piper",
+   "languages": {
+    "speech": [
+     "ja",
+     "en"
+    ]
+   },
+   "description": {
+    "ja": "軽くて速い読み上げです。GPU なしの PC でもすぐに読み上げます。日本語・英語に対応しています。",
+    "en": "A light, fast text-to-speech voice (Tsukuyomi-chan, piper-plus). Reads Japanese and English right away, even on a PC without a GPU. The voice data has its own terms (credit line and output restrictions)."
+   },
+   "files": [
+    {
+     "name": "tsukuyomi-chan-6lang-fp16.onnx",
+     "url": "https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan/resolve/main/tsukuyomi-chan-6lang-fp16.onnx",
+     "sha256": "5289e9b6eaf21080803b7fe1c4dc85b5491d4c216121207a41df18dd5f68e5d7",
+     "size_bytes": 39652717,
+     "directory": "tts",
+     "repo_id": "ayousanz/piper-plus-tsukuyomi-chan",
+     "license": "other",
+     "license_name": "tsukuyomi-chan-corpus",
+     "gated": false,
+     "role": "main",
+     "license_from": "ayousanz/piper-plus-tsukuyomi-chan",
+     "license_url": "https://tyc.rei-yumesaki.net/material/corpus/#terms3",
+     "license_evidence": [
+      "manual: https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan のカード license: other / license_name: tsukuyomi-chan-corpus / license_link: https://tyc.rei-yumesaki.net/material/corpus/#terms3(2026-10-21 に確認)。音声データの利用規約は SPDX に無い。クレジット表記と、出力音声の用途の禁止事項がある"
+     ],
+     "license_path": [
+      "ayousanz/piper-plus-tsukuyomi-chan"
+     ]
+    },
+    {
+     "name": "config.json",
+     "url": "https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan/resolve/main/config.json",
+     "sha256": "516058f405ec914140f34832a9d8bb5d8272ba62af9bc7ffb29349715a539780",
+     "size_bytes": 6901,
+     "directory": "tts",
+     "repo_id": "ayousanz/piper-plus-tsukuyomi-chan",
+     "license": "other",
+     "license_name": "tsukuyomi-chan-corpus",
+     "gated": false,
+     "role": "other",
+     "license_from": "ayousanz/piper-plus-tsukuyomi-chan",
+     "license_url": "https://tyc.rei-yumesaki.net/material/corpus/#terms3",
+     "license_evidence": [
+      "manual: https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan のカード license: other / license_name: tsukuyomi-chan-corpus / license_link: https://tyc.rei-yumesaki.net/material/corpus/#terms3(2026-10-21 に確認)。音声データの利用規約は SPDX に無い。クレジット表記と、出力音声の用途の禁止事項がある"
+     ],
+     "license_path": [
+      "ayousanz/piper-plus-tsukuyomi-chan"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "manual:irodori-tts-v4.1-small",
+   "name": "Irodori-TTS-v4.1-Small",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "base_model": "Aratako/Irodori-TTS-v4-Small",
+   "content": "sfw",
+   "discovered_from": [
+    "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small"
+   ],
+   "updated": "2026-08-11",
+   "homepage": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
+   "runtime": "irodori-tts",
+   "languages": {
+    "speech": [
+     "ja"
+    ]
+   },
+   "description": {
+    "ja": "人間らしく自然な日本語の読み上げです。落ち着いた女性・元気な女性・ナレーターなど、声の雰囲気を選べます。NVIDIA の GPU 向けです。",
+    "en": "Natural, human-like Japanese text-to-speech with selectable voice styles (calm, lively, narrator). Japanese only. Aimed at NVIDIA GPUs. The card adds ethical restrictions to the MIT license (no impersonation, no deepfakes or misinformation)."
+   },
+   "files": [
+    {
+     "name": "model.safetensors",
+     "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/model.safetensors",
+     "sha256": "c85de88c01700cb53538e706f128ebcb1b8513ad21d7d0e75f58bc82cdbf89f6",
+     "size_bytes": 3064295596,
+     "directory": "tts",
+     "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
+     "gated": false,
+     "role": "main",
+     "license_from": "Aratako/Irodori-TTS-v4.1-Small",
+     "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
+     "license_evidence": [
+      "manual: https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード license: mit。カードの「Ethical Restrictions」(実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない)が付く(2026-10-21 に確認)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
+     ],
+     "license_path": [
+      "Aratako/Irodori-TTS-v4.1-Small"
+     ]
+    },
+    {
+     "name": "tokenizer/tokenizer.json",
+     "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer.json",
+     "sha256": "6a0734cf21c802169defaffe719bc2ef12bb9d0be37e54b61ed27aa89394723d",
+     "size_bytes": 6718495,
+     "directory": "tts",
+     "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
+     "gated": false,
+     "role": "other",
+     "license_from": "Aratako/Irodori-TTS-v4.1-Small",
+     "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
+     "license_evidence": [
+      "manual: 同じリポジトリのトークナイザ(カード license: mit。文字を読む部品は sbintuitions/modernbert-ja-310m を元にしたとカードに書いてある)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
+     ],
+     "license_path": [
+      "Aratako/Irodori-TTS-v4.1-Small"
+     ]
+    },
+    {
+     "name": "tokenizer/tokenizer_config.json",
+     "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer_config.json",
+     "sha256": "d229a271c64de1a7939d20d3665498e873fa91d5ee2edf135d73ec752cb9c9d3",
+     "size_bytes": 668,
+     "directory": "tts",
+     "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
+     "gated": false,
+     "role": "other",
+     "license_from": "Aratako/Irodori-TTS-v4.1-Small",
+     "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
+     "license_evidence": [
+      "manual: 同じリポジトリのトークナイザの設定(カード license: mit)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
+     ],
+     "license_path": [
+      "Aratako/Irodori-TTS-v4.1-Small"
+     ]
+    },
+    {
+     "name": "dacvae/weights.pth",
+     "url": "https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim/resolve/main/weights.pth",
+     "sha256": "db120339c5ee7eca1912cdf29bc612b947a0808e69c3cebfb4936b45a762c1d5",
+     "size_bytes": 429620065,
+     "directory": "tts",
+     "repo_id": "Aratako/Semantic-DACVAE-Japanese-32dim",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "Aratako/Semantic-DACVAE-Japanese-32dim",
+     "license_url": "https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim",
+     "license_evidence": [
+      "manual: https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim のカード license: mit(元の facebook/dacvae-watermarked は apache-2.0。2026-10-21 に確認)"
+     ],
+     "license_path": [
+      "Aratako/Semantic-DACVAE-Japanese-32dim"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "manual:stable-audio-3-small-music",
+   "name": "Stable Audio 3 Small (music)",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "base_model": "stabilityai/stable-audio-3-small-music",
+   "content": "sfw",
+   "discovered_from": [
+    "https://huggingface.co/Comfy-Org/stable-audio-3"
+   ],
+   "updated": "2026-10-06",
+   "homepage": "https://huggingface.co/stabilityai/stable-audio-3-small-music",
+   "runtime": "comfyui",
+   "comfy_family": "stable_audio",
+   "languages": {
+    "prompt": [
+     "en"
+    ],
+    "speech": []
+   },
+   "description": {
+    "ja": "短い BGM やループ素材をつくる軽量なモデルです(歌は入りません)。",
+    "en": "A lightweight model that makes short background music and loop material (no vocals). Write prompts in English."
+   },
+   "files": [
+    {
+     "name": "stable_audio_3_small_music.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_small_music.safetensors",
+     "sha256": "da85866b11b01d0694d990785f6abbd79c8064df1b0e6f8aea52935e0ef84b64",
+     "size_bytes": 2270384940,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-3-small-music",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-3-small-music/blob/main/LICENSE.md",
+     "license_evidence": [
+      "manual: https://huggingface.co/stabilityai/stable-audio-3-small-music のカード license: other / license_name: stable-audio-community / license_link: LICENSE.md(2026-10-21 に確認。そのリポジトリは gated: auto。ここの URL は gated でない Comfy-Org/stable-audio-3 の複製)",
+      "family:stable-audio"
+     ],
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "stabilityai/stable-audio-3-small-music"
+     ]
+    },
+    {
+     "name": "t5gemma_b_b_ul2.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+     "sha256": "1e1eba25be8872edb0d3c6335c6658fd6388e7b14b60da6e454e404cfcd8150e",
+     "size_bytes": 1187264003,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "gemma",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5gemma-b-b-ul2",
+     "license_url": "https://ai.google.dev/gemma/terms",
+     "license_evidence": [
+      "license_source:stable-audio-3-t5gemma",
+      "Stability AI の公式 https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。google/t5gemma-b-b-ul2 は license: gemma(gated: manual)(2026-10-20 に確認)",
+      "upstream_gated: google/t5gemma-b-b-ul2"
+     ],
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "google/t5gemma-b-b-ul2"
+     ]
+    }
+   ]
+  }
+ ]
+}

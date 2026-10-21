@@ -72,7 +72,7 @@ def test_all_pass_is_auto():
     assert r.auto and r.held_by == []
     d = r.to_dict()
     assert d["auto"] is True and d["comfyui_version"] == "v0.42.1"
-    assert [c["id"] for c in d["checks"]] == list(CHECK_IDS)
+    assert [c["id"] for c in d["checks"]] == [c for c in CHECK_IDS if c != "app_runtime"]
     assert all(set(c) == {"id", "passed", "detail"} and c["detail"] for c in d["checks"])
 
 

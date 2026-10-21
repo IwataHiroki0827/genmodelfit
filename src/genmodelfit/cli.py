@@ -589,6 +589,16 @@ def cmd_info(args: argparse.Namespace) -> int:
         out.append(f"  community template by {m.template.username} (not made by ComfyUI)")
     out.append(f"  modality: {m.modality}  tasks: {', '.join(m.tasks) or '?'}  content: {m.content}")
     out.append(f"  license:  {m.license or '? (unknown)'}  source: {m.source}")
+    if m.runtime:
+        out.append(f"  runtime:  {m.runtime}")
+    if m.languages:
+        out.append(
+            "  languages: " + "; ".join(f"{k} {', '.join(v) or '(none)'}" for k, v in m.languages.items())
+        )
+    if m.description:
+        out.append("  about:    " + (m.description.get("en") or next(iter(m.description.values()))))
+        if m.description.get("ja"):
+            out.append("            " + m.description["ja"])
     prec_from = f" (from {m.precision_source})" if m.precision and m.precision_source else ""
     out.append(f"  precision: {m.precision or '? (unknown)'}{prec_from}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "? (size unknown)"
@@ -659,7 +669,14 @@ def cmd_update(args: argparse.Namespace) -> int:
     if getattr(args, "from_release", False):
         return _update_from_release(args)
     from .db import cached_db_path
-    from .update import UpdateFailed, inspect_database, make_fetcher, refresh_heads, update_database
+    from .update import (
+        UpdateFailed,
+        inspect_database,
+        make_fetcher,
+        refresh_app_fields,
+        refresh_heads,
+        update_database,
+    )
 
     out_path = Path(args.output) if getattr(args, "output", None) else cached_db_path()
     say = _progress(args)
@@ -667,6 +684,15 @@ def cmd_update(args: argparse.Namespace) -> int:
     try:
         if getattr(args, "inspect_only", False):
             db = inspect_database(
+                fetch,
+                out_path,
+                db_path=getattr(args, "db", None),
+                use_cache=not getattr(args, "no_cache", False),
+                offline=bool(getattr(args, "offline", False)),
+                progress=say,
+            )
+        elif getattr(args, "fields_only", False):
+            db = refresh_app_fields(
                 fetch,
                 out_path,
                 db_path=getattr(args, "db", None),
@@ -725,6 +751,15 @@ def cmd_update(args: argparse.Namespace) -> int:
             print(f"  匿名で読めない(401。非公開か無い)リポジトリ: {', '.join(unauth)}")
         if missing:
             print(f"  401 のうち無いと確かめたもの: {', '.join(sorted(missing))}")
+        return 0
+    if getattr(args, "fields_only", False):
+        af = db.sources["app_fields"]
+        print(f"アプリ向けの項目を書き出しました: {out_path}")
+        print(
+            f"  手のモデル {db.sources['manual']['models']} 件 / 言語(指示) {af['languages_prompt']} 件・"
+            f"言語(読み上げ) {af['languages_speech']} 件 / 動かし方 {af['runtime']} 件 / "
+            f"説明 {af['description']} 件"
+        )
         return 0
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]
@@ -1578,7 +1613,8 @@ def _head_age(v: str) -> int | None:
 _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, database: {...}, filters: {...},
   matched, hidden: {reason: count}, groups: [{modality, matched, shown}],
   models: [{ id, name, model_name,
-  modality, tasks, use, content, source, fit_level, fit_label, run_mode, run_mode_label, score,
+  modality, tasks, use, content, source, runtime, languages, description, fit_level, fit_label,
+  run_mode, run_mode_label, score,
   score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
   memory_required_gb, memory_available_gb, utilization_pct, ram_required_gb, disk_size_gb,
   total_size_gb, license, licenses, auto, held_reasons, estimate_confidence, notes,
@@ -1704,9 +1740,11 @@ AGENT USAGE:
   measurements, status: { source, generated_at, heads_checked_oldest, heads_checked_newest,
   max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
   checked_at } } }. Details: docs/schema.md""",
-    "update": """Rebuild the model list from upstream, redo the HEAD checks (--heads-only), or take in the
-signed list published by this project (--from-release).
-一覧を上流から作り直す・HEAD だけやり直す・署名付きの配布を取り込む。
+    "update": """Rebuild the model list from upstream, redo the HEAD checks (--heads-only), re-apply only the
+app fields and the hand-added models (--fields-only), or take in the signed list published by this
+project (--from-release).
+一覧を上流から作り直す・HEAD だけやり直す・言語/動かし方/説明と手のモデルだけ当て直す・
+署名付きの配布を取り込む。
 
 PRECONDITIONS:
   Network access.
@@ -1984,6 +2022,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
     )
     sp.add_argument(
+        "--fields-only",
+        action="store_true",
+        help="今の一覧はそのままで、アプリ向けの項目(言語・動かし方・説明)と手のモデル(data/manual.json)だけを"
+        "当て直す。通信するのは、言語を読むカードと手のモデルのファイルだけ(--offline で通信せず、"
+        "保存済みのカードの言語を使う)",
+    )
+    sp.add_argument(
         "--inspect-only",
         action="store_true",
         help="今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
@@ -1993,7 +2038,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--offline",
         action="store_true",
-        help="--inspect-only で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う",
+        help="--inspect-only / --fields-only で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う",
     )
     sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
     sp.add_argument(

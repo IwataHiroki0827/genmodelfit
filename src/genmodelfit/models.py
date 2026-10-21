@@ -160,6 +160,19 @@ class ModelEntry:
     workflow_precision: str | None = None
     # precision をどこから決めたか(PRECISION_SOURCES。None は精度が分からない・古いデータ)。#30、0.2.0
     precision_source: str | None = None
+    # アプリが一覧だけで画面を作るための任意の項目(0.5.0、#36。古い版は知らないキーとして捨てるので読める)。
+    #   languages    {"prompt": ["en", ...], "speech": ["ja", ...]}(ISO 639-1。どちらも省略可、
+    #                分からなければ省く)。prompt = 指示(プロンプト)で通じる言語、
+    #                speech = 読み上げ・歌詞で出せる言語。appinfo.py が決める
+    #   runtime      動かす仕組み(comfyui / piper / irodori-tts など)。None は分からない
+    #   description  {"ja": "...", "en": "..."}。手で書いたものがあるモデルだけ
+    #                (data/overrides.json・manual.json)
+    languages: dict[str, list[str]] = field(default_factory=dict)
+    runtime: str | None = None
+    description: dict[str, str] = field(default_factory=dict)
+    # HF のカードの language(appinfo が languages を作り直す材料。取得できたときに保存し、通信しない当て直しで
+    # 使う)。None = まだ読んでいない、[] = 読んだがカードに言語が無い
+    card_languages: list[str] | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
@@ -190,6 +203,9 @@ class ModelEntry:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelEntry:
         e = _from_dict(cls, d)
+        # null で入っていても空の辞書として扱う(後から足した項目。型は db.check_entry が確かめる)
+        e.languages = dict(e.languages or {})
+        e.description = dict(e.description or {})
         e.files = [ModelFile.from_dict(f) if isinstance(f, dict) else f for f in (d.get("files") or [])]
         t = d.get("template")
         e.template = Template.from_dict(t) if isinstance(t, dict) else t
