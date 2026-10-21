@@ -626,8 +626,20 @@ def merge_check_main(argv: list[str]) -> int:
     return 0 if r["safe"] else MERGE_NOT_SAFE
 
 
+def _utf8_stdio() -> None:
+    """Windows の cp932 / cp1252 でも日本語の出力で落ちず、呼ぶ側が UTF-8 で読めるようにする(cli と同じ)。"""
+    import contextlib
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(AttributeError, ValueError, OSError):
+                stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
+    _utf8_stdio()
     if argv[:1] == ["merge-check"]:
         return merge_check_main(argv[1:])
     p = argparse.ArgumentParser(

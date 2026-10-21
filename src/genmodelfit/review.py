@@ -663,12 +663,24 @@ def apply_decisions(
     }
 
 
+def _utf8_stdio() -> None:
+    """Windows の cp932 / cp1252 でも日本語の出力で落ちず、呼ぶ側が UTF-8 で読めるようにする(cli と同じ)。"""
+    import contextlib
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(AttributeError, ValueError, OSError):
+                stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
     """`python -m genmodelfit.review publish <IN> <OUT>`: 配る一覧を作る(data.yml が署名の前に呼ぶ)。
 
     `python -m genmodelfit.review apply <DECISIONS.json> --db PATH [--max-approve 10] [--rejected FILE]
     [--json]`: 判断の一覧を当てる。終了コード 0 = 当てた、2 = 判断の一覧がおかしい(何も変えていない)、
     1 = 一覧を読めない。"""
+    _utf8_stdio()
     import argparse
     import sys
 
