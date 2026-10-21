@@ -7,6 +7,52 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **`diff` is usable by users and no longer drops changes silently** (#59). With no arguments it compares the bundled
+  list with the list fetched by `update --from-release` (without one it prints how to and exits 0); with one argument
+  the bundled list with that file; with two, the two files as before. The header names both lists. Models are shown as
+  `name (type) — id`. The default output lists only user-relevant changes: added / removed, auto-recommendation, and
+  per changed model the license (`!` = toward the permissive side), size, precision, prompt / speech languages (before
+  → after), added / removed files with their license, newly uncensored, review status, and 「その他の変化」 with the names
+  of any other changed field. Only new HEAD failures are listed; old HEAD failures, 401 repos, `sources` numbers and
+  popularity / date-only changes are counted and listed with `--all`. 0.6.0 → 0.7.0 used to show only a size change;
+  it now shows the three music language changes and the T5Gemma text encoder (Gemma license) of
+  stable-audio-3-small-sfx.
+- Changed models are listed by importance (files, then license, uncensored, runtime / use, auto-recommendation,
+  languages / size / precision, then review marks and other fields), so `--limit` never hides a more important change.
+  The same low-importance change on many models is one line with a count (`確認の印が付いた(ok): 329 件`; ids with
+  `--all`). The `…ほか N 件` line points to `-n N` / `--all`; `--all` has no line limit unless `-n` is given.
+  0.5.0 → 0.7.0 and 0.4.0 → 0.7.0 now show the T5Gemma (Gemma license) file first instead of after 300 review marks.
+- `diff` and `weekly merge-check` find changes with one function (`diff.entry_changes`), so they cannot disagree, and
+  the CLI compares the raw JSON like merge-check (unknown keys of entries, files and the top level are shown).
+  Files are paired in tiers (same name + url + sha256 + directory + repo, then directory + name + sha256, then
+  directory + name + url, then by order), so same-named files are not mixed up; added / removed files show their
+  source (repo or URL). A changed url / sha256 / repo / directory shows the old → new value. Review marks read
+  「確認の印が付いた(ok)」 / 「確認の印が外れた」; a missing vs empty language list is not shown; the type is not repeated
+  when the name already ends with it. With no arguments, a warning is shown when the fetched list is older than the
+  bundled one; without a fetched list, `--json` has the usual keys (empty) plus `note`.
+- The loader rejects a non-string `license_name` (entry or file), which used to crash `diff` with AttributeError.
+- Second review of `diff` (#59): before → after values are shortened around the part that differs (a URL changed only in
+  the middle, or two sha256 that share a prefix, never look the same); the license provenance (`license_url`,
+  `license_from`, `license_path`, `repo_license`) is shown with the license, not as 「その他の変化」; collapsed lines
+  of auto-recommendation changes always list the ids (cut by `-n` with 「…ほか N 件(-n M で増やす)」); 「その他の変化」 is
+  collapsed per field; a file key that is missing on one side and null on the other is no change; model ids are never
+  broken by wrapping (a long id gets its own line); the "older list" warning is shown for every argument form; the
+  no-cache `--json` has the usual `summary` keys with 0.
+- Changed models are shown in three sections, each cut by `-n` separately (owner's decision, #59): files, license
+  values (with 「! 寛容な側」), uncensored, runtime / use; then auto-recommendation changes (ids always listed, so
+  0.1.0 → 0.7.1 shows all 16 newly auto-recommended ids with the default `-n 20`); then license provenance
+  (not collapsed), languages, size, precision, review marks and other fields.
+
+### Added
+
+- `diff --json`: `old_label`, `new_label`, `field_changes`, `model_changes`, `top_changes`, `warnings` (docs/schema.md「diff」). Existing keys are
+  unchanged, and the weekly pull request body is the same.
+- Tests for `diff` with the real 0.6.0 / 0.7.0 lists (trimmed by `tools/make_diff_fixture.py`), a test that changes
+  every field of `ModelEntry` / `ModelFile` / `Template` / `Review` one at a time and requires it in the output, the
+  argument modes, 100-column width and JSON compatibility.
+
 ## [0.7.1] - 2026-10-21
 
 JSON changes are additive; `schema_version` stays 1.

@@ -36,6 +36,12 @@ KEYS = {
     "partial_counts",
     "stats",
     "classification",
+    # #59 で足した鍵
+    "old_label",
+    "new_label",
+    "field_changes",
+    "model_changes",
+    "top_changes",
 }
 
 
@@ -198,11 +204,12 @@ def test_cli_json_and_text(pair, tmp_path, capsys):
     a, b = _write(old, tmp_path / "old.json"), _write(new, tmp_path / "new.json")
     assert cli.main(["diff", a, b, "--json"]) == 0
     d = json.loads(capsys.readouterr().out)
-    assert d["command"] == "diff" and set(d) == KEYS | {"genmodelfit", "command"}
+    assert d["command"] == "diff" and set(d) == KEYS | {"genmodelfit", "command", "warnings"}
     assert d["removed"][0]["id"] == gone.id
     assert cli.main(["diff", a, b, "-n", "5"]) == 0
     text = capsys.readouterr().out
-    assert gone.id in text and "--json で全部" in text
+    flat = "".join(text.split())  # 長い行は折り返されるので、空白を除いて見る
+    assert gone.id in flat and "--allで全部" in flat and "-n" in text
     assert all(cell_len(line) <= 100 for line in text.splitlines()), max(text.splitlines(), key=cell_len)
 
 

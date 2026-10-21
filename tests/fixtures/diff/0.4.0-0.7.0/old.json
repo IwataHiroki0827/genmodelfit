@@ -1,0 +1,4461 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-10-20T22:40:19Z",
+ "sources": {
+  "comfyui-templates": {
+   "url": "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/index.json",
+   "license": "MIT",
+   "templates_total": 701,
+   "local": 278,
+   "skipped": {
+    "api": 314,
+    "category": 7,
+    "no_size": 22,
+    "not_open_source": 80
+   },
+   "loaded": 278,
+   "failed": 0
+  },
+  "file_headers": {
+   "files": 362,
+   "urls": 233,
+   "from_cache": 221,
+   "fetched": 12,
+   "failed": 12,
+   "skipped_offline": 0,
+   "errors": [
+    "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+    "https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.s",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+    "https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf: FetchError: HTTP 401: https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors"
+   ],
+   "checked_at": "2026-10-20T22:40:27Z",
+   "precision_unknown": 11
+  },
+  "repo_precision": {
+   "files": 9,
+   "repos": 9,
+   "from_cache": 9,
+   "fetched": 0,
+   "hf_api": 4,
+   "config": 0,
+   "unknown": 5,
+   "skipped_offline": 0,
+   "unauthorized": [],
+   "size_mismatch": [
+    "sesame/csm-1b"
+   ],
+   "errors": [],
+   "checked_at": "2026-10-20T22:40:27Z",
+   "precision_unknown": 11,
+   "precision_source": {
+    "filename": 28,
+    "header": 277,
+    "hf_api": 4,
+    "unknown": 11,
+    "workflow": 8
+   }
+  },
+  "partial": false,
+  "partial_counts": {
+   "templates_failed": 0,
+   "hf_repos_failed_transient": 0,
+   "entries_affected": 0,
+   "hf_search_failed": 0,
+   "rate_limit_budget_exhausted": false,
+   "carried_over": 0
+  },
+  "license_policy": 5,
+  "huggingface": {
+   "api": "https://huggingface.co/api/models/{repo_id}?blobs=true",
+   "repos": 494,
+   "failed": 4,
+   "rate_limited": 8,
+   "rate_limit_waited_s": 65.0,
+   "failures": [
+    "Wan-AI/Wan2.2-Dancer-14B: HTTP 401: https://huggingface.co/api/models/Wan-AI/Wan2.2-Dancer-14B?blobs=true",
+    "microsoft/Lens: HTTP 401: https://huggingface.co/api/models/microsoft/Lens?blobs=true",
+    "microsoft/Mage-Flow: HTTP 401: https://huggingface.co/api/models/microsoft/Mage-Flow?blobs=true",
+    "google/gemma-3-12b: HTTP 401: https://huggingface.co/api/models/google/gemma-3-12b?blobs=true"
+   ],
+   "unauthorized": [
+    "Wan-AI/Wan2.2-Dancer-14B",
+    "google/gemma-3-12b",
+    "microsoft/Lens",
+    "microsoft/Mage-Flow"
+   ],
+   "unauthorized_missing": [
+    "google/gemma-3-12b"
+   ],
+   "unauthorized_recheck": {
+    "unauthorized": [
+     "Wan-AI/Wan2.2-Dancer-14B",
+     "google/gemma-3-12b",
+     "microsoft/Lens",
+     "microsoft/Mage-Flow"
+    ],
+    "private_or_missing": [
+     "Wan-AI/Wan2.2-Dancer-14B",
+     "microsoft/Lens",
+     "microsoft/Mage-Flow"
+    ],
+    "missing": [
+     "google/gemma-3-12b"
+    ],
+    "readable": [],
+    "failed": [],
+    "checked_at": "2026-10-20T22:40:28Z"
+   }
+  },
+  "huggingface-search": {
+   "queries": 66,
+   "candidates": 851,
+   "added": 50,
+   "skipped": {
+    "adapter": 40,
+    "component": 10,
+    "duplicate": 20,
+    "duplicate_weights": 9,
+    "merge": 6,
+    "no_weights": 6,
+    "over_cap": 15,
+    "owner_cap": 32,
+    "skip_downloads": 603,
+    "uncensored_inactive": 4
+   },
+   "excluded": 1,
+   "failed_queries": 0,
+   "all_time_missing": 0
+  },
+  "civitai": "使っていません(利用規約。docs/sources.md)",
+  "head_check": {
+   "checked_at": "2026-10-20T22:40:07Z",
+   "urls": 482,
+   "status": {
+    "302": 459,
+    "401": 23
+   },
+   "unchecked": 0,
+   "not_sent": {
+    "civitai.com": 6
+   }
+  },
+  "comfyui": {
+   "latest_release": "v0.42.1",
+   "url": "https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.42.1",
+   "checked_at": "2026-10-20T22:40:19Z"
+  },
+  "size_check": {
+   "templates": 264,
+   "equal": 0,
+   "within_10pct": 215
+  },
+  "counts": {
+   "models": 326,
+   "modality": {
+    "3d": 10,
+    "image": 163,
+    "music": 15,
+    "sfx": 3,
+    "tts": 20,
+    "video": 115
+   },
+   "content": {
+    "sfw": 300,
+    "uncensored": 26
+   },
+   "source": {
+    "comfyui-template": 278,
+    "huggingface": 48
+   },
+   "license": {
+    "apache-2.0": 113,
+    "cc-by-nc-4.0": 9,
+    "cc-by-nc-sa-4.0": 1,
+    "creativeml-openrail-m": 1,
+    "gemma": 1,
+    "llama3.1": 5,
+    "mit": 19,
+    "null": 58,
+    "openrail++": 4,
+    "other": 115
+   },
+   "license_tier": {
+    "non_commercial": 53,
+    "other": 72,
+    "permissive": 132,
+    "unknown": 58,
+    "use_restricted": 11
+   },
+   "files_complete_false": 26
+  },
+  "excluded": 3,
+  "warnings": [],
+  "generator": "genmodelfit 0.3.0",
+  "sampler_stages": {
+   "templates": 278,
+   "failed": 0,
+   "multi_stage": 19,
+   "workflow_precision": 197,
+   "checked_at": "2026-10-20T22:40:22Z"
+  }
+ },
+ "models": [
+  {
+   "id": "3d_hunyuan3d-v2.1",
+   "name": "HY 3D 2.1: Single View to Model",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan_3d_v2.1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.1_repackaged/resolve/main/hunyuan_3d_v2.1.safetensors",
+     "sha256": "5f21e98a6cb99b13b5e224abaee33929570fff7af2b6a0060001559a04ba9d72",
+     "size_bytes": 7365943290,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.1_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2.1",
+     "license_url": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1/blob/main/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.1_repackaged",
+      "tencent/Hunyuan3D-2.1"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 3682873537,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d-v2.1",
+    "title": "HY 3D 2.1: Single View to Model",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 163,
+    "date": "2025-03-01",
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1/blob/main/LICENSE",
+   "base_model": "tencent/Hunyuan3D-2.1",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 7365943290
+  },
+  {
+   "id": "3d_hunyuan3d_image_to_model",
+   "name": "HY 3D 2.0",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan3d-dit-v2_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2_fp16.safetensors",
+     "sha256": "360bc281fc956d4acac0c3d36d5ec0ebf8cdddbf4b8892e894d12419388d479b",
+     "size_bytes": 4928151562,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.0_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2mv",
+     "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.0_repackaged",
+      "tencent/Hunyuan3D-2mv"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2463968065,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d_image_to_model",
+    "title": "HY 3D 2.0",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 31,
+    "date": "2025-03-01",
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+   "base_model": "tencent/Hunyuan3D-2mv",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "total_size_bytes": 4928151562
+  },
+  {
+   "id": "3d_hunyuan3d_multiview_to_model",
+   "name": "HY 3D 2.0 MV",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan3d-dit-v2-mv_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2-mv_fp16.safetensors",
+     "sha256": "d36f5881bcdc56726b73e517cd444c13c60732431622da7268145355c8d38e9c",
+     "size_bytes": 4928151562,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.0_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2mv",
+     "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.0_repackaged",
+      "tencent/Hunyuan3D-2mv"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2463968065,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d_multiview_to_model",
+    "title": "HY 3D 2.0 MV",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 102,
+    "date": "2025-03-01",
+    "size_bytes": 4928474972,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+   "base_model": "tencent/Hunyuan3D-2mv",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "total_size_bytes": 4928151562
+  },
+  {
+   "id": "3d_hunyuan3d_multiview_to_model_turbo",
+   "name": "HY 3D 2.0 MV Turbo",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan3d-dit-v2-mv-turbo_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2-mv-turbo_fp16.safetensors",
+     "sha256": "172d7a989b99f66af760da0080d8c6f6350c72609536cf0c55b87a4afa574e45",
+     "size_bytes": 4930777530,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.0_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2mv",
+     "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.0_repackaged",
+      "tencent/Hunyuan3D-2mv"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2465280833,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d_multiview_to_model_turbo",
+    "title": "HY 3D 2.0 MV Turbo",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 14,
+    "date": "2025-03-01",
+    "size_bytes": 4928474972,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+   "base_model": "tencent/Hunyuan3D-2mv",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "total_size_bytes": 4930777530
+  },
+  {
+   "id": "3d_moge_panorama_to_mesh",
+   "name": "MoGe: Panorama to Mesh",
+   "modality": "3d",
+   "tasks": [
+    "estimate"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "moge_2_vitl_normal_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors",
+     "sha256": "cb1a692d03235671e959e81360d7b4d9f44aefadb1f852d6ca6aa17799d5e31f",
+     "size_bytes": 661859924,
+     "directory": "geometry_estimation",
+     "repo_id": "Comfy-Org/MoGe",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "Ruicheng/moge-2-vitl-normal",
+     "license_url": "https://huggingface.co/Ruicheng/moge-2-vitl-normal",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/MoGe",
+      "Ruicheng/moge-2-vitl-normal"
+     ],
+     "license_evidence": [
+      "component:moge-2-vitl-normal"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 330901550,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_moge_panorama_to_mesh",
+    "title": "MoGe: Panorama to Mesh",
+    "category": "3D Model",
+    "min_comfyui_version": "0.22.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 20,
+    "date": "2026-05-19",
+    "size_bytes": 644245094,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/Ruicheng/moge-2-vitl-normal",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-05-19",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": false,
+   "size_floor_bytes": 644245094,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 661859924
+  },
+  {
+   "id": "3d_moge_perspective_to_mesh",
+   "name": "MoGe: Perspective Geometry Estimation",
+   "modality": "3d",
+   "tasks": [
+    "estimate"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "moge_2_vitl_normal_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors",
+     "sha256": "cb1a692d03235671e959e81360d7b4d9f44aefadb1f852d6ca6aa17799d5e31f",
+     "size_bytes": 661859924,
+     "directory": "geometry_estimation",
+     "repo_id": "Comfy-Org/MoGe",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "Ruicheng/moge-2-vitl-normal",
+     "license_url": "https://huggingface.co/Ruicheng/moge-2-vitl-normal",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/MoGe",
+      "Ruicheng/moge-2-vitl-normal"
+     ],
+     "license_evidence": [
+      "component:moge-2-vitl-normal"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 330901550,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_moge_perspective_to_mesh",
+    "title": "MoGe: Perspective Geometry Estimation",
+    "category": "3D Model",
+    "min_comfyui_version": "0.22.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 56,
+    "date": "2026-05-15",
+    "size_bytes": 644245094,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/Ruicheng/moge-2-vitl-normal",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-05-15",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": false,
+   "size_floor_bytes": 644245094,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 661859924
+  },
+  {
+   "id": "3d_pixal3d_multi_views",
+   "name": "Pixal3D: Multi Views to 3D",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "trellis_2_texture_vae_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_texture_vae_bf16.safetensors",
+     "sha256": "714e5ebf094a610e12a8e3b5175c18a62f37f6ea4218acb6073644456b73ab0e",
+     "size_bytes": 948461364,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "microsoft/TRELLIS.2-4B",
+     "license_url": "https://huggingface.co/microsoft/TRELLIS.2-4B",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "microsoft/TRELLIS.2-4B"
+     ],
+     "license_evidence": [
+      "component:trellis2-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "dino_v3_L_naf_fp32.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/clip_vision/dino_v3_L_naf_fp32.safetensors",
+     "sha256": "4ad2ec4e0879a5b5b04cd97325cc37da954a7b6edca5170b86510f17f2b2290f",
+     "size_bytes": 1215214176,
+     "directory": "clip_vision",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "other",
+     "license_name": "dinov3-license",
+     "gated": false,
+     "role": "clip_vision",
+     "license_from": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+     "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "license_evidence": [
+      "component:dinov3",
+      "upstream_gated: facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "trellis_2_shape_vae_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_shape_vae_bf16.safetensors",
+     "sha256": "de0cb4949a76c59ee5c091a995a69bcc8c51d5aeda939f0c641a50d2a72341f4",
+     "size_bytes": 1095844024,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "microsoft/TRELLIS.2-4B",
+     "license_url": "https://huggingface.co/microsoft/TRELLIS.2-4B",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "microsoft/TRELLIS.2-4B"
+     ],
+     "license_evidence": [
+      "component:trellis2-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "birefnet.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+     "sha256": "9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154",
+     "size_bytes": 444473596,
+     "directory": "background_removal",
+     "repo_id": "Comfy-Org/BiRefNet",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "ZhengPeng7/BiRefNet",
+     "license_url": "https://huggingface.co/ZhengPeng7/BiRefNet",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/BiRefNet",
+      "ZhengPeng7/BiRefNet"
+     ],
+     "license_evidence": [
+      "component:birefnet"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "pixal3d_multiview_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/pixal3d_multiview_int8_convrot.safetensors",
+     "sha256": "6b1eb3328930d921d3b57508d9c46cceec1c174dcedeebc14f176ab67d49f477",
+     "size_bytes": 5584555824,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "TencentARC/Pixal3D",
+     "license_url": "https://huggingface.co/TencentARC/Pixal3D/blob/main/LICENSE",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "TencentARC/Pixal3D"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 5502371432,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_pixal3d_multi_views",
+    "title": "Pixal3D: Multi Views to 3D",
+    "category": "3D Model",
+    "min_comfyui_version": "0.35.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 305,
+    "date": "2026-09-09",
+    "size_bytes": 9341553869,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "int8",
+   "license": "other",
+   "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+   "base_model": "TencentARC/Pixal3D",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-09-09",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "dinov3-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "trellis2",
+   "comfy_vae": "trellis2",
+   "sampler_stages": [],
+   "workflow_precision": "int8",
+   "precision_source": "header",
+   "total_size_bytes": 9288548984
+  },
+  {
+   "id": "3d_pixal3d_trellis2_image_to_model",
+   "name": "Pixal3D & TRELLIS.2: Image to Model",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "trellis_2_texture_vae_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_texture_vae_bf16.safetensors",
+     "sha256": "714e5ebf094a610e12a8e3b5175c18a62f37f6ea4218acb6073644456b73ab0e",
+     "size_bytes": 948461364,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "microsoft/TRELLIS.2-4B",
+     "license_url": "https://huggingface.co/microsoft/TRELLIS.2-4B",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "microsoft/TRELLIS.2-4B"
+     ],
+     "license_evidence": [
+      "component:trellis2-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "dino_v3_L_naf_fp32.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/clip_vision/dino_v3_L_naf_fp32.safetensors",
+     "sha256": "4ad2ec4e0879a5b5b04cd97325cc37da954a7b6edca5170b86510f17f2b2290f",
+     "size_bytes": 1215214176,
+     "directory": "clip_vision",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "other",
+     "license_name": "dinov3-license",
+     "gated": false,
+     "role": "clip_vision",
+     "license_from": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+     "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "license_evidence": [
+      "component:dinov3",
+      "upstream_gated: facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "trellis_2_shape_vae_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_shape_vae_bf16.safetensors",
+     "sha256": "de0cb4949a76c59ee5c091a995a69bcc8c51d5aeda939f0c641a50d2a72341f4",
+     "size_bytes": 1095844024,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "microsoft/TRELLIS.2-4B",
+     "license_url": "https://huggingface.co/microsoft/TRELLIS.2-4B",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "microsoft/TRELLIS.2-4B"
+     ],
+     "license_evidence": [
+      "component:trellis2-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "moge_2_vitl_normal_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors",
+     "sha256": "cb1a692d03235671e959e81360d7b4d9f44aefadb1f852d6ca6aa17799d5e31f",
+     "size_bytes": 661859924,
+     "directory": "geometry_estimation",
+     "repo_id": "Comfy-Org/MoGe",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "Ruicheng/moge-2-vitl-normal",
+     "license_url": "https://huggingface.co/Ruicheng/moge-2-vitl-normal",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/MoGe",
+      "Ruicheng/moge-2-vitl-normal"
+     ],
+     "license_evidence": [
+      "component:moge-2-vitl-normal"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "birefnet.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+     "sha256": "9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154",
+     "size_bytes": 444473596,
+     "directory": "background_removal",
+     "repo_id": "Comfy-Org/BiRefNet",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "ZhengPeng7/BiRefNet",
+     "license_url": "https://huggingface.co/ZhengPeng7/BiRefNet",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/BiRefNet",
+      "ZhengPeng7/BiRefNet"
+     ],
+     "license_evidence": [
+      "component:birefnet"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "trellis_2_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/TRELLIS.2/resolve/main/diffusion_models/trellis_2_int8_convrot.safetensors",
+     "sha256": "d01952ad137213f6a868f86b6b877026276f84af5eec23069217475a0bad3a31",
+     "size_bytes": 5253048192,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/TRELLIS.2",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "microsoft/TRELLIS.2-4B",
+     "license_url": "https://huggingface.co/microsoft/TRELLIS.2-4B",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/TRELLIS.2",
+      "microsoft/TRELLIS.2-4B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 5171692712,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "pixal3d_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/pixal3d_int8_convrot.safetensors",
+     "sha256": "4621eac3b715484f79303c7152af641fe0b2b14f4d0e3d394fd6922d00f955ec",
+     "size_bytes": 5584555824,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/Pixal3D",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "TencentARC/Pixal3D",
+     "license_url": "https://huggingface.co/TencentARC/Pixal3D/blob/main/LICENSE",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/Pixal3D",
+      "TencentARC/Pixal3D"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 5502371432,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_pixal3d_trellis2_image_to_model",
+    "title": "Pixal3D & TRELLIS.2: Image to Model",
+    "category": "3D Model",
+    "min_comfyui_version": "0.34.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 810,
+    "date": "2026-08-25",
+    "size_bytes": 15354508083,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "int8",
+   "license": "other",
+   "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+   "base_model": "microsoft/TRELLIS.2-4B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-08-25",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "dinov3-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "trellis2",
+   "comfy_vae": "trellis2",
+   "sampler_stages": [],
+   "workflow_precision": "int8",
+   "precision_source": "header",
+   "total_size_bytes": 15203457100
+  },
+  {
+   "id": "3d_triposplat_image_to_gaussian_splat",
+   "name": "TripoSplat: Image to Gaussian Splat",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "birefnet.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+     "sha256": "9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154",
+     "size_bytes": 444473596,
+     "directory": "background_removal",
+     "repo_id": "Comfy-Org/BiRefNet",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "ZhengPeng7/BiRefNet",
+     "license_url": "https://huggingface.co/ZhengPeng7/BiRefNet",
+     "repo_license": "mit",
+     "license_path": [
+      "Comfy-Org/BiRefNet",
+      "ZhengPeng7/BiRefNet"
+     ],
+     "license_evidence": [
+      "component:birefnet"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "dino_v3_vit_h.safetensors",
+     "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/clip_vision/dino_v3_vit_h.safetensors",
+     "sha256": "a29ef35101a16966972a0d50732a6f3a608ff7cfffb2afa9bbe9007cb842cc53",
+     "size_bytes": 1681247696,
+     "directory": "clip_vision",
+     "repo_id": "VAST-AI/TripoSplat",
+     "license": "other",
+     "license_name": "dinov3-license",
+     "gated": false,
+     "role": "clip_vision",
+     "license_from": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+     "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+     "repo_license": "mit",
+     "license_path": [
+      "VAST-AI/TripoSplat",
+      "facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "license_evidence": [
+      "component:dinov3",
+      "upstream_gated: facebook/dinov3-vitl16-pretrain-lvd1689m"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "triposplat_vae_decoder_fp16.safetensors",
+     "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/triposplat_vae_decoder_fp16.safetensors",
+     "sha256": "ed0d0c3d43b599e326845d0ec70f3cf77be9a55e2d97627ac3b34d2830763cc8",
+     "size_bytes": 576148442,
+     "directory": "vae",
+     "repo_id": "VAST-AI/TripoSplat",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "VAST-AI/TripoSplat",
+     "license_url": "https://huggingface.co/VAST-AI/TripoSplat",
+     "repo_license": null,
+     "license_path": [
+      "VAST-AI/TripoSplat"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "flux2-vae.safetensors",
+     "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/flux2-vae.safetensors",
+     "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+     "size_bytes": 336213556,
+     "directory": "vae",
+     "repo_id": "VAST-AI/TripoSplat",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "black-forest-labs/FLUX.2-VAE",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.2-VAE",
+     "repo_license": "mit",
+     "license_path": [
+      "VAST-AI/TripoSplat",
+      "black-forest-labs/FLUX.2-VAE"
+     ],
+     "license_evidence": [
+      "component:flux2-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "triposplat_fp16.safetensors",
+     "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/diffusion_models/triposplat_fp16.safetensors",
+     "sha256": "c870b97ac1d6bc9177608a5ec625e19ef9f3c5019aa68f64b0fb7803abcd6d20",
+     "size_bytes": 741106994,
+     "directory": "diffusion_models",
+     "repo_id": "VAST-AI/TripoSplat",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "VAST-AI/TripoSplat",
+     "license_url": "https://huggingface.co/VAST-AI/TripoSplat",
+     "repo_license": null,
+     "license_path": [
+      "VAST-AI/TripoSplat"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 370526101,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_triposplat_image_to_gaussian_splat",
+    "title": "TripoSplat: Image to Gaussian Splat",
+    "category": "3D Model",
+    "min_comfyui_version": "0.23.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 293,
+    "date": "2026-06-02",
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-06-02",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "dinov3-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "triposplat",
+   "comfy_vae": "kl",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "total_size_bytes": 3779190284
+  },
+  {
+   "id": "Image_capybara_v0_1_image_edit",
+   "name": "Capybara: Image Edit",
+   "modality": "image",
+   "tasks": [
+    "i2i"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "capybara_v0.1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/diffusion_models/capybara_v0.1.safetensors",
+     "sha256": "f6961dc4ffefaf917709857ace71ce9799a27b78993e46340c1a71ce4715397d",
+     "size_bytes": 16653435264,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 8326640928,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_2.5_vl_7b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanImage_2.1_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
+     "sha256": "cfafd739459bc86257397259f612a9aee88e5b98e85b5c0d0d1717e898b3463a",
+     "size_bytes": 16584415576,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanImage_2.1_ComfyUI",
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
+     ],
+     "license_evidence": [
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0。qwen_2.5_vl_7b.safetensors の sha256(cfafd739…、16,584,415,576 バイト)は https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI の split_files/text_encoders/qwen_2.5_vl_7b.safetensors(Qwen-Image の文章の読み取り = Qwen2.5-VL-7B-Instruct)と同じ(2026-10-20 に HF の API で確認)(2026-10-20 に確認)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "byt5_small_glyphxl_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/byt5_small_glyphxl_fp16.safetensors",
+     "sha256": "516910bb4c9b225370290e40585d1b0e6c8cd3583690f7eec2f7fb593990fb48",
+     "size_bytes": 438643184,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "hunyuanvideo15_vae_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/vae/hunyuanvideo15_vae_fp16.safetensors",
+     "sha256": "e7c3091949c27e2d55ae6d5df917b99dadfebbf308e5a50d0ade0d16c90297ae",
+     "size_bytes": 2521292758,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "vae",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "sigclip_vision_patch14_384.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/clip_vision/sigclip_vision_patch14_384.safetensors",
+     "sha256": "1fee501deabac72f0ed17610307d7131e3e9d1e838d0363aa3c2b97a6e03fb33",
+     "size_bytes": 856505640,
+     "directory": "clip_vision",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "clip_vision",
+     "license_from": "google/siglip-so400m-patch14-384",
+     "license_url": "https://huggingface.co/google/siglip-so400m-patch14-384",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "google/siglip-so400m-patch14-384"
+     ],
+     "license_evidence": [
+      "component:siglip-so400m"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "Image_capybara_v0_1_image_edit",
+    "title": "Capybara: Image Edit",
+    "category": "Image",
+    "min_comfyui_version": "0.8.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 25,
+    "date": "2026-02-23",
+    "size_bytes": 37044092928,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+   "base_model": "tencent/HunyuanVideo-1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-02-23",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 37054292422
+  },
+  {
+   "id": "Image_capybara_v0_1_text_to_image",
+   "name": "Capybara: Text to Image",
+   "modality": "image",
+   "tasks": [
+    "t2i"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "capybara_v0.1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/diffusion_models/capybara_v0.1.safetensors",
+     "sha256": "f6961dc4ffefaf917709857ace71ce9799a27b78993e46340c1a71ce4715397d",
+     "size_bytes": 16653435264,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 8326640928,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_2.5_vl_7b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanImage_2.1_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
+     "sha256": "cfafd739459bc86257397259f612a9aee88e5b98e85b5c0d0d1717e898b3463a",
+     "size_bytes": 16584415576,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/HunyuanImage_2.1_ComfyUI",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "Qwen/Qwen2.5-VL-7B-Instruct",
+     "license_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanImage_2.1_ComfyUI",
+      "tencent/HunyuanImage-2.1",
+      "Qwen/Qwen2.5-VL-7B-Instruct"
+     ],
+     "license_evidence": [
+      "license_source:hunyuanimage-2.1-qwen2.5-vl-7b",
+      "公式の https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md「use an open-source alternative, such as Qwen2.5-VL-7B-Instruct」「hf download Qwen/Qwen2.5-VL-7B-Instruct --local-dir ./ckpts/text_encoder/llm」。https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct の license は apache-2.0。qwen_2.5_vl_7b.safetensors の sha256(cfafd739…、16,584,415,576 バイト)は https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI の split_files/text_encoders/qwen_2.5_vl_7b.safetensors(Qwen-Image の文章の読み取り = Qwen2.5-VL-7B-Instruct)と同じ(2026-10-20 に HF の API で確認)(2026-10-20 に確認)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "byt5_small_glyphxl_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/byt5_small_glyphxl_fp16.safetensors",
+     "sha256": "516910bb4c9b225370290e40585d1b0e6c8cd3583690f7eec2f7fb593990fb48",
+     "size_bytes": 438643184,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "hunyuanvideo15_vae_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/vae/hunyuanvideo15_vae_fp16.safetensors",
+     "sha256": "e7c3091949c27e2d55ae6d5df917b99dadfebbf308e5a50d0ade0d16c90297ae",
+     "size_bytes": 2521292758,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "vae",
+     "license_from": "tencent/HunyuanVideo-1.5",
+     "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/HunyuanVideo_1.5_repackaged",
+      "tencent/HunyuanVideo-1.5"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "Image_capybara_v0_1_text_to_image",
+    "title": "Capybara: Text to Image",
+    "category": "Image",
+    "min_comfyui_version": "0.3.71",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 14,
+    "date": "2026-02-23",
+    "size_bytes": 36185099469,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/master/LICENSE",
+   "base_model": "tencent/HunyuanVideo-1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-02-23",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": "hunyuan_video15",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 36197786782
+  },
+  {
+   "id": "flux1_dev_uso_reference_image_gen",
+   "name": "Flux.1 Dev USO Reference Image Generation",
+   "modality": "image",
+   "tasks": [
+    "i2i"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "flux1-dev-fp8.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors",
+     "sha256": "8e91b68084b53a7fc44ed2a3756d821e355ac1a7b6fe29be760c1db532f3d88a",
+     "size_bytes": 17246524772,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/flux1-dev",
+     "license": "other",
+     "license_name": "flux-1-dev-non-commercial-license",
+     "gated": false,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md",
+     "repo_license": "flux-1-dev-non-commercial-license",
+     "license_path": [
+      "Comfy-Org/flux1-dev",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "family:flux.1-dev"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp8",
+     "header_params": 16871188965,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "sigclip_vision_patch14_384.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/sigclip_vision_384/resolve/main/sigclip_vision_patch14_384.safetensors",
+     "sha256": "1fee501deabac72f0ed17610307d7131e3e9d1e838d0363aa3c2b97a6e03fb33",
+     "size_bytes": 856505640,
+     "directory": "clip_vision",
+     "repo_id": "Comfy-Org/sigclip_vision_384",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "clip_vision",
+     "license_from": "google/siglip-so400m-patch14-384",
+     "license_url": "https://huggingface.co/google/siglip-so400m-patch14-384",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/sigclip_vision_384",
+      "google/siglip-so400m-patch14-384"
+     ],
+     "license_evidence": [
+      "component:siglip-so400m"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "uso-flux1-projector-v1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/USO_1.0_Repackaged/resolve/main/split_files/model_patches/uso-flux1-projector-v1.safetensors",
+     "sha256": "9a0dfcd6644e3acaf6995625562ab0af1f9cf048bf739c7e5822ee106fb44311",
+     "size_bytes": 21548200,
+     "directory": "model_patches",
+     "repo_id": "Comfy-Org/USO_1.0_Repackaged",
+     "license": null,
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": null,
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/USO_1.0_Repackaged",
+      "bytedance-research/USO",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "license_unverified: bytedance-research/USO の表記 apache-2.0 は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "uso-flux1-dit-lora-v1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/USO_1.0_Repackaged/resolve/main/split_files/loras/uso-flux1-dit-lora-v1.safetensors",
+     "sha256": "a03fa8430997f1c371c2471b133bdc03433a50564e0a29c096217077b0309e41",
+     "size_bytes": 478187816,
+     "directory": "loras",
+     "repo_id": "Comfy-Org/USO_1.0_Repackaged",
+     "license": null,
+     "license_name": null,
+     "gated": false,
+     "role": "lora",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": null,
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/USO_1.0_Repackaged",
+      "bytedance-research/USO",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "license_unverified: bytedance-research/USO の表記 apache-2.0 は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "flux1_dev_uso_reference_image_gen",
+    "title": "Flux.1 Dev USO Reference Image Generation",
+    "category": "Image",
+    "min_comfyui_version": "0.3.57",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 307,
+    "date": "2025-09-02",
+    "size_bytes": 18575733555,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp8",
+   "license": null,
+   "license_url": null,
+   "base_model": "black-forest-labs/FLUX.1-dev",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-09-02",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [
+    "license_unverified: bytedance-research/USO の表記 apache-2.0 は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(uso-flux1-projector-v1.safetensors)",
+    "license_unverified: bytedance-research/USO の表記 apache-2.0 は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(uso-flux1-dit-lora-v1.safetensors)"
+   ],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 18602766428
+  },
+  {
+   "id": "flux1_krea_dev",
+   "name": "Flux.1 Krea Dev",
+   "modality": "image",
+   "tasks": [
+    "t2i"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "clip_l.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+     "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+     "size_bytes": 246144152,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "openai/clip-vit-large-patch14",
+     "license_url": "https://github.com/openai/CLIP/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "openai/clip-vit-large-patch14"
+     ],
+     "license_evidence": [
+      "component:clip-vit-large-patch14"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5xxl_fp16.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
+     "sha256": "6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+     "size_bytes": 9787841024,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5-v1_1-xxl",
+     "license_url": "https://huggingface.co/google/t5-v1_1-xxl",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "google/t5-v1_1-xxl"
+     ],
+     "license_evidence": [
+      "component:t5-v1_1-xxl"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors",
+     "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+     "size_bytes": 335304388,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Lumina_Image_2.0_Repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "black-forest-labs/FLUX.1-schnell",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/Lumina_Image_2.0_Repackaged",
+      "black-forest-labs/FLUX.1-schnell"
+     ],
+     "license_evidence": [
+      "component:flux1-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "flux1-krea-dev_fp8_scaled.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/FLUX.1-Krea-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-krea-dev_fp8_scaled.safetensors",
+     "sha256": "b17a8c21703c4d6ffb0e300dd920eff3cfd35c9a72a1abaf107e3788e408b8d8",
+     "size_bytes": 11904639672,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/FLUX.1-Krea-dev_ComfyUI",
+     "license": "other",
+     "license_name": "flux-1-dev-non-commercial-license",
+     "gated": false,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-Krea-dev",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-Krea-dev/blob/main/LICENSE.md",
+     "repo_license": "flux-1-dev-non-commercial-license",
+     "license_path": [
+      "Comfy-Org/FLUX.1-Krea-dev_ComfyUI",
+      "black-forest-labs/FLUX.1-Krea-dev",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "family:flux.1-dev"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp8",
+     "header_params": 11901408948,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "flux1_krea_dev",
+    "title": "Flux.1 Krea Dev",
+    "category": "Image",
+    "min_comfyui_version": "0.3.42",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 193,
+    "date": "2025-07-31",
+    "size_bytes": 22226455757,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp8",
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-Krea-dev/blob/main/LICENSE.md",
+   "base_model": "black-forest-labs/FLUX.1-Krea-dev",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-07-31",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "flux-1-dev-non-commercial-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
+   "sampler_stages": [],
+   "workflow_precision": "fp8",
+   "precision_source": "header",
+   "total_size_bytes": 22273929236
+  },
+  {
+   "id": "flux_canny_model_example",
+   "name": "Flux.1 Canny Model",
+   "modality": "image",
+   "tasks": [
+    "control"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "clip_l.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true",
+     "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+     "size_bytes": 246144152,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "openai/clip-vit-large-patch14",
+     "license_url": "https://github.com/openai/CLIP/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "openai/clip-vit-large-patch14"
+     ],
+     "license_evidence": [
+      "component:clip-vit-large-patch14"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5xxl_fp16.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors?download=true",
+     "sha256": "6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+     "size_bytes": 9787841024,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5-v1_1-xxl",
+     "license_url": "https://huggingface.co/google/t5-v1_1-xxl",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "google/t5-v1_1-xxl"
+     ],
+     "license_evidence": [
+      "component:t5-v1_1-xxl"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "flux1-canny-dev.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/split_files/diffusion_models/flux1-canny-dev.safetensors",
+     "sha256": "996876670169591cb412b937fbd46ea14cbed6933aef17c48a2dcd9685c98cdb",
+     "size_bytes": 23803351736,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/flux1-dev",
+     "license": "other",
+     "license_name": "flux-1-dev-non-commercial-license",
+     "gated": false,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-Canny-dev",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev/blob/main/LICENSE.md",
+     "repo_license": "flux-1-dev-non-commercial-license",
+     "license_path": [
+      "Comfy-Org/flux1-dev",
+      "black-forest-labs/FLUX.1-Canny-dev"
+     ],
+     "license_evidence": [
+      "family:flux.1-dev"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 11901604928,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors",
+     "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+     "size_bytes": 335304388,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Lumina_Image_2.0_Repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "black-forest-labs/FLUX.1-schnell",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/Lumina_Image_2.0_Repackaged",
+      "black-forest-labs/FLUX.1-schnell"
+     ],
+     "license_evidence": [
+      "component:flux1-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "flux_canny_model_example",
+    "title": "Flux.1 Canny Model",
+    "category": "Image",
+    "min_comfyui_version": "0.0.4",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 45,
+    "date": "2025-03-01",
+    "size_bytes": 34177202258,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "other",
+   "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev/blob/main/LICENSE.md",
+   "base_model": "black-forest-labs/FLUX.1-Canny-dev",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "flux-1-dev-non-commercial-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 34172641300
+  },
+  {
+   "id": "flux_depth_lora_example",
+   "name": "Flux.1 Depth Lora",
+   "modality": "image",
+   "tasks": [
+    "control"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "vae-ft-mse-840000-ema-pruned.safetensors",
+     "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors",
+     "sha256": "735e4c3a447a3255760d7f86845f09f937809baa529c17370d83e4c3758f3c75",
+     "size_bytes": 334641190,
+     "directory": "vae",
+     "repo_id": "stabilityai/sd-vae-ft-mse-original",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "stabilityai/sd-vae-ft-mse-original",
+     "license_url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original",
+     "repo_license": null,
+     "license_path": [
+      "stabilityai/sd-vae-ft-mse-original"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "lotus-depth-d-v1-1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/lotus/resolve/main/lotus-depth-d-v1-1.safetensors",
+     "sha256": "dc1394219a04afdd9f72ad41ea0d3dfa435603fc7831a0ac5b884cc2b2ebf688",
+     "size_bytes": 1735197352,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/lotus",
+     "license": null,
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "jingheya/lotus-depth-d-v1-1",
+     "license_url": null,
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/lotus",
+      "jingheya/lotus-depth-d-v1-1"
+     ],
+     "license_evidence": [
+      "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 867556804,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "flux1-dev-fp8.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors",
+     "sha256": "8e91b68084b53a7fc44ed2a3756d821e355ac1a7b6fe29be760c1db532f3d88a",
+     "size_bytes": 17246524772,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/flux1-dev",
+     "license": "other",
+     "license_name": "flux-1-dev-non-commercial-license",
+     "gated": false,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md",
+     "repo_license": "flux-1-dev-non-commercial-license",
+     "license_path": [
+      "Comfy-Org/flux1-dev",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "family:flux.1-dev"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp8",
+     "header_params": 16871188965,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "flux1-depth-dev-lora.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/split_files/loras/flux1-depth-dev-lora.safetensors",
+     "sha256": "1938b38ea0fdd98080fa3e48beb2bedfbc7ad102d8b65e6614de704a46d8b907",
+     "size_bytes": 1244440512,
+     "directory": "loras",
+     "repo_id": "Comfy-Org/flux1-dev",
+     "license": "other",
+     "license_name": "flux-1-dev-non-commercial-license",
+     "gated": false,
+     "role": "lora",
+     "license_from": "black-forest-labs/FLUX.1-Depth-dev",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev/blob/main/LICENSE.md",
+     "repo_license": "flux-1-dev-non-commercial-license",
+     "license_path": [
+      "Comfy-Org/flux1-dev",
+      "black-forest-labs/FLUX.1-Depth-dev"
+     ],
+     "license_evidence": [
+      "family:flux.1-dev"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5xxl_fp16.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors?download=true",
+     "sha256": "6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+     "size_bytes": 9787841024,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5-v1_1-xxl",
+     "license_url": "https://huggingface.co/google/t5-v1_1-xxl",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "google/t5-v1_1-xxl"
+     ],
+     "license_evidence": [
+      "component:t5-v1_1-xxl"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "clip_l.safetensors",
+     "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true",
+     "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+     "size_bytes": 246144152,
+     "directory": "text_encoders",
+     "repo_id": "comfyanonymous/flux_text_encoders",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "openai/clip-vit-large-patch14",
+     "license_url": "https://github.com/openai/CLIP/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "comfyanonymous/flux_text_encoders",
+      "openai/clip-vit-large-patch14"
+     ],
+     "license_evidence": [
+      "component:clip-vit-large-patch14"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors",
+     "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+     "size_bytes": 335304388,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/Lumina_Image_2.0_Repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "black-forest-labs/FLUX.1-schnell",
+     "license_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/Lumina_Image_2.0_Repackaged",
+      "black-forest-labs/FLUX.1-schnell"
+     ],
+     "license_evidence": [
+      "component:flux1-vae"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "flux_depth_lora_example",
+    "title": "Flux.1 Depth Lora",
+    "category": "Image",
+    "min_comfyui_version": "0.3.42",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 24,
+    "date": "2025-03-01",
+    "size_bytes": 35433480192,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp8",
+   "license": null,
+   "license_url": null,
+   "base_model": "jingheya/lotus-depth-d-v1-1",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [
+    "license_unverified: 系統 lotus: Lotus は Stable Diffusion 2 base から学習している(カードの表記は元の規約より寛容でありうる)(lotus-depth-d-v1-1.safetensors)"
+   ],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "flux",
+   "comfy_vae": "kl",
+   "sampler_stages": [
+    [
+     "flux1-depth-dev-lora.safetensors",
+     "flux1-dev-fp8.safetensors"
+    ],
+    [
+     "lotus-depth-d-v1-1.safetensors"
+    ]
+   ],
+   "workflow_precision": "fp8",
+   "precision_source": "header",
+   "total_size_bytes": 30930093390
+  },
+  {
+   "id": "audio_ace_step1_5_xl_base",
+   "name": "ACE-Step 1.5XL Base: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "acestep_v1.5_xl_base_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_base_bf16.safetensors",
+     "sha256": "56bf816fc9a69a5f45635e867b2ad742e1e648eb51fadb7d124cb8332d2e0940",
+     "size_bytes": 9974719930,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 4987310726,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ace_1.5_vae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+     "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb",
+     "size_bytes": 337431732,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_0.6b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+     "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7",
+     "size_bytes": 1191588248,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_4b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+     "sha256": "ffe5ffb855086c2ab55e467e9859fb01894781020a0376484dd19de166b79873",
+     "size_bytes": 8379154232,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step1_5_xl_base",
+    "title": "ACE-Step 1.5XL Base: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.12.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 27,
+    "date": "2026-04-10",
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-04-10",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "bf16",
+   "precision_source": "header",
+   "total_size_bytes": 19882894142
+  },
+  {
+   "id": "audio_ace_step1_5_xl_sft",
+   "name": "ACE-Step 1.5XL SFT: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "acestep_v1.5_xl_sft_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_sft_bf16.safetensors",
+     "sha256": "3c05ae268353b3540fb1fd7db4fd77ffbda9802ec641b624e15648e030ecf3ce",
+     "size_bytes": 9974719930,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 4987310726,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ace_1.5_vae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+     "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb",
+     "size_bytes": 337431732,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_0.6b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+     "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7",
+     "size_bytes": 1191588248,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_4b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+     "sha256": "ffe5ffb855086c2ab55e467e9859fb01894781020a0376484dd19de166b79873",
+     "size_bytes": 8379154232,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step1_5_xl_sft",
+    "title": "ACE-Step 1.5XL SFT: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.12.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 96,
+    "date": "2026-04-10",
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-04-10",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "bf16",
+   "precision_source": "header",
+   "total_size_bytes": 19882894142
+  },
+  {
+   "id": "audio_ace_step1_5_xl_turbo",
+   "name": "ACE-Step 1.5XL Turbo: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "acestep_v1.5_xl_turbo_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors",
+     "sha256": "86a1afb0a1f711f0e3304ff65d874df3ae6783db683dcf982513fb9b6d14ae71",
+     "size_bytes": 9974719892,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 4987310726,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ace_1.5_vae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+     "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb",
+     "size_bytes": 337431732,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_0.6b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+     "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7",
+     "size_bytes": 1191588248,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_4b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+     "sha256": "ffe5ffb855086c2ab55e467e9859fb01894781020a0376484dd19de166b79873",
+     "size_bytes": 8379154232,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step1_5_xl_turbo",
+    "title": "ACE-Step 1.5XL Turbo: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.12.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 188,
+    "date": "2026-04-10",
+    "size_bytes": 19864223744,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-04-10",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "bf16",
+   "precision_source": "header",
+   "total_size_bytes": 19882894104
+  },
+  {
+   "id": "audio_ace_step_1_5_checkpoint",
+   "name": "ACE-Step 1.5 Music Generation AIO",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_1.5_turbo_aio.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors",
+     "sha256": "67b0f43aa5c51c840bd0228e6a935d8ff416ec87e5df2fc0637da17a561252bc",
+     "size_bytes": 10025478736,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 5012588298,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_5_checkpoint",
+    "title": "ACE-Step 1.5 Music Generation AIO",
+    "category": "Audio",
+    "min_comfyui_version": "0.12.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 83,
+    "date": "2026-02-03",
+    "size_bytes": 10737418240,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-02-03",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 10025478736
+  },
+  {
+   "id": "audio_ace_step_1_5_split",
+   "name": "ACE-Step 1.5 Music Generation Workflow",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "acestep_v1.5_turbo.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_turbo.safetensors",
+     "sha256": "3f6e0797fad420a39bd33979eb6e840e30989e34a3794e843d23b60ec6e422d7",
+     "size_bytes": 4787825604,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 2393872518,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_0.6b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+     "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7",
+     "size_bytes": 1191588248,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_1.7b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_1.7b_ace15.safetensors",
+     "sha256": "ed63e9247d1f55f3ace04fa11e95b085fc82d459c82c5626f0b2e37b91ebd710",
+     "size_bytes": 3708523360,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ace_1.5_vae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+     "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb",
+     "size_bytes": 337431732,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_5_split",
+    "title": "ACE-Step 1.5 Music Generation Workflow",
+    "category": "Audio",
+    "min_comfyui_version": "0.25.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 31,
+    "date": "2026-02-02",
+    "size_bytes": 10737418240,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-02-02",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 10025368944
+  },
+  {
+   "id": "audio_ace_step_1_5_split_4b",
+   "name": "ACE-Step 1.5 Music Generation (4B LLM )",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "acestep_v1.5_turbo.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_turbo.safetensors",
+     "sha256": "3f6e0797fad420a39bd33979eb6e840e30989e34a3794e843d23b60ec6e422d7",
+     "size_bytes": 4787825604,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 2393872518,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "ace_1.5_vae.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+     "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb",
+     "size_bytes": 337431732,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "vae",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_0.6b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+     "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7",
+     "size_bytes": 1191588248,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "qwen_4b_ace15.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+     "sha256": "ffe5ffb855086c2ab55e467e9859fb01894781020a0376484dd19de166b79873",
+     "size_bytes": 8379154232,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+     "license": "mit",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ACE-Step/Ace-Step1.5",
+     "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ace_step_1.5_ComfyUI_files",
+      "ACE-Step/Ace-Step1.5"
+     ],
+     "license_evidence": [
+      "component:ace-step-1.5-lm"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_5_split_4b",
+    "title": "ACE-Step 1.5 Music Generation (4B LLM )",
+    "category": "Audio",
+    "min_comfyui_version": "0.25.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 35,
+    "date": "2026-02-05",
+    "size_bytes": 14710262989,
+    "username": "ComfyUI"
+   },
+   "params_b": 4.0,
+   "precision": "bf16",
+   "license": "mit",
+   "license_url": "https://huggingface.co/ACE-Step/Ace-Step1.5",
+   "base_model": "ACE-Step/Ace-Step1.5",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-02-05",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace15",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 14695999816
+  },
+  {
+   "id": "audio_ace_step_1_m2m_editing",
+   "name": "ACE Step v1 M2M Editing",
+   "modality": "music",
+   "tasks": [
+    "a2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_v1_3.5b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors?download=true",
+     "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+     "size_bytes": 7699743341,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/ACE-Step-v1-3.5B",
+     "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+      "ACE-Step/ACE-Step-v1-3.5B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 3852019766,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_m2m_editing",
+    "title": "ACE Step v1 M2M Editing",
+    "category": "Audio",
+    "min_comfyui_version": "0.3.35",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 17,
+    "date": "2025-03-01",
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.5,
+   "precision": "bf16",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+   "base_model": "ACE-Step/ACE-Step-v1-3.5B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 7699743341
+  },
+  {
+   "id": "audio_ace_step_1_t2a_instrumentals",
+   "name": "ACE-Step v1 Text to Instrumentals Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_v1_3.5b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors?download=true",
+     "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+     "size_bytes": 7699743341,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/ACE-Step-v1-3.5B",
+     "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+      "ACE-Step/ACE-Step-v1-3.5B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 3852019766,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_t2a_instrumentals",
+    "title": "ACE-Step v1 Text to Instrumentals Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.25.0",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 12,
+    "date": "2025-03-01",
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.5,
+   "precision": "bf16",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+   "base_model": "ACE-Step/ACE-Step-v1-3.5B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 7699743341
+  },
+  {
+   "id": "audio_ace_step_1_t2a_song",
+   "name": "ACE Step v1 Text to Song",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_v1_3.5b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors?download=true",
+     "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+     "size_bytes": 7699743341,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/ACE-Step-v1-3.5B",
+     "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+      "ACE-Step/ACE-Step-v1-3.5B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 3852019766,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_t2a_song",
+    "title": "ACE Step v1 Text to Song",
+    "category": "Audio",
+    "min_comfyui_version": "0.3.35",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 12,
+    "date": "2025-03-01",
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.5,
+   "precision": "bf16",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+   "base_model": "ACE-Step/ACE-Step-v1-3.5B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 7699743341
+  },
+  {
+   "id": "audio_melbandroformer_audio_separation",
+   "name": "MelBandRoFormer Audio Separation",
+   "modality": "music",
+   "tasks": [
+    "separate"
+   ],
+   "source": "comfyui-template",
+   "files": [],
+   "template": {
+    "name": "audio_melbandroformer_audio_separation",
+    "title": "MelBandRoFormer Audio Separation",
+    "category": "Audio",
+    "min_comfyui_version": "0.25.0",
+    "open_source": true,
+    "requires_custom_nodes": [
+     "ComfyUI-MelBandRoFormer"
+    ],
+    "usage": 26,
+    "date": "2026-03-30",
+    "size_bytes": 429496730,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": null,
+   "license_url": null,
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-03-30",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [
+    "license_unverified: 使うファイルが分かりません"
+   ],
+   "files_complete": false,
+   "size_floor_bytes": 429496730,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "workflow",
+   "total_size_bytes": 429496730
+  },
+  {
+   "id": "audio_minimax_music_3",
+   "name": "MiniMax Music 3: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "minimax_music3_dit_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/diffusion_models/minimax_music3_dit_fp16.safetensors",
+     "sha256": "45494a2b6b69af115902ff28eaf54118d19067aa54da01000f3e3efce7ba0e34",
+     "size_bytes": 4914197682,
+     "directory": "diffusion_models",
+     "repo_id": "Comfy-Org/MiniMax-Music-3",
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
+     "gated": false,
+     "role": "main",
+     "license_from": "MiniMaxAI/MiniMax-Music3",
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/MiniMax-Music-3",
+      "MiniMaxAI/MiniMax-Music3"
+     ],
+     "license_evidence": [
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2457073817,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+     "sha256": "010b7416d2336a08c711bc22ee65849c9623069ddb7d89bec011a75699e52014",
+     "size_bytes": 9196611886,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/MiniMax-Music-3",
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "MiniMaxAI/MiniMax-Music3",
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/MiniMax-Music-3",
+      "MiniMaxAI/MiniMax-Music3"
+     ],
+     "license_evidence": [
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "minimax_music3_dav.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/vae/minimax_music3_dav.safetensors",
+     "sha256": "2a32155b769be01445fcc2a8663b910fc9e1751e18dc1c3ec528064512d9ef0c",
+     "size_bytes": 216696128,
+     "directory": "vae",
+     "repo_id": "Comfy-Org/MiniMax-Music-3",
+     "license": "other",
+     "license_name": "minimax-music3-community-license",
+     "gated": false,
+     "role": "vae",
+     "license_from": "MiniMaxAI/MiniMax-Music3",
+     "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/MiniMax-Music-3",
+      "MiniMaxAI/MiniMax-Music3"
+     ],
+     "license_evidence": [
+      "license_source:minimax-music3",
+      "https://huggingface.co/Comfy-Org/MiniMax-Music-3 の README「Original model repository: https://huggingface.co/MiniMaxAI/MiniMax-Music3」。元の LICENSE は「MiniMax-Music3 COMMUNITY LICENSE」(UI への表示、年 2,000 万ドルを超える売上は書面の許可、利用方針の遵守)(2026-10-20 に確認)"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_minimax_music_3",
+    "title": "MiniMax Music 3: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.33.1",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 500,
+    "date": "2026-08-13",
+    "size_bytes": 15354508083,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-Music3/blob/main/LICENSE",
+   "base_model": "MiniMaxAI/MiniMax-Music3",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-08-13",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "minimax-music3-community-license",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "minimax_music3",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "total_size_bytes": 14327505696
+  },
+  {
+   "id": "audio_stable_audio_3_medium",
+   "name": "Stable Audio 3.0 Medium",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "qwen3.5_2b_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors",
+     "sha256": "aa33250c4fc64891ddfaba3a314fd9542ea371843c387178b425fbcc5ed680b1",
+     "size_bytes": 4548221488,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/Qwen3.5",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "Qwen/Qwen3.5-9B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/Qwen3.5",
+      "Qwen/Qwen3.5-9B",
+      "Qwen/Qwen3.5-9B-Base"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "stable_audio_3_medium.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_medium.safetensors",
+     "sha256": "48d9c65e290e7bcd5194e0633bfc2424a59ee9683f5c2d58762d997b7d8ce0b5",
+     "size_bytes": 9222116660,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-3-medium-base",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
+     "repo_license": "stable-audio-community",
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "stabilityai/stable-audio-3-medium-base"
+     ],
+     "license_evidence": [
+      "family:stable-audio"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp32",
+     "header_params": 2305495793,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5gemma_b_b_ul2.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+     "sha256": "1e1eba25be8872edb0d3c6335c6658fd6388e7b14b60da6e454e404cfcd8150e",
+     "size_bytes": 1187264003,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "gemma",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5gemma-b-b-ul2",
+     "license_url": "https://ai.google.dev/gemma/terms",
+     "repo_license": "stable-audio-community",
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "google/t5gemma-b-b-ul2"
+     ],
+     "license_evidence": [
+      "license_source:stable-audio-3-t5gemma",
+      "Stability AI の公式 https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。google/t5gemma-b-b-ul2 は license: gemma(gated: manual)(2026-10-20 に確認)",
+      "upstream_gated: google/t5gemma-b-b-ul2"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_stable_audio_3_medium",
+    "title": "Stable Audio 3.0 Medium",
+    "category": "Audio",
+    "min_comfyui_version": "0.19.2",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 329,
+    "date": "2026-05-20",
+    "size_bytes": 15676630630,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp32",
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
+   "base_model": "stabilityai/stable-audio-3-medium-base",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-05-20",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 14957602151
+  },
+  {
+   "id": "audio_stable_audio_3_medium_base",
+   "name": "Stable Audio 3.0 Medium Base",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "qwen3.5_2b_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors",
+     "sha256": "aa33250c4fc64891ddfaba3a314fd9542ea371843c387178b425fbcc5ed680b1",
+     "size_bytes": 4548221488,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/Qwen3.5",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "Qwen/Qwen3.5-9B",
+     "license_url": "https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/LICENSE",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/Qwen3.5",
+      "Qwen/Qwen3.5-9B",
+      "Qwen/Qwen3.5-9B-Base"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "stable_audio_3_medium_base.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_medium_base.safetensors",
+     "sha256": "c443fcc4d491475064cd0ff3eb92459b1e5f5060e86d96d016f048e528e24195",
+     "size_bytes": 9222116660,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-3-medium-base",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
+     "repo_license": "stable-audio-community",
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "stabilityai/stable-audio-3-medium-base"
+     ],
+     "license_evidence": [
+      "family:stable-audio"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp32",
+     "header_params": 2305495793,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5gemma_b_b_ul2.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+     "sha256": "1e1eba25be8872edb0d3c6335c6658fd6388e7b14b60da6e454e404cfcd8150e",
+     "size_bytes": 1187264003,
+     "directory": "text_encoders",
+     "repo_id": "Comfy-Org/stable-audio-3",
+     "license": "gemma",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "google/t5gemma-b-b-ul2",
+     "license_url": "https://ai.google.dev/gemma/terms",
+     "repo_license": "stable-audio-community",
+     "license_path": [
+      "Comfy-Org/stable-audio-3",
+      "google/t5gemma-b-b-ul2"
+     ],
+     "license_evidence": [
+      "license_source:stable-audio-3-t5gemma",
+      "Stability AI の公式 https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。google/t5gemma-b-b-ul2 は license: gemma(gated: manual)(2026-10-20 に確認)",
+      "upstream_gated: google/t5gemma-b-b-ul2"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_stable_audio_3_medium_base",
+    "title": "Stable Audio 3.0 Medium Base",
+    "category": "Audio",
+    "min_comfyui_version": "0.19.2",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 259,
+    "date": "2026-05-20",
+    "size_bytes": 15891378995,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp32",
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-medium-base/blob/main/LICENSE.md",
+   "base_model": "stabilityai/stable-audio-3-medium-base",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-05-20",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 14957602151
+  },
+  {
+   "id": "audio_yue2_music_cover",
+   "name": "YuE2: Music Cover",
+   "modality": "music",
+   "tasks": [
+    "a2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "yue2_3b_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_int8_convrot.safetensors",
+     "sha256": "96fe199377309001ed8cd26a944baeee8cc31a20ba7c36d1d3c0a7e1f4149db6",
+     "size_bytes": 3960938800,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/YuE2",
+     "license": "cc-by-nc-4.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "m-a-p/YuE2-3B",
+     "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+     "repo_license": "cc-by-nc-4.0",
+     "license_path": [
+      "Comfy-Org/YuE2",
+      "m-a-p/YuE2-3B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 3772873990,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "sheetsage2_bf16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/audio_encoders/sheetsage2_bf16.safetensors",
+     "sha256": "5fd960ce3df281e3f3a889d174584d88f96247711480cf96377b12d7e8b6adc5",
+     "size_bytes": 1386868122,
+     "directory": "audio_encoders",
+     "repo_id": "Comfy-Org/YuE2",
+     "license": "cc-by-nc-4.0",
+     "license_name": null,
+     "gated": false,
+     "role": "other",
+     "license_from": "m-a-p/SheetSage2",
+     "license_url": "https://huggingface.co/m-a-p/SheetSage2",
+     "repo_license": "cc-by-nc-4.0",
+     "license_path": [
+      "Comfy-Org/YuE2",
+      "m-a-p/SheetSage2",
+      "m-a-p/MERT-v2-FullSong"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_yue2_music_cover",
+    "title": "YuE2: Music Cover",
+    "category": "Audio",
+    "min_comfyui_version": "0.36.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 22,
+    "date": "2026-09-14",
+    "size_bytes": 5368709120,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.0,
+   "precision": "int8",
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+   "base_model": "m-a-p/YuE2-3B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-09-14",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "yue2",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "int8",
+   "precision_source": "header",
+   "total_size_bytes": 5347806922
+  },
+  {
+   "id": "audio_yue2_text2music",
+   "name": "YuE2: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "yue2_3b_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_int8_convrot.safetensors",
+     "sha256": "96fe199377309001ed8cd26a944baeee8cc31a20ba7c36d1d3c0a7e1f4149db6",
+     "size_bytes": 3960938800,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/YuE2",
+     "license": "cc-by-nc-4.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "m-a-p/YuE2-3B",
+     "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+     "repo_license": "cc-by-nc-4.0",
+     "license_path": [
+      "Comfy-Org/YuE2",
+      "m-a-p/YuE2-3B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 3772873990,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_yue2_text2music",
+    "title": "YuE2: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.36.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 0,
+    "date": "2026-09-14",
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.0,
+   "precision": "int8",
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+   "base_model": "m-a-p/YuE2-3B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-09-14",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "yue2",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "int8",
+   "precision_source": "header",
+   "total_size_bytes": 3960938800
+  },
+  {
+   "id": "audio_stable_audio_example",
+   "name": "Stable Audio 1.0: Text to Audio",
+   "modality": "sfx",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "stable-audio-open-1.0.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-open-1.0_repackaged/resolve/main/stable-audio-open-1.0.safetensors",
+     "sha256": "7b20458a071231aaf32613b6fbc7945f28f34dbba4f295bb49bad56f5f66b57e",
+     "size_bytes": 4853889016,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/stable-audio-open-1.0_repackaged",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-open-1.0",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-open-1.0/blob/main/LICENSE",
+     "repo_license": "stable-audio-community",
+     "license_path": [
+      "Comfy-Org/stable-audio-open-1.0_repackaged",
+      "stabilityai/stable-audio-open-1.0"
+     ],
+     "license_evidence": [
+      "family:stable-audio"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp32",
+     "header_params": 1213448210,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "t5-base.safetensors",
+     "url": "https://huggingface.co/ComfyUI-Wiki/t5-base/resolve/main/t5-base.safetensors",
+     "sha256": "a90903540cc02cbeb7ff9f823f1a80eb778c7e22426a0e620b01c77a5ec8f5b4",
+     "size_bytes": 891646390,
+     "directory": "text_encoders",
+     "repo_id": "ComfyUI-Wiki/t5-base",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "text_encoder",
+     "license_from": "ComfyUI-Wiki/t5-base",
+     "license_url": "https://huggingface.co/ComfyUI-Wiki/t5-base",
+     "repo_license": null,
+     "license_path": [
+      "ComfyUI-Wiki/t5-base"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_stable_audio_example",
+    "title": "Stable Audio 1.0: Text to Audio",
+    "category": "Audio",
+    "min_comfyui_version": "0.3.35",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 23,
+    "date": "2025-03-01",
+    "size_bytes": 5690831667,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp32",
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-open-1.0/blob/main/LICENSE",
+   "base_model": "stabilityai/stable-audio-open-1.0",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "total_size_bytes": 5745535406
+  },
+  {
+   "id": "hf:kpsss34/FHDR_Uncensored",
+   "name": "FHDR_Uncensored",
+   "modality": "image",
+   "tasks": [
+    "t2i"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "FHDR_ComfyUI-Q8_0.gguf",
+     "url": "https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf",
+     "sha256": "08049032fb3e55ee3c9086d41e1e1b549ff1d54812a95d368b95b0223780d351",
+     "size_bytes": 12714452256,
+     "directory": null,
+     "repo_id": "kpsss34/FHDR_Uncensored",
+     "license": null,
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": null,
+     "repo_license": "other",
+     "license_path": [
+      "kpsss34/FHDR_Uncensored",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "license_unverified: kpsss34/FHDR_Uncensored の表記 other は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
+     ],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "gguf-q8_0",
+   "license": null,
+   "license_url": null,
+   "base_model": "black-forest-labs/FLUX.1-dev",
+   "content": "uncensored",
+   "content_evidence": [
+    "name:uncensored"
+   ],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-02-27",
+   "homepage": "https://huggingface.co/kpsss34/FHDR_Uncensored",
+   "downloads": 2410,
+   "likes": 640,
+   "downloads_all_time": 343091,
+   "license_name": null,
+   "license_evidence": [
+    "license_unverified: kpsss34/FHDR_Uncensored の表記 other は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(FHDR_ComfyUI-Q8_0.gguf)"
+   ],
+   "files_complete": false,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "filename",
+   "total_size_bytes": 12714452256
+  },
+  {
+   "id": "hf:stabilityai/stable-audio-3-small-sfx",
+   "name": "stable-audio-3-small-sfx",
+   "modality": "sfx",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "model.safetensors",
+     "url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+     "sha256": "ed9cf1b6172f1a8c2921a9560c21109ff3239524563ced9dce6dcdef41e2f515",
+     "size_bytes": 2270384940,
+     "directory": null,
+     "repo_id": "stabilityai/stable-audio-3-small-sfx",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": true,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-3-small-sfx",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/blob/main/LICENSE.md",
+     "repo_license": null,
+     "license_path": [
+      "stabilityai/stable-audio-3-small-sfx",
+      "stabilityai/stable-audio-3-small-sfx-base"
+     ],
+     "license_evidence": [
+      "family:stable-audio"
+     ],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": "fp32",
+     "repo_precision_source": "hf_api"
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "fp32",
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/blob/main/LICENSE.md",
+   "base_model": "stabilityai/stable-audio-3-small-sfx-base",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-10-06",
+   "homepage": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx",
+   "downloads": 46898,
+   "likes": 257,
+   "downloads_all_time": 122243,
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "hf_api",
+   "total_size_bytes": 2270384940
+  },
+  {
+   "id": "hf:ai4bharat/indic-parler-tts",
+   "name": "indic-parler-tts",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "model.safetensors",
+     "url": "https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors",
+     "sha256": "c68daecb60f80c8f1faf0a6d2e6ddd6de8e224fb19750f3e9a33bca43c552c90",
+     "size_bytes": 3751321772,
+     "directory": null,
+     "repo_id": "ai4bharat/indic-parler-tts",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "ai4bharat/indic-parler-tts",
+     "license_url": "https://huggingface.co/ai4bharat/indic-parler-tts",
+     "repo_license": null,
+     "license_path": [
+      "ai4bharat/indic-parler-tts"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": "fp32",
+     "repo_precision_source": "hf_api"
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "fp32",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ai4bharat/indic-parler-tts",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-10-06",
+   "homepage": "https://huggingface.co/ai4bharat/indic-parler-tts",
+   "downloads": 192950,
+   "likes": 439,
+   "downloads_all_time": 5195523,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "hf_api",
+   "total_size_bytes": 3751321772
+  },
+  {
+   "id": "hf:sesame/csm-1b",
+   "name": "csm-1b",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "transformers-00001-of-00002.safetensors",
+     "url": "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors",
+     "sha256": "f2dac3b296f50609f57addb82a25bf75f5de2232967d78f5375da3c71fd596d4",
+     "size_bytes": 4944026784,
+     "directory": null,
+     "repo_id": "sesame/csm-1b",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "sesame/csm-1b",
+     "license_url": "https://huggingface.co/sesame/csm-1b",
+     "repo_license": null,
+     "license_path": [
+      "sesame/csm-1b"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "transformers-00002-of-00002.safetensors",
+     "url": "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors",
+     "sha256": "fdb68548b7422bc623c83885e78802c2c4cc6fc3f864f4fabdd715f94abca4ef",
+     "size_bytes": 2189474180,
+     "directory": null,
+     "repo_id": "sesame/csm-1b",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "sesame/csm-1b",
+     "license_url": "https://huggingface.co/sesame/csm-1b",
+     "repo_license": null,
+     "license_path": [
+      "sesame/csm-1b"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": null,
+   "params_b": 1.0,
+   "precision": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/sesame/csm-1b",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2025-12-01",
+   "homepage": "https://huggingface.co/sesame/csm-1b",
+   "downloads": 129775,
+   "likes": 2480,
+   "downloads_all_time": 2103832,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": null,
+   "total_size_bytes": 7133500964
+  }
+ ]
+}
