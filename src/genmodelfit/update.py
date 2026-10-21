@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import logging
 import re
@@ -28,7 +29,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import appinfo, safety
+from . import appinfo, review, safety
 from ._version import __version__
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
@@ -1219,8 +1220,11 @@ def build_database(
 
     for e in entries:  # ComfyUI の系統(引き継いだ項目も、今の表で決め直す)
         assign(e)
-    # アプリ向けの項目(言語・動かし方・説明。#36)。手の表 > HF のカード > 文字を読む部品の表
+    # アプリ向けの項目(言語・動かし方・説明。#36)。手の表 > HF のカード > 文字を読む部品の表。
+    # カードの言語は前の一覧から引き継ぎ、読めたカードの分だけ上書きする(読めない回に揺れない。#42)
+    carried_langs = appinfo.carry_card_languages(entries, prev.models) if prev is not None else 0
     stats["app_fields"] = appinfo.apply_app_fields(entries, client if hf else None)
+    stats["app_fields"]["card_languages_carried"] = carried_langs
     budget = bool(getattr(fetch, "budget_exhausted", False))
     stats["partial"] = bool(failed or transient or hf_stats.get("failed_queries") or budget)
     stats["partial_counts"] = {
@@ -1278,6 +1282,8 @@ def build_database(
         "equal": sum(1 for c in checks if c["index_size"] == c["files_total"]),
         "within_10pct": sum(1 for c in checks if c["ratio"] and 0.9 <= c["ratio"] <= 1.1),
     }
+    # 確認の印(#42): 外した項目を除き、前の一覧と比べて pending を付ける(前の一覧が無ければ全部 new)
+    entries, stats["review"] = review.finish(entries, prev.models if prev is not None else None)
     entries.sort(key=lambda e: (e.source != "comfyui-template", e.modality, e.id))
     stats["counts"] = count_entries(entries)
     stats["excluded"] = excluded
@@ -1444,6 +1450,7 @@ def inspect_database(
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
         raise UpdateFailed(f"一覧を読めません: {e}") from e
+    before = copy.deepcopy(db.models)  # 確認の印を付けるために比べる元(精度が変わると必要量も変わる)
     if not offline and fetch is not None:
         db.sources["sampler_stages"] = refresh_templates(db.models, fetch, say)
     say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
@@ -1459,8 +1466,16 @@ def inspect_database(
         hf["unauthorized_recheck"] = recheck_unauthorized(unauthorized_repos(hf), fetch.get_json)
         hf["unauthorized"] = list(hf["unauthorized_recheck"]["unauthorized"])
         hf["unauthorized_missing"] = list(hf["unauthorized_recheck"]["missing"])
+    _finish_reviews(db, before)
     db.save(out_path)
     return db
+
+
+def _finish_reviews(db: Database, before: list[ModelEntry]) -> None:
+    """一覧の一部だけをやり直したとき(--inspect-only・--heads-only・--fields-only)の確認の印(#42):
+    外した項目を除き、やり直す前と比べて pending を付ける(新しく足した手のモデル・下がった精度など)。"""
+    db.models, db.sources["review"] = review.finish(db.models, before)
+    db.sources["counts"] = count_entries(db.models)
 
 
 def unauthorized_repos(hf_stats: dict[str, Any]) -> list[str]:
@@ -1497,6 +1512,7 @@ def refresh_heads(
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
         raise UpdateFailed(f"一覧を読めません: {e}") from e
+    before = copy.deepcopy(db.models)
     db.models = appinfo.merge_manual(db.models)
     say(f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています")
     stats = check_heads(db.models, fetch)
@@ -1516,7 +1532,7 @@ def refresh_heads(
     for m in db.models:  # ComfyUI の系統も今の表で決め直す(古い一覧に無い項目を足す)
         assign(m)
     db.sources["app_fields"] = appinfo.apply_app_fields(db.models)
-    db.sources["counts"] = count_entries(db.models)
+    _finish_reviews(db, before)
     db.save(out_path)
     return db
 
@@ -1548,6 +1564,7 @@ def refresh_app_fields(
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
         raise UpdateFailed(f"一覧を読めません: {e}") from e
+    before = copy.deepcopy(db.models)
     manual = appinfo.manual_entries()
     if not offline and fetch is not None:
         say(f"手のモデル {len(manual)} 件のライセンスを上流のカードと照らしています")
@@ -1567,6 +1584,6 @@ def refresh_app_fields(
         say(f"{len(repos)} 件のリポジトリのカードを読み、言語を確かめています")
         client.prefetch((r, "main") for r in repos)
     db.sources["app_fields"] = appinfo.apply_app_fields(db.models, client)
-    db.sources["counts"] = count_entries(db.models)
+    _finish_reviews(db, before)
     db.save(out_path)
     return db

@@ -15,6 +15,7 @@ Python から:
     plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir="C:/ComfyUI")  # 落とさずに計画だけ(通信しない)
     gmf.download(plan, confirm=ask_user, progress=show)  # 同意を取ってから落とす(sha256 で確かめる)
     gmf.diff_db(gmf.load_db("old.json"), gmf.load_db("new.json"))  # 2 つの一覧の違い(`genmodelfit diff`)
+    gmf.review_list()  # 確認待ちの項目(`genmodelfit review list`)。アプリは entry.reviewed で絞れる
 """
 
 from __future__ import annotations
@@ -259,6 +260,34 @@ def download(
     return _download(plan_or_model, progress=progress, confirm=confirm, yes=yes, **plan_kwargs)
 
 
+def review_list(db: Database | None = None, *, include_ok: bool = False) -> list[dict]:
+    """確認待ち(review.status が ok でない)の項目と理由(`genmodelfit review list --json` の models)。
+    include_ok なら全部。ネットに触らず、何も表示しない。"""
+    from .review import review_list as _list
+
+    return _list(db or load_db(), include_ok=include_ok)
+
+
+def review_approve(
+    db_path: str, model_id: str, evidence: Iterable[str], *, note: str | None = None, by: str = "review"
+) -> ModelEntry:
+    """`genmodelfit review approve`: db_path の一覧の項目を、根拠(https の URL。1 つ以上)を付けて
+    確認済みにし、ファイルを書き戻す。根拠が無い・ID が無い・確認待ちでないときは ReviewError(ValueError)。"""
+    from .review import approve_file
+
+    return approve_file(db_path, model_id, list(evidence), note=note, by=by)
+
+
+def review_reject(
+    db_path: str, model_id: str, note: str, *, rejected_path: str | None = None, hide_name: bool = False
+) -> dict:
+    """`genmodelfit review reject`: db_path の一覧から外して書き戻し、外した記録(既定は同じフォルダの
+    review_rejected.txt)に 1 行足す。update は記録にある項目を入れない。"""
+    from .review import reject_file
+
+    return reject_file(db_path, model_id, note, rejected_path=rejected_path, hide_name=hide_name)
+
+
 __all__ = [
     "CONTENT_LEVELS",
     "FIT_LEVELS",
@@ -289,6 +318,9 @@ __all__ = [
     "load_db",
     "plan_download",
     "recommend",
+    "review_approve",
+    "review_list",
+    "review_reject",
     "search",
     "system",
 ]

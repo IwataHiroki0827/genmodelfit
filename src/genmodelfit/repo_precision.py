@@ -154,7 +154,9 @@ class RepoPrecisionCache:
             "api": self.api,
             "config": self.config,
         }
-        tmp.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8", newline="\n"
+        )
         tmp.replace(self.path)
 
 

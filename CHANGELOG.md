@@ -7,6 +7,58 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
+
+### Added
+
+- Review marks (Issue #42): optional `ModelEntry.review` `{status: ok|pending, reasons, decided_by, decided_at,
+  evidence, note}`. `update` compares with the list it carries over from and marks `pending` new entries (`new`),
+  licenses that moved toward permissive (`license_permissive`), lower needs at reference PCs (`need_decreased`) and newly
+  uncensored entries (`uncensored_new`); otherwise the previous mark is carried over. `--heads-only` / `--fields-only` /
+  `--inspect-only` apply the same rule. A missing `review` is treated as ok, so older lists still load and apps can
+  filter with `entry.review is None or entry.review.status == "ok"` (`entry.reviewed`). The bundled list starts all ok
+  (`decided_by: baseline-2026-10-21`). `schema_version` stays 1.
+  確認の印。新しい項目などは確かめるまで自動のおすすめに出さない。
+- Gate check `reviewed` (always last; readiness weight 0): pending models are not auto-recommended
+  (`held:reviewed`, `review` in the Verified column).
+- `genmodelfit review list [--json]`, `review approve <id> --evidence URL… [--note] [--by] --db PATH` (refuses without
+  an https evidence URL), `review reject <id> --note TEXT --db PATH [--hide-name]` (removes the entry and records it in
+  `data/review_rejected.txt`, which `update` honors). Python: `gmf.review_list()`, `gmf.review_approve()`,
+  `gmf.review_reject()`.
+- `diff` adds `classification` `{safe, judgement_needed: [{id, name, reasons}], safe_changes}` for the weekly run
+  (safe-only week → the runner may merge; otherwise an evidence pull request for the owner). It is an allowlist: only
+  popularity counts, `updated`, template `usage`, HEAD results, growing files, stricter licenses, removed entries,
+  auto-recommendation lost (or regained by HEAD with the same files), `sources` statistics and unchanged pending
+  marks are safe; any other field change (`files_changed`, `use_changed`, `other_change:<field>`, unknown fields
+  included) needs judgement. The weekly run writes `review_queue.json` and adds 「分類」/「確認待ち」 sections to the pull
+  request body; exit codes are unchanged.
+- `python -m genmodelfit.weekly merge-check --base A --head B [--json]`: recompute the classification from two files
+  (exit 0 safe / 3 not safe / 1 unreadable) for the runner script that decides the merge.
+- `python -m genmodelfit.review publish SRC DST`: the list to sign without pending entries.
+- `python -m genmodelfit.review apply DECISIONS.json --db PATH [--max-approve 10] [--json]`: apply the weekly
+  decisions (`approve` / `reject` / `hold`) returned by Claude, strictly validated and all or nothing (exit 2);
+  approvals are `decided_by: claude-weekly`, safety rejects keep only the id hash, and the summary is escaped for
+  the pull request body. `review_queue.json` / `review list --json` items add `card_url` and `files`
+  (repo, path, license, license_url, …).
+- Duplicate model ids are refused (`parse_db` / `load` / `save` raise `DatabaseError`; `merge-check` exits 1).
+
+### Changed
+
+- **Published data (data-latest) leaves out pending entries.** genmodelfit 0.5.x does not know `review` (it drops the
+  key), so a pending entry that passes the other checks would be auto-recommended there. data.yml now runs
+  `python -m genmodelfit.review publish` before signing; pending entries reach data-latest only after approval.
+  The bundled `db.json` keeps them (0.6.0 holds them with the `reviewed` check).
+  0.5.x は review を知らないので、確認待ちの項目は data-latest に配らない。
+- The weekly update now runs as a Claude Code skill on the owner's PC; `weekly-data.yml` no longer runs on a schedule
+  (manual `workflow_dispatch` backup only). See docs/release.md.
+- `review approve` requires evidence URLs that are https with a host (`https://` alone is refused).
+- Tables: the "Auto" column is now **"Verified"** (values unchanged: `yes` or the first failed check). JSON keeps
+  `auto`, `held_by` and the check ids. `info` says `verified (auto-recommend)`.
+- Tables: the `[U] ` prefix on uncensored model names is replaced by a **"Censored"** column right after Score
+  (`Y` = censored / `N` = uncensored), shown only when uncensored rows can appear (`--content all|uncensored`; from
+  Python, when a row is uncensored). Legend: `Censored: N = safety filter removed / adult model`. JSON unchanged.
+- README split into English `README.md` (also the PyPI page) and Japanese `README.ja.md`.
+
 ## [0.5.0] - 2026-10-21
 
 ### Added

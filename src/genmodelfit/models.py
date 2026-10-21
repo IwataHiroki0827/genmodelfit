@@ -114,6 +114,35 @@ class Template:
         return _from_dict(cls, d)
 
 
+# 確認の印(ModelEntry.review。0.6.0、#42)。pending = 確認待ち(自動のおすすめに出さない。gate の reviewed)
+REVIEW_STATUSES = ("ok", "pending")
+# pending にした理由(update が前の一覧と比べて付ける。docs/schema.md「review」)
+REVIEW_REASONS = ("new", "license_permissive", "need_decreased", "uncensored_new")
+
+
+@dataclass
+class Review:
+    """人(または毎週のスキル)が一次資料で確かめたかの印。無い(None)は古い一覧で、確認済みとして扱う。"""
+
+    status: str = "ok"  # REVIEW_STATUSES
+    reasons: list[str] = field(default_factory=list)  # REVIEW_REASONS(確認済みでも、確かめた理由を残す)
+    decided_by: str | None = None  # 確かめた人・仕組み(例 "baseline-2026-10-21"、"owner")
+    decided_at: str | None = None  # 確かめた日(YYYY-MM-DD)
+    evidence: list[str] = field(default_factory=list)  # 根拠の URL(一次資料)
+    note: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Review:
+        r = _from_dict(cls, d)
+        r.reasons = list(r.reasons or [])
+        r.evidence = list(r.evidence or [])
+        return r
+
+
 @dataclass
 class ModelEntry:
     """一覧の 1 件。1 つのワークフロー(または 1 つの HF リポジトリ)で使うモデル一式。"""
@@ -173,6 +202,15 @@ class ModelEntry:
     # HF のカードの language(appinfo が languages を作り直す材料。取得できたときに保存し、通信しない当て直しで
     # 使う)。None = まだ読んでいない、[] = 読んだがカードに言語が無い
     card_languages: list[str] | None = None
+    # 確認の印(0.6.0、#42。任意の項目で schema_version は上げない)。
+    # None は確認済みとして扱う(印の無い古い一覧)。
+    # update は前の一覧と比べて必ず付ける。アプリは `review is None or review.status == "ok"` で絞る
+    review: Review | None = None
+
+    @property
+    def reviewed(self) -> bool:
+        """確認済みか(印が無い古い一覧は確認済みとみなす)。"""
+        return self.review is None or self.review.status == "ok"
 
     @property
     def total_size_bytes(self) -> int | None:
@@ -209,6 +247,8 @@ class ModelEntry:
         e.files = [ModelFile.from_dict(f) if isinstance(f, dict) else f for f in (d.get("files") or [])]
         t = d.get("template")
         e.template = Template.from_dict(t) if isinstance(t, dict) else t
+        r = d.get("review")
+        e.review = Review.from_dict(r) if isinstance(r, dict) else None
         return e
 
 

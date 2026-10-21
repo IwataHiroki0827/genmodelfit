@@ -347,6 +347,7 @@ def _show(
         groups=sel.groups if sections else None,
         grouped=not args.all_workflows,
         order=getattr(args, "sort", None) or "auto",
+        content=getattr(args, "content", None),
     )
     return 0
 
@@ -395,7 +396,7 @@ def _fit_choice(args: argparse.Namespace, default: str | None) -> tuple[str | No
 
 def cmd_fit(args: argparse.Namespace) -> int:
     """既定は動くもの(perfect / good / marginal)だけ、補助ツール・ライセンス不明・無検閲は隠す。--all で全部。
-    並びは種類 → 段階 → 点数(--sort)。自動のおすすめを先にはしない(Auto の列で分かる)。"""
+    並びは種類 → 段階 → 点数(--sort)。自動のおすすめを先にはしない(Verified の列で分かる)。"""
     s, db = _system(args), _db(args)
     min_fit, fit = _fit_choice(args, "runnable")
     tools = args.include_tools or args.all
@@ -621,7 +622,9 @@ def cmd_info(args: argparse.Namespace) -> int:
     out += [f"  - {r}" for r in e.reasons]
     if gate:
         target = gate.get("comfyui_version") or "?"
-        out.append(f"  auto-recommend: {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})")
+        out.append(
+            f"  verified (auto-recommend): {'yes' if gate.get('auto') else 'held'}  (ComfyUI {target})"
+        )
         for chk in gate.get("checks", []):
             mark = "ok" if chk["passed"] else "NG"
             out.append(f"    [{mark}] {chk['id']}: {chk.get('detail', '')}")
@@ -1349,6 +1352,75 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- review(#42) ---------------------------------------------------------------------------------
+
+
+def _review_error(args: argparse.Namespace, e: Exception) -> int:
+    if args.json:
+        _out({"genmodelfit": __version__, "command": "review", "error": str(e)})
+    else:
+        print(f"error: {e}", file=sys.stderr)
+    return 1
+
+
+def cmd_review_list(args: argparse.Namespace) -> int:
+    from .review import review_list
+
+    db = _db(args)
+    items = review_list(db, include_ok=args.all)
+    if args.json:
+        _out(
+            _envelope("review", None, db, pending=sum(1 for i in items if i["status"] != "ok"), models=items)
+        )
+        return 0
+    pending = [i for i in items if i["status"] != "ok"]
+    print(f"確認待ち {len(pending)} 件 / 一覧 {len(db.models)} 件({db.origin})")
+    for i in items:
+        why = ", ".join(i["reasons"]) or "-"
+        print(f"  [{i['status']}] {i['id']}  ({i['modality']}/{i['content']}/{i['license']})  {why}")
+        if i["status"] == "ok" and i["decided_by"]:
+            print(f"      {i['decided_by']} {i['decided_at'] or ''}  {' '.join(i['evidence'])}".rstrip())
+    return 0
+
+
+def cmd_review_approve(args: argparse.Namespace) -> int:
+    from .review import ReviewError, approve_file
+
+    try:
+        m = approve_file(args.db, args.id, args.evidence or [], note=args.note, by=args.by)
+    except ReviewError as e:
+        return _review_error(args, e)
+    r = m.review
+    assert r is not None
+    if args.json:
+        _out(
+            {"genmodelfit": __version__, "command": "review", "action": "approve", "id": m.id, "db": args.db}
+            | {
+                "review": {
+                    k: getattr(r, k)
+                    for k in ("status", "reasons", "decided_by", "decided_at", "evidence", "note")
+                }
+            }
+        )
+        return 0
+    print(f"確認済みにしました: {m.id}({', '.join(r.reasons) or '-'})→ {args.db}")
+    return 0
+
+
+def cmd_review_reject(args: argparse.Namespace) -> int:
+    from .review import ReviewError, reject_file
+
+    try:
+        res = reject_file(args.db, args.id, args.note, rejected_path=args.rejected, hide_name=args.hide_name)
+    except ReviewError as e:
+        return _review_error(args, e)
+    if args.json:
+        _out({"genmodelfit": __version__, "command": "review", "action": "reject", "id": args.id, **res})
+        return 0
+    print(f"一覧から外しました: {args.id} → {res['db']}(外した記録: {res['rejected_file']}、鍵 {res['key']})")
+    return 0
+
+
 # --- download(#31) -------------------------------------------------------------------------------
 
 
@@ -1643,7 +1715,7 @@ HELP = {
 Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
 (default 3) each. With -m or --task: one table (default 10).
 One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
-Order: models that run, then auto-recommendable ones (gate: Auto=yes), then Score (0-100),
+Order: models that run, then auto-recommendable ones (gate: Verified=yes), then Score (0-100),
 then id. Uncensored models and utility tools are hidden unless asked. The default output is a
 table (llmfit uses JSON by default); add --json for apps.
 並べ方: 動くもの → 自動でおすすめに出せるもの → 点数の高い順 → ID。
@@ -2119,6 +2191,52 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--limit", "-n", type=_positive_int, default=20, help="1 つの節に出す行の上限(既定 20)")
     sp.set_defaults(func=cmd_diff)
 
+    sp = sub.add_parser(
+        "review",
+        help="確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(#42)",
+        description=REVIEW_HELP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    rsub = sp.add_subparsers(dest="review_command", required=True)
+    r = rsub.add_parser("list", help="確認待ちの項目と理由")
+    r.add_argument("--json", action="store_true", help="JSON で出す")
+    r.add_argument("--db", metavar="PATH", help="一覧のファイル(既定はキャッシュ、無ければ同梱)")
+    r.add_argument("--no-cache", action="store_true", help="update で取った一覧を使わず、同梱のデータを使う")
+    r.add_argument("--all", action="store_true", help="確認済みの項目も出す")
+    r.set_defaults(func=cmd_review_list)
+    r = rsub.add_parser(
+        "approve", help="根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)"
+    )
+    r.add_argument("id", help="モデルの ID")
+    r.add_argument(
+        "--evidence", action="append", metavar="URL", help="根拠の URL(https。1 つ以上。繰り返して足す)"
+    )
+    r.add_argument("--note", help="確かめた内容のメモ")
+    r.add_argument("--by", default="review", help="確かめた人・仕組み(decided_by。既定 review)")
+    r.add_argument(
+        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+    )
+    r.add_argument("--json", action="store_true", help="JSON で出す")
+    r.set_defaults(func=cmd_review_approve)
+    r = rsub.add_parser("reject", help="一覧から外し、update でも入れないように記録する")
+    r.add_argument("id", help="モデルの ID")
+    r.add_argument("--note", required=True, help="外す理由")
+    r.add_argument(
+        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+    )
+    r.add_argument(
+        "--rejected",
+        metavar="PATH",
+        help="外した記録のファイル(既定は --db と同じフォルダの review_rejected.txt)",
+    )
+    r.add_argument(
+        "--hide-name",
+        action="store_true",
+        help="記録に ID を残さず sha256 だけ残す(安全上の理由で外すとき。既存の除外と同じく名前を残さない)",
+    )
+    r.add_argument("--json", action="store_true", help="JSON で出す")
+    r.set_defaults(func=cmd_review_reject)
+
     sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")
     sp.add_argument("template", help="テンプレート名(モデルの ID)")
     sp.add_argument(
@@ -2265,6 +2383,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     c.set_defaults(func=cmd_contrib_aggregate)
     return p
+
+
+REVIEW_HELP = """List, approve or reject models waiting for review (#42).
+確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す。
+pending は update が前の一覧と比べて付ける(new / license_permissive / need_decreased / uncensored_new)。
+確かめるまで自動のおすすめに出さない(gate の reviewed)。
+
+  list     [--json] [--all] [--db PATH]          確認待ちと理由
+  approve  <id> --evidence URL [--evidence URL…] [--note TEXT] [--by NAME] --db PATH
+           根拠が無ければ断る。一覧のファイルをその場で書き換える
+  reject   <id> --note TEXT --db PATH [--rejected FILE] [--hide-name]
+           一覧から外し、review_rejected.txt に記録する(update でも入れない)
+
+SIDE EFFECTS:
+  No network access. list is read-only; approve / reject rewrite the --db file (reject also appends to the
+  rejected file).
+
+EXIT CODES:
+  0  Success
+  1  Error (no such id, no evidence, not pending, unreadable --db; with --json the error is in "error")
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit review list --json --db src/genmodelfit/data/db.json
+  genmodelfit review approve hf:org/model --db src/genmodelfit/data/db.json \
+      --evidence https://huggingface.co/org/model/blob/main/LICENSE
+  genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "non-commercial only"
+Details: docs/schema.md「review」、docs/release.md「毎週のスキル」"""
 
 
 CONTRIB_DIR_DEFAULT = "data/contrib"

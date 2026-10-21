@@ -22,7 +22,7 @@ HEADER = [
     "Mode",
     "Disk",
     "License",
-    "Auto",
+    "Verified",
 ]
 
 
@@ -50,10 +50,15 @@ def fit(mid, level="good", content="sfw", gate=None, mode="gpu"):
     return Fit(m, e, 50.0, gate)
 
 
-def render(fits, width=100, system=None):
+def render(fits, width=100, system=None, content=None):
     buf = io.StringIO()
-    print_fit_table(fits, title="T", system=system or pc(), console=make_console(buf, width=width))
+    con = make_console(buf, width=width)
+    print_fit_table(fits, title="T", system=system or pc(), console=con, content=content)
     return buf.getvalue()
+
+
+def header_of(out: str) -> list[str]:
+    return next(x for x in out.splitlines() if x.startswith("Type")).split()
 
 
 def test_fits_in_100_columns_with_long_names():
@@ -79,7 +84,43 @@ def test_held_reason_and_uncensored_marker():
     gate = {"auto": False, "checks": [{"id": "license", "passed": False}, {"id": "gated", "passed": True}]}
     out = render([fit("x", gate=gate, content="uncensored"), fit("y", gate={"auto": True, "checks": []})])
     assert row_of(out, "x").rstrip().endswith("license") and row_of(out, "y").rstrip().endswith("yes")
-    assert "[U] x" in out and "[U] = uncensored" in out
+    assert "[U]" not in out  # 0.6.0 から名前の前の印ではなく Censored の列
+    assert row_of(out, "x").split()[4:6] == ["N", "x"]
+    assert row_of(out, "y").split()[4:6] == ["Y", "y"]  # 空にしない
+    assert header_of(out)[:5] == ["Type", "Status", "Score", "Censored", "Model"]
+    assert "Censored: N = safety filter removed / adult model" in out
+
+
+@pytest.mark.parametrize(
+    "content,shown", [("sfw", False), ("all", True), ("uncensored", True), (None, False)]
+)
+def test_content_column_only_when_uncensored_rows_can_appear(content, shown):
+    """Censored の列は --content all|uncensored のときだけ(sfw では列ごと出さない)。content を渡さない
+    (Python から作る表)ときは無検閲の行があるときだけ。"""
+    out = render([fit("a")], content=content)
+    assert ("Censored" in header_of(out)) is shown
+    assert ("Censored: N" in out) is shown
+    assert (row_of(out, "a").split()[4] == "Y") is shown
+    assert "Censored" in header_of(render([fit("a"), fit("u", content="uncensored")]))
+
+
+def test_content_column_gives_the_name_its_width_back():
+    """無検閲の行も、名前の幅を「[U] 」に取られない(sfw の行と同じ幅)。"""
+    long = "hf:someone/" + "very-long-model-name-" * 6
+    out = render([fit(long), fit(long + "-u", content="uncensored")], content="all")
+    rows = [x for x in out.splitlines() if "●" in x]
+    assert len({cell_len(r.rstrip()) for r in rows}) == 1
+
+
+@pytest.mark.parametrize("width", [60, 70, 80, 90, 99, 100])
+def test_content_column_kept_when_narrow(width):
+    long = "hf:someone/" + "very-long-model-name-" * 6
+    out = render([fit(long), fit("u", "too_tight", content="uncensored")], width=width, content="all")
+    assert all(cell_len(x) <= width for x in out.splitlines()), width
+    assert header_of(out)[:5] == ["Type", "Status", "Score", "Censored", "Model"]
+    assert "VRAM" in header_of(out) and "Mode" in header_of(out)
+    if width <= 90:  # 名前を詰めてから、Disk・Mem%・License の順に外す
+        assert "Disk" not in header_of(out) and "License" not in header_of(out)
 
 
 def test_offload_marked():

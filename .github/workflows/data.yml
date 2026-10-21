@@ -44,6 +44,8 @@ jobs:
         run: |
           mkdir -p dist-data
           cp src/genmodelfit/data/db.json dist-data/db.json
+          # 確認待ち(review: pending)の項目は配らない。0.5.x は review を知らず自動のおすすめに出してしまうため(#42)
+          uv run --no-sync python -m genmodelfit.review publish dist-data/db.json dist-data/db.json
           uv run --no-sync python -c "from genmodelfit.db import load; db = load('dist-data/db.json'); print(len(db.models), db.generated_at)"
           uv run --no-sync genmodelfit system --json --db dist-data/db.json --vram 8 --ram 32 > /dev/null
       - name: 署名する

@@ -22,11 +22,18 @@
    **HEAD の期限(30 日)が 7 日より先**(作り直した直後なのに近ければ、HEAD の取り直しが効いていない)
 4. 一部を取得できなかったとき(sources.partial): 既定は失敗(PR を作らない)。--allow-partial のときだけ、
    中身が筋の通るとき(下の partial_problems が空)に限って「一部欠け」の警告を付けて通す
-5. 元との違い(diff.diff_db)と PR の本文を <dir> に書く: db.json・diff.json・pr_body.md・result.json
+5. 元との違い(diff.diff_db)と PR の本文を <dir> に書く: db.json・diff.json・pr_body.md・result.json・
+   review_queue.json(確認待ちの項目と、diff の分類 classification。#42。毎週のスキルがこれを読んで、
+   安全な向きだけの週か、根拠付きの PR をオーナーに出す週かを決める)
 6. --apply があれば、確かめを通った db.json をそこへ写す(ワークフローはこのあと pytest を回す)
 
 終了コード: 0 = 通った、1 = 確かめに落ちた・作り直しをやめた(<dir>/result.json の problems に理由)、
 2 = 使い方の誤り。
+
+    python -m genmodelfit.weekly merge-check --base <main の db.json> --head <新しい db.json> [--json]
+
+は、2 つのファイルから分類(diff の classification)を計算し直す(#42。毎週のスキルの実行役が、マージしてよいかの
+機械の確かめに使う)。終了コード: 0 = 安全な向きだけ、3 = 判断が要る、1 = 読めない、2 = 使い方の誤り。
 公開(署名と data-latest)はここではしない。PR が main に入ったときに data.yml が行う。
 """
 
@@ -46,11 +53,13 @@ from pathlib import Path
 from typing import Any
 
 from ._version import __version__
-from .db import Database, DatabaseError
+from .db import Database, DatabaseError, duplicate_ids
 from .db import load as load_db
 from .diff import diff_db
 from .fetch import DirFetcher, Fetcher, RecordingFetcher
 from .gate import GatePolicy, _parse_time
+from .review import queue as review_queue
+from .review import review_list
 from .status import compute as compute_status
 from .update import LICENSE_POLICY, UpdateFailed, inspect_database, make_fetcher, update_database
 
@@ -84,7 +93,7 @@ class WeeklyRecorder(RecordingFetcher):
     def save_heads(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root / HEADS_FILE).write_text(
-            json.dumps(self.statuses, indent=1, sort_keys=True), encoding="utf-8"
+            json.dumps(self.statuses, indent=1, sort_keys=True), encoding="utf-8", newline="\n"
         )
 
     def __getattr__(self, name: str) -> Any:  # get_range・budget_exhausted・rate_limited などは中身のもの
@@ -273,6 +282,11 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         warn.append(f"新しく無検閲の印が付いた項目: {s['newly_uncensored']} 件")
     if s["unauthorized_added"]:
         warn.append(f"匿名の API が 401 になったリポジトリ: {s['unauthorized_added']} 件")
+    cl = d.get("classification") or {}
+    if cl and not cl.get("safe"):
+        warn.append(
+            f"**判断が要る変化: {len(cl.get('judgement_needed') or [])} 件**(下の「確認待ち」と diff.json)"
+        )
     lines += ["### 注意", ""]
     lines += [f"- {w}" for w in warn] if warn else ["- なし"]
     lines.append("")
@@ -312,6 +326,8 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         ],
     )
     lines.append("")
+
+    lines += review_section(d, result.get("review_pending") or [])
 
     if d["license_changes"]:
         rows = sorted(d["license_changes"], key=lambda c: (not c["permissive_side"], c["id"]))
@@ -392,6 +408,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         "- [ ] 消えた項目・自動のおすすめから外れた項目に、AI生成キットが使うものが無い"
         "(あれば理由を確かめた)",
         "- [ ] 新しく HEAD が失敗した URL(gated になった・消えた)を確かめた",
+        "- [ ] 確認待ち(review)の項目と、review approve で付けた根拠(evidence)の URL を見た",
         "- [ ] 新しく無検閲の印が付いた項目の根拠を見た(未成年の性的表現を目的とするものは除外する)",
         "- [ ] 実測のあるモデルのファイルが変わっていたら、"
         "`python -m genmodelfit.calibrate` を別の PR で直す",
@@ -400,6 +417,39 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         "全部の違いは artifact の diff.json</sub>",
     ]
     return limit_body("\n".join(lines) + "\n")
+
+
+def review_section(d: dict[str, Any], pending: list[dict[str, Any]]) -> list[str]:
+    """PR の本文の「分類」と「確認待ち」の節(#42)。上流の文字は md() で無害にする(_table が使う)。"""
+    cl = d.get("classification") or {}
+    lines = ["### 分類(毎週のスキルが使う)", ""]
+    if cl.get("safe"):
+        lines.append(
+            "- **安全な向きの変化だけ**(HEAD の日時・失敗、必要量が増える向き、消えた項目、sources の数など)"
+        )
+    else:
+        lines.append(f"- **判断が要る変化があります: {len(cl.get('judgement_needed') or [])} 件**")
+        lines += _table(
+            ["id", "理由"], [[j["id"], ", ".join(j["reasons"])] for j in cl.get("judgement_needed") or []]
+        )
+    lines.append("")
+    lines += [f"### 確認待ち(review: pending)の項目: {len(pending)} 件", ""]
+    if pending:
+        lines.append(
+            "確かめるまで自動のおすすめに出ません。一次資料を見て `genmodelfit review approve` か `reject`。"
+        )
+        lines.append("")
+        lines += _table(
+            ["id", "名前", "種類", "内容", "ライセンス", "理由"],
+            [
+                [p["id"], p["name"], p["modality"], p["content"], p["license"], ", ".join(p["reasons"])]
+                for p in pending
+            ],
+        )
+    else:
+        lines.append("- なし")
+    lines.append("")
+    return lines
 
 
 def limit_body(body: str) -> str:
@@ -474,7 +524,13 @@ def run(
             "選び方の規則が緩んでいないか確かめてください"
         )
         (warnings if allow_many_uncensored else problems).append(msg)
+    pending = review_list(new)
     result.update(
+        review_pending=pending,
+        classification={
+            "safe": d["classification"]["safe"],
+            "judgement_needed": len(d["classification"]["judgement_needed"]),
+        },
         warnings=warnings,
         status_old=compute_status(old, GatePolicy(), now=when, source="path").to_dict(),
         problems=problems,
@@ -482,9 +538,15 @@ def run(
         partial=bool(new.sources.get("partial")),
         status=status,
         summary=d["summary"],
-        files={"db": str(new_path), "diff": str(out / "diff.json"), "pr_body": str(out / "pr_body.md")},
+        files={
+            "db": str(new_path),
+            "diff": str(out / "diff.json"),
+            "pr_body": str(out / "pr_body.md"),
+            "review_queue": str(out / "review_queue.json"),
+        },
     )
     _write_json(out / "diff.json", d)
+    _write_json(out / "review_queue.json", review_queue(new, d["classification"]))
     body = pr_body(d, result)
     if problems:
         body = (
@@ -493,7 +555,7 @@ def run(
             + "\n"
             + body
         )
-    (out / "pr_body.md").write_text(body, encoding="utf-8")
+    (out / "pr_body.md").write_text(body, encoding="utf-8", newline="\n")
     if result["ok"] and apply_to:
         shutil.copyfile(new_path, apply_to)
         result["applied_to"] = str(apply_to)
@@ -502,10 +564,84 @@ def run(
 
 
 def _write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+
+
+MERGE_NOT_SAFE = 3
+
+
+def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
+    """2 つの一覧のファイルから分類を計算し直す(何も書かず、通信しない)。読めなければ DatabaseError。
+
+    返す値: safe・judgement_needed(件数)・reasons([{id, name, reasons}])・safe_changes・base・head。
+    ファイルの JSON をそのまま比べるので、この版が知らない鍵の変化も判断が要るに数える。"""
+    raws = []
+    for path in (base, head):
+        try:
+            raws.append(json.loads(Path(path).read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            raise DatabaseError(f"一覧のファイルを読めません: {path}: {e}") from e
+        models = raws[-1].get("models") if isinstance(raws[-1], dict) else None
+        dup = duplicate_ids(models if isinstance(models, list) else [])
+        if dup:  # 同じ ID の 2 つ目に差し替えた項目を紛れ込ませられないように(load も断る)
+            raise DatabaseError(f"同じモデル ID が 2 回以上あります: {path}: {', '.join(map(str, dup[:5]))}")
+    old, new = load_db(base), load_db(head)
+    cl = diff_db(old, new, raw=(raws[0], raws[1]))["classification"]
+    return {
+        "genmodelfit": __version__,
+        "command": "merge-check",
+        "base": str(base),
+        "head": str(head),
+        "safe": cl["safe"],
+        "judgement_needed": len(cl["judgement_needed"]),
+        "reasons": cl["judgement_needed"],
+        "safe_changes": cl["safe_changes"],
+    }
+
+
+def merge_check_main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        prog="python -m genmodelfit.weekly merge-check",
+        description="2 つの一覧から分類を計算し直す(#42)。0 = 安全な向きだけ、3 = 判断が要る、1 = 読めない",
+    )
+    p.add_argument("--base", required=True, metavar="PATH", help="main の一覧(src/genmodelfit/data/db.json)")
+    p.add_argument("--head", required=True, metavar="PATH", help="マージしようとする一覧")
+    p.add_argument("--json", action="store_true", help="結果を JSON で出す")
+    args = p.parse_args(argv)
+    try:
+        r = merge_check(args.base, args.head)
+    except DatabaseError as e:
+        if args.json:
+            err = {"command": "merge-check", "error": str(e)}
+            sys.stdout.write(json.dumps(err, ensure_ascii=False) + "\n")
+        else:
+            print(f"error: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        sys.stdout.write(json.dumps(r, ensure_ascii=False) + "\n")
+    else:
+        print("SAFE" if r["safe"] else f"NOT SAFE: 判断が要る {r['judgement_needed']} 件")
+        for j in r["reasons"]:
+            print(f"  {j['id']}: {', '.join(j['reasons'])}")
+    return 0 if r["safe"] else MERGE_NOT_SAFE
+
+
+def _utf8_stdio() -> None:
+    """Windows の cp932 / cp1252 でも日本語の出力で落ちず、呼ぶ側が UTF-8 で読めるようにする(cli と同じ)。"""
+    import contextlib
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(AttributeError, ValueError, OSError):
+                stream.reconfigure(encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    _utf8_stdio()
+    if argv[:1] == ["merge-check"]:
+        return merge_check_main(argv[1:])
     p = argparse.ArgumentParser(
         prog="python -m genmodelfit.weekly",
         description="毎週の一覧の作り直し(上流から)・確かめ・差分と PR の本文を作る(公開はしない)。"

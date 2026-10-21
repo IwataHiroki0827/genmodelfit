@@ -73,9 +73,14 @@ class Database:
         }
 
     def save(self, path: Path) -> None:
+        dup = duplicate_ids(self.models)
+        if dup:
+            raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8", newline="\n"
+        )
         tmp.replace(path)
 
 
@@ -103,6 +108,16 @@ _ENTRY_TYPES = {
     "runtime": _OPT_STR,
     "description": (dict, type(None)),
     "card_languages": (list, type(None)),
+    # 確認の印(0.6.0、#42)。無い・null は確認済みとして扱う
+    "review": (dict, type(None)),
+}
+_REVIEW_TYPES = {
+    "status": _STR,
+    "reasons": (list,),
+    "decided_by": _OPT_STR,
+    "decided_at": _OPT_STR,
+    "evidence": (list,),
+    "note": _OPT_STR,
 }
 _FILE_TYPES = {
     "name": _STR,
@@ -146,8 +161,27 @@ def check_entry(d: Any, i: int) -> None:
     desc = d.get("description")
     if any(not isinstance(k, str) or not isinstance(v, str) for k, v in (desc or {}).items()):
         raise DatabaseError(f"{where} の description は {{言語: 文}} です: {desc!r}")
+    rv = d.get("review")
+    if rv is not None:
+        # status の値は確かめない(知らない値は ok でないので、確認待ちと同じく自動のおすすめに出ない)
+        _check_types(rv, _REVIEW_TYPES, f"{where}.review")
+        for key in ("reasons", "evidence"):
+            if not all(isinstance(x, str) for x in rv.get(key, [])):
+                raise DatabaseError(f"{where}.review の {key} は文字列の並びです")
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
+
+
+def duplicate_ids(models: list[Any]) -> list[str]:
+    """2 回以上出てくる ID(並びは最初に出た順)。"""
+    seen: set[str] = set()
+    dup: list[str] = []
+    for m in models:
+        i = m.get("id") if isinstance(m, dict) else getattr(m, "id", None)
+        if i in seen and i not in dup:
+            dup.append(i)
+        seen.add(i)
+    return dup
 
 
 def parse_db(data: dict[str, Any], origin: str) -> Database:
@@ -160,6 +194,10 @@ def parse_db(data: dict[str, Any], origin: str) -> Database:
         raise DatabaseError("models がありません")
     for i, m in enumerate(data["models"]):
         check_entry(m, i)
+    dup = duplicate_ids(data["models"])
+    if dup:
+        # 同じ ID が 2 つあると get() が片方だけを黙って選ぶ(差し替えた項目を紛れ込ませられる)。#42
+        raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
     try:
         models = [ModelEntry.from_dict(m) for m in data["models"]]
     except (TypeError, AttributeError, ValueError) as e:

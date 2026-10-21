@@ -222,6 +222,13 @@
    "runtime": 303,
    "description": 12,
    "from_card": 213
+  },
+  "review": {
+   "ok": 329,
+   "pending": 0,
+   "marked": {},
+   "rejected_skipped": 0,
+   "baseline": "baseline-2026-10-21"
   }
  },
  "models": [
@@ -311,6 +318,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7365943290
   },
   {
@@ -399,6 +414,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4928151562
   },
   {
@@ -482,6 +505,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4928151562
   },
   {
@@ -565,6 +596,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4930777530
   },
   {
@@ -645,6 +684,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 661859924
   },
   {
@@ -725,6 +772,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 661859924
   },
   {
@@ -916,6 +971,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 9288548984
   },
   {
@@ -1163,6 +1226,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 15203457100
   },
   {
@@ -1350,6 +1421,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3779190284
   },
   {
@@ -1519,6 +1598,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5485935084
   },
   {
@@ -1721,6 +1808,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 37054292422
   },
   {
@@ -1895,6 +1990,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 36197786782
   },
   {
@@ -2070,6 +2173,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18602766428
   },
   {
@@ -2241,6 +2352,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22273929236
   },
   {
@@ -2411,6 +2530,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34172641300
   },
   {
@@ -2672,6 +2799,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30930093390
   },
   {
@@ -2842,6 +2977,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34172222116
   },
   {
@@ -3012,6 +3155,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34172222116
   },
   {
@@ -3182,6 +3333,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34174211972
   },
   {
@@ -3352,6 +3511,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34174211972
   },
   {
@@ -3522,6 +3689,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17643437364
   },
   {
@@ -3748,6 +3923,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 35157790988
   },
   {
@@ -3834,6 +4017,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17236328572
   },
   {
@@ -4004,6 +4195,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34151796252
   },
   {
@@ -4231,6 +4430,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 50422916156
   },
   {
@@ -4458,6 +4665,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 50422916156
   },
   {
@@ -4684,6 +4899,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 33317186804
   },
   {
@@ -4910,6 +5133,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 33317186804
   },
   {
@@ -5136,6 +5367,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 33317186804
   },
   {
@@ -5308,6 +5547,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 50794654686
   },
   {
@@ -5477,6 +5724,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5777062286
   },
   {
@@ -5674,6 +5929,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5793465294
   },
   {
@@ -5897,6 +6160,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7121674470
   },
   {
@@ -6094,6 +6365,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5842835158
   },
   {
@@ -6234,6 +6513,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5628159702
   },
   {
@@ -6376,6 +6663,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21237777684
   },
   {
@@ -6518,6 +6813,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22294492532
   },
   {
@@ -6660,6 +6963,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21237777684
   },
   {
@@ -6772,6 +7083,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 24169695014
   },
   {
@@ -6913,6 +7232,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14686032392
   },
   {
@@ -7115,6 +7442,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41419739755
   },
   {
@@ -7276,6 +7611,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30998316546
   },
   {
@@ -7437,6 +7780,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30998316546
   },
   {
@@ -7604,6 +7955,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 51349051158
   },
   {
@@ -7835,6 +8194,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 32149409308
   },
   {
@@ -8006,6 +8373,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 74050831011
   },
   {
@@ -8180,6 +8555,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 56587268115
   },
   {
@@ -8323,6 +8706,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18819998282
   },
   {
@@ -8461,6 +8852,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 12383999628
   },
   {
@@ -8602,6 +9001,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 12451820124
   },
   {
@@ -8742,6 +9149,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18481646306
   },
   {
@@ -8882,6 +9297,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18347429362
   },
   {
@@ -9052,6 +9475,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 23883407028
   },
   {
@@ -9222,6 +9653,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 74050831011
   },
   {
@@ -9362,6 +9801,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18481646306
   },
   {
@@ -9529,6 +9976,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17746736091
   },
   {
@@ -9696,6 +10151,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17746736091
   },
   {
@@ -9863,6 +10326,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17726288651
   },
   {
@@ -10030,6 +10501,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17726288651
   },
   {
@@ -10138,6 +10617,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25422992018
   },
   {
@@ -10246,6 +10733,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17125317490
   },
   {
@@ -10406,6 +10901,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 29486333646
   },
   {
@@ -10566,6 +11069,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30091782492
   },
   {
@@ -10704,6 +11215,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26751125626
   },
   {
@@ -10869,6 +11388,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22010448036
   },
   {
@@ -11042,6 +11569,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19446072470
   },
   {
@@ -11215,6 +11750,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19107296990
   },
   {
@@ -11388,6 +11931,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19458252702
   },
   {
@@ -11527,6 +12078,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21781790658
   },
   {
@@ -11666,6 +12225,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21781790658
   },
   {
@@ -11803,6 +12370,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22261358212
   },
   {
@@ -11945,6 +12520,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22261358212
   },
   {
@@ -12052,6 +12635,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2069838542
   },
   {
@@ -12192,6 +12783,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13379919288
   },
   {
@@ -12332,6 +12931,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13379919280
   },
   {
@@ -12472,6 +13079,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13379919288
   },
   {
@@ -12612,6 +13227,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13379919280
   },
   {
@@ -12782,6 +13405,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22459228094
   },
   {
@@ -12952,6 +13583,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22459077566
   },
   {
@@ -13122,6 +13761,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22459192254
   },
   {
@@ -13252,6 +13899,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25936727174
   },
   {
@@ -13408,6 +14063,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 43222828674
   },
   {
@@ -13552,6 +14215,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13006811386
   },
   {
@@ -13696,6 +14367,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13006811386
   },
   {
@@ -13841,6 +14520,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13006811386
   },
   {
@@ -13986,6 +14673,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13006811386
   },
   {
@@ -14066,6 +14761,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10620231237
   },
   {
@@ -14239,6 +14942,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 16195631729
   },
   {
@@ -14377,6 +15088,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 15779025788
   },
   {
@@ -14515,6 +15234,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 15779025788
   },
   {
@@ -14657,6 +15384,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 20217198004
   },
   {
@@ -14766,6 +15501,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7837943801
   },
   {
@@ -14938,6 +15681,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31768107174
   },
   {
@@ -15137,6 +15888,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 35280539710
   },
   {
@@ -15309,6 +16068,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31768063166
   },
   {
@@ -15481,6 +16248,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 32428690534
   },
   {
@@ -15617,6 +16392,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17283091112
   },
   {
@@ -15785,6 +16568,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26754163364
   },
   {
@@ -15953,6 +16744,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26754163364
   },
   {
@@ -16121,6 +16920,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26754168129
   },
   {
@@ -16289,6 +17096,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26754168129
   },
   {
@@ -16490,6 +17305,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34034901246
   },
   {
@@ -16662,6 +17485,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30918720358
   },
   {
@@ -16835,6 +17666,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30918783646
   },
   {
@@ -17036,6 +17875,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31154900678
   },
   {
@@ -17208,6 +18055,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31021848039
   },
   {
@@ -17380,6 +18235,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30987169046
   },
   {
@@ -17644,6 +18507,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 37373929524
   },
   {
@@ -17846,6 +18717,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 36002662598
   },
   {
@@ -17992,6 +18871,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 50499531184
   },
   {
@@ -18193,6 +19080,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 32711969886
   },
   {
@@ -18279,6 +19174,14 @@
     "en": "A long-standing standard image model. It also runs on PCs with little GPU memory."
    },
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938078334
   },
   {
@@ -18421,6 +19324,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 20690152836
   },
   {
@@ -18563,6 +19474,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14581287732
   },
   {
@@ -18710,6 +19629,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 20690152836
   },
   {
@@ -18879,6 +19806,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 23791725244
   },
   {
@@ -19026,6 +19961,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 12168299735
   },
   {
@@ -19140,6 +20083,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 23589513510
   },
   {
@@ -19254,6 +20205,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 23589513510
   },
   {
@@ -19430,6 +20389,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25659352052
   },
   {
@@ -19516,6 +20483,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14934922866
   },
   {
@@ -19633,6 +20608,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13014060264
   },
   {
@@ -19744,6 +20727,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10627989432
   },
   {
@@ -19861,6 +20852,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13014060264
   },
   {
@@ -19944,6 +20943,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938081905
   },
   {
@@ -20144,6 +21151,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 32523146510
   },
   {
@@ -20344,6 +21359,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 51644262974
   },
   {
@@ -20516,6 +21539,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30843489374
   },
   {
@@ -20716,6 +21747,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31282309734
   },
   {
@@ -20885,6 +21924,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 30659266526
   },
   {
@@ -21085,6 +22132,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 51644257470
   },
   {
@@ -21285,6 +22340,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31154900678
   },
   {
@@ -21480,6 +22543,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31154900678
   },
   {
@@ -21627,6 +22698,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34874915900
   },
   {
@@ -21878,6 +22957,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 27795501024
   },
   {
@@ -22078,6 +23165,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31528430254
   },
   {
@@ -22279,6 +23374,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31154900678
   },
   {
@@ -22454,6 +23557,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 51254547750
   },
   {
@@ -22534,6 +23645,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 444473596
   },
   {
@@ -22612,6 +23731,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1336748056
   },
   {
@@ -22695,6 +23822,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1745546848
   },
   {
@@ -22833,6 +23968,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19090035068
   },
   {
@@ -22911,6 +24054,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2501605198
   },
   {
@@ -22991,6 +24142,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 661859924
   },
   {
@@ -23196,6 +24355,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26033802572
   },
   {
@@ -23308,6 +24475,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2040614770
   },
   {
@@ -23392,6 +24567,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1916645792
   },
   {
@@ -23496,6 +24679,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3959584518
   },
   {
@@ -23600,6 +24791,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 8836222790
   },
   {
@@ -23656,6 +24855,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 17716740096
   },
   {
@@ -23822,6 +25029,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 20757010672
   },
   {
@@ -24028,6 +25243,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38770076711
   },
   {
@@ -24188,6 +25411,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19882894142
   },
   {
@@ -24348,6 +25579,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19882894142
   },
   {
@@ -24508,6 +25747,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19882894104
   },
   {
@@ -24597,6 +25844,14 @@
     "en": "Makes songs with vocals or background music from a description of genre and mood plus lyrics. Japanese lyrics are supported."
    },
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10025478736
   },
   {
@@ -24757,6 +26012,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10025368944
   },
   {
@@ -24917,6 +26180,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14695999816
   },
   {
@@ -25013,6 +26284,14 @@
     "ko",
     "hi"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7699743341
   },
   {
@@ -25129,6 +26408,14 @@
     "ko",
     "hi"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7699743341
   },
   {
@@ -25245,6 +26532,14 @@
     "ko",
     "hi"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7699743341
   },
   {
@@ -25300,6 +26595,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 429496730
   },
   {
@@ -25439,6 +26742,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14327505696
   },
   {
@@ -25582,6 +26893,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14957602151
   },
   {
@@ -25725,6 +27044,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14957602151
   },
   {
@@ -25833,6 +27160,14 @@
     "zh",
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5347806922
   },
   {
@@ -25919,6 +27254,14 @@
     "zh",
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3960938800
   },
   {
@@ -26030,6 +27373,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5745535406
   },
   {
@@ -26197,6 +27548,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 35472652265
   },
   {
@@ -26370,6 +27729,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41045319115
   },
   {
@@ -26483,6 +27850,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 16128570524
   },
   {
@@ -26596,6 +27971,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 19158283132
   },
   {
@@ -26800,6 +28183,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31596283382
   },
   {
@@ -26913,6 +28304,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2528373448
   },
   {
@@ -27100,6 +28499,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 40916568234
   },
   {
@@ -27289,6 +28696,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 61457694696
   },
   {
@@ -27448,6 +28863,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 71524557424
   },
   {
@@ -27607,6 +29030,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 71524557424
   },
   {
@@ -27796,6 +29227,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 62439163728
   },
   {
@@ -28012,6 +29451,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 61385508306
   },
   {
@@ -28171,6 +29618,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 71524557424
   },
   {
@@ -28330,6 +29785,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 39369815704
   },
   {
@@ -28564,6 +30027,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 28830380381
   },
   {
@@ -28952,6 +30423,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 89677420197
   },
   {
@@ -29037,6 +30516,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1264219396
   },
   {
@@ -29243,6 +30730,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 52058874082
   },
   {
@@ -29300,6 +30795,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21474836480
   },
   {
@@ -29388,6 +30891,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10737418240
   },
   {
@@ -29739,6 +31250,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 57710342791
   },
   {
@@ -29797,6 +31316,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10737418240
   },
   {
@@ -30004,6 +31531,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25394780013
   },
   {
@@ -30184,6 +31719,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 46495526446
   },
   {
@@ -30391,6 +31934,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 52708319759
   },
   {
@@ -30539,6 +32090,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 9828025775
   },
   {
@@ -30654,6 +32213,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 16497704314
   },
   {
@@ -30710,6 +32277,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1073741824
   },
   {
@@ -30766,6 +32341,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5368709120
   },
   {
@@ -30822,6 +32405,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5368709120
   },
   {
@@ -30878,6 +32469,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5368709120
   },
   {
@@ -30956,6 +32555,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1336748056
   },
   {
@@ -31012,6 +32619,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 10737418240
   },
   {
@@ -31124,6 +32739,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2040614770
   },
   {
@@ -31208,6 +32831,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1916645792
   },
   {
@@ -31312,6 +32943,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3959584518
   },
   {
@@ -31393,6 +33032,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 68882302
   },
   {
@@ -31476,6 +33123,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1745546848
   },
   {
@@ -31532,6 +33187,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42949672960
   },
   {
@@ -31773,6 +33436,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 34271721758
   },
   {
@@ -31860,6 +33531,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1264219396
   },
   {
@@ -32066,6 +33745,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38770076711
   },
   {
@@ -32268,6 +33955,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 37054292422
   },
   {
@@ -32470,6 +34165,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 37054292422
   },
   {
@@ -32611,6 +34314,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 12665792679
   },
   {
@@ -32770,6 +34481,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41317185607
   },
   {
@@ -32928,6 +34647,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41231841239
   },
   {
@@ -33086,6 +34813,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41231841239
   },
   {
@@ -33282,6 +35017,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 27873231087
   },
   {
@@ -33538,6 +35281,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 46718834230
   },
   {
@@ -33766,6 +35517,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 45862328590
   },
   {
@@ -33935,6 +35694,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14696931838
   },
   {
@@ -34101,6 +35868,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 14696931838
   },
   {
@@ -34230,6 +36005,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38979586280
   },
   {
@@ -34444,6 +36227,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42958104950
   },
   {
@@ -34659,6 +36450,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42958104950
   },
   {
@@ -34873,6 +36672,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 40924115172
   },
   {
@@ -35076,6 +36883,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 43487785638
   },
   {
@@ -35290,6 +37105,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42958104950
   },
   {
@@ -35583,6 +37406,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 61468801844
   },
   {
@@ -35792,6 +37623,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 43914091388
   },
   {
@@ -36028,6 +37867,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 44909870140
   },
   {
@@ -36264,6 +38111,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 44909870140
   },
   {
@@ -36502,6 +38357,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 89136265680
   },
   {
@@ -36795,6 +38658,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 91206104222
   },
   {
@@ -37006,6 +38877,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 45524051446
   },
   {
@@ -37190,6 +39069,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 54055835190
   },
   {
@@ -37402,6 +39289,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 76763001798
   },
   {
@@ -37642,6 +39537,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 89136265680
   },
   {
@@ -37853,6 +39756,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 45524051446
   },
   {
@@ -38037,6 +39948,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 54055835190
   },
   {
@@ -38199,6 +40118,14 @@
     "it",
     "pt"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 53827813171
   },
   {
@@ -38473,6 +40400,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 46367285289
   },
   {
@@ -38660,6 +40595,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42030035159
   },
   {
@@ -38847,6 +40790,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42030035159
   },
   {
@@ -39031,6 +40982,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42030035159
   },
   {
@@ -39215,6 +41174,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42030035159
   },
   {
@@ -39402,6 +41369,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42030035159
   },
   {
@@ -39634,6 +41609,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 22479761079
   },
   {
@@ -39806,6 +41789,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 11486669395
   },
   {
@@ -39978,6 +41969,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42050336219
   },
   {
@@ -40234,6 +42233,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 44758462043
   },
   {
@@ -40490,6 +42497,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 28618927971
   },
   {
@@ -40720,6 +42735,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 29685622417
   },
   {
@@ -40954,6 +42977,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 28830380381
   },
   {
@@ -41189,6 +43220,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38033162727
   },
   {
@@ -41426,6 +43465,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 40046493159
   },
   {
@@ -41664,6 +43711,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38035806375
   },
   {
@@ -41903,6 +43958,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38033164103
   },
   {
@@ -42140,6 +44203,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38033162727
   },
   {
@@ -42339,6 +44410,14 @@
    "card_languages": [
     "es"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25242529435
   },
   {
@@ -42572,6 +44651,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 38031524327
   },
   {
@@ -42718,6 +44805,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18148611137
   },
   {
@@ -42863,6 +44958,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18146245513
   },
   {
@@ -43011,6 +45114,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18144966705
   },
   {
@@ -43205,6 +45316,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25645113843
   },
   {
@@ -43370,6 +45489,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 24907108099
   },
   {
@@ -43537,6 +45664,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25389377307
   },
   {
@@ -43777,6 +45912,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 50307624515
   },
   {
@@ -44035,6 +46178,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 57751314960
   },
   {
@@ -44293,6 +46444,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 57751314960
   },
   {
@@ -44551,6 +46710,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 57751314960
   },
   {
@@ -44724,6 +46891,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 42403051599
   },
   {
@@ -44924,6 +47099,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 43729709207
   },
   {
@@ -45182,6 +47365,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 57751314960
   },
   {
@@ -45385,6 +47576,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25394780013
   },
   {
@@ -45590,6 +47789,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25394780013
   },
   {
@@ -45758,6 +47965,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 41046635051
   },
   {
@@ -45930,6 +48145,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 11383047059
   },
   {
@@ -46102,6 +48325,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 11382899603
   },
   {
@@ -46175,6 +48406,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 8709520096
   },
   {
@@ -46311,6 +48550,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 26409042758
   },
   {
@@ -46478,6 +48725,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13875688436
   },
   {
@@ -46555,6 +48810,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938040682
   },
   {
@@ -46632,6 +48895,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4265314986
   },
   {
@@ -46711,6 +48982,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2132651866
   },
   {
@@ -46792,6 +49071,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13625742656
   },
   {
@@ -46867,6 +49154,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7256784376
   },
   {
@@ -46941,6 +49236,14 @@
    "runtime": null,
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4244178022
   },
   {
@@ -47024,6 +49327,14 @@
     "pt",
     "th"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938043264
   },
   {
@@ -47096,6 +49407,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18558640000
   },
   {
@@ -47223,6 +49542,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 25801402224
   },
   {
@@ -47301,6 +49628,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938078610
   },
   {
@@ -47377,6 +49712,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18157185200
   },
   {
@@ -47450,6 +49793,14 @@
    "runtime": null,
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2132625431
   },
   {
@@ -47526,6 +49877,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 6938143490
   },
   {
@@ -47605,6 +49964,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 12714452256
   },
   {
@@ -47680,6 +50047,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7224707264
   },
   {
@@ -47816,6 +50191,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 18788082940
   },
   {
@@ -47893,6 +50276,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2132626072
   },
   {
@@ -48027,6 +50418,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 13294875288
   },
   {
@@ -48135,6 +50534,14 @@
     "en": "A lightweight model that makes short background music and loop material (no vocals). Write prompts in English."
    },
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3457648943
   },
   {
@@ -48216,6 +50623,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2270384940
   },
   {
@@ -48319,6 +50734,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5478363963
   },
   {
@@ -48409,6 +50832,14 @@
     "ru",
     "de"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 988097824
   },
   {
@@ -48652,6 +51083,14 @@
     "gu",
     "fo"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 23386029088
   },
   {
@@ -48857,6 +51296,14 @@
     "tr",
     "vi"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 16979739072
   },
   {
@@ -48949,6 +51396,14 @@
     "es",
     "it"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 1811626576
   },
   {
@@ -49017,6 +51472,14 @@
    "runtime": null,
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3833402552
   },
   {
@@ -49135,6 +51598,14 @@
     "tr",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2143989928
   },
   {
@@ -49230,6 +51701,14 @@
     "ru",
     "ar"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 968588544
   },
   {
@@ -49338,6 +51817,14 @@
     "ur",
     "om"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3751321772
   },
   {
@@ -49431,6 +51918,14 @@
    "runtime": null,
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2276722304
   },
   {
@@ -49683,6 +52178,14 @@
     "zh",
     "zu"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 9309834930
   },
   {
@@ -49933,6 +52436,14 @@
     "zh",
     "zu"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5519235296
   },
   {
@@ -50012,6 +52523,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 327212226
   },
   {
@@ -50338,6 +52857,14 @@
     "zh",
     "zu"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2450344112
   },
   {
@@ -50464,6 +52991,14 @@
     "en",
     "zh"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 5408202454
   },
   {
@@ -50538,6 +53073,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 2035332888
   },
   {
@@ -50610,6 +53153,14 @@
    "card_languages": [
     "ko"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 207860748
   },
   {
@@ -50742,6 +53293,14 @@
     "tr",
     "vi"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 4580080592
   },
   {
@@ -50818,6 +53377,14 @@
     "vi",
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 187917664
   },
   {
@@ -50916,6 +53483,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 7133500964
   },
   {
@@ -50988,6 +53563,14 @@
    "card_languages": [
     "en"
    ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 55828077
   },
   {
@@ -51147,6 +53730,14 @@
     "en": "Natural, human-like Japanese text-to-speech with selectable voice styles (calm, lively, narrator). Japanese only. Aimed at NVIDIA GPUs. The card adds ethical restrictions to the MIT license (no impersonation, no deepfakes or misinformation)."
    },
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 3500634824
   },
   {
@@ -51250,6 +53841,14 @@
     "en": "A light, fast text-to-speech voice (Tsukuyomi-chan, piper-plus). Reads Japanese and English right away, even on a PC without a GPU. The voice data has its own terms (credit line and output restrictions)."
    },
    "card_languages": null,
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 39659618
   },
   {
@@ -51382,6 +53981,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 31497521610
   },
   {
@@ -51514,6 +54121,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 37777193202
   },
   {
@@ -51616,6 +54231,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 58918453144
   },
   {
@@ -51720,6 +54343,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 15646703530
   },
   {
@@ -51795,6 +54426,14 @@
    "runtime": "comfyui",
    "description": {},
    "card_languages": [],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
    "total_size_bytes": 21734103566
   }
  ]

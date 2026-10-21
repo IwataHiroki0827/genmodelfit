@@ -58,8 +58,8 @@ def weekly():
 
 def test_weekly_trigger(weekly):
     on = _on(weekly)
-    assert on["schedule"] == [{"cron": "0 3 * * 1"}]
-    assert "workflow_dispatch" in on and set(on) == {"schedule", "workflow_dispatch"}
+    # #42: 定期の実行はやめ、手動の予備だけ(毎週の更新はオーナーの PC のスキル)
+    assert set(on) == {"workflow_dispatch"}
     assert weekly["concurrency"]["cancel-in-progress"] is False
 
 
@@ -123,3 +123,8 @@ def test_data_yml_only_signs_main(weekly):
     assert "genmodelfit.weekly" not in text
     assert _on(data)["push"]["paths"] == ["src/genmodelfit/data/db.json"]
     assert data["jobs"]["sign"]["if"] == "github.ref == 'refs/heads/main'"
+    # #42: 署名の前に確認待ちの項目を除く(0.5.x は review を知らない)
+    runs = [st.get("run", "") for st in _steps(data["jobs"]["sign"])]
+    i_pub = next(i for i, r in enumerate(runs) if "python -m genmodelfit.review publish" in r)
+    i_sign = next(i for i, r in enumerate(runs) if "genmodelfit.signing sign" in r)
+    assert i_pub < i_sign

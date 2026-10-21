@@ -147,7 +147,7 @@ llmfit の weekly-model-update.yml にならい、上流から作り直した一
 マージした一覧だけ**(作り直しと公開を分ける)。
 
 ```text
-weekly-data.yml(毎週月曜 03:00 UTC)→ PR automated/weekly-data → 作者が見てマージ
+weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC のスキル)→ PR automated/weekly-data → 作者が見てマージ
   → data.yml が main の db.json に署名して data-latest に置く → 使う側は genmodelfit update --from-release
 ```
 
@@ -206,7 +206,79 @@ weekly-data.yml(毎週月曜 03:00 UTC)→ PR automated/weekly-data → 作者�
 - **消えた項目**(上流から消えた・検索の上位から外れた)
 - **新しく無検閲の印が付いた項目**の根拠(未成年の性的表現を目的とするものは除外する。docs/sources.md)
 - 実測のあるモデルのファイルが変わっていたら、`python -m genmodelfit.calibrate` で直す PR を別に作る
+- **確認待ち(review)の項目**と、`review approve` で付けた根拠(`evidence`)の URL(#42。下の「毎週のスキル」)
 - 全部の違いは artifact の `diff.json`(形は docs/schema.md「diff」)
+
+### 毎週のスキル(genmodelfit-weekly、#42)
+
+2026-10-21 のオーナーの決定: 毎週の更新は、オーナーの PC で Claude Code のスキル `genmodelfit-weekly` が行う
+(Windows のタスク スケジューラで週 1 回)。**weekly-data.yml の定期の実行(schedule)はやめた**。手動の予備
+(workflow_dispatch)としてだけ残す。
+
+動かし方(オーナーの PC。起動スクリプトと設定はリポジトリの外に置く):
+
+- 起動スクリプト: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1`(PowerShell 7 が要る: `#Requires -Version 7`)
+- Claude の設定: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`(Read は専用のクローンの中だけ、
+  WebFetch は huggingface.co・github.com・raw.githubusercontent.com だけ)。Claude は `--restricted --tools Read Grep Glob WebFetch
+  --strict-mcp-config` で呼ぶ(実行系の道具・ユーザーの設定・MCP は使えない)。approve は別のモデル(opus)が同じ制限で確かめ直す
+- 専用のクローン: `C:\workspace\genmodelfit-weekly`(開発用の作業フォルダとは分ける。毎回 main に合わせ、venv を作り直す)
+- タスクの登録(毎週月曜 9:00、ログオン中に実行):
+  `schtasks /Create /TN genmodelfit-weekly /SC WEEKLY /D MON /ST 09:00 /TR "pwsh.exe -NoProfile -File %USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1"`
+- ログ: `%LOCALAPPDATA%\genmodelfit-weekly\logs`(直近 26 回)。失敗したら Issue「毎週の更新が失敗しました」が立ち、次に成功したら閉じる
+- 試すとき: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush`(GitHub に何も出さない)。別の版の中身で試すなら `-Ref origin/<ブランチ> -NoPush`
+
+役割を分ける:
+
+- **Claude(スキル)はファイルを書き換えず、コマンドも動かさない**(2026-10-21 のオーナーの決定。読むだけと、
+  Hugging Face・GitHub の WebFetch だけ)。実行役が渡す `review_queue.json` の確認待ちの項目
+  (id・name・modality・reasons・ファイルごとの repo・path・license・license_url・homepage・card_url)を一次資料
+  (ライセンスの原文・モデルカード・上流のリポジトリ)で確かめ、判断の一覧の JSON だけを返す:
+
+  ```json
+  {"decisions": [
+    {"id": "hf:org/model", "action": "approve", "evidence": ["https://huggingface.co/org/model/blob/main/LICENSE"], "note": "Apache-2.0 の原文を確かめた"},
+    {"id": "hf:org/other", "action": "reject", "note": "非商用だけ", "safety": false},
+    {"id": "hf:org/unclear", "action": "hold", "note": "カードにライセンスの記載なし"}
+  ]}
+  ```
+
+  理由が安全(未成年の性的表現など)の reject は `"safety": true`(名前を残さず sha256 だけ記録する)。
+  分からないものは hold(pending のまま。自動のおすすめにも data-latest にも出ない)
+- **実行役のスクリプト**(オーナーの PC。スキルの外)が、作り直し・試験・判断の当て込み・merge-check・PR を行う:
+  1. `python -m genmodelfit.weekly --out <dir> --apply src/genmodelfit/data/db.json`(引き継ぎの元と比べる元は main の
+     db.json)。終了コードが 1 なら止める(`result.json` の `problems`)
+  2. `<dir>/review_queue.json` を Claude に渡し、判断の一覧を受け取る
+  3. `python -m genmodelfit.review apply <decisions.json> --db src/genmodelfit/data/db.json --max-approve 10 --json`。
+     形を厳しく確かめ(知らない鍵・action、確認待ちでない id、同じ id、根拠の無い approve、https でホストのない根拠、
+     500 文字を超える・制御文字を含む note、approve の上限超え)、1 つでもおかしければ何も当てない(終了コード 2)。
+     approve は `decided_by: claude-weekly`。出る要約(件数と項目ごとの結果)の文字は `weekly.md` で無害にしてあり、
+     PR の本文にそのまま置ける
+  4. ブランチにコミットして push し、PR を作る。**機械の確かめがすべて通ったときだけ**マージする:
+  - 変わったファイルが `src/genmodelfit/data/db.json` だけ(approve・reject を当てた週は status が変わるので、
+    下の条件で必ずオーナーが見る)
+  - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
+    終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
+  - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)
+  - CI が通った
+  
+  どれかが通らなければマージせず、**オーナーが PR を見てマージする**(本文の「分類」「確認待ち」の節と、
+  `review approve` が残した `evidence`)
+- マージの後の署名と公開は data.yml が行う(いままでどおり)。**配る一覧からは確認待ちの項目を除く**
+  (`python -m genmodelfit.review publish`。0.5.x は `review` を知らず、確認待ちを自動のおすすめに出してしまうため)
+
+安全な週の条件: classification が safe(前から確認待ちのまま変わらない項目は含んでよい)。分類は**許すものの表**で
+決める(docs/schema.md「diff」の classification): 人気の数(`downloads`・`downloads_all_time`・`likes`・テンプレートの
+`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ファイルが大きくなる、ライセンスが厳しくなる、
+消えた項目、自動のおすすめから外れた項目、`sources` の数、確認待ちのまま変わらない項目。それ以外の変化(知らない項目も)は
+すべて判断が要る。HEAD が直って自動のおすすめに戻ったものは、どのファイルの URL・sha256 も変わっていないときだけ安全。
+
+決めたこと:
+
+- pending の項目も main の一覧には入る(0.6.0 以降の `recommend` / `fit` / `info` には出る)。自動のおすすめ(gate)は
+  `reviewed` で保留にする。アプリは `entry.review is None or entry.review.status == "ok"` で絞る
+- 承認には https でホストのある根拠の URL が 1 つ以上要る(無ければ断る)
+- `review reject` した項目は `data/review_rejected.txt` に残り、`update` は作り直しても入れない
+- 同梱の一覧は 0.6.0 で全部 `ok`(`decided_by: baseline-2026-10-21`)から始めた
 
 ### 手元で同じ流れを試す
 
@@ -230,7 +302,7 @@ weekly-data.yml(毎週月曜 03:00 UTC)→ PR automated/weekly-data → 作者�
   `gh api repos/laxshmate/genmodelfit/actions/permissions/workflow`(`can_approve_pull_request_reviews` が true)。
   この設定は名前のとおり**承認(approve)も許す**(GitHub に PR の作成だけを許す設定は無い)。weekly-data.yml は
   承認しない(`gh pr review` も auto-merge も使わない。tests/test_workflows.py が検査)。レビューとマージは作者が行う
-- **60 日リポジトリに動き(コミットなど)が無いと、GitHub は schedule のワークフローを止める**。止まったら
+- (定期の実行をやめたので今は関係しない)**60 日リポジトリに動き(コミットなど)が無いと、GitHub は schedule のワークフローを止める**。止まったら
   Actions の「Weekly data」で「Enable workflow」を押すか、手動実行(workflow_dispatch)すると戻る
 - ラベル `automated`・`data-update` を作る(ワークフローも作ろうとするが、`pull-requests: write` だけでは
   作れないことがある): `gh label create automated -R laxshmate/genmodelfit`、`gh label create data-update -R laxshmate/genmodelfit`

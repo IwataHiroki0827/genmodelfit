@@ -25,6 +25,7 @@ SUBCOMMANDS = [
     "download",
     "diff",
     "contrib",
+    "review",
 ]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 
@@ -40,7 +41,7 @@ HEADER = [
     "Mode",
     "Disk",
     "License",
-    "Auto",
+    "Verified",
 ]
 
 

@@ -350,7 +350,7 @@ class RecordingFetcher:
     def _save(self, url: str, text: str) -> None:
         p = self.root / url_to_relpath(url)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
+        p.write_text(text, encoding="utf-8", newline="\n")
 
     def get_json(self, url: str) -> Any:
         data = self.inner.get_json(url)
