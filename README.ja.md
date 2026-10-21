@@ -32,9 +32,11 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 
 ### 動く環境
 
-- Windows か Linux、Python 3.10 以上。
-- GPU: 今は NVIDIA(CUDA)だけです。NVIDIA の GPU が無い PC と、どの PyTorch の CUDA 版も動かない古い GPU は、
-  CPU だけとして判定します。AMD・Intel の GPU は表示だけで、判定には使いません
+- Windows・Linux・macOS、Python 3.10 以上。
+- GPU: NVIDIA(CUDA)は実測で確かめています。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・
+  Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、macOS 14 以降)を
+  推定で判定します(段階は Good まで)。それ以外の GPU(Intel UHD・Iris Xe、古い AMD)と GPU の無い PC は CPU だけとして
+  判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と判定します
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md))。
 
 ### 入れ方
@@ -205,7 +207,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 | Prec | 載る中で一番良い精度(fp16・bf16・fp8・int8 など) |
 | VRAM | その動かし方で要る GiB。`m` = 実際に動かして測った値 |
 | Mem% | VRAM の使用率(CPU ならメモリ)。`RAM` = PC のメモリが足りない |
-| Mode | `GPU` 全部 GPU、`GPU~` 部品を順に載せ替え、`GPU+RAM` メモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない |
+| Mode | `GPU` 全部 GPU、`GPU~` 部品を順に載せ替え、`GPU+RAM` メモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない(`GPU req` は使える GPU が無いので動かない、`RAM` はメモリ不足) |
 | Disk | ダウンロードの大きさ(GiB)。幅が足りないと最初に外すので、100 桁では `info` か `--json` で見る |
 | License | ファイルのライセンス(`other` = 自分で原文を読む) |
 | Verified | `yes` = 自動でおすすめに出せる。それ以外は最初に落ちた条件(`license`・`workflow`・`review` など) |

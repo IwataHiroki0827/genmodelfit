@@ -248,6 +248,19 @@ def _mem_cell(e, system) -> Text:
     return Text(f"{shown}%" if shown <= 999 else ">999", style=style)
 
 
+def mode_cell(e, system) -> str:
+    """表の Mode。JSON の run_mode_label(mode_label)に加えて、動かない理由を短く出す(0.7.0、#22):
+    RAM = メインメモリが足りない、GPU req = 使える GPU が無いので動かない(GPU が要る)。"""
+    label = mode_label(e, system)
+    if label != "-" or e.fit != "too_tight" or e.unknown_size:
+        return label
+    if _ram_short(e, system):
+        return "RAM"
+    if system is not None and system.vram_gb <= 0:
+        return "GPU req"
+    return label
+
+
 def _use_cell(f, grouped: bool) -> Text:
     use = getattr(f, "use", "") or "?"  # 用途が分からない
     n = len(getattr(f, "workflows", []) or []) if grouped else 0
@@ -322,7 +335,7 @@ def build_table(
             CONTENT_COLUMN: Text("N", style="magenta") if m.content == "uncensored" else Text("Y"),
             "VRAM": _vram_cell(e, system),
             "Mem%": _mem_cell(e, system),
-            "Mode": Text(mode_label(e, system), style="red" if e.fit == "too_tight" else ""),
+            "Mode": Text(mode_cell(e, system), style="red" if e.fit == "too_tight" else ""),
             "Disk": Text(_gb(e.disk_gb) if e.disk_gb else "?"),
             "License": Text(m.license or "?"),
             "Verified": _auto_cell(f.gate),
@@ -331,16 +344,51 @@ def build_table(
     return t
 
 
+BACKEND_LABEL = {"cuda": "CUDA", "rocm": "ROCm", "xpu": "XPU", "mps": "MPS"}
+
+
+def _unusable_gpus(system) -> list[str]:
+    """判定に使えなかった GPU の説明(「Intel(R) UHD Graphics 770 (integrated; not usable for generation →
+    judged as CPU)」)。NVIDIA は nvidia-smi で見つけたもの、ほかは画面の部品の一覧から。"""
+    out: list[str] = []
+    seen: set[str] = set()
+    for g in system.gpus:
+        if g.name not in seen:
+            seen.add(g.name)
+            out.append(f"{g.name} (not usable for generation → judged as CPU)")
+    for a in getattr(system, "other_gpus", []) or []:
+        if (
+            a.name in seen or a.vendor == "unknown"
+        ):  # 会社の分からない画面(Microsoft の基本の画面など)は出さない
+            continue
+        seen.add(a.name)
+        kind = "integrated; " if a.integrated else ""
+        if getattr(a, "needs", None):  # OS の版だけで断った GPU は、使えるようにする条件を出す
+            out.append(f"{a.name} ({kind}needs {a.needs} for generation → judged as CPU)")
+        else:
+            out.append(f"{a.name} ({kind}not usable for generation → judged as CPU)")
+    return out
+
+
 def pc_line(system) -> str:
-    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed。"""
+    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed。
+    使える GPU が無ければ、見つけた GPU とその扱い(CPU として判定した)を出す(0.7.0、#22)。"""
     g = system.best_gpu
-    if g:
+    if g and g.vendor != "nvidia":
+        backend = BACKEND_LABEL.get(g.backend, g.backend)
+        memory = getattr(g, "memory", "dedicated")
+        if memory == "unified":
+            gpu = f"{g.name} (unified memory; {g.vram_total_gb:.1f} GiB for the GPU, {backend}, estimated)"
+        elif memory == "shared":
+            gpu = f"{g.name} (integrated; {g.vram_total_gb:.1f} GiB shared with RAM, {backend}, estimated)"
+        else:
+            gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM ({backend}, estimated)"
+    elif g:
         free = f" ({g.vram_free_gb:.1f} free)" if g.vram_free_gb is not None else ""
         gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
-    elif system.gpus:
-        gpu = f"no usable GPU ({system.gpus[0].name}: see `genmodelfit system`) (CPU only)"
     else:
-        gpu = "no GPU (CPU only)"
+        found = _unusable_gpus(system)
+        gpu = "; ".join(found) if found else "no GPU (CPU only)"
     if "vram" in system.overrides:
         gpu = (
             f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)"
@@ -352,6 +400,17 @@ def pc_line(system) -> str:
     else:
         ram = f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)"
     return f"PC: {gpu}, {ram}"
+
+
+def no_gpu_line(system, hidden: Mapping[str, int], fits: Sequence = ()) -> str:
+    """使える GPU が無いときの 1 行(0.7.0、#22)。GPU があれば空。"""
+    if system is None or system.vram_gb > 0:
+        return ""
+    tools = hidden.get("tools", 0)
+    tail = f" ({tools} tools hidden: --include-tools)" if tools else ""
+    if any(f.estimate.fit == "too_tight" for f in fits):
+        return f"This PC has no usable GPU: models marked GPU req need one{tail}"
+    return f"This PC has no usable GPU: only models that run on CPU are shown{tail}"
 
 
 def hidden_text(hidden: Mapping[str, int]) -> str:
@@ -387,11 +446,25 @@ def legend(
     grouped: bool = True,
     order: str = "auto",
     with_content: bool | None = None,
+    system=None,
 ) -> list[str]:
+    system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
+    best = system.best_gpu if system is not None else None
+    non_nvidia = best is not None and best.vendor != "nvidia"
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
+        *(
+            ["Mode for no run: GPU req = needs a GPU (none usable here), RAM = not enough system RAM."]
+            if system_marks
+            else []
+        ),
         "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
+        *(
+            ["Level caps: AMD / Intel / Apple GPUs are estimates (no measurements), at most Good."]
+            if non_nvidia
+            else []
+        ),
         "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.",
     ]
     if grouped:
@@ -451,6 +524,9 @@ def print_fit_table(
 
     if system is not None:
         say(pc_line(system))
+        line = no_gpu_line(system, hidden, fits)
+        if line:
+            say(line)
     count = f"{len(fits)} of {matched}" if matched != len(fits) else str(len(fits))
     head = f"{title}: {count}" if title else count
     say(" ".join(x for x in (head, hidden_text(hidden)) if x), "bold")
@@ -468,5 +544,5 @@ def print_fit_table(
         say("(no match / 該当なし)")
     else:
         con.print(build_table(fits, width=con.width, system=system, **kw))
-    for n in [*(legend(fits, hidden, grouped, order, kw["with_content"]) if fits else []), *notes]:
+    for n in [*(legend(fits, hidden, grouped, order, kw["with_content"], system) if fits else []), *notes]:
         say(n, "dim")

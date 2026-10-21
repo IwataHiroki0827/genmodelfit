@@ -7,7 +7,10 @@
 - 判定に使う GPU は nvidia-smi で確かめた NVIDIA の GPU だけ(レジストリには取り外した GPU も残るため)。
   そのうち、今の PyTorch が動かない世代(Kepler 以前など)と、どの PyTorch も動かない古いドライバの GPU は
   backend を none にして CPU として判定する(理由は Gpu.notes と SystemInfo.notes)
-- NVIDIA 以外の GPU(Windows は WMI + レジストリ、Linux は lspci)は知らせるだけで、判定には使わない。
+- NVIDIA 以外の GPU(Windows は WMI + レジストリ、Linux は lspci + sysfs、macOS は system_profiler)は、
+  NVIDIA の GPU が使えないときだけ、一次資料の対応表(AMD の ROCm・Intel の XPU・Apple の MPS)で
+  ComfyUI + PyTorch が動く組み合わせなら判定に使う(0.7.0、#22)。
+  対応しないものは理由を付けて CPU として判定する。
   NVIDIA の GPU が見つかったときは既定では調べない(PowerShell の起動に約 1 秒かかるため。
   `system --all-gpus` で調べる)
 - メモリは物理メモリと仮想メモリ(Windows はページファイルの設定とコミット、Linux はスワップ)
@@ -30,7 +33,7 @@ from pathlib import Path
 
 import psutil
 
-from .models import Adapter, Gpu, SystemInfo
+from .models import USABLE_BACKENDS, Adapter, Gpu, SystemInfo
 
 GIB = 1024**3
 MIB = 1024**2
@@ -799,9 +802,10 @@ _LSPCI_LINE = re.compile(
 )
 
 
-def parse_lspci(text: str, vram_of=None) -> list[Adapter]:
-    """`lspci -Dnn` の出力から画面の部品(クラス 03xx)を読む。vram_of(slot) で sysfs の VRAM を引ける。
-    差し場所(slot)は VRAM を引くのに使うだけで残さない。"""
+def parse_lspci(text: str, vram_of=None, gtt_of=None) -> list[Adapter]:
+    """`lspci -Dnn` の出力から画面の部品(クラス 03xx)を読む。vram_of(slot) で sysfs の VRAM を、
+    gtt_of(slot) で amdgpu の GTT(メインメモリから使える分)を引ける。
+    差し場所(slot)は sysfs を引くのに使うだけで残さない。"""
     out: list[Adapter] = []
     for line in text.splitlines():
         m = _LSPCI_LINE.match(line.strip())
@@ -816,8 +820,12 @@ def parse_lspci(text: str, vram_of=None) -> list[Adapter]:
         )
         product = re.search(r"\[([^\]]+)\]\s*$", desc)  # "GA104 [GeForce RTX 3070]" の括弧の中が製品名
         label = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}.get(vendor, "")
-        name = " ".join(x for x in (label, product.group(1) if product else desc) if x) or "GPU"
+        prod = product.group(1) if product else desc
+        if label and prod.lower().startswith(label.lower() + " "):  # 「Meteor Lake-P [Intel Arc Graphics]」
+            label = ""
+        name = " ".join(x for x in (label, prod) if x) or "GPU"
         vram = vram_of(m.group("slot")) if vram_of else None
+        gtt = gtt_of(m.group("slot")) if gtt_of else None
         out.append(
             Adapter(
                 name=name,
@@ -825,16 +833,16 @@ def parse_lspci(text: str, vram_of=None) -> list[Adapter]:
                 vram_gb=round(vram / GIB, 2) if vram else None,
                 vram_source="sysfs" if vram else None,
                 source="lspci",
+                shared_gb=round(gtt / GIB, 2) if gtt else None,
             )
         )
     return out
 
 
-def _sysfs_vram(slot: str) -> int | None:
-    """Linux の amdgpu が出す VRAM の量(mem_info_vram_total)。"""
+def _sysfs_value(slot: str, leaf: str) -> int | None:
     if not re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", slot, flags=re.I):
         return None
-    text = _read_text(f"/sys/bus/pci/devices/{slot}/mem_info_vram_total")
+    text = _read_text(f"/sys/bus/pci/devices/{slot}/{leaf}")
     try:
         v = int((text or "").strip())
     except ValueError:
@@ -842,9 +850,50 @@ def _sysfs_vram(slot: str) -> int | None:
     return v if v >= _MIN_PLAUSIBLE_VRAM else None
 
 
+def _sysfs_vram(slot: str) -> int | None:
+    """Linux の amdgpu が出す VRAM の量(mem_info_vram_total。APU は BIOS で取り分けた分)。"""
+    return _sysfs_value(slot, "mem_info_vram_total")
+
+
+def _sysfs_gtt(slot: str) -> int | None:
+    """Linux の amdgpu の GTT(GPU がメインメモリから使える分。mem_info_gtt_total)。"""
+    return _sysfs_value(slot, "mem_info_gtt_total")
+
+
+def parse_system_profiler(text: str) -> list[Adapter]:
+    """macOS の `system_profiler SPDisplaysDataType -json` を読む。Apple silicon の GPU は名前が
+    「Apple M2 Pro」などで、メモリは統合メモリ(大きさは psutil の搭載量 = sysctl hw.memsize で見る)。"""
+    try:
+        data = json.loads(text.strip() or "null")
+    except ValueError:
+        return []
+    items = data.get("SPDisplaysDataType") if isinstance(data, dict) else None
+    out: list[Adapter] = []
+    for d in items if isinstance(items, list) else []:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("sppci_model") or d.get("_name") or "").strip()
+        if not name:
+            continue
+        vendor_raw = str(d.get("spdisplays_vendor") or d.get("sppci_vendor") or "").lower()
+        low = name.lower()
+        if "apple" in vendor_raw or re.match(r"apple [ma]\d", low):
+            vendor = "apple"
+        elif "amd" in vendor_raw or "ati" in vendor_raw or "radeon" in low:
+            vendor = "amd"
+        elif "intel" in vendor_raw or "intel" in low:
+            vendor = "intel"
+        elif "nvidia" in vendor_raw or "nvidia" in low:
+            vendor = "nvidia"
+        else:
+            vendor = "unknown"
+        out.append(Adapter(name=name, vendor=vendor, source="system_profiler", integrated=vendor == "apple"))
+    return out
+
+
 def detect_other_gpus() -> tuple[list[Adapter], list[str]]:
-    """NVIDIA 以外も含めた画面の部品。Windows は PowerShell の WMI + レジストリ、Linux は lspci。
-    失敗・時間切れは黙って飛ばす(空のまま)。"""
+    """NVIDIA 以外も含めた画面の部品。Windows は PowerShell の WMI + レジストリ、Linux は lspci + sysfs、
+    macOS は system_profiler。失敗・時間切れは黙って飛ばす(空のまま)。"""
     if os.name == "nt":
         r = _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _PS_WMI], OTHER_GPU_TIMEOUT)
         if r is None or r[0] != 0:
@@ -854,11 +903,366 @@ def detect_other_gpus() -> tuple[list[Adapter], list[str]]:
         r = _run(["lspci", "-Dnn"], OTHER_GPU_TIMEOUT)
         if r is None or r[0] != 0:
             return [], []
-        return parse_lspci(r[1], _sysfs_vram), []
+        return parse_lspci(r[1], _sysfs_vram, _sysfs_gtt), []
+    if platform.system() == "Darwin":
+        r = _run(["system_profiler", "SPDisplaysDataType", "-json"], OTHER_GPU_TIMEOUT)
+        if r is None or r[0] != 0:
+            return [], []
+        return parse_system_profiler(r[1]), []
     return [], []
 
 
+# --- NVIDIA 以外の GPU の対応表(docs/hardware.md「NVIDIA 以外の GPU」。2026-10-21 に一次資料で確かめた)
+#
+# ComfyUI(Comfy-Org/ComfyUI b1a247c の README「AMD GPUs (Linux)」「AMD GPUs (Windows, ROCm 10.0)」
+# 「Intel GPUs (Windows and Linux)」「Apple Mac silicon」)が案内する PyTorch で動く組み合わせだけを使う。
+# 実測は 0 件なので、段階は推定で、印は「推定(<会社>・実測なし)」。段階は good までにする(estimate.py)。
+
+# AMD: ComfyUI の Windows の案内は「RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」(AMD の multi-arch 版 PyTorch、
+# Windows 11)。TheRock の SUPPORTED_GPUS.md(4639f91)は Linux・Windows とも RDNA 1〜4 を Release Ready にして
+# いるが、ComfyUI の案内に合わせて RDNA 2 以降(と Linux の Instinct)だけを使う。
+# pytorch.org の ROCm 版(Linux だけ。ComfyUI の Linux の案内)は v2.14.1 の .ci/docker/manywheel/build.sh の
+# PYTORCH_ROCM_ARCH の gfx だけを入れる。それ以外の RDNA 2(gfx1031〜1036 など)は TheRock の版を使う、
+# と notes に書く
+AMD_ARCH: dict[str, str] = {
+    **dict.fromkeys(("gfx1200", "gfx1201"), "RDNA 4"),
+    **dict.fromkeys(("gfx1150", "gfx1151", "gfx1152", "gfx1153"), "RDNA 3.5"),
+    **dict.fromkeys(("gfx1100", "gfx1101", "gfx1102", "gfx1103"), "RDNA 3"),
+    **dict.fromkeys(("gfx1030", "gfx1031", "gfx1032", "gfx1033", "gfx1034", "gfx1035", "gfx1036"), "RDNA 2"),
+    **dict.fromkeys(("gfx1010", "gfx1011", "gfx1012"), "RDNA 1"),
+    **dict.fromkeys(("gfx908", "gfx90a", "gfx942", "gfx950"), "CDNA"),
+    **dict.fromkeys(("gfx900", "gfx906", "gfx90c"), "GCN 5"),
+}
+AMD_SUPPORTED_ARCH = ("RDNA 2", "RDNA 3", "RDNA 3.5", "RDNA 4")  # Windows・Linux
+# 対象の世代でも使わない gfx: 画面を出すための 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 の
+# デスクトップ、Mendocino の 610M)と Van Gogh(Steam Deck)。生成では CPU より速い見込みが無い(判断。実測なし)
+AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036", "gfx1033"})
+AMD_LINUX_ONLY_ARCH = ("CDNA",)  # Instinct は Linux だけ(ComfyUI の Windows の案内は Radeon だけ)
+PYTORCH_ROCM_LINUX_GFX = frozenset(
+    {
+        "gfx900",
+        "gfx906",
+        "gfx908",
+        "gfx90a",
+        "gfx942",
+        "gfx950",
+        "gfx1030",
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1103",
+        "gfx1200",
+        "gfx1201",
+        "gfx1150",
+        "gfx1151",
+    }
+)
+# RDNA 2 以前は bf16 を持たない。ComfyUI は fp16 を持たない系統でも bf16 で計算する(should_use_bf16 の
+# manual_cast。model_management.py の AMD_RDNA2_AND_OLDER_ARCH)ので、作業用メモリは倍にならない。VAE は fp32
+AMD_NO_BF16_ARCH = ("RDNA 2", "RDNA 1", "GCN 5")
+
+# AMD の GPU 名(Windows の WMI・Linux の lspci の製品名・開発名)→ (gfx, 内蔵か)。上から順に試す。
+# 製品名と gfx は TheRock の RELEASES.md「GFX target lookup table」(4639f91)による
+_AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
+    (r"rx\s*9070|ai pro r9[67]00|navi\s*48", "gfx1201", False),
+    (r"rx\s*90[456]0|navi\s*44", "gfx1200", False),  # RX 9060 / 9060 XT は Navi 44
+    (r"8060s|8050s|8040s|strix halo", "gfx1151", True),
+    (r"890m|880m|strix(?! halo)", "gfx1150", True),
+    (r"860m|840m|krackan", "gfx1152", True),
+    (r"820m", "gfx1153", True),
+    (r"rx\s*7[67]00[sm]\b|rx\s*7600m xt", "gfx1102", False),  # ノート用の RX 7700S / 7600S / 7600M は Navi 33
+    (r"rx\s*7900|pro w7[89]00|navi\s*31", "gfx1100", False),
+    (r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32", "gfx1101", False),
+    (r"rx\s*76[05]0|pro w7[56]00|navi\s*33", "gfx1102", False),
+    (r"780m|760m|740m|phoenix|hawk point", "gfx1103", True),
+    # ノート用(M・S)は同じ番号でも石が違う: RX 6850M XT / 6800M / 6700M は Navi 22、RX 6800S / 6700S / 6650M /
+    # 6600M / 6600S は Navi 23、RX 6550M / 6500M / 6450M / 6300M は Navi 24
+    (r"rx\s*6[78][05]0m\b", "gfx1031", False),
+    (r"rx\s*6[678]00s\b|rx\s*66[05]0m\b", "gfx1032", False),
+    (r"rx\s*6[345][05]0m\b", "gfx1034", False),
+    (r"rx\s*6[89]\d0|pro w6800|pro v620|navi\s*21", "gfx1030", False),
+    (r"rx\s*67\d0|navi\s*22", "gfx1031", False),
+    (r"rx\s*66\d0|pro w6600|navi\s*23", "gfx1032", False),
+    (r"rx\s*6[45]00|navi\s*24", "gfx1034", False),
+    (r"680m|660m|rembrandt", "gfx1035", True),
+    (r"610m|raphael|granite ridge", "gfx1036", True),
+    (r"van gogh", "gfx1033", True),
+    (r"rx\s*5[67]\d0|navi\s*10", "gfx1010", False),
+    (r"rx\s*5[35]00|pro w5500|navi\s*14", "gfx1012", False),
+    (r"mi35\dx?", "gfx950", False),
+    (r"mi3[02]\dx?|mi300a", "gfx942", False),
+    (r"mi2[15]0x?", "gfx90a", False),
+    (r"mi100", "gfx908", False),
+    (r"radeon vii|radeon pro vii|mi[56]0\b|vega\s*20", "gfx906", False),
+)
+# 名前が「AMD Radeon(TM) Graphics」だけの内蔵 GPU は、CPU の名前で決める(上から順に試す。迷うものは入れない)
+_AMD_CPU_IGPU: tuple[tuple[str, str], ...] = (
+    (r"ryzen ai max", "gfx1151"),
+    (r"ryzen ai 9 (hx )?3[67]\d", "gfx1150"),
+    (r"ryzen ai [57] (pro )?3[3-5]\d", "gfx1152"),
+    # Dragon Range(7x45HX)・Fire Range(9x55HX / 9x50HX)は 2 CU の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY_GFX)
+    (r"ryzen [3579] (pro )?7\d45hx3?d?\b|ryzen [3579] (pro )?9\d5[05]hx3?d?\b", "gfx1036"),
+    (r"ryzen [3579] (pro )?[78]\d4\d(u|hs|h)\b|ryzen [3579] (pro )?8[5-7]00g", "gfx1103"),
+    (r"ryzen [3579] (pro )?(6[89]\d0|7[37]35)(u|hs|h|hx)\b", "gfx1035"),
+)
+
+# Intel: PyTorch 2.14 の「Getting Started on Intel GPU」(https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html)
+# の Client GPUs(Windows 11・Ubuntu 24.04/26.04・WSL2)の検証済みの部品だけ。
+# UHD・Iris Xe・「Intel(R) Graphics」
+# (Arrow Lake-S などの Xe-LPG)は入らない。(名前の形, 系統, 内蔵か, 名前から推す VRAM の下限 GiB)
+_INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = (
+    (r"arc.*\ba770\b", "Arc A-Series (Alchemist)", False, 8.0),  # 8 GB 版と 16 GB 版があるので少ないほう
+    (r"arc.*\ba750\b|arc.*\ba580\b", "Arc A-Series (Alchemist)", False, 8.0),
+    (r"arc.*\ba380\b", "Arc A-Series (Alchemist)", False, 6.0),
+    (r"arc.*\ba310\b", "Arc A-Series (Alchemist)", False, 4.0),
+    # ノート用の A770M / A730M / A570M / A550M / A370M / A350M も Alchemist の外付け
+    (r"arc.*\bpro a\d{2}m?\b|arc.*\ba\d{3}m\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
+    (r"arc.*\bb580\b", "Arc B-Series (Battlemage)", False, 12.0),
+    (r"arc.*\bb570\b", "Arc B-Series (Battlemage)", False, 10.0),
+    (r"arc.*\bpro b60\b", "Arc B-Series (Battlemage)", False, 24.0),
+    (r"arc.*\bpro b50\b", "Arc B-Series (Battlemage)", False, 16.0),
+    (r"battlemage|\bbmg\b", "Arc B-Series (Battlemage)", False, None),
+    (r"arc.*\bb3\d0\b|panther lake", "Core Ultra Series 3 (Panther Lake)", True, None),
+    (r"arc.*\b1[34]0v\b|lunar lake", "Core Ultra Series 2 (Lunar Lake)", True, None),
+    (r"arc.*\b1[34]0t\b|arrow lake-[hp]", "Core Ultra Series 2 (Arrow Lake-H)", True, None),
+    (r"^(intel )?arc graphics$|meteor lake", "Core Ultra (Meteor Lake-H)", True, None),
+)
+
+# 内蔵 GPU・APU(Apple 以外)が使えるメインメモリの割合。Linux は TTM が GPU に貸すページの上限を
+# 「約 50% of the total system memory」にする(torvalds/linux a804c57 drivers/gpu/drm/ttm/ttm_device.c:88〜92。
+# amdgpu の GTT の既定はこの値: docs.kernel.org の amdgpu の gttsize「-1 = Use value specified by TTM」)。
+# Windows の共有 GPU メモリも物理メモリの約半分(docs/hardware.md)。Linux の amdgpu は sysfs の
+# mem_info_gtt_total が読めればそれを使う
+SHARED_MEMORY_SHARE = 0.5
+# Apple silicon の統合メモリのうち GPU に使うとみなす割合。ComfyUI は MPS では搭載量の全部を
+# GPU のメモリとして数える(model_management.py の get_total_memory・vram_state SHARED)が、
+# macOS は GPU が性能を落とさずに使える量
+# (Metal の recommendedMaxWorkingSetSize)を搭載量より小さくし、OS・ComfyUI 自身もメモリを使うので、
+# 3/4 とした(判断で決めた値で、実測していない。docs/accuracy.md)
+UNIFIED_MEMORY_SHARE = 0.75
+MACOS_MIN_FOR_MPS = (14, 0)  # Apple「Accelerated PyTorch training on Mac」: macOS 14.0 or later(PyTorch 2.11)
+
+VENDOR_LABEL = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}
+
+
+@dataclass(frozen=True)
+class Host:
+    """GPU の対応を決めるのに使う、この PC の OS と CPU(試験では差し替える)。"""
+
+    system: str  # Windows / Linux / Darwin
+    windows_build: int | None = None
+    mac_version: tuple[int, ...] | None = None
+    cpu: str = ""
+
+
+def host_info() -> Host:
+    system = platform.system()
+    build = None
+    mac = None
+    if system == "Windows":
+        parts = platform.version().split(".")
+        build = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else None
+    elif system == "Darwin":
+        mac = parse_version(platform.mac_ver()[0]) or None
+    return Host(system=system, windows_build=build, mac_version=mac, cpu=_cpu_name())
+
+
+def _low(name: str) -> str:
+    n = name.lower()
+    for mark in ("(tm)", "(r)", "™", "®"):
+        n = n.replace(mark, " ")
+    return " ".join(n.split())
+
+
+def amd_gfx(name: str, cpu: str = "") -> tuple[str, bool] | None:
+    """AMD の GPU 名 → (gfx, 内蔵か)。
+    名前が「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前で決める。"""
+    n = _low(name)
+    for pat, gfx, integrated in _AMD_NAMES:
+        if re.search(pat, n):
+            return gfx, integrated
+    if re.fullmatch(r"(amd )?radeon graphics", n):
+        c = _low(cpu)
+        for pat, gfx in _AMD_CPU_IGPU:
+            if re.search(pat, c):
+                return gfx, True
+    return None
+
+
+def intel_xpu(name: str) -> tuple[str, bool, float | None] | None:
+    """Intel の GPU 名 → (系統, 内蔵か, 名前から推す VRAM の下限)。PyTorch の XPU 版の対象でなければ None。"""
+    n = _low(name)
+    for pat, label, integrated, floor in _INTEL_XPU:
+        if re.search(pat, n):
+            return label, integrated, floor
+    return None
+
+
+def _windows_ok(host: Host) -> bool:
+    """Windows 11 と分かるか(版が分からなければ使わない側にする)。"""
+    return host.windows_build is not None and host.windows_build >= WINDOWS_11_BUILD
+
+
+def _shared_pool(a: Adapter, ram_gb: float) -> tuple[float, str]:
+    """内蔵 GPU・APU が使えるメモリ(GiB)と、その説明。取り分けた VRAM(BIOS の UMA)+ 共有の分。"""
+    dedicated = a.vram_gb or 0.0
+    if a.shared_gb:
+        return dedicated + a.shared_gb, f"取り分けた VRAM {dedicated:g} GB + GTT {a.shared_gb:g} GB(sysfs)"
+    share = ram_gb * SHARED_MEMORY_SHARE
+    return dedicated + share, (
+        f"取り分けた VRAM {dedicated:g} GB + メインメモリの {SHARED_MEMORY_SHARE:.0%}({share:.1f} GB)"
+    )
+
+
+def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
+    """NVIDIA 以外の画面の部品を対応表で判定し、a.usable・a.integrated・a.reason を書く。
+    ComfyUI + PyTorch が動く組み合わせなら判定に使う Gpu を返す(推定で、段階は good まで)。
+    ram_gb は内蔵 GPU・Apple の共有の分を決めるメインメモリ(--ram で上書きしたらその値)。"""
+    if a.vendor == "nvidia":
+        return None  # NVIDIA は nvidia-smi で決める
+    a.needs = None  # 判定し直すたびに消す(同じ部品を別の PC の条件で判定し直すことがある)
+    label = VENDOR_LABEL.get(a.vendor, "")
+    tag = f"推定({label}・実測なし)" if label else "推定(実測なし)"
+
+    def refuse(why: str) -> None:
+        a.usable = False
+        a.reason = why + "ので、CPU として判定した"
+
+    gfx = None
+    arch = None
+    if a.vendor == "amd":
+        found = amd_gfx(a.name, host.cpu)
+        if found is None and re.search(r"\bdevice [0-9a-f]{4}\b", _low(a.name)):
+            # Linux の pci.ids が古いと「AMD Device 7551」になる。型番の ID からは引かない(表を持たない)
+            refuse(
+                f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)"
+            )
+            return None
+        if found is None:
+            if re.fullmatch(r"(amd )?radeon graphics", _low(a.name)):
+                a.integrated = True  # CPU の名前でも世代が決まらない内蔵 GPU
+            refuse(f"{a.name} は世代(gfx)が名前から分からない")
+            return None
+        gfx, a.integrated = found
+        arch = AMD_ARCH.get(gfx, "?")
+        if host.system == "Darwin":
+            refuse("macOS の AMD の GPU は PyTorch の MPS 版の対象ではない(Apple silicon だけ)")
+            return None
+        if host.system not in ("Windows", "Linux"):
+            refuse(f"{host.system} の ROCm 版 PyTorch は無い")
+            return None
+        if not (arch in AMD_SUPPORTED_ARCH or (host.system == "Linux" and arch in AMD_LINUX_ONLY_ARCH)):
+            refuse(
+                f"{a.name}({arch}・{gfx})は ComfyUI が案内する ROCm 版 PyTorch の対象(RDNA 2 以降)に入らない"
+            )
+            return None
+        if gfx in AMD_DISPLAY_ONLY_GFX:
+            refuse(f"{a.name}({gfx})は画面を出すための小さな内蔵 GPU で、生成では CPU より速い見込みが無い")
+            return None
+        if host.system == "Windows" and not _windows_ok(host):
+            if host.windows_build is not None:  # 版が分からないときは条件を言わない
+                a.needs = "Windows 11"
+            refuse(
+                "AMD の GPU の Windows 版 PyTorch(ROCm)は Windows 11 が要る"
+                "(ComfyUI の案内。版が分からなくても使わない)"
+            )
+            return None
+        notes = [f"{tag}: ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで"]
+        if host.system == "Linux" and gfx not in PYTORCH_ROCM_LINUX_GFX:
+            notes.append(
+                f"{gfx} は pytorch.org の ROCm 版には入っていないので、"
+                "AMD の multi-arch 版(TheRock)の PyTorch を使う"
+            )
+        if host.system == "Windows":
+            notes.append(
+                "Windows では AMD の multi-arch 版 PyTorch(ROCm 10)か ComfyUI の AMD 版 portable を使う"
+            )
+        backend, bf16 = "rocm", arch not in AMD_NO_BF16_ARCH
+    elif a.vendor == "intel":
+        found_i = intel_xpu(a.name)
+        if found_i is None:
+            if re.search(r"uhd|iris|hd graphics|^intel graphics$", _low(a.name)):
+                a.integrated = True
+            refuse(
+                f"{a.name} は PyTorch の XPU 版が対象にする Intel の GPU"
+                "(Arc A / B シリーズ、Core Ultra の Arc Graphics)に入らない"
+            )
+            return None
+        series, a.integrated, floor = found_i
+        if host.system not in ("Windows", "Linux"):
+            refuse(f"{host.system} の XPU 版 PyTorch は無い")
+            return None
+        if host.system == "Windows" and not _windows_ok(host):
+            if host.windows_build is not None:  # 版が分からないときは条件を言わない
+                a.needs = "Windows 11"
+            refuse(
+                "Intel の GPU の XPU 版 PyTorch は Windows 11 で確かめられている"
+                "(Windows 10・版が分からないときは対象外)"
+            )
+            return None
+        notes = [f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで"]
+        if not a.integrated and not a.vram_gb and floor:
+            a.vram_gb, a.vram_source = floor, "name"
+            notes.append(f"VRAM の量が読めないので、名前から {floor:g} GB(少ないほうの版)とみなした")
+        backend, bf16 = "xpu", True
+    elif a.vendor == "apple":
+        a.integrated = True
+        if host.system != "Darwin":
+            refuse("Apple の GPU は macOS でだけ使える")
+            return None
+        if host.mac_version is None or host.mac_version < MACOS_MIN_FOR_MPS:
+            refuse(
+                "PyTorch の MPS 版は macOS 14.0 以降が要る(この PC の macOS は 14 より前か、版が分からない)"
+            )
+            return None
+        notes = [f"{tag}: MPS 版 PyTorch で動く組み合わせとして判定した。段階は good まで"]
+        backend, bf16 = "mps", True
+    else:
+        refuse(f"{a.name} は会社が分からない")
+        return None
+
+    if a.vendor == "apple":
+        pool, memory = ram_gb * UNIFIED_MEMORY_SHARE, "unified"
+        notes.append(
+            f"統合メモリ {ram_gb:.1f} GB のうち {UNIFIED_MEMORY_SHARE:.0%}({pool:.1f} GB)を"
+            "GPU が使えるとみなした"
+            "(残りは OS・ComfyUI 自身の分。逃がす先も同じメモリなので、逃がす動かし方は無い)"
+        )
+    elif a.integrated:
+        pool, how = _shared_pool(a, ram_gb)
+        memory = "shared"
+        notes.append(
+            f"内蔵 GPU・APU なので、GPU が使えるメモリを {pool:.1f} GB とみなした({how})。"
+            "逃がす先も同じメモリなので、逃がす動かし方は無い"
+        )
+    else:
+        if not a.vram_gb:
+            refuse(f"{a.name} の VRAM の量が読めない")
+            return None
+        pool, memory = a.vram_gb, "dedicated"
+    if pool <= 0:
+        refuse(f"{a.name} が使えるメモリの量が分からない")
+        return None
+    a.usable = True
+    a.reason = notes[0]
+    return Gpu(
+        name=a.name,
+        vendor=a.vendor,
+        vram_total_gb=round(pool, 2),
+        backend=backend,
+        arch=arch,
+        compute_dtype="fp16",
+        bf16=bf16,
+        fp8=False,
+        notes=notes,
+        memory=memory,
+        gfx_target=gfx,
+        carveout_gb=round(a.vram_gb or 0.0, 2) if memory == "shared" else None,
+    )
+
+
 def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
+    """画面の部品の注意。judged_gpu は NVIDIA の GPU(cuda)で判定するか。"""
     notes = []
     for a in adapters:
         if a.vendor == "nvidia":
@@ -870,14 +1274,11 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
                     "(NVIDIA のドライバを入れると GPU で判定できる)"
                 )
             continue
-        vram = f"(VRAM {a.vram_gb:g} GB)" if a.vram_gb else ""
-        label = {"amd": "AMD", "intel": "Intel"}.get(a.vendor, "NVIDIA 以外")
+        vram = f"(VRAM {a.vram_gb:g} GB)" if a.vram_gb and a.vram_source != "name" else ""
         if judged_gpu:
-            notes.append(f"{a.name}{vram} を見つけた。{label} の GPU は判定に使わない(v0.1 は NVIDIA だけ)")
-        else:
-            notes.append(
-                f"{a.name}{vram} を見つけた。v0.1 は NVIDIA の GPU だけを判定するので、CPU として判定した"
-            )
+            notes.append(f"{a.name}{vram} を見つけた。NVIDIA の GPU があるので判定に使わない")
+        elif a.usable is False:
+            notes.append(f"{a.name}{vram}: {a.reason}")
     return notes
 
 
@@ -1037,12 +1438,14 @@ def detect(
     *,
     other_gpus: bool | None = None,
     memory: Memory | None = None,
+    host: Host | None = None,
 ) -> SystemInfo:
     """PC を調べる。vram_gb / ram_gb を渡すと、その値で上書きする(別の PC を想定した判定用)。
 
     gpus を渡すと nvidia-smi を使わない(試験・組み込み用)。other_gpus は NVIDIA 以外の GPU を調べるか:
     None(既定)は nvidia-smi で NVIDIA の GPU が見つからず、VRAM を上書きしていないときだけ調べる。
-    memory を渡すとメモリを調べない(試験用)。"""
+    判定に使える NVIDIA の GPU が無く VRAM を上書きしていなければ、見つけた AMD・Intel・Apple の GPU を対応表
+    (classify_adapter)で判定に使う。memory を渡すとメモリを、host を渡すと OS・CPU を調べない(試験用)。"""
     notes: list[str] = []
     if gpus is None:
         found, gpu_notes = detect_gpus()
@@ -1092,18 +1495,39 @@ def detect(
         else:
             found = []
 
+    ram_total = mem.total / GIB
+    if ram_gb is not None:
+        ram_total = ram_gb
+
     adapters: list[Adapter] = []
-    has_nvidia = any(g.vendor == "nvidia" for g in found)
+    # NVIDIA の GPU が使えない(見つからない・Kepler・古いドライバ)ときは既定で調べる
+    # (AMD・Intel を判定に使うため)
+    usable_nvidia = any(g.backend == "cuda" for g in found)
     want_other = (
-        other_gpus if other_gpus is not None else (gpus is None and not has_nvidia and vram_gb is None)
+        other_gpus if other_gpus is not None else (gpus is None and not usable_nvidia and vram_gb is None)
     )
     if want_other:
         adapters, other_notes = detect_other_gpus()
         notes += other_notes
         judged = any(g.backend == "cuda" for g in found)
+        if (
+            not judged and vram_gb is None
+        ):  # NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で見る
+            h = host or host_info()
+            for a in adapters:
+                g = classify_adapter(a, h, ram_total)
+                if g is not None:
+                    found.append(g)
+            usable = [g for g in found if g.backend in USABLE_BACKENDS]
+            if usable:
+                best = max(usable, key=lambda x: (x.memory == "dedicated", x.vram_total_gb))
+                notes += [f"{best.name}: {n}" for n in best.notes]
+                if len(usable) > 1:
+                    notes.append(
+                        f"使える GPU が複数ある。判定は {best.name} で行った"
+                        "(専用の VRAM の GPU を先に、その中で最大)"
+                    )
         notes += _other_gpu_notes(adapters, judged)
-    if platform.system() == "Darwin" and not found:
-        notes.append("macOS の GPU(Apple)は v0.1 では判定しないので、CPU として判定した")
 
     ram_total = mem.total / GIB
     ram_avail = mem.available / GIB

@@ -117,6 +117,45 @@ class Vae:
     source: str
 
 
+@dataclass(frozen=True)
+class CpuRun:
+    """GPU なしでも ComfyUI の CPU の動き(`--cpu`、GPU の無い PC では自動)で動くとした系統(#39)。"""
+
+    family: str
+    modalities: tuple[str, ...]  # この種類のときだけ(sd の系統の SVD = 動画は入れない)
+    evidence: str  # 根拠(一次資料と、推定であること)
+    speed: str | None = None  # 遅さの目安(実測があれば理由に出す)。今はどれも実測が無いので None
+    exclude: str | None = None  # ID・名前がこれに当たるものは除く(CPU で確かめていない大きな版)
+
+
+# CPU で動く系統。重みの大きさの一律の上限(estimate.CPU_MAX_WEIGHTS_GB)より大きくても、メインメモリが足りれば
+# marginal(CPU、遅い)にする。ComfyUI は CPU では本体と VAE を fp32 で持つ(model_management.py の
+# should_use_fp16 / should_use_bf16 が CPU では False: b1a247c の 1902・1969 行。
+# unet_dtype・vae_dtype が float32)。
+# テキストエンコーダは fp16 のまま(text_encoder_dtype の 1261 行)。見積もりは estimate._judge_cpu
+CPU_FAMILIES: dict[str, CpuRun] = {
+    r.family: r
+    for r in (
+        CpuRun(
+            "sd",
+            ("image",),
+            "ComfyUI は GPU が無ければ CPU で動く(README の Windows Portable「running on your CPU only」、"
+            "comfy/cli_args.py の --cpu)。SD 1.5 / 2.x / SDXL は ComfyUI の組み込みの系統で、"
+            "CUDA 専用の部品を使わない(推定。CPU での実測なし)",
+            exclude=r"supir",  # SUPIR(SDXL を使う高解像度化)は独自のノードで、CPU で動くか確かめていない
+        ),
+        CpuRun(
+            "stable_audio",
+            ("music", "sfx"),
+            "ComfyUI は GPU が無ければ CPU で動き、Stable Audio は組み込みの StableAudio の系統"
+            "(推定。CPU での実測なし。"
+            "AI生成キットの記録に「効果音(GPU/CPU)」があるが、モデル・時間の記録は無い)",
+            exclude=r"medium",  # Stable Audio 3 Medium は大きく、CPU で動くか確かめていない
+        ),
+    )
+}
+
+
 # VAE → working_dtypes(sd.py。既定は [bfloat16, float32]: sd.py:516。2D の KL VAE は既定のまま)
 VAES: dict[str, Vae] = {
     v.key: v

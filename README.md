@@ -32,9 +32,11 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 
 ### Requirements
 
-- Windows or Linux, Python 3.10 or newer.
-- GPU: NVIDIA (CUDA) only for now. PCs without one, and GPUs too old for any PyTorch CUDA build, are judged as CPU-only.
-  AMD / Intel GPUs are listed but not used for judging
+- Windows, Linux or macOS, Python 3.10 or newer.
+- GPU: NVIDIA (CUDA) as measured. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or newer, Windows 11 / Linux),
+  Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon (MPS, macOS 14 or newer) are
+  judged as estimates (at most Good). Other GPUs (Intel UHD / Iris Xe, older AMD) and PCs without a GPU are judged as
+  CPU-only; SD-family image models and Stable Audio count as running on CPU (slow)
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
 
 ### Install
@@ -206,7 +208,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 | Prec | the best precision that fits (fp16, bf16, fp8, int8, …) |
 | VRAM | GiB needed in that mode; `m` = measured on a real run |
 | Mem% | share of VRAM used (of RAM on CPU); `RAM` = system RAM is short |
-| Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run |
+| Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
 | Disk | download size (GiB); dropped first when the width is short, so at 100 columns see `info` or `--json` |
 | License | license of the files (`other` = read it yourself) |
 | Verified | `yes` = can be recommended automatically; otherwise the first failed check (`license`, `workflow`, `review`, …) |

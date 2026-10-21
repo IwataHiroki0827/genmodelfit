@@ -163,7 +163,9 @@ DIR_ROLE = {
 _TTS = re.compile(r"\b(tts|text to speech|speech|voice clon\w*)\b", re.IGNORECASE)
 _SFX = re.compile(r"\b(sound effects?|sfx|foley)\b", re.IGNORECASE)
 _MUSIC = re.compile(r"\b(music|song|songs|instrumentals?)\b", re.IGNORECASE)
-_UNCENSORED = re.compile(r"(?<![a-z0-9])(uncensored|nsfw|abliterated)(?![a-z0-9])", re.IGNORECASE)
+_UNCENSORED = re.compile(
+    r"(?<![a-z0-9])(uncensored|nsfw|abliterated|heretic|unfiltered)(?![a-z0-9])", re.IGNORECASE
+)
 _NFAA = "not-for-all-audiences"
 
 
@@ -638,7 +640,7 @@ def mark_template_content(e: ModelEntry, t: dict[str, Any], client: HfClient) ->
 
 # 無検閲: pipeline_tag ごとに「not-for-all-audiences のタグ」と「名前の語」で探す
 UNCENSORED_PIPELINES = tuple(PIPELINES)
-UNCENSORED_SEARCH_WORDS = ("uncensored", "nsfw", "abliterated")
+UNCENSORED_SEARCH_WORDS = ("uncensored", "nsfw", "abliterated", "heretic", "unfiltered")
 # テンプレートで足りない種類を HF の人気順で補う(読み上げはローカルのテンプレートが無い。効果音は 1 件だけ)
 SFW_QUERIES = (
     ("tts", {"pipeline_tag": "text-to-speech"}),

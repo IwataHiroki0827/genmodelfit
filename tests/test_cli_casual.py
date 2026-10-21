@@ -185,8 +185,13 @@ def test_pc_line_and_sections(cache):
 
 def test_cpu_only_sections_say_when_nothing_runs(cache):
     out = run_cli(["recommend", "--vram", "0", "--ram", "16", "--no-cache"], cache).stdout.decode("utf-8")
-    assert "== image (画像): no model runs on this PC with these filters" in out
+    assert "== 3d (3D): no model runs on this PC with these filters" in out
     assert "== tts (読み上げ): top 3 of " in out
+    # #39: SD 系と Stable Audio は GPU なしでも CPU で動く(marginal)。
+    # #22: 使える GPU が無いことを 1 行で知らせる
+    assert "== image (画像): top " in out and "SDXL1.0 Base" in out
+    assert "This PC has no usable GPU: only models that run on CPU are shown" in out
+    assert all(len(line) <= 100 for line in out.splitlines())
 
 
 def test_search(cache):

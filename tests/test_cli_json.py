@@ -51,6 +51,9 @@ GPU = {
     "bf16",
     "fp8",
     "notes",
+    "memory",  # 0.7.0(#22。後から足した項目)
+    "gfx_target",
+    "carveout_gb",
 }
 DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {
@@ -112,6 +115,8 @@ ESTIMATE = {
     "limits",
     "vram_free_short",
     "unknown_size",
+    "fit_from",  # 0.7.0(#26。後から足した項目)
+    "measured_peak_vram_gb",
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる
 GATE = {"auto", "held_by", "comfyui_version", "checks"}

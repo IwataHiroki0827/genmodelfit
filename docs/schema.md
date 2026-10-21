@@ -50,15 +50,15 @@ credentials never attached (tests/test_privacy.py).
 | `os`, `cpu` | str | |
 | `cpu_cores` | int | logical threads |
 | `ram_total_gb`, `ram_available_gb` | float | GiB |
-| `gpus` | Gpu[] | only GPUs confirmed by `nvidia-smi` (v0.1 counts NVIDIA CUDA only) |
-| `best_gpu` | Gpu \| null | the GPU used for judging: the largest-VRAM GPU whose `backend` is `cuda`. null → judged as CPU |
+| `gpus` | Gpu[] | NVIDIA GPUs confirmed by `nvidia-smi`, and (0.7.0, #22) AMD / Intel / Apple GPUs that the support table in `docs/hardware.md` accepts when no NVIDIA GPU is usable |
+| `best_gpu` | Gpu \| null | the GPU used for judging: the largest-VRAM GPU whose `backend` is `cuda`; without one, a `rocm` / `xpu` / `mps` GPU (dedicated VRAM first, then the largest). null → judged as CPU |
 | `disk_free_gb` | float \| null | free space at the home directory (or `--disk-path`) |
 | `overrides` | str[] | `vram` / `ram` when overridden |
 | `swap_total_gb` | float \| null | current page file (Windows) / swap (Linux, zram excluded) size |
 | `swap_max_gb` | float \| null | how far it can grow: the fixed page file maximum, 0 for none, the Linux swap size. null = unknown or system managed |
 | `swap_auto` | bool \| null | true = system-managed page file (grows) / macOS. false = fixed size or none. null = unknown |
 | `commit_limit_gb`, `commit_used_gb` | float \| null | Windows commit limit (RAM + page file) and current commit (`GlobalMemoryStatusEx`) |
-| `other_gpus` | Adapter[] | display adapters of any vendor (informational, **never used for judging**). Empty unless checked |
+| `other_gpus` | Adapter[] | display adapters of any vendor. AMD / Intel / Apple ones are classified (`usable`, `reason`); usable ones also appear in `gpus` when no NVIDIA GPU is usable. Empty unless checked |
 | `other_gpus_checked` | bool | whether `other_gpus` was looked up: by default only when `nvidia-smi` found no NVIDIA GPU and `--vram` is not given; always with `system --all-gpus` |
 | `notes` | str[] | what detection found or could not find (Japanese): why a GPU is judged as CPU, old driver, non-NVIDIA GPUs, page file, WSL / container limits |
 
@@ -70,11 +70,11 @@ Gpu:
 
 | key | type | meaning |
 |---|---|---|
-| `name`, `vendor` | str | `vendor` is `nvidia` |
-| `vram_total_gb` | float | 0 when nvidia-smi does not report it (then `backend` is `none`) |
+| `name`, `vendor` | str | `vendor` is `nvidia` / `amd` / `intel` / `apple` |
+| `vram_total_gb` | float | 0 when nvidia-smi does not report it (then `backend` is `none`). For `memory` `shared` / `unified`, the memory the GPU is taken to use (`docs/hardware.md`「共有メモリ」) |
 | `vram_free_gb`, `vram_used_gb` | float \| null | free now / used now by other apps (screen, browser, …). null when overridden or not reported |
 | `driver` | str \| null | driver version as nvidia-smi prints it |
-| `backend` | str | `cuda` (used for judging) / `none` (not used: generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`) |
+| `backend` | str | `cuda` / `rocm` (AMD) / `xpu` (Intel) / `mps` (Apple silicon): used for judging. `none`: not used (generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`). `rocm` / `xpu` / `mps` are new in 0.7.0 (#22) and always estimates (levels capped at Good) |
 | `compute_capability` | str \| null | e.g. `"8.6"` |
 | `compute_capability_source` | str \| null | `nvidia-smi` / `name` (guessed from the GPU name when nvidia-smi is too old) |
 | `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell` (`fermi` / `unknown`) |
@@ -82,10 +82,17 @@ Gpu:
 | `compute_dtype` | str \| null | what ComfyUI computes in on this GPU by default: `fp16` / `bf16` / `fp32` (fp32 doubles working memory). null when `backend` is `none` or the generation is unknown |
 | `bf16`, `fp8` | bool \| null | bf16 / fp8 compute support as ComfyUI sees it (null as above). Without bf16, model families that ComfyUI never runs in fp16 compute in fp32 (`docs/hardware.md`) |
 | `notes` | str[] | reasons and cautions for this GPU |
+| `memory` | str | (0.7.0) `dedicated` (own VRAM) / `shared` (integrated GPU or APU using system RAM) / `unified` (Apple silicon). Shared and unified GPUs never offload (`GPU+RAM`) |
+| `gfx_target` | str \| null | (0.7.0) AMD LLVM target, e.g. `gfx1100` |
+| `carveout_gb` | float \| null | (0.7.0) for `memory: shared`, the VRAM the BIOS sets aside (not part of `ram_total_gb`); the RAM check counts only GPU use above it. null otherwise |
 
-Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `unknown`), `vram_gb` (Windows: registry
-`HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; null if unknown),
-`vram_source` (`registry` / `wmi` / `sysfs` / null), `source` (`wmi` / `lspci`).
+Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` / `unknown`), `vram_gb` (Windows: registry
+`HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; Intel Arc on Linux: the
+smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` / `wmi` / `sysfs` / `name` / null),
+`source` (`wmi` / `lspci` / `system_profiler`). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
+null for NVIDIA, which `nvidia-smi` decides), `reason` (Japanese sentence: why it is or is not used), `shared_gb`
+(Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
+`"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
 
 ## Data status / 一覧の新しさ
 
@@ -421,6 +428,8 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present. Stays two-valued for compatibility; the finer level is `basis_detail` |
 | `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions, at least 2 consistent ones without OOM, same settings) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Community measurements and `torch_reserved` measurements are lower bounds: they can only **raise** the needs (never lower VRAM / RAM, never improve the level, never raise the score). Community rows without an approved submission raise the needs by at most 15% over the estimate without community data (`estimate.COMMUNITY_RAISE_CAP`), and are ignored on a PC where they would change the level or run mode. When such a value is below the estimate without it, the value is not used: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
+| `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`: a successful standard measurement at the same settings on a GPU of the same vendor whose VRAM is at most this PC's (within 3%: nominal 16 vs reported 15.9) sets the level to at least Good — Perfect only when its peak is within 60% of this VRAM and it was neither pinned at the GPU limit nor a lower-bound metric. The measured peak must also fit this PC's VRAM. Other users' measurements never do this, and a measurement from another vendor's GPU only calibrates (`basis: estimated`). The run mode is then `gpu` and the reasons say which decided |
+| `measured_peak_vram_gb` | float \| null | (0.7.0) that measurement's peak VRAM when `fit_from` is `measurement` (the table's VRAM column shows it with `m`) |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |

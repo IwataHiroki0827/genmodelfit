@@ -7,7 +7,76 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
+Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_version` stays 1.
+
+### Added
+
+- **AMD / Intel / Apple GPUs are judged** (Issues #22, #23) when no NVIDIA GPU is usable, from a support table built
+  from primary sources (docs/hardware.md「NVIDIA 以外の GPU」): AMD ROCm for RDNA 2 / 3 / 3.5 / 4 on Windows 11 and Linux
+  (and Instinct on Linux), Intel XPU for Arc A / B and Core Ultra Arc Graphics on Windows 11 and Linux, Apple MPS on
+  macOS 14+. They are estimates: reasons say `推定(<vendor>・実測なし)` and levels are capped at Good. Integrated GPUs
+  and APUs use dedicated VRAM + GTT (or half of RAM), Apple silicon 3/4 of unified memory; they never offload.
+  Unsupported GPUs (Intel UHD / Iris Xe, RDNA 1 and older, 2-CU display iGPUs, Windows 10) are judged as CPU with a
+  reason. NVIDIA judging is unchanged. macOS detection uses `system_profiler`; Linux reads amdgpu GTT from sysfs.
+  NVIDIA 以外の GPU も、一次資料の対応表で動く組み合わせなら推定で判定する(段階は good まで)。
+- JSON (additive): `Gpu.backend` gains `rocm` / `xpu` / `mps`; `Gpu.memory` (`dedicated` / `shared` / `unified`),
+  `Gpu.gfx_target`, `Gpu.carveout_gb`; `Adapter.integrated`, `usable`, `reason`, `shared_gb`, `needs` and vendor `apple`;
+  `Estimate.fit_from` (`estimate` / `measurement`) and `measured_peak_vram_gb`.
+- **SD family and Stable Audio run on CPU** (Issue #39): SD 1.5 / 2.x / SDXL image models and Stable Audio Open 1.0 /
+  3 Small are Marginal (`CPU`) without a GPU when RAM suffices, counting ComfyUI's fp32 weights and working memory
+  on CPU (`families.CPU_FAMILIES`). Running on CPU is itself an estimate (no CPU measurements; reasons say
+  `CPU は推定・実測なし`). SUPIR and Stable Audio 3 Medium are left out (not checked).
+- Tables: without a usable GPU, the PC line names the detected GPUs and how they are treated (`PC: Intel(R) UHD
+  Graphics 770 (integrated; not usable for generation → judged as CPU), RAM …`) and a second line says `This PC has no
+  usable GPU: only models that run on CPU are shown (N tools hidden: --include-tools)`. The Mode column shows
+  `GPU req` (needs a GPU) and `RAM` (RAM short) for rows that do not run; JSON `run_mode_label` is unchanged.
+- Uncensored name words `heretic` and `unfiltered` (`update`: name detection and Hugging Face search words).
+- Public functions to judge one model with a GPU the app detected itself (Issue #27): `gmf.judge_model(model, *,
+  gpu_name, vram_gb, driver, ram_gb, cpu_only, gpu_usable, windows, settings, content, system_info, db,
+  comfyui_version) -> Fit` and `gmf.system_from(gpus, *, ram_gb, gpu_usable, windows) -> SystemInfo`; genmodelfit decides
+  the generation and the ComfyUI precision from the GPU name and driver. `vram_gb` / `ram_gb` must be finite and
+  not negative, and `cpu_only=True` refuses GPU arguments (`ValueError`). `gmf.ModelNotFound` is exported. Only the names
+  in `genmodelfit.__all__` are the stable API (docs/schema.md "Python API (stable)", which also notes that the function
+  `genmodelfit.recommend` hides the submodule of the same name). With `gpu_usable=True, windows=True` the result equals
+  what apps computed with the internal `recommend.judge` / `vram_need` and `hardware.classify_gpu` / `comfy_precision`.
+  アプリが内部の関数を使わずに 1 モデルを判定できる公開の関数。
+- Hand-added components (Issue #40): `components` in `data/manual.json` adds files the Hugging Face collection does not
+  pick up to an entry, with the license taken from the per-file source table (`license_sources.py`; unknown without a
+  row) and `manual_component: …` evidence; every file needs a unique https `url` (`ValueError` otherwise). First: `hf:stabilityai/stable-audio-3-small-sfx` now lists the T5Gemma text
+  encoder (`Comfy-Org/stable-audio-3` `text_encoders/t5gemma_b_b_ul2.safetensors`, `gemma`), so its `licenses` are
+  `other` (stable-audio-community) and `gemma`, and the size / VRAM estimate includes the 1.11 GiB encoder. The id is
+  unchanged. 効果音の Stable Audio 3 に、Gemma 利用規約の T5Gemma の部品を足した。
+
+### Changed
+
+- **A successful measurement on the same GPU sets the level** (Issue #26): with a successful standard measurement at
+  the same settings on a GPU of the same vendor whose VRAM is at most this PC's (97% tolerance) and
+  whose measured peak fits in this PC's VRAM, the level is at least Good and the run
+  mode GPU (Perfect only when the peak is within 60% and not pinned at the GPU limit). Wan 2.2 5B on an RTX 5080 16 GB
+  is now Good / GPU (was Marginal / offload with `basis: measured`). Reasons say whether the measurement or the
+  estimate decided the level.
+  同じ GPU で成功した実測があれば、段階は実測で決める。
+- `system`: non-NVIDIA GPUs show their backend and memory kind; display adapters show whether they are usable.
+- Music `languages` (Issue #41): a music card's `language` usually lists lyric languages, so music entries now take at
+  most `["en"]` for `prompt` from the card and no `speech` (the hand table still sets them). ACE-Step v1
+  (`audio_ace_step_1_t2a_instrumentals` / `_song`, 17 languages before) and YuE (`zh`, `en` before) are now `["en"]`.
+  The song workflow `audio_ace_step_1_t2a_song` gets `speech` from the hand table: the 10 well-performing lyric
+  languages of the ACE-Step README (including `ja`).
+  音楽のカードの言語(歌詞)を指示の言語にしない。
+- **Read gate `checks` by `id`, not by position**: the number of checks depends on the model (10, or 8 for models whose
+  `runtime` is neither `comfyui` nor null: `app_runtime` replaces the three ComfyUI checks; 9 → 7 in 0.5.0, docs/gate.md).
+  `checks` の数はモデルで変わるので、並びの位置でなく id で読む。
+
+### Fixed
+
+- `download` no longer refuses a file inside the destination as "outside" when another download of the same file is
+  removing its `.lock` / `.part` at that moment (Windows: `Path.resolve()` of a file pending deletion returned the
+  `\\?\` extended path). The last path component is no longer resolved unless it is a link; parents still are
+  (Issue #41; `test_two_threads_same_destination` failed about once in 100 runs under parallel load and passed
+  1,200 of 1,200 after the fix).
+  同じファイルを同時に落とすと、負けた側が「置き場所の外」と誤って断ることがあった。
+
+## [0.6.0] - 2026-10-21
 
 ### Added
 
@@ -41,21 +110,6 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
   the pull request body. `review_queue.json` / `review list --json` items add `card_url` and `files`
   (repo, path, license, license_url, …).
 - Duplicate model ids are refused (`parse_db` / `load` / `save` raise `DatabaseError`; `merge-check` exits 1).
-- Public functions to judge one model with a GPU the app detected itself (Issue #27): `gmf.judge_model(model, *,
-  gpu_name, vram_gb, driver, ram_gb, cpu_only, gpu_usable, windows, settings, content, system_info, db,
-  comfyui_version) -> Fit` and `gmf.system_from(gpus, *, ram_gb, gpu_usable, windows) -> SystemInfo`; genmodelfit decides
-  the generation and the ComfyUI precision from the GPU name and driver. `vram_gb` / `ram_gb` must be finite and
-  not negative, and `cpu_only=True` refuses GPU arguments (`ValueError`). `gmf.ModelNotFound` is exported. Only the names
-  in `genmodelfit.__all__` are the stable API (docs/schema.md "Python API (stable)", which also notes that the function
-  `genmodelfit.recommend` hides the submodule of the same name). With `gpu_usable=True, windows=True` the result equals
-  what apps computed with the internal `recommend.judge` / `vram_need` and `hardware.classify_gpu` / `comfy_precision`.
-  アプリが内部の関数を使わずに 1 モデルを判定できる公開の関数。
-- Hand-added components (Issue #40): `components` in `data/manual.json` adds files the Hugging Face collection does not
-  pick up to an entry, with the license taken from the per-file source table (`license_sources.py`; unknown without a
-  row) and `manual_component: …` evidence; every file needs a unique https `url` (`ValueError` otherwise). First: `hf:stabilityai/stable-audio-3-small-sfx` now lists the T5Gemma text
-  encoder (`Comfy-Org/stable-audio-3` `text_encoders/t5gemma_b_b_ul2.safetensors`, `gemma`), so its `licenses` are
-  `other` (stable-audio-community) and `gemma`, and the size / VRAM estimate includes the 1.11 GiB encoder. The id is
-  unchanged. 効果音の Stable Audio 3 に、Gemma 利用規約の T5Gemma の部品を足した。
 
 ### Changed
 
@@ -73,24 +127,6 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
   (`Y` = censored / `N` = uncensored), shown only when uncensored rows can appear (`--content all|uncensored`; from
   Python, when a row is uncensored). Legend: `Censored: N = safety filter removed / adult model`. JSON unchanged.
 - README split into English `README.md` (also the PyPI page) and Japanese `README.ja.md`.
-- Music `languages` (Issue #41): a music card's `language` usually lists lyric languages, so music entries now take at
-  most `["en"]` for `prompt` from the card and no `speech` (the hand table still sets them). ACE-Step v1
-  (`audio_ace_step_1_t2a_instrumentals` / `_song`, 17 languages before) and YuE (`zh`, `en` before) are now `["en"]`.
-  The song workflow `audio_ace_step_1_t2a_song` gets `speech` from the hand table: the 10 well-performing lyric
-  languages of the ACE-Step README (including `ja`).
-  音楽のカードの言語(歌詞)を指示の言語にしない。
-- **Read gate `checks` by `id`, not by position**: the number of checks depends on the model (10, or 8 for models whose
-  `runtime` is neither `comfyui` nor null: `app_runtime` replaces the three ComfyUI checks; 9 → 7 in 0.5.0, docs/gate.md).
-  `checks` の数はモデルで変わるので、並びの位置でなく id で読む。
-
-### Fixed
-
-- `download` no longer refuses a file inside the destination as "outside" when another download of the same file is
-  removing its `.lock` / `.part` at that moment (Windows: `Path.resolve()` of a file pending deletion returned the
-  `\\?\` extended path). The last path component is no longer resolved unless it is a link; parents still are
-  (Issue #41; `test_two_threads_same_destination` failed about once in 100 runs under parallel load and passed
-  1,200 of 1,200 after the fix).
-  同じファイルを同時に落とすと、負けた側が「置き場所の外」と誤って断ることがあった。
 
 ## [0.5.0] - 2026-10-21
 
