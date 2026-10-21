@@ -13,18 +13,28 @@ All notable changes to this project are documented here. The format is based on
 
 - App fields for apps that build their screens from the list alone (Issue #36): optional `ModelEntry.languages`
   (`{"prompt": [...], "speech": [...]}`, ISO 639-1), `runtime` (`comfyui` / `piper` / `irodori-tts`) and `description`
-  (`{"ja", "en"}`), also in `recommend` / `fit` / `search` JSON and `info`. Languages come from the hand table
-  `data/overrides.json`, then the Hugging Face card's `language` (plus the text-encoder table), then the text-encoder
-  table (umt5 / Qwen3 / Qwen3.5 / Qwen2.5-VL = multilingual, CLIP / T5 = English; undecided stays empty), see
-  docs/sources.md. `schema_version` stays 1: readers up to 0.4.0 drop the unknown keys (`tests/test_appinfo.py` reads the
+  (`{"ja", "en"}`), also in `recommend` / `fit` / `search` JSON and `info`. They are rebuilt on every apply (nothing
+  carries over). Languages: the hand table `data/overrides.json` wins; otherwise the Hugging Face card's `language`
+  (saved as `card_languages`) is the upper bound, narrowed to `en` when every text encoder is English-only (CLIP / T5);
+  without a card a known text encoder gives `["en"]` — a multilingual encoder alone never adds `ja`. Undecided stays
+  empty, see docs/sources.md. `schema_version` stays 1: readers up to 0.4.0 drop the unknown keys (`tests/test_appinfo.py` reads the
   bundled list with a copy of the old reader).
 - Hand-added models (`source: "manual"`, `data/manual.json`, ids `manual:<name>`) that `update` merges, HEAD-checks and
   header-inspects like the others and whose per-file licenses it compares with the upstream cards (stricter wins, with a
   warning). First three: Tsukuyomi-chan (piper-plus), Irodori-TTS v4.1 Small, Stable Audio 3 Small (music).
-- `update --fields-only [--offline]`: re-apply only the app fields and the hand-added models to the current list.
+- `update --fields-only [--offline]`: re-apply only the app fields and the hand-added models to the current list
+  (re-reads the Hugging Face cards for the languages; `--offline` sends nothing and uses the saved `card_languages`).
   アプリが一覧だけで画面を作れるように、言語・動かし方・説明の項目と、手で足すモデル(最初の 3 件)を足した。
 - The estimator counts `.onnx` and other non-ComfyUI weight files for models whose `runtime` is neither `comfyui` nor
-  unknown (piper). Other models are counted as before.
+  unknown (piper). Other models are counted as before. **Versions up to 0.4.0 do not count them, so with the new list
+  they show Tsukuyomi-chan (onnx) as size unknown and hide it** — apps that list it need 0.5.0.
+  0.4.0 以前の版ではつくよみちゃん(onnx)が大きさ不明で出ない。
+- Gate check `app_runtime` (in place of `official_workflow` / `custom_nodes` / `comfyui_version`, same readiness weight
+  40) for models whose `runtime` is neither `comfyui` nor null: always held, the app checks its own runtime.
+- License names with `ethical-restrictions` / `use-restrictions` are in the use-restricted tier. Irodori-TTS v4.1 Small
+  is `other` / `mit-with-ethical-restrictions` (MIT plus the card's Ethical Restrictions), not permissive.
+- `update` drops an `hf:` entry for the same repository as a hand-added model (its main file's `license_from` or
+  `homepage`), so a model is not listed twice.
 
 ## [0.4.0] - 2026-10-21
 

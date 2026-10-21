@@ -28,7 +28,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 |---|---|---|
 | `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate`, `diff` (and the Python API) | none | none |
 | `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
-| `update --fields-only` | for the hand-added models only: HEAD, ranged GET of the file header, GET of the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
+| `update --fields-only` | GET of the Hugging Face Hub API for the cards whose `language` decides `languages` (the main files' repos and their `license_from`); for the hand-added models also HEAD, ranged GET of the file header and the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
@@ -390,7 +390,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 |---|---|
 | `fit` | perfect 100, good 70, marginal 35, too_tight 0, unknown 0 |
 | `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
-| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 |
+| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 (app_runtime 40 in place of the three ComfyUI checks; it never passes) |
 | `basis` | 100 when `measured`, 0 when `estimated` and for other users' submissions (`basis_detail: measured_community`; they never raise the score) |
 | `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
 
@@ -480,7 +480,7 @@ Computed every time (never stored in `db.json`). Details and the default license
 | `auto` | bool | true only when every check passed |
 | `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Auto column and as `held:<id>` by `gate --only-held`) |
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
-| `checks` | Check[] | always the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known` |
+| `checks` | Check[] | the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known`. For a model whose `runtime` is neither `comfyui` nor null (0.5.0), the three ComfyUI checks are replaced by one `app_runtime` check that never passes (7 checks) |
 
 Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for people; wording may change).
 
@@ -488,7 +488,8 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 
 `genmodelfit gate --json`: `policy` (`license_allowlist`, `comfyui_version`, `allow_uncensored`, `max_head_age_days`),
 `filters` (`modality`, `only_auto`, `only_held`), `summary` (`models`, `auto`, `held`,
-`failing` = models failing each check, `first_failing` = models whose first failed check is that one),
+`failing` = models failing each check, `first_failing` = models whose first failed check is that one; both have
+a key per check id, `app_runtime` included since 0.5.0),
 `models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
 
 ## diff
@@ -553,11 +554,16 @@ readers drop unknown keys, see "Database file"):
 
 - `languages` (`{"prompt": str[], "speech": str[]}`, ISO 639-1 codes): `prompt` = languages the text prompt works in,
   `speech` = languages spoken or sung in the output (TTS voice, lyrics). A key that is missing means unknown; `[]` means
-  the model has none (image-to-3D takes no prompt text, a sound model without vocals has no speech). Decided in this order
-  (docs/sources.md「言語・動かし方・説明」): the hand table `data/overrides.json` (or the entry's own `languages` in
-  `data/manual.json`) → the `language` tag of the Hugging Face card (`update` only) → the text-encoder table. Nothing
-  decides → the key is left out (no guessing). The multilingual class lists `["en", "ja", "zh"]`: the languages that were
-  confirmed, not every language the encoder was trained on — test membership of the language you need.
+  the model has none (image-to-3D takes no prompt text, a sound model without vocals has no speech). Rebuilt from its inputs on every
+  apply (nothing carries over from the previous list; docs/sources.md「言語・動かし方・説明」): the hand table
+  `data/overrides.json` (or the entry's own `languages` in `data/manual.json`) wins for the keys it sets; otherwise
+  the `language` of the Hugging Face card (saved as `card_languages`) is the upper bound — `speech` is the card's
+  list, `prompt` is the card's list, narrowed to `en` when every text encoder is English-only (CLIP / T5); without a
+  card, a known text encoder gives `["en"]` (a multilingual encoder alone never adds `ja`). Nothing decides → the key
+  is left out (no guessing). Test membership of the language you need.
+- `card_languages` (str[] \| null): the Hugging Face card's `language` saved by `update` / `update --fields-only`
+  (the material for `languages`, so an offline re-apply gives the same result). `[]` = the card was read and has no
+  language, null = not read.
 - `runtime` (str \| null): `comfyui` for official templates and for Hugging Face image / video / music / sfx / 3D entries
   whose files match a ComfyUI family; `piper`, `irodori-tts` for the hand-added speech models; null = not decided. A
   runtime other than `comfyui` (and null) makes the estimator count `.onnx` and other non-ComfyUI weight files.
@@ -884,7 +890,7 @@ DownloadResult:
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
 `license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at`, and (#30) `ModelEntry.workflow_precision` /
 `precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.5.0) `ModelEntry.languages` /
-`runtime` / `description` and `source: "manual"` were added without changing `schema_version` (optional fields; older
+`runtime` / `description` / `card_languages` and `source: "manual"` were added without changing `schema_version` (optional fields; older
 readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks the keys it knows, and `source` is a free
 string there. `tests/test_appinfo.py` reads the bundled list with a copy of the old reader).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
@@ -907,7 +913,7 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
 | `manual` | `models` (number of hand-added models from `data/manual.json`), `ids` (0.5.0) |
-| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries whose language came from the Hugging Face card) (0.5.0) |
+| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries with a saved Hugging Face card language, `card_languages`) (0.5.0) |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |
@@ -922,11 +928,11 @@ models taken in), `generated_at`, `output`, `status` (DataStatus with `source: r
 cache, `path` for `--output` elsewhere).
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
-`update --fields-only` reads the current database the same way and redoes only the app fields (`languages` /
-`runtime` / `description`, from `data/overrides.json` and the tables) and the hand-added models (`data/manual.json`):
-for those models only it sends HEADs, reads the file headers and compares the licenses with the upstream cards (nothing
-with `--offline`); the other entries' files, licenses, precision and HEAD results are not touched. The Hugging Face
-card languages already in the list are kept (reading the cards again is `update`).
+`update --fields-only` reads the current database the same way and rebuilds only the app fields (`languages` /
+`runtime` / `description`, from `data/overrides.json`, the tables and the Hugging Face cards) and the hand-added
+models (`data/manual.json`): it reads the cards again (Hub API) and, for the hand-added models only, sends HEADs,
+reads the file headers and compares the licenses with the upstream cards; with `--offline` it sends nothing and
+uses the saved `card_languages`. The other entries' files, licenses, precision and HEAD results are not touched.
 `update --inspect-only` reads the current database the same way and redoes only what is read from the files
 themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`), the official
 templates' `sampler_stages` and `workflow_precision`, the repo precision (`repo_precision`: Hub API / `config.json`,

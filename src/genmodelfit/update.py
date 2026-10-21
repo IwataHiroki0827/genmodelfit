@@ -1534,8 +1534,9 @@ def refresh_app_fields(
     当て直す(update --fields-only)。既存のモデルの判定に関わる項目
     (ファイル・ライセンス・精度・HEAD)は変えない。
 
-    - 手の表(data/overrides.json)と文字を読む部品の表を当てる。HF のカードの言語は、前の一覧にあるものを残す
-      (カードを読み直すのは通信のある update)
+    - 手の表(data/overrides.json)・文字を読む部品の表・HF のカードの言語から、項目を作り直す。
+      offline でなく fetch があれば、各モデルのカード(本体の置き場所とその元。一覧の判定には使わない)を
+      読み直して card_languages を更新する。offline なら前の一覧に保存した card_languages を使う
     - 手のモデル(data/manual.json)を足す。offline でなく fetch があれば、そのファイルだけ HEAD・見出しの精度・
       上流のカードとのライセンスの照合をする(ほかのモデルには送らない)
     """
@@ -1559,7 +1560,13 @@ def refresh_app_fields(
         inspect_repo_precision(manual, fetch)
     db.models = appinfo.merge_manual(db.models, manual)
     db.sources["manual"] = {"models": len(manual), "ids": sorted(e.id for e in manual)}
-    db.sources["app_fields"] = appinfo.apply_app_fields(db.models)
+    client = None
+    if not offline and fetch is not None:
+        client = HfClient(fetch)
+        repos = sorted({r for m in db.models if m.source != "manual" for r in appinfo.card_repos(m)})
+        say(f"{len(repos)} 件のリポジトリのカードを読み、言語を確かめています")
+        client.prefetch((r, "main") for r in repos)
+    db.sources["app_fields"] = appinfo.apply_app_fields(db.models, client)
     db.sources["counts"] = count_entries(db.models)
     db.save(out_path)
     return db

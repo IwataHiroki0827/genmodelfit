@@ -101,65 +101,68 @@
      "size_bytes": 3064295596,
      "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "main",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
      "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
      "license_evidence": [
-      "manual: https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード license: mit。カードの「Ethical Restrictions」(実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない)が付く(2026-10-21 に確認)"
+      "manual: https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード license: mit。カードの「Ethical Restrictions」(実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない)が付く(2026-10-21 に確認)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "license_path": [
       "Aratako/Irodori-TTS-v4.1-Small"
      ]
     },
     {
-     "name": "tokenizer.json",
+     "name": "tokenizer/tokenizer.json",
      "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer.json",
      "sha256": "6a0734cf21c802169defaffe719bc2ef12bb9d0be37e54b61ed27aa89394723d",
      "size_bytes": 6718495,
-     "directory": "tts/tokenizer",
+     "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "other",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
      "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
      "license_evidence": [
-      "manual: 同じリポジトリのトークナイザ(カード license: mit。文字を読む部品は sbintuitions/modernbert-ja-310m を元にしたとカードに書いてある)"
+      "manual: 同じリポジトリのトークナイザ(カード license: mit。文字を読む部品は sbintuitions/modernbert-ja-310m を元にしたとカードに書いてある)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "license_path": [
       "Aratako/Irodori-TTS-v4.1-Small"
      ]
     },
     {
-     "name": "tokenizer_config.json",
+     "name": "tokenizer/tokenizer_config.json",
      "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer_config.json",
      "sha256": "d229a271c64de1a7939d20d3665498e873fa91d5ee2edf135d73ec752cb9c9d3",
      "size_bytes": 668,
-     "directory": "tts/tokenizer",
+     "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "other",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
      "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
      "license_evidence": [
-      "manual: 同じリポジトリのトークナイザの設定(カード license: mit)"
+      "manual: 同じリポジトリのトークナイザの設定(カード license: mit)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "license_path": [
       "Aratako/Irodori-TTS-v4.1-Small"
      ]
     },
     {
-     "name": "weights.pth",
+     "name": "dacvae/weights.pth",
      "url": "https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim/resolve/main/weights.pth",
      "sha256": "db120339c5ee7eca1912cdf29bc612b947a0808e69c3cebfb4936b45a762c1d5",
      "size_bytes": 429620065,
-     "directory": "tts/dacvae",
+     "directory": "tts",
      "repo_id": "Aratako/Semantic-DACVAE-Japanese-32dim",
      "license": "mit",
      "license_name": null,
@@ -199,8 +202,8 @@
     "speech": []
    },
    "description": {
-    "ja": "短い BGM やループ素材をつくる軽量なモデルです。GPU なしの PC でも動きます(歌は入りません)。",
-    "en": "A lightweight model that makes short background music and loop material. Runs on PCs without a GPU (no vocals). Write prompts in English."
+    "ja": "短い BGM やループ素材をつくる軽量なモデルです(歌は入りません)。",
+    "en": "A lightweight model that makes short background music and loop material (no vocals). Write prompts in English."
    },
    "files": [
     {

@@ -5,11 +5,12 @@
 """アプリが一覧だけで画面を作るための項目(`languages` / `runtime` / `description`。0.5.0、#36)と、
 手で足すモデル(`source: "manual"`)。
 
-- 言語の決め方(`apply_app_fields`):
-  1) 手の表 `data/overrides.json`(人が一次資料か実機で確かめたもの。あれば全部これ)
-  2) HF のカードの `language`(update が取れたときだけ。指示の言語には、3 の表の言語を足す。
-     読み上げはカードだけ)
-  3) 文字を読む部品の表(`TEXT_ENCODERS`・`FAMILY_PROMPT`)。
+- 言語の決め方(`apply_app_fields`。当てるたびに材料から作り直す):
+  1) 手の表 `data/overrides.json`(人が一次資料か実機で確かめたもの。書いた種類はこれ)
+  2) HF のカードの `language`(取れたものは `card_languages` に保存して持つ)。カードが言語を書いていれば
+     それが上限で、文字を読む部品がすべて英語だけのもの(CLIP・T5)なら en だけ残す。読み上げはカードだけ
+  3) カードが無いときは、文字を読む部品の表(`TEXT_ENCODERS`・`FAMILY_PROMPT`)に当たれば en
+     (多言語の部品でも、表だけでは ja を付けない)。
   どれでも決まらなければ空にする(当て推量で ja を付けない)。
   根拠は docs/sources.md「言語・動かし方・説明」
 - 手で足すモデルは `data/manual.json`(`manual_entries`)。ライセンスは書いた人が一次資料で確かめた値で、
@@ -28,12 +29,13 @@ from .models import ModelEntry
 OVERRIDES_FILE = "overrides.json"
 MANUAL_FILE = "manual.json"
 
-# 文字を読む部品で「多言語」と数える言語。部品の表は「日本語を含む多言語」と言える根拠のあるものだけで、
-# 全言語の一覧ではない(使う側は「ja が入っているか」を見る)。en は全部の部品が持つ
-MULTILINGUAL = ["en", "ja", "zh"]
+# 部品の表で分かるのは「部品が読める言語」で、モデルが学習した説明文の言語ではない(Wan・Qwen-Image・
+# HunyuanVideo 1.5 は多言語の部品を使うが、カードは en・zh)。そのため表は、カードの言語を狭める
+# (英語だけの部品なら en だけ残す)のと、カードが無いときに en を付けるのにだけ使う。表だけで ja は付けない
 ENGLISH = ["en"]
 
-# ファイル名(小文字)の正規表現 → (結果, 根拠)。結果 "multi" = MULTILINGUAL、"en" = ENGLISH。
+# ファイル名(小文字)の正規表現 → (結果, 根拠)。結果 "multi" = 多言語(カードの言語を狭めない)、
+# "en" = 英語だけ。
 # 上から当てる(umt5 を t5 より先に)。出典は docs/sources.md「言語・動かし方・説明」と同じ
 TEXT_ENCODERS: tuple[tuple[str, str, str], ...] = (
     # google/umt5-xxl のカードの language に multilingual と ja・zh・en が並ぶ(mC4 の多言語で事前学習)
@@ -103,11 +105,11 @@ def uses_prompt(e: ModelEntry) -> bool:
     return e.modality != "tts" and bool(PROMPT_TASKS & set(e.tasks))
 
 
-def prompt_from_tables(e: ModelEntry) -> list[str]:
-    """文字を読む部品の表から、指示の言語を決める。多言語の部品が 1 つでもあればそれ、すべて英語の部品なら
-    en、表に無い部品が混じれば決めない(空)。部品が無ければ系統の表。"""
+def prompt_kind(e: ModelEntry) -> str | None:
+    """文字を読む部品の表の結果。多言語の部品が 1 つでもあれば "multi"、すべて英語の部品なら "en"、
+    表に無い部品が混じれば None。部品が無ければ系統の表。指示の文を取らないモデルは None。"""
     if not uses_prompt(e):
-        return []
+        return None
     kinds: list[str | None] = []
     for f in e.files:
         if f.role != "text_encoder" and f.directory != "text_encoders":
@@ -116,11 +118,17 @@ def prompt_from_tables(e: ModelEntry) -> list[str]:
         hit = next((k for pat, k, _ in TEXT_ENCODERS if re.search(pat, name)), None)
         kinds.append(hit)
     if "multi" in kinds:
-        return list(MULTILINGUAL)
+        return "multi"
     if kinds:
-        return list(ENGLISH) if all(k == "en" for k in kinds) else []
+        return "en" if all(k == "en" for k in kinds) else None
     fam = FAMILY_PROMPT.get(e.comfy_family or "")
-    return list(ENGLISH) if fam and fam[0] == "en" else []
+    return "en" if fam and fam[0] == "en" else None
+
+
+def prompt_from_tables(e: ModelEntry) -> list[str]:
+    """カードが無いときに、部品の表だけで決める指示の言語。表に当たれば en(多言語の部品でも ja は付けない)、
+    当たらなければ決めない(空)。"""
+    return list(ENGLISH) if prompt_kind(e) else []
 
 
 def runtime_of(e: ModelEntry) -> str | None:
@@ -155,35 +163,35 @@ def apply_app_fields(
 ) -> dict[str, int]:
     """languages / runtime / description を決めて入れる(update と、通信しない書き直しで使う)。
 
-    client: HfClient。あれば HF のカードの language を使う(通信はしない。取得済みのものだけ見る)。
-    通信しない書き直しでは、前の一覧の languages を残し、表と手の表だけを当て直す。
-    返す値は集計(sources["app_fields"])。"""
+    当てるたびに「カードの言語(card_languages)+ 部品の表 + 手の表」から作り直す(前の languages・runtime・
+    description は引き継がない。表を狭めたり手の表から行を消したりすると、次の当て直しで直る)。
+    手のモデル(source: manual)は manual.json に書いた値が出発点(merge_manual が毎回作り直す)。
+
+    client: HfClient。あれば取得済みのカードの language を card_languages に保存する(通信はしない)。
+    無ければ保存済みの card_languages を使う。返す値は集計(sources["app_fields"])。"""
     table = overrides() if table is None else table
     stats = {"languages_prompt": 0, "languages_speech": 0, "runtime": 0, "description": 0, "from_card": 0}
     for e in entries:
-        langs = {k: list(v) for k, v in (e.languages or {}).items()}  # [] は「無い」と手で決めたもの
-        table_langs = prompt_from_tables(e)
-        from_card = _card_for_entry(e, client) if client is not None and e.source != "manual" else []
-        if from_card and e.modality == "tts":
-            langs["speech"] = from_card
-            stats["from_card"] += 1
-        elif from_card and uses_prompt(e):
-            # カードの言語に、文字を読む部品の表の言語を足す(カードは学習・説明の言語で、部品が読める言語より
-            # 狭いことが多い。Z-Image のカードは en だけだが、Qwen3 の部品で ja の指示も通じる)
-            langs["prompt"] = from_card + [x for x in table_langs if x not in from_card]
-            stats["from_card"] += 1
-        elif "prompt" not in langs and table_langs:
-            langs["prompt"] = table_langs
+        manual = e.source == "manual"
+        if client is not None and not manual:
+            got = _card_for_entry(e, client)
+            if got is not None:  # 読めなかったら前に保存したものを使う
+                e.card_languages = got
         row = table.get(e.id) or {}
+        langs = {k: list(v) for k, v in (e.languages or {}).items()} if manual else _derived_languages(e)
+        if not manual and e.card_languages:
+            stats["from_card"] += 1
         for k, v in (row.get("languages") or {}).items():
             langs[k] = list(v)
         e.languages = {k: langs[k] for k in ("prompt", "speech") if k in langs}
         if row.get("runtime"):
             e.runtime = row["runtime"]
-        elif e.source != "manual" or not e.runtime:
-            e.runtime = runtime_of(e) or e.runtime
+        elif not manual or not e.runtime:
+            e.runtime = runtime_of(e)
         if row.get("description"):
             e.description = dict(row["description"])
+        elif not manual:
+            e.description = {}
         stats["languages_prompt"] += bool(e.languages.get("prompt"))
         stats["languages_speech"] += bool(e.languages.get("speech"))
         stats["runtime"] += e.runtime is not None
@@ -191,8 +199,28 @@ def apply_app_fields(
     return stats
 
 
-def _card_for_entry(e: ModelEntry, client: Any) -> list[str]:
-    """本体のファイルの置き場所とその元(license_from)のカードの language。最初に見つかったもの。"""
+def _derived_languages(e: ModelEntry) -> dict[str, list[str]]:
+    """カードの言語と部品の表から決める(手の表を当てる前)。
+
+    カードが言語を書いていれば、それが上限(英語だけの部品ならカードの en だけ残す。ほかはカードのまま)。
+    カードが無ければ部品の表(当たれば en)。読み上げはカードだけ。"""
+    card = list(e.card_languages or [])
+    if e.modality == "tts":
+        return {"speech": card} if card else {}
+    if not uses_prompt(e):
+        return {}
+    kind = prompt_kind(e)
+    if not card:
+        prompt = prompt_from_tables(e)
+    elif kind == "en":
+        prompt = [x for x in card if x in ENGLISH]
+    else:
+        prompt = card
+    return {"prompt": prompt} if prompt else {}
+
+
+def card_repos(e: ModelEntry) -> list[str]:
+    """言語を読むカードの置き場所: 本体のファイルの置き場所とその元(license_from)。HF 由来は自分自身が先。"""
     mains = [f for f in e.files if f.role == "main"] or e.files[:1]
     repos: list[str] = []
     for f in mains:
@@ -201,12 +229,22 @@ def _card_for_entry(e: ModelEntry, client: Any) -> list[str]:
                 repos.append(r)
     if e.source == "huggingface" and e.id.startswith("hf:") and e.id[3:] not in repos:
         repos.insert(0, e.id[3:])
-    for r in repos:
+    return repos
+
+
+def _card_for_entry(e: ModelEntry, client: Any) -> list[str] | None:
+    """カードの language(最初に言語のあったもの)。どれかを読めたが言語が無ければ []、1 つも読めていなければ
+    None(前に保存した値を使う)。"""
+    seen = False
+    for r in card_repos(e):
         info = client.cached_repo(r)
-        langs = card_languages(info) if info else []
+        if info is None:
+            continue
+        seen = True
+        langs = card_languages(info)
         if langs:
             return langs
-    return []
+    return [] if seen else None
 
 
 # --- 手で足すモデル -----------------------------------------------------------------------------------
@@ -252,8 +290,25 @@ _MEASURED_FILE_FIELDS = (
 )
 
 
+def manual_repos(m: ModelEntry) -> list[str]:
+    """手のモデルそのものの HF のリポジトリ(本体のファイルの license_from と、homepage)。HF の収集が同じ
+    リポジトリを拾ったら、その hf: の項目は手のモデルと重なるので一覧に入れない。部品の license_from
+    (T5Gemma など)と、元のモデル(Irodori-TTS v4 のような別の版の base_model)は数えない。"""
+    out: list[str] = []
+    for f in m.files:
+        if f.role == "main" and f.license_from and f.license_from not in out:
+            out.append(f.license_from)
+    hp = (m.homepage or "").split("huggingface.co/", 1)
+    if len(hp) == 2:
+        r = "/".join(hp[1].strip("/").split("/")[:2])
+        if r.count("/") == 1 and r not in out:
+            out.append(r)
+    return out
+
+
 def merge_manual(entries: list[ModelEntry], manual: list[ModelEntry] | None = None) -> list[ModelEntry]:
-    """手のモデルを一覧に入れる(同じ id は手のものに置き換える)。並びは update と同じ。
+    """手のモデルを一覧に入れる(同じ id は手のものに置き換える。同じリポジトリの hf: の項目は除く)。
+    並びは update と同じ。
     置き換える前の同じ URL のファイルに、通信で確かめた値(HEAD・見出しの精度)があれば引き継ぐ
     (通信しない書き直しで消さないため)。"""
     from .update import set_precision
@@ -273,7 +328,7 @@ def merge_manual(entries: list[ModelEntry], manual: list[ModelEntry] | None = No
                 if getattr(f, k) is None and getattr(pf, k) is not None:
                     setattr(f, k, getattr(pf, k))
         set_precision(m)
-    ids = {m.id for m in manual}
+    ids = {m.id for m in manual} | {f"hf:{r}" for m in manual for r in manual_repos(m)}
     merged = [e for e in entries if e.id not in ids] + manual
     merged.sort(key=lambda e: (e.source != "comfyui-template", e.modality, e.id))
     return merged
@@ -281,8 +336,8 @@ def merge_manual(entries: list[ModelEntry], manual: list[ModelEntry] | None = No
 
 def verify_manual_licenses(entries: list[ModelEntry], client: Any) -> list[str]:
     """手のモデルのファイルのライセンスを、上流のカード(license_from)と照らす。読めて食い違えば、厳しいほうを
-    使って警告を返す。カードを読めなければ(非公開・401・通信の失敗)書いた値のまま、確かめられなかった旨の警告。"""
-    from .hf import normalize_license, strictest
+    使って警告を返す(書いた値がカードより厳しい段階なら、本文の制限を読んだものとしてそのまま)。カードを読めなければ(非公開・401・通信の失敗)書いた値のまま、確かめられなかった旨の警告。"""
+    from .hf import license_tier, normalize_license, strictest
     from .update import set_entry_license
 
     warnings: list[str] = []
@@ -300,16 +355,20 @@ def verify_manual_licenses(entries: list[ModelEntry], client: Any) -> list[str]:
                 continue
             card = (normalize_license(info.license), info.license_name)
             mine = (f.license, f.license_name)
-            if card[0] is not None and card != mine:
-                worse = strictest([card, mine])
-                f.license, f.license_name = worse
-                f.license_evidence.append(
-                    f"manual_mismatch: 書いた値 {mine} とカード {card} が違うので厳しいほうにした"
-                )
-                warnings.append(
-                    f"手のモデル {e.id}: {f.name} のライセンスがカードと違います"
-                    f"(書いた値 {mine}、カード {card})"
-                )
+            if card[0] is None or card == mine:
+                continue
+            if license_tier(*card) < license_tier(*mine):
+                # 書いた人がカードの本文の制限(Irodori の Ethical Restrictions など)を読んで、cardData より
+                # 厳しくしたもの。そのまま(警告しない)
+                continue
+            worse = strictest([card, mine])
+            f.license, f.license_name = worse
+            f.license_evidence.append(
+                f"manual_mismatch: 書いた値 {mine} とカード {card} が違うので厳しいほうにした"
+            )
+            warnings.append(
+                f"手のモデル {e.id}: {f.name} のライセンスがカードと違います(書いた値 {mine}、カード {card})"
+            )
         set_entry_license(e)
         _prefer_main_license_url(e)
     return warnings

@@ -102,6 +102,7 @@ _ENTRY_TYPES = {
     "languages": (dict, type(None)),
     "runtime": _OPT_STR,
     "description": (dict, type(None)),
+    "card_languages": (list, type(None)),
 }
 _FILE_TYPES = {
     "name": _STR,
@@ -139,6 +140,9 @@ def check_entry(d: Any, i: int) -> None:
     for k, v in (langs or {}).items():
         if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(x, str) for x in v):
             raise DatabaseError(f"{where} の languages は {{種類: 言語コードの並び}} です: {langs!r}")
+    cl = d.get("card_languages")
+    if cl is not None and not all(isinstance(x, str) for x in cl):
+        raise DatabaseError(f"{where} の card_languages は言語コードの並びです: {cl!r}")
     desc = d.get("description")
     if any(not isinstance(k, str) or not isinstance(v, str) for k, v in (desc or {}).items()):
         raise DatabaseError(f"{where} の description は {{言語: 文}} です: {desc!r}")

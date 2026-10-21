@@ -2025,7 +2025,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--fields-only",
         action="store_true",
         help="今の一覧はそのままで、アプリ向けの項目(言語・動かし方・説明)と手のモデル(data/manual.json)だけを"
-        "当て直す。通信するのは手のモデルのファイルだけ(--offline で通信しない)",
+        "当て直す。通信するのは、言語を読むカードと手のモデルのファイルだけ(--offline で通信せず、"
+        "保存済みのカードの言語を使う)",
     )
     sp.add_argument(
         "--inspect-only",

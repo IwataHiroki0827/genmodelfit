@@ -15,10 +15,10 @@ from genmodelfit import appinfo, cli
 from genmodelfit import db as dbmod
 from genmodelfit.db import DatabaseError, check_entry, load, parse_db
 from genmodelfit.estimate import select_files
-from genmodelfit.hf import RepoInfo
+from genmodelfit.hf import TIER_USE_RESTRICTED, RepoInfo, license_tier
 from genmodelfit.models import ModelEntry, ModelFile
 
-NEW_KEYS = {"languages", "runtime", "description"}
+NEW_KEYS = {"languages", "runtime", "description", "card_languages"}
 # アプリがカタログの代わりにこの一覧を使う 12 件(AI生成キットの catalog.json の gmf_id。手のモデルは manual:…)
 APP_12 = [
     "image_z_image_turbo_int8",
@@ -134,34 +134,34 @@ def test_normalize_languages():
 @pytest.mark.parametrize(
     ("files", "expected"),
     [
-        ([("umt5_xxl_fp8_e4m3fn_scaled.safetensors", "text_encoder")], ["en", "ja", "zh"]),
-        ([("qwen_3_4b.safetensors", "text_encoder")], ["en", "ja", "zh"]),
-        ([("qwen3.5_2b_bf16.safetensors", "text_encoder")], ["en", "ja", "zh"]),
-        ([("qwen_2.5_vl_7b_fp8_scaled.safetensors", "text_encoder")], ["en", "ja", "zh"]),
-        ([("text_encoders/Qwen2.5-VL-7B-Instruct-q4_0.gguf", "text_encoder")], ["en", "ja", "zh"]),
-        ([("clip_l.safetensors", "text_encoder"), ("t5xxl_fp16.safetensors", "text_encoder")], ["en"]),
+        ([("umt5_xxl_fp8_e4m3fn_scaled.safetensors", "text_encoder")], "multi"),
+        ([("qwen_3_4b.safetensors", "text_encoder")], "multi"),
+        ([("qwen3.5_2b_bf16.safetensors", "text_encoder")], "multi"),
+        ([("qwen_2.5_vl_7b_fp8_scaled.safetensors", "text_encoder")], "multi"),
+        ([("text_encoders/Qwen2.5-VL-7B-Instruct-q4_0.gguf", "text_encoder")], "multi"),
+        ([("clip_l.safetensors", "text_encoder"), ("t5xxl_fp16.safetensors", "text_encoder")], "en"),
         # 多言語が 1 つでもあれば多言語(Kandinsky 5: CLIP + Qwen2.5-VL)
-        (
-            [("clip_l.safetensors", "text_encoder"), ("qwen_2.5_vl_7b.safetensors", "text_encoder")],
-            ["en", "ja", "zh"],
-        ),
+        ([("clip_l.safetensors", "text_encoder"), ("qwen_2.5_vl_7b.safetensors", "text_encoder")], "multi"),
         # 表に無い部品(Llama・Gemma・Qwen3-VL)が混じれば決めない = 当て推量しない
         (
             [
                 ("clip_l.safetensors", "text_encoder"),
                 ("llama_3.1_8b_instruct_fp8_scaled.safetensors", "text_encoder"),
             ],
-            [],
+            None,
         ),
-        ([("gemma_3_12B_it.safetensors", "text_encoder")], []),
-        ([("qwen3vl_8b_fp8_scaled.safetensors", "text_encoder")], []),
-        ([("qwen_0.6b_ace15.safetensors", "text_encoder")], []),
-        ([("mistral_3_small_flux2_bf16.safetensors", "text_encoder")], []),
-        ([("model.safetensors", "main")], []),  # 部品も系統も無い
+        ([("gemma_3_12B_it.safetensors", "text_encoder")], None),
+        ([("qwen3vl_8b_fp8_scaled.safetensors", "text_encoder")], None),
+        ([("qwen_0.6b_ace15.safetensors", "text_encoder")], None),
+        ([("mistral_3_small_flux2_bf16.safetensors", "text_encoder")], None),
+        ([("model.safetensors", "main")], None),  # 部品も系統も無い
     ],
 )
-def test_prompt_from_text_encoder_table(files, expected):
-    assert appinfo.prompt_from_tables(_entry(files)) == expected
+def test_prompt_kind_from_text_encoder_table(files, expected):
+    e = _entry(files)
+    assert appinfo.prompt_kind(e) == expected
+    # カードが無いときに表だけで付けるのは en だけ(多言語の部品でも ja は付けない)
+    assert appinfo.prompt_from_tables(e) == (["en"] if expected else [])
 
 
 def test_prompt_table_family_and_task_gates():
@@ -188,14 +188,21 @@ def test_apply_precedence_override_card_table():
     enc = [("qwen_3_4b.safetensors", "text_encoder")]
     e = _entry([*enc, ("m.safetensors", "main")], id="m1")
     e.files[1].repo_id = "owner/m"
-    # 表だけ
+    # 表だけ(カードが無い)なら en だけ。多言語の部品でも ja は付けない
     appinfo.apply_app_fields([e], None, table={})
-    assert e.languages == {"prompt": ["en", "ja", "zh"]}
-    # カード(en だけ)に、表の言語を足す = 部品が読める言語を狭めない
+    assert e.languages == {"prompt": ["en"]} and e.card_languages is None
+    # カードが言語を書いていれば、それが上限(Z-Image のカードは en だけ = 部品が Qwen3 でも ja を付けない)
     e2 = _entry([*enc, ("m.safetensors", "main")], id="m2")
     e2.files[1].repo_id = "owner/m"
     appinfo.apply_app_fields([e2], _FakeClient({"owner/m": ["en"]}), table={})
-    assert e2.languages == {"prompt": ["en", "ja", "zh"]}
+    assert e2.languages == {"prompt": ["en"]} and e2.card_languages == ["en"]
+    appinfo.apply_app_fields([e2], _FakeClient({"owner/m": ["en", "zh"]}), table={})
+    assert e2.languages == {"prompt": ["en", "zh"]}
+    # 英語だけの部品(CLIP・T5)なら、カードの言語のうち en だけ残す
+    e5 = _entry([("clip_l.safetensors", "text_encoder"), ("m.safetensors", "main")], id="m5")
+    e5.files[1].repo_id = "owner/m"
+    appinfo.apply_app_fields([e5], _FakeClient({"owner/m": ["en", "ja", "zh"]}), table={})
+    assert e5.languages == {"prompt": ["en"]}
     # 表の無いモデルはカードのまま(zh を足さない・ja を付けない)
     e3 = _entry([("m.safetensors", "main")], id="m3")
     e3.files[0].repo_id = "owner/m"
@@ -218,6 +225,60 @@ def test_apply_precedence_override_card_table():
     none = _entry([("m.safetensors", "main")], id="m4")
     appinfo.apply_app_fields([none], None, table={})
     assert none.languages == {}
+
+
+def test_card_languages_are_kept_for_offline_reapplying():
+    """カードは読めたときに保存し、通信しない当て直し(client なし)や、カードを読めなかった回でも使う。"""
+    e = _entry([("umt5_xxl.safetensors", "text_encoder"), ("m.safetensors", "main")], id="w")
+    e.files[1].repo_id = "owner/m"
+    appinfo.apply_app_fields([e], _FakeClient({"owner/m": ["en", "zh"]}), table={})
+    assert e.card_languages == ["en", "zh"]
+    appinfo.apply_app_fields([e], None, table={})
+    assert e.languages == {"prompt": ["en", "zh"]}
+    appinfo.apply_app_fields([e], _FakeClient({}), table={})  # 読めなかった = 前の値
+    assert e.card_languages == ["en", "zh"] and e.languages == {"prompt": ["en", "zh"]}
+    # 読めたがカードに言語が無い = [](表だけで決める)
+    appinfo.apply_app_fields([e], _FakeClient({"owner/m": []}), table={})
+    assert e.card_languages == [] and e.languages == {"prompt": ["en"]}
+    # 保存した値は db.json に出て、読み戻せる
+    back = ModelEntry.from_dict(json.loads(json.dumps(e.to_dict())))
+    assert back.card_languages == []
+
+
+def test_narrowing_the_encoder_table_takes_effect(monkeypatch):
+    """前の languages を引き継がない: 部品の表を狭めて当て直すと反映される。"""
+    e = _entry([("umt5_xxl.safetensors", "text_encoder"), ("m.safetensors", "main")], id="wan")
+    e.card_languages = ["en", "ja", "zh"]
+    appinfo.apply_app_fields([e], None, table={})
+    assert e.languages == {"prompt": ["en", "ja", "zh"]}
+    narrowed = tuple((pat, "en" if pat == "umt5" else kind, src) for pat, kind, src in appinfo.TEXT_ENCODERS)
+    monkeypatch.setattr(appinfo, "TEXT_ENCODERS", narrowed)
+    appinfo.apply_app_fields([e], None, table={})
+    assert e.languages == {"prompt": ["en"]}
+    # カードの無いモデルも、表から外せば決めない(空)
+    f = _entry([("umt5_xxl.safetensors", "text_encoder")], id="f")
+    appinfo.apply_app_fields([f], None, table={})
+    assert f.languages == {"prompt": ["en"]}
+    monkeypatch.setattr(appinfo, "TEXT_ENCODERS", ())
+    appinfo.apply_app_fields([f], None, table={})
+    assert f.languages == {}
+
+
+def test_rows_removed_from_the_hand_table_disappear():
+    e = _entry([("m.safetensors", "main")], id="m", source="huggingface")
+    row = {"m": {"languages": {"prompt": ["en", "ja"]}, "runtime": "piper", "description": {"ja": "説明"}}}
+    want = ({"prompt": ["en", "ja"]}, "piper", {"ja": "説明"})
+    appinfo.apply_app_fields([e], None, table=row)
+    assert (e.languages, e.runtime, e.description) == want
+    appinfo.apply_app_fields([e], None, table=row)  # 冪等
+    assert (e.languages, e.runtime, e.description) == want
+    appinfo.apply_app_fields([e], None, table={})
+    assert (e.languages, e.runtime, e.description) == ({}, None, {})
+    # 手のモデルの説明・言語・動かし方は manual.json のもの(手の表に無くても消さない)
+    m = next(x for x in appinfo.manual_entries() if x.runtime == "piper")
+    before = (dict(m.languages), m.runtime, dict(m.description))
+    appinfo.apply_app_fields([m], None, table={})
+    assert (m.languages, m.runtime, m.description) == before
 
 
 def test_runtime_rule():
@@ -257,12 +318,15 @@ def test_manual_entries_are_complete():
     assert (piper.license, piper.license_name) == ("other", "tsukuyomi-chan-corpus")
     assert piper.license_url == "https://tyc.rei-yumesaki.net/material/corpus/#terms3"
     iro = ms["manual:irodori-tts-v4.1-small"]
-    assert (iro.runtime, iro.modality, iro.languages, iro.license) == (
+    assert (iro.runtime, iro.modality, iro.languages, iro.license, iro.license_name) == (
         "irodori-tts",
         "tts",
         {"speech": ["ja"]},
-        "mit",
+        "other",
+        "mit-with-ethical-restrictions",
     )
+    # MIT だがカードの Ethical Restrictions があるので、寛容の段に入れない(用途の制限付き)
+    assert license_tier(iro.license, iro.license_name) == TIER_USE_RESTRICTED
     assert iro.license_url == "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small"  # 本体のもの
     sa = ms["manual:stable-audio-3-small-music"]
     assert (sa.runtime, sa.modality, sa.comfy_family) == ("comfyui", "music", "stable_audio")
@@ -282,6 +346,26 @@ def test_merge_manual_replaces_and_keeps_order():
     assert [(e.source != "comfyui-template", e.modality, e.id) for e in merged] == sorted(
         (e.source != "comfyui-template", e.modality, e.id) for e in merged
     )
+
+
+def test_merge_manual_drops_hf_duplicates_of_the_same_repo():
+    """HF の収集が手のモデルと同じリポジトリを拾っても、一覧に 2 件出さない。
+    部品・元のモデルの hf: は残す。"""
+    dup = ModelEntry(
+        id="hf:stabilityai/stable-audio-3-small-music", name="d", modality="music", source="huggingface"
+    )
+    keep = [
+        ModelEntry(
+            id="hf:stabilityai/stable-audio-3-small-sfx", name="s", modality="sfx", source="huggingface"
+        ),
+        ModelEntry(id="hf:google/t5gemma-b-b-ul2", name="g", modality="other", source="huggingface"),
+        ModelEntry(id="hf:Aratako/Irodori-TTS-v4-Small", name="v4", modality="tts", source="huggingface"),
+    ]
+    iro = ModelEntry(id="hf:Aratako/Irodori-TTS-v4.1-Small", name="i", modality="tts", source="huggingface")
+    merged = {e.id for e in appinfo.merge_manual([dup, iro, *keep])}
+    assert "hf:stabilityai/stable-audio-3-small-music" not in merged
+    assert "hf:Aratako/Irodori-TTS-v4.1-Small" not in merged
+    assert {e.id for e in keep} <= merged and "manual:stable-audio-3-small-music" in merged
 
 
 class _CardClient:
@@ -317,7 +401,8 @@ def test_verify_manual_licenses_takes_the_stricter_on_mismatch():
         for w in warns
     )
     assert any(x.startswith("manual_mismatch") for x in iro.files[0].license_evidence)
-    # カードのほうが寛容でも、書いた値(厳しい側)を残す
+    # カードのほうが寛容でも、書いた値(厳しい側)を残す。本文の制限を読んで厳しくしたもの(Irodori の
+    # cardData は mit)は警告もしない(最初の照合の警告が t5gemma だけなのがそれ)
     ms = appinfo.manual_entries()
     cards.update(
         {"Aratako/Irodori-TTS-v4.1-Small": ("mit", None), "ayousanz/piper-plus-tsukuyomi-chan": ("mit", None)}
@@ -372,7 +457,7 @@ def test_bundled_is_stable_under_reapplying(bundled):
     before = [(m.languages, m.runtime, m.description) for m in models]
     appinfo.apply_app_fields(models)
     assert [(m.languages, m.runtime, m.description) for m in models] == before
-    # 前の値を全部消して当て直しても、手の表とモデルの表から同じものが出る(カード由来の分は通信のある update)
+    # 前の値を全部消して当て直しても、保存したカードの言語・手の表・モデルの表から同じものが出る
     for m in models:
         if m.source != "manual":  # 手のモデルの項目は manual.json に書いてある
             m.languages, m.runtime, m.description = {}, None, {}
@@ -380,14 +465,48 @@ def test_bundled_is_stable_under_reapplying(bundled):
     assert [(m.languages, m.runtime, m.description) for m in models] == before
 
 
-def test_ja_is_never_guessed_for_models_the_tables_do_not_know(bundled):
+def test_ja_comes_only_from_cards_or_the_hand_table(bundled):
+    """ja は、カードに書いてあるか、手の表(人が確かめたもの)にあるときだけ。部品の表だけでは付けない。
+    カードが言語を書いていれば、それより広くしない。"""
+    hand = appinfo.overrides()
     for m in bundled.models:
-        if m.source == "manual" or m.id in appinfo.overrides():
+        if m.source == "manual" or m.id in hand:
             continue
-        langs = m.languages.get("prompt") or []
-        if "ja" in langs:
-            names = [f.name.lower() for f in m.files if f.role == "text_encoder"]
-            assert any(re.search(r"umt5|qwen_3_|qwen3[._]5|qwen[_-]?2[._]?5[_-]?vl", n) for n in names), m.id
+        card = m.card_languages or []
+        for k in ("prompt", "speech"):
+            langs = m.languages.get(k) or []
+            if "ja" in langs:
+                assert "ja" in card, m.id
+            if card:
+                assert set(langs) <= set(card), m.id
+
+
+def test_languages_that_were_over_attributed_are_fixed(bundled):
+    """検証で見つかった付けすぎ(カードが en / en,zh なのに ja)と、確証の無い ja(Kandinsky5・Anima)。"""
+    by = {m.id: m for m in bundled.models}
+    assert by["audio_stable_audio_3_medium"].languages["prompt"] == ["en"]
+    assert "ja" not in by["video_hunyuan_video_1.5_720p_t2v"].languages["prompt"]
+    for mid in ("video_kandinsky5_t2v", "image_kandinsky5_t2i", "image_anima_base_v1", "image_z_image"):
+        assert "ja" not in by[mid].languages.get("prompt", []), mid
+    # カードの誤り(Wan2.2 S2V の es、MeloTTS-English の ko)は手の表で直す
+    assert by["video_wan2_2_14B_s2v"].languages == {"prompt": ["en", "zh"]}
+    assert by["hf:myshell-ai/MeloTTS-English"].languages == {"speech": ["en"]}
+
+
+def test_descriptions_do_not_claim_cpu_where_the_verdict_says_no(capsys):
+    """説明に「GPU なしでも動く」と書くのは、genmodelfit の判定(--vram 0)が動くと言うものだけ
+    (CPU での判定は別の Issue)。"""
+    args = ["recommend", "--vram", "0", "--ram", "32", "--json", "--content", "all", "--fit", "all"]
+    assert (
+        cli.main(
+            [*args, "--all-workflows", "--include-tools", "--include-unknown-license", "--limit", "1000"]
+        )
+        == 0
+    )
+    for m in json.loads(capsys.readouterr().out)["models"]:
+        text = " ".join((m.get("description") or {}).values())
+        if "GPU なし" in text or "without a GPU" in text:
+            assert m["fit_level"] not in ("too_tight", "?"), m["id"]
 
 
 def test_manual_models_show_in_recommend_and_info(capsys):
@@ -425,6 +544,40 @@ def test_download_plan_lists_manual_files(tmp_path):
     )
     names = sorted(f.name for f in plan.files)
     assert names == ["config.json", "tsukuyomi-chan-6lang-fp16.onnx"]
+
+
+@pytest.mark.parametrize(
+    ("mid", "relpaths"),
+    [
+        ("manual:tsukuyomi-chan-piper-plus", ["tts/config.json", "tts/tsukuyomi-chan-6lang-fp16.onnx"]),
+        (
+            "manual:irodori-tts-v4.1-small",
+            [
+                "tts/dacvae/weights.pth",
+                "tts/model.safetensors",
+                "tts/tokenizer/tokenizer.json",
+                "tts/tokenizer/tokenizer_config.json",
+            ],
+        ),
+        (
+            "manual:stable-audio-3-small-music",
+            [
+                "checkpoints/stable_audio_3_small_music.safetensors",
+                "text_encoders/t5gemma_b_b_ul2.safetensors",
+            ],
+        ),
+    ],
+)
+def test_download_plan_of_every_manual_model(tmp_path, mid, relpaths):
+    """手の 3 件のファイルがすべて置き場所の中に入る(directory は 1 段、サブフォルダは name に。
+    置き場所の外を指す名前として断るファイルが無い)。"""
+    import genmodelfit as gmf
+
+    plan = gmf.plan_download(mid, output_dir=tmp_path, include_unknown_license=False)
+    assert sorted(f.relpath for f in plan.files) == relpaths
+    for f in plan.files:
+        assert f.status == "download" and f.reason is None, (f.name, f.status, f.reason)
+        assert f.directory and "/" not in f.directory and f.dest
 
 
 # --- update に載る ------------------------------------------------------------------------------------
@@ -489,3 +642,35 @@ def test_merge_manual_keeps_measured_file_values():
     iro.files[0].sha256 = "0" * 64
     changed = next(e for e in appinfo.merge_manual([iro]) if e.id == iro.id)
     assert changed.files[0].head_status is None and changed.files[0].header_precision is None
+
+
+def test_gate_holds_non_comfyui_runtimes_with_its_own_reason():
+    """runtime が ComfyUI 以外の手のモデルは、ComfyUI の 3 条件ではなく app_runtime で保留
+    (点数の重みは同じ)。"""
+    from genmodelfit.gate import CHECK_IDS, evaluate_offline
+    from genmodelfit.recommend import READINESS_POINTS
+
+    ms = {e.id: e for e in appinfo.manual_entries()}
+    for mid in ("manual:tsukuyomi-chan-piper-plus", "manual:irodori-tts-v4.1-small"):
+        held = evaluate_offline(ms[mid]).held_by
+        assert "app_runtime" in held, mid
+        assert not {"official_workflow", "custom_nodes", "comfyui_version"} & set(held), mid
+    sa = evaluate_offline(ms["manual:stable-audio-3-small-music"]).held_by  # comfyui は今までどおり
+    assert "official_workflow" in sa and "app_runtime" not in sa
+    assert "app_runtime" in CHECK_IDS
+    assert READINESS_POINTS["app_runtime"] == sum(
+        READINESS_POINTS[k] for k in ("official_workflow", "custom_nodes", "comfyui_version")
+    )
+
+
+def test_license_tier_reads_use_restrictions_in_the_name():
+    from genmodelfit.hf import TIER_NONCOMMERCIAL, TIER_OTHER, TIER_PERMISSIVE
+
+    assert license_tier("other", "mit-with-ethical-restrictions") == TIER_USE_RESTRICTED
+    assert license_tier("mit", "mit-with-ethical-restrictions") == TIER_USE_RESTRICTED
+    assert license_tier("other", "acme-use-restrictions") == TIER_USE_RESTRICTED
+    assert license_tier("mit", None) == TIER_PERMISSIVE
+    assert license_tier("other", "unethical-restrictionsx") == TIER_OTHER  # 語の途中は当てない
+    assert (
+        license_tier("other", "flux-non-commercial-ethical-restrictions") == TIER_NONCOMMERCIAL
+    )  # 非商用が先

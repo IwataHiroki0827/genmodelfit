@@ -34,7 +34,7 @@ r.auto, r.held_by, r.to_dict()
 ```
 
 `to_dict()` の形: `{"auto": bool, "held_by": [落ちた条件の id], "comfyui_version": 比べた版,
-"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順にいつも 9 つ。`held_by[0]` が表の Auto の列(`workflow` などの短い名前)と `gate --only-held` の `held:<id>`。
+"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順に 9 つ(`runtime` が `comfyui` でも null でもないモデルは、ComfyUI の 3 条件の代わりに `app_runtime` の 7 つ)。`held_by[0]` が表の Auto の列(`workflow` などの短い名前)と `gate --only-held` の `held:<id>`。
 `detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件
@@ -50,6 +50,7 @@ r.auto, r.held_by, r.to_dict()
 | `sha256` | すべてのファイルに 64 桁の 16 進の sha256 がある | Civitai のファイルなど |
 | `content` | 無検閲(`content: uncensored`)でない | 無検閲(`--allow-uncensored-auto` で外せる) |
 | `size_known` | すべてのファイルの大きさが分かり、ファイルの一覧が完全(`files_complete` が false でない) | 大きさ不明、ファイルの記載なし |
+| `app_runtime` | (`runtime` が `comfyui` でも null でもないモデルだけ。`official_workflow`・`custom_nodes`・`comfyui_version` の代わり)通らない。動かす仕組み(piper・irodori-tts)はこの一覧では確かめられないので、使う側が確かめる。点数(readiness)の重みは 3 条件の和の 40(0.5.0、#36) | 手のモデルのつくよみちゃん・Irodori-TTS |
 
 ファイルが 1 つも書かれていない項目は、ファイルについての条件がすべて保留になる(空なら通る、にはしない)。
 

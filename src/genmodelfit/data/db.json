@@ -184,17 +184,17 @@
     "creativeml-openrail-m": 1,
     "gemma": 1,
     "llama3.1": 5,
-    "mit": 20,
+    "mit": 19,
     "null": 58,
     "openrail++": 4,
-    "other": 117
+    "other": 118
    },
    "license_tier": {
     "non_commercial": 53,
     "other": 74,
-    "permissive": 133,
+    "permissive": 132,
     "unknown": 58,
-    "use_restricted": 11
+    "use_restricted": 12
    },
    "files_complete_false": 26
   },
@@ -217,11 +217,11 @@
    ]
   },
   "app_fields": {
-   "languages_prompt": 149,
-   "languages_speech": 3,
+   "languages_prompt": 209,
+   "languages_speech": 21,
    "runtime": 303,
    "description": 12,
-   "from_card": 0
+   "from_card": 213
   }
  },
  "models": [
@@ -307,6 +307,10 @@
     "ja": "Hunyuan3D の新しい版です。2.0 より細かな形をつくれます。形だけで、色は付きません。",
     "en": "A newer Hunyuan3D release that makes finer shapes than 2.0. Shape only, no colors."
    },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 7365943290
   },
   {
@@ -391,6 +395,10 @@
     "ja": "1枚の画像から 3Dモデル(GLB ファイル)をつくれます。形だけで、色は付きません。",
     "en": "Makes a 3D model (GLB file) from one image. Shape only, no colors."
    },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 4928151562
   },
   {
@@ -470,6 +478,10 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 4928151562
   },
   {
@@ -549,6 +561,10 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 4930777530
   },
   {
@@ -628,6 +644,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 661859924
   },
   {
@@ -707,6 +724,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 661859924
   },
   {
@@ -897,6 +915,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 9288548984
   },
   {
@@ -1141,6 +1160,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 15203457100
   },
   {
@@ -1327,6 +1349,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 3779190284
   },
   {
@@ -1493,6 +1516,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 5485935084
   },
   {
@@ -1686,12 +1712,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 37054292422
   },
   {
@@ -1857,12 +1886,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 36197786782
   },
   {
@@ -2028,9 +2060,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18602766428
   },
   {
@@ -2199,6 +2238,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 22273929236
   },
   {
@@ -2366,6 +2408,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34172641300
   },
   {
@@ -2624,6 +2669,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 30930093390
   },
   {
@@ -2791,6 +2839,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34172222116
   },
   {
@@ -2958,6 +3009,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34172222116
   },
   {
@@ -3125,6 +3179,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34174211972
   },
   {
@@ -3292,6 +3349,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34174211972
   },
   {
@@ -3459,6 +3519,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17643437364
   },
   {
@@ -3682,6 +3745,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 35157790988
   },
   {
@@ -3758,9 +3824,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17236328572
   },
   {
@@ -3928,6 +4001,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34151796252
   },
   {
@@ -4145,9 +4221,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 50422916156
   },
   {
@@ -4365,9 +4448,16 @@
    "sampler_stages": [],
    "workflow_precision": "bf16",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 50422916156
   },
   {
@@ -4584,9 +4674,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 33317186804
   },
   {
@@ -4803,9 +4900,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 33317186804
   },
   {
@@ -5022,9 +5126,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 33317186804
   },
   {
@@ -5188,12 +5299,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 50794654686
   },
   {
@@ -5357,13 +5471,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 5777062286
   },
   {
@@ -5555,13 +5668,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 5793465294
   },
   {
@@ -5779,13 +5891,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 7121674470
   },
   {
@@ -5977,13 +6088,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 5842835158
   },
   {
@@ -6118,13 +6228,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 5628159702
   },
   {
@@ -6255,9 +6364,18 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 21237777684
   },
   {
@@ -6388,9 +6506,18 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 22294492532
   },
   {
@@ -6521,9 +6648,18 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 21237777684
   },
   {
@@ -6635,6 +6771,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 24169695014
   },
   {
@@ -6775,6 +6912,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 14686032392
   },
   {
@@ -6968,12 +7106,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 41419739755
   },
   {
@@ -7134,6 +7275,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 30998316546
   },
   {
@@ -7294,6 +7436,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 30998316546
   },
   {
@@ -7452,12 +7595,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 51349051158
   },
   {
@@ -7686,6 +7832,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 32149409308
   },
   {
@@ -7847,9 +7996,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 74050831011
   },
   {
@@ -8014,9 +8170,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 56587268115
   },
   {
@@ -8152,13 +8315,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18819998282
   },
   {
@@ -8289,13 +8453,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 12383999628
   },
   {
@@ -8429,13 +8594,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 12451820124
   },
   {
@@ -8568,13 +8734,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18481646306
   },
   {
@@ -8707,13 +8874,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18347429362
   },
   {
@@ -8876,13 +9044,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 23883407028
   },
   {
@@ -9043,9 +9212,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 74050831011
   },
   {
@@ -9178,13 +9354,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18481646306
   },
   {
@@ -9344,13 +9521,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17746736091
   },
   {
@@ -9510,13 +9688,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17746736091
   },
   {
@@ -9676,13 +9855,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17726288651
   },
   {
@@ -9842,13 +10022,14 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 17726288651
   },
   {
@@ -9956,6 +10137,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 25422992018
   },
   {
@@ -10063,6 +10245,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 17125317490
   },
   {
@@ -10222,6 +10405,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 29486333646
   },
   {
@@ -10381,6 +10565,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 30091782492
   },
   {
@@ -10518,6 +10703,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26751125626
   },
   {
@@ -10677,13 +10863,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 22010448036
   },
   {
@@ -10847,9 +11032,16 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 19446072470
   },
   {
@@ -11013,9 +11205,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 19107296990
   },
   {
@@ -11179,9 +11378,16 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 19458252702
   },
   {
@@ -11320,6 +11526,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 21781790658
   },
   {
@@ -11458,6 +11665,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 21781790658
   },
   {
@@ -11589,13 +11797,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 22261358212
   },
   {
@@ -11729,12 +11936,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 22261358212
   },
   {
@@ -11841,6 +12051,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 2069838542
   },
   {
@@ -11980,6 +12191,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13379919288
   },
   {
@@ -12119,6 +12331,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13379919280
   },
   {
@@ -12258,6 +12471,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13379919288
   },
   {
@@ -12397,6 +12611,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13379919280
   },
   {
@@ -12564,6 +12779,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 22459228094
   },
   {
@@ -12731,6 +12949,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 22459077566
   },
   {
@@ -12898,6 +13119,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 22459192254
   },
   {
@@ -13027,6 +13251,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 25936727174
   },
   {
@@ -13182,6 +13407,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 43222828674
   },
   {
@@ -13317,12 +13543,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 13006811386
   },
   {
@@ -13458,12 +13687,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 13006811386
   },
   {
@@ -13600,12 +13832,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 13006811386
   },
   {
@@ -13742,12 +13977,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 13006811386
   },
   {
@@ -13827,6 +14065,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 10620231237
   },
   {
@@ -13990,9 +14229,16 @@
    "sampler_stages": [],
    "workflow_precision": "bf16",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 16195631729
   },
   {
@@ -14125,13 +14371,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 15779025788
   },
   {
@@ -14264,13 +14509,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 15779025788
   },
   {
@@ -14401,9 +14645,18 @@
    "sampler_stages": [],
    "workflow_precision": "bf16",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 20217198004
   },
   {
@@ -14512,6 +14765,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 7837943801
   },
   {
@@ -14675,12 +14929,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31768107174
   },
   {
@@ -14871,12 +15128,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 35280539710
   },
   {
@@ -15040,12 +15300,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31768063166
   },
   {
@@ -15209,12 +15472,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 32428690534
   },
   {
@@ -15350,6 +15616,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 17283091112
   },
   {
@@ -15512,13 +15779,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26754163364
   },
   {
@@ -15681,13 +15947,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26754163364
   },
   {
@@ -15850,13 +16115,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26754168129
   },
   {
@@ -16019,13 +16283,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26754168129
   },
   {
@@ -16218,12 +16481,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 34034901246
   },
   {
@@ -16387,12 +16653,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 30918720358
   },
   {
@@ -16557,12 +16826,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 30918783646
   },
   {
@@ -16755,12 +17027,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31154900678
   },
   {
@@ -16924,12 +17199,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31021848039
   },
   {
@@ -17093,12 +17371,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 30987169046
   },
   {
@@ -17354,12 +17635,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 37373929524
   },
   {
@@ -17553,12 +17837,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 36002662598
   },
   {
@@ -17696,12 +17983,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 50499531184
   },
   {
@@ -17894,12 +18184,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 32711969886
   },
   {
@@ -17982,9 +18275,10 @@
    },
    "runtime": "comfyui",
    "description": {
-    "ja": "定番の画像モデルです。GPU のメモリが少ない PC や GPU なしの PC でも動きます(GPU なしだと1枚に数分〜十数分)。",
-    "en": "A long-standing standard image model. It also runs on PCs with little GPU memory or no GPU (a few minutes to over ten minutes per image without a GPU)."
+    "ja": "定番の画像モデルです。GPU のメモリが少ない PC でも動きます。",
+    "en": "A long-standing standard image model. It also runs on PCs with little GPU memory."
    },
+   "card_languages": [],
    "total_size_bytes": 6938078334
   },
   {
@@ -18119,13 +18413,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 20690152836
   },
   {
@@ -18260,13 +18555,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 14581287732
   },
   {
@@ -18411,6 +18707,9 @@
     "ja": "Z-Image Turbo の、軽量化していない高画質版です。細部の描き込みがいちばん細かく、GPU のメモリが 16 GB 以上の PC 向けです。",
     "en": "The full-quality, non-quantized Z-Image Turbo. It draws the finest detail and is aimed at PCs with 16 GB or more of GPU memory."
    },
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 20690152836
   },
   {
@@ -18572,13 +18871,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 23791725244
   },
   {
@@ -18723,6 +19023,9 @@
     "ja": "短い時間で高画質な写真・イラストをつくれる最新モデルの軽量版です。GPU のメモリが 8 GB 前後の PC 向けです。",
     "en": "A lightweight build of a recent model that makes high-quality photos and illustrations in a short time. Aimed at PCs with about 8 GB of GPU memory."
    },
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 12168299735
   },
   {
@@ -18827,9 +19130,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 23589513510
   },
   {
@@ -18934,9 +19244,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 23589513510
   },
   {
@@ -19103,9 +19420,16 @@
    ],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 25659352052
   },
   {
@@ -19182,9 +19506,16 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 14934922866
   },
   {
@@ -19301,6 +19632,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13014060264
   },
   {
@@ -19411,6 +19743,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 10627989432
   },
   {
@@ -19527,6 +19860,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13014060264
   },
   {
@@ -19609,6 +19943,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 6938081905
   },
   {
@@ -19800,12 +20135,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 32523146510
   },
   {
@@ -19997,12 +20335,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 51644262974
   },
   {
@@ -20166,12 +20507,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 30843489374
   },
   {
@@ -20363,12 +20707,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31282309734
   },
   {
@@ -20529,12 +20876,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 30659266526
   },
   {
@@ -20726,12 +21076,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 51644257470
   },
   {
@@ -20923,12 +21276,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31154900678
   },
   {
@@ -21120,6 +21476,10 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31154900678
   },
   {
@@ -21259,13 +21619,14 @@
    "precision_source": "hf_api",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34874915900
   },
   {
@@ -21514,6 +21875,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 27795501024
   },
   {
@@ -21705,12 +22069,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31528430254
   },
   {
@@ -21903,12 +22270,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31154900678
   },
   {
@@ -22075,12 +22445,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 51254547750
   },
   {
@@ -22160,6 +22533,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 444473596
   },
   {
@@ -22237,6 +22611,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 1336748056
   },
   {
@@ -22317,6 +22692,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 1745546848
   },
   {
@@ -22454,6 +22832,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 19090035068
   },
   {
@@ -22531,6 +22910,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 2501605198
   },
   {
@@ -22610,6 +22990,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 661859924
   },
   {
@@ -22812,6 +23193,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 26033802572
   },
   {
@@ -22921,6 +23305,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 2040614770
   },
   {
@@ -23002,6 +23389,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 1916645792
   },
   {
@@ -23105,6 +23495,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 3959584518
   },
   {
@@ -23208,6 +23599,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 8836222790
   },
   {
@@ -23263,6 +23655,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 17716740096
   },
   {
@@ -23426,6 +23819,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 20757010672
   },
   {
@@ -23626,13 +24022,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 38770076711
   },
   {
@@ -23792,6 +24187,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 19882894142
   },
   {
@@ -23951,6 +24347,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 19882894142
   },
   {
@@ -24110,6 +24507,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 19882894104
   },
   {
@@ -24198,6 +24596,7 @@
     "ja": "ジャンルや雰囲気の説明と歌詞から、歌入りの曲や BGM をつくれます。日本語の歌詞にも対応しています。",
     "en": "Makes songs with vocals or background music from a description of genre and mood plus lyrics. Japanese lyrics are supported."
    },
+   "card_languages": [],
    "total_size_bytes": 10025478736
   },
   {
@@ -24357,6 +24756,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 10025368944
   },
   {
@@ -24516,6 +24916,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 14695999816
   },
   {
@@ -24593,6 +24994,25 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "cs",
+    "nl",
+    "ar",
+    "ja",
+    "hu",
+    "ko",
+    "hi"
+   ],
    "total_size_bytes": 7699743341
   },
   {
@@ -24667,9 +25087,48 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh",
+     "de",
+     "fr",
+     "es",
+     "it",
+     "pt",
+     "pl",
+     "tr",
+     "ru",
+     "cs",
+     "nl",
+     "ar",
+     "ja",
+     "hu",
+     "ko",
+     "hi"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "cs",
+    "nl",
+    "ar",
+    "ja",
+    "hu",
+    "ko",
+    "hi"
+   ],
    "total_size_bytes": 7699743341
   },
   {
@@ -24744,9 +25203,48 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh",
+     "de",
+     "fr",
+     "es",
+     "it",
+     "pt",
+     "pl",
+     "tr",
+     "ru",
+     "cs",
+     "nl",
+     "ar",
+     "ja",
+     "hu",
+     "ko",
+     "hi"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "cs",
+    "nl",
+    "ar",
+    "ja",
+    "hu",
+    "ko",
+    "hi"
+   ],
    "total_size_bytes": 7699743341
   },
   {
@@ -24801,6 +25299,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 429496730
   },
   {
@@ -24939,6 +25438,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 14327505696
   },
   {
@@ -25074,13 +25574,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 14957602151
   },
   {
@@ -25216,13 +25717,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 14957602151
   },
   {
@@ -25327,6 +25829,10 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "zh",
+    "en"
+   ],
    "total_size_bytes": 5347806922
   },
   {
@@ -25401,9 +25907,18 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "zh",
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "zh",
+    "en"
+   ],
    "total_size_bytes": 3960938800
   },
   {
@@ -25512,6 +26027,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 5745535406
   },
   {
@@ -25678,6 +26196,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 35472652265
   },
   {
@@ -25842,12 +26361,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 41045319115
   },
   {
@@ -25958,6 +26480,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 16128570524
   },
   {
@@ -26068,6 +26593,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 19158283132
   },
   {
@@ -26263,12 +26791,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 31596283382
   },
   {
@@ -26381,6 +26912,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 2528373448
   },
   {
@@ -26542,9 +27074,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 40916568234
   },
   {
@@ -26708,9 +27263,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 61457694696
   },
   {
@@ -26844,9 +27422,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 71524557424
   },
   {
@@ -26980,9 +27581,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 71524557424
   },
   {
@@ -27146,9 +27770,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 62439163728
   },
   {
@@ -27339,9 +27986,32 @@
    "sampler_stages": [],
    "workflow_precision": "bf16",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 61385508306
   },
   {
@@ -27475,9 +28145,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 71524557424
   },
   {
@@ -27611,9 +28304,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 39369815704
   },
   {
@@ -27839,12 +28555,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 28830380381
   },
   {
@@ -28224,12 +28943,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 89677420197
   },
   {
@@ -28314,6 +29036,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 1264219396
   },
   {
@@ -28511,12 +29234,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 52058874082
   },
   {
@@ -28573,6 +29299,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 21474836480
   },
   {
@@ -28660,6 +29387,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 10737418240
   },
   {
@@ -29003,13 +29731,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 57710342791
   },
   {
@@ -29067,6 +29796,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 10737418240
   },
   {
@@ -29265,12 +29995,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 25394780013
   },
   {
@@ -29442,12 +30175,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 46495526446
   },
   {
@@ -29646,12 +30382,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 52708319759
   },
   {
@@ -29796,6 +30535,10 @@
     "ja": "文章から短い動画をつくる軽量なモデルです。GPU のメモリが 8 GB 前後の PC でも動きます。",
     "en": "A lightweight model that makes short videos from text. Runs on PCs with around 8 GB of GPU memory."
    },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 9828025775
   },
   {
@@ -29910,6 +30653,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 16497704314
   },
   {
@@ -29965,6 +30709,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 1073741824
   },
   {
@@ -30020,6 +30765,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -30075,6 +30821,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -30130,6 +30877,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 5368709120
   },
   {
@@ -30207,6 +30955,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 1336748056
   },
   {
@@ -30262,6 +31011,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 10737418240
   },
   {
@@ -30371,6 +31121,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 2040614770
   },
   {
@@ -30452,6 +31205,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 1916645792
   },
   {
@@ -30555,6 +31311,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 3959584518
   },
   {
@@ -30635,6 +31392,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 68882302
   },
   {
@@ -30715,6 +31473,9 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 1745546848
   },
   {
@@ -30770,6 +31531,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": null,
    "total_size_bytes": 42949672960
   },
   {
@@ -31008,6 +31770,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 34271721758
   },
   {
@@ -31094,6 +31859,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 1264219396
   },
   {
@@ -31294,13 +32060,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 38770076711
   },
   {
@@ -31494,12 +32259,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 37054292422
   },
   {
@@ -31693,12 +32461,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 37054292422
   },
   {
@@ -31834,13 +32605,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 12665792679
   },
   {
@@ -31999,6 +32769,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 41317185607
   },
   {
@@ -32156,6 +32927,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 41231841239
   },
   {
@@ -32313,6 +33085,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 41231841239
   },
   {
@@ -32503,13 +33276,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 27873231087
   },
   {
@@ -32757,12 +33529,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 46718834230
   },
   {
@@ -32982,12 +33757,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 45862328590
   },
   {
@@ -33149,13 +33927,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 14696931838
   },
   {
@@ -33316,13 +34095,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 14696931838
   },
   {
@@ -33426,9 +34204,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 38979586280
   },
   {
@@ -33617,9 +34418,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 42958104950
   },
   {
@@ -33809,9 +34633,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 42958104950
   },
   {
@@ -34000,9 +34847,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 40924115172
   },
   {
@@ -34195,6 +35065,17 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 43487785638
   },
   {
@@ -34383,9 +35264,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 42958104950
   },
   {
@@ -34653,9 +35557,32 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 61468801844
   },
   {
@@ -34839,9 +35766,32 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 43914091388
   },
   {
@@ -35052,9 +36002,32 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 44909870140
   },
   {
@@ -35265,9 +36238,32 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 44909870140
   },
   {
@@ -35480,9 +36476,32 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 89136265680
   },
   {
@@ -35750,9 +36769,32 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 91206104222
   },
   {
@@ -35938,9 +36980,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 45524051446
   },
   {
@@ -36099,9 +37164,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 54055835190
   },
   {
@@ -36288,9 +37376,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 76763001798
   },
   {
@@ -36505,9 +37616,32 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 89136265680
   },
   {
@@ -36693,9 +37827,32 @@
    "sampler_stages": [],
    "workflow_precision": "fp8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 45524051446
   },
   {
@@ -36854,9 +38011,32 @@
    "sampler_stages": [],
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 54055835190
   },
   {
@@ -36993,9 +38173,32 @@
    "sampler_stages": [],
    "workflow_precision": "bf16",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "de",
+     "es",
+     "fr",
+     "ja",
+     "ko",
+     "zh",
+     "it",
+     "pt"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "zh",
+    "it",
+    "pt"
+   ],
    "total_size_bytes": 53827813171
   },
   {
@@ -37260,9 +38463,16 @@
    "sampler_stages": [],
    "workflow_precision": "int8",
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 46367285289
   },
   {
@@ -37449,6 +38659,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 42030035159
   },
   {
@@ -37635,6 +38846,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 42030035159
   },
   {
@@ -37818,6 +39030,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 42030035159
   },
   {
@@ -38001,6 +39214,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 42030035159
   },
   {
@@ -38187,6 +39401,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 42030035159
   },
   {
@@ -38410,12 +39625,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 22479761079
   },
   {
@@ -38579,12 +39797,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 11486669395
   },
   {
@@ -38748,12 +39969,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 42050336219
   },
   {
@@ -39002,13 +40226,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 44758462043
   },
   {
@@ -39257,13 +40482,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 28618927971
   },
   {
@@ -39485,12 +40711,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 29685622417
   },
   {
@@ -39716,12 +40945,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 28830380381
   },
   {
@@ -39948,12 +41180,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 38033162727
   },
   {
@@ -40182,12 +41417,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 40046493159
   },
   {
@@ -40417,12 +41655,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 38035806375
   },
   {
@@ -40653,12 +41894,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 38033164103
   },
   {
@@ -40887,12 +42131,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 38033162727
   },
   {
@@ -41084,12 +42331,14 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "es"
+   ],
    "total_size_bytes": 25242529435
   },
   {
@@ -41317,13 +42566,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 38031524327
   },
   {
@@ -41461,12 +42709,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 18148611137
   },
   {
@@ -41603,12 +42854,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 18146245513
   },
   {
@@ -41753,6 +43007,10 @@
     "ja": "文章から、または画像を動かして動画をつくれます。720p まで対応した高品質なモデルです。",
     "en": "Makes video from text, or animates an image. A high-quality model that supports up to 720p."
    },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 18144966705
   },
   {
@@ -41946,6 +43204,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 25645113843
   },
   {
@@ -42110,6 +43369,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 24907108099
   },
   {
@@ -42273,6 +43533,10 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 25389377307
   },
   {
@@ -42504,12 +43768,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 50307624515
   },
   {
@@ -42759,12 +44026,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 57751314960
   },
   {
@@ -43014,12 +44284,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 57751314960
   },
   {
@@ -43269,12 +44542,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 57751314960
   },
   {
@@ -43439,12 +44715,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 42403051599
   },
   {
@@ -43637,13 +44916,14 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 43729709207
   },
   {
@@ -43893,12 +45173,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 57751314960
   },
   {
@@ -44093,12 +45376,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 25394780013
   },
   {
@@ -44295,12 +45581,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 25394780013
   },
   {
@@ -44463,13 +45752,12 @@
    "precision_source": "header",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 41046635051
   },
   {
@@ -44633,12 +45921,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 11383047059
   },
   {
@@ -44802,12 +46093,15 @@
    "languages": {
     "prompt": [
      "en",
-     "ja",
      "zh"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 11382899603
   },
   {
@@ -44880,6 +46174,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 8709520096
   },
   {
@@ -45010,13 +46305,12 @@
    "precision_source": "filename",
    "languages": {
     "prompt": [
-     "en",
-     "ja",
-     "zh"
+     "en"
     ]
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 26409042758
   },
   {
@@ -45174,9 +46468,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 13875688436
   },
   {
@@ -45244,9 +46545,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 6938040682
   },
   {
@@ -45323,6 +46631,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 4265314986
   },
   {
@@ -45399,6 +46708,9 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 2132651866
   },
   {
@@ -45470,9 +46782,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 13625742656
   },
   {
@@ -45547,6 +46866,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 7256784376
   },
   {
@@ -45620,6 +46940,7 @@
    "languages": {},
    "runtime": null,
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 4244178022
   },
   {
@@ -45689,9 +47010,20 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "pt",
+     "th"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en",
+    "pt",
+    "th"
+   ],
    "total_size_bytes": 6938043264
   },
   {
@@ -45763,6 +47095,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 18558640000
   },
   {
@@ -45889,6 +47222,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 25801402224
   },
   {
@@ -45966,6 +47300,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 6938078610
   },
   {
@@ -46032,9 +47367,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 18157185200
   },
   {
@@ -46107,6 +47449,7 @@
    "languages": {},
    "runtime": null,
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 2132625431
   },
   {
@@ -46182,6 +47525,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 6938143490
   },
   {
@@ -46251,9 +47595,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 12714452256
   },
   {
@@ -46328,6 +47679,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 7224707264
   },
   {
@@ -46452,9 +47804,18 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 18788082940
   },
   {
@@ -46531,6 +47892,7 @@
    },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 2132626072
   },
   {
@@ -46664,6 +48026,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 13294875288
   },
   {
@@ -46698,7 +48061,7 @@
       "family:stable-audio"
      ],
      "head_status": 302,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": "fp32",
      "header_params": 567573761,
      "repo_precision": null,
@@ -46728,7 +48091,7 @@
       "upstream_gated: google/t5gemma-b-b-ul2"
      ],
      "head_status": 302,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
@@ -46768,9 +48131,10 @@
    },
    "runtime": "comfyui",
    "description": {
-    "ja": "短い BGM やループ素材をつくる軽量なモデルです。GPU なしの PC でも動きます(歌は入りません)。",
-    "en": "A lightweight model that makes short background music and loop material. Runs on PCs without a GPU (no vocals). Write prompts in English."
+    "ja": "短い BGM やループ素材をつくる軽量なモデルです(歌は入りません)。",
+    "en": "A lightweight model that makes short background music and loop material (no vocals). Write prompts in English."
    },
+   "card_languages": null,
    "total_size_bytes": 3457648943
   },
   {
@@ -46846,9 +48210,12 @@
    },
    "runtime": "comfyui",
    "description": {
-    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。GPU なしの PC でも動きます。",
-    "en": "Makes sound effects and ambient sounds such as rain or a closing door. Runs on PCs without a GPU."
+    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。",
+    "en": "Makes sound effects and ambient sounds such as rain or a closing door."
    },
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 2270384940
   },
   {
@@ -46942,9 +48309,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "hf_api",
-   "languages": {},
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 5478363963
   },
   {
@@ -47009,9 +48383,32 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "fr",
+     "es",
+     "ja",
+     "ko",
+     "it",
+     "ru",
+     "de"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "fr",
+    "es",
+    "ja",
+    "ko",
+    "it",
+    "ru",
+    "de"
+   ],
    "total_size_bytes": 988097824
   },
   {
@@ -47081,9 +48478,180 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "ja",
+     "ko",
+     "es",
+     "pt",
+     "ar",
+     "ru",
+     "fr",
+     "de",
+     "sv",
+     "it",
+     "tr",
+     "no",
+     "nl",
+     "cy",
+     "eu",
+     "ca",
+     "da",
+     "gl",
+     "ta",
+     "hu",
+     "fi",
+     "pl",
+     "et",
+     "hi",
+     "la",
+     "ur",
+     "th",
+     "vi",
+     "jw",
+     "bn",
+     "yo",
+     "sl",
+     "cs",
+     "sw",
+     "nn",
+     "he",
+     "ms",
+     "uk",
+     "id",
+     "kk",
+     "bg",
+     "lv",
+     "my",
+     "tl",
+     "sk",
+     "ne",
+     "fa",
+     "af",
+     "el",
+     "bo",
+     "hr",
+     "ro",
+     "sn",
+     "mi",
+     "yi",
+     "am",
+     "be",
+     "km",
+     "is",
+     "az",
+     "sd",
+     "br",
+     "sq",
+     "ps",
+     "mn",
+     "ht",
+     "ml",
+     "sr",
+     "sa",
+     "te",
+     "ka",
+     "bs",
+     "pa",
+     "lt",
+     "kn",
+     "si",
+     "hy",
+     "mr",
+     "as",
+     "gu",
+     "fo"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "ja",
+    "ko",
+    "es",
+    "pt",
+    "ar",
+    "ru",
+    "fr",
+    "de",
+    "sv",
+    "it",
+    "tr",
+    "no",
+    "nl",
+    "cy",
+    "eu",
+    "ca",
+    "da",
+    "gl",
+    "ta",
+    "hu",
+    "fi",
+    "pl",
+    "et",
+    "hi",
+    "la",
+    "ur",
+    "th",
+    "vi",
+    "jw",
+    "bn",
+    "yo",
+    "sl",
+    "cs",
+    "sw",
+    "nn",
+    "he",
+    "ms",
+    "uk",
+    "id",
+    "kk",
+    "bg",
+    "lv",
+    "my",
+    "tl",
+    "sk",
+    "ne",
+    "fa",
+    "af",
+    "el",
+    "bo",
+    "hr",
+    "ro",
+    "sn",
+    "mi",
+    "yi",
+    "am",
+    "be",
+    "km",
+    "is",
+    "az",
+    "sd",
+    "br",
+    "sq",
+    "ps",
+    "mn",
+    "ht",
+    "ml",
+    "sr",
+    "sa",
+    "te",
+    "ka",
+    "bs",
+    "pa",
+    "lt",
+    "kn",
+    "si",
+    "hy",
+    "mr",
+    "as",
+    "gu",
+    "fo"
+   ],
    "total_size_bytes": 23386029088
   },
   {
@@ -47221,9 +48789,74 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "ar",
+     "cs",
+     "da",
+     "de",
+     "nl",
+     "es",
+     "fr",
+     "fi",
+     "el",
+     "he",
+     "hi",
+     "hu",
+     "ja",
+     "it",
+     "ko",
+     "mk",
+     "ms",
+     "ru",
+     "fa",
+     "pl",
+     "pt",
+     "sv",
+     "ro",
+     "sw",
+     "tl",
+     "th",
+     "tr",
+     "vi"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "ar",
+    "cs",
+    "da",
+    "de",
+    "nl",
+    "es",
+    "fr",
+    "fi",
+    "el",
+    "he",
+    "hi",
+    "hu",
+    "ja",
+    "it",
+    "ko",
+    "mk",
+    "ms",
+    "ru",
+    "fa",
+    "pl",
+    "pt",
+    "sv",
+    "ro",
+    "sw",
+    "tl",
+    "th",
+    "tr",
+    "vi"
+   ],
    "total_size_bytes": 16979739072
   },
   {
@@ -47288,9 +48921,34 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "ja",
+     "ko",
+     "de",
+     "fr",
+     "ru",
+     "pt",
+     "es",
+     "it"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "ja",
+    "ko",
+    "de",
+    "fr",
+    "ru",
+    "pt",
+    "es",
+    "it"
+   ],
    "total_size_bytes": 1811626576
   },
   {
@@ -47358,6 +49016,7 @@
    "languages": {},
    "runtime": null,
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 3833402552
   },
   {
@@ -47422,9 +49081,60 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "ar",
+     "da",
+     "de",
+     "el",
+     "en",
+     "es",
+     "fi",
+     "fr",
+     "he",
+     "hi",
+     "it",
+     "ja",
+     "ko",
+     "ms",
+     "nl",
+     "no",
+     "pl",
+     "pt",
+     "ru",
+     "sv",
+     "sw",
+     "tr",
+     "zh"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "ar",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "fi",
+    "fr",
+    "he",
+    "hi",
+    "it",
+    "ja",
+    "ko",
+    "ms",
+    "nl",
+    "no",
+    "pl",
+    "pt",
+    "ru",
+    "sv",
+    "sw",
+    "tr",
+    "zh"
+   ],
    "total_size_bytes": 2143989928
   },
   {
@@ -47490,9 +49200,36 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "fr",
+     "de",
+     "es",
+     "it",
+     "pt",
+     "ja",
+     "ko",
+     "ru",
+     "ar"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "fr",
+    "de",
+    "es",
+    "it",
+    "pt",
+    "ja",
+    "ko",
+    "ru",
+    "ar"
+   ],
    "total_size_bytes": 968588544
   },
   {
@@ -47557,9 +49294,50 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "hf_api",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en",
+     "as",
+     "bn",
+     "gu",
+     "hi",
+     "kn",
+     "ks",
+     "or",
+     "ml",
+     "mr",
+     "ne",
+     "pa",
+     "sa",
+     "sd",
+     "ta",
+     "te",
+     "ur",
+     "om"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en",
+    "as",
+    "bn",
+    "gu",
+    "hi",
+    "kn",
+    "ks",
+    "or",
+    "ml",
+    "mr",
+    "ne",
+    "pa",
+    "sa",
+    "sd",
+    "ta",
+    "te",
+    "ur",
+    "om"
+   ],
    "total_size_bytes": 3751321772
   },
   {
@@ -47652,6 +49430,7 @@
    "languages": {},
    "runtime": null,
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 2276722304
   },
   {
@@ -47716,9 +49495,194 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "af",
+     "ar",
+     "as",
+     "az",
+     "ba",
+     "be",
+     "bg",
+     "bn",
+     "bs",
+     "ca",
+     "cs",
+     "cy",
+     "da",
+     "de",
+     "el",
+     "en",
+     "eo",
+     "es",
+     "et",
+     "eu",
+     "fa",
+     "fi",
+     "fr",
+     "ga",
+     "gl",
+     "gu",
+     "ha",
+     "he",
+     "hi",
+     "hr",
+     "ht",
+     "hu",
+     "hy",
+     "id",
+     "is",
+     "it",
+     "jv",
+     "ka",
+     "kk",
+     "kn",
+     "ko",
+     "ky",
+     "la",
+     "lb",
+     "lg",
+     "ln",
+     "lt",
+     "lv",
+     "mi",
+     "mk",
+     "ml",
+     "mn",
+     "mr",
+     "ms",
+     "mt",
+     "ne",
+     "nl",
+     "no",
+     "ny",
+     "oc",
+     "om",
+     "pa",
+     "pl",
+     "ps",
+     "pt",
+     "ro",
+     "ru",
+     "rw",
+     "sd",
+     "sk",
+     "sl",
+     "sn",
+     "so",
+     "sq",
+     "sr",
+     "sv",
+     "sw",
+     "ta",
+     "te",
+     "tg",
+     "tl",
+     "tr",
+     "ug",
+     "uk",
+     "ur",
+     "uz",
+     "vi",
+     "xh",
+     "zh",
+     "zu"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "af",
+    "ar",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en",
+    "eo",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fr",
+    "ga",
+    "gl",
+    "gu",
+    "ha",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "id",
+    "is",
+    "it",
+    "jv",
+    "ka",
+    "kk",
+    "kn",
+    "ko",
+    "ky",
+    "la",
+    "lb",
+    "lg",
+    "ln",
+    "lt",
+    "lv",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "ne",
+    "nl",
+    "no",
+    "ny",
+    "oc",
+    "om",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "ro",
+    "ru",
+    "rw",
+    "sd",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "tl",
+    "tr",
+    "ug",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "xh",
+    "zh",
+    "zu"
+   ],
    "total_size_bytes": 9309834930
   },
   {
@@ -47781,9 +49745,194 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "af",
+     "ar",
+     "as",
+     "az",
+     "ba",
+     "be",
+     "bg",
+     "bn",
+     "bs",
+     "ca",
+     "cs",
+     "cy",
+     "da",
+     "de",
+     "el",
+     "en",
+     "eo",
+     "es",
+     "et",
+     "eu",
+     "fa",
+     "fi",
+     "fr",
+     "ga",
+     "gl",
+     "gu",
+     "ha",
+     "he",
+     "hi",
+     "hr",
+     "ht",
+     "hu",
+     "hy",
+     "id",
+     "is",
+     "it",
+     "jv",
+     "ka",
+     "kk",
+     "kn",
+     "ko",
+     "ky",
+     "la",
+     "lb",
+     "lg",
+     "ln",
+     "lt",
+     "lv",
+     "mi",
+     "mk",
+     "ml",
+     "mn",
+     "mr",
+     "ms",
+     "mt",
+     "ne",
+     "nl",
+     "no",
+     "ny",
+     "oc",
+     "om",
+     "pa",
+     "pl",
+     "ps",
+     "pt",
+     "ro",
+     "ru",
+     "rw",
+     "sd",
+     "sk",
+     "sl",
+     "sn",
+     "so",
+     "sq",
+     "sr",
+     "sv",
+     "sw",
+     "ta",
+     "te",
+     "tg",
+     "tl",
+     "tr",
+     "ug",
+     "uk",
+     "ur",
+     "uz",
+     "vi",
+     "xh",
+     "zh",
+     "zu"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "af",
+    "ar",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en",
+    "eo",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fr",
+    "ga",
+    "gl",
+    "gu",
+    "ha",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "id",
+    "is",
+    "it",
+    "jv",
+    "ka",
+    "kk",
+    "kn",
+    "ko",
+    "ky",
+    "la",
+    "lb",
+    "lg",
+    "ln",
+    "lt",
+    "lv",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "ne",
+    "nl",
+    "no",
+    "ny",
+    "oc",
+    "om",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "ro",
+    "ru",
+    "rw",
+    "sd",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "tl",
+    "tr",
+    "ug",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "xh",
+    "zh",
+    "zu"
+   ],
    "total_size_bytes": 5519235296
   },
   {
@@ -47853,9 +50002,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": null,
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 327212226
   },
   {
@@ -47924,9 +50080,264 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "ab",
+     "af",
+     "am",
+     "an",
+     "as",
+     "az",
+     "ba",
+     "be",
+     "bg",
+     "bn",
+     "bo",
+     "br",
+     "bs",
+     "ca",
+     "cs",
+     "cv",
+     "cy",
+     "da",
+     "de",
+     "dv",
+     "el",
+     "en",
+     "eo",
+     "es",
+     "et",
+     "eu",
+     "fa",
+     "ff",
+     "fi",
+     "fr",
+     "fy",
+     "ga",
+     "gl",
+     "gn",
+     "gu",
+     "gv",
+     "ha",
+     "he",
+     "hi",
+     "hr",
+     "ht",
+     "hu",
+     "hy",
+     "hz",
+     "ia",
+     "id",
+     "ig",
+     "ik",
+     "is",
+     "it",
+     "ja",
+     "jv",
+     "ka",
+     "kj",
+     "kk",
+     "km",
+     "kn",
+     "ko",
+     "ks",
+     "kw",
+     "ky",
+     "lb",
+     "lg",
+     "ln",
+     "lo",
+     "lt",
+     "lv",
+     "mi",
+     "mk",
+     "ml",
+     "mn",
+     "mr",
+     "ms",
+     "mt",
+     "my",
+     "nb",
+     "ng",
+     "nl",
+     "nn",
+     "no",
+     "ny",
+     "oc",
+     "om",
+     "os",
+     "pa",
+     "pl",
+     "ps",
+     "pt",
+     "rm",
+     "ro",
+     "ru",
+     "rw",
+     "sa",
+     "sc",
+     "sd",
+     "si",
+     "sk",
+     "sl",
+     "sn",
+     "so",
+     "sq",
+     "sr",
+     "sv",
+     "sw",
+     "ta",
+     "te",
+     "tg",
+     "th",
+     "ti",
+     "tk",
+     "tn",
+     "tr",
+     "tt",
+     "tw",
+     "ug",
+     "uk",
+     "ur",
+     "uz",
+     "vi",
+     "wo",
+     "xh",
+     "yi",
+     "yo",
+     "zh",
+     "zu"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "ab",
+    "af",
+    "am",
+    "an",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bo",
+    "br",
+    "bs",
+    "ca",
+    "cs",
+    "cv",
+    "cy",
+    "da",
+    "de",
+    "dv",
+    "el",
+    "en",
+    "eo",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "ff",
+    "fi",
+    "fr",
+    "fy",
+    "ga",
+    "gl",
+    "gn",
+    "gu",
+    "gv",
+    "ha",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "hz",
+    "ia",
+    "id",
+    "ig",
+    "ik",
+    "is",
+    "it",
+    "ja",
+    "jv",
+    "ka",
+    "kj",
+    "kk",
+    "km",
+    "kn",
+    "ko",
+    "ks",
+    "kw",
+    "ky",
+    "lb",
+    "lg",
+    "ln",
+    "lo",
+    "lt",
+    "lv",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "my",
+    "nb",
+    "ng",
+    "nl",
+    "nn",
+    "no",
+    "ny",
+    "oc",
+    "om",
+    "os",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "rm",
+    "ro",
+    "ru",
+    "rw",
+    "sa",
+    "sc",
+    "sd",
+    "si",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "th",
+    "ti",
+    "tk",
+    "tn",
+    "tr",
+    "tt",
+    "tw",
+    "ug",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "wo",
+    "xh",
+    "yi",
+    "yo",
+    "zh",
+    "zu"
+   ],
    "total_size_bytes": 2450344112
   },
   {
@@ -48041,9 +50452,18 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en",
+     "zh"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
    "total_size_bytes": 5408202454
   },
   {
@@ -48108,9 +50528,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 2035332888
   },
   {
@@ -48173,9 +50600,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": null,
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "ko"
+   ],
    "total_size_bytes": 207860748
   },
   {
@@ -48240,9 +50674,74 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "header",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "zh",
+     "en",
+     "ar",
+     "my",
+     "da",
+     "nl",
+     "fi",
+     "fr",
+     "de",
+     "el",
+     "he",
+     "hi",
+     "id",
+     "it",
+     "ja",
+     "km",
+     "ko",
+     "lo",
+     "ms",
+     "no",
+     "pl",
+     "pt",
+     "ru",
+     "es",
+     "sw",
+     "sv",
+     "tl",
+     "th",
+     "tr",
+     "vi"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "zh",
+    "en",
+    "ar",
+    "my",
+    "da",
+    "nl",
+    "fi",
+    "fr",
+    "de",
+    "el",
+    "he",
+    "hi",
+    "id",
+    "it",
+    "ja",
+    "km",
+    "ko",
+    "lo",
+    "ms",
+    "no",
+    "pl",
+    "pt",
+    "ru",
+    "es",
+    "sw",
+    "sv",
+    "tl",
+    "th",
+    "tr",
+    "vi"
+   ],
    "total_size_bytes": 4580080592
   },
   {
@@ -48307,9 +50806,18 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": "filename",
-   "languages": {},
+   "languages": {
+    "speech": [
+     "vi",
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "vi",
+    "en"
+   ],
    "total_size_bytes": 187917664
   },
   {
@@ -48398,9 +50906,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": null,
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 7133500964
   },
   {
@@ -48463,9 +50978,16 @@
    "sampler_stages": null,
    "workflow_precision": null,
    "precision_source": null,
-   "languages": {},
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
    "runtime": null,
    "description": {},
+   "card_languages": [
+    "en"
+   ],
    "total_size_bytes": 55828077
   },
   {
@@ -48484,8 +51006,8 @@
      "size_bytes": 3064295596,
      "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "main",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
@@ -48495,24 +51017,25 @@
       "Aratako/Irodori-TTS-v4.1-Small"
      ],
      "license_evidence": [
-      "manual: https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード license: mit。カードの「Ethical Restrictions」(実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない)が付く(2026-10-21 に確認)"
+      "manual: https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード license: mit。カードの「Ethical Restrictions」(実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない)が付く(2026-10-21 に確認)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "head_status": 302,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": "fp32",
      "header_params": 766052385,
      "repo_precision": null,
      "repo_precision_source": null
     },
     {
-     "name": "tokenizer.json",
+     "name": "tokenizer/tokenizer.json",
      "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer.json",
      "sha256": "6a0734cf21c802169defaffe719bc2ef12bb9d0be37e54b61ed27aa89394723d",
      "size_bytes": 6718495,
-     "directory": "tts/tokenizer",
+     "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "other",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
@@ -48522,24 +51045,25 @@
       "Aratako/Irodori-TTS-v4.1-Small"
      ],
      "license_evidence": [
-      "manual: 同じリポジトリのトークナイザ(カード license: mit。文字を読む部品は sbintuitions/modernbert-ja-310m を元にしたとカードに書いてある)"
+      "manual: 同じリポジトリのトークナイザ(カード license: mit。文字を読む部品は sbintuitions/modernbert-ja-310m を元にしたとカードに書いてある)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "head_status": 307,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
      "repo_precision_source": null
     },
     {
-     "name": "tokenizer_config.json",
+     "name": "tokenizer/tokenizer_config.json",
      "url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/resolve/main/tokenizer/tokenizer_config.json",
      "sha256": "d229a271c64de1a7939d20d3665498e873fa91d5ee2edf135d73ec752cb9c9d3",
      "size_bytes": 668,
-     "directory": "tts/tokenizer",
+     "directory": "tts",
      "repo_id": "Aratako/Irodori-TTS-v4.1-Small",
-     "license": "mit",
-     "license_name": null,
+     "license": "other",
+     "license_name": "mit-with-ethical-restrictions",
      "gated": false,
      "role": "other",
      "license_from": "Aratako/Irodori-TTS-v4.1-Small",
@@ -48549,21 +51073,22 @@
       "Aratako/Irodori-TTS-v4.1-Small"
      ],
      "license_evidence": [
-      "manual: 同じリポジトリのトークナイザの設定(カード license: mit)"
+      "manual: 同じリポジトリのトークナイザの設定(カード license: mit)",
+      "manual: カードの cardData は license: mit だが、本文の「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)が用途を制限するので、other / mit-with-ethical-restrictions(用途の制限付きの段)として持つ(同じリポジトリのトークナイザも同じ)"
      ],
      "head_status": 307,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
      "repo_precision_source": null
     },
     {
-     "name": "weights.pth",
+     "name": "dacvae/weights.pth",
      "url": "https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim/resolve/main/weights.pth",
      "sha256": "db120339c5ee7eca1912cdf29bc612b947a0808e69c3cebfb4936b45a762c1d5",
      "size_bytes": 429620065,
-     "directory": "tts/dacvae",
+     "directory": "tts",
      "repo_id": "Aratako/Semantic-DACVAE-Japanese-32dim",
      "license": "mit",
      "license_name": null,
@@ -48579,7 +51104,7 @@
       "manual: https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim のカード license: mit(元の facebook/dacvae-watermarked は apache-2.0。2026-10-21 に確認)"
      ],
      "head_status": 302,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
@@ -48589,7 +51114,7 @@
    "template": null,
    "params_b": null,
    "precision": "fp32",
-   "license": "mit",
+   "license": "other",
    "license_url": "https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small",
    "base_model": "Aratako/Irodori-TTS-v4-Small",
    "content": "sfw",
@@ -48602,7 +51127,7 @@
    "downloads": null,
    "likes": null,
    "downloads_all_time": null,
-   "license_name": null,
+   "license_name": "mit-with-ethical-restrictions",
    "license_evidence": [],
    "files_complete": true,
    "size_floor_bytes": null,
@@ -48621,6 +51146,7 @@
     "ja": "人間らしく自然な日本語の読み上げです。落ち着いた女性・元気な女性・ナレーターなど、声の雰囲気を選べます。NVIDIA の GPU 向けです。",
     "en": "Natural, human-like Japanese text-to-speech with selectable voice styles (calm, lively, narrator). Japanese only. Aimed at NVIDIA GPUs. The card adds ethical restrictions to the MIT license (no impersonation, no deepfakes or misinformation)."
    },
+   "card_languages": null,
    "total_size_bytes": 3500634824
   },
   {
@@ -48653,7 +51179,7 @@
       "manual: https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan のカード license: other / license_name: tsukuyomi-chan-corpus / license_link: https://tyc.rei-yumesaki.net/material/corpus/#terms3(2026-10-21 に確認)。音声データの利用規約は SPDX に無い。クレジット表記と、出力音声の用途の禁止事項がある"
      ],
      "head_status": 302,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
@@ -48680,7 +51206,7 @@
       "manual: https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan のカード license: other / license_name: tsukuyomi-chan-corpus / license_link: https://tyc.rei-yumesaki.net/material/corpus/#terms3(2026-10-21 に確認)。音声データの利用規約は SPDX に無い。クレジット表記と、出力音声の用途の禁止事項がある"
      ],
      "head_status": 307,
-     "head_checked_at": "2026-10-21T00:24:34Z",
+     "head_checked_at": "2026-10-21T01:03:06Z",
      "header_precision": null,
      "header_params": null,
      "repo_precision": null,
@@ -48723,6 +51249,7 @@
     "ja": "軽くて速い読み上げです。GPU なしの PC でもすぐに読み上げます。日本語・英語に対応しています。",
     "en": "A light, fast text-to-speech voice (Tsukuyomi-chan, piper-plus). Reads Japanese and English right away, even on a PC without a GPU. The voice data has its own terms (credit line and output restrictions)."
    },
+   "card_languages": null,
    "total_size_bytes": 39659618
   },
   {
@@ -48854,6 +51381,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 31497521610
   },
   {
@@ -48985,6 +51513,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 37777193202
   },
   {
@@ -49086,6 +51615,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 58918453144
   },
   {
@@ -49189,6 +51719,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 15646703530
   },
   {
@@ -49263,6 +51794,7 @@
    "languages": {},
    "runtime": "comfyui",
    "description": {},
+   "card_languages": [],
    "total_size_bytes": 21734103566
   }
  ]

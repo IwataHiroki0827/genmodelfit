@@ -61,6 +61,8 @@ READINESS_POINTS = {
     "sha256": 5,
     "content": 5,
     "size_known": 5,
+    # runtime が ComfyUI 以外のモデルで、上の ComfyUI の 3 条件(15 + 15 + 10)の代わり(常に保留)
+    "app_runtime": 40,
 }
 HEADROOM_FULL = 0.5  # 全部載せで VRAM の半分以上が空けば余裕 100
 

@@ -1,5 +1,5 @@
 {
- "_comment": "手の表(update が毎回当てる。#36)。キー=一覧のモデル ID。languages の [] は「その入力・出力が無い」(画像から 3D は指示の文を取らない・歌は入らない)、キーが無いのは「分からない」。根拠は docs/sources.md「言語・動かし方・説明」。description.ja は AI生成キットのカタログの summary(実機で確かめたもの)",
+ "_comment": "手の表(update が毎回当てる。#36)。キー=一覧のモデル ID。languages の [] は「その入力・出力が無い」(画像から 3D は指示の文を取らない・歌は入らない)、キーが無いのは「分からない」。根拠は docs/sources.md「言語・動かし方・説明」。description.ja は AI生成キットのカタログの summary(実機で確かめたもの)。_note はカードの誤りを直す行の根拠(update は読まない)",
  "source": "AI生成キットの catalog.json(2026-10-21)と各モデルのカード",
  "models": {
   "image_z_image_turbo_int8": {
@@ -35,8 +35,8 @@
     ]
    },
    "description": {
-    "ja": "定番の画像モデルです。GPU のメモリが少ない PC や GPU なしの PC でも動きます(GPU なしだと1枚に数分〜十数分)。",
-    "en": "A long-standing standard image model. It also runs on PCs with little GPU memory or no GPU (a few minutes to over ten minutes per image without a GPU)."
+    "ja": "定番の画像モデルです。GPU のメモリが少ない PC でも動きます。",
+    "en": "A long-standing standard image model. It also runs on PCs with little GPU memory."
    }
   },
   "video_wan2_2_5B_ti2v": {
@@ -88,8 +88,8 @@
     "speech": []
    },
    "description": {
-    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。GPU なしの PC でも動きます。",
-    "en": "Makes sound effects and ambient sounds such as rain or a closing door. Runs on PCs without a GPU."
+    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。",
+    "en": "Makes sound effects and ambient sounds such as rain or a closing door."
    }
   },
   "3d_hunyuan3d_image_to_model": {
@@ -108,6 +108,23 @@
    "description": {
     "ja": "Hunyuan3D の新しい版です。2.0 より細かな形をつくれます。形だけで、色は付きません。",
     "en": "A newer Hunyuan3D release that makes finer shapes than 2.0. Shape only, no colors."
+   }
+  },
+  "video_wan2_2_14B_s2v": {
+   "_note": "https://huggingface.co/Wan-AI/Wan2.2-S2V-14B のカードの language が es だけ(誤り。本文の指示の例は英語、案内は中国語と英語)。同じ Wan2.2 の https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードの language は en・zh なので、それに合わせる",
+   "languages": {
+    "prompt": [
+     "en",
+     "zh"
+    ]
+   }
+  },
+  "hf:myshell-ai/MeloTTS-English": {
+   "_note": "https://huggingface.co/myshell-ai/MeloTTS-English のカードの language が ko(誤り。モデル名と本文の表のとおり英語の声)",
+   "languages": {
+    "speech": [
+     "en"
+    ]
    }
   }
  }

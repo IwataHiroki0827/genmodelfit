@@ -170,6 +170,9 @@ class ModelEntry:
     languages: dict[str, list[str]] = field(default_factory=dict)
     runtime: str | None = None
     description: dict[str, str] = field(default_factory=dict)
+    # HF のカードの language(appinfo が languages を作り直す材料。取得できたときに保存し、通信しない当て直しで
+    # 使う)。None = まだ読んでいない、[] = 読んだがカードに言語が無い
+    card_languages: list[str] | None = None
 
     @property
     def total_size_bytes(self) -> int | None:
