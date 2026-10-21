@@ -364,7 +364,7 @@ def test_sd_and_stable_audio_run_on_cpu(db, model_id, ram):
 def test_sdxl_cpu_ram_counts_fp32_weights(db):
     e = judge(db.get("image_sdxl_simple"), no_gpu(32), db).estimate
     assert 12.0 < e.ram_gb < 20.0  # 本体 4.8 GB と VAE を fp32 に広げた分 + 作業用メモリ × 2 + 固定分
-    assert any("1 枚に数分〜十数分" in r for r in e.reasons)
+    assert any("CPU は推定・実測なし" in r for r in e.reasons)  # CPU での実測は無い
     tiny = judge(db.get("image_sdxl_simple"), no_gpu(4), db).estimate
     assert tiny.fit == "too_tight"  # メモリが足りなければ動かない
 
@@ -468,3 +468,128 @@ def test_issue_26_monotonic_in_vram(db):
 def test_issue_26_ram_still_limits(db):
     e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 5080", 15.9, ram=4.0), db).estimate
     assert e.fit in ("marginal", "too_tight")
+
+
+# --- Checker の指摘(2026-10-21)の回帰 ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cpu",
+    ["AMD Ryzen 9 7945HX with Radeon Graphics", "AMD Ryzen 7 7745HX", "AMD Ryzen 9 9955HX3D"],
+)
+def test_dragon_and_fire_range_igpu_is_cpu(cpu):
+    a = Adapter(name="AMD Radeon(TM) Graphics", vendor="amd", vram_gb=0.5)
+    assert hardware.amd_gfx(a.name, cpu) == ("gfx1036", True)
+    assert classify_adapter(a, Host("Windows", 26100, cpu=cpu), 32.0) is None and a.integrated is True
+
+
+@pytest.mark.parametrize(
+    ("name", "gfx"),
+    [
+        ("AMD Radeon RX 9070 XT", "gfx1201"),
+        ("AMD Radeon RX 9060 XT", "gfx1200"),
+        ("AMD Radeon RX 6850M XT", "gfx1031"),
+        ("AMD Radeon RX 6800M", "gfx1031"),
+        ("AMD Radeon RX 6800S", "gfx1032"),
+        ("AMD Radeon RX 6650M", "gfx1032"),
+        ("AMD Radeon RX 6550M", "gfx1034"),
+        ("AMD Radeon RX 7700S", "gfx1102"),
+        ("AMD Radeon RX 7600M XT", "gfx1102"),
+        ("AMD Radeon RX 7800 XT", "gfx1101"),
+        ("AMD Radeon RX 6800 XT", "gfx1030"),
+    ],
+)
+def test_amd_mobile_names(name, gfx):
+    assert hardware.amd_gfx(name)[0] == gfx
+
+
+@pytest.mark.parametrize("name", ["Intel(R) Arc(TM) A770M Graphics", "Intel(R) Arc(TM) A370M Graphics"])
+def test_arc_mobile_is_xpu_on_windows(name):
+    a = Adapter(name=name, vendor="intel", vram_gb=8.0)
+    g = classify_adapter(a, WIN11, 32.0)
+    assert g is not None and g.backend == "xpu" and g.memory == "dedicated"
+
+
+def test_generic_amd_device_name_is_cpu_with_hint():
+    a = Adapter(name="AMD Device 7551", vendor="amd", vram_gb=16.0)
+    assert classify_adapter(a, LINUX, 32.0) is None and "update-pciids" in a.reason
+
+
+def test_unknown_os_versions_are_not_assumed():
+    a = Adapter(name="AMD Radeon RX 7900 XTX", vendor="amd", vram_gb=24.0)
+    assert classify_adapter(a, Host("Windows"), 32.0) is None and "Windows 11" in a.reason
+    i = Adapter(name="Intel(R) Arc(TM) A770 Graphics", vendor="intel", vram_gb=16.0)
+    assert classify_adapter(i, Host("Windows"), 32.0) is None
+    m = Adapter(name="Apple M2 Pro", vendor="apple")
+    assert classify_adapter(m, Host("Darwin"), 32.0) is None and "macOS 14.0" in m.reason
+
+
+def test_unusable_nvidia_still_probes_others(monkeypatch):
+    """Kepler の NVIDIA しか使えないときも、既定で AMD・Intel を調べて判定に使う。"""
+    kepler = Gpu(
+        name="NVIDIA GeForce GTX 780",
+        vendor="nvidia",
+        vram_total_gb=3.0,
+        driver="470.0",
+        backend="cuda",
+        compute_capability="3.5",
+    )
+    classify_gpu(kepler, windows_driver=True, comfy_windows=True)
+    assert kepler.backend == "none"
+    adapters, _ = parse_wmi_video(fx("wmi_arc_a770.json"), reg("registry_arc_a770.json"))
+    monkeypatch.setattr(hardware, "find_nvidia_smi", lambda: "nvidia-smi")
+    monkeypatch.setattr(hardware, "detect_gpus", lambda **kw: ([kepler], []))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
+    s = detect(memory=Memory(total=32 * GB, available=32 * GB), host=WIN11)
+    assert s.other_gpus_checked and s.best_gpu is not None and s.best_gpu.backend == "xpu"
+
+
+def test_other_vendor_community_measurement_only_calibrates(db):
+    from genmodelfit.models import Measurement, Settings
+
+    m = db.get("image_sdxl_simple")
+    base = next(x for x in db.measurements if x.model_id == m.id)
+    comm = Measurement(
+        model_id=m.id,
+        gpu_name="NVIDIA GeForce RTX 4090",
+        gpu_vram_gb=24.0,
+        peak_vram_gb=base.peak_vram_gb,
+        settings=Settings(**vars(base.settings)),
+        origin="community",
+        n_submissions=3,
+        consistent=True,
+        approved=True,
+    )
+    s = vendor_system("amd", 24.0, 64.0)
+    e = estimate(m, s, measurements=[comm], coefficients=Coefficients())
+    assert e.basis == "estimated" and e.basis_detail == "calibrated" and e.fit_from == "estimate"
+
+
+def test_shared_igpu_ram_includes_gpu_share(db):
+    """Radeon 780M・メモリ 16 GB: MOSS-Image は GPU 8.3 GB を載せると、メインメモリも足りない。"""
+    a = Adapter(name="AMD Radeon 780M Graphics", vendor="amd", vram_gb=0.5)
+    g = classify_adapter(a, WIN11, 16.0)
+    assert g.carveout_gb == 0.5
+    s = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=16.0, ram_available_gb=16.0, gpus=[g])
+    e = judge(db.get("image_moss_image_t2i"), s, db).estimate
+    assert e.ram_gb > 16.0 and e.fit in ("marginal", "too_tight")
+    assert any("メインメモリから使う" in r for r in e.reasons)
+
+
+def test_issue_26_peak_must_fit_this_vram(db):
+    """公称 16 GB の実測 15.8 GB は、15.6 GB(97% 以上)の GPU では段階の根拠にしない(収まらない)。"""
+    e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 5080", 15.6), db).estimate
+    assert e.fit_from == "estimate"
+
+
+def test_pc_line_hides_unknown_vendor_and_legend_caps(db, monkeypatch):
+    adapters, _ = parse_wmi_video(fx("wmi_uhd770.json"), [])
+    adapters.append(Adapter(name="Microsoft Basic Display Adapter", vendor="unknown", source="wmi"))
+    s = system_of(monkeypatch, adapters, WIN11, ram_gb=16.0)
+    assert "Microsoft" not in pc_line(s)
+    from genmodelfit.table import legend
+
+    sel = select(db, vendor_system("amd", 24.0, 64.0), min_fit="marginal", drop_unknown_size=True, limit=3)
+    lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
+    cap = [x for x in lines if "AMD / Intel / Apple GPUs are estimates" in x]
+    assert len(cap) == 1 and len(cap[0]) <= 100

@@ -355,6 +355,8 @@ class Gpu:
     # gfx_target は AMD の LLVM の名前(gfx1100 など)
     memory: str = "dedicated"
     gfx_target: str | None = None
+    # memory が shared のとき、BIOS で取り分けた VRAM(GiB。メインメモリの搭載量に入らない分)。ほかは None
+    carveout_gb: float | None = None
 
 
 @dataclass

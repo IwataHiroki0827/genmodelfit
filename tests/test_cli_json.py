@@ -53,6 +53,7 @@ GPU = {
     "notes",
     "memory",  # 0.7.0(#22。後から足した項目)
     "gfx_target",
+    "carveout_gb",
 }
 DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {

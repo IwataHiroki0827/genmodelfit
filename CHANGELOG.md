@@ -20,12 +20,12 @@ Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_versi
   reason. NVIDIA judging is unchanged. macOS detection uses `system_profiler`; Linux reads amdgpu GTT from sysfs.
   NVIDIA 以外の GPU も、一次資料の対応表で動く組み合わせなら推定で判定する(段階は good まで)。
 - JSON (additive): `Gpu.backend` gains `rocm` / `xpu` / `mps`; `Gpu.memory` (`dedicated` / `shared` / `unified`),
-  `Gpu.gfx_target`; `Adapter.integrated`, `usable`, `reason`, `shared_gb` and vendor `apple`;
+  `Gpu.gfx_target`, `Gpu.carveout_gb`; `Adapter.integrated`, `usable`, `reason`, `shared_gb` and vendor `apple`;
   `Estimate.fit_from` (`estimate` / `measurement`) and `measured_peak_vram_gb`.
 - **SD family and Stable Audio run on CPU** (Issue #39): SD 1.5 / 2.x / SDXL image models and Stable Audio Open 1.0 /
   3 Small are Marginal (`CPU`) without a GPU when RAM suffices, counting ComfyUI's fp32 weights and working memory
-  on CPU (`families.CPU_FAMILIES`, evidence from AI生成キット's real CPU runs). SUPIR and Stable Audio 3 Medium are
-  left out (not checked).
+  on CPU (`families.CPU_FAMILIES`). Running on CPU is itself an estimate (no CPU measurements; reasons say
+  `CPU は推定・実測なし`). SUPIR and Stable Audio 3 Medium are left out (not checked).
 - Tables: without a usable GPU, the PC line names the detected GPUs and how they are treated (`PC: Intel(R) UHD
   Graphics 770 (integrated; not usable for generation → judged as CPU), RAM …`) and a second line says `This PC has no
   usable GPU: only models that run on CPU are shown (N tools hidden: --include-tools)`. The Mode column shows

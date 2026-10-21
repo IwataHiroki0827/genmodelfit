@@ -123,8 +123,8 @@ class CpuRun:
 
     family: str
     modalities: tuple[str, ...]  # この種類のときだけ(sd の系統の SVD = 動画は入れない)
-    evidence: str  # 根拠(AI生成キットの実機など)
-    speed: str | None = None  # 遅さの目安(理由に出す)。分からなければ None
+    evidence: str  # 根拠(一次資料と、推定であること)
+    speed: str | None = None  # 遅さの目安(実測があれば理由に出す)。今はどれも実測が無いので None
     exclude: str | None = None  # ID・名前がこれに当たるものは除く(CPU で確かめていない大きな版)
 
 
@@ -139,17 +139,18 @@ CPU_FAMILIES: dict[str, CpuRun] = {
         CpuRun(
             "sd",
             ("image",),
-            "AI生成キット(laxshmate/local_model_ai_gen_kit)が GPU なしの PC で SDXL の生成を確かめた"
-            "(カタログの cpu_ok、2026-10)。SD 1.5 / 2.x は同じ UNet の系統でより小さい",
-            "SDXL は 1 枚に数分〜十数分(AI生成キットの実機)",
-            exclude=r"supir",  # SUPIR(SDXL を使う高解像度化)は CPU で確かめていない
+            "ComfyUI は GPU が無ければ CPU で動く(README の Windows Portable「running on your CPU only」、"
+            "comfy/cli_args.py の --cpu)。SD 1.5 / 2.x / SDXL は ComfyUI の組み込みの系統で、"
+            "CUDA 専用の部品を使わない(推定。CPU での実測なし)",
+            exclude=r"supir",  # SUPIR(SDXL を使う高解像度化)は独自のノードで、CPU で動くか確かめていない
         ),
         CpuRun(
             "stable_audio",
             ("music", "sfx"),
-            "AI生成キットが Stable Audio 3 Small(効果音・音楽)を CPU で動かした(カタログの cpu_ok、2026-10)。"
-            "Stable Audio Open 1.0 は同じ ComfyUI の StableAudio の系統",
-            exclude=r"medium",  # Stable Audio 3 Medium は CPU で確かめていない
+            "ComfyUI は GPU が無ければ CPU で動き、Stable Audio は組み込みの StableAudio の系統"
+            "(推定。CPU での実測なし。"
+            "AI生成キットの記録に「効果音(GPU/CPU)」があるが、モデル・時間の記録は無い)",
+            exclude=r"medium",  # Stable Audio 3 Medium は大きく、CPU で動くか確かめていない
         ),
     )
 }

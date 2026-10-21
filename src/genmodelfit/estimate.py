@@ -1138,7 +1138,7 @@ def _estimate(
         other_vendor = g0 is not None and g0.vendor != gpu_vendor(m.gpu_name)
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
-        elif other_vendor and not is_community(m):
+        elif other_vendor:
             # 別の会社の GPU の実測は、作業用メモリをずらすのに使うだけ(その GPU での実測ではない)
             detail = "calibrated"
             reasons.append(f"{on} の実測で補正した推定({_vendor_label(g0.vendor)} の GPU での実測は無い)")
@@ -1279,8 +1279,8 @@ def _measured_level(
         return None
     if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
         return None
-    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE:
-        return None
+    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE or m.peak_vram_gb > vram:
+        return None  # 実測の GPU より小さい、または実測の VRAM がこの PC の VRAM に収まらない
     band = fit_band(m.peak_vram_gb, vram)
     level = "perfect" if band == "perfect" and not (is_censored(m) or lower_bound_only(m)) else "good"
     if _LEVELS.index(level) >= _LEVELS.index(fit):
@@ -1365,7 +1365,7 @@ def _judge_cpu(
         two_byte = source_precision(entry) in ("fp16", "bf16")
         ram = n.ram + (n.main + n.vae if two_byte else n.vae) + 2 * max(0.0, n.act)
         reasons = [
-            f"{why}: CPU で動く系統({run.family})なので CPU で動く見込み(遅い"
+            f"{why}: CPU で動く系統({run.family})なので CPU で動く見込み(CPU は推定・実測なし。遅い"
             + (f"。{run.speed}" if run.speed else "")
             + f")。ComfyUI は CPU では本体と VAE を fp32 で持つので、メインメモリを約 {ram:.1f} GB とみた",
             f"CPU で動く根拠: {run.evidence}",
@@ -1436,16 +1436,10 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
         k: round(100 * round(v, 2) / vram)
         for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
     }
+    if shared:
+        return _judge_shared(n, system, pct)
     if fit == "too_tight":
-        if shared:
-            msg = (
-                f"GPU のメモリ不足: 部品を順に載せ替えても {n.sequential:.1f} GB 必要"
-                f"(GPU が使えるのは {vram:.1f} GB、{pct['seq']}%)"
-            )
-        else:
-            msg = (
-                f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"
-            )
+        msg = f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"
         return "too_tight", "none", [msg], n.ram
     if how == "full":
         mode = "gpu"
@@ -1463,15 +1457,48 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
             f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)"
         ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
-    g = system.best_gpu
-    if g is not None and getattr(g, "memory", "") == "unified":
-        # Apple silicon は GPU の分も同じ統合メモリから使うので、GPU に載せる量 + 固定分(Python・ComfyUI)を
-        # 搭載量と比べる。内蔵 GPU・APU(shared)は、BIOS で取り分けた VRAM が搭載量に入らないので
-        # これまでどおり(固定分 + いちばん大きい段の部品)
-        use = n.full if how == "full" else n.sequential
-        ram_need = max(ram_need, use + c.ram_extra_gb)
     fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, system)
     return fit, mode, reasons, ram_need
+
+
+def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str, str, list[str], float]:
+    """メインメモリと共有する GPU(内蔵 GPU・APU・Apple silicon)の判定。
+    GPU に載せる分もメインメモリから使うので、メインメモリの要る量 = GPU に載せないときの量
+    (固定分 + いちばん大きい段の部品)+ GPU に載せる量のうち BIOS で取り分けた VRAM(搭載量に入らない分)を
+    超える分。全部載せ・順に載せ替えのそれぞれでメインメモリも確かめ、良いほうを取る
+    (VRAM・メインメモリを増やしても段階が下がらない)。逃がす動かし方は無い。"""
+    vram = system.vram_gb
+    g = system.best_gpu
+    carve = (getattr(g, "carveout_gb", None) or 0.0) if g is not None else 0.0
+    best: tuple[str, str, list[str], float] | None = None
+    for _how, use, top, line in (
+        ("full", n.full, "perfect", f"GPU のメモリ {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る"),
+        (
+            "seq",
+            n.sequential,
+            "good",
+            f"GPU のメモリ {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
+            f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+        ),
+    ):
+        level = _cap(fit_band(use, vram), top)
+        if level == "too_tight":
+            continue
+        from_ram = max(0.0, use - carve)
+        ram_need = n.ram_gpu + from_ram
+        note = (
+            f"GPU の分 {from_ram:.1f} GB もメインメモリから使うので、メインメモリは約 {ram_need:.1f} GB 要る"
+        )
+        fit, mode, reasons = _ram_check(level, "gpu", [line, note], ram_need, system)
+        if best is None or _LEVELS.index(fit) < _LEVELS.index(best[0]):
+            best = (fit, mode, reasons, ram_need)
+    if best is None:
+        msg = (
+            f"GPU のメモリ不足: 部品を順に載せ替えても {n.sequential:.1f} GB 必要"
+            f"(GPU が使えるのは {vram:.1f} GB、{pct['seq']}%)"
+        )
+        return "too_tight", "none", [msg], n.ram
+    return best
 
 
 def judge(

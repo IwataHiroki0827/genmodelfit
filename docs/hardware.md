@@ -221,19 +221,22 @@ NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ�
 | AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
 | AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、610M = gfx1036)、Van Gogh(gfx1033) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
 | AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
-| AMD(どれでも) | Windows 10 | CPU | ComfyUI の案内「Use Windows 11」 |
+| AMD(どれでも) | Windows 10・版が分からない | CPU | ComfyUI の案内「Use Windows 11」(分からなければ使わない側) |
 | AMD | macOS | CPU | Apple の MPS 版は Apple silicon だけ(下) |
 | Intel Arc A シリーズ(Alchemist: A770 / A750 / A580 / A380 / A310、Pro A) | Windows 11・Linux | **GPU**(`xpu`) | PyTorch 2.14「Getting Started on Intel GPU」(https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html)の Client GPUs の表(「Windows 11 & Ubuntu 24.04/26.04 & WSL2」)、ComfyUI README「Intel GPUs (Windows and Linux)」 |
 | Intel Arc B シリーズ(Battlemage: B580 / B570、Pro B60 / B50) | Windows 11・Linux | **GPU**(`xpu`) | 同上 |
 | Intel Core Ultra の Arc Graphics(Meteor Lake-H、Arrow Lake-H の 140T / 130T、Lunar Lake の 140V / 130V、Panther Lake の B390 など) | Windows 11・Linux | **GPU**(`xpu`、共有メモリ) | 同上(Panther Lake は Ubuntu 26.04) |
 | Intel UHD・Iris Xe・「Intel(R) Graphics」(Arrow Lake-S など)・HD Graphics | — | CPU | 上の表に入らない |
-| Intel(どれでも) | Windows 10 | CPU | 上の表は Windows 11 |
+| Intel(どれでも) | Windows 10・版が分からない | CPU | 上の表は Windows 11 |
 | Apple silicon(M1〜M4 など) | macOS 14 以降 | **GPU**(`mps`、統合メモリ) | Apple「Accelerated PyTorch training on Mac」(https://developer.apple.com/metal/pytorch/ : 「Mac computer with Apple silicon」「macOS 14.0 or later」)、ComfyUI README「Apple Mac silicon」 |
-| Apple silicon | macOS 13 以前 | CPU | 同上 |
+| Apple silicon | macOS 13 以前・版が分からない | CPU | 同上 |
 
 GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発名 Navi 31 など)・`_INTEL_XPU` の表。名前が
 「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前(`_AMD_CPU_IGPU`: Ryzen AI Max → gfx1151、Ryzen 7 8845HS → gfx1103 など)で
-決め、決まらなければ CPU(世代が分からない)。Intel Arc の VRAM が読めない(Linux の lspci)ときは名前から少ないほうの版の量
+決め、決まらなければ CPU(世代が分からない)。Dragon Range(Ryzen 7x45HX)・Fire Range(9x55HX)は 2 CU の
+gfx1036 なので CPU。ノート用の Radeon は同じ番号でも石が違う(RX 6800M・6850M XT は gfx1031、RX 6800S は gfx1032、
+RX 6550M は gfx1034、RX 7700S は gfx1102)。Linux で pci.ids が古く「AMD Device 7551」のように型番が出ないときは、
+型番の ID からは引かず(表を持たない)、`update-pciids` で直ると書いて CPU にする。Intel Arc の VRAM が読めない(Linux の lspci)ときは名前から少ないほうの版の量
 (A770 は 8 GB 版と 16 GB 版があるので 8 GB)とみなす。
 
 ### 精度(ComfyUI b1a247c の `comfy/model_management.py`)
@@ -260,12 +263,15 @@ GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発�
   by TTM」: https://docs.kernel.org/gpu/amdgpu/module-parameters.html)、Windows の共有 GPU メモリも物理メモリの約半分
   (タスク マネージャーの「共有 GPU メモリ」。WDDM の説明: https://learn.microsoft.com/ja-jp/archive/blogs/pigscanfly/graphics-memory-reporting-in-vista 。古い文書なので目安)。
 - どちらも、逃がす先が同じメモリなので `GPU+RAM`(逃がす)は使わない(全部載せか、部品を順に載せ替えるか)。
+- メインメモリの判定: GPU に載せる分もメインメモリから使うので、要る量 = GPU に載せないときの量(固定分 + いちばん大きい段の部品)
+  + GPU に載せる量のうち BIOS で取り分けた VRAM(`Gpu.carveout_gb`。搭載量に入らない)を超える分。全部載せと順に載せ替えの
+  それぞれで確かめ、良いほうを取る(例: Radeon 780M・メモリ 16 GB で、GPU 8.3 GB + メインメモリ 9.8 GB のモデルは足りない)。
   専用の VRAM の GPU があれば、内蔵 GPU より先に使う。
 - メインメモリを増やすと GPU が使える量も増えるだけなので、段階は下がらない(`tests/test_vendors.py`)。
 
 ### 検出
 
-- 既定では、nvidia-smi で NVIDIA の GPU が見つからず、`--vram` で上書きしていないときだけ調べる
+- 既定では、判定に使える NVIDIA の GPU が無く(見つからない・Kepler・古いドライバ)、`--vram` で上書きしていないときだけ調べる
   (NVIDIA のドライバが入っていない NVIDIA の GPU も分かる)。NVIDIA の GPU があるときは調べない(PowerShell の起動に約 1 秒
   かかるため)。`genmodelfit system --all-gpus` で必ず調べる(このときも NVIDIA が使えれば NVIDIA で判定する)。
   レジストリには取り外した GPU の項目も残る(下の突き合わせで除く)。
@@ -309,14 +315,15 @@ GPU が無い(または GPU に載らない)とき、CPU で動くとみなす�
 
 | 系統 | 種類 | 根拠 | 除くもの |
 |---|---|---|---|
-| `sd`(SD 1.5・SD 2.x・SDXL・SDXL Turbo など) | 画像 | AI生成キットが GPU なしの PC で SDXL を生成した(カタログの `cpu_ok`。1 枚に数分〜十数分) | SUPIR(確かめていない) |
-| `stable_audio`(Stable Audio Open 1.0・Stable Audio 3 Small) | 音楽・効果音 | AI生成キットが Stable Audio 3 Small(効果音・音楽)を CPU で動かした | Stable Audio 3 Medium(確かめていない) |
+| `sd`(SD 1.5・SD 2.x・SDXL・SDXL Turbo など) | 画像 | ComfyUI の組み込みの系統で CUDA 専用の部品を使わない(推定。CPU での実測なし) | SUPIR(独自のノード。確かめていない) |
+| `stable_audio`(Stable Audio Open 1.0・Stable Audio 3 Small) | 音楽・効果音 | 組み込みの StableAudio の系統(推定。CPU での実測なし。AI生成キットの記録に「効果音(GPU/CPU)」があるが、モデル・時間の記録は無い) | Stable Audio 3 Medium(確かめていない) |
 
 ComfyUI は GPU が無ければ CPU で動き(`--cpu`「To use the CPU for everything (slow)」: comfy/cli_args.py)、CPU では本体と VAE を
 fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model_management.py:1902・1969。テキストエンコーダは fp16 のまま:
 1261)。そこで必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
 これが搭載量に収まれば marginal(CPU、遅い)、仮想メモリの範囲なら marginal(遅い)、超えたら too_tight。
-段階は CPU なので marginal まで。
+段階は CPU なので marginal まで。CPU で動くこと自体が推定なので、理由に「CPU は推定・実測なし」と書く
+(AI生成キットのカタログの `cpu_ok` は設計の印で、実測ではない)。
 
 ## 同じ GPU で成功した実測(0.7.0、#26)
 

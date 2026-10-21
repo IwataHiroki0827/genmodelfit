@@ -964,16 +964,22 @@ AMD_NO_BF16_ARCH = ("RDNA 2", "RDNA 1", "GCN 5")
 # AMD の GPU 名(Windows の WMI・Linux の lspci の製品名・開発名)→ (gfx, 内蔵か)。上から順に試す。
 # 製品名と gfx は TheRock の RELEASES.md「GFX target lookup table」(4639f91)による
 _AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
-    (r"rx\s*90[67]0|ai pro r9[67]00|navi\s*48", "gfx1201", False),
-    (r"rx\s*90[45]0|navi\s*44", "gfx1200", False),
+    (r"rx\s*9070|ai pro r9[67]00|navi\s*48", "gfx1201", False),
+    (r"rx\s*90[456]0|navi\s*44", "gfx1200", False),  # RX 9060 / 9060 XT は Navi 44
     (r"8060s|8050s|8040s|strix halo", "gfx1151", True),
     (r"890m|880m|strix(?! halo)", "gfx1150", True),
     (r"860m|840m|krackan", "gfx1152", True),
     (r"820m", "gfx1153", True),
+    (r"rx\s*7[67]00[sm]\b|rx\s*7600m xt", "gfx1102", False),  # ノート用の RX 7700S / 7600S / 7600M は Navi 33
     (r"rx\s*7900|pro w7[89]00|navi\s*31", "gfx1100", False),
     (r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32", "gfx1101", False),
     (r"rx\s*76[05]0|pro w7[56]00|navi\s*33", "gfx1102", False),
     (r"780m|760m|740m|phoenix|hawk point", "gfx1103", True),
+    # ノート用(M・S)は同じ番号でも石が違う: RX 6850M XT / 6800M / 6700M は Navi 22、RX 6800S / 6700S / 6650M /
+    # 6600M / 6600S は Navi 23、RX 6550M / 6500M / 6450M / 6300M は Navi 24
+    (r"rx\s*6[78][05]0m\b", "gfx1031", False),
+    (r"rx\s*6[678]00s\b|rx\s*66[05]0m\b", "gfx1032", False),
+    (r"rx\s*6[345][05]0m\b", "gfx1034", False),
     (r"rx\s*6[89]\d0|pro w6800|pro v620|navi\s*21", "gfx1030", False),
     (r"rx\s*67\d0|navi\s*22", "gfx1031", False),
     (r"rx\s*66\d0|pro w6600|navi\s*23", "gfx1032", False),
@@ -994,7 +1000,9 @@ _AMD_CPU_IGPU: tuple[tuple[str, str], ...] = (
     (r"ryzen ai max", "gfx1151"),
     (r"ryzen ai 9 (hx )?3[67]\d", "gfx1150"),
     (r"ryzen ai [57] (pro )?3[3-5]\d", "gfx1152"),
-    (r"ryzen [3579] (pro )?[78]\d4\d(u|hs|h|hx)?\b|ryzen [3579] (pro )?8[5-7]00g", "gfx1103"),
+    # Dragon Range(7x45HX)・Fire Range(9x55HX / 9x50HX)は 2 CU の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY_GFX)
+    (r"ryzen [3579] (pro )?7\d45hx3?d?\b|ryzen [3579] (pro )?9\d5[05]hx3?d?\b", "gfx1036"),
+    (r"ryzen [3579] (pro )?[78]\d4\d(u|hs|h)\b|ryzen [3579] (pro )?8[5-7]00g", "gfx1103"),
     (r"ryzen [3579] (pro )?(6[89]\d0|7[37]35)(u|hs|h|hx)\b", "gfx1035"),
 )
 
@@ -1007,7 +1015,8 @@ _INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = (
     (r"arc.*\ba750\b|arc.*\ba580\b", "Arc A-Series (Alchemist)", False, 8.0),
     (r"arc.*\ba380\b", "Arc A-Series (Alchemist)", False, 6.0),
     (r"arc.*\ba310\b", "Arc A-Series (Alchemist)", False, 4.0),
-    (r"arc.*\bpro a\d{2}m?\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
+    # ノート用の A770M / A730M / A570M / A550M / A370M / A350M も Alchemist の外付け
+    (r"arc.*\bpro a\d{2}m?\b|arc.*\ba\d{3}m\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
     (r"arc.*\bb580\b", "Arc B-Series (Battlemage)", False, 12.0),
     (r"arc.*\bb570\b", "Arc B-Series (Battlemage)", False, 10.0),
     (r"arc.*\bpro b60\b", "Arc B-Series (Battlemage)", False, 24.0),
@@ -1090,7 +1099,8 @@ def intel_xpu(name: str) -> tuple[str, bool, float | None] | None:
 
 
 def _windows_ok(host: Host) -> bool:
-    return host.windows_build is None or host.windows_build >= WINDOWS_11_BUILD
+    """Windows 11 と分かるか(版が分からなければ使わない側にする)。"""
+    return host.windows_build is not None and host.windows_build >= WINDOWS_11_BUILD
 
 
 def _shared_pool(a: Adapter, ram_gb: float) -> tuple[float, str]:
@@ -1121,6 +1131,12 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     arch = None
     if a.vendor == "amd":
         found = amd_gfx(a.name, host.cpu)
+        if found is None and re.search(r"\bdevice [0-9a-f]{4}\b", _low(a.name)):
+            # Linux の pci.ids が古いと「AMD Device 7551」になる。型番の ID からは引かない(表を持たない)
+            refuse(
+                f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)"
+            )
+            return None
         if found is None:
             if re.fullmatch(r"(amd )?radeon graphics", _low(a.name)):
                 a.integrated = True  # CPU の名前でも世代が決まらない内蔵 GPU
@@ -1143,7 +1159,10 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             refuse(f"{a.name}({gfx})は画面を出すための小さな内蔵 GPU で、生成では CPU より速い見込みが無い")
             return None
         if host.system == "Windows" and not _windows_ok(host):
-            refuse("AMD の GPU の Windows 版 PyTorch(ROCm)は Windows 11 が要る(ComfyUI の案内)")
+            refuse(
+                "AMD の GPU の Windows 版 PyTorch(ROCm)は Windows 11 が要る"
+                "(ComfyUI の案内。版が分からなくても使わない)"
+            )
             return None
         notes = [f"{tag}: ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで"]
         if host.system == "Linux" and gfx not in PYTORCH_ROCM_LINUX_GFX:
@@ -1171,7 +1190,10 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             refuse(f"{host.system} の XPU 版 PyTorch は無い")
             return None
         if host.system == "Windows" and not _windows_ok(host):
-            refuse("Intel の GPU の XPU 版 PyTorch は Windows 11 で確かめられている(Windows 10 は対象外)")
+            refuse(
+                "Intel の GPU の XPU 版 PyTorch は Windows 11 で確かめられている"
+                "(Windows 10・版が分からないときは対象外)"
+            )
             return None
         notes = [f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで"]
         if not a.integrated and not a.vram_gb and floor:
@@ -1183,8 +1205,10 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         if host.system != "Darwin":
             refuse("Apple の GPU は macOS でだけ使える")
             return None
-        if host.mac_version is not None and host.mac_version < MACOS_MIN_FOR_MPS:
-            refuse("PyTorch の MPS 版は macOS 14.0 以降が要る")
+        if host.mac_version is None or host.mac_version < MACOS_MIN_FOR_MPS:
+            refuse(
+                "PyTorch の MPS 版は macOS 14.0 以降が要る(この PC の macOS は 14 より前か、版が分からない)"
+            )
             return None
         notes = [f"{tag}: MPS 版 PyTorch で動く組み合わせとして判定した。段階は good まで"]
         backend, bf16 = "mps", True
@@ -1228,6 +1252,7 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         notes=notes,
         memory=memory,
         gfx_target=gfx,
+        carveout_gb=round(a.vram_gb or 0.0, 2) if memory == "shared" else None,
     )
 
 
@@ -1470,9 +1495,11 @@ def detect(
         ram_total = ram_gb
 
     adapters: list[Adapter] = []
-    has_nvidia = any(g.vendor == "nvidia" for g in found)
+    # NVIDIA の GPU が使えない(見つからない・Kepler・古いドライバ)ときは既定で調べる
+    # (AMD・Intel を判定に使うため)
+    usable_nvidia = any(g.backend == "cuda" for g in found)
     want_other = (
-        other_gpus if other_gpus is not None else (gpus is None and not has_nvidia and vram_gb is None)
+        other_gpus if other_gpus is not None else (gpus is None and not usable_nvidia and vram_gb is None)
     )
     if want_other:
         adapters, other_notes = detect_other_gpus()

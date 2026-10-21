@@ -357,7 +357,9 @@ def _unusable_gpus(system) -> list[str]:
             seen.add(g.name)
             out.append(f"{g.name} (not usable for generation → judged as CPU)")
     for a in getattr(system, "other_gpus", []) or []:
-        if a.name in seen:
+        if (
+            a.name in seen or a.vendor == "unknown"
+        ):  # 会社の分からない画面(Microsoft の基本の画面など)は出さない
             continue
         seen.add(a.name)
         kind = "integrated; " if a.integrated else ""
@@ -444,6 +446,8 @@ def legend(
     system=None,
 ) -> list[str]:
     system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
+    best = system.best_gpu if system is not None else None
+    non_nvidia = best is not None and best.vendor != "nvidia"
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
@@ -453,6 +457,11 @@ def legend(
             else []
         ),
         "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
+        *(
+            ["Level caps: AMD / Intel / Apple GPUs are estimates (no measurements), at most Good."]
+            if non_nvidia
+            else []
+        ),
         "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.",
     ]
     if grouped:
