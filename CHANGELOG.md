@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-22
+
 ### Changed
 
 - **`diff` is usable by users and no longer drops changes silently** (#59). With no arguments it compares the bundled
@@ -492,7 +494,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.8.0
 [0.7.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.1
 [0.7.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.0
 [0.1.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.1.0
