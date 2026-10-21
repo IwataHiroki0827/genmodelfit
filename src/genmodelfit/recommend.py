@@ -198,6 +198,19 @@ def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
     return pick[how]
 
 
+def gpu_need(e: Estimate, system: SystemInfo | None) -> float | None:
+    """GPU で動かすのに要る VRAM(GiB)。run_mode が cpu のときも出す(0.7.1、#58)。
+    GPU を判定に使っていない・大きさ不明のときは None。cpu 以外は vram_need と同じ値。
+    cpu のときは GPU に載らなかったので、動かし方のうち一番小さい値(動かない判定と同じ vram_offload_gb)。
+    共有メモリの GPU でも同じ規則(cpu と too_tight で意味を変えない)。"""
+    vram = system.vram_gb if system is not None else 0.0
+    if e.unknown_size or vram <= 0:
+        return None
+    if e.run_mode != "cpu":
+        return vram_need(e, system)
+    return e.vram_offload_gb
+
+
 def memory_use(e: Estimate, system: SystemInfo | None) -> tuple[str, float | None, float | None]:
     """(種類, 要る GiB, ある GiB)。GPU で動かすなら VRAM、CPU で動くならメインメモリ。
     GPU が要るのに無いときは VRAM の最低限と 0。"""
@@ -241,6 +254,7 @@ class Fit:
         m, e = self.model, self.estimate
         kind, need, avail = memory_use(e, self.system)
         util = round(100 * need / avail, 1) if need is not None and avail else None
+        gneed = gpu_need(e, self.system)
         d: dict[str, Any] = {
             "id": m.id,
             "name": m.name,
@@ -263,6 +277,7 @@ class Fit:
             "memory_required_gb": round(need, 2) if need is not None else None,
             "memory_available_gb": round(avail, 2) if avail is not None else None,
             "utilization_pct": util,
+            "gpu_memory_required_gb": round(gneed, 2) if gneed is not None else None,
             "ram_required_gb": None if e.unknown_size else e.ram_gb,
             "disk_size_gb": e.disk_gb,
             "total_size_gb": round((m.total_size_bytes or 0) / GIB, 2) or None,

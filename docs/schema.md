@@ -379,6 +379,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `memory_required_gb` | float \| null | the figure the level was judged on: VRAM for all-in / swapping / offload (the table's VRAM column); RAM for CPU. When a GPU is needed but missing: the minimum VRAM. null when the size is unknown |
 | `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing. Also set when the size is unknown (0.2.0; was null) |
 | `utilization_pct` | float \| null | `memory_required_gb / memory_available_gb × 100` (the table's Mem%) |
+| `gpu_memory_required_gb` | float \| null | (0.7.1, #58) the VRAM the model needs to run on this PC's GPU, also when `run_mode` is `cpu` (where `memory_required_gb` is RAM). Same value as `memory_required_gb` for every GPU run mode and for `too_tight`; for `cpu` it is the same figure `too_tight` uses, the smallest need among the load modes (the GPU+RAM offload figure `estimate.vram_offload_gb`; also for shared / unified memory GPUs, so the meaning does not change between `cpu` and `too_tight`), i.e. "the GPU would need at least this much". null when no GPU is used for judging (CPU-only PC, `gpu_usable=False`, unusable GPU) or the size is unknown. Additive; no other field changes |
 | `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
 | `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
 | `total_size_gb` | float \| null | size of all listed files |
@@ -1078,6 +1079,27 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia)}` or `Gpu`. The largest usable NVIDIA GPU is judged; non-NVIDIA ones never are. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, docs/hardware.md); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU. `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
+
+Fetching the distributed list from Python (0.7.1, #58). Also in `__all__`: `gmf.RemoteError` (a `DatabaseError`):
+
+```python
+db = gmf.update_from_release(
+    "https://github.com/laxshmate/genmodelfit/releases/download/data-latest",  # default
+    timeout=30,
+    dest=data_dir / "db.json",  # default: the cache db.json
+    force=False,  # True: accept a list older than the one imported before
+    session=my_requests_session,  # default None: genmodelfit's own session
+    state_dir=data_dir,  # default None: the cache folder
+)
+```
+
+| parameter | meaning |
+|---|---|
+| `session` | a `requests.Session` (e.g. with `verify` set to the app's CA bundle, or proxies). All GETs of this call use it. Its `verify` / `proxies` / other headers are used as they are and the session is not modified. `~/.netrc` credentials are never sent: every request carries a no-op `auth` (requests reads netrc only when neither the request nor the session has `auth`), and redirects are followed by genmodelfit (`allow_redirects=False` per hop) because requests re-reads netrc on each redirect. The fixed `User-Agent` (`genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`) is set per request. **Limits**: if the session itself has `auth` it is the caller's choice and is used for the first host only (never for a redirect to another host; an `Authorization` header set on the session is also dropped there). Cookies, hooks and adapters of the session are not touched by genmodelfit, but the session does what it normally does: custom non-`Authorization` headers set on it are also sent to redirect targets (requests' default), and `Set-Cookie` of the responses updates its cookie jar. An empty `auth` (`None`, `()`, `""`) counts as none. `verify` and `proxies` of the session are passed per request, so the caller's CA bundle wins over `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` (requests#3829); proxy environment variables fill only what the session lacks. Redirects are followed up to 10 times with a caller session (requests' default is 30; the session's `max_redirects` is ignored); an invalid redirect URL (e.g. port 99999) is a `RemoteError`. Signature check, `MAX_BYTES`, the one retry and the errors (`RemoteError`) are the same as without `session` |
+| `state_dir` | where `release_state.json` (the `generated_at` of the list imported before) is read and written. Default: the cache folder. Environment variables and module globals are not changed |
+
+Without `session`, the call uses `fetch.make_session()` as before (the private `remote._http_get` hook still works, but is not
+stable API).
 
 Equivalence: with `gpu_usable=True, windows=True, ram_gb=1024` it gives the same `Estimate` as the internal calls the
 AI生成キット used up to genmodelfit 0.5.0 (`hardware.classify_gpu` + `comfy_precision` → `recommend.judge`, then

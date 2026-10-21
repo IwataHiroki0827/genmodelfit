@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+Targets 0.7.1 (`_version.py` is 0.7.1). JSON changes are additive; `schema_version` stays 1.
+
+### Added
+
+- **`gmf.update_from_release(..., session=None, state_dir=None)`** (Issue #58) is public API (`update_from_release` and
+  `RemoteError` are in `__all__`). `session` is a caller's `requests.Session` (e.g. with the app's CA bundle) used for
+  every GET of the call; `~/.netrc` is still never sent (a no-op `auth` per request, redirects followed by genmodelfit)
+  and the fixed User-Agent is sent per request, without changing the session. `state_dir` is where
+  `release_state.json` lives (default: the cache folder). Apps no longer need to patch `remote._http_get` or set
+  `GENMODELFIT_CACHE_DIR`.
+  The session's `verify` / `proxies` win over `REQUESTS_CA_BUNDLE` and proxy variables; an empty `session.auth` counts as none.
+  Redirects are followed up to 10 times; an invalid redirect URL is a `RemoteError`.
+- **`gpu_memory_required_gb`** on `Fit.to_dict()` (Issue #58): the VRAM needed to run on this PC's GPU, also when
+  `run_mode` is `cpu` (where `memory_required_gb` is RAM). Same as `memory_required_gb` for GPU run modes; null without a GPU.
+
 ## [0.7.0] - 2026-10-21
 
 Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_version` stays 1.

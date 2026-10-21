@@ -78,6 +78,7 @@ FIT = {
     "memory_required_gb",
     "memory_available_gb",
     "utilization_pct",
+    "gpu_memory_required_gb",
     "ram_required_gb",
     "disk_size_gb",
     "total_size_gb",

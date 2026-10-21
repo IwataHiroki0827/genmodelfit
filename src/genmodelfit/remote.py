@@ -23,11 +23,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
 from .db import Database, DatabaseError, cache_dir, cached_db_path, parse_db
-from .fetch import make_session
+from .fetch import USER_AGENT, _NoAuth, make_session
 from .signing import SigningError, decode_sig, verify
 
 RELEASE_BASE_URL = "https://github.com/laxshmate/genmodelfit/releases/download/data-latest"
@@ -40,8 +41,12 @@ class RemoteError(DatabaseError):
     pass
 
 
-def state_path() -> Path:
-    return cache_dir() / STATE_NAME
+MAX_REDIRECTS = 10
+
+
+def state_path(state_dir: Path | None = None) -> Path:
+    """取り込みの記録のパス。state_dir を渡さなければキャッシュのフォルダ。"""
+    return (state_dir if state_dir is not None else cache_dir()) / STATE_NAME
 
 
 def _http_get(url: str, **kw: Any) -> requests.Response:
@@ -50,10 +55,62 @@ def _http_get(url: str, **kw: Any) -> requests.Response:
         return s.get(url, **kw)
 
 
-def _get(url: str, timeout: float) -> bytes:
-    """url を取る。MAX_BYTES を超えたら読むのをやめて RemoteError。"""
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """(スキーム, ホスト, ポート)。ポートが不正な URL(https://x:99999/)は ValueError。"""
+    u = urlsplit(url)
+    return (u.scheme, (u.hostname or "").lower(), u.port)
+
+
+def _session_get(session: requests.Session, url: str, timeout: float) -> requests.Response:
+    """呼び出し側のセッションで url を取る(転送は自分で辿る)。
+
+    - ~/.netrc は読ませない: 要求ごとに何もしない認証を渡す(requests は要求にもセッションにも認証が
+      無いときだけ netrc を読む)。転送のたびに requests が netrc を読み直す(rebuild_auth)ので、
+      allow_redirects=False にして転送はここで辿る。session.auth が真ならば呼び出し側の選んだものとして、
+      最初のホストにだけ使う(別のホストへの転送には付けない)。空(None・()・"")は無いものとして扱う。
+    - verify と proxies はセッションの値を要求ごとに渡す(渡さないと、環境変数 REQUESTS_CA_BUNDLE などが
+      セッションの verify より先に効く。requests#3829)。プロキシの環境変数は、セッションに無い分だけ使う。
+    - User-Agent は要求ごとに固定の値を付ける。セッションのほかのヘッダーは書き換えない。
+    """
     try:
-        r = _http_get(url, timeout=timeout, stream=True)
+        first = _origin(url)
+    except ValueError as e:
+        raise RemoteError(f"URL が正しくありません: {url}: {e}") from e
+    for _ in range(MAX_REDIRECTS + 1):
+        try:
+            same = _origin(url) == first
+        except ValueError as e:
+            raise RemoteError(f"転送先の URL が正しくありません: {url}: {e}") from e
+        headers: dict[str, Any] = {"User-Agent": USER_AGENT}
+        if not same:
+            headers["Authorization"] = None  # セッションのヘッダーにあっても、別のホストへは送らない
+        r = session.get(
+            url,
+            timeout=timeout,
+            stream=True,
+            headers=headers,
+            auth=session.auth if (session.auth and same) else _NoAuth(),
+            verify=session.verify,
+            proxies=dict(session.proxies),
+            allow_redirects=False,
+        )
+        loc = r.headers.get("Location")
+        if r.status_code not in (301, 302, 303, 307, 308) or not loc:
+            return r
+        r.close()
+        url = urljoin(url, loc)
+    raise RemoteError(f"転送が多すぎます: {url}")
+
+
+def _get(url: str, timeout: float, session: requests.Session | None = None) -> bytes:
+    """url を取る。MAX_BYTES を超えたら読むのをやめて RemoteError。
+    session があればそれで取る(無ければ _http_get = fetch.make_session)。"""
+    try:
+        r = (
+            _session_get(session, url, timeout)
+            if session is not None
+            else _http_get(url, timeout=timeout, stream=True)
+        )
         try:
             r.raise_for_status()
             length = r.headers.get("Content-Length")
@@ -114,22 +171,22 @@ def parse_time(value: Any) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def _read_state() -> datetime | None:
+def _read_state(state_dir: Path | None = None) -> datetime | None:
     """前に取り込んだ配布の generated_at。無い・壊れているときは None(次に取り込むと書き直す)。"""
     try:
-        return parse_time(json.loads(state_path().read_text(encoding="utf-8"))["generated_at"])
+        return parse_time(json.loads(state_path(state_dir).read_text(encoding="utf-8"))["generated_at"])
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
 
-def _fetch_verified(base: str, timeout: float) -> bytes:
+def _fetch_verified(base: str, timeout: float, session: requests.Session | None = None) -> bytes:
     """db.json と署名を取り、署名が合えば db.json を返す。合わなければ少し待って 1 回だけ取り直す。
 
     data.yml は db.json と db.json.sig を順に置き換えるので、その途中に取ると組み合わせがずれることがある。
     """
     for attempt in range(2):
-        data = _get(f"{base}/db.json", timeout)
-        sig_text = _get(f"{base}/db.json.sig", timeout)
+        data = _get(f"{base}/db.json", timeout, session)
+        sig_text = _get(f"{base}/db.json.sig", timeout, session)
         try:
             sig = decode_sig(sig_text)
         except SigningError:
@@ -149,12 +206,22 @@ def update_from_release(
     timeout: float = 30,
     dest: Path | None = None,
     force: bool = False,
+    session: requests.Session | None = None,
+    state_dir: Path | None = None,
 ) -> Database:
     """署名つきの一覧を取り、確かめてから dest(既定はキャッシュ)に置く。取り込んだ一覧を返す。
 
     force=True なら、前に取り込んだ配布より古くても取り込む(記録の日時がずれたときの戻し方)。
+    session: 通信に使う requests.Session(会社のネットワークの CA バンドルを付けたものなど)。
+        渡すと、この呼び出しの GET はすべてそれで行う(セッションの verify・proxies・headers はそのまま使う)。
+        どちらの場合も ~/.netrc の資格情報は送らない(要求ごとに何もしない認証を渡して netrc の参照を止める)。
+        ただし session.auth があれば呼び出し側の選んだものとして使う
+        (最初のホストにだけ。別のホストへの転送には付けない)。
+        User-Agent は固定の値を要求ごとに付ける。署名の確かめ・上限・失敗の扱いは渡さないときと同じ。
+    state_dir: 取り込みの記録(release_state.json)を読み書くフォルダ(既定はキャッシュ)。
+        環境変数やモジュールの値は書き換えない。
     """
-    data = _fetch_verified(base_url.rstrip("/"), timeout)
+    data = _fetch_verified(base_url.rstrip("/"), timeout, session)
     try:
         raw = json.loads(data.decode("utf-8"))
         if not isinstance(raw, dict):
@@ -163,7 +230,7 @@ def update_from_release(
         new_time = parse_time(raw.get("generated_at"))
     except (ValueError, TypeError, KeyError, AttributeError, DatabaseError) as e:
         raise RemoteError(f"一覧の形が正しくありません: {e}") from e
-    last = _read_state()
+    last = _read_state(state_dir)
     if last is not None and new_time < last and not force:
         raise RemoteError(
             f"前に取り込んだ一覧より古い一覧です({new_time.isoformat()} < {last.isoformat()})。"
@@ -171,6 +238,6 @@ def update_from_release(
         )
     # 記録を先に進める。後の書き込みが失敗しても、同じ配布はもう一度取り込める(同じ日時は通す)
     state = {"generated_at": new_time.isoformat(), "accepted_at": datetime.now(timezone.utc).isoformat()}
-    _atomic_write(state_path(), (json.dumps(state) + "\n").encode("utf-8"))
+    _atomic_write(state_path(state_dir), (json.dumps(state) + "\n").encode("utf-8"))
     _atomic_write(dest or cached_db_path(), data)
     return db

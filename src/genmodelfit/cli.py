@@ -1697,8 +1697,9 @@ _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, databa
   modality, tasks, use, content, source, runtime, languages, description, fit_level, fit_label,
   run_mode, run_mode_label, score,
   score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
-  memory_required_gb, memory_available_gb, utilization_pct, ram_required_gb, disk_size_gb,
-  total_size_gb, license, licenses, auto, held_reasons, estimate_confidence, notes,
+  memory_required_gb, memory_available_gb, utilization_pct, gpu_memory_required_gb,
+  ram_required_gb, disk_size_gb, total_size_gb, license, licenses, auto,
+  held_reasons, estimate_confidence, notes,
   files_count, precision, group_key, variants: [{precision, workflow_id, ...}],
   workflows: [{id, name, tasks, use, precision, fit_level, ...}], estimate, gate }] }
   One item per model (same weights family + size); --all-workflows gives one per workflow.

@@ -63,6 +63,7 @@ from .models import (
     SystemInfo,
 )
 from .recommend import Fit, evaluate
+from .remote import RemoteError, update_from_release
 from .status import DataStatus
 
 # 途中経過は logging に出す。組み込み側が設定しなければ何も出ない
@@ -318,6 +319,7 @@ __all__ = [
     "ModelEntry",
     "ModelFile",
     "ModelNotFound",
+    "RemoteError",
     "Settings",
     "SystemInfo",
     "__version__",
@@ -339,4 +341,5 @@ __all__ = [
     "search",
     "system",
     "system_from",
+    "update_from_release",
 ]
