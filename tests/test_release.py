@@ -491,7 +491,11 @@ def test_data_workflow_shape() -> None:
     assert doc[True]["push"] == {"branches": ["main"], "paths": ["src/genmodelfit/data/db.json"]}
     assert doc["permissions"] == {"contents": "read"}
     jobs = doc["jobs"]
-    assert set(jobs) == {"sign", "upload"}
+    assert set(jobs) == {"sign", "upload", "verify"}
+    # 配った直後の確かめ: upload の後に、読むだけの権限で、main と固定の版の両方で取り込む
+    assert jobs["verify"]["needs"] == "upload"
+    assert jobs["verify"]["strategy"]["matrix"]["client"][0] == "main"
+    assert any("update --from-release" in st.get("run", "") for st in jobs["verify"]["steps"])
     runs = [st.get("run", "") for job in jobs.values() for st in job["steps"]]
     assert not any(re.search(r"genmodelfit update(?! --from-release)", r) for r in runs)  # 作り直さない
     # 秘密鍵は data-signing の environment の署名ステップにだけ渡す。main からだけ動く
