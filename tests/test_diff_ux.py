@@ -291,17 +291,25 @@ def test_every_field_has_a_case():
 
 
 def _block(out: str, model_id: str) -> str:
-    """「変わったモデル」の節で、そのモデルの見出しから次の見出しまで。"""
+    """そのモデルの見出しから次の見出しまで(節が分かれていれば、全部の節の分をつなぐ)。"""
     lines = out.splitlines()
-    for k, line in enumerate(lines):
-        if line.startswith("  ") and not line.startswith("   ") and line.endswith(f"— {model_id}"):
-            body = [line]
-            for nxt in lines[k + 1 :]:
-                if not nxt.startswith("    "):
-                    break
-                body.append(nxt)
-            return "\n".join(body)
-    return ""
+    blocks: list[str] = []
+    k = 0
+    while k < len(lines):
+        line = lines[k]
+        head = line.startswith("  ") and not line.startswith("   ")
+        one = head and line.endswith(f"— {model_id}")
+        two = head and line.endswith(" —") and k + 1 < len(lines) and lines[k + 1].strip() == model_id
+        if one or two:
+            body = [line] if one else [line, lines[k + 1]]
+            k += len(body)
+            while k < len(lines) and lines[k].startswith("    "):
+                body.append(lines[k])
+                k += 1
+            blocks.append("\n".join(body))
+            continue
+        k += 1
+    return "\n".join(blocks)
 
 
 def _run_dbs(capsys, old: Database, new: Database, *extra: str) -> tuple[int, str]:
@@ -412,11 +420,11 @@ def test_unchanged_lists_say_no_change(capsys):
 
 def test_limit_applies_to_changed_models(capsys):
     old, new = _base_pair()
-    for m in new.models:
-        m.runtime = "x-changed"
+    for k, m in enumerate(new.models):
+        m.runtime = f"x-changed-{k}"  # 値を変えて、1 行にまとめられないようにする
     code, out = _run_dbs(capsys, old, new, "-n", "2")
     assert code == 0 and "…ほか" in out
-    assert out.count("動かし方") == 2
+    assert out.count("動かし方 ") == 2
 
 
 def test_long_values_fit_100_columns(capsys):
@@ -499,7 +507,7 @@ def test_real_important_change_is_not_buried(pair, capsys):
     _width_ok(out)
     assert _has(out, "部品 + text_encoders/t5gemma_b_b_ul2.safetensors(1.11 GiB、ライセンス gemma")
     # 大事な変化(部品)のモデルが、変わったモデルの節の先頭
-    section = out.split("変わったモデル(大事な変化の順):\n", 1)[1]
+    section = out.split("変わったモデル(部品・ライセンス・内容・動かし方など。大事な変化の順):\n", 1)[1]
     assert section.splitlines()[0].endswith(f"— {SFX}")
     # 上限 1 でも、部品の変化は隠れない。隠れたことを示す行は -n と --all を案内する
     _, one = _run(capsys, str(old), str(new), "-n", "1")
@@ -837,8 +845,9 @@ def test_permissive_and_uncensored_marks(capsys, tmp_path):
 
 
 def _first_block_ids(out: str) -> list[str]:
-    section = out.split("変わったモデル(大事な変化の順):\n", 1)[1]
-    return [ln.rsplit("— ", 1)[1] for ln in section.splitlines() if ln.startswith("  ") and "— " in ln]
+    """変わったモデルの見出しの ID(出てくる順。節をまたいで)。"""
+    body = out.split("\n\n", 1)[1]
+    return [ln.rsplit("— ", 1)[1] for ln in body.splitlines() if ln.startswith("  ") and "— " in ln]
 
 
 @pytest.mark.parametrize("kind", ["license", "files_order", "gated", "license_source"])
@@ -874,10 +883,16 @@ def test_license_and_file_lines_are_never_collapsed(capsys, tmp_path):
         m = _model(new, i)
         m["license"] = "mit-zz"
         m["files"].append({"name": "extra.safetensors", "size_bytes": 10, "license": "mit"})
+        m["files"][0]["license_from"] = "same/provenance"
+        # 出どころの全く同じ行(5 件)も 1 行にまとめず、モデルごとに出す
+        _model(old, i)["license_url"] = "https://example.org/license-a"
+        m["license_url"] = "https://example.org/license-b"
     out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
     for i in targets:
         block = _block(out, i)
         assert "ライセンス" in block and "部品 + extra.safetensors" in block, (i, out)
+        assert "license_from" in block and "same/provenance" in block, (i, out)
+        assert "license_url example.org/license-a → example.org/license-b" in block, (i, out)
 
 
 def test_collapsed_small_group_lists_ids(capsys, tmp_path):
@@ -970,3 +985,24 @@ def test_older_new_list_warns_for_one_and_two_args(capsys, tmp_path):
     assert "注意:" in out and "向きが逆" in out
     _, out = _run(capsys, str(p), str(NEW))
     assert "注意:" not in out
+
+
+def test_auto_ids_come_before_license_provenance(capsys):
+    """オーナーの決定(#59): 自動のおすすめの変化(ID 付き)はライセンスの出どころより前。既定の -n 20 でも
+    0.1.0 → 0.7.1 の 16 件の ID が全部出る。ライセンスの値・部品の変化は今までどおり先頭。"""
+    old, new = _pair_paths("0.1.0-0.7.1")
+    d = diff_db(load(old), load(new))
+    gained = [c["id"] for c in d["auto_changes"] if c["new"] and not c["old"]]
+    assert len(gained) == 16
+    code, out = _run(capsys, str(old), str(new))
+    assert code == 0
+    _width_ok(out)
+    flat = " ".join(out.split())
+    assert all(i in flat for i in gained), [i for i in gained if i not in flat]
+    lines = out.splitlines()
+    first_section = lines.index("変わったモデル(部品・ライセンス・内容・動かし方など。大事な変化の順):")
+    auto = lines.index("自動のおすすめの変化:")
+    provenance = next(k for k, ln in enumerate(lines) if "ライセンスの出どころ" in ln and k > 3)
+    first_license = next(k for k, ln in enumerate(lines) if ln.startswith("    ライセンス "))
+    assert first_section < first_license < auto < provenance
+    assert "部品 + text_encoders/t5gemma_b_b_ul2.safetensors" in out

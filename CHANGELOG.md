@@ -40,6 +40,10 @@ All notable changes to this project are documented here. The format is based on
   collapsed per field; a file key that is missing on one side and null on the other is no change; model ids are never
   broken by wrapping (a long id gets its own line); the "older list" warning is shown for every argument form; the
   no-cache `--json` has the usual `summary` keys with 0.
+- Changed models are shown in three sections, each cut by `-n` separately (owner's decision, #59): files, license
+  values (with 「! 寛容な側」), uncensored, runtime / use; then auto-recommendation changes (ids always listed, so
+  0.1.0 → 0.7.1 shows all 16 newly auto-recommended ids with the default `-n 20`); then license provenance
+  (not collapsed), languages, size, precision, review marks and other fields.
 
 ### Added
 

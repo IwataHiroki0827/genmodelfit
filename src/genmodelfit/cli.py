@@ -837,7 +837,8 @@ _DIFF_RANK = {
     "file_changed": 0,
     "license": 1,
     "file_license": 1,
-    "license_source": 1,
+    # ライセンスの出どころは、自動のおすすめの変化の後・言語や大きさの前(オーナーの決定、#59)
+    "license_source": 4.5,
     "auto": 4,
     "languages": 5,
     "size": 5,
@@ -852,9 +853,17 @@ _DIFF_COLLAPSE_RANK = 3
 _DIFF_COLLAPSE_MIN = 3
 # まとめた行の ID は、この件数までならその場に出す(多ければ --all)
 _DIFF_COLLAPSE_SHOW_IDS = 8
+# まとめない種類(大事さが低くても、モデルごとに出す)
+_DIFF_NEVER_COLLAPSE = frozenset({"license_source"})
 # まとめても ID を必ず出す種類(分類で判断が要る変化: 自動のおすすめ)。数は -n で切る
 _DIFF_COLLAPSE_KEEP_IDS = frozenset({"auto"})
 DIFF_DEFAULT_LIMIT = 20
+# 変わったモデルの節: (見出し, 大事さの範囲)
+_DIFF_SECTIONS = (
+    ("変わったモデル(部品・ライセンス・内容・動かし方など。大事な変化の順):", (0, 4)),
+    ("自動のおすすめの変化:", (4, 4.5)),
+    ("そのほかの変化(ライセンスの出どころ・言語・大きさ・確認の印など):", (4.5, 99)),
+)
 _DIFF_LIST_MAX = 20  # 既定の表示で並べる数の上限(言語など。--all では全部)
 
 
@@ -1025,24 +1034,31 @@ def _diff_item(
 
 
 def _diff_changed_entries(
-    d: dict[str, Any], show_all: bool, limit: int | None = None, width: int = 100
+    d: dict[str, Any],
+    show_all: bool,
+    limit: int | None = None,
+    width: int = 100,
+    ranks: tuple[float, float] | None = None,
 ) -> list[tuple[tuple[Any, ...], list[str]]]:
     """「変わったモデル」の節の並び: (並べる鍵, 行)。大事な変化のあるモデルが先。
 
     大事さの低い同じ行(確認の印が付いた など。「その他の変化」は項目ごと)が多くのモデルにあれば 1 行
     (件数)にまとめる。まとめた行も同じ大事さの順に並ぶので、--limit で大事なものが隠れない。
-    まとめた行の ID: 自動のおすすめの変化は必ず出す(limit まで)。ほかは少なければその場に、多ければ --all。"""
+    まとめた行の ID: 自動のおすすめの変化は必ず出す(limit まで)。ほかは少なければその場に、多ければ --all。
+    ranks: (下限, 上限) の大事さの行だけを使う(節に分けるとき。None = 全部)。"""
     lic = {c["id"]: c for c in d["license_changes"]}
     unc = {c["id"]: c for c in d["newly_uncensored"]}
     per: list[tuple[dict[str, Any], list[tuple[int, str, str]]]] = []
     for c in d.get("model_changes") or []:
         rows = [(*_diff_item(c, it, lic, unc, show_all), it["kind"]) for it in c["items"]]
         rows += [(_DIFF_OTHER_RANK, _DIFF_OTHER_HEAD + f, "other") for f in c["other"]]
+        if ranks is not None:
+            rows = [r for r in rows if ranks[0] <= r[0] < ranks[1]]
         per.append((c, rows))
     count: dict[tuple[int, str, str], list[str]] = {}
     for c, rows in per:
         for r in dict.fromkeys(rows):
-            if r[0] >= _DIFF_COLLAPSE_RANK:
+            if r[0] >= _DIFF_COLLAPSE_RANK and r[2] not in _DIFF_NEVER_COLLAPSE:
                 count.setdefault(r, []).append(c["id"])
     groups = {r: ids for r, ids in count.items() if len(ids) >= _DIFF_COLLAPSE_MIN}
     out: list[tuple[tuple[Any, ...], list[str]]] = []
@@ -1116,12 +1132,18 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False, wi
                 auto = "  自動のおすすめに出す" if key == "added" and m["id"] in auto_new else ""
                 lines += _diff_head(m, "  ", width, f"  [{m['content']}/{m['license']}]{auto}")
             lines += more(d[key])
-    entries = _diff_changed_entries(d, show_all, limit, width)
-    if entries:
-        lines += ["", "変わったモデル(大事な変化の順):"]
-        for _, block in cut(entries):
-            lines += block
-        lines += more(entries)
+    # 変わったモデルは 3 つの節に分け、節ごとに -n で切る(どの節も先頭の大事なものは隠れない)。
+    # 並び(オーナーの決定、#59): 部品・ライセンス・内容・動かし方など → 自動のおすすめ →
+    # ライセンスの出どころ・言語・大きさ・確認の印など
+    entries: list[tuple[tuple[Any, ...], list[str]]] = []
+    for title, ranks in _DIFF_SECTIONS:
+        part = _diff_changed_entries(d, show_all, limit, width, ranks)
+        if part:
+            entries += part
+            lines += ["", title]
+            for _, block in cut(part):
+                lines += block
+            lines += more(part)
     hf_ = sorted(d["head_failures"], key=lambda h: (not h["new"], h["url"])) if show_all else head_new
     if hf_:
         lines += ["", "HEAD が失敗した URL(! = 新しく):" if show_all else "HEAD が新しく失敗した URL:"]
@@ -2208,10 +2230,13 @@ EXIT CODES:
 for each changed model (name (type) — id) added / removed / changed files (with their license and
 source), license (the permissive side is marked with !), newly uncensored, runtime / use,
 auto-recommendation, prompt / speech languages, size, precision, review status, and the names of
-any other changed fields ("その他の変化"). Changed models are listed by importance (files first),
-so --limit never hides a more important change; the same low-importance change on many models
-(e.g. a review mark added to all) is one line with a count. Every changed field is shown somewhere
-(or counted for --all). The raw JSON is compared, so unknown keys count (as in merge-check).
+any other changed fields ("その他の変化"). Changed models are in three sections, each cut by
+--limit separately: files / license / uncensored / runtime and use first, then auto-recommendation
+changes (ids always listed), then license provenance, languages, size, review marks and the rest;
+within a section the most important change comes first, so --limit never hides it; the same
+low-importance change on many models (e.g. a review mark added to all) is one line with a count.
+Every changed field is shown somewhere (or counted for --all). The raw JSON is compared, so
+unknown keys count (as in merge-check).
 2 つの一覧(db.json)の、利用者に関係のある違いをまとめる。
 
 With no arguments, compares the bundled list with the list fetched by `update` (the cache).
