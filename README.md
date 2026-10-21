@@ -7,7 +7,9 @@
 genmodelfit is inspired by [llmfit](https://github.com/AlexsJones/llmfit), which does this for LLMs.
 It is **not** an official llmfit project or fork.
 
-> Status: v0.1.0 (alpha).
+[![PyPI](https://img.shields.io/pypi/v/genmodelfit)](https://pypi.org/project/genmodelfit/)
+
+> Status: alpha. Changes in each version: [CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md).
 
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2
@@ -124,7 +126,7 @@ From source:
 git clone https://github.com/laxshmate/genmodelfit && cd genmodelfit && pip install -e .
 ```
 
-Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judged as CPU-only.
+Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) for now; other PCs are judged as CPU-only.
 
 ## Usage
 
@@ -297,7 +299,7 @@ The library prints nothing. `gmf.download` raises `gmf.DownloadRefused` (blocked
 
 ## Hardware
 
-- Only NVIDIA GPUs confirmed by `nvidia-smi` are used for judging (v0.1). A GPU is judged as **CPU** when no PyTorch
+- Only NVIDIA GPUs confirmed by `nvidia-smi` are used for judging (for now). A GPU is judged as **CPU** when no PyTorch
   CUDA build supports its generation (Kepler and older) or its driver is too old for all of them (CUDA 12 builds need
   525+, CUDA 13 builds need 580+, Blackwell needs 570+). The reason is shown in `system` and `--json`.
 - On GPUs where ComfyUI computes in fp32 (Maxwell, some Pascal, GTX 16xx, T1000 …) working memory and the VAE are doubled.
@@ -490,7 +492,7 @@ See [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/a
 - The HEAD checks in the bundled list expire after 30 days; run `genmodelfit update --from-release` (or
   `update --heads-only`) to refresh them, otherwise auto-recommendations drop to zero. `genmodelfit system` and
   `gmf.data_status()` tell whether the list in use has expired (`expired`, `expires_at`).
-- v0.1 counts NVIDIA GPUs only.
+- Only NVIDIA GPUs are counted for now.
 
 ## License
 
