@@ -822,3 +822,19 @@ def test_rebuild_carries_card_languages_from_the_previous_list(bundled):
     read = copy.deepcopy(fresh)
     appinfo.apply_app_fields([read], _Cards({r: ["en"] for r in appinfo.card_repos(read)}))
     assert read.card_languages == ["en"]  # 読めたら作り直す
+
+
+def test_discovered_from_change_is_safe():
+    """どの検索で見つかったかの記録が変わるだけなら安全。
+
+    2026-10-21 の初回の毎週の実行で csm-1b が当たった。"""
+    import copy
+
+    from genmodelfit.db import load
+    from genmodelfit.diff import diff_db
+
+    old = load(use_cache=False)
+    new = copy.deepcopy(old)
+    hf = next(m for m in new.models if m.source == "huggingface")
+    hf.discovered_from = [*hf.discovered_from, "https://huggingface.co/api/models?search=other-query"]
+    assert diff_db(old, new)["classification"]["safe"] is True

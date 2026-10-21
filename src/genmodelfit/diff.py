@@ -139,8 +139,9 @@ JUDGEMENT_REASONS = (
 OTHER_CHANGE = "other_change"
 
 # 安全の表(#42 の Checker の指摘: 許すものだけを並べ、表に無い項目の変化はすべて判断が要る)。
-# 項目の値が変わっても安全なもの。人気の数(downloads など)・更新日・テンプレートの使用回数・HEAD の結果
-SAFE_ENTRY_FIELDS = frozenset({"downloads", "downloads_all_time", "likes", "updated"})
+# 項目の値が変わっても安全なもの。人気の数(downloads など)・更新日・テンプレートの使用回数・HEAD の結果・
+# どの検索で見つかったかの記録(discovered_from。検索の順番で毎週変わりうる。おすすめの判定には使わない)
+SAFE_ENTRY_FIELDS = frozenset({"downloads", "downloads_all_time", "likes", "updated", "discovered_from"})
 SAFE_TEMPLATE_FIELDS = frozenset({"usage"})
 SAFE_FILE_FIELDS = frozenset({"head_status", "head_checked_at"})
 # 一覧の項目から計算する値(比べない。元の項目の変化で見る)
