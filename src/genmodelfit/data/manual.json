@@ -253,5 +253,23 @@
     }
    ]
   }
- ]
+ ],
+ "components": {
+  "_comment": "HF の収集で拾ったモデルに、収集では入らない部品のファイルを足す(#40)。モデルの ID → 足すファイル。ライセンスは書かず、部品の出どころの表(license_sources.py)の行で決める(行が無ければ不明)。evidence はその部品をこのモデルが使う根拠(一次資料)",
+  "hf:stabilityai/stable-audio-3-small-sfx": {
+   "evidence": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx のリポジトリに t5gemma-b-b-ul2/model.safetensors(sha256 9b05ea5a…、google/t5gemma-b-b-ul2 の model.safetensors と同じ)と LICENSE_GEMMA.md があり、利用申請の文に「This model also includes components redistributed under the Gemma Terms of Use」。Stability AI の https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」。ComfyUI 用の同じ部品は Comfy-Org/stable-audio-3 の text_encoders(2026-10-21 に確認)",
+   "files": [
+    {
+     "name": "t5gemma_b_b_ul2.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+     "sha256": "1e1eba25be8872edb0d3c6335c6658fd6388e7b14b60da6e454e404cfcd8150e",
+     "size_bytes": 1187264003,
+     "directory": "text_encoders",
+     "gated": false,
+     "role": "text_encoder",
+     "repo_license": "stable-audio-community"
+    }
+   ]
+  }
+ }
 }

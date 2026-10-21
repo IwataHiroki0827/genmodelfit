@@ -404,7 +404,11 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 2. **HF のカードの `language`**(本体のファイルの置き場所と、その元 `license_from` のカード。言語のあった最初のもの)。
    読めたものは項目 `card_languages` に保存して持つ(`[]` = 読んだが言語が無い、null = まだ読んでいない)。
    **カードが言語を書いていれば、それが上限**: 読み上げは `speech` = カードの値。指示の文は、文字を読む部品が
-   すべて英語だけのもの(CLIP・T5)ならカードの言語のうち `en` だけ、それ以外はカードの値
+   すべて英語だけのもの(CLIP・T5)ならカードの言語のうち `en` だけ、それ以外はカードの値。
+   **音楽はカードの言語のうち `en` だけを指示に使い、`speech`(歌の言語)はカードから決めない**(0.6.0、#41)。
+   音楽のカードの `language` は歌詞の言語のことが多く、指示の言語とは限らない
+   (https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B のカードは 17 言語で、「Performance varies by language」は歌の話。
+   歌の入らない `audio_ace_step_1_t2a_instrumentals` の指示にも 17 言語が付いていた)。歌の言語は手の表で書く
 3. **カードが無い(言語が書いていない)ときだけ、文字を読む部品の表**: 表に当たれば `["en"]`。
    多言語の部品でも、表だけでは `ja` を付けない(部品が読める言語と、モデルが学習した説明文の言語は違う。
    Wan・Qwen-Image・HunyuanVideo 1.5 は多言語の部品を使うが、カードは `en` `zh`。Kandinsky 5・Anima のように
@@ -487,6 +491,22 @@ LFS でない小さいファイルは実際に落として sha256 を計算し�
 | `manual:stable-audio-3-small-music` | `other` / `stable-audio-community`、文字を読む部品 `t5gemma_b_b_ul2` は `gemma` | https://huggingface.co/stabilityai/stable-audio-3-small-music のカード(`license: other`・`license_name: stable-audio-community`、`gated: auto`)。同じリポジトリに `LICENSE_GEMMA.md` がある。URL は gated でない https://huggingface.co/Comfy-Org/stable-audio-3 の複製(`stable_audio_3_small_music.safetensors`・`t5gemma_b_b_ul2.safetensors`)。T5Gemma の記載は、同じファイルを使う `audio_stable_audio_3_medium` と同じ(`license_sources` の `stable-audio-3-t5gemma`) |
 
 手のモデルは、`recommend` の人気の点(`popularity`)に使う `downloads` を持たないので、同じ点数なら HF 由来より下に並びやすい。
+
+### 手で足す部品(`data/manual.json` の `components`、0.6.0、#40)
+
+HF の収集はリポジトリの本体(と同じリポジトリの部品)だけを拾うので、別のリポジトリにある部品が抜けることがある。
+`components` は「モデルの ID → 足すファイル」の表で、update(作り直し・`--heads-only`・`--fields-only`)が
+`appinfo.merge_manual` の中で毎回当てる(同じ URL のファイルがあれば足さない。何度当てても同じ)。
+**ライセンスは表に書かず、部品の出どころの表(`license_sources.py`、上の「出どころの表」)の行で決める**
+(行が無ければ不明。寛容な側に誤らない)。そのモデルがその部品を使う根拠は `evidence` に書き、
+ファイルの `license_evidence` の最後に `manual_component: <根拠>` として残す。ID は変えない(使う側の ID を保つ)。
+
+| ID | 足すファイル | ライセンス | 確かめた場所(2026-10-21) |
+|---|---|---|---|
+| `hf:stabilityai/stable-audio-3-small-sfx` | https://huggingface.co/Comfy-Org/stable-audio-3 の `text_encoders/t5gemma_b_b_ul2.safetensors`(sha256 `1e1eba25…`、1,187,264,003 バイト。ComfyUI 用の T5Gemma) | `gemma`(`license_sources` の `stable-audio-3-t5gemma`) | https://huggingface.co/stabilityai/stable-audio-3-small-sfx の Hub API: ファイルに `t5gemma-b-b-ul2/model.safetensors`(sha256 `9b05ea5a…` = https://huggingface.co/google/t5gemma-b-b-ul2 の `model.safetensors` と同じ。google/t5gemma-b-b-ul2 は `license: gemma`)と `LICENSE_GEMMA.md` があり、利用申請の文(`extra_gated_prompt`)に「This model also includes components redistributed under the Gemma Terms of Use (https://ai.google.dev/gemma/terms)」。Stability AI の https://github.com/Stability-AI/stable-audio-tools/blob/main/docs/conditioning.md「This uses a T5Gemma (https://huggingface.co/google/t5gemma-b-b-ul2) encoder」 |
+
+ほかの Stable Audio 3 の項目(`audio_stable_audio_3_medium`・`_medium_base`・`manual:stable-audio-3-small-music`)は
+もとから同じ部品を持つ(tests/test_appinfo.py がすべての Stable Audio 3 の項目に `gemma` の T5Gemma があることを検査する)。
 
 ## 無検閲(uncensored)のモデル
 

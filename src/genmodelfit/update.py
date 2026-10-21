@@ -1577,6 +1577,20 @@ def refresh_app_fields(
         inspect_repo_precision(manual, fetch)
     db.models = appinfo.merge_manual(db.models, manual)
     db.sources["manual"] = {"models": len(manual), "ids": sorted(e.id for e in manual)}
+    # 手で足した部品(#40)のうち、まだ HEAD で確かめていないファイルだけ確かめる(ほかのファイルには送らない。
+    # 部品は本体でないので見出しは読まない)
+    comps = set(appinfo.components())
+    fresh = [
+        ModelEntry(
+            id=m.id, name=m.name, modality=m.modality, files=[f for f in m.files if f.head_checked_at is None]
+        )
+        for m in db.models
+        if m.id in comps
+    ]
+    fresh = [m for m in fresh if m.files]
+    if fresh and not offline and fetch is not None:
+        say("手で足した部品のファイルの URL に匿名の HEAD を送っています")
+        check_heads(fresh, fetch)
     client = None
     if not offline and fetch is not None:
         client = HfClient(fetch)

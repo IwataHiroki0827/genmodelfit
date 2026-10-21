@@ -965,6 +965,46 @@ def test_two_threads_same_destination(server, comfy):
     assert all("別の download" in str(e) or "上書き" in str(e) for e in errors), errors
 
 
+EXT = "\\\\?\\"  # Windows の拡張パスの頭
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows の拡張パスの試験")
+def test_inside_ignores_extended_paths_of_files_being_deleted(tmp_path, monkeypatch):
+    """別のスレッドが消している途中(削除待ち)の .lock・.part を resolve() すると、Python が拡張パス
+    (頭に EXT が付いたもの)のまま返す。それを「置き場所の外」と誤って断っていた(#41。
+    test_two_threads_same_destination が負荷のもとで 60 回に 7〜8 回落ちた原因)。最後の名前は解決しない。"""
+    root = tmp_path / "models"
+    (root / "sub").mkdir(parents=True)
+    lock = root / "sub" / "x.safetensors.lock"
+    orig = Path.resolve
+
+    def resolve(self, strict=False):
+        r = orig(self, strict)
+        return Path(EXT + str(r)) if self.name.endswith((".lock", ".part")) else r
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    assert downloader._inside(lock, root)
+    assert downloader._inside(root / "sub" / "x.safetensors.part", root)
+    assert not downloader._inside(tmp_path / "other" / "x.lock", root)
+    assert not downloader._inside(root / ".." / "x.safetensors", root)
+    assert downloader._real(Path(EXT + "C:\\a\\b")) == Path("C:\\a\\b")
+    assert downloader._real(Path(EXT + "UNC\\srv\\share\\a")) == Path("\\\\srv\\share\\a")
+
+
+def test_inside_still_resolves_links_at_the_end(tmp_path):
+    """最後の名前がリンクなら、その先を見る(置き場所の外を指すリンクに書かない)。"""
+    root = tmp_path / "models"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"x")
+    link = root / "x.safetensors"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("シンボリックリンクを作れない環境")
+    assert not downloader._inside(link, root)
+
+
 def test_crafted_plan_outside_creates_nothing(server, comfy, tmp_path):
     p = plan(make_db(server), comfy)
     outside = tmp_path / "OUTSIDE" / "deep"

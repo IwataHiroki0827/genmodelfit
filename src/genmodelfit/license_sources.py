@@ -56,6 +56,8 @@ if TYPE_CHECKING:
 
 CHECKED = "2026-10-20"  # 表の一次資料を読んだ日
 EVIDENCE_KEY = "license_source"  # license_evidence の印("license_source:<行の名前>")
+# 表を当て直しても残す根拠(手で足した部品をそのモデルが使う根拠。appinfo.add_components。#40)
+COMPONENT_EVIDENCE = "manual_component"
 
 
 @dataclass(frozen=True)
@@ -656,18 +658,20 @@ def apply_to_file(f: ModelFile) -> LicenseSource | None:
     if row is None or (f.license is not None and not row.override and not from_table):
         return None
     res = row.resolved(repo_id)
+    keep = [x for x in f.license_evidence if x.startswith(f"{COMPONENT_EVIDENCE}:")]
     if (f.license, f.license_name, f.license_from, f.license_url, f.license_path, f.license_evidence) == (
         res.license,
         res.license_name,
         res.source,
         res.url,
         list(res.path),
-        list(res.evidence),
+        [*res.evidence, *keep],
     ):
         return None  # 当て済み(冪等)
     from .update import set_file_license  # update がこのモジュールを import するので、ここで読む
 
     set_file_license(f, res)
+    f.license_evidence += keep
     return row
 
 

@@ -16,6 +16,17 @@ Python から:
     gmf.download(plan, confirm=ask_user, progress=show)  # 同意を取ってから落とす(sha256 で確かめる)
     gmf.diff_db(gmf.load_db("old.json"), gmf.load_db("new.json"))  # 2 つの一覧の違い(`genmodelfit diff`)
     gmf.review_list()  # 確認待ちの項目(`genmodelfit review list`)。アプリは entry.reviewed で絞れる
+    # アプリが調べた GPU で 1 モデルを判定する(#27)。世代と精度は genmodelfit が決める
+    fit = gmf.judge_model(
+        "image_z_image_turbo", gpu_name="NVIDIA GeForce RTX 5080", vram_gb=16, driver="581.57"
+    )
+    fit.to_dict()["fit_level"], fit.to_dict()["memory_required_gb"]
+    gmf.system_from([{"name": "NVIDIA GeForce RTX 3060", "vram_gb": 12}], ram_gb=32)  # SystemInfo
+
+互換の対象は __all__ に入る名前だけ(docs/schema.md「Python API (stable)」)。サブモジュールの関数は内部のもの。
+注意: `genmodelfit.recommend` は関数で、同じ名前のモジュール(genmodelfit/recommend.py)を隠す
+(`import genmodelfit.recommend as r` は関数になる。モジュールが要るなら
+`importlib.import_module("genmodelfit.recommend")`。内部のもので互換の対象ではない)。
 """
 
 from __future__ import annotations
@@ -25,6 +36,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from ._version import __version__
+from .appapi import judge_model, system_from
 from .db import Database
 from .db import load as load_db
 from .diff import diff_db
@@ -34,6 +46,7 @@ from .downloader import (
     DownloadProgress,
     DownloadRefused,
     DownloadResult,
+    ModelNotFound,
     plan_download,
 )
 from .estimate import estimate
@@ -304,6 +317,7 @@ __all__ = [
     "Measurement",
     "ModelEntry",
     "ModelFile",
+    "ModelNotFound",
     "Settings",
     "SystemInfo",
     "__version__",
@@ -315,6 +329,7 @@ __all__ = [
     "evaluate",
     "fit_list",
     "info",
+    "judge_model",
     "load_db",
     "plan_download",
     "recommend",
@@ -323,4 +338,5 @@ __all__ = [
     "review_reject",
     "search",
     "system",
+    "system_from",
 ]

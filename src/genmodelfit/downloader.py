@@ -240,9 +240,36 @@ def safe_relpath(directory: str | None, name: str) -> tuple[str, ...] | None:
     return (folder, *parts)
 
 
+def _real(path: Path) -> Path:
+    """resolve() から Windows の拡張パスの頭(\\\\?\\)を外したもの。"""
+    s = str(path.resolve())
+    if s.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + s[8:])
+    if s.startswith("\\\\?\\"):
+        return Path(s[4:])
+    return Path(s)
+
+
+def _is_link(path: Path) -> bool:
+    """リンク(シンボリックリンク・ジャンクション)か。無い・読めないときは False(呼び出し側が別に確かめる)。"""
+    if path.is_symlink():
+        return True
+    is_junction = getattr(os.path, "isjunction", None)  # Python 3.12 から
+    return bool(is_junction and is_junction(path))
+
+
 def _inside(path: Path, root: Path) -> bool:
+    """path が root の中か。最後の名前はリンクでなければ解決しない(親のフォルダを解決して名前を足す)。
+
+    最後の名前まで resolve() すると、別のスレッド・プロセスが消している途中(Windows の削除待ち)の
+    .lock・.part で、Python が拡張パス(\\\\?\\C:\\…)のまま返し、中のファイルを「外」と誤る
+    (#41。test_two_threads_same_destination が負荷のもとで 60 回に 7〜8 回落ちた)。"""
     try:
-        return path.resolve().is_relative_to(root.resolve())
+        if path.name in ("", ".", "..") or _is_link(path):
+            target = _real(path)
+        else:
+            target = _real(path.parent) / path.name
+        return target.is_relative_to(_real(root))
     except (OSError, ValueError):
         return False
 

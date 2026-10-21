@@ -710,7 +710,9 @@ readers drop unknown keys, see "Database file"):
   apply (nothing carries over from the previous list; docs/sources.md「言語・動かし方・説明」): the hand table
   `data/overrides.json` (or the entry's own `languages` in `data/manual.json`) wins for the keys it sets; otherwise
   the `language` of the Hugging Face card (saved as `card_languages`) is the upper bound — `speech` is the card's
-  list, `prompt` is the card's list, narrowed to `en` when every text encoder is English-only (CLIP / T5); without a
+  list, `prompt` is the card's list, narrowed to `en` when every text encoder is English-only (CLIP / T5) and for
+  music (a music card's `language` usually lists lyric languages, so a music entry gets at most `["en"]` from the card
+  and no `speech`; 0.6.0, #41); without a
   card, a known text encoder gives `["en"]` (a multilingual encoder alone never adds `ja`). Nothing decides → the key
   is left out (no guessing). Test membership of the language you need.
 - `card_languages` (str[] \| null): the Hugging Face card's `language` saved by `update` / `update --fields-only`
@@ -723,6 +725,11 @@ readers drop unknown keys, see "Database file"):
 - `source: "manual"` (id `manual:<slug>`): models added by hand in `data/manual.json` (`template` is null). Their license
   per file was read from the upstream card by the person who added them (`license_evidence` starts with `manual:`); `update`
   compares it with the card of `license_from` and takes the stricter one on a mismatch (with a warning).
+- Hand-added components (0.6.0, #40): `components` in `data/manual.json` adds files that the Hugging Face collection
+  does not pick up to an entry of another source (first: the T5Gemma text encoder of
+  `hf:stabilityai/stable-audio-3-small-sfx`, Gemma Terms of Use). Their license is never written by hand: it comes from
+  the per-file source table (`license_sources.py`; no row → unknown), and `license_evidence` ends with
+  `manual_component: <why this model uses the file>`. `update` (all modes) applies them on every run.
 
 **License contract**: `license` is the strictest license over **all** files (LoRAs, upscalers and clip_vision included).
 `null` means unknown and must be treated as "not allowed". A license is never more permissive than what could be verified
@@ -1033,6 +1040,44 @@ DownloadResult:
 | `seconds` | float | wall time |
 | `files` | object[] | `relpath`, `dest`, `sha256` of every file |
 
+## Python API (stable) / Python の公開の範囲
+
+**Only the names in `genmodelfit.__all__` are the stable API** (tests/test_judge_model.py fixes the new ones). Functions
+in submodules (`genmodelfit.recommend.judge`, `genmodelfit.hardware.classify_gpu`, …) are internal and may change in
+any release. 互換の対象は `__all__` に入る名前だけ。サブモジュールの関数は内部のもの。
+
+Judging one model with a GPU the app detected itself (0.6.0, #27). The generation (compute capability) and ComfyUI's
+compute precision are decided by genmodelfit from the GPU name and driver; nothing runs nvidia-smi or PowerShell:
+
+```python
+import genmodelfit as gmf
+
+fit = gmf.judge_model(
+    "hf:stabilityai/stable-audio-3-small-sfx",  # id, or a model name / part of an id (like `info` / `download`)
+    gpu_name="NVIDIA GeForce RTX 3060",
+    vram_gb=12.0,
+    driver="560.94",
+    ram_gb=32.0,  # None = this PC's memory (as gmf.system())
+    gpu_usable=None,  # None: genmodelfit decides from the driver / generation; True: the app checked it
+    db=gmf.load_db(),  # optional; an app may pass its bundled list
+)
+row = fit.to_dict()  # the same dict as one item of `recommend --json` models ("Fit" above)
+row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_confidence"], row["licenses"]
+```
+
+| function | returns | notes |
+|---|---|---|
+| `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia)}` or `Gpu`. The largest usable NVIDIA GPU is judged; non-NVIDIA ones never are. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, docs/hardware.md); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU. `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
+| `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
+
+Equivalence: with `gpu_usable=True, windows=True, ram_gb=1024` it gives the same `Estimate` as the internal calls the
+AI生成キット used up to genmodelfit 0.5.0 (`hardware.classify_gpu` + `comfy_precision` → `recommend.judge`, then
+`recommend.vram_need` = `memory_required_gb` before rounding to 2 places).
+
+**Name shadowing / 名前の上書き**: `genmodelfit.recommend` is the function above and hides the submodule of the same
+name, so `import genmodelfit.recommend as r` binds the function. Use the functions in `__all__`; if a module is
+really needed, `importlib.import_module("genmodelfit.recommend")` (internal, not stable).
+
 ## Database file (`db.json`)
 
 ```json
@@ -1086,7 +1131,9 @@ version, and writes it back (`--output`, default the cache).
 `runtime` / `description`, from `data/overrides.json`, the tables and the Hugging Face cards) and the hand-added
 models (`data/manual.json`): it reads the cards again (Hub API) and, for the hand-added models only, sends HEADs,
 reads the file headers and compares the licenses with the upstream cards; with `--offline` it sends nothing and
-uses the saved `card_languages`. The other entries' files, licenses, precision and HEAD results are not touched.
+uses the saved `card_languages`. The other entries' files, licenses, precision and HEAD results are not touched,
+except that the hand-added components (`components` in `data/manual.json`, below) are added to their entries (with a
+HEAD of the new files only, none with `--offline`).
 `update --inspect-only` reads the current database the same way and redoes only what is read from the files
 themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`), the official
 templates' `sampler_stages` and `workflow_precision`, the repo precision (`repo_precision`: Hub API / `config.json`,
