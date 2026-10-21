@@ -81,3 +81,48 @@ jobs:
               --title "data-latest" --notes "署名つきのモデル一覧。genmodelfit update --from-release が取り込む。"
           fi
           gh release upload data-latest dist-data/db.json dist-data/db.json.sig --clobber --repo "${GITHUB_REPOSITORY}"
+
+  # 配った直後に、まっさらな環境で本当に取り込めるかを確かめる(署名・形式・期限)。
+  # main のコードと、アプリ(AI生成キット)が固定している版の両方で確かめる
+  verify:
+    needs: upload
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        client: ["main", "genmodelfit==0.5.0"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: まっさらな環境に入れる
+        env:
+          CLIENT: ${{ matrix.client }}
+        run: |
+          uv venv "$RUNNER_TEMP/v"
+          if [ "$CLIENT" = "main" ]; then
+            uv pip install --python "$RUNNER_TEMP/v/bin/python" .
+          else
+            uv pip install --python "$RUNNER_TEMP/v/bin/python" "$CLIENT"
+          fi
+      - name: data-latest を取り込む
+        env:
+          GENMODELFIT_CACHE_DIR: ${{ runner.temp }}/cache
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/v/bin/genmodelfit" --version
+          "$RUNNER_TEMP/v/bin/genmodelfit" update --from-release
+          "$RUNNER_TEMP/v/bin/python" - <<'PY'
+          import genmodelfit as g
+          s = g.data_status()
+          print(s)
+          assert s.source == "release", s.source
+          assert not s.expired, "取り込んだ一覧の HEAD の確認が期限切れ"
+          assert s.models > 100, s.models
+          assert s.auto_count > 0, s.auto_count
+          PY
