@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [0.7.1] - 2026-10-21
 
-Targets 0.7.1 (`_version.py` is 0.7.1). JSON changes are additive; `schema_version` stays 1.
+JSON changes are additive; `schema_version` stays 1.
 
 ### Added
 
