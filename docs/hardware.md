@@ -308,6 +308,29 @@ RX 6550M は gfx1034、RX 7700S は gfx1102)。Linux で pci.ids が古く「AMD
 - Mode の列: 動かないもののうち、使える GPU が無いから動かないものは `GPU req`、メインメモリが足りないものは `RAM`
   (JSON の `run_mode_label` は `-` のまま)。
 
+### ほかのツールとの突き合わせ(2026-10-21)
+
+表が厳しすぎ・緩すぎにならないかを、ほかのツールの対応表と比べた。基準は「ComfyUI + PyTorch で動くか」なので、
+ComfyUI の README に合わせている。
+
+- **Windows 10**: GPU を使えるとする資料は見つからなかった(AMD HIP SDK・ROCm on Radeon/Ryzen・PyTorch XPU は
+  Windows 11 だけ。Ollama・LM Studio・llmfit は記載なし)。Windows 10 の版と分かれば、表の先頭の行に
+  `needs Windows 11 for generation` と出す(`Adapter.needs`)
+- **DirectML・ZLUDA・Vulkan は使わない**: ComfyUI は DirectML に「barely works, is very slow, has not been updated
+  in over 1 year」と警告し(comfy/model_management.py)、README からも外した。Microsoft も DirectML を
+  maintenance mode とし(https://github.com/microsoft/DirectML)、SD.Next は DirectML を削除、ZLUDA を
+  「unofficial and currently limited」とした(https://vladmandic.github.io/sdnext-docs/ZLUDA/)。
+  Fooocus や stable-diffusion-webui-amdgpu は DirectML で古い AMD を動かすが、遅い(Fooocus の README で約 3 倍)
+- **AMD 公式の Windows 版 PyTorch の表より広い**: ROCm on Radeon/Ryzen の Windows の表は gfx1200/1201/1100/1101 と
+  gfx1150/1151 だけ(https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)。
+  ComfyUI の README は RDNA 2〜4 とし、TheRock(ComfyUI が使う ROCm)は RDNA 2・780M(gfx1103)も Windows で
+  リリースの対象にしている(https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md)。RX 6000 系と 780M は
+  ComfyUI に合わせて使うが、段階は good までの推定
+- **RDNA 1・Vega・Polaris**: llmfit は名前と VRAM が取れれば GPU 扱い、Ollama・llama.cpp は Vulkan で動かせるが、
+  ComfyUI の README の対象外なので CPU
+- **2 CU の内蔵 GPU(gfx1036・gfx1033)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU
+  (対応の有無ではなく性能の判断。理由の文もそう書く)
+
 ## CPU で動く系統(0.7.0、#39)
 
 GPU が無い(または GPU に載らない)とき、CPU で動くとみなすのは、これまでの「重み 2 GB 以下の画像・音声・読み上げ」に加えて、

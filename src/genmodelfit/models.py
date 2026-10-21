@@ -376,6 +376,7 @@ class Adapter:
     shared_gb: float | None = (
         None  # Linux の amdgpu の GTT(メインメモリから使える分。sysfs mem_info_gtt_total)
     )
+    needs: str | None = None  # 使えるようにする条件(今は "Windows 11" だけ。OS の版だけで断ったとき)
 
 
 @dataclass

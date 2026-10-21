@@ -91,7 +91,8 @@ Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` /
 smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` / `wmi` / `sysfs` / `name` / null),
 `source` (`wmi` / `lspci` / `system_profiler`). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
 null for NVIDIA, which `nvidia-smi` decides), `reason` (Japanese sentence: why it is or is not used), `shared_gb`
-(Linux amdgpu GTT, sysfs `mem_info_gtt_total`).
+(Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
+`"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
 
 ## Data status / 一覧の新しさ
 

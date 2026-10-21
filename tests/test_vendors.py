@@ -25,7 +25,7 @@ from genmodelfit.hardware import (
 )
 from genmodelfit.models import Adapter, Gpu, ModelEntry, ModelFile, SystemInfo
 from genmodelfit.recommend import judge, select
-from genmodelfit.table import make_console, mode_cell, no_gpu_line, pc_line, print_fit_table
+from genmodelfit.table import _unusable_gpus, make_console, mode_cell, no_gpu_line, pc_line, print_fit_table
 
 FIX = Path(__file__).parent / "fixtures" / "hardware"
 GB = 2**30
@@ -115,6 +115,12 @@ def test_rx6600_windows_rdna2(monkeypatch):
     adapters, _ = parse_wmi_video(fx("wmi_rx6600.json"), reg("registry_rx6600.json"))
     s10 = system_of(monkeypatch, adapters, WIN10)
     assert s10.best_gpu is None and any("Windows 11 が要る" in n for n in s10.notes)
+    # 表の先頭の行は、使えるようにする条件(Windows 11)を出す
+    assert "(needs Windows 11 for generation → judged as CPU)" in " ".join(_unusable_gpus(s10))
+    # 版が分からないときは条件を言わない
+    s_unknown = system_of(monkeypatch, adapters, Host("Windows", None))
+    assert s_unknown.best_gpu is None
+    assert all("needs Windows 11" not in x for x in _unusable_gpus(s_unknown))
 
 
 def test_arc_a770_windows_xpu(monkeypatch):

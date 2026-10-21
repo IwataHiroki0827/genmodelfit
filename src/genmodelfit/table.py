@@ -363,7 +363,10 @@ def _unusable_gpus(system) -> list[str]:
             continue
         seen.add(a.name)
         kind = "integrated; " if a.integrated else ""
-        out.append(f"{a.name} ({kind}not usable for generation → judged as CPU)")
+        if getattr(a, "needs", None):  # OS の版だけで断った GPU は、使えるようにする条件を出す
+            out.append(f"{a.name} ({kind}needs {a.needs} for generation → judged as CPU)")
+        else:
+            out.append(f"{a.name} ({kind}not usable for generation → judged as CPU)")
     return out
 
 

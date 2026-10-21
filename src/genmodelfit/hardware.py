@@ -1120,6 +1120,7 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     ram_gb は内蔵 GPU・Apple の共有の分を決めるメインメモリ(--ram で上書きしたらその値)。"""
     if a.vendor == "nvidia":
         return None  # NVIDIA は nvidia-smi で決める
+    a.needs = None  # 判定し直すたびに消す(同じ部品を別の PC の条件で判定し直すことがある)
     label = VENDOR_LABEL.get(a.vendor, "")
     tag = f"推定({label}・実測なし)" if label else "推定(実測なし)"
 
@@ -1159,6 +1160,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             refuse(f"{a.name}({gfx})は画面を出すための小さな内蔵 GPU で、生成では CPU より速い見込みが無い")
             return None
         if host.system == "Windows" and not _windows_ok(host):
+            if host.windows_build is not None:  # 版が分からないときは条件を言わない
+                a.needs = "Windows 11"
             refuse(
                 "AMD の GPU の Windows 版 PyTorch(ROCm)は Windows 11 が要る"
                 "(ComfyUI の案内。版が分からなくても使わない)"
@@ -1190,6 +1193,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             refuse(f"{host.system} の XPU 版 PyTorch は無い")
             return None
         if host.system == "Windows" and not _windows_ok(host):
+            if host.windows_build is not None:  # 版が分からないときは条件を言わない
+                a.needs = "Windows 11"
             refuse(
                 "Intel の GPU の XPU 版 PyTorch は Windows 11 で確かめられている"
                 "(Windows 10・版が分からないときは対象外)"
