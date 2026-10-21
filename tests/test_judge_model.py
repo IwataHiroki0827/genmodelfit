@@ -233,3 +233,30 @@ def test_judge_model_does_not_run_hardware_probes(monkeypatch, app_db):
     monkeypatch.setattr(hardware, "detect_other_gpus", boom)
     gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, ram_gb=16, db=app_db)
     gmf.judge_model("image_sdxl_simple", cpu_only=True, ram_gb=16, db=app_db)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0, True, "8"])
+def test_amounts_must_be_finite_and_not_negative(app_db, bad):
+    """NaN は奥で「cannot convert float NaN to integer」、無限大は perfect になっていた(#27 の検証)。
+    入口で断る。"""
+    with pytest.raises(ValueError, match="vram_gb"):
+        gmf.judge_model(
+            "image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=bad, ram_gb=16, db=app_db
+        )
+    with pytest.raises(ValueError, match="ram_gb"):
+        gmf.judge_model("image_sdxl_simple", cpu_only=True, ram_gb=bad, db=app_db)
+    with pytest.raises(ValueError, match="ram_gb"):
+        gmf.system_from([], ram_gb=bad)
+    with pytest.raises(ValueError, match="vram_gb"):
+        gmf.system_from([{"name": "NVIDIA GeForce RTX 3060", "vram_gb": bad}], ram_gb=16)
+
+
+def test_cpu_only_refuses_gpu_arguments(app_db):
+    for kw in (
+        {"gpu_usable": True},
+        {"gpu_usable": False},
+        {"gpu_name": "NVIDIA GeForce RTX 3060"},
+        {"vram_gb": 8},
+    ):
+        with pytest.raises(ValueError, match="cpu_only"):
+            gmf.judge_model("image_sdxl_simple", cpu_only=True, ram_gb=16, db=app_db, **kw)

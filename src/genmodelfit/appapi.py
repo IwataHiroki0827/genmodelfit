@@ -17,6 +17,7 @@ comfy_precision / parse_compute_cap・models.Gpu)を呼ばずに済むように�
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -28,12 +29,24 @@ from .recommend import Fit
 GIB = 1024**3
 
 
+def _amount(name: str, value: Any) -> float:
+    """GiB の量(0 以上の有限の数)。bool・NaN・無限大・負の数は ValueError。"""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise ValueError(f"{name} が正しくありません(0 以上の有限の数): {value!r}")
+    return float(value)
+
+
 def _gpu_from(spec: Mapping[str, Any] | Gpu) -> Gpu:
     if isinstance(spec, Gpu):
         return Gpu(
             name=spec.name,
             vendor=spec.vendor or "nvidia",
-            vram_total_gb=float(spec.vram_total_gb),
+            vram_total_gb=_amount("vram_total_gb", spec.vram_total_gb),
             driver=spec.driver,
             compute_capability=spec.compute_capability,
             backend="cuda",
@@ -44,14 +57,16 @@ def _gpu_from(spec: Mapping[str, Any] | Gpu) -> Gpu:
     vram = spec.get("vram_gb")
     if not isinstance(name, str) or not name.strip():
         raise ValueError(f"GPU の name がありません: {spec!r}")
-    if isinstance(vram, bool) or not isinstance(vram, (int, float)) or vram < 0:
-        raise ValueError(f"GPU の vram_gb が正しくありません(0 以上の数): {spec!r}")
+    try:
+        vram = _amount("vram_gb", vram)
+    except ValueError:
+        raise ValueError(f"GPU の vram_gb が正しくありません(0 以上の有限の数): {spec!r}") from None
     driver = spec.get("driver")
     cc = spec.get("compute_capability")
     return Gpu(
         name=name.strip(),
         vendor=str(spec.get("vendor") or "nvidia"),
-        vram_total_gb=float(vram),
+        vram_total_gb=vram,
         driver=str(driver) if driver else None,
         compute_capability=str(cc) if cc else None,
         backend="cuda",
@@ -85,10 +100,8 @@ def system_from(
 
     if gpu_usable is not None and not isinstance(gpu_usable, bool):
         raise TypeError("gpu_usable は None / True / False のどれかです")
-    if ram_gb is not None and (
-        isinstance(ram_gb, bool) or not isinstance(ram_gb, (int, float)) or ram_gb < 0
-    ):
-        raise ValueError(f"ram_gb が正しくありません(0 以上の数): {ram_gb!r}")
+    if ram_gb is not None:
+        ram_gb = _amount("ram_gb", ram_gb)
     if windows is None:
         windows_driver, comfy_windows = os.name == "nt" or is_wsl(), os.name == "nt"
     else:
@@ -140,7 +153,9 @@ def judge_model(
         recommend の 1 行と同じく、段階が良く精度が高いものを選び、ほかを fit.workflows に入れる)。
         合わない・2 つ以上のモデルに合うときは ModelNotFound(candidates に候補)。
     PC: system_info を渡せばそれ。無ければ gpu_name + vram_gb(+ driver・compute_capability)の 1 枚で
-        system_from を呼ぶ(ram_gb・gpu_usable・windows もそのまま渡す)。cpu_only=True は GPU 無し。
+        system_from を呼ぶ(ram_gb・gpu_usable・windows もそのまま渡す)。cpu_only=True は GPU 無し
+        (gpu_name・vram_gb・gpu_usable と一緒には渡せない)。vram_gb・ram_gb は 0 以上の有限の数(NaN・無限大は
+        ValueError)。
         GPU も cpu_only も無ければ、この PC を調べる(`gmf.system()` と同じ。ram_gb があればそれで上書き)。
     settings: 解像度・長さなど(None は既定)。content: "sfw"(既定)/ "all" / "uncensored"(名前で探すとき)。
     db: 一覧(既定は `gmf.load_db()`。アプリは同梱の一覧を渡すとよい)。comfyui_version: 自動のおすすめ
@@ -153,6 +168,14 @@ def judge_model(
     check_filters(content=content)
     if not isinstance(model, str):
         raise TypeError("model は ID かモデル名の文字列です")
+    if vram_gb is not None:
+        vram_gb = _amount("vram_gb", vram_gb)
+    if ram_gb is not None:
+        ram_gb = _amount("ram_gb", ram_gb)
+    if cpu_only and (gpu_usable is not None or gpu_name is not None or vram_gb is not None):
+        raise ValueError(
+            "cpu_only=True のときは gpu_name / vram_gb / gpu_usable を渡せません(GPU を使わないので)"
+        )
     if system_info is None:
         if cpu_only:
             system_info = system_from((), ram_gb=ram_gb, windows=windows)

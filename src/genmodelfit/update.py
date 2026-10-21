@@ -1548,13 +1548,16 @@ def refresh_app_fields(
 ) -> Database:
     """今の一覧をそのまま使い、アプリ向けの項目(languages / runtime / description)と手のモデルだけを
     当て直す(update --fields-only)。既存のモデルの判定に関わる項目
-    (ファイル・ライセンス・精度・HEAD)は変えない。
+    (ファイル・ライセンス・精度・HEAD)は、手で足す部品(data/manual.json の components。#40)を除いて変えない。
 
     - 手の表(data/overrides.json)・文字を読む部品の表・HF のカードの言語から、項目を作り直す。
       offline でなく fetch があれば、各モデルのカード(本体の置き場所とその元。一覧の判定には使わない)を
       読み直して card_languages を更新する。offline なら前の一覧に保存した card_languages を使う
     - 手のモデル(data/manual.json)を足す。offline でなく fetch があれば、そのファイルだけ HEAD・見出しの精度・
       上流のカードとのライセンスの照合をする(ほかのモデルには送らない)
+    - 手で足す部品を、その ID の既存の項目のファイルに足す(ライセンスは license_sources の行。
+      一式のライセンス・大きさも決め直す)。offline でなく fetch があれば、まだ HEAD で確かめていない
+      部品のファイルにだけ HEAD を送る
     """
     from .db import DatabaseError
     from .db import load as load_db

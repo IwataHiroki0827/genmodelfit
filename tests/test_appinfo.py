@@ -701,8 +701,11 @@ def test_music_card_languages_only_give_english_prompts():
 
 def test_bundled_music_prompts_are_not_lyric_languages(bundled):
     by = {m.id: m for m in bundled.models}
-    for mid in ("audio_ace_step_1_t2a_instrumentals", "audio_ace_step_1_t2a_song", "audio_yue2_text2music"):
+    for mid in ("audio_ace_step_1_t2a_instrumentals", "audio_yue2_text2music"):
         assert by[mid].languages == {"prompt": ["en"]}, mid
+    # 歌入りの ACE-Step v1 は、歌える言語を手の表に書いた(README の「top 10 well-performing languages」)
+    song = by["audio_ace_step_1_t2a_song"].languages
+    assert song["prompt"] == ["en"] and "ja" in song["speech"] and len(song["speech"]) == 10
     hand = appinfo.overrides()
     for m in bundled.models:
         if m.modality == "music" and m.source != "manual" and m.id not in hand:
@@ -838,3 +841,28 @@ def test_bundled_sfx_is_what_merge_manual_rebuilds(bundled):
     assert [tuple(getattr(f, k) for k in keys) for f in have.files][1:] == [
         tuple(getattr(f, k) for k in keys) for f in rebuilt.files
     ][1:]
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        [{"name": "a.safetensors", "role": "text_encoder"}],  # url が無い
+        [{"name": "a.safetensors", "url": "http://huggingface.co/o/r/resolve/main/a.safetensors"}],
+        [{"url": "https://huggingface.co/o/r/resolve/main/a.safetensors"}],  # name が無い
+        [
+            {"name": "a.safetensors", "url": "https://huggingface.co/o/r/resolve/main/a.safetensors"},
+            {"name": "a.safetensors", "url": "https://huggingface.co/o/r/resolve/main/a.safetensors"},
+        ],
+        [],
+    ],
+)
+def test_components_require_a_unique_https_url(files):
+    """URL で同じファイルかを見るので、URL の無い行は当てるたびに重なる。形が崩れた表は読み込みで断る。"""
+    with pytest.raises(ValueError, match="components"):
+        appinfo.components({"components": {SFX: {"evidence": "x", "files": files}}})
+    with pytest.raises(ValueError, match="components"):
+        appinfo.add_components([_sfx_from_hf()], {SFX: {"evidence": "x", "files": files}})
+
+
+def test_bundled_components_are_valid():
+    assert SFX in appinfo.components()

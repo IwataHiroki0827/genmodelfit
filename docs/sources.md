@@ -435,7 +435,7 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 部品が複数あるとき: 多言語が 1 つでもあれば多言語、すべて英語の部品なら英語だけ、表に無い部品(Gemma・Mistral・Llama・
 Qwen3-VL・gpt-oss など。カードに言語の記述が無い、または確かめていない)が混じれば決めない(カードがあればカードのまま)。
 
-手の表 `data/overrides.json` は 11 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
+手の表 `data/overrides.json` は 12 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
 Z-Image Turbo 2 件・Wan 2.1/2.2 は `prompt` が `en` `ja` `zh`(「日本語の指示もある程度理解しますが、英語で書くとより正確」
 「日本語・英語・中国語の指示を理解します」。Z-Image のカードは `en` だけだが、部品の Qwen3 で日本語の指示も通ることを実機で確かめた)、
 SDXL は `en` のみ(「日本語はほとんど理解しません」)、ACE-Step 1.5 は `prompt` が `en`(「曲の雰囲気は英語で書くとより正確」)・
@@ -445,6 +445,11 @@ Stable Audio 3 Small の効果音は `prompt` が `en` で `speech` は `[]`(歌
 Wan2.2 S2V(https://huggingface.co/Wan-AI/Wan2.2-S2V-14B のカードが `es` だけ。同じ Wan2.2 の
 https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードに合わせて `en` `zh`)と MeloTTS-English
 (https://huggingface.co/myshell-ai/MeloTTS-English のカードが `ko`。英語の声なので `en`)。
+もう 1 件は歌の言語(0.6.0、#41): ACE-Step v1 の歌入りの `audio_ace_step_1_t2a_song` の `speech` は、
+よく歌える 10 言語 `en` `zh` `ru` `es` `ja` `de` `fr` `pt` `it` `ko`(https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B の
+カードが案内する https://github.com/ace-step/ACE-Step の README「Supports 19 languages with top 10 well-performing languages
+including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean」)。指示は音楽の規則で
+`en`。歌の入らない `audio_ace_step_1_t2a_instrumentals` には付けない。
 
 手のモデル `data/manual.json` の 3 件: つくよみちゃんの `speech` は `ja` `en`: カード(https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan)の
 `language` は 6 言語(ja en zh es fr pt)だが、アプリが実機で確かめたのは日本語と英語だけなのでそれだけにした。

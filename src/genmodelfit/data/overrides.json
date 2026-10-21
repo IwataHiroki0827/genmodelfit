@@ -80,6 +80,23 @@
     "en": "Makes songs with vocals or background music from a description of genre and mood plus lyrics. Japanese lyrics are supported."
    }
   },
+  "audio_ace_step_1_t2a_song": {
+   "_note": "歌の言語(歌詞)。https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B のカード(language に 17 言語、本文「see: https://github.com/ace-step/ACE-Step」)。その README「Supports 19 languages with top 10 well-performing languages including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean」「less common languages may underperform」から、よく歌える 10 言語だけ(2026-10-21 に確認)。指示は音楽の規則で en。歌の入らない audio_ace_step_1_t2a_instrumentals には付けない",
+   "languages": {
+    "speech": [
+     "en",
+     "zh",
+     "ru",
+     "es",
+     "ja",
+     "de",
+     "fr",
+     "pt",
+     "it",
+     "ko"
+    ]
+   }
+  },
   "hf:stabilityai/stable-audio-3-small-sfx": {
    "languages": {
     "prompt": [

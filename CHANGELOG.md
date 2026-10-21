@@ -44,14 +44,15 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
 - Public functions to judge one model with a GPU the app detected itself (Issue #27): `gmf.judge_model(model, *,
   gpu_name, vram_gb, driver, ram_gb, cpu_only, gpu_usable, windows, settings, content, system_info, db,
   comfyui_version) -> Fit` and `gmf.system_from(gpus, *, ram_gb, gpu_usable, windows) -> SystemInfo`; genmodelfit decides
-  the generation and the ComfyUI precision from the GPU name and driver. `gmf.ModelNotFound` is exported. Only the names
+  the generation and the ComfyUI precision from the GPU name and driver. `vram_gb` / `ram_gb` must be finite and
+  not negative, and `cpu_only=True` refuses GPU arguments (`ValueError`). `gmf.ModelNotFound` is exported. Only the names
   in `genmodelfit.__all__` are the stable API (docs/schema.md "Python API (stable)", which also notes that the function
   `genmodelfit.recommend` hides the submodule of the same name). With `gpu_usable=True, windows=True` the result equals
   what apps computed with the internal `recommend.judge` / `vram_need` and `hardware.classify_gpu` / `comfy_precision`.
   アプリが内部の関数を使わずに 1 モデルを判定できる公開の関数。
 - Hand-added components (Issue #40): `components` in `data/manual.json` adds files the Hugging Face collection does not
   pick up to an entry, with the license taken from the per-file source table (`license_sources.py`; unknown without a
-  row) and `manual_component: …` evidence. First: `hf:stabilityai/stable-audio-3-small-sfx` now lists the T5Gemma text
+  row) and `manual_component: …` evidence; every file needs a unique https `url` (`ValueError` otherwise). First: `hf:stabilityai/stable-audio-3-small-sfx` now lists the T5Gemma text
   encoder (`Comfy-Org/stable-audio-3` `text_encoders/t5gemma_b_b_ul2.safetensors`, `gemma`), so its `licenses` are
   `other` (stable-audio-community) and `gemma`, and the size / VRAM estimate includes the 1.11 GiB encoder. The id is
   unchanged. 効果音の Stable Audio 3 に、Gemma 利用規約の T5Gemma の部品を足した。
@@ -75,6 +76,8 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
 - Music `languages` (Issue #41): a music card's `language` usually lists lyric languages, so music entries now take at
   most `["en"]` for `prompt` from the card and no `speech` (the hand table still sets them). ACE-Step v1
   (`audio_ace_step_1_t2a_instrumentals` / `_song`, 17 languages before) and YuE (`zh`, `en` before) are now `["en"]`.
+  The song workflow `audio_ace_step_1_t2a_song` gets `speech` from the hand table: the 10 well-performing lyric
+  languages of the ACE-Step README (including `ja`).
   音楽のカードの言語(歌詞)を指示の言語にしない。
 - **Read gate `checks` by `id`, not by position**: the number of checks depends on the model (10, or 8 for models whose
   `runtime` is neither `comfyui` nor null: `app_runtime` replaces the three ComfyUI checks; 9 → 7 in 0.5.0, docs/gate.md).

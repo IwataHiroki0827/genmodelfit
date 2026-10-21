@@ -74,7 +74,7 @@
   },
   "app_fields": {
    "languages_prompt": 209,
-   "languages_speech": 21,
+   "languages_speech": 22,
    "runtime": 303,
    "description": 12,
    "from_card": 213,
@@ -26478,6 +26478,18 @@
    "languages": {
     "prompt": [
      "en"
+    ],
+    "speech": [
+     "en",
+     "zh",
+     "ru",
+     "es",
+     "ja",
+     "de",
+     "fr",
+     "pt",
+     "it",
+     "ko"
     ]
    },
    "runtime": "comfyui",

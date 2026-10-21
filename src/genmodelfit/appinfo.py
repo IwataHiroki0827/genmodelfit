@@ -366,10 +366,25 @@ def merge_manual(entries: list[ModelEntry], manual: list[ModelEntry] | None = No
 
 
 def components(data: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    """data/manual.json の components(モデルの ID → {evidence, files})。"""
+    """data/manual.json の components(モデルの ID → {evidence, files})。形を確かめる(ValueError)。
+
+    足すファイルは https の url が必須(同じファイルかを URL で見るので、URL の無い行は当てるたびに重なる)。
+    1 つのモデルの中で同じ URL は 1 回だけ。"""
     data = _bundled_json(MANUAL_FILE) if data is None else data
     table = data.get("components") or {}
-    return {k: v for k, v in table.items() if not k.startswith("_") and isinstance(v, dict)}
+    out = {k: v for k, v in table.items() if not k.startswith("_")}
+    for mid, row in out.items():
+        if not isinstance(row, dict) or not isinstance(row.get("files"), list) or not row["files"]:
+            raise ValueError(f"components の {mid}: files(1 つ以上)がありません")
+        seen: set[str] = set()
+        for raw in row["files"]:
+            url = raw.get("url") if isinstance(raw, dict) else None
+            if not isinstance(url, str) or not url.startswith("https://") or not raw.get("name"):
+                raise ValueError(f"components の {mid}: ファイルに https の url と name が要ります: {raw!r}")
+            if url in seen:
+                raise ValueError(f"components の {mid}: 同じ url が 2 回あります: {url}")
+            seen.add(url)
+    return out
 
 
 def add_components(entries: list[ModelEntry], table: dict[str, dict[str, Any]] | None = None) -> list[str]:
@@ -385,7 +400,7 @@ def add_components(entries: list[ModelEntry], table: dict[str, dict[str, Any]] |
     from .models import ModelFile
     from .update import set_completeness, set_entry_license, set_file_license, set_precision
 
-    table = components() if table is None else table
+    table = components() if table is None else components({"components": table})
     touched: list[str] = []
     for e in entries:
         row = table.get(e.id)
