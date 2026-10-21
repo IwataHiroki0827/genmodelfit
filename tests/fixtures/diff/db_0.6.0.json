@@ -1,0 +1,1259 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-10-20T22:40:19Z",
+ "sources": {
+  "comfyui-templates": {
+   "url": "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/index.json",
+   "license": "MIT",
+   "templates_total": 701,
+   "local": 278,
+   "skipped": {
+    "api": 314,
+    "category": 7,
+    "no_size": 22,
+    "not_open_source": 80
+   },
+   "loaded": 278,
+   "failed": 0
+  },
+  "file_headers": {
+   "files": 362,
+   "urls": 233,
+   "from_cache": 221,
+   "fetched": 12,
+   "failed": 12,
+   "skipped_offline": 0,
+   "errors": [
+    "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+    "https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/main/flux-2-klein-9b.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9b-fp8/resolve/main/flux-2-klein-base-9b-fp8.safetensors",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.s",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors: FetchError: HTTP 401: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+    "https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf: FetchError: HTTP 401: https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors",
+    "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors: FetchError: HTTP 401: https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+    "https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors: FetchError: HTTP 401: https://huggingface.co/stabilityai/stable-audio-open-1.0/resolve/main/model.safetensors"
+   ],
+   "checked_at": "2026-10-20T22:40:27Z",
+   "precision_unknown": 11
+  },
+  "repo_precision": {
+   "files": 9,
+   "repos": 9,
+   "from_cache": 9,
+   "fetched": 0,
+   "hf_api": 4,
+   "config": 0,
+   "unknown": 5,
+   "skipped_offline": 0,
+   "unauthorized": [],
+   "size_mismatch": [
+    "sesame/csm-1b"
+   ],
+   "errors": [],
+   "checked_at": "2026-10-20T22:40:27Z",
+   "precision_unknown": 11,
+   "precision_source": {
+    "filename": 28,
+    "header": 277,
+    "hf_api": 4,
+    "unknown": 11,
+    "workflow": 8
+   }
+  },
+  "partial": false,
+  "partial_counts": {
+   "templates_failed": 0,
+   "hf_repos_failed_transient": 0,
+   "entries_affected": 0,
+   "hf_search_failed": 0,
+   "rate_limit_budget_exhausted": false,
+   "carried_over": 0
+  },
+  "license_policy": 5,
+  "huggingface": {
+   "api": "https://huggingface.co/api/models/{repo_id}?blobs=true",
+   "repos": 494,
+   "failed": 4,
+   "rate_limited": 8,
+   "rate_limit_waited_s": 65.0,
+   "failures": [
+    "Wan-AI/Wan2.2-Dancer-14B: HTTP 401: https://huggingface.co/api/models/Wan-AI/Wan2.2-Dancer-14B?blobs=true",
+    "microsoft/Lens: HTTP 401: https://huggingface.co/api/models/microsoft/Lens?blobs=true",
+    "microsoft/Mage-Flow: HTTP 401: https://huggingface.co/api/models/microsoft/Mage-Flow?blobs=true",
+    "google/gemma-3-12b: HTTP 401: https://huggingface.co/api/models/google/gemma-3-12b?blobs=true"
+   ],
+   "unauthorized": [
+    "Wan-AI/Wan2.2-Dancer-14B",
+    "google/gemma-3-12b",
+    "microsoft/Lens",
+    "microsoft/Mage-Flow"
+   ],
+   "unauthorized_missing": [
+    "google/gemma-3-12b"
+   ],
+   "unauthorized_recheck": {
+    "unauthorized": [
+     "Wan-AI/Wan2.2-Dancer-14B",
+     "google/gemma-3-12b",
+     "microsoft/Lens",
+     "microsoft/Mage-Flow"
+    ],
+    "private_or_missing": [
+     "Wan-AI/Wan2.2-Dancer-14B",
+     "microsoft/Lens",
+     "microsoft/Mage-Flow"
+    ],
+    "missing": [
+     "google/gemma-3-12b"
+    ],
+    "readable": [],
+    "failed": [],
+    "checked_at": "2026-10-20T22:40:28Z"
+   }
+  },
+  "huggingface-search": {
+   "queries": 66,
+   "candidates": 851,
+   "added": 50,
+   "skipped": {
+    "adapter": 40,
+    "component": 10,
+    "duplicate": 20,
+    "duplicate_weights": 9,
+    "merge": 6,
+    "no_weights": 6,
+    "over_cap": 15,
+    "owner_cap": 32,
+    "skip_downloads": 603,
+    "uncensored_inactive": 4
+   },
+   "excluded": 1,
+   "failed_queries": 0,
+   "all_time_missing": 0
+  },
+  "civitai": "使っていません(利用規約。docs/sources.md)",
+  "head_check": {
+   "checked_at": "2026-10-20T22:40:07Z",
+   "urls": 482,
+   "status": {
+    "302": 459,
+    "401": 23
+   },
+   "unchecked": 0,
+   "not_sent": {
+    "civitai.com": 6
+   }
+  },
+  "comfyui": {
+   "latest_release": "v0.42.1",
+   "url": "https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.42.1",
+   "checked_at": "2026-10-20T22:40:19Z"
+  },
+  "size_check": {
+   "templates": 264,
+   "equal": 0,
+   "within_10pct": 215
+  },
+  "counts": {
+   "models": 329,
+   "modality": {
+    "3d": 10,
+    "image": 163,
+    "music": 16,
+    "sfx": 3,
+    "tts": 22,
+    "video": 115
+   },
+   "content": {
+    "sfw": 303,
+    "uncensored": 26
+   },
+   "source": {
+    "comfyui-template": 278,
+    "huggingface": 48,
+    "manual": 3
+   },
+   "license": {
+    "apache-2.0": 113,
+    "cc-by-nc-4.0": 9,
+    "cc-by-nc-sa-4.0": 1,
+    "creativeml-openrail-m": 1,
+    "gemma": 1,
+    "llama3.1": 5,
+    "mit": 19,
+    "null": 58,
+    "openrail++": 4,
+    "other": 118
+   },
+   "license_tier": {
+    "non_commercial": 53,
+    "other": 74,
+    "permissive": 132,
+    "unknown": 58,
+    "use_restricted": 12
+   },
+   "files_complete_false": 26
+  },
+  "excluded": 3,
+  "warnings": [],
+  "generator": "genmodelfit 0.3.0",
+  "sampler_stages": {
+   "templates": 278,
+   "failed": 0,
+   "multi_stage": 19,
+   "workflow_precision": 197,
+   "checked_at": "2026-10-20T22:40:22Z"
+  },
+  "manual": {
+   "models": 3,
+   "ids": [
+    "manual:irodori-tts-v4.1-small",
+    "manual:stable-audio-3-small-music",
+    "manual:tsukuyomi-chan-piper-plus"
+   ]
+  },
+  "app_fields": {
+   "languages_prompt": 209,
+   "languages_speech": 21,
+   "runtime": 303,
+   "description": 12,
+   "from_card": 213
+  },
+  "review": {
+   "ok": 329,
+   "pending": 0,
+   "marked": {},
+   "rejected_skipped": 0,
+   "baseline": "baseline-2026-10-21"
+  }
+ },
+ "models": [
+  {
+   "id": "3d_hunyuan3d-v2.1",
+   "name": "HY 3D 2.1: Single View to Model",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan_3d_v2.1.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.1_repackaged/resolve/main/hunyuan_3d_v2.1.safetensors",
+     "sha256": "5f21e98a6cb99b13b5e224abaee33929570fff7af2b6a0060001559a04ba9d72",
+     "size_bytes": 7365943290,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.1_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2.1",
+     "license_url": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1/blob/main/LICENSE",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.1_repackaged",
+      "tencent/Hunyuan3D-2.1"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 3682873537,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d-v2.1",
+    "title": "HY 3D 2.1: Single View to Model",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 163,
+    "date": "2025-03-01",
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1/blob/main/LICENSE",
+   "base_model": "tencent/Hunyuan3D-2.1",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "languages": {
+    "prompt": []
+   },
+   "runtime": "comfyui",
+   "description": {
+    "ja": "Hunyuan3D の新しい版です。2.0 より細かな形をつくれます。形だけで、色は付きません。",
+    "en": "A newer Hunyuan3D release that makes finer shapes than 2.0. Shape only, no colors."
+   },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 7365943290
+  },
+  {
+   "id": "3d_hunyuan3d_image_to_model",
+   "name": "HY 3D 2.0",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan3d-dit-v2_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2_fp16.safetensors",
+     "sha256": "360bc281fc956d4acac0c3d36d5ec0ebf8cdddbf4b8892e894d12419388d479b",
+     "size_bytes": 4928151562,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.0_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2mv",
+     "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.0_repackaged",
+      "tencent/Hunyuan3D-2mv"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2463968065,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d_image_to_model",
+    "title": "HY 3D 2.0",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 31,
+    "date": "2025-03-01",
+    "size_bytes": 4939212390,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+   "base_model": "tencent/Hunyuan3D-2mv",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "languages": {
+    "prompt": []
+   },
+   "runtime": "comfyui",
+   "description": {
+    "ja": "1枚の画像から 3Dモデル(GLB ファイル)をつくれます。形だけで、色は付きません。",
+    "en": "Makes a 3D model (GLB file) from one image. Shape only, no colors."
+   },
+   "card_languages": [
+    "en",
+    "zh"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 4928151562
+  },
+  {
+   "id": "3d_hunyuan3d_multiview_to_model",
+   "name": "HY 3D 2.0 MV",
+   "modality": "3d",
+   "tasks": [
+    "i23d"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "hunyuan3d-dit-v2-mv_fp16.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/hunyuan3D_2.0_repackaged/resolve/main/split_files/hunyuan3d-dit-v2-mv_fp16.safetensors",
+     "sha256": "d36f5881bcdc56726b73e517cd444c13c60732431622da7268145355c8d38e9c",
+     "size_bytes": 4928151562,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/hunyuan3D_2.0_repackaged",
+     "license": "other",
+     "license_name": "tencent-hunyuan-community",
+     "gated": false,
+     "role": "main",
+     "license_from": "tencent/Hunyuan3D-2mv",
+     "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+     "repo_license": "tencent-hunyuan-community",
+     "license_path": [
+      "Comfy-Org/hunyuan3D_2.0_repackaged",
+      "tencent/Hunyuan3D-2mv"
+     ],
+     "license_evidence": [
+      "family:hunyuan"
+     ],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "fp16",
+     "header_params": 2463968065,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "3d_hunyuan3d_multiview_to_model",
+    "title": "HY 3D 2.0 MV",
+    "category": "3D Model",
+    "min_comfyui_version": "0.3.28",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 102,
+    "date": "2025-03-01",
+    "size_bytes": 4928474972,
+    "username": "ComfyUI"
+   },
+   "params_b": null,
+   "precision": "fp16",
+   "license": "other",
+   "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE.txt",
+   "base_model": "tencent/Hunyuan3D-2mv",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": "tencent-hunyuan-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "hunyuan3d",
+   "comfy_vae": "hunyuan3d",
+   "sampler_stages": [],
+   "workflow_precision": "fp16",
+   "precision_source": "header",
+   "languages": {},
+   "runtime": "comfyui",
+   "description": {},
+   "card_languages": [
+    "en",
+    "zh"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 4928151562
+  },
+  {
+   "id": "audio_ace_step_1_t2a_instrumentals",
+   "name": "ACE-Step v1 Text to Instrumentals Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_v1_3.5b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors?download=true",
+     "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+     "size_bytes": 7699743341,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/ACE-Step-v1-3.5B",
+     "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+      "ACE-Step/ACE-Step-v1-3.5B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 3852019766,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_t2a_instrumentals",
+    "title": "ACE-Step v1 Text to Instrumentals Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.25.0",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 12,
+    "date": "2025-03-01",
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.5,
+   "precision": "bf16",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+   "base_model": "ACE-Step/ACE-Step-v1-3.5B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "languages": {
+    "prompt": [
+     "en",
+     "zh",
+     "de",
+     "fr",
+     "es",
+     "it",
+     "pt",
+     "pl",
+     "tr",
+     "ru",
+     "cs",
+     "nl",
+     "ar",
+     "ja",
+     "hu",
+     "ko",
+     "hi"
+    ]
+   },
+   "runtime": "comfyui",
+   "description": {},
+   "card_languages": [
+    "en",
+    "zh",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "cs",
+    "nl",
+    "ar",
+    "ja",
+    "hu",
+    "ko",
+    "hi"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 7699743341
+  },
+  {
+   "id": "audio_ace_step_1_t2a_song",
+   "name": "ACE Step v1 Text to Song",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "ace_step_v1_3.5b.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors?download=true",
+     "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+     "size_bytes": 7699743341,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "ACE-Step/ACE-Step-v1-3.5B",
+     "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+     "repo_license": "apache-2.0",
+     "license_path": [
+      "Comfy-Org/ACE-Step_ComfyUI_repackaged",
+      "ACE-Step/ACE-Step-v1-3.5B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "bf16",
+     "header_params": 3852019766,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_ace_step_1_t2a_song",
+    "title": "ACE Step v1 Text to Song",
+    "category": "Audio",
+    "min_comfyui_version": "0.3.35",
+    "open_source": null,
+    "requires_custom_nodes": [],
+    "usage": 12,
+    "date": "2025-03-01",
+    "size_bytes": 7698728878,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.5,
+   "precision": "bf16",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B",
+   "base_model": "ACE-Step/ACE-Step-v1-3.5B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2025-03-01",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "ace",
+   "comfy_vae": "ace",
+   "sampler_stages": [],
+   "workflow_precision": null,
+   "precision_source": "header",
+   "languages": {
+    "prompt": [
+     "en",
+     "zh",
+     "de",
+     "fr",
+     "es",
+     "it",
+     "pt",
+     "pl",
+     "tr",
+     "ru",
+     "cs",
+     "nl",
+     "ar",
+     "ja",
+     "hu",
+     "ko",
+     "hi"
+    ]
+   },
+   "runtime": "comfyui",
+   "description": {},
+   "card_languages": [
+    "en",
+    "zh",
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "cs",
+    "nl",
+    "ar",
+    "ja",
+    "hu",
+    "ko",
+    "hi"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 7699743341
+  },
+  {
+   "id": "audio_yue2_text2music",
+   "name": "YuE2: Text to Music",
+   "modality": "music",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "comfyui-template",
+   "files": [
+    {
+     "name": "yue2_3b_int8_convrot.safetensors",
+     "url": "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_int8_convrot.safetensors",
+     "sha256": "96fe199377309001ed8cd26a944baeee8cc31a20ba7c36d1d3c0a7e1f4149db6",
+     "size_bytes": 3960938800,
+     "directory": "checkpoints",
+     "repo_id": "Comfy-Org/YuE2",
+     "license": "cc-by-nc-4.0",
+     "license_name": null,
+     "gated": false,
+     "role": "main",
+     "license_from": "m-a-p/YuE2-3B",
+     "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+     "repo_license": "cc-by-nc-4.0",
+     "license_path": [
+      "Comfy-Org/YuE2",
+      "m-a-p/YuE2-3B"
+     ],
+     "license_evidence": [],
+     "head_status": 302,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": "int8",
+     "header_params": 3772873990,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": {
+    "name": "audio_yue2_text2music",
+    "title": "YuE2: Text to Music",
+    "category": "Audio",
+    "min_comfyui_version": "0.36.0",
+    "open_source": true,
+    "requires_custom_nodes": [],
+    "usage": 0,
+    "date": "2026-09-14",
+    "size_bytes": 3972844749,
+    "username": "ComfyUI"
+   },
+   "params_b": 3.0,
+   "precision": "int8",
+   "license": "cc-by-nc-4.0",
+   "license_url": "https://huggingface.co/m-a-p/YuE2-3B",
+   "base_model": "m-a-p/YuE2-3B",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/index.json"
+   ],
+   "updated": "2026-09-14",
+   "homepage": null,
+   "downloads": null,
+   "likes": null,
+   "downloads_all_time": null,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "yue2",
+   "comfy_vae": null,
+   "sampler_stages": [],
+   "workflow_precision": "int8",
+   "precision_source": "header",
+   "languages": {
+    "prompt": [
+     "zh",
+     "en"
+    ]
+   },
+   "runtime": "comfyui",
+   "description": {},
+   "card_languages": [
+    "zh",
+    "en"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 3960938800
+  },
+  {
+   "id": "hf:kpsss34/FHDR_Uncensored",
+   "name": "FHDR_Uncensored",
+   "modality": "image",
+   "tasks": [
+    "t2i"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "FHDR_ComfyUI-Q8_0.gguf",
+     "url": "https://huggingface.co/kpsss34/FHDR_Uncensored/resolve/main/FHDR_ComfyUI-Q8_0.gguf",
+     "sha256": "08049032fb3e55ee3c9086d41e1e1b549ff1d54812a95d368b95b0223780d351",
+     "size_bytes": 12714452256,
+     "directory": null,
+     "repo_id": "kpsss34/FHDR_Uncensored",
+     "license": null,
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "black-forest-labs/FLUX.1-dev",
+     "license_url": null,
+     "repo_license": "other",
+     "license_path": [
+      "kpsss34/FHDR_Uncensored",
+      "black-forest-labs/FLUX.1-dev"
+     ],
+     "license_evidence": [
+      "license_unverified: kpsss34/FHDR_Uncensored の表記 other は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です"
+     ],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "gguf-q8_0",
+   "license": null,
+   "license_url": null,
+   "base_model": "black-forest-labs/FLUX.1-dev",
+   "content": "uncensored",
+   "content_evidence": [
+    "name:uncensored"
+   ],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-image&search=uncensored&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-02-27",
+   "homepage": "https://huggingface.co/kpsss34/FHDR_Uncensored",
+   "downloads": 2410,
+   "likes": 640,
+   "downloads_all_time": 343091,
+   "license_name": null,
+   "license_evidence": [
+    "license_unverified: kpsss34/FHDR_Uncensored の表記 other は、元の black-forest-labs/FLUX.1-dev の other(flux-1-dev-non-commercial-license) より寛容です(FHDR_ComfyUI-Q8_0.gguf)"
+   ],
+   "files_complete": false,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "filename",
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   },
+   "runtime": null,
+   "description": {},
+   "card_languages": [
+    "en"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 12714452256
+  },
+  {
+   "id": "hf:stabilityai/stable-audio-3-small-sfx",
+   "name": "stable-audio-3-small-sfx",
+   "modality": "sfx",
+   "tasks": [
+    "t2a"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "model.safetensors",
+     "url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/resolve/main/model.safetensors",
+     "sha256": "ed9cf1b6172f1a8c2921a9560c21109ff3239524563ced9dce6dcdef41e2f515",
+     "size_bytes": 2270384940,
+     "directory": null,
+     "repo_id": "stabilityai/stable-audio-3-small-sfx",
+     "license": "other",
+     "license_name": "stable-audio-community",
+     "gated": true,
+     "role": "main",
+     "license_from": "stabilityai/stable-audio-3-small-sfx",
+     "license_url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/blob/main/LICENSE.md",
+     "repo_license": null,
+     "license_path": [
+      "stabilityai/stable-audio-3-small-sfx",
+      "stabilityai/stable-audio-3-small-sfx-base"
+     ],
+     "license_evidence": [
+      "family:stable-audio"
+     ],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": "fp32",
+     "repo_precision_source": "hf_api"
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "fp32",
+   "license": "other",
+   "license_url": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx/blob/main/LICENSE.md",
+   "base_model": "stabilityai/stable-audio-3-small-sfx-base",
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-audio&search=sfx&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-10-06",
+   "homepage": "https://huggingface.co/stabilityai/stable-audio-3-small-sfx",
+   "downloads": 46898,
+   "likes": 257,
+   "downloads_all_time": 122243,
+   "license_name": "stable-audio-community",
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": "stable_audio",
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "hf_api",
+   "languages": {
+    "prompt": [
+     "en"
+    ],
+    "speech": []
+   },
+   "runtime": "comfyui",
+   "description": {
+    "ja": "「雨の音」「ドアが閉まる音」などの効果音・環境音をつくれます。",
+    "en": "Makes sound effects and ambient sounds such as rain or a closing door."
+   },
+   "card_languages": [
+    "en"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 2270384940
+  },
+  {
+   "id": "hf:ai4bharat/indic-parler-tts",
+   "name": "indic-parler-tts",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "model.safetensors",
+     "url": "https://huggingface.co/ai4bharat/indic-parler-tts/resolve/main/model.safetensors",
+     "sha256": "c68daecb60f80c8f1faf0a6d2e6ddd6de8e224fb19750f3e9a33bca43c552c90",
+     "size_bytes": 3751321772,
+     "directory": null,
+     "repo_id": "ai4bharat/indic-parler-tts",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "ai4bharat/indic-parler-tts",
+     "license_url": "https://huggingface.co/ai4bharat/indic-parler-tts",
+     "repo_license": null,
+     "license_path": [
+      "ai4bharat/indic-parler-tts"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": "fp32",
+     "repo_precision_source": "hf_api"
+    }
+   ],
+   "template": null,
+   "params_b": null,
+   "precision": "fp32",
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/ai4bharat/indic-parler-tts",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=trendingScore&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2026-10-06",
+   "homepage": "https://huggingface.co/ai4bharat/indic-parler-tts",
+   "downloads": 192950,
+   "likes": 439,
+   "downloads_all_time": 5195523,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": "hf_api",
+   "languages": {
+    "speech": [
+     "en",
+     "as",
+     "bn",
+     "gu",
+     "hi",
+     "kn",
+     "ks",
+     "or",
+     "ml",
+     "mr",
+     "ne",
+     "pa",
+     "sa",
+     "sd",
+     "ta",
+     "te",
+     "ur",
+     "om"
+    ]
+   },
+   "runtime": null,
+   "description": {},
+   "card_languages": [
+    "en",
+    "as",
+    "bn",
+    "gu",
+    "hi",
+    "kn",
+    "ks",
+    "or",
+    "ml",
+    "mr",
+    "ne",
+    "pa",
+    "sa",
+    "sd",
+    "ta",
+    "te",
+    "ur",
+    "om"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 3751321772
+  },
+  {
+   "id": "hf:sesame/csm-1b",
+   "name": "csm-1b",
+   "modality": "tts",
+   "tasks": [
+    "tts"
+   ],
+   "source": "huggingface",
+   "files": [
+    {
+     "name": "transformers-00001-of-00002.safetensors",
+     "url": "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00001-of-00002.safetensors",
+     "sha256": "f2dac3b296f50609f57addb82a25bf75f5de2232967d78f5375da3c71fd596d4",
+     "size_bytes": 4944026784,
+     "directory": null,
+     "repo_id": "sesame/csm-1b",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "sesame/csm-1b",
+     "license_url": "https://huggingface.co/sesame/csm-1b",
+     "repo_license": null,
+     "license_path": [
+      "sesame/csm-1b"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    },
+    {
+     "name": "transformers-00002-of-00002.safetensors",
+     "url": "https://huggingface.co/sesame/csm-1b/resolve/main/transformers-00002-of-00002.safetensors",
+     "sha256": "fdb68548b7422bc623c83885e78802c2c4cc6fc3f864f4fabdd715f94abca4ef",
+     "size_bytes": 2189474180,
+     "directory": null,
+     "repo_id": "sesame/csm-1b",
+     "license": "apache-2.0",
+     "license_name": null,
+     "gated": true,
+     "role": "main",
+     "license_from": "sesame/csm-1b",
+     "license_url": "https://huggingface.co/sesame/csm-1b",
+     "repo_license": null,
+     "license_path": [
+      "sesame/csm-1b"
+     ],
+     "license_evidence": [],
+     "head_status": 401,
+     "head_checked_at": "2026-10-20T22:40:07Z",
+     "header_precision": null,
+     "header_params": null,
+     "repo_precision": null,
+     "repo_precision_source": null
+    }
+   ],
+   "template": null,
+   "params_b": 1.0,
+   "precision": null,
+   "license": "apache-2.0",
+   "license_url": "https://huggingface.co/sesame/csm-1b",
+   "base_model": null,
+   "content": "sfw",
+   "content_evidence": [],
+   "discovered_from": [
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=downloads&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore",
+    "https://huggingface.co/api/models?direction=-1&limit=100&pipeline_tag=text-to-speech&sort=likes30d&expand[]=downloads&expand[]=downloadsAllTime&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=trendingScore"
+   ],
+   "updated": "2025-12-01",
+   "homepage": "https://huggingface.co/sesame/csm-1b",
+   "downloads": 129775,
+   "likes": 2480,
+   "downloads_all_time": 2103832,
+   "license_name": null,
+   "license_evidence": [],
+   "files_complete": true,
+   "size_floor_bytes": null,
+   "comfy_family": null,
+   "comfy_vae": null,
+   "sampler_stages": null,
+   "workflow_precision": null,
+   "precision_source": null,
+   "languages": {
+    "speech": [
+     "en"
+    ]
+   },
+   "runtime": null,
+   "description": {},
+   "card_languages": [
+    "en"
+   ],
+   "review": {
+    "status": "ok",
+    "reasons": [],
+    "decided_by": "baseline-2026-10-21",
+    "decided_at": "2026-10-21",
+    "evidence": [],
+    "note": "確認の印を入れたとき(0.6.0、#42)の同梱の一覧。すべて確認済みとして始めた"
+   },
+   "total_size_bytes": 7133500964
+  }
+ ]
+}

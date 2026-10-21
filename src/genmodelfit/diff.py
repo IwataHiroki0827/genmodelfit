@@ -21,6 +21,9 @@
 - 分類(classification。#42): 変化を「安全な向き」と「判断が要る」に分ける。毎週のスキル(genmodelfit-weekly)が
   自分でマージしてよい週か(safe)、根拠付きの PR をオーナーに出す週かを決めるのに使う。規則は classify と
   docs/schema.md「diff」
+- 項目ごとの変化(field_changes・model_changes。#59): 共通の項目の全項目・ファイルの項目を entry_changes で
+  比べる(分類と同じ関数)。`genmodelfit diff` の既定の表示はこれを「名前 (種類) — ID」ごとに出し、
+  表に無い項目も「その他の変化」に名前を出す(黙って落とさない。tests/test_diff_ux.py)
 """
 
 from __future__ import annotations
@@ -192,29 +195,92 @@ def _file_reasons(fa: list[Any], fb: list[Any], allow: frozenset[str]) -> list[s
     return out
 
 
+def _file_key(f: Any) -> Any:
+    return f.get("name") if isinstance(f, dict) else f
+
+
+def _keyed_files(files: list[Any]) -> dict[tuple[Any, int], dict[str, Any]]:
+    """(名前, その名前の何番目か) → ファイル。同じ名前のファイルが何度も出る項目がある(URL だけ違う)。"""
+    seen: dict[Any, int] = {}
+    out: dict[tuple[Any, int], dict[str, Any]] = {}
+    for f in files:
+        if isinstance(f, dict):
+            n = f.get("name")
+            seen[n] = seen.get(n, 0) + 1
+            out[(n, seen[n])] = f
+    return out
+
+
+def _file_pairs(fa: list[Any], fb: list[Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """名前が同じファイルの組(同じ名前が何度も出るときは、出てくる順の何番目かで組む)。"""
+    ka, kb = _keyed_files(fa), _keyed_files(fb)
+    return [(ka[k], f) for k, f in kb.items() if k in ka]
+
+
+def entry_changes(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
+    """一覧の 1 項目(JSON の dict)の old → new で変わった項目の名前(安全の表のものも含む)。#59
+
+    diff の表示(field_changes・model_changes)と分類(field_change_reasons)は、どちらもこの関数で
+    変化を見つける(片方だけが変化を拾う・落とすことが無いように)。名前の形:
+    - 一番上の項目はそのまま(例 languages・license・review)。id と計算で出す値(total_size_bytes)は見ない
+    - files: ファイルの増減・並びの変化は "files"。名前が同じファイルどうしの項目の変化は "files.<項目>"
+    - template: 両方が dict なら "template.<項目>"、それ以外は "template"
+    """
+    out: list[str] = []
+    for k in sorted((set(a) | set(b)) - {"id"} - _DERIVED_FIELDS):
+        va, vb = a.get(k), b.get(k)
+        if k == "files":
+            fa, fb = va or [], vb or []
+            if fa == fb:
+                continue
+            if [_file_key(f) for f in fa] != [_file_key(f) for f in fb] or not all(
+                isinstance(f, dict) for f in [*fa, *fb]
+            ):
+                out.append("files")
+            # 名前が同じファイルどうしは項目を比べる(増減があっても、残ったファイルの変化を落とさない)
+            for fa_, fb_ in _file_pairs(fa, fb):
+                out += [f"files.{t}" for t in sorted(set(fa_) | set(fb_)) if fa_.get(t) != fb_.get(t)]
+        elif va == vb:
+            continue
+        elif k == "template" and isinstance(va, dict) and isinstance(vb, dict):
+            out += [f"template.{t}" for t in sorted(set(va) | set(vb)) if va.get(t) != vb.get(t)]
+        else:
+            out.append(k)
+    return list(dict.fromkeys(out))
+
+
+def is_safe_path(path: str) -> bool:
+    """entry_changes の名前が、安全の表(人気の数・更新日・HEAD の結果・テンプレートの使用回数)のものか。"""
+    if path.startswith("files."):
+        return path[6:] in SAFE_FILE_FIELDS
+    if path.startswith("template."):
+        return path[9:] in SAFE_TEMPLATE_FIELDS
+    return path in SAFE_ENTRY_FIELDS
+
+
 def field_change_reasons(
     a: dict[str, Any], b: dict[str, Any], allow: frozenset[str] = DEFAULT_LICENSE_ALLOWLIST
 ) -> list[str]:
-    """一覧の 1 項目(JSON の dict)の old → new の変化のうち、安全の表に無いものの理由。review は別に見る。"""
+    """一覧の 1 項目(JSON の dict)の old → new の変化のうち、安全の表に無いものの理由。review は別に見る。
+
+    変化は entry_changes で見つけ、ここでは理由に振り分けるだけ(diff の表示と同じ変化を見る)。"""
     out: list[str] = []
-    for k in sorted((set(a) | set(b)) - {"id", "review"} - _DERIVED_FIELDS):
-        va, vb = a.get(k), b.get(k)
-        if va == vb or k in SAFE_ENTRY_FIELDS or k in _LICENSE:
+    files_done = False
+    for p in entry_changes(a, b):
+        if is_safe_path(p) or p in _LICENSE or p == "review":
             continue
-        if k in ("tasks", "modality"):
+        if p in ("tasks", "modality"):
             out.append("use_changed")
-        elif k == "files":
-            out += _file_reasons(va or [], vb or [], allow)
-        elif k == "template" and isinstance(va, dict) and isinstance(vb, dict):
-            out += [
-                f"{OTHER_CHANGE}:template.{t}"
-                for t in sorted((set(va) | set(vb)) - SAFE_TEMPLATE_FIELDS)
-                if va.get(t) != vb.get(t)
-            ]
-        elif k == "content" and vb == "uncensored":
+        elif p == "files" or p.startswith("files."):
+            if not files_done:  # ファイルの理由はまとめて 1 回(大きさの向き・ライセンスの動きは値で見る)
+                out += _file_reasons(a.get("files") or [], b.get("files") or [], allow)
+                files_done = True
+        elif p.startswith("template."):
+            out.append(f"{OTHER_CHANGE}:{p}")
+        elif p == "content" and b.get("content") == "uncensored":
             out.append("uncensored_new")
         else:
-            out.append(f"{OTHER_CHANGE}:{k}")
+            out.append(f"{OTHER_CHANGE}:{p}")
     move = _license_move(a, b, allow)
     if move == "permissive":
         out.append("license_permissive")
@@ -244,6 +310,108 @@ def _raw_models(db: Database) -> dict[str, dict[str, Any]]:
     return {m.id: json.loads(json.dumps(m.to_dict())) for m in db.models}
 
 
+def _raw_pair(
+    old: Database, new: Database, raw: tuple[dict[str, Any], dict[str, Any]] | None
+) -> tuple[dict[Any, dict[str, Any]], dict[Any, dict[str, Any]], list[str]]:
+    """比べる 2 つの項目の dict(id → JSON の dict)と、変わった一番上の鍵(安全なものを除く)。
+    classify と diff の表示(field_changes・model_changes)は、どちらもこれを比べる。"""
+    if raw is None:
+        return _raw_models(old), _raw_models(new), []
+    ra = {m.get("id"): m for m in raw[0].get("models") or [] if isinstance(m, dict)}
+    rb = {m.get("id"): m for m in raw[1].get("models") or [] if isinstance(m, dict)}
+    top = sorted(k for k in (set(raw[0]) | set(raw[1])) - SAFE_TOP_KEYS if raw[0].get(k) != raw[1].get(k))
+    return ra, rb, top
+
+
+# model_changes の項目で、専用の行にする一番上の項目(ほかの安全でない項目は other に名前だけ出す)
+_VALUE_FIELDS = ("name", "modality", "tasks", "runtime", "content", "precision")
+
+
+def _file_brief(f: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": f.get("name"),
+        "directory": f.get("directory"),
+        "size_bytes": f.get("size_bytes"),
+        "license": _license_label(f.get("license"), f.get("license_name")),
+        "role": f.get("role"),
+    }
+
+
+def _model_items(
+    a: dict[str, Any], b: dict[str, Any], paths: list[str], sizes: tuple[int | None, int | None]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """1 つのモデルの変化を、表示の行(items)と、名前だけ出す項目(other)に分ける。#59
+
+    paths は entry_changes の結果。安全の表のものは見ない。どの項目も items か other のどちらかに必ず入る。
+    sizes は一式の大きさ(ModelEntry.total_size_bytes)の old・new。"""
+    items: list[dict[str, Any]] = []
+    used: set[str] = set()
+    todo = [p for p in paths if not is_safe_path(p)]
+    for k in _VALUE_FIELDS:
+        if k in todo:
+            items.append({"kind": "value", "field": k, "old": a.get(k), "new": b.get(k)})
+            used.add(k)
+    if "license" in todo or "license_name" in todo:
+        items.append(
+            {
+                "kind": "license",
+                "old": _license_label(a.get("license"), a.get("license_name")),
+                "new": _license_label(b.get("license"), b.get("license_name")),
+            }
+        )
+        used |= {"license", "license_name"}
+    if "languages" in todo:
+        la, lb = a.get("languages"), b.get("languages")
+        la, lb = (la if isinstance(la, dict) else {}), (lb if isinstance(lb, dict) else {})
+        for key in sorted(set(la) | set(lb)):
+            if la.get(key) != lb.get(key):
+                items.append({"kind": "languages", "key": key, "old": la.get(key), "new": lb.get(key)})
+        used.add("languages")
+    fa = [f for f in a.get("files") or [] if isinstance(f, dict)]
+    fb = [f for f in b.get("files") or [] if isinstance(f, dict)]
+    if "files" in todo:
+        ka, kb = _keyed_files(fa), _keyed_files(fb)
+        added = [f for k, f in kb.items() if k not in ka]
+        removed = [f for k, f in ka.items() if k not in kb]
+        items += [{"kind": "file_added", **_file_brief(f)} for f in added]
+        items += [{"kind": "file_removed", **_file_brief(f)} for f in removed]
+        if not added and not removed:
+            items.append({"kind": "files_order"})  # 並び・重なりだけの変化
+        used.add("files")
+    if "files.license" in todo or "files.license_name" in todo:
+        for g, f in _file_pairs(fa, fb):
+            la_, lb_ = (g.get("license"), g.get("license_name")), (f.get("license"), f.get("license_name"))
+            if la_ != lb_:
+                items.append(
+                    {
+                        "kind": "file_license",
+                        "name": f.get("name"),
+                        "old": _license_label(*la_),
+                        "new": _license_label(*lb_),
+                    }
+                )
+        used |= {"files.license", "files.license_name"}
+    size_paths = {"files", "files.size_bytes", "template", "template.size_bytes"}
+    if sizes[0] != sizes[1] and size_paths & set(todo):
+        items.append({"kind": "size", "old": sizes[0], "new": sizes[1]})
+        used |= {"files.size_bytes", "template.size_bytes"}
+    if "review" in todo:
+        ra_, rb_ = a.get("review"), b.get("review")
+        da, db_ = (ra_ if isinstance(ra_, dict) else {}), (rb_ if isinstance(rb_, dict) else {})
+        items.append(
+            {
+                "kind": "review",
+                "old": da.get("status") if isinstance(ra_, dict) else ("ok" if ra_ is None else ra_),
+                "new": db_.get("status") if isinstance(rb_, dict) else ("ok" if rb_ is None else rb_),
+                "reasons": [r for r in db_.get("reasons") or [] if isinstance(r, str)],
+                # 変わった中身(status が同じでも根拠・理由だけ変わることがある)
+                "fields": sorted(k for k in set(da) | set(db_) if da.get(k) != db_.get(k)),
+            }
+        )
+        used.add("review")
+    return items, [p for p in todo if p not in used]
+
+
 def classify(
     old: Database,
     new: Database,
@@ -269,13 +437,7 @@ def classify(
     measurements = new.measurements or old.measurements
     old_by = {m.id: m for m in old.models}
     new_by = {m.id: m for m in new.models}
-    if raw is None:
-        ra, rb = _raw_models(old), _raw_models(new)
-        top: list[str] = []
-    else:
-        ra = {m.get("id"): m for m in raw[0].get("models") or [] if isinstance(m, dict)}
-        rb = {m.get("id"): m for m in raw[1].get("models") or [] if isinstance(m, dict)}
-        top = sorted(k for k in (set(raw[0]) | set(raw[1])) - SAFE_TOP_KEYS if raw[0].get(k) != raw[1].get(k))
+    ra, rb, top = _raw_pair(old, new, raw)
     found: dict[str, list[str]] = {}
 
     def add(i: str, reasons: list[str]) -> None:
@@ -337,12 +499,15 @@ def diff_db(
     size_rel_threshold: float = SIZE_REL_THRESHOLD,
     size_abs_threshold: int = SIZE_ABS_THRESHOLD,
     raw: tuple[dict[str, Any], dict[str, Any]] | None = None,
+    old_label: str | None = None,
+    new_label: str | None = None,
 ) -> dict[str, Any]:
     """old → new の違い(docs/schema.md「diff」の形の dict)。ネットに触らず、何も表示しない。
 
     comfyui_version: 自動のおすすめを比べるときの ComfyUI の版。None なら新しい一覧が記録した最新の版
     (無ければ古い一覧の記録)。両方の一覧に同じ版を当てる(版の違いで可否が揺れないように)。
     raw: 2 つの一覧の JSON の dict(分類で知らない鍵も比べる。classify)。
+    old_label / new_label: 比べた一覧の説明(表示用。例 "同梱の一覧"・ファイルのパス)。そのまま返す。
     """
     target = comfyui_version or recorded_comfyui_version(new.sources) or recorded_comfyui_version(old.sources)
     policy = GatePolicy(license_allowlist=license_allowlist, comfyui_version=target, max_head_age_days=None)
@@ -453,6 +618,25 @@ def diff_db(
         if fa.get(k) != fb.get(k)
     ]
 
+    # 項目ごとの変化(#59)。分類(classify)と同じ dict を、同じ entry_changes で比べる
+    ra, rb, _top = _raw_pair(old, new, raw)
+    field_changes: dict[str, list[str]] = {}
+    model_changes: list[dict[str, Any]] = []
+    for i in common:
+        paths = entry_changes(ra.get(i, {}), rb.get(i, {}))
+        if not paths:
+            continue
+        field_changes[i] = paths
+        if all(is_safe_path(x) for x in paths):
+            continue
+        a, b = old_by[i], new_by[i]
+        items, other = _model_items(
+            ra.get(i, {}), rb.get(i, {}), paths, (a.total_size_bytes, b.total_size_bytes)
+        )
+        model_changes.append(
+            {"id": i, "name": b.name, "modality": b.modality, "items": items, "other": other}
+        )
+
     gained = sum(1 for c in auto_changes if c["new"])
     classification = classify(
         old,
@@ -508,4 +692,8 @@ def diff_db(
         "partial_counts": new.sources.get("partial_counts"),
         "stats": stats,
         "classification": classification,
+        "old_label": old_label,
+        "new_label": new_label,
+        "field_changes": field_changes,
+        "model_changes": model_changes,
     }

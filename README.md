@@ -253,7 +253,8 @@ Details and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmo
 | `download <name or id> [--list] [--comfyui-dir DIR]` | download the files ([Download](https://github.com/laxshmate/genmodelfit#download)) |
 | `update [--from-release]` | rebuild the list from upstream, or fetch the signed list |
 | `gate` | how many models are Verified, and why the rest are held |
-| `review`, `diff`, `bench`, `contrib` | maintenance and measurements (below) |
+| `diff [OLD] [NEW] [--all]` | what changed between two lists ([below](https://github.com/laxshmate/genmodelfit#what-changed-in-the-list)) |
+| `review`, `bench`, `contrib` | maintenance and measurements (below) |
 
 Each command's `--help` lists options, exit codes and examples. Common options: `--json`, `--vram`, `--ram`,
 `--content`, `--include-unknown-license`, `--license apache-2.0,mit`, `--comfyui-version`.
@@ -290,6 +291,16 @@ allowed. Details and Python API: [docs/download.md](https://github.com/laxshmate
 The list is rebuilt every week. New models and riskier changes are marked `pending` and are not Verified until a
 person approves them with primary-source evidence (`genmodelfit review`). Only reviewed data is signed and published
 for `update --from-release`. Details: [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md).
+
+### What changed in the list
+
+`genmodelfit diff` compares the bundled list with the one fetched by `update --from-release` (run that first; without
+it, `diff` only prints how to). `diff NEW.json` compares the bundled list with a file, `diff OLD.json NEW.json` two
+files. It shows models as `name (type) — id`: added and removed models, auto-recommendation changes, and for each
+changed model its license (`!` = toward the permissive side), size, precision, prompt / speech languages, added /
+removed files with their license, newly uncensored, review status, and the names of any other changed fields
+(「その他の変化」). Changes of popularity numbers, dates and HEAD results, old HEAD failures and the `sources` numbers
+are only counted; `--all` lists them (the content of the weekly pull request). `--json`: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff).
 
 ### Contributing measurements
 

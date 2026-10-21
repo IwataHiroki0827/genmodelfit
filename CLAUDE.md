@@ -46,7 +46,7 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | bench <template> | gate
 .venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
-.venv\Scripts\genmodelfit diff <old.json> <new.json>              # 2 つの一覧の違い(毎週の PR の本文と同じ中身)
+.venv\Scripts\genmodelfit diff [<old.json>] [<new.json>] [--all]  # 一覧の違い(引数なし = 同梱 ↔ 取ってきた一覧。--all は毎週の PR と同じ中身)
 .venv\Scripts\python -m genmodelfit.weekly --dry-run --out <dir>   # 毎週の作り直し・確かめ・PR の本文を手元で(#19)
 ```
 

@@ -36,6 +36,11 @@ KEYS = {
     "partial_counts",
     "stats",
     "classification",
+    # #59 で足した鍵
+    "old_label",
+    "new_label",
+    "field_changes",
+    "model_changes",
 }
 
 

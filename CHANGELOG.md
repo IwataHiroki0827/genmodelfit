@@ -7,6 +7,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **`diff` is usable by users and no longer drops changes silently** (#59). With no arguments it compares the bundled
+  list with the list fetched by `update --from-release` (without one it prints how to and exits 0); with one argument
+  the bundled list with that file; with two, the two files as before. The header names both lists. Models are shown as
+  `name (type) — id`. The default output lists only user-relevant changes: added / removed, auto-recommendation, and
+  per changed model the license (`!` = toward the permissive side), size, precision, prompt / speech languages (before
+  → after), added / removed files with their license, newly uncensored, review status, and 「その他の変化」 with the names
+  of any other changed field. Only new HEAD failures are listed; old HEAD failures, 401 repos, `sources` numbers and
+  popularity / date-only changes are counted and listed with `--all`. 0.6.0 → 0.7.0 used to show only a size change;
+  it now shows the three music language changes and the T5Gemma text encoder (Gemma license) of
+  stable-audio-3-small-sfx.
+- `diff` and `weekly merge-check` find changes with one function (`diff.entry_changes`), so they cannot disagree.
+  Files with the same name in one entry (only the URL differs) are paired in order.
+
+### Added
+
+- `diff --json`: `old_label`, `new_label`, `field_changes`, `model_changes` (docs/schema.md「diff」). Existing keys are
+  unchanged, and the weekly pull request body is the same.
+- Tests for `diff` with the real 0.6.0 / 0.7.0 lists (trimmed by `tools/make_diff_fixture.py`), a test that changes
+  every field of `ModelEntry` / `ModelFile` / `Template` / `Review` one at a time and requires it in the output, the
+  argument modes, 100-column width and JSON compatibility.
+
 ## [0.7.1] - 2026-10-21
 
 JSON changes are additive; `schema_version` stays 1.

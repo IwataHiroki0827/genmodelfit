@@ -516,9 +516,12 @@ a key per check id, `app_runtime` included since 0.5.0, `reviewed` since 0.6.0),
 
 ## diff
 
-`genmodelfit diff OLD NEW --json` (Python: `gmf.diff_db(old_db, new_db)`, the same dict without `genmodelfit` /
+`genmodelfit diff [OLD] [NEW] --json` (Python: `gmf.diff_db(old_db, new_db)`, the same dict without `genmodelfit` /
 `command`; #19). Compares two `db.json` files; no network, nothing written. Used for the weekly pull request
 (`python -m genmodelfit.weekly`, docs/release.md). No `system` / `database`.
+With no arguments the bundled list is compared with the fetched list in the cache (`update` / `update --from-release`);
+with one argument the bundled list with that file (#59). When there is no fetched list yet, the output is only
+`{genmodelfit, command, note}` (`note` says to run `genmodelfit update --from-release`) and the exit code is 0.
 
 | key | meaning |
 |---|---|
@@ -535,6 +538,9 @@ a key per check id, `app_runtime` included since 0.5.0, `reviewed` since 0.6.0),
 | `unauthorized` | `{added, removed}`: repo ids in `sources.huggingface.unauthorized` (401) that appeared / disappeared |
 | `partial_counts` | the new list's `sources.partial_counts` (null if absent) |
 | `classification` | 0.6.0 (#42): `{safe, judgement_needed, safe_changes}`; see below |
+| `old_label`, `new_label` | #59: what was compared, for display: `同梱の一覧(genmodelfit <version>)`, `取ってきた一覧(<cache path>)` or the file path as given; null from `gmf.diff_db` unless passed |
+| `field_changes` | #59: `{id: [field, …]}` for every common entry with any change, including the safe ones. Fields are the names of `diff.entry_changes`, the same function the classification uses: top-level keys (`languages`, `license`, `review`, …), `files` (files added / removed / reordered), `files.<key>` (a key of a file with the same name; same-named files are paired in order), `template.<key>` |
+| `model_changes` | #59: common entries with a change outside the safe list: `{id, name, modality, items, other}`. `items` (one per change): `{kind: "value", field, old, new}` for `name` / `modality` / `tasks` / `runtime` / `content` / `precision`; `{kind: "license", old, new}` (labels); `{kind: "languages", key, old, new}` (`key` is `prompt` / `speech` / …; null when absent); `{kind: "file_added" \| "file_removed", name, directory, size_bytes, license, role}`; `{kind: "files_order"}`; `{kind: "file_license", name, old, new}`; `{kind: "size", old, new}` (total bytes, any change); `{kind: "review", old, new, reasons, fields}` (status, the new reasons, changed review keys). `other`: the remaining changed field names (shown as 「その他の変化」). Every changed field outside the safe list is in `items` or `other` |
 | `stats` | changed values of `sources`, flattened to dotted keys (`counts.modality.image`, `head_check.status.302`, …): `{key, old, new}`; lists are compared by length; `checked_at` / `url` / `api` / `generator` / `failures` / `errors` are skipped |
 
 **classification** (0.6.0, #42) splits the changes so that the weekly run can tell whether a week may be merged

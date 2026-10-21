@@ -252,7 +252,8 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `download <名前か ID> [--list] [--comfyui-dir DIR]` | ファイルを落とす([ダウンロード](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#ダウンロード)) |
 | `update [--from-release]` | 一覧を上流から作り直す、または署名付きの一覧を取り込む |
 | `gate` | Verified のモデルの数と、ほかが保留の理由 |
-| `review`・`diff`・`bench`・`contrib` | 保守と実測(下) |
+| `diff [OLD] [NEW] [--all]` | 2 つの一覧の違い([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#一覧の変化)) |
+| `review`・`bench`・`contrib` | 保守と実測(下) |
 
 オプション・終了コード・例は各コマンドの `--help` にあります。よく使うオプション: `--json`・`--vram`・`--ram`・
 `--content`・`--include-unknown-license`・`--license apache-2.0,mit`・`--comfyui-version`。
@@ -289,6 +290,16 @@ sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満�
 一覧は毎週作り直します。新しいモデルや危うい変化には `pending` の印を付け、人が一次資料の根拠を付けて承認する
 (`genmodelfit review`)まで Verified にしません。署名して `update --from-release` に配るのは確認済みのデータだけです。
 詳しくは [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md)。
+
+### 一覧の変化
+
+`genmodelfit diff` は、同梱の一覧と `update --from-release` で取ってきた一覧を比べます(先に取ってきてください。
+無いときは手順だけを出します)。`diff NEW.json` は同梱の一覧とそのファイル、`diff OLD.json NEW.json` は 2 つの
+ファイルを比べます。モデルは「名前 (種類) — ID」で出し、増えた・消えたモデル、自動のおすすめの変化、変わったモデルごとの
+ライセンス(`!` = 寛容な側)・大きさ・精度・言語(指示・読み上げ)・増えた・消えた部品とそのライセンス・新しく無検閲・
+確認の印、ほかに変わった項目の名前(「その他の変化」)を出します。人気の数・日付・HEAD の結果だけの変化、前からの
+HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出します(毎週の PR の本文と同じ中身)。
+`--json` の形は [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff)。
 
 ### 実測を送る
 
