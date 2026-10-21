@@ -103,6 +103,16 @@ _ENTRY_TYPES = {
     "runtime": _OPT_STR,
     "description": (dict, type(None)),
     "card_languages": (list, type(None)),
+    # 確認の印(0.6.0、#42)。無い・null は確認済みとして扱う
+    "review": (dict, type(None)),
+}
+_REVIEW_TYPES = {
+    "status": _STR,
+    "reasons": (list,),
+    "decided_by": _OPT_STR,
+    "decided_at": _OPT_STR,
+    "evidence": (list,),
+    "note": _OPT_STR,
 }
 _FILE_TYPES = {
     "name": _STR,
@@ -146,6 +156,13 @@ def check_entry(d: Any, i: int) -> None:
     desc = d.get("description")
     if any(not isinstance(k, str) or not isinstance(v, str) for k, v in (desc or {}).items()):
         raise DatabaseError(f"{where} の description は {{言語: 文}} です: {desc!r}")
+    rv = d.get("review")
+    if rv is not None:
+        # status の値は確かめない(知らない値は ok でないので、確認待ちと同じく自動のおすすめに出ない)
+        _check_types(rv, _REVIEW_TYPES, f"{where}.review")
+        for key in ("reasons", "evidence"):
+            if not all(isinstance(x, str) for x in rv.get(key, [])):
+                raise DatabaseError(f"{where}.review の {key} は文字列の並びです")
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
 

@@ -33,6 +33,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
 | `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate`: none |
+| `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
 | `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
@@ -142,11 +143,19 @@ that level (other runnable levels are counted as `hidden.other_fit`); `--fit` an
 | `name` | runs → unknown → too_tight, then model name |
 
 The fit level always comes before the score (the score weights the level most, but the other components could invert
-two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Auto column shows it). JSON `models`
+two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Verified column shows it). JSON `models`
 follows the same order; `filters` of `fit` adds `fit`, `sort`, `all`, `include_tools`, of `search` `fit`, `sort`, `all`.
-Table columns (all commands): `Type | Status | Score | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Auto`;
-when the terminal is narrow, Disk, Mem%, License, Auto, Prec, Use are dropped in that order (Type, Status, Score and
-Model never). `search` shows every fit level by default (`--fit` narrows).
+Table columns (all commands): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Verified`;
+when the terminal is narrow, the Model column shrinks first (down to 24 characters), then Disk, Mem%, License, Verified,
+Prec, Use are dropped in that order (Type, Status, Score, Censored and Model never). **Verified** (named Auto up to 0.5.0) is the JSON `auto`:
+`yes`, or the first failed gate check (`held_by[0]`, shortened); the JSON fields keep their names (`auto`, `held_by`,
+the check ids). **Censored** (0.6.0, in place of the `[U] ` name prefix) is `Y` (`content: sfw`) or `N`
+(`content: uncensored`), never blank; the column is
+shown only when uncensored rows can appear (`--content all|uncensored`; a table built from Python without a content
+filter shows it when a row is uncensored) and is omitted with the default `sfw`. The legend then says
+`Censored: N = safety filter removed / adult model`. JSON is unchanged (`content`).
+Censored の列は無検閲の行が出うるときだけ出す(既定の sfw では出さない)。
+`search` shows every fit level by default (`--fit` narrows).
 
 **Unknown and not applicable / 「?」と「-」** (0.2.0, #30). In the table, `info` and the legend, `?` means the value
 is **unknown** and `-` means it **does not apply**:
@@ -160,7 +169,7 @@ is **unknown** and `-` means it **does not apply**:
 | Mode | size unknown (`run_mode: "unknown"`) | does not run (`run_mode: "none"`) |
 | Disk / License | size / license unknown (`null`) | — |
 | Use / `info` tasks | no task known | — |
-| Auto | — | the gate was not evaluated |
+| Verified | — | the gate was not evaluated |
 | `info` file folder | — | the file has no ComfyUI folder (Hugging Face repo) |
 
 JSON: an unknown **value** is `null` (`precision`, `license`, `memory_required_gb`, `disk_size_gb`, and the
@@ -390,7 +399,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 |---|---|
 | `fit` | perfect 100, good 70, marginal 35, too_tight 0, unknown 0 |
 | `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
-| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 (app_runtime 40 in place of the three ComfyUI checks; it never passes) |
+| `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 (app_runtime 40 in place of the three ComfyUI checks; it never passes; reviewed 0) |
 | `basis` | 100 when `measured`, 0 when `estimated` and for other users' submissions (`basis_detail: measured_community`; they never raise the score) |
 | `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
 
@@ -478,9 +487,9 @@ Computed every time (never stored in `db.json`). Details and the default license
 | key | type | meaning |
 |---|---|---|
 | `auto` | bool | true only when every check passed |
-| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Auto column and as `held:<id>` by `gate --only-held`) |
+| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Verified column and as `held:<id>` by `gate --only-held`) |
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
-| `checks` | Check[] | the 9 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known`. For a model whose `runtime` is neither `comfyui` nor null (0.5.0), the three ComfyUI checks are replaced by one `app_runtime` check that never passes (7 checks) |
+| `checks` | Check[] | the 10 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known`, `reviewed` (0.6.0, #42: passes unless `review.status` is not `ok`; always last, so `held_by[0]` of the older checks is unchanged). For a model whose `runtime` is neither `comfyui` nor null (0.5.0), the three ComfyUI checks are replaced by one `app_runtime` check that never passes (8 checks) |
 
 Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for people; wording may change).
 
@@ -489,7 +498,7 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 `genmodelfit gate --json`: `policy` (`license_allowlist`, `comfyui_version`, `allow_uncensored`, `max_head_age_days`),
 `filters` (`modality`, `only_auto`, `only_held`), `summary` (`models`, `auto`, `held`,
 `failing` = models failing each check, `first_failing` = models whose first failed check is that one; both have
-a key per check id, `app_runtime` included since 0.5.0),
+a key per check id, `app_runtime` included since 0.5.0, `reviewed` since 0.6.0),
 `models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
 
 ## diff
@@ -512,11 +521,119 @@ a key per check id, `app_runtime` included since 0.5.0),
 | `head_failures` | URLs in the new list whose HEAD answered other than 200 / 302 / 307: `{url, status, ids, new}`; `new` = that URL did not fail (or was absent) in the old list |
 | `unauthorized` | `{added, removed}`: repo ids in `sources.huggingface.unauthorized` (401) that appeared / disappeared |
 | `partial_counts` | the new list's `sources.partial_counts` (null if absent) |
+| `classification` | 0.6.0 (#42): `{safe, judgement_needed, safe_changes}`; see below |
 | `stats` | changed values of `sources`, flattened to dotted keys (`counts.modality.image`, `head_check.status.302`, …): `{key, old, new}`; lists are compared by length; `checked_at` / `url` / `api` / `generator` / `failures` / `errors` are skipped |
 
-`python -m genmodelfit.weekly --out DIR` writes `DIR/db.json`, `DIR/diff.json` (the dict above), `DIR/pr_body.md` and
+**classification** (0.6.0, #42) splits the changes so that the weekly Claude skill (`genmodelfit-weekly`,
+docs/release.md) can decide whether it may merge the week itself (`safe: true`) or must open an evidence pull request
+for the owner.
+
+| key | meaning |
+|---|---|
+| `safe` | true when `judgement_needed` is empty |
+| `judgement_needed` | `[{id, name, reasons}]`, sorted by id. `reasons`, in this order: `new` (added entry), `license_permissive`, `need_decreased`, `uncensored_new` (the same rules as the review pending reasons, decided by `review.review_reasons` for every common entry, not only those in `license_changes` / `size_changes`), `auto_gained` (newly auto-recommendable, unless the old list held it only by `url_reachable`), `review_approved` (`review` went from not ok to ok: someone ran `review approve`; the owner checks the evidence), `review_pending` (went from ok to pending for a reason not listed before; the review's own reasons follow) |
+| `safe_changes` | counts of the changes judged safe: `removed`, `license_stricter` (license changes without `permissive_side`), `size_changed`, `precision_changed` (all of them; the ones that lower the needs are also in `judgement_needed`), `head_failures_new`, `unauthorized_added`, `unauthorized_removed`, `stats` (changed `sources` values), `auto_gained_head_only`, `auto_lost`, `pending_carried` (pending in both lists) |
+
+Safe direction (never in `judgement_needed`): removed entries; licenses that became stricter; size / precision changes
+that do not lower the needs (no fit level goes up and neither the full-load VRAM nor the RAM goes down by more than 1 %
+at any reference PC, `review.REFERENCE_PCS`); HEAD dates, status codes and failures (and auto-recommendation regained
+only because HEAD recovered); models dropping out of auto-recommendation; 401 repositories; `sources` statistics;
+models that stay pending. Anything that could put an unchecked model in front of users is judgement-needed.
+安全な向き: HEAD の日付・失敗、必要量が増える向き、消えた項目、sources の数など。判断が要る: review の pending の理由と、
+自動のおすすめに入った・確認済みにした・確認待ちになった項目。
+
+```json
+"classification": {
+  "safe": false,
+  "judgement_needed": [
+    {"id": "hf:org/new-model", "name": "New Model", "reasons": ["new"]},
+    {"id": "image_example", "name": "Example", "reasons": ["license_permissive", "auto_gained"]}
+  ],
+  "safe_changes": {"removed": 1, "license_stricter": 0, "size_changed": 2, "precision_changed": 0,
+    "head_failures_new": 3, "unauthorized_added": 0, "unauthorized_removed": 1, "stats": 12,
+    "auto_gained_head_only": 1, "auto_lost": 2, "pending_carried": 0}
+}
+```
+
+`python -m genmodelfit.weekly --out DIR` writes `DIR/db.json`, `DIR/diff.json` (the dict above), `DIR/pr_body.md`,
+`DIR/review_queue.json` (0.6.0: `{genmodelfit, generated_at, pending: [review list items], classification}`) and
 `DIR/result.json`: `genmodelfit`, `ok`, `problems` (str[], why it failed), `base`, `offline`, `run_url`, `partial`,
-`status` (DataStatus of the new list), `summary` (as above), `files`, and `applied_to` with `--apply`.
+`status` (DataStatus of the new list), `summary` (as above), `classification` (`{safe, judgement_needed: count}`),
+`review_pending` (the review list items), `files` (`db`, `diff`, `pr_body`, `review_queue`), and `applied_to` with
+`--apply`. The pull request body has a 「分類」 section and a 「確認待ち」 table (names escaped like every upstream
+text). Exit codes are unchanged: a judgement-needed week is still `ok` (exit 0).
+
+## review
+
+Review marks (0.6.0, #42). New or riskier entries go into the list but are **not auto-recommended until someone has
+checked them against primary sources**. `ModelEntry.review` is an optional object (`schema_version` stays 1; readers
+up to 0.5.0 drop the key):
+
+| key | type | meaning |
+|---|---|---|
+| `status` | str | `ok` or `pending` (any other value is treated as not ok) |
+| `reasons` | str[] | why it was marked: `new`, `license_permissive`, `need_decreased`, `uncensored_new` (kept after approval: what was checked) |
+| `decided_by` | str \| null | who approved (`--by`; the bundled list starts with `baseline-2026-10-21`) |
+| `decided_at` | str \| null | `YYYY-MM-DD` (UTC) of the approval |
+| `evidence` | str[] | https URLs of the primary sources (license text, model card, …) |
+| `note` | str \| null | free text |
+
+**A missing `review` (null) means ok** (lists made before 0.6.0). **Apps should filter with
+`entry.review is None or entry.review.status == "ok"`** (Python: `entry.reviewed`); the gate already holds pending
+models (`reviewed`, shown as `review` in the Verified column).
+アプリは `entry.review is None or entry.review.status == "ok"` で絞る(印の無い古い一覧は確認済み)。
+
+How `update` sets it (`review.apply_reviews`, comparing with the list it carries over from: the cache or the bundled
+list, or the base list in the weekly run):
+
+- an id absent from the previous list → `pending` with `new` (plus `uncensored_new` when uncensored). Without any
+  previous list (`carry_over=False`) every entry is `new`
+- a common entry → `pending` when its license moved toward permissive (`license_permissive`: `hf.license_tier` went
+  down, the set's license is newly on the allowlist, or the gate's `license` check newly passes), its needs went down
+  (`need_decreased`: at one of the reference PCs `review.REFERENCE_PCS` = (0 GB VRAM, 16 GB RAM), (6, 16), (8, 16),
+  (12, 32), (16, 32), (24, 64) the fit level went up, the size became known, or the full-load VRAM or the RAM went down
+  by more than 1 %; estimated only when a need-related field changed), or it newly became `uncensored`
+  (`uncensored_new`). Reasons are added to an entry that was already pending
+- otherwise the previous mark is carried over (`ok` with a note when the previous list had none)
+
+`update --heads-only` / `--fields-only` / `--inspect-only` apply the same rule against the list as it was before the
+run. `sources.review`: `{ok, pending, marked: {reason: count}, rejected_skipped}`.
+
+Rejected entries stay out: `data/review_rejected.txt` (bundled), one line per entry
+`<id or sha256:<hex of the id>><TAB><YYYY-MM-DD><TAB><reason>`, `#` comments. `update` drops matching ids
+(`rejected_skipped`). With `--hide-name` only the hash is stored (like the safety exclusions, the name is not kept).
+
+Commands (`--db` is required for writing; in a checkout use `--db src/genmodelfit/data/db.json`):
+
+```text
+genmodelfit review list [--json] [--all] [--db PATH]
+genmodelfit review approve <id> --evidence <https URL> [--evidence …] [--note TEXT] [--by NAME] --db PATH [--json]
+genmodelfit review reject <id> --note TEXT --db PATH [--rejected FILE] [--hide-name] [--json]
+```
+
+`approve` refuses (exit 1) without at least one `https://` evidence URL, for an unknown id, or when the entry is not
+pending; it keeps `reasons` and sets `status: ok`, `decided_by`, `decided_at` (today, UTC), `evidence` and `note`.
+`reject` requires `--note`, removes the entry, updates `sources.counts` / `sources.review` and appends the line.
+Python: `gmf.review_list(db=None, include_ok=False)`, `gmf.review_approve(db_path, id, evidence, note=, by=)`,
+`gmf.review_reject(db_path, id, note, rejected_path=, hide_name=)`; they raise `review.ReviewError` (a `ValueError`)
+and print nothing.
+
+`review list --json`:
+
+```json
+{
+  "genmodelfit": "0.6.0",
+  "command": "review",
+  "database": {"origin": "path", "generated_at": "2026-10-28T03:12:00Z", "models": 331, "measurements": 21},
+  "pending": 1,
+  "models": [
+    {"id": "hf:org/new-model", "name": "New Model", "modality": "image", "content": "sfw",
+     "source": "huggingface", "license": "apache-2.0", "license_url": "https://huggingface.co/org/new-model",
+     "homepage": "https://huggingface.co/org/new-model", "status": "pending", "reasons": ["new"],
+     "decided_by": null, "decided_at": null, "evidence": [], "note": null}
+  ]
+}
+```
 
 ## info
 
@@ -592,6 +709,8 @@ KSamplerAdvanced, SamplerCustom, CFGGuider, …) loads through its MODEL input (
 one list per distinct set, in graph order (`workflow.sampler_stages`, kept only for sets that contain one of the entry's
 main files). Set only when there are two or more different sets of main files (`[]` = one set, `null` = not checked; HF
 entries are null). Used by the estimator as above.
+
+`review` (object \| null, optional; 0.6.0, #42): the review mark, see "review". null = ok (older lists).
 
 `comfy_family` / `comfy_vae` (str \| null, optional; added in #21 — older files without them still load): the ComfyUI
 model family and VAE kind (keys of `families.FAMILIES` / `families.VAES`), set by `update` from the main / VAE file
@@ -937,7 +1056,7 @@ uses the saved `card_languages`. The other entries' files, licenses, precision a
 themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`), the official
 templates' `sampler_stages` and `workflow_precision`, the repo precision (`repo_precision`: Hub API / `config.json`,
 cached in `<cache>/repo_precision.json`), and it asks the Hub API again for the repos in
-`sources.huggingface.unauthorized`; nothing else changes. Headers already in `<cache>/file_headers.json` (keyed by URL and
+`sources.huggingface.unauthorized`; nothing else changes (except the review marks, see "review"). Headers already in `<cache>/file_headers.json` (keyed by URL and
 sha256) are not read again; requests are sent one at a time with a short pause and honor `Retry-After`. With
 `--offline` it uses only that cache and sends nothing (the templates are then not re-read).
 

@@ -35,6 +35,7 @@ KEYS = {
     "unauthorized",
     "partial_counts",
     "stats",
+    "classification",
 }
 
 
@@ -73,6 +74,7 @@ def test_same_list_has_no_changes(pair):
     ):
         assert s[k] == 0, k
     assert d["stats"] == [] and s["auto_old"] == s["auto_new"] > 0
+    assert d["classification"]["safe"] is True and d["classification"]["judgement_needed"] == []
     assert d["policy"]["max_head_age_days"] is None
     json.dumps(d)
 

@@ -125,6 +125,7 @@ CHECK_IDS = [
     "sha256",
     "content",
     "size_known",
+    "reviewed",
 ]
 # runtime が ComfyUI 以外のモデル(手のモデルの piper・irodori-tts)は、ComfyUI の 3 条件の代わりに app_runtime
 APP_RUNTIME_CHECK_IDS = ["license", "gated", "app_runtime", *CHECK_IDS[5:]]
@@ -208,6 +209,7 @@ MODEL_ENTRY = {
     "runtime",
     "description",
     "card_languages",
+    "review",
 }
 MODEL_FILE = {
     "name",

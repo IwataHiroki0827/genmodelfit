@@ -1,0 +1,3 @@
+# genmodelfit review reject で一覧から外した項目(#42)。update は作り直してもこれらを入れない。
+# 1 行に 1 件: <ID か sha256:<ID の sha256>>\t<YYYY-MM-DD>\t<理由>
+# 名前を残さない外し方(review reject --hide-name)は sha256: の鍵だけを残す

@@ -22,7 +22,9 @@
    **HEAD の期限(30 日)が 7 日より先**(作り直した直後なのに近ければ、HEAD の取り直しが効いていない)
 4. 一部を取得できなかったとき(sources.partial): 既定は失敗(PR を作らない)。--allow-partial のときだけ、
    中身が筋の通るとき(下の partial_problems が空)に限って「一部欠け」の警告を付けて通す
-5. 元との違い(diff.diff_db)と PR の本文を <dir> に書く: db.json・diff.json・pr_body.md・result.json
+5. 元との違い(diff.diff_db)と PR の本文を <dir> に書く: db.json・diff.json・pr_body.md・result.json・
+   review_queue.json(確認待ちの項目と、diff の分類 classification。#42。毎週のスキルがこれを読んで、
+   安全な向きだけの週か、根拠付きの PR をオーナーに出す週かを決める)
 6. --apply があれば、確かめを通った db.json をそこへ写す(ワークフローはこのあと pytest を回す)
 
 終了コード: 0 = 通った、1 = 確かめに落ちた・作り直しをやめた(<dir>/result.json の problems に理由)、
@@ -51,6 +53,8 @@ from .db import load as load_db
 from .diff import diff_db
 from .fetch import DirFetcher, Fetcher, RecordingFetcher
 from .gate import GatePolicy, _parse_time
+from .review import queue as review_queue
+from .review import review_list
 from .status import compute as compute_status
 from .update import LICENSE_POLICY, UpdateFailed, inspect_database, make_fetcher, update_database
 
@@ -273,6 +277,11 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         warn.append(f"新しく無検閲の印が付いた項目: {s['newly_uncensored']} 件")
     if s["unauthorized_added"]:
         warn.append(f"匿名の API が 401 になったリポジトリ: {s['unauthorized_added']} 件")
+    cl = d.get("classification") or {}
+    if cl and not cl.get("safe"):
+        warn.append(
+            f"**判断が要る変化: {len(cl.get('judgement_needed') or [])} 件**(下の「確認待ち」と diff.json)"
+        )
     lines += ["### 注意", ""]
     lines += [f"- {w}" for w in warn] if warn else ["- なし"]
     lines.append("")
@@ -312,6 +321,8 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         ],
     )
     lines.append("")
+
+    lines += review_section(d, result.get("review_pending") or [])
 
     if d["license_changes"]:
         rows = sorted(d["license_changes"], key=lambda c: (not c["permissive_side"], c["id"]))
@@ -392,6 +403,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         "- [ ] 消えた項目・自動のおすすめから外れた項目に、AI生成キットが使うものが無い"
         "(あれば理由を確かめた)",
         "- [ ] 新しく HEAD が失敗した URL(gated になった・消えた)を確かめた",
+        "- [ ] 確認待ち(review)の項目と、review approve で付けた根拠(evidence)の URL を見た",
         "- [ ] 新しく無検閲の印が付いた項目の根拠を見た(未成年の性的表現を目的とするものは除外する)",
         "- [ ] 実測のあるモデルのファイルが変わっていたら、"
         "`python -m genmodelfit.calibrate` を別の PR で直す",
@@ -400,6 +412,39 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         "全部の違いは artifact の diff.json</sub>",
     ]
     return limit_body("\n".join(lines) + "\n")
+
+
+def review_section(d: dict[str, Any], pending: list[dict[str, Any]]) -> list[str]:
+    """PR の本文の「分類」と「確認待ち」の節(#42)。上流の文字は md() で無害にする(_table が使う)。"""
+    cl = d.get("classification") or {}
+    lines = ["### 分類(毎週のスキルが使う)", ""]
+    if cl.get("safe"):
+        lines.append(
+            "- **安全な向きの変化だけ**(HEAD の日時・失敗、必要量が増える向き、消えた項目、sources の数など)"
+        )
+    else:
+        lines.append(f"- **判断が要る変化があります: {len(cl.get('judgement_needed') or [])} 件**")
+        lines += _table(
+            ["id", "理由"], [[j["id"], ", ".join(j["reasons"])] for j in cl.get("judgement_needed") or []]
+        )
+    lines.append("")
+    lines += [f"### 確認待ち(review: pending)の項目: {len(pending)} 件", ""]
+    if pending:
+        lines.append(
+            "確かめるまで自動のおすすめに出ません。一次資料を見て `genmodelfit review approve` か `reject`。"
+        )
+        lines.append("")
+        lines += _table(
+            ["id", "名前", "種類", "内容", "ライセンス", "理由"],
+            [
+                [p["id"], p["name"], p["modality"], p["content"], p["license"], ", ".join(p["reasons"])]
+                for p in pending
+            ],
+        )
+    else:
+        lines.append("- なし")
+    lines.append("")
+    return lines
 
 
 def limit_body(body: str) -> str:
@@ -474,7 +519,13 @@ def run(
             "選び方の規則が緩んでいないか確かめてください"
         )
         (warnings if allow_many_uncensored else problems).append(msg)
+    pending = review_list(new)
     result.update(
+        review_pending=pending,
+        classification={
+            "safe": d["classification"]["safe"],
+            "judgement_needed": len(d["classification"]["judgement_needed"]),
+        },
         warnings=warnings,
         status_old=compute_status(old, GatePolicy(), now=when, source="path").to_dict(),
         problems=problems,
@@ -482,9 +533,15 @@ def run(
         partial=bool(new.sources.get("partial")),
         status=status,
         summary=d["summary"],
-        files={"db": str(new_path), "diff": str(out / "diff.json"), "pr_body": str(out / "pr_body.md")},
+        files={
+            "db": str(new_path),
+            "diff": str(out / "diff.json"),
+            "pr_body": str(out / "pr_body.md"),
+            "review_queue": str(out / "review_queue.json"),
+        },
     )
     _write_json(out / "diff.json", d)
+    _write_json(out / "review_queue.json", review_queue(new, d["classification"]))
     body = pr_body(d, result)
     if problems:
         body = (

@@ -540,7 +540,7 @@ def test_fit_order_is_type_then_level_then_score(capsys):
         same = a["modality"] == b["modality"] and a["fit_level"] == b["fit_level"]
         if same and a["community"] == b["community"]:
             assert a["score"] >= b["score"]
-    # 自動のおすすめを先にしない(Auto の列で分かる)
+    # 自動のおすすめを先にしない(Verified の列で分かる)
     autos = [m["auto"] for m in d["models"] if m["modality"] == "image" and m["fit_level"] == "good"]
     assert autos != sorted(autos, reverse=True) or len(set(autos)) == 1
 

@@ -21,6 +21,7 @@
 | content | 無検閲(uncensored)でない(allow_uncensored で外せる) |
 | size_known | すべてのファイルの大きさが分かる |
 | app_runtime | (runtime が ComfyUI 以外のモデルだけ。ComfyUI の 3 条件の代わり)常に保留。アプリが確かめる |
+| reviewed | 確認の印(review)が確認待ち(pending)でない。印が無い古い一覧は通る(#42) |
 
 判定の結果は一覧(db.json)に持たない(毎回ここで計算する)。持つのは update が記録した HEAD の結果だけ。
 """
@@ -59,6 +60,7 @@ CHECK_IDS = (
     "content",
     "size_known",
     "app_runtime",
+    "reviewed",
 )
 # runtime が ComfyUI 以外のモデル(手のモデルの piper・irodori-tts。#36)で、ComfyUI の 3 条件の代わりに使う条件
 COMFYUI_CHECKS = ("official_workflow", "custom_nodes", "comfyui_version")
@@ -479,6 +481,19 @@ def check_app_runtime(m: ModelEntry) -> Check:
     )
 
 
+def check_reviewed(m: ModelEntry) -> Check:
+    """確認の印(#42)。pending(新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲)は、
+    人が一次資料で確かめる(genmodelfit review approve)まで自動のおすすめに出さない。"""
+    r = m.review
+    if r is None:
+        return Check("reviewed", True, "確認の印が無い(印を入れる前の一覧。確認済みとして扱う)")
+    if r.status == "ok":
+        who = f"({r.decided_by}、{r.decided_at})" if r.decided_by else ""
+        return Check("reviewed", True, f"確認済み{who}")
+    why = ", ".join(r.reasons) or "理由の記載なし"
+    return Check("reviewed", False, f"確認待ち({r.status}: {why})。根拠を付けて確かめるまで自動で出さない")
+
+
 def check_comfyui_version(m: ModelEntry, target: str | None) -> Check:
     if m.template is None:
         return Check("comfyui_version", False, "公式テンプレートではないため確かめられない")
@@ -619,6 +634,7 @@ def evaluate_offline(
         check_sha256(model),
         check_content(model, p.allow_uncensored),
         check_size(model),
+        check_reviewed(model),
     ]
     return GateResult(model.id, checks, target)
 

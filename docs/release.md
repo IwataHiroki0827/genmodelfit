@@ -206,7 +206,39 @@ weekly-data.yml(毎週月曜 03:00 UTC)→ PR automated/weekly-data → 作者�
 - **消えた項目**(上流から消えた・検索の上位から外れた)
 - **新しく無検閲の印が付いた項目**の根拠(未成年の性的表現を目的とするものは除外する。docs/sources.md)
 - 実測のあるモデルのファイルが変わっていたら、`python -m genmodelfit.calibrate` で直す PR を別に作る
+- **確認待ち(review)の項目**と、`review approve` で付けた根拠(`evidence`)の URL(#42。下の「毎週のスキル」)
 - 全部の違いは artifact の `diff.json`(形は docs/schema.md「diff」)
+
+### 毎週のスキル(genmodelfit-weekly、#42)
+
+2026-10-21 のオーナーの決定: 毎週の更新を、Claude Code のスキル `genmodelfit-weekly` でオーナーの PC から回す
+(Windows のタスク スケジューラで週 1 回)。判断が要らない週は Claude がマージし、判断が要る週だけオーナーが見る。
+上の weekly-data.yml(GitHub Actions)と同じ `python -m genmodelfit.weekly` を使う。
+
+1. `python -m genmodelfit.weekly --out <dir>`(引き継ぎの元と比べる元は main の db.json)。終了コードが 1 なら
+   何もマージしない(`result.json` の `problems` を見て直す。いままでどおり)
+2. `<dir>/review_queue.json` の `classification` を見る(規則は docs/schema.md「diff」の classification):
+   - **`safe: true`(安全な向きの変化だけ)**: HEAD の日時・失敗、必要量が増える向き、消えた項目、厳しい側への
+     ライセンスの変化、自動のおすすめから外れた項目、401 の増減、sources の数、前から確認待ちの項目だけの週。
+     新しい一覧を入れて ruff・pytest を通し、PR を作って Claude がマージする
+   - **`safe: false`(判断が要る変化がある)**: `judgement_needed` の項目ごとに一次資料(ライセンスの原文・
+     モデルカード・上流のリポジトリ)を読み、
+     - 確かめられたら `genmodelfit review approve <id> --evidence <https の URL> [--evidence …] --note <確かめた内容> --by claude --db <dir>/db.json`
+     - 入れないなら `genmodelfit review reject <id> --note <理由> --db <dir>/db.json --rejected src/genmodelfit/data/review_rejected.txt`
+       (未成年の性的表現などの安全上の理由なら `--hide-name` で名前を残さない)
+     - 分からないものは pending のまま残す(自動のおすすめに出ないので、入れても安全)
+     そのうえで新しい一覧と根拠を PR にし、**オーナーがマージする**(Claude はマージしない)。PR の本文の
+     「分類」「確認待ち」の節と、`review approve` が db.json に残した `evidence` を見てもらう
+3. どちらの週も、署名と公開はマージ後に data.yml が行う(いままでどおり)
+
+決めたこと:
+
+- pending の項目も一覧には入る(`recommend` / `fit` / `info` には出る)。自動のおすすめ(gate)だけが
+  `reviewed` で保留にする。アプリは `entry.review is None or entry.review.status == "ok"` で絞る
+- 承認には https の根拠が 1 つ以上要る(無ければ断る)。`review approve` で付けた承認は、次の週の
+  classification に `review_approved` として出る(Claude の承認もオーナーの目を通る)
+- `review reject` した項目は `data/review_rejected.txt` に残り、`update` は作り直しても入れない
+- 同梱の一覧は 0.6.0 で全部 `ok`(`decided_by: baseline-2026-10-21`)から始めた
 
 ### 手元で同じ流れを試す
 

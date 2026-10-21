@@ -63,6 +63,8 @@ READINESS_POINTS = {
     "size_known": 5,
     # runtime が ComfyUI 以外のモデルで、上の ComfyUI の 3 条件(15 + 15 + 10)の代わり(常に保留)
     "app_runtime": 40,
+    # 確認の印(#42)。点数には入れない(確認待ちは auto にならないので 100 にはならない)
+    "reviewed": 0,
 }
 HEADROOM_FULL = 0.5  # 全部載せで VRAM の半分以上が空けば余裕 100
 

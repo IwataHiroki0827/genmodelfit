@@ -18,6 +18,9 @@
 - HEAD が失敗した URL(200 / 302 / 307 以外の応答)。前の一覧では取れていた(または無かった)ものに `new: true`
 - 匿名の API が 401 だったリポジトリの増減(sources.huggingface.unauthorized)
 - sources の数の変化(件数・種類・ライセンスの段階・HEAD の応答コードの内訳・失敗の数など)
+- 分類(classification。#42): 変化を「安全な向き」と「判断が要る」に分ける。毎週のスキル(genmodelfit-weekly)が
+  自分でマージしてよい週か(safe)、根拠付きの PR をオーナーに出す週かを決めるのに使う。規則は classify と
+  docs/schema.md「diff」
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from .gate import (
     recorded_comfyui_version,
 )
 from .models import ModelEntry
+from .review import review_reasons
 
 # 一式の大きさの変化を出すしきい値(両方を超えたとき): 比で 10%、量で 100 MiB
 SIZE_REL_THRESHOLD = 0.10
@@ -112,6 +116,84 @@ def _side(db: Database) -> dict[str, Any]:
         "partial": bool(db.sources.get("partial")),
         "comfyui_checked_at": comfy.get("checked_at") if isinstance(comfy, dict) else None,
     }
+
+
+# 自動のおすすめに入った(auto_gained)理由が、前の一覧ではこの条件だけで保留だったなら安全な向き
+# (HEAD の一時的な失敗が直った)。ほかの条件が外れて入ったものは判断が要る
+SAFE_AUTO_GAIN = frozenset({"url_reachable"})
+# 判断が要る理由(classification.judgement_needed[].reasons)。上の 4 つは review の pending の理由と同じ
+JUDGEMENT_REASONS = (
+    "new",
+    "license_permissive",
+    "need_decreased",
+    "uncensored_new",
+    "auto_gained",  # 自動のおすすめに入った(HEAD が直っただけのものを除く)
+    "review_approved",  # 確認待ち → 確認済み(review approve)。根拠をオーナーが見る
+    "review_pending",  # 確認済み → 確認待ちになった(上の理由で説明できない分。review の理由を付ける)
+)
+
+
+def classify(
+    old: Database,
+    new: Database,
+    *,
+    auto_changes: list[dict[str, Any]],
+    license_allowlist: frozenset[str] = DEFAULT_LICENSE_ALLOWLIST,
+    counts: dict[str, int],
+) -> dict[str, Any]:
+    """変化を「安全な向き」と「判断が要る」に分ける(docs/schema.md「diff」の classification)。
+
+    判断が要る(judgement_needed に ID と理由): 増えた項目(new。無検閲なら uncensored_new も)、
+    共通の項目のうち review の pending の理由に当たるもの(license_permissive・need_decreased・uncensored_new。
+    update と同じ review.review_reasons で決める)、自動のおすすめに入ったもの(前の保留が url_reachable
+    だけのものを除く)、確認待ちから確認済みになったもの、確認済みから確認待ちになったもの。
+    それ以外(消えた項目・厳しい側へのライセンスの変化・必要量が増える・変わらない大きさと精度の変化・
+    自動のおすすめから外れた・HEAD の日時と失敗・401 の増減・sources の数・前から確認待ちの項目)は安全な向き。
+    safe は judgement_needed が空のとき True。
+    """
+    measurements = new.measurements or old.measurements
+    old_by = {m.id: m for m in old.models}
+    new_by = {m.id: m for m in new.models}
+    found: dict[str, list[str]] = {}
+
+    def add(i: str, reasons: list[str]) -> None:
+        if reasons:
+            cur = found.setdefault(i, [])
+            cur += [r for r in reasons if r not in cur]
+
+    for i in sorted(new_by.keys() - old_by.keys()):
+        add(i, review_reasons(None, new_by[i]))
+    common = sorted(old_by.keys() & new_by.keys())
+    for i in common:
+        add(i, review_reasons(old_by[i], new_by[i], measurements, license_allowlist))
+    auto_gained_safe = 0
+    for c in auto_changes:
+        if c["new"] and not c["old"] and c["id"] in old_by:
+            if set(c["held_by_old"]) <= SAFE_AUTO_GAIN:
+                auto_gained_safe += 1
+            else:
+                add(c["id"], ["auto_gained"])
+    pending_carried = 0
+    for i in common:
+        a, b = old_by[i], new_by[i]
+        if not a.reviewed and b.reviewed:
+            add(i, ["review_approved"])
+        elif a.reviewed and not b.reviewed and i not in found:
+            add(i, ["review_pending", *(b.review.reasons if b.review else [])])
+        elif not a.reviewed and not b.reviewed:
+            pending_carried += 1
+    order = {r: k for k, r in enumerate(JUDGEMENT_REASONS)}
+    judgement = [
+        {"id": i, "name": new_by[i].name, "reasons": sorted(rs, key=lambda r: order.get(r, len(order)))}
+        for i, rs in sorted(found.items())
+    ]
+    safe_changes = {
+        **counts,
+        "auto_gained_head_only": auto_gained_safe,
+        "auto_lost": sum(1 for c in auto_changes if c["old"] and not c["new"]),
+        "pending_carried": pending_carried,
+    }
+    return {"safe": not judgement, "judgement_needed": judgement, "safe_changes": safe_changes}
 
 
 def diff_db(
@@ -238,6 +320,22 @@ def diff_db(
     ]
 
     gained = sum(1 for c in auto_changes if c["new"])
+    classification = classify(
+        old,
+        new,
+        auto_changes=auto_changes,
+        license_allowlist=license_allowlist,
+        counts={
+            "removed": len(removed),
+            "license_stricter": sum(1 for c in license_changes if not c["permissive_side"]),
+            "size_changed": len(size_changes),
+            "precision_changed": len(precision_changes),
+            "head_failures_new": sum(1 for h in head_failures if h["new"]),
+            "unauthorized_added": len(ub - ua),
+            "unauthorized_removed": len(ua - ub),
+            "stats": len(stats),
+        },
+    )
     summary = {
         "models_old": len(old.models),
         "models_new": len(new.models),
@@ -274,4 +372,5 @@ def diff_db(
         "unauthorized": {"added": sorted(ub - ua), "removed": sorted(ua - ub)},
         "partial_counts": new.sources.get("partial_counts"),
         "stats": stats,
+        "classification": classification,
     }
