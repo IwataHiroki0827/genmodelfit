@@ -117,6 +117,44 @@ class Vae:
     source: str
 
 
+@dataclass(frozen=True)
+class CpuRun:
+    """GPU なしでも ComfyUI の CPU の動き(`--cpu`、GPU の無い PC では自動)で動くとした系統(#39)。"""
+
+    family: str
+    modalities: tuple[str, ...]  # この種類のときだけ(sd の系統の SVD = 動画は入れない)
+    evidence: str  # 根拠(AI生成キットの実機など)
+    speed: str | None = None  # 遅さの目安(理由に出す)。分からなければ None
+    exclude: str | None = None  # ID・名前がこれに当たるものは除く(CPU で確かめていない大きな版)
+
+
+# CPU で動く系統。重みの大きさの一律の上限(estimate.CPU_MAX_WEIGHTS_GB)より大きくても、メインメモリが足りれば
+# marginal(CPU、遅い)にする。ComfyUI は CPU では本体と VAE を fp32 で持つ(model_management.py の
+# should_use_fp16 / should_use_bf16 が CPU では False: b1a247c の 1902・1969 行。
+# unet_dtype・vae_dtype が float32)。
+# テキストエンコーダは fp16 のまま(text_encoder_dtype の 1261 行)。見積もりは estimate._judge_cpu
+CPU_FAMILIES: dict[str, CpuRun] = {
+    r.family: r
+    for r in (
+        CpuRun(
+            "sd",
+            ("image",),
+            "AI生成キット(laxshmate/local_model_ai_gen_kit)が GPU なしの PC で SDXL の生成を確かめた"
+            "(カタログの cpu_ok、2026-10)。SD 1.5 / 2.x は同じ UNet の系統でより小さい",
+            "SDXL は 1 枚に数分〜十数分(AI生成キットの実機)",
+            exclude=r"supir",  # SUPIR(SDXL を使う高解像度化)は CPU で確かめていない
+        ),
+        CpuRun(
+            "stable_audio",
+            ("music", "sfx"),
+            "AI生成キットが Stable Audio 3 Small(効果音・音楽)を CPU で動かした(カタログの cpu_ok、2026-10)。"
+            "Stable Audio Open 1.0 は同じ ComfyUI の StableAudio の系統",
+            exclude=r"medium",  # Stable Audio 3 Medium は CPU で確かめていない
+        ),
+    )
+}
+
+
 # VAE → working_dtypes(sd.py。既定は [bfloat16, float32]: sd.py:516。2D の KL VAE は既定のまま)
 VAES: dict[str, Vae] = {
     v.key: v

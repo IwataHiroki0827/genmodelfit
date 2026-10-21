@@ -731,6 +731,10 @@ class Need:
     offload: float  # 一部を逃がす
     ram: float  # 逃がす・CPU のときのメインメモリ(固定分 + 全部品)
     ram_gpu: float = 0.0  # 全部載せ・順に載せ替えのときのメインメモリ(固定分 + いちばん大きい段の部品)
+    # CPU で動かすときに ComfyUI が fp32 に広げる分の材料(#39): 作業用メモリ・本体・VAE の重み(GiB)
+    act: float = 0.0
+    main: float = 0.0
+    vae: float = 0.0
 
 
 def need(parts: Parts, act: float, c: Coefficients) -> Need:
@@ -749,7 +753,14 @@ def need(parts: Parts, act: float, c: Coefficients) -> Need:
     ram_all = c.ram_extra_gb + parts.total * w
     ram_gpu = c.ram_extra_gb + parts.largest * w
     return Need(
-        full=full, sequential=min(seq, full), offload=min(off, seq, full), ram=ram_all, ram_gpu=ram_gpu
+        full=full,
+        sequential=min(seq, full),
+        offload=min(off, seq, full),
+        ram=ram_all,
+        ram_gpu=ram_gpu,
+        act=act,
+        main=parts.denoise * w,
+        vae=parts.decode * w,
     )
 
 
@@ -986,7 +997,10 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
     vae_kind = VAES.get(vae_key or "")
     gpu_fp32 = g.compute_dtype == "fp32"
     no_bf16 = g.bf16 is False
-    family_fp32 = no_bf16 and not gpu_fp32 and fam is not None and not fam.fp16
+    # AMD の RDNA 2 以前は bf16 の計算を持たないが、ComfyUI は fp16 を持たない系統を bf16 で計算する
+    # (should_use_bf16 の manual_cast が AMD_RDNA2_AND_OLDER_ARCH で True。docs/hardware.md)
+    manual_bf16 = getattr(g, "vendor", "nvidia") == "amd"
+    family_fp32 = no_bf16 and not gpu_fp32 and fam is not None and not fam.fp16 and not manual_bf16
     act = 2.0 if gpu_fp32 or family_fp32 else 1.0
     vae_fp32 = (gpu_fp32 or (no_bf16 and vae_kind is not None and not vae_kind.fp16)) and (
         vae_kind is None or vae_kind.key != "fp32"
@@ -1008,6 +1022,11 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
         )
         if fam.note:
             notes.append(fam.note)
+    elif no_bf16 and fam is not None and not fam.fp16 and manual_bf16:
+        notes.append(
+            f"{g.name} は bf16 の計算に対応しないが、ComfyUI はこの系統({fam.comfy_class})を bf16 で動かす"
+            "(AMD の RDNA 2 以前の扱い。作業用メモリは変えていない)"
+        )
     elif no_bf16 and fam is None:
         notes.append(
             "このモデルの系統(ComfyUI のどのモデルか)が分からないので、bf16 を持たない "
@@ -1024,7 +1043,9 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
         )
     if prec == "fp8" and g.fp8 is False:
         notes.append(
-            f"{g.name} は fp8 の計算に対応しない(Ada 以降が対応)。ComfyUI は fp8 の重みを、fp16 に広げても "
+            f"{g.name} は fp8 の計算に対応しない"
+            + ("(Ada 以降が対応)" if getattr(g, "vendor", "nvidia") == "nvidia" else "")
+            + "。ComfyUI は fp8 の重みを、fp16 に広げても "
             "VRAM に収まれば広げて使い(VRAM を多く使う)、収まらなければ fp8 のまま計算のたびに"
             "変換する(遅い)。見積もりは fp8 の大きさのまま"
         )
@@ -1113,8 +1134,14 @@ def _estimate(
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
         if is_community(m):
             reasons.append(f"{on} の実測は、ほかの利用者の実測 {m.n_submissions or '?'} 件をまとめた中央値")
+        g0 = system.best_gpu
+        other_vendor = g0 is not None and g0.vendor != gpu_vendor(m.gpu_name)
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
+        elif other_vendor and not is_community(m):
+            # 別の会社の GPU の実測は、作業用メモリをずらすのに使うだけ(その GPU での実測ではない)
+            detail = "calibrated"
+            reasons.append(f"{on} の実測で補正した推定({_vendor_label(g0.vendor)} の GPU での実測は無い)")
         elif prec.act_factor != 1:
             detail = "calibrated"
             reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
@@ -1152,12 +1179,37 @@ def _estimate(
     parts = prep.parts_for(s)
     disk = parts.files_gb
     fit, mode, why, ram_need = _judge(n, system, prep.c, entry, parts.total)
+    fit_from, measured_peak = "estimate", None
+    promoted = _measured_level(m, entry, s, system, prec, fit)
+    if promoted is not None:
+        level, line = promoted
+        fit_from, measured_peak = "measurement", m.peak_vram_gb
+        ram_need = n.ram_gpu
+        fit, mode, why = _ram_check(level, "gpu", [line], ram_need, system)
+    elif m is not None and basis == "measured" and system.vram_gb > 0 and mode in ("gpu", "offload"):
+        if m.gpu_vram_gb > system.vram_gb / MEASURED_VRAM_TOLERANCE:
+            reasons.append(
+                f"段階は見積もりで決めた(実測の GPU {m.gpu_vram_gb:g} GB は"
+                f"この PC の {system.vram_gb:.1f} GB より大きい)"
+            )
+    g = system.best_gpu
+    if g is not None and g.vendor != "nvidia" and system.vram_gb > 0 and mode in ("gpu", "offload"):
+        label = _vendor_label(g.vendor)
+        if fit == "perfect" and fit_from != "measurement":
+            fit = "good"
+            why = [*why, f"推定({label}・実測なし)なので、段階は good までにした"]
+        elif fit_from != "measurement":
+            why = [*why, f"推定({label}・実測なし)"]
     reasons.extend(prec.notes)
     free_short = False
     g = system.best_gpu
     if g is not None and g.vram_free_gb is not None and mode in ("gpu", "offload") and system.vram_gb > 0:
-        _lvl, how = gpu_choice(n.full, n.sequential, n.offload, system.vram_gb)
+        _lvl, how = gpu_choice(
+            n.full, n.sequential, n.offload, system.vram_gb, allow_offload=not shared_memory(system)
+        )
         use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
+        if fit_from == "measurement":
+            use = measured_peak
         if use > g.vram_free_gb:
             free_short = True
             others = f"(ほかのアプリが {g.vram_used_gb:.1f} GB 使用中)" if g.vram_used_gb is not None else ""
@@ -1180,10 +1232,65 @@ def _estimate(
         settings={k: v for k, v in vars(s).items() if v is not None},
         vram_free_short=free_short,
         basis_detail=detail,
+        fit_from=fit_from,
+        measured_peak_vram_gb=measured_peak,
     )
     if with_limits:
         est.limits = limits(prep, system, s)
     return est
+
+
+# 実測の GPU の VRAM(m.gpu_vram_gb は公称の 16 など)と nvidia-smi の総量(15.9 など)の違いを許す割合(#26)
+MEASURED_VRAM_TOLERANCE = 0.97
+
+
+def gpu_vendor(name: str) -> str:
+    """GPU 名から会社(実測の gpu_name は名前だけなので)。分からなければ nvidia(同梱の実測はすべて NVIDIA)。"""
+    n = name.lower()
+    if "radeon" in n or n.startswith("amd") or "instinct" in n:
+        return "amd"
+    if n.startswith("intel") or " arc" in f" {n}":
+        return "intel"
+    if n.startswith("apple"):
+        return "apple"
+    return "nvidia"
+
+
+def _vendor_label(vendor: str) -> str:
+    return {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}.get(vendor, vendor)
+
+
+def _measured_level(
+    m: Measurement | None, entry: ModelEntry, s: Settings, system: SystemInfo, prec: GpuPrecision, fit: str
+) -> tuple[str, str] | None:
+    """同じ設定で成功した実測があり、その GPU の VRAM がこの PC の VRAM 以下なら、
+    実測で決めた段階と理由(#26)。
+
+    実測が「GPU で動いた」ことは、それ以上の VRAM の同じ会社・同じ精度の扱いの GPU でも動く根拠になる。
+    段階は 実測の VRAM ÷ この PC の VRAM の帯(FIT_BANDS)で、少なくとも good。上限に張り付いた実測
+    (動的 VRAM が空きを使い切った)・下限としてだけ使う実測(torch_reserved)は
+    perfect の根拠にしない(good まで)。
+    見積もりの段階のほうが良ければ None。ほかの利用者の実測は段階を上げる向きに使わない(#34 の方針)。"""
+    if m is None or is_community(m) or not usable(m):
+        return None
+    g = system.best_gpu
+    vram = system.vram_gb
+    if g is None or vram <= 0 or g.vendor != gpu_vendor(m.gpu_name) or prec.act_factor != 1:
+        return None
+    if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
+        return None
+    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE:
+        return None
+    band = fit_band(m.peak_vram_gb, vram)
+    level = "perfect" if band == "perfect" and not (is_censored(m) or lower_bound_only(m)) else "good"
+    if _LEVELS.index(level) >= _LEVELS.index(fit):
+        return None
+    on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
+    pinned = "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)" if is_censored(m) else ""
+    return level, (
+        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{pinned}・成功があり、この PC の VRAM {vram:.1f} GB は"
+        "それ以上なので、GPU で動くと判定した(段階は実測で決めた。見積もりは目安)"
+    )
 
 
 def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, system: SystemInfo):
@@ -1232,16 +1339,48 @@ def _judge(
     return gpu
 
 
+def cpu_family(entry: ModelEntry):
+    """CPU で動く系統(families.CPU_FAMILIES)なら、その行。種類が合わなければ None(#39)。"""
+    from .families import CPU_FAMILIES, family_of
+
+    fam = getattr(entry, "comfy_family", None) or family_of(entry)
+    run = CPU_FAMILIES.get(fam or "")
+    if run is None or entry.modality not in run.modalities:
+        return None
+    if run.exclude and re.search(run.exclude, f"{entry.id} {entry.name}".lower()):
+        return None
+    return run
+
+
 def _judge_cpu(
     n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
-    """GPU を使わない判定(小さく CPU で動く種類だけ marginal)。"""
+    """GPU を使わない判定。小さく CPU で動く種類と、CPU で動く系統(families.CPU_FAMILIES)だけ marginal。"""
     w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
+    why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
+    run = cpu_family(entry)
+    if run is not None and w > 0:
+        # ComfyUI は CPU では本体と VAE を fp32 で持ち、fp32 で計算する(families.CPU_FAMILIES の説明)。
+        # 2 バイトの重みは 2 倍、作業用メモリも 2 倍にする
+        two_byte = source_precision(entry) in ("fp16", "bf16")
+        ram = n.ram + (n.main + n.vae if two_byte else n.vae) + 2 * max(0.0, n.act)
+        reasons = [
+            f"{why}: CPU で動く系統({run.family})なので CPU で動く見込み(遅い"
+            + (f"。{run.speed}" if run.speed else "")
+            + f")。ComfyUI は CPU では本体と VAE を fp32 で持つので、メインメモリを約 {ram:.1f} GB とみた",
+            f"CPU で動く根拠: {run.evidence}",
+        ]
+        fit, mode, reasons = _ram_check("marginal", "cpu", reasons, ram, system)
+        return fit, mode, reasons, ram
     if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
-        why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
         fit, mode, reasons = _ram_check("marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, system)
         return fit, mode, reasons, n.ram
-    return "too_tight", "none", ["GPU なし: このモデルは NVIDIA の GPU が必要"], n.ram
+    return (
+        "too_tight",
+        "none",
+        ["GPU なし: このモデルは GPU が必要(CPU で動く系統・小さなモデルではない)"],
+        n.ram,
+    )
 
 
 # 段階は、動かし方で使う置き場所(GPU なら VRAM)の使用率で決める
@@ -1267,32 +1406,47 @@ def _cap(level: str, top: str) -> str:
     return _LEVELS[max(_LEVELS.index(level), _LEVELS.index(top))]
 
 
-def gpu_choice(full: float, sequential: float | None, offload: float, vram: float) -> tuple[str, str]:
+def gpu_choice(
+    full: float, sequential: float | None, offload: float, vram: float, *, allow_offload: bool = True
+) -> tuple[str, str]:
     """(段階, 載せ方)。載せ方は full(全部 GPU)/ seq(部品を順に載せ替え)/ offload(逃がす)。
-    一番良い段階の載せ方を選ぶ(同じなら full → seq → offload)。表の VRAM の値もこれで決める。"""
+    一番良い段階の載せ方を選ぶ(同じなら full → seq → offload)。表の VRAM の値もこれで決める。
+    allow_offload=False(メインメモリと共有する GPU。逃がす先が同じメモリ)なら逃がす載せ方は使わない。"""
     seq = full if sequential is None else sequential
     options = [
         (fit_band(full, vram), "full"),
         (_cap(fit_band(seq, vram), "good"), "seq"),
-        (_cap(fit_band(offload, vram), "marginal"), "offload"),
     ]
+    if allow_offload:
+        options.append((_cap(fit_band(offload, vram), "marginal"), "offload"))
     return min(options, key=lambda o: _LEVELS.index(o[0]))
+
+
+def shared_memory(system: SystemInfo | None) -> bool:
+    """判定に使う GPU がメインメモリと共有する(内蔵 GPU・APU・Apple silicon)か(0.7.0、#22)。"""
+    g = system.best_gpu if system is not None else None
+    return g is not None and getattr(g, "memory", "dedicated") in ("shared", "unified")
 
 
 def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, list[str], float]:
     vram = system.vram_gb
-    fit, how = gpu_choice(n.full, n.sequential, n.offload, vram)
+    shared = shared_memory(system)
+    fit, how = gpu_choice(n.full, n.sequential, n.offload, vram, allow_offload=not shared)
     pct = {
         k: round(100 * round(v, 2) / vram)
         for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
     }
     if fit == "too_tight":
-        return (
-            "too_tight",
-            "none",
-            [f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"],
-            n.ram,
-        )
+        if shared:
+            msg = (
+                f"GPU のメモリ不足: 部品を順に載せ替えても {n.sequential:.1f} GB 必要"
+                f"(GPU が使えるのは {vram:.1f} GB、{pct['seq']}%)"
+            )
+        else:
+            msg = (
+                f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"
+            )
+        return "too_tight", "none", [msg], n.ram
     if how == "full":
         mode = "gpu"
         reasons = [f"VRAM {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る"]
@@ -1309,6 +1463,13 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
             f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)"
         ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
+    g = system.best_gpu
+    if g is not None and getattr(g, "memory", "") == "unified":
+        # Apple silicon は GPU の分も同じ統合メモリから使うので、GPU に載せる量 + 固定分(Python・ComfyUI)を
+        # 搭載量と比べる。内蔵 GPU・APU(shared)は、BIOS で取り分けた VRAM が搭載量に入らないので
+        # これまでどおり(固定分 + いちばん大きい段の部品)
+        use = n.full if how == "full" else n.sequential
+        ram_need = max(ram_need, use + c.ram_extra_gb)
     fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, system)
     return fit, mode, reasons, ram_need
 

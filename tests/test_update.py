@@ -535,3 +535,16 @@ def test_hf_selection_rules_19():
     assert copy_name("x/Foo-Q4_K_M-GGUF") == copy_name("y/foo") == copy_name("z/Foo_diffusers") == "foo"
     assert copy_name("x/flux-fp8") == copy_name("x/flux-nf4") == copy_name("x/flux-int8") == "flux"
     assert copy_name("x/Qwen-Image-2.1") != copy_name("x/Qwen-Image-2.2")
+
+
+def test_uncensored_words_heretic_and_unfiltered():
+    """名前の語 heretic・unfiltered も無検閲の印にする(語の区切りで。オーナーの指示 2026-10-21)。"""
+    from genmodelfit import update
+
+    def words(text: str) -> set[str]:
+        return {m.group(1).lower() for m in update._UNCENSORED.finditer(text)}
+
+    assert words("someone/Qwen-Image-Heretic") == {"heretic"}
+    assert words("someone/flux-unfiltered-v2 FLUX Unfiltered") == {"unfiltered"}
+    assert words("someone/heretical-model filteredunfilteredx") == set()  # 語の途中は当てない
+    assert {"heretic", "unfiltered"} <= set(update.UNCENSORED_SEARCH_WORDS)

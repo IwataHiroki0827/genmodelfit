@@ -449,13 +449,22 @@ def test_other_gpus_not_checked_when_nvidia_found(monkeypatch):
 
 
 def test_amd_only_pc_is_judged_as_cpu_with_a_note(monkeypatch):
+    """Windows 10 の AMD は ROCm 版 PyTorch の対象外なので CPU(理由付き)。
+    Windows 11 なら ROCm で判定(#22)。"""
     _patch_nvidia(monkeypatch, None)
     adapters, _ = parse_wmi_video(fx("wmi_amd_single.json"), reg("registry_amd_stale.json"))
     monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
-    s = detect(memory=MEM)
+    s = detect(memory=MEM, host=hardware.Host("Windows", 19045))
     assert s.best_gpu is None and s.vram_gb == 0 and s.other_gpus_checked
     assert s.other_gpus[0].name == "AMD Radeon RX 7800 XT"
-    assert any("AMD Radeon RX 7800 XT(VRAM 15.98 GB)" in n and "CPU として判定した" in n for n in s.notes)
+    assert any(
+        "AMD Radeon RX 7800 XT(VRAM 15.98 GB)" in n and "Windows 11 が要る" in n and "CPU として判定した" in n
+        for n in s.notes
+    )
+    adapters, _ = parse_wmi_video(fx("wmi_amd_single.json"), reg("registry_amd_stale.json"))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
+    s = detect(memory=MEM, host=hardware.Host("Windows", 26100))
+    assert s.best_gpu.backend == "rocm" and s.vram_gb == 15.98 and s.best_gpu.gfx_target == "gfx1101"
 
 
 def test_all_gpus_lists_others_without_using_them(monkeypatch):
@@ -710,8 +719,10 @@ def test_system_text(monkeypatch, capsys):
 def test_linux_nvidia_without_nvidia_smi_is_noted(monkeypatch):
     _patch_nvidia(monkeypatch, None)
     monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (parse_lspci(fx("lspci_amd_nvidia.txt")), []))
-    s = detect(memory=MEM)
-    assert s.best_gpu is None
+    s = detect(memory=MEM, host=hardware.Host("Linux"))
+    # RX 7800 XT は VRAM が読めず(sysfs なし)、Raphael は画面用の小さな内蔵 GPU、
+    # Arc A770 は名前から 8 GB とみなす
+    assert s.best_gpu is not None and s.best_gpu.name == "Intel Arc A770" and s.best_gpu.backend == "xpu"
     assert any("NVIDIA GeForce RTX 3070 があるが、nvidia-smi で確かめられない" in n for n in s.notes)
 
 

@@ -10,7 +10,7 @@
 | 項目 | どこから | 判定に使うか |
 |---|---|---|
 | NVIDIA の GPU(名前・VRAM の総量・空き・使用量・ドライバ・compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | 使う(backend が `cuda` のものの最大の 1 枚) |
-| NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM は sysfs の `mem_info_vram_total`) | **使わない**(知らせるだけ) |
+| NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM・GTT は sysfs の `mem_info_vram_total`・`mem_info_gtt_total`)。macOS: `system_profiler SPDisplaysDataType -json` | NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で使う(0.7.0、下の「NVIDIA 以外の GPU」) |
 | 物理メモリ | psutil(Linux はコンテナ(cgroup)の上限があればそれ) | 使う |
 | 仮想メモリ | Windows: `GlobalMemoryStatusEx`(ctypes)とレジストリ `Memory Management\PagingFiles`。Linux: `/proc/swaps`(zram を除く)。macOS: 自動で伸びる扱い | 使う(足りないときの上限) |
 | ディスクの空き | `shutil.disk_usage` | 表示だけ |
@@ -201,15 +201,78 @@ VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`
 44 件は分からない(読み上げ 20 件・ComfyUI に組み込みでない補助ツール 18 件・Capybara 4 件・HF の 3 件。ComfyUI のどのクラスで
 読むかを確かめられなかったもの)。分からないものは見積もりを変えず、bf16 を持たない GPU でだけ理由に書く。
 
-## NVIDIA 以外の GPU(知らせるだけ)
+## NVIDIA 以外の GPU(0.7.0、#22・#23)
 
-- **判定には使わない**。v0.1 は NVIDIA の CUDA だけ。レジストリには取り外した GPU の項目も残る。
+NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、画面の部品の一覧から AMD・Intel・Apple の GPU を
+下の対応表で判定に使う(`hardware.classify_adapter`)。**NVIDIA の判定は変えない**(NVIDIA の GPU が使えれば、ほかの
+GPU は `--all-gpus` で一覧に出すだけ)。実測は 0 件なので、段階は推定で、理由に「推定(<会社>・実測なし)」を書き、
+**段階は good まで**にする(同じ会社の GPU の、同じ設定で成功した実測があるときだけ外れる: 下の #26)。
+NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
+対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
+
+### 対応表(一次資料は 2026-10-21 に読んだ)
+
+| 会社・部品 | OS | 判定 | 一次資料 |
+|---|---|---|---|
+| AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
+| AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
+| AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
+| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 = gfx1034)、Radeon 680M / 660M(gfx1035) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
+| AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
+| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、610M = gfx1036)、Van Gogh(gfx1033) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
+| AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
+| AMD(どれでも) | Windows 10 | CPU | ComfyUI の案内「Use Windows 11」 |
+| AMD | macOS | CPU | Apple の MPS 版は Apple silicon だけ(下) |
+| Intel Arc A シリーズ(Alchemist: A770 / A750 / A580 / A380 / A310、Pro A) | Windows 11・Linux | **GPU**(`xpu`) | PyTorch 2.14「Getting Started on Intel GPU」(https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html)の Client GPUs の表(「Windows 11 & Ubuntu 24.04/26.04 & WSL2」)、ComfyUI README「Intel GPUs (Windows and Linux)」 |
+| Intel Arc B シリーズ(Battlemage: B580 / B570、Pro B60 / B50) | Windows 11・Linux | **GPU**(`xpu`) | 同上 |
+| Intel Core Ultra の Arc Graphics(Meteor Lake-H、Arrow Lake-H の 140T / 130T、Lunar Lake の 140V / 130V、Panther Lake の B390 など) | Windows 11・Linux | **GPU**(`xpu`、共有メモリ) | 同上(Panther Lake は Ubuntu 26.04) |
+| Intel UHD・Iris Xe・「Intel(R) Graphics」(Arrow Lake-S など)・HD Graphics | — | CPU | 上の表に入らない |
+| Intel(どれでも) | Windows 10 | CPU | 上の表は Windows 11 |
+| Apple silicon(M1〜M4 など) | macOS 14 以降 | **GPU**(`mps`、統合メモリ) | Apple「Accelerated PyTorch training on Mac」(https://developer.apple.com/metal/pytorch/ : 「Mac computer with Apple silicon」「macOS 14.0 or later」)、ComfyUI README「Apple Mac silicon」 |
+| Apple silicon | macOS 13 以前 | CPU | 同上 |
+
+GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発名 Navi 31 など)・`_INTEL_XPU` の表。名前が
+「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前(`_AMD_CPU_IGPU`: Ryzen AI Max → gfx1151、Ryzen 7 8845HS → gfx1103 など)で
+決め、決まらなければ CPU(世代が分からない)。Intel Arc の VRAM が読めない(Linux の lspci)ときは名前から少ないほうの版の量
+(A770 は 8 GB 版と 16 GB 版があるので 8 GB)とみなす。
+
+### 精度(ComfyUI b1a247c の `comfy/model_management.py`)
+
+- AMD(`torch.version.hip`): `should_use_fp16` は常に True。`should_use_bf16` は RDNA 2 以前(`AMD_RDNA2_AND_OLDER_ARCH`)で
+  False だが、`manual_cast=True`(fp16 を持たない系統の計算の精度を選ぶとき)は True を返す。そこで RDNA 2 では fp16 を持たない
+  系統でも作業用メモリを 2 倍にしない(VAE は fp32 で 2 倍)。
+- Intel(XPU): `should_use_fp16` は `has_fp16`、`should_use_bf16` は `torch.xpu.is_bf16_supported()`。対象の Arc はどちらも持つ。
+- Apple(MPS): `should_use_fp16` は True、`should_use_bf16` は macOS 14 以降で True。
+- fp8 の計算(`supports_fp8_compute`)はどれも持たないとして扱う(fp8 の重みは注意だけ)。
+
+### 共有メモリ(内蔵 GPU・APU・Apple silicon)
+
+- **Apple silicon(`memory: unified`)**: ComfyUI は MPS では搭載量の全部を GPU のメモリとして数え
+  (`get_total_memory` が CPU と MPS で `virtual_memory_total`、`vram_state` は SHARED: model_management.py)、部品をメインメモリへ
+  逃がす(lowvram)動きは使わない(SHARED では `lowvram_model_memory` を求めない)。macOS は GPU が性能を落とさずに使える量
+  (Metal の `recommendedMaxWorkingSetSize`。llmfit bffd1b6 が使う値)を搭載量より小さくするので、搭載量の **3/4**
+  (`hardware.UNIFIED_MEMORY_SHARE`。判断で決めた値で、実測していない)を GPU のメモリとみなす。GPU に載せる量 + 固定分
+  (Python・ComfyUI、3 GB)を搭載量とも比べる(超えたら仮想メモリで遅い = marginal)。
+- **内蔵 GPU・APU(`memory: shared`)**: BIOS で取り分けた VRAM(Windows はレジストリの qwMemorySize、Linux は sysfs の
+  `mem_info_vram_total`)+ メインメモリから使える分。Linux の amdgpu は sysfs の `mem_info_gtt_total`(GTT)を読む。読めなければ
+  見えているメインメモリの **1/2**(`hardware.SHARED_MEMORY_SHARE`): Linux の TTM が GPU に貸すページの上限が「total system memory の
+  約 50%」(torvalds/linux a804c57 `drivers/gpu/drm/ttm/ttm_device.c:88〜92`。amdgpu の `gttsize` の既定は「-1 = Use value specified
+  by TTM」: https://docs.kernel.org/gpu/amdgpu/module-parameters.html)、Windows の共有 GPU メモリも物理メモリの約半分
+  (タスク マネージャーの「共有 GPU メモリ」。WDDM の説明: https://learn.microsoft.com/ja-jp/archive/blogs/pigscanfly/graphics-memory-reporting-in-vista 。古い文書なので目安)。
+- どちらも、逃がす先が同じメモリなので `GPU+RAM`(逃がす)は使わない(全部載せか、部品を順に載せ替えるか)。
+  専用の VRAM の GPU があれば、内蔵 GPU より先に使う。
+- メインメモリを増やすと GPU が使える量も増えるだけなので、段階は下がらない(`tests/test_vendors.py`)。
+
+### 検出
+
 - 既定では、nvidia-smi で NVIDIA の GPU が見つからず、`--vram` で上書きしていないときだけ調べる
-  (AMD・Intel だけの PC で「CPU として判定した」理由を出すため。NVIDIA のドライバが入っていない NVIDIA の GPU も分かる)。
-  NVIDIA の GPU があるときは調べない(PowerShell の起動に約 1 秒かかるため)。`genmodelfit system --all-gpus` で必ず調べる。
+  (NVIDIA のドライバが入っていない NVIDIA の GPU も分かる)。NVIDIA の GPU があるときは調べない(PowerShell の起動に約 1 秒
+  かかるため)。`genmodelfit system --all-gpus` で必ず調べる(このときも NVIDIA が使えれば NVIDIA で判定する)。
+  レジストリには取り外した GPU の項目も残る(下の突き合わせで除く)。
 - Windows: `powershell.exe -NoProfile -NonInteractive -Command` で `Get-CimInstance Win32_VideoController` の
   Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode を JSON で取る(出力は UTF-8 に指定。時間制限 8 秒)。
-  PNPDeviceID が `PCI\` で始まらないもの(仮想の画面・リモートデスクトップの画面)は捨てる。
+  PNPDeviceID が `PCI\` で始まらないもの(仮想の画面・リモートデスクトップの画面)は捨てる。OS の版はビルド番号
+  (22000 以上が Windows 11)。
   - `AdapterRAM` は uint32(Microsoft の Win32_VideoController の説明:
     https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller)なので 4 GiB 以上は
     4293918720 前後で頭打ちになる。この値以上は使わない。
@@ -222,10 +285,49 @@ VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`
     (™・® を除いて比べる)が同じものに当てる。当たる項目が複数あって値が違う(取り外した同名の GPU が残っている)ときは使わない。
   - NVIDIA の部品(VEN_10DE)が「Microsoft Basic Display Adapter」なら「NVIDIA のドライバが入っていない」と知らせる。
     ConfigManagerErrorCode が 0 でなければ「デバイスマネージャーで問題がある状態」と知らせる。
-- Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。名前は括弧の中の製品名(`GA104 [GeForce RTX 3070]`)。
-  AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total` の VRAM を表示に使う。
-- macOS: Apple の GPU は判定しない(CPU として判定し、そう書く)。
-- PowerShell・lspci が無い・失敗した・時間切れは、黙って飛ばす(空のまま)。
+- Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。名前は括弧の中の製品名(`Navi 31 [Radeon RX 7900 XT/7900 XTX/…]`
+  の括弧の中)。AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total`(VRAM)と `mem_info_gtt_total`(GTT)を読む。
+  rocm-smi は使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。
+- macOS: `system_profiler SPDisplaysDataType -json` の `sppci_model`(「Apple M2 Pro」)と `spdisplays_vendor`。
+  統合メモリの量は psutil の搭載量(macOS では `sysctl hw.memsize` と同じ値)、OS の版は `platform.mac_ver()`。
+- PowerShell・lspci・system_profiler が無い・失敗した・時間切れは、黙って飛ばす(空のまま)。
+
+### 表示
+
+- 表の先頭の行: 使える GPU があれば「PC: AMD Radeon RX 7900 XTX 24.0 GiB VRAM (ROCm, estimated), RAM …」、Apple は
+  「PC: Apple M2 Pro (unified memory; 24.0 GiB for the GPU, MPS, estimated), RAM …」、内蔵 GPU は「(integrated; 16.1 GiB shared
+  with RAM, XPU, estimated)」。使える GPU が無ければ、見つけた GPU とその扱い(「PC: Intel(R) UHD Graphics 770 (integrated; not usable
+  for generation → judged as CPU), RAM 15.7 GiB …」)と、次の行に「This PC has no usable GPU: only models that run on CPU are shown
+  (N tools hidden: --include-tools)」。
+- Mode の列: 動かないもののうち、使える GPU が無いから動かないものは `GPU req`、メインメモリが足りないものは `RAM`
+  (JSON の `run_mode_label` は `-` のまま)。
+
+## CPU で動く系統(0.7.0、#39)
+
+GPU が無い(または GPU に載らない)とき、CPU で動くとみなすのは、これまでの「重み 2 GB 以下の画像・音声・読み上げ」に加えて、
+`families.CPU_FAMILIES` の系統:
+
+| 系統 | 種類 | 根拠 | 除くもの |
+|---|---|---|---|
+| `sd`(SD 1.5・SD 2.x・SDXL・SDXL Turbo など) | 画像 | AI生成キットが GPU なしの PC で SDXL を生成した(カタログの `cpu_ok`。1 枚に数分〜十数分) | SUPIR(確かめていない) |
+| `stable_audio`(Stable Audio Open 1.0・Stable Audio 3 Small) | 音楽・効果音 | AI生成キットが Stable Audio 3 Small(効果音・音楽)を CPU で動かした | Stable Audio 3 Medium(確かめていない) |
+
+ComfyUI は GPU が無ければ CPU で動き(`--cpu`「To use the CPU for everything (slow)」: comfy/cli_args.py)、CPU では本体と VAE を
+fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model_management.py:1902・1969。テキストエンコーダは fp16 のまま:
+1261)。そこで必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
+これが搭載量に収まれば marginal(CPU、遅い)、仮想メモリの範囲なら marginal(遅い)、超えたら too_tight。
+段階は CPU なので marginal まで。
+
+## 同じ GPU で成功した実測(0.7.0、#26)
+
+同じ設定・標準のワークフローで成功(`outcome: ok`)した実測があり、その GPU と同じ会社で、この PC の VRAM が実測の GPU の VRAM 以上
+(公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)なら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
+この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と下限としてだけ使う
+実測(`torch_reserved`)は perfect の根拠にしない(good まで)。ほかの利用者の実測(#34)と、精度の直しで作業用メモリを倍にした
+GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
+(段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは
+「段階は見積もりで決めた」と書く。例: Wan 2.2 5B(RTX 5080 16 GB で 15.8 GB・成功)は、RTX 5080 では good / GPU
+(0.6.0 は marginal / offload)、RTX 3060 12 GB では marginal / offload のまま。
 
 ## メモリと仮想メモリ
 
@@ -265,14 +367,15 @@ VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`
 
 | llmfit の場合分け | こちら |
 |---|---|
-| nvidia-smi の `addressing_mode`(ATS)で CPU と共有するメモリの GPU(Grace Blackwell・Tegra)を見分け、RAM を VRAM とみなす | VRAM が返らない GPU は判定に使わない(v0.1 は外付けの GPU だけ)。DGX Spark などは対象外と書く |
+| nvidia-smi の `addressing_mode`(ATS)で CPU と共有するメモリの GPU(Grace Blackwell・Tegra)を見分け、RAM を VRAM とみなす | VRAM が返らない NVIDIA の GPU は判定に使わない。DGX Spark などは対象外と書く |
+| Apple silicon は Metal の `recommendedMaxWorkingSetSize` を GPU のメモリにする | Python から Metal を呼ばない(依存を増やさない)ので、搭載量の 3/4 とみなす(上の「共有メモリ」) |
 | nvidia-smi が VRAM を返さないとき GPU 名から推す | 推さない(VRAM を推して「載る」と言わない) |
 | 同じ型番の複数枚をまとめて VRAM を足す(llama.cpp などは分けて載せられる) | 足さない(ComfyUI は 1 枚で動く)。最大の 1 枚 |
 | Linux で nvidia-smi が無いとき sysfs・lspci で NVIDIA の GPU を見つける | 判定には使わない(CUDA が動くか分からない)。`--all-gpus` などの一覧に出すだけ |
-| AMD(rocm-smi・sysfs)・Intel(lspci)・Apple(system_profiler)を判定に使う | 使わない(v0.1 は NVIDIA だけ)。知らせるだけ |
+| AMD(rocm-smi・sysfs)・Intel(lspci)・Apple(system_profiler)を判定に使う | 0.7.0 から、ComfyUI + PyTorch が動く組み合わせ(対応表)だけ使う。llama.cpp の Vulkan のようにどの GPU でも動くわけではないので、Vulkan では数えない |
 | WMI の AdapterRAM の頭打ちをレジストリの qwMemorySize で直す(issue #830)、DriverDesc で突き合わせ、曖昧なら使わない | 同じ考え方。加えて MatchingDeviceId(型番の ID)で先に突き合わせ、PCI でない部品を捨てる |
-| 内蔵 GPU(Intel UHD など)を外付けがあれば落とす | 判定に使わないので落とさない(一覧に出すだけ) |
-| AMD の APU の UMA の取り分を搭載量に足し戻す | しない(v0.1 は NVIDIA だけ。必要になったら足す) |
+| 内蔵 GPU(Intel UHD など)を外付けがあれば落とす | 専用の VRAM の GPU を内蔵 GPU より先に使う。UHD・Iris Xe は対応表に無いので使わない |
+| AMD の APU の UMA の取り分を搭載量に足し戻す | 取り分けた VRAM + GTT(または見えている RAM の半分)を GPU のメモリにする |
 | `available_ram_gb` が 0 のときの代わりの読み方(macOS) | psutil の値のまま |
 | compute capability・ドライバ・PyTorch のビルドの対応 | llmfit には無い。こちらで足した(上の「世代と PyTorch・ドライバ」) |
 | ページファイル・スワップ | llmfit には無い。こちらで足した(上の「メモリと仮想メモリ」) |
@@ -291,7 +394,7 @@ nvidia-smi だけを 15 回ずつ交互に動かすと、項目を増やした�
 
 ## 試験
 
-`tests/test_hardware.py` と `tests/fixtures/hardware/`。既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
+`tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)と `tests/fixtures/hardware/`。既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
 (`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files` を塞ぐ)。
 フィクスチャ: この PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)、複数の GPU、compute_cap の無い古い版、
 `[N/A]`、壊れた出力、ドライバが動いていない・GPU が無いときの出力、AMD だけ・Intel + NVIDIA・ドライバの無い NVIDIA の WMI、

@@ -317,18 +317,28 @@ class Measurement:
         return m
 
 
+# 判定に使える GPU の backend(0.7.0、#22)。cuda = NVIDIA、rocm = AMD(ROCm 版 PyTorch)、
+# xpu = Intel(XPU 版 PyTorch)、mps = Apple silicon(MPS)。none は判定に使わない
+USABLE_BACKENDS = ("cuda", "rocm", "xpu", "mps")
+# GPU のメモリの種類(Gpu.memory)。dedicated = 専用の VRAM、shared = メインメモリと共有する内蔵 GPU・APU
+# (Windows の共有 GPU メモリ・Linux の GTT)、unified = Apple silicon の統合メモリ
+GPU_MEMORY_KINDS = ("dedicated", "shared", "unified")
+
+
 @dataclass
 class Gpu:
-    """nvidia-smi で確かめた GPU。判定に使うのは backend が cuda のものだけ(docs/hardware.md)。"""
+    """判定に使う GPU(docs/hardware.md)。NVIDIA は nvidia-smi で確かめたもの。AMD・Intel・Apple は
+    画面の部品の一覧から、一次資料の対応表で ComfyUI + PyTorch が動く組み合わせと決めたもの(0.7.0、#22)。
+    判定に使うのは backend が USABLE_BACKENDS のものだけ。"""
 
     name: str
     vendor: str  # nvidia / amd / intel / apple / unknown
+    # VRAM の総量。shared・unified は、GPU が使えるとみなしたメインメモリの分(docs/hardware.md「共有メモリ」)
     vram_total_gb: float
     vram_free_gb: float | None = None  # 今の空き(nvidia-smi の memory.free)。上書きしたときは None
     driver: str | None = None
-    backend: str = (
-        "none"  # cuda / none(v0.1 は NVIDIA の CUDA だけを数える。動かない世代・古いドライバは none)
-    )
+    # cuda / rocm / xpu / mps(判定に使う)/ none(動かない世代・古いドライバ・対応表に無い GPU)
+    backend: str = "none"
     vram_used_gb: float | None = None  # 今ほかのアプリ(画面・ブラウザなど)が使っている量(memory.used)
     compute_capability: str | None = None  # 例 "8.6"。None は分からない
     compute_capability_source: str | None = None  # nvidia-smi / name(GPU 名の表から推した)/ None
@@ -341,17 +351,29 @@ class Gpu:
     bf16: bool | None = None
     fp8: bool | None = None
     notes: list[str] = field(default_factory=list)  # backend が none の理由・注意
+    # 以下は 0.7.0 で足した項目(#22)。memory は GPU_MEMORY_KINDS、
+    # gfx_target は AMD の LLVM の名前(gfx1100 など)
+    memory: str = "dedicated"
+    gfx_target: str | None = None
 
 
 @dataclass
 class Adapter:
-    """NVIDIA 以外も含めて見つけた画面の部品(GPU)。知らせるためだけに使い、判定には使わない。"""
+    """NVIDIA 以外も含めて見つけた画面の部品(GPU)。0.7.0 から、AMD・Intel・Apple は対応表で判定に使えるかを
+    決める(usable と reason。判定に使うものは SystemInfo.gpus にも Gpu として入る)。"""
 
     name: str
-    vendor: str  # nvidia / amd / intel / unknown
-    vram_gb: float | None = None  # 表示用(Windows はレジストリの qwMemorySize、Linux の AMD は sysfs)
-    vram_source: str | None = None  # registry / wmi / sysfs / None
-    source: str = ""  # wmi / lspci
+    vendor: str  # nvidia / amd / intel / apple / unknown
+    vram_gb: float | None = None  # Windows はレジストリの qwMemorySize、Linux の AMD は sysfs
+    vram_source: str | None = None  # registry / wmi / sysfs / name / None
+    source: str = ""  # wmi / lspci / system_profiler
+    # 以下は 0.7.0 で足した項目(#22)
+    integrated: bool | None = None  # 内蔵 GPU・APU か(None は分からない)
+    usable: bool | None = None  # 判定に使える組み合わせか(None は決めていない: NVIDIA は nvidia-smi で決める)
+    reason: str | None = None  # 使える・使えない理由(日本語の 1 文)
+    shared_gb: float | None = (
+        None  # Linux の amdgpu の GTT(メインメモリから使える分。sysfs mem_info_gtt_total)
+    )
 
 
 @dataclass
@@ -379,8 +401,13 @@ class SystemInfo:
 
     @property
     def best_gpu(self) -> Gpu | None:
-        usable = [g for g in self.gpus if g.backend == "cuda"]
-        return max(usable, key=lambda g: g.vram_total_gb) if usable else None
+        """判定に使う GPU。NVIDIA(cuda)があればその最大の 1 枚(これまでどおり)、無ければ AMD・Intel・Apple の
+        使えるもののうち最大の 1 枚。"""
+        usable = [g for g in self.gpus if g.backend == "cuda"] or [
+            g for g in self.gpus if g.backend in USABLE_BACKENDS
+        ]
+        # 専用の VRAM の GPU を内蔵 GPU・APU より先にする(共有の分がメインメモリから大きく見えても)
+        return max(usable, key=lambda g: (g.memory == "dedicated", g.vram_total_gb)) if usable else None
 
     @property
     def vram_gb(self) -> float:
@@ -415,6 +442,11 @@ class Estimate:
     vram_free_short: bool = False
     # 根拠の細かい段階(BASIS_DETAILS。#34)。basis は measured / estimated のまま(後方互換)
     basis_detail: str = "estimated"
+    # 段階を何で決めたか(0.7.0、#26)。estimate = 見積もり、
+    # measurement = 同じ設定でこの PC 以下の VRAM の GPU で成功した実測
+    # (そのとき measured_peak_vram_gb にその実測の VRAM)
+    fit_from: str = "estimate"
+    measured_peak_vram_gb: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする

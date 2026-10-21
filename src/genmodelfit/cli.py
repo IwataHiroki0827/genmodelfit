@@ -212,7 +212,7 @@ def cmd_system(args: argparse.Namespace) -> int:
     if not s.gpus:
         print("GPU:  none detected (CPU only)")
     elif s.best_gpu is None:
-        print("GPU:  no usable NVIDIA GPU (judged as CPU only; see notes)")
+        print("GPU:  no usable GPU (judged as CPU only; see notes)")
     for i, g in enumerate(s.gpus, 1):
         mem = []
         if g.vram_free_gb is not None:
@@ -232,8 +232,15 @@ def cmd_system(args: argparse.Namespace) -> int:
         use = (
             "used for judging"
             if g is s.best_gpu
-            else ("not used" if g.backend != "cuda" else "not the largest")
+            else ("not used" if g.backend == "none" else "not the largest")
         )
+        if g.vendor != "nvidia":  # AMD・Intel・Apple(0.7.0、#22。対応表で決めた推定)
+            gfx = f"{g.gfx_target}, " if g.gfx_target else ""
+            kind = {"shared": "integrated, shared with RAM, ", "unified": "unified memory, "}.get(
+                g.memory, ""
+            )
+            print(f"       {gfx}{kind}{g.backend} (estimated, no measurements): {use}")
+            continue
         print(f"       {cc}{arch}, driver {g.driver or 'unknown'}, {g.backend}: {use}")
         if g.torch_cuda:
             print(f"       PyTorch CUDA builds that run here: {', '.join(g.torch_cuda)}")
@@ -241,12 +248,14 @@ def cmd_system(args: argparse.Namespace) -> int:
             yes = {True: "yes", False: "no", None: "unknown"}
             print(f"       ComfyUI precision: {g.compute_dtype} (bf16 {yes[g.bf16]}, fp8 {yes[g.fp8]})")
     if s.other_gpus_checked:
-        print("Display adapters (informational, not used for judging):")
+        print("Display adapters (AMD / Intel / Apple are used only when no NVIDIA GPU is usable):")
         if not s.other_gpus:
             print("  (none found)")
         for a in s.other_gpus:
             vram = f", {a.vram_gb:.1f} GB ({a.vram_source})" if a.vram_gb else ""
-            print("\n".join(_wrapped(f"{a.name} [{a.vendor}{vram}]")))
+            kind = ", integrated" if a.integrated else ""
+            state = {True: ": usable", False: ": not usable -> judged as CPU"}.get(a.usable, "")
+            print("\n".join(_wrapped(f"{a.name} [{a.vendor}{vram}{kind}]{state}")))
     if s.overrides:
         print(f"(overridden: {', '.join(s.overrides)})")
     if s.notes:

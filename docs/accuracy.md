@@ -210,6 +210,11 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 - **日付が不明**: 実測の日付・ComfyUI の版の記録が無い(measurements.json の date が空)
 - **単位**: 実測は GiB と仮定した(上の「実測の使い方」7)。GB(10 進)だったなら実測は 7% 小さく、係数も変わる
 - **メインメモリ**: 式も 1.5 倍も実測で確かめていない(上の「メインメモリ」)
+- **NVIDIA 以外の GPU**(0.7.0、#22): AMD・Intel・Apple の実測は 0 件。NVIDIA の係数をそのまま使い、段階は good までにした。
+  Apple silicon の統合メモリの 3/4、内蔵 GPU・APU のメインメモリの 1/2(Linux の TTM の既定)を GPU のメモリとみなす割合は、
+  一次資料の挙動から決めた目安で、実測していない(docs/hardware.md「共有メモリ」)
+- **CPU で動く系統**(#39): SD 系・Stable Audio の CPU のメインメモリ(本体・VAE を fp32 に広げ、作業用メモリ × 2)は
+  ComfyUI のコードから決めた式で、実測していない。遅さは AI生成キットの SDXL の「1 枚に数分〜十数分」だけ
 - **分かっている外れ**(人が決めた目安との突き合わせ、`tests/test_estimate.py` が strict な xfail で記録):
   - Wan2.2 5B は 8GB で too_tight、12GB で marginal と出る(目安は最低 8GB・推奨 12GB)。
     動画の作業用メモリを Wan2.1 の 1 件から伸ばしている(Wan2.2 は VAE の圧縮が強く、画素あたりのトークンが少ないのに

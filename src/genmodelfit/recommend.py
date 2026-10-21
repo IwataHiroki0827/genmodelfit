@@ -17,7 +17,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from .db import Database
-from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients
+from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients, shared_memory
 from .groups import group_key, index_for, is_community, precision_rank
 from .models import (
     CONTENT_LEVELS,
@@ -139,9 +139,11 @@ def license_matches(m: ModelEntry, allowed: Iterable[str] | None) -> bool:
     return bool(lics) and all(x is not None and x.lower() in allow for x in lics)
 
 
-def _how(e: Estimate, vram: float) -> tuple[str, str]:
+def _how(e: Estimate, vram: float, system: SystemInfo | None = None) -> tuple[str, str]:
     """(段階, 載せ方 full / seq / offload)。estimate.gpu_choice と同じ選び方。"""
-    return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram)
+    return gpu_choice(
+        e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram, allow_offload=not shared_memory(system)
+    )
 
 
 def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
@@ -163,8 +165,10 @@ def mode_label(e: Estimate, system: SystemInfo | None = None) -> str:
         return "CPU"
     if e.run_mode == "offload":
         return "GPU+RAM"
+    if getattr(e, "fit_from", "estimate") == "measurement":
+        return "GPU"  # 同じ設定で成功した実測で決めた(#26)
     v = system.vram_gb if system is not None else 0.0
-    return "GPU~" if v and _how(e, v)[1] == "seq" else "GPU"
+    return "GPU~" if v and _how(e, v, system)[1] == "seq" else "GPU"
 
 
 def _ram_short(e: Estimate, system: SystemInfo | None) -> bool:
@@ -176,7 +180,13 @@ def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
     vram = system.vram_gb if system is not None else 0.0
     if e.unknown_size or e.run_mode == "cpu" or vram <= 0:
         return None
-    level, how = _how(e, vram)
+    if (
+        getattr(e, "fit_from", "estimate") == "measurement"
+        and e.measured_peak_vram_gb
+        and e.fit != "too_tight"
+    ):
+        return e.measured_peak_vram_gb  # 段階を決めた実測の VRAM(#26)
+    level, how = _how(e, vram, system)
     pick = {"full": e.vram_gb, "seq": e.vram_sequential_gb or e.vram_gb, "offload": e.vram_offload_gb}
     if e.fit == "too_tight":
         # VRAM は足りていてメモリが理由なら、VRAM の側は判定に使った載せ方の値を出す

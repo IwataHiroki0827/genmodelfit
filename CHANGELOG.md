@@ -7,7 +7,42 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
+Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_version` stays 1.
+
+### Added
+
+- **AMD / Intel / Apple GPUs are judged** (Issues #22, #23) when no NVIDIA GPU is usable, from a support table built
+  from primary sources (docs/hardware.md「NVIDIA 以外の GPU」): AMD ROCm for RDNA 2 / 3 / 3.5 / 4 on Windows 11 and Linux
+  (and Instinct on Linux), Intel XPU for Arc A / B and Core Ultra Arc Graphics on Windows 11 and Linux, Apple MPS on
+  macOS 14+. They are estimates: reasons say `推定(<vendor>・実測なし)` and levels are capped at Good. Integrated GPUs
+  and APUs use dedicated VRAM + GTT (or half of RAM), Apple silicon 3/4 of unified memory; they never offload.
+  Unsupported GPUs (Intel UHD / Iris Xe, RDNA 1 and older, 2-CU display iGPUs, Windows 10) are judged as CPU with a
+  reason. NVIDIA judging is unchanged. macOS detection uses `system_profiler`; Linux reads amdgpu GTT from sysfs.
+  NVIDIA 以外の GPU も、一次資料の対応表で動く組み合わせなら推定で判定する(段階は good まで)。
+- JSON (additive): `Gpu.backend` gains `rocm` / `xpu` / `mps`; `Gpu.memory` (`dedicated` / `shared` / `unified`),
+  `Gpu.gfx_target`; `Adapter.integrated`, `usable`, `reason`, `shared_gb` and vendor `apple`;
+  `Estimate.fit_from` (`estimate` / `measurement`) and `measured_peak_vram_gb`.
+- **SD family and Stable Audio run on CPU** (Issue #39): SD 1.5 / 2.x / SDXL image models and Stable Audio Open 1.0 /
+  3 Small are Marginal (`CPU`) without a GPU when RAM suffices, counting ComfyUI's fp32 weights and working memory
+  on CPU (`families.CPU_FAMILIES`, evidence from AI生成キット's real CPU runs). SUPIR and Stable Audio 3 Medium are
+  left out (not checked).
+- Tables: without a usable GPU, the PC line names the detected GPUs and how they are treated (`PC: Intel(R) UHD
+  Graphics 770 (integrated; not usable for generation → judged as CPU), RAM …`) and a second line says `This PC has no
+  usable GPU: only models that run on CPU are shown (N tools hidden: --include-tools)`. The Mode column shows
+  `GPU req` (needs a GPU) and `RAM` (RAM short) for rows that do not run; JSON `run_mode_label` is unchanged.
+- Uncensored name words `heretic` and `unfiltered` (`update`: name detection and Hugging Face search words).
+
+### Changed
+
+- **A successful measurement on the same GPU sets the level** (Issue #26): with a successful standard measurement at
+  the same settings on a GPU of the same vendor whose VRAM is at most this PC's, the level is at least Good and the run
+  mode GPU (Perfect only when the peak is within 60% and not pinned at the GPU limit). Wan 2.2 5B on an RTX 5080 16 GB
+  is now Good / GPU (was Marginal / offload with `basis: measured`). Reasons say whether the measurement or the
+  estimate decided the level.
+  同じ GPU で成功した実測があれば、段階は実測で決める。
+- `system`: non-NVIDIA GPUs show their backend and memory kind; display adapters show whether they are usable.
+
+## [0.6.0] - 2026-10-21
 
 ### Added
 
