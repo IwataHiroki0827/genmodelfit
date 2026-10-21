@@ -4,7 +4,7 @@
 
 | 流れ | 何を配る | きっかけ | 配り先 |
 |---|---|---|---|
-| 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push → ユーザの承認 | PyPI と GitHub Release |
+| 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push(タグは管理者だけが作れる) | PyPI と GitHub Release |
 | データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
 | 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | 毎週月曜 03:00 UTC・手動実行 | PR `automated/weekly-data` |
 
@@ -14,7 +14,7 @@
 
 | environment | 使えるところ | 承認 | シークレット |
 |---|---|---|---|
-| `pypi` | `v*` のタグだけ | 必須(ユーザ `KoyoYeager`) | なし(Trusted Publishing) |
+| `pypi` | `v*` のタグだけ | なし(2026-10-21 にオーナーが外した。代わりにルールセットで `v*` のタグを管理者だけにする) | なし(Trusted Publishing) |
 | `data-signing` | `main` ブランチだけ | なし | `GENMODELFIT_SIGNING_KEY`(署名の秘密鍵) |
 
 リポジトリ全体のシークレットには何も置かない。秘密鍵は `data-signing` だけにあるので、main 以外のブランチや

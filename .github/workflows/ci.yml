@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# 同じ PR に続けて push したら、古い実行を止める。main への push は止めない(マージごとの結果を残す)
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     # Python 3.10〜3.13 × Ubuntu / Windows。ruff と網羅率は 3.12 だけ(時間を節約する)
