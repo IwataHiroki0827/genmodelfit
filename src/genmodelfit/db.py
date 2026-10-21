@@ -98,6 +98,10 @@ _ENTRY_TYPES = {
     "downloads_all_time": (int, type(None)),
     "files_complete": (bool, type(None)),
     "size_floor_bytes": (int, type(None)),
+    # 後から足した任意の項目(0.4.0、#36)。古い版はこのキーを見ずに捨てる
+    "languages": (dict, type(None)),
+    "runtime": _OPT_STR,
+    "description": (dict, type(None)),
 }
 _FILE_TYPES = {
     "name": _STR,
@@ -131,6 +135,13 @@ def check_entry(d: Any, i: int) -> None:
     _check_types(d, _ENTRY_TYPES, where)
     if not all(isinstance(t, str) for t in d.get("tasks", [])):
         raise DatabaseError(f"{where} の tasks は文字列の並びです")
+    langs = d.get("languages")
+    for k, v in (langs or {}).items():
+        if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            raise DatabaseError(f"{where} の languages は {{種類: 言語コードの並び}} です: {langs!r}")
+    desc = d.get("description")
+    if any(not isinstance(k, str) or not isinstance(v, str) for k, v in (desc or {}).items()):
+        raise DatabaseError(f"{where} の description は {{言語: 文}} です: {desc!r}")
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
 

@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import safety
+from . import appinfo, safety
 from ._version import __version__
 from .db import Database, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
@@ -1154,6 +1154,13 @@ def build_database(
                 entries.append(prev_by_id[name])
                 carried += 1
                 warnings.append(f"テンプレートを読めなかったため前の一覧から引き継ぎました: {name}")
+    # 手で足すモデル(data/manual.json。#36)。ライセンスは上流のカードと照らし、HEAD・見出しの確認は
+    # ほかのモデルと同じ道に乗せる
+    manual = appinfo.manual_entries()
+    entries = appinfo.merge_manual(entries, manual)
+    stats["manual"] = {"models": len(manual), "ids": sorted(e.id for e in manual)}
+    if hf:
+        warnings += appinfo.verify_manual_licenses(entries, client)
     if inspect:
         say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
         stats["file_headers"] = inspect_headers(entries, fetch, progress=say)
@@ -1163,6 +1170,8 @@ def build_database(
 
     for e in entries:  # ComfyUI の系統(引き継いだ項目も、今の表で決め直す)
         assign(e)
+    # アプリ向けの項目(言語・動かし方・説明。#36)。手の表 > HF のカード > 文字を読む部品の表
+    stats["app_fields"] = appinfo.apply_app_fields(entries, client if hf else None)
     budget = bool(getattr(fetch, "budget_exhausted", False))
     stats["partial"] = bool(failed or transient or hf_stats.get("failed_queries") or budget)
     stats["partial_counts"] = {
@@ -1434,6 +1443,7 @@ def refresh_heads(
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
         raise UpdateFailed(f"一覧を読めません: {e}") from e
+    db.models = appinfo.merge_manual(db.models)
     say(f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています")
     stats = check_heads(db.models, fetch)
     if stats["urls"] and stats["unchecked"] == stats["urls"]:
@@ -1451,5 +1461,51 @@ def refresh_heads(
 
     for m in db.models:  # ComfyUI の系統も今の表で決め直す(古い一覧に無い項目を足す)
         assign(m)
+    db.sources["app_fields"] = appinfo.apply_app_fields(db.models)
+    db.sources["counts"] = count_entries(db.models)
+    db.save(out_path)
+    return db
+
+
+def refresh_app_fields(
+    fetch: Fetcher | None,
+    out_path: Path,
+    *,
+    db_path: str | None = None,
+    use_cache: bool = True,
+    offline: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> Database:
+    """今の一覧をそのまま使い、アプリ向けの項目(languages / runtime / description)と手のモデルだけを
+    当て直す(update --fields-only)。既存のモデルの判定に関わる項目
+    (ファイル・ライセンス・精度・HEAD)は変えない。
+
+    - 手の表(data/overrides.json)と文字を読む部品の表を当てる。HF のカードの言語は、前の一覧にあるものを残す
+      (カードを読み直すのは通信のある update)
+    - 手のモデル(data/manual.json)を足す。offline でなく fetch があれば、そのファイルだけ HEAD・見出しの精度・
+      上流のカードとのライセンスの照合をする(ほかのモデルには送らない)
+    """
+    from .db import DatabaseError
+    from .db import load as load_db
+
+    say = progress or _silent
+    try:
+        db = load_db(db_path, use_cache=use_cache)
+    except (DatabaseError, OSError, ValueError) as e:
+        raise UpdateFailed(f"一覧を読めません: {e}") from e
+    manual = appinfo.manual_entries()
+    if not offline and fetch is not None:
+        say(f"手のモデル {len(manual)} 件のライセンスを上流のカードと照らしています")
+        db.sources["warnings"] = [
+            w for w in db.sources.get("warnings", []) if not w.startswith("手のモデル ")
+        ] + appinfo.verify_manual_licenses(manual, HfClient(fetch))
+        say("手のモデルのファイルの URL に匿名の HEAD を送り、見出しを読んでいます")
+        check_heads(manual, fetch)
+        inspect_headers(manual, fetch, progress=say)
+        inspect_repo_precision(manual, fetch)
+    db.models = appinfo.merge_manual(db.models, manual)
+    db.sources["manual"] = {"models": len(manual), "ids": sorted(e.id for e in manual)}
+    db.sources["app_fields"] = appinfo.apply_app_fields(db.models)
+    db.sources["counts"] = count_entries(db.models)
     db.save(out_path)
     return db

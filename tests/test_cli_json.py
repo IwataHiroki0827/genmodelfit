@@ -61,6 +61,9 @@ FIT = {
     "tasks",
     "content",
     "source",
+    "runtime",
+    "languages",
+    "description",
     "fit_level",
     "fit_label",
     "run_mode",
@@ -199,6 +202,9 @@ MODEL_ENTRY = {
     "sampler_stages",
     "workflow_precision",
     "precision_source",
+    "languages",
+    "runtime",
+    "description",
 }
 MODEL_FILE = {
     "name",

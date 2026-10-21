@@ -148,6 +148,7 @@ Python 3.10+. Windows and Linux. GPUs: NVIDIA (CUDA) in v0.1; other PCs are judg
 | `genmodelfit info <id>` | files, licenses, estimate, limits, gate checks, other workflows of the same model / 1 つのモデルの詳細 |
 | `genmodelfit gate` | how many models can be auto-recommended, and why the rest are held / 自動でおすすめに出せる数と保留の理由 |
 | `genmodelfit update` | rebuild the model list from upstream / 一覧を上流から作り直す |
+| `genmodelfit update --fields-only [--offline]` | keep the list as it is; re-apply only the app fields (`languages` / `runtime` / `description`) and the hand-added models / 一覧はそのままで、言語・動かし方・説明と手で足したモデルだけを当て直す |
 | `genmodelfit update --from-release` | fetch the signed model list published by this project / 署名付きの配布の一覧を取り込む |
 | `genmodelfit download <model> [--comfyui-dir DIR] [--list]` | download all files of the model for this PC (precision chosen like `recommend`), after showing licenses, sizes and free disk and asking you; sha256-checked, resumable ([below](#download--モデルを落とす)) / この PC に合う精度でモデルのファイルを落とす(ライセンス・大きさ・空きを見せて同意を取る。sha256 で確かめ、続きから再開できる) |
 | `genmodelfit bench <template> --url URL` | measure VRAM / RAM / time on a running ComfyUI / 動いている ComfyUI で実測 |
@@ -355,7 +356,7 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 ## Data sources / データ源
 
-The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 204 models.
+The bundled list has 326 entries (image 161, video 114, TTS 22, music 16, 3D 10, SFX 3) that make 207 models.
 Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
 ones), and merges and test stubs are skipped ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
 llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。
@@ -366,6 +367,12 @@ llmfit と同じく、Hugging Face のモデルは全期間のダウンロード
 - [Hugging Face Hub API](https://huggingface.co/docs/hub/api): licenses (following `base_model` chains and a
   table of verified upstreams for repackaged files), gating, file sizes, sha256, and discovery of community models.
 - Civitai is **not** used: its terms limit automated access and forbid reselling compiled data.
+- Hand-added models (`source: manual`, `src/genmodelfit/data/manual.json`): models the popularity-based collection misses
+  (Tsukuyomi-chan piper-plus, Irodori-TTS, Stable Audio 3 Small music). Each file's license was read from the upstream
+  card and is compared with it on every `update`. Per-model `languages` (prompt / speech, ISO 639-1), `runtime`
+  (`comfyui` / `piper` / `irodori-tts`) and a short hand-written `description` (ja / en) are in the list for apps that build
+  their screens from it alone ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
+  手で足したモデルと、アプリが一覧だけで画面を作れるようにする言語・動かし方・説明を持ちます。
 - Measurements: `src/genmodelfit/data/measurements.json`. Contributions welcome (see [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
 Details: [docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md). genmodelfit stores model **information only**; it never hosts weights.
@@ -395,7 +402,7 @@ upstream, not the uploader's label) is on a commercial-use allowlist (apache-2.0
 replaceable), nothing is gated, an official ComfyUI workflow without custom nodes, the ComfyUI version is
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
 known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
-In the bundled list 83 of 323 entries are auto. When a license cannot be verified it is treated as unknown
+In the bundled list 83 of 326 entries are auto. When a license cannot be verified it is treated as unknown
 and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
 
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない

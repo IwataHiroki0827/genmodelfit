@@ -7,7 +7,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
+
+- App fields for apps that build their screens from the list alone (Issue #36): optional `ModelEntry.languages`
+  (`{"prompt": [...], "speech": [...]}`, ISO 639-1), `runtime` (`comfyui` / `piper` / `irodori-tts`) and `description`
+  (`{"ja", "en"}`), also in `recommend` / `fit` / `search` JSON and `info`. Languages come from the hand table
+  `data/overrides.json`, then the Hugging Face card's `language` (plus the text-encoder table), then the text-encoder
+  table (umt5 / Qwen3 / Qwen3.5 / Qwen2.5-VL = multilingual, CLIP / T5 = English; undecided stays empty), see
+  docs/sources.md. `schema_version` stays 1: readers up to 0.3.0 drop the unknown keys (`tests/test_appinfo.py` reads the
+  bundled list with a copy of the 0.3.0 reader).
+- Hand-added models (`source: "manual"`, `data/manual.json`, ids `manual:<name>`) that `update` merges, HEAD-checks and
+  header-inspects like the others and whose per-file licenses it compares with the upstream cards (stricter wins, with a
+  warning). First three: Tsukuyomi-chan (piper-plus), Irodori-TTS v4.1 Small, Stable Audio 3 Small (music).
+- `update --fields-only [--offline]`: re-apply only the app fields and the hand-added models to the current list.
+  アプリが一覧だけで画面を作れるように、言語・動かし方・説明の項目と、手で足すモデル(最初の 3 件)を足した。
+- The estimator counts `.onnx` and other non-ComfyUI weight files for models whose `runtime` is neither `comfyui` nor
+  unknown (piper). Other models are counted as before.
 
 - Measurement submissions from users (Issue #34). `genmodelfit bench … --submission PATH` and
   `genmodelfit contrib make --from <bench result>` write a submission file (`contrib_schema` 1:

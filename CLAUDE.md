@@ -65,6 +65,10 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 - 一覧のモデル ID: 公式テンプレート由来はテンプレート名そのまま(例 `image_z_image_turbo_int8`)、
   Hugging Face 由来は `hf:<owner>/<repo>`
 - 同梱のデータ: `src/genmodelfit/data/db.json`(一覧)、`measurements.json`(実測)、`calibration.json`(係数)
+- アプリ向けの項目(`languages` / `runtime` / `description`。#36、docs/sources.md「言語・動かし方・説明」)は任意で、
+  `schema_version` は上げない(古い版は知らないキーを捨てるので読める。tests/test_appinfo.py が確かめる)。
+  手の表は `data/overrides.json`、手で足すモデル(`source: manual`)は `data/manual.json`、決める処理は `appinfo.py`。
+  言語は当て推量で `ja` を付けない(部品の表に根拠があるものだけ)。手のモデルのライセンスは HF のカードの原文で確かめて書く
 - **実測や、実測のあるモデルのファイル情報を変えたら `python -m genmodelfit.calibrate` で合わせ直し、
   出た表で docs/accuracy.md を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
 - キャッシュ: platformdirs の user_cache_dir(`GENMODELFIT_CACHE_DIR` で変えられる)

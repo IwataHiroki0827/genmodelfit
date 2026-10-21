@@ -945,6 +945,11 @@ class HfClient:
 
         return self._once("repo", self._repos, key, load)
 
+    def cached_repo(self, repo_id: str, revision: str = "main") -> RepoInfo | None:
+        """取得済みのリポジトリの情報(通信しない。まだ取っていなければ None)。"""
+        with self._lock:
+            return self._repos.get((repo_id, revision or "main"))
+
     def failed(self, repo_id: str) -> Failure | None:
         with self._lock:
             return next((f for f in self.failures if f.repo_id == repo_id), None)

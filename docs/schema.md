@@ -28,6 +28,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 |---|---|---|
 | `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate` (and the Python API) | none | none |
 | `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
+| `update --fields-only` | for the hand-added models only: HEAD, ranged GET of the file header, GET of the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
@@ -307,7 +308,7 @@ becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48
 Tested in `tests/test_groups.py`.
 逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
 
-On the bundled list (323 entries) this gives 204 models; 55 of them have more than one entry.
+On the bundled list (326 entries) this gives 207 models; 55 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
@@ -345,6 +346,9 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d`; `tasks` is a list (`t2i`, `i2v`, …) |
 | `content` | str | `sfw` or `uncensored` (see README) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
+| `runtime` | str \| null | how the model runs: `comfyui` / `piper` / `irodori-tts` / … (`ModelEntry.runtime`, 0.4.0); null = unknown |
+| `languages` | object | `{"prompt": [...], "speech": [...]}` ISO 639-1 (`ModelEntry.languages`, 0.4.0); a missing key = unknown, `[]` = none (an image-to-3D model takes no prompt; a music model without vocals has no speech) |
+| `description` | object | `{"ja": "...", "en": "..."}` hand-written, only for some models (`ModelEntry.description`, 0.4.0); `{}` = none |
 | `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`), or `unknown` when the size is unknown and nothing was judged (0.1.1; until 0.1.0 these were `too_tight`) |
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
@@ -517,6 +521,24 @@ unknown — entries start with `license_unverified:`), `files_complete`, `size_f
 `workflow_precision` (str \| null: precision inferred from the template's main loader node, see "Models" above;
 optional, 0.2.0), `precision_source` (str \| null: `header` / `filename` / `hf_api` / `config` / `workflow`, where
 `precision` came from; null = unknown or older data; optional, 0.2.0).
+
+**For apps that build their screens from the list alone** (0.4.0, #36; all optional, `schema_version` stays 1 — older
+readers drop unknown keys, see "Database file"):
+
+- `languages` (`{"prompt": str[], "speech": str[]}`, ISO 639-1 codes): `prompt` = languages the text prompt works in,
+  `speech` = languages spoken or sung in the output (TTS voice, lyrics). A key that is missing means unknown; `[]` means
+  the model has none (image-to-3D takes no prompt text, a sound model without vocals has no speech). Decided in this order
+  (docs/sources.md「言語・動かし方・説明」): the hand table `data/overrides.json` (or the entry's own `languages` in
+  `data/manual.json`) → the `language` tag of the Hugging Face card (`update` only) → the text-encoder table. Nothing
+  decides → the key is left out (no guessing). The multilingual class lists `["en", "ja", "zh"]`: the languages that were
+  confirmed, not every language the encoder was trained on — test membership of the language you need.
+- `runtime` (str \| null): `comfyui` for official templates and for Hugging Face image / video / music / sfx / 3D entries
+  whose files match a ComfyUI family; `piper`, `irodori-tts` for the hand-added speech models; null = not decided. A
+  runtime other than `comfyui` (and null) makes the estimator count `.onnx` and other non-ComfyUI weight files.
+- `description` (`{"ja": str, "en": str}`): a short hand-written description, only for the models that have one.
+- `source: "manual"` (id `manual:<slug>`): models added by hand in `data/manual.json` (`template` is null). Their license
+  per file was read from the upstream card by the person who added them (`license_evidence` starts with `manual:`); `update`
+  compares it with the card of `license_from` and takes the stricter one on a mismatch (with a warning).
 
 **License contract**: `license` is the strictest license over **all** files (LoRAs, upscalers and clip_vision included).
 `null` means unknown and must be treated as "not allowed". A license is never more permissive than what could be verified
@@ -835,7 +857,10 @@ DownloadResult:
 `downloads`, `likes`, `license_from`, `repo_license`, and (PR #13 review) `ModelEntry.license_name` /
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
 `license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at`, and (#30) `ModelEntry.workflow_precision` /
-`precision_source` and `ModelFile.repo_precision` / `repo_precision_source` were added without changing `schema_version` (optional fields; older readers ignore unknown keys).
+`precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.4.0) `ModelEntry.languages` /
+`runtime` / `description` and `source: "manual"` were added without changing `schema_version` (optional fields; older
+readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks the keys it knows, and `source` is a free
+string there. `tests/test_appinfo.py` reads the bundled list with a copy of the 0.3.0 reader).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
 
 `sources` (written by `genmodelfit update`, see docs/sources.md):
@@ -855,6 +880,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
 | `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
+| `manual` | `models` (number of hand-added models from `data/manual.json`), `ids` (0.4.0) |
+| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries whose language came from the Hugging Face card) (0.4.0) |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |
@@ -869,6 +896,11 @@ models taken in), `generated_at`, `output`, `status` (DataStatus with `source: r
 cache, `path` for `--output` elsewhere).
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
+`update --fields-only` reads the current database the same way and redoes only the app fields (`languages` /
+`runtime` / `description`, from `data/overrides.json` and the tables) and the hand-added models (`data/manual.json`):
+for those models only it sends HEADs, reads the file headers and compares the licenses with the upstream cards (nothing
+with `--offline`); the other entries' files, licenses, precision and HEAD results are not touched. The Hugging Face
+card languages already in the list are kept (reading the cards again is `update`).
 `update --inspect-only` reads the current database the same way and redoes only what is read from the files
 themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`), the official
 templates' `sampler_stages` and `workflow_precision`, the repo precision (`repo_precision`: Hub API / `config.json`,

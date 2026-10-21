@@ -387,6 +387,79 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 一番厳しいファイルのもの、`license_url` はそのファイルのライセンスの記載の場所。`license_evidence` には、ファイルの
 `license_unverified` の理由をまとめる(10 件まで)。
 
+## 言語・動かし方・説明と、手で足すモデル(#36、0.4.0)
+
+アプリが一覧だけで画面を作れるように、`ModelEntry` に任意の項目 `languages` / `runtime` / `description` を足した
+(形は docs/schema.md「ModelEntry」。`schema_version` は 1 のまま。古い版は知らないキーを捨てるので読める)。
+決めるのは `appinfo.apply_app_fields`(update が毎回当てる。`update --fields-only` なら通信せずにこれだけやり直せる)。
+
+### 言語(`languages`)
+
+優先順は、1) **手の表** `data/overrides.json`(AI生成キットが実機で確かめたもの。あれば全部これ)、
+2) **HF のカードの `language`**(update が取れたときだけ。読み上げ → `speech` はカードの値、そのほか → `prompt` は
+カードの値に、3 の表の言語を足す。カードは学習・説明の言語で、文字を読む部品が読める言語より狭いことが多いため。
+例: Z-Image-Turbo のカードは `en` だけだが、部品の Qwen3 で日本語の指示も通る)、3) **文字を読む部品の表**。
+決まらなければキーを付けない(当て推量で `ja` を付けない)。`[]` は「その入出力が無い」と手で決めたもの
+(画像から 3D は指示の文を取らない・歌の入らない音楽の `speech`)。指示の文を取る作業(`appinfo.PROMPT_TASKS`:
+`t2i` `i2i` `t2v` `i2v` `v2v` `flf2v` `ref2v` `a2v` `t2a` `inpaint` `outpaint` `control`)が無いモデルには表を当てない。
+コードは ISO 639-1 の 2 文字(カードの 3 文字コードは `eng→en` などに直す。`multilingual`・`und` は捨てる)。
+
+文字を読む部品の表(`appinfo.TEXT_ENCODERS`。ファイル名の先頭。2026-10-21 にカードの原文を確かめた):
+
+| 部品のファイル名 | 結果 | 根拠 |
+|---|---|---|
+| `umt5*` | 多言語 `["en","ja","zh"]` | https://huggingface.co/google/umt5-xxl のカードの `language` に `multilingual` と `ja` `zh` `en` ほか 100 言語超 |
+| `qwen_3_*` | 多言語 | https://huggingface.co/Qwen/Qwen3-4B 「Support of 100+ languages and dialects」 |
+| `qwen3.5*` | 多言語 | https://huggingface.co/Qwen/Qwen3.5-9B 「Expanded support to 201 languages and dialects」 |
+| `qwen_2.5_vl*` `qwen2.5-vl*` | 多言語 | 元の LLM https://huggingface.co/Qwen/Qwen2.5-7B-Instruct 「over 29 languages, including … Japanese」(VL のカード自体には言語の記述が無い) |
+| `clip_l*` `clip_g*` | `["en"]` | https://huggingface.co/openai/clip-vit-large-patch14 「not been purposefully trained in or evaluated on any languages other than English」 |
+| `t5xxl*` `t5-base*` | `["en"]` | https://huggingface.co/google/t5-v1_1-xxl (`language: en`、C4) |
+| 本体に CLIP が入った系統 `sd` | `["en"]` | 上と同じ CLIP |
+
+多言語の結果の `["en","ja","zh"]` は「確かめた言語」で、部品が学習した全言語ではない(使う側は `ja` が入っているかを見る)。
+部品が複数あるとき: 多言語が 1 つでもあれば多言語、すべて英語の部品なら `en`、表に無い部品(Gemma・Mistral・Llama・
+Qwen3-VL・gpt-oss など。カードに言語の記述が無い、または確かめていない)が混じれば決めない。
+
+手の表の 12 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた): Z-Image Turbo 2 件・Wan 2.1/2.2 は
+`prompt` が `en` `ja` `zh`(「日本語の指示もある程度理解しますが、英語で書くとより正確」「日本語・英語・中国語の指示を理解します」)、
+SDXL は `en` のみ(「日本語はほとんど理解しません」)、ACE-Step 1.5 は `prompt` が `en`(「曲の雰囲気は英語で書くとより正確」)・
+`speech` が `en` `ja`(「日本語の歌詞にも対応」。カードは「50+ languages」で一覧が無いので、確かめた 2 つだけ)、
+Stable Audio 3 Small の効果音・音楽は `prompt` が `en` で `speech` は `[]`(歌は入らない)、Hunyuan3D 2.0/2.1 は `prompt` が `[]`(画像から)。
+つくよみちゃんの `speech` は `ja` `en`: カード(https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan)の `language` は
+6 言語(ja en zh es fr pt)だが、アプリが実機で確かめたのは日本語と英語だけなのでそれだけにした。Irodori-TTS は `ja`(カードの `language: ja`)。
+
+### 動かし方(`runtime`)
+
+公式テンプレート由来は `comfyui`。HF 由来は、読み上げ以外で ComfyUI の系統(`comfy_family`)に当たったものだけ `comfyui`
+(読み上げは仕組みがモデルごとに違うので決めない = null)。手のモデルは書いた値(`piper` `irodori-tts` `comfyui`)。
+`comfyui` でも null でもない値のモデルは、見積もりが `.onnx` などの ComfyUI で使わない形式のファイルも数える
+(`estimate.select_files`。つくよみちゃんの重みは onnx)。それ以外のモデルの数え方は変えていない。
+
+### 説明(`description`)
+
+`data/overrides.json` の手で書いたものだけ(日本語は AI生成キットの catalog.json の `summary`、英語はそれを訳したもの)。
+
+### 手で足すモデル(`source: "manual"`、`data/manual.json`)
+
+人気順の収集で拾えないモデル。ID は `manual:<名前>`。`files` は `url` `sha256` `size_bytes` `directory` `role` と、
+ファイルごとの `license` `license_name` `license_from` `license_url` `license_evidence` を書く(`appinfo.manual_entries`)。
+update は、ほかのモデルと同じ道に乗せる: 一式のライセンスは `set_entry_license`(一番厳しいもの)、`files_complete` と
+精度(見出しを読む)、ComfyUI の系統(`families.assign`)、HEAD の確認(`check_heads`)。さらに `license_from` のカードを引き、
+書いた値と食い違えば**厳しいほう**にして警告する(`appinfo.verify_manual_licenses`。カードを読めなければ書いた値のまま警告)。
+`directory` は ComfyUI の置き場所ではなく、AI生成キットのデータフォルダの中の置き場所(`tts`・`tts/tokenizer`・`tts/dacvae`)を
+そのまま書いた(ComfyUI のモデルは ComfyUI の置き場所)。
+
+最初の 3 件の出典(2026-10-21 に HF の API とカードの原文で確かめた。sha256 と大きさは Hub API の `lfs` と一致。
+LFS でない小さいファイルは実際に落として sha256 を計算した):
+
+| ID | ライセンス | 確かめた場所 |
+|---|---|---|
+| `manual:tsukuyomi-chan-piper-plus` | `other` / `tsukuyomi-chan-corpus`(つくよみちゃんコーパス利用規約。SPDX に無い) | https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan のカードの `license: other`・`license_name: tsukuyomi-chan-corpus`・`license_link: https://tyc.rei-yumesaki.net/material/corpus/#terms3`。クレジット表記と出力音声の用途の禁止事項がある(アプリの `credit` / `conditions`。スキーマには持たない) |
+| `manual:irodori-tts-v4.1-small` | `mit`(+ カードの Ethical Restrictions: 実在の人の声を同意なくまねない・偽情報や欺く音声をつくらない) | https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカード「released under MIT」。声のコーデック https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim も `license: mit`(元の facebook/dacvae-watermarked は `apache-2.0`) |
+| `manual:stable-audio-3-small-music` | `other` / `stable-audio-community`、文字を読む部品 `t5gemma_b_b_ul2` は `gemma` | https://huggingface.co/stabilityai/stable-audio-3-small-music のカード(`license: other`・`license_name: stable-audio-community`、`gated: auto`)。同じリポジトリに `LICENSE_GEMMA.md` がある。URL は gated でない https://huggingface.co/Comfy-Org/stable-audio-3 の複製(`stable_audio_3_small_music.safetensors`・`t5gemma_b_b_ul2.safetensors`)。T5Gemma の記載は、同じファイルを使う `audio_stable_audio_3_medium` と同じ(`license_sources` の `stable-audio-3-t5gemma`) |
+
+手のモデルは、`recommend` の人気の点(`popularity`)に使う `downloads` を持たないので、同じ点数なら HF 由来より下に並びやすい。
+
 ## 無検閲(uncensored)のモデル
 
 CLAUDE.md の決まり: 無検閲のモデルも一覧から外さず、`content: "uncensored"` と根拠(`content_evidence`)を付ける。
