@@ -35,6 +35,12 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
 - `python -m genmodelfit.weekly merge-check --base A --head B [--json]`: recompute the classification from two files
   (exit 0 safe / 3 not safe / 1 unreadable) for the runner script that decides the merge.
 - `python -m genmodelfit.review publish SRC DST`: the list to sign without pending entries.
+- `python -m genmodelfit.review apply DECISIONS.json --db PATH [--max-approve 10] [--json]`: apply the weekly
+  decisions (`approve` / `reject` / `hold`) returned by Claude, strictly validated and all or nothing (exit 2);
+  approvals are `decided_by: claude-weekly`, safety rejects keep only the id hash, and the summary is escaped for
+  the pull request body. `review_queue.json` / `review list --json` items add `card_url` and `files`
+  (repo, path, license, license_url, …).
+- Duplicate model ids are refused (`parse_db` / `load` / `save` raise `DatabaseError`; `merge-check` exits 1).
 
 ### Changed
 

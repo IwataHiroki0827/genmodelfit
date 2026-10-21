@@ -36,6 +36,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
 | `python -m genmodelfit.weekly merge-check` | none | none |
 | `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
+| `python -m genmodelfit.review apply DECISIONS --db PATH` | none | the `--db` file; rejects also append to `review_rejected.txt` |
 | `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
@@ -630,6 +631,27 @@ pending; it keeps `reasons` and sets `status: ok`, `decided_by`, `decided_at` (t
 Python: `gmf.review_list(db=None, include_ok=False)`, `gmf.review_approve(db_path, id, evidence, note=, by=)`,
 `gmf.review_reject(db_path, id, note, rejected_path=, hide_name=)`; they raise `review.ReviewError` (a `ValueError`)
 and print nothing.
+
+`python -m genmodelfit.review apply DECISIONS.json --db PATH [--max-approve 10] [--rejected FILE] [--json]` applies the
+weekly decisions (the runner script calls it; Claude only writes the decisions). Input:
+`{"decisions": [{"id", "action": "approve"|"reject"|"hold", "evidence": [https URLs with a host], "note": str,
+"safety": bool}]}`. Validation is strict and all-or-nothing (exit 2, nothing written): unknown keys at either level,
+unknown actions, ids that are not pending, the same id twice, `approve` without evidence or with `safety`, `reject`
+without a note, a note over 500 characters or with control / format characters (newlines, NUL, ESC, bidi overrides,
+zero-width characters), non-boolean `safety`, more approvals than `--max-approve`. Approvals get
+`decided_by: "claude-weekly"`; a reject with `safety: true` stores only the id hash (`--hide-name`). Output (`--json`):
+`{applied, db, rejected_file, counts: {approve, reject, hold}, pending_left, results: [{id, action, result, safety,
+evidence, note}]}` with every string escaped by `weekly.md` (safe in a pull request body; a safety reject shows only
+the start of the hash and no note). Exit 0 applied, 2 invalid decisions, 1 unreadable `--db`.
+
+Items of `review list --json` / `review_queue.json` also have `card_url` (the Hugging Face card: the repo of an `hf:`
+entry, else the main file's license source or host repo, else `homepage`) and `files`:
+`[{name, repo, path, url, license, license_name, license_from, license_url, role}]` (`repo` / `path` parsed from the
+Hugging Face URL). Strings are data (not escaped) in JSON.
+
+Duplicate model ids are refused everywhere (0.6.0, #42): `parse_db` / `load` / `Database.save` raise
+`DatabaseError`, and `merge-check` exits 1 for a file with a duplicate id (otherwise `get()` would silently pick one
+of two entries).
 
 `review list --json`:
 

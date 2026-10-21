@@ -389,12 +389,16 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 
 Like llmfit, the list is rebuilt every week, and only reviewed data is published:
 
-1. Once a week a Claude Code skill (`genmodelfit-weekly`) runs on the owner's PC (Windows Task Scheduler). It rebuilds
+1. Once a week a runner script with a Claude Code skill (`genmodelfit-weekly`) runs on the owner's PC (Windows Task
+   Scheduler). The runner rebuilds
    the list (`python -m genmodelfit.weekly`: templates, Hugging Face, HEAD checks, file headers), checks it (schema,
-   auto count, the 30-day HEAD expiry must be more than 7 days away), reads the change classification
-   (`classification` in `diff.json` / `review_queue.json`) and checks the pending models against primary sources
-   (`genmodelfit review approve` with evidence URLs, or `review reject`; `--hide-name` when the reason is safety).
-   Claude only prepares a branch and a commit.
+   auto count, the 30-day HEAD expiry must be more than 7 days away) and writes the change classification
+   (`classification` in `diff.json` / `review_queue.json`). Claude does not edit files or run commands: it only
+   reads the pending models in `review_queue.json`, checks them against primary sources (Hugging Face / GitHub) and
+   returns a JSON list of decisions (`approve` with evidence URLs, `reject`, `hold`; `"safety": true` for a reject
+   whose reason is safety). The runner script applies it with
+   `python -m genmodelfit.review apply decisions.json --db src/genmodelfit/data/db.json` (strictly validated;
+   all or nothing) and commits.
 2. A runner script pushes the branch and opens the pull request. It merges **only if every mechanical check passes**:
    the only changed file is `src/genmodelfit/data/db.json`, the classification recomputed from the two files is safe
    (`python -m genmodelfit.weekly merge-check --base <main db.json> --head <new db.json> --json`, exit 0; models that

@@ -301,9 +301,43 @@ def review_list(db: Any, *, include_ok: bool = False) -> list[dict[str, Any]]:
                 "decided_at": r.decided_at if r else None,
                 "evidence": list(r.evidence) if r else [],
                 "note": r.note if r else None,
+                "card_url": card_url(m),
+                "files": [_file_info(f) for f in m.files],
             }
         )
     return out
+
+
+def _file_info(f: Any) -> dict[str, Any]:
+    """確認に使うファイルの情報(リポジトリ・パス・ライセンス・その出どころ)。値はそのまま(JSON のデータ)。"""
+    from .hf import parse_hf_url
+
+    parsed = parse_hf_url(f.url)
+    return {
+        "name": f.name,
+        "repo": parsed[0] if parsed else f.repo_id,
+        "path": parsed[2] if parsed else f.name,
+        "url": f.url,
+        "license": f.license,
+        "license_name": f.license_name,
+        "license_from": f.license_from,
+        "license_url": f.license_url,
+        "role": f.role,
+    }
+
+
+def card_url(m: Any) -> str | None:
+    """モデルカードの URL: HF の項目はそのリポジトリ、ほかは本体のファイルのライセンスの出どころ・
+    置き場所(無ければ homepage)。"""
+    if m.id.startswith("hf:"):
+        return f"https://huggingface.co/{m.id[3:]}"
+    from .hf import parse_hf_url
+
+    for f in sorted(m.files, key=lambda f: f.role != "main"):
+        repo = f.license_from or (parse_hf_url(f.url) or (f.repo_id,))[0]
+        if repo and "/" in repo and "://" not in repo:
+            return f"https://huggingface.co/{repo}"
+    return m.homepage
 
 
 def _today(today: str | None) -> str:
@@ -473,8 +507,168 @@ def publishable(db: Any) -> Any:
     return out
 
 
+# --- 判断の一覧を当てる(`python -m genmodelfit.review apply`。毎週の実行役が Claude の答えを当てる) -------
+#
+# 2026-10-21 のオーナーの決定: 毎週の仕事で Claude はファイルを書き換えず、コマンドも動かさない。読むだけで、
+# 確認待ちの項目ごとの判断(approve / reject / hold)を JSON で返す。実行役のスクリプトがそれをここで当てる。
+# 形を厳しく確かめ、1 つでもおかしければ何も当てない(全部か無しか)。
+
+DECISIONS_FILE_KEYS = frozenset({"decisions"})
+DECISION_KEYS = frozenset({"id", "action", "evidence", "note", "safety"})
+DECISION_ACTIONS = ("approve", "reject", "hold")
+DECIDED_BY_WEEKLY = "claude-weekly"
+NOTE_MAX_CHARS = 500
+DEFAULT_MAX_APPROVE = 10
+
+
+class DecisionError(ReviewError):
+    """判断の一覧の形・中身が正しくない(何も当てていない)。終了コード 2。"""
+
+
+def _bad_text(text: str) -> bool:
+    """制御文字(改行・タブも)と、書式の文字(向きの指定・幅の無い文字など)を含むか。"""
+    import unicodedata
+
+    return any(unicodedata.category(c) in ("Cc", "Cf", "Cs", "Co", "Cn") for c in text)
+
+
+def validate_decisions(data: Any, db: Any, *, max_approve: int = DEFAULT_MAX_APPROVE) -> list[dict[str, Any]]:
+    """判断の一覧を確かめ、正規化した並びを返す。おかしければ DecisionError(理由をすべて並べる)。
+
+    - 形: {"decisions": [{"id", "action", "evidence"?, "note"?, "safety"?}]}。知らない鍵は断る
+    - id は文字列で、いまの一覧で確認待ちの項目(同じ id を 2 回は断る)
+    - action は approve / reject / hold。approve は根拠(https でホストのある URL)が 1 つ以上要り、
+      safety は付けない。reject は note が要る
+    - evidence は https でホストのある URL の並び。note は 500 文字まで・制御文字なし。safety は真偽
+    - approve は max_approve 件まで
+    """
+    errs: list[str] = []
+    shape_ok = isinstance(data, dict) and set(data) == DECISIONS_FILE_KEYS
+    if not (shape_ok and isinstance(data["decisions"], list)):
+        raise DecisionError('判断の一覧は {"decisions": [...]} の形にしてください(ほかの鍵は持たない)')
+    pending = {m.id for m in db.models if not m.reviewed}
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for k, d in enumerate(data["decisions"]):
+        where = f"decisions[{k}]"
+        if not isinstance(d, dict):
+            errs.append(f"{where} はオブジェクトではない")
+            continue
+        unknown = sorted(set(d) - DECISION_KEYS)
+        if unknown:
+            errs.append(f"{where} に知らない鍵: {', '.join(map(repr, unknown))}")
+        mid, action = d.get("id"), d.get("action")
+        if not isinstance(mid, str) or not mid:
+            errs.append(f"{where}.id は空でない文字列")
+            continue
+        if mid in seen:
+            errs.append(f"{where}.id {mid!r} が 2 回ある")
+        seen.add(mid)
+        if mid not in pending:
+            errs.append(f"{where}.id {mid!r} は確認待ちの項目ではない")
+        if action not in DECISION_ACTIONS:
+            errs.append(f"{where}.action は {' / '.join(DECISION_ACTIONS)}: {action!r}")
+        ev = d.get("evidence", [])
+        if not isinstance(ev, list) or not all(isinstance(e, str) for e in ev):
+            errs.append(f"{where}.evidence は文字列の並び")
+            ev = []
+        bad_ev = [e for e in ev if not _https_url(e)]
+        if bad_ev:
+            errs.append(f"{where}.evidence は https でホストのある URL だけ: {bad_ev!r}")
+        note = d.get("note")
+        if note is not None and not isinstance(note, str):
+            errs.append(f"{where}.note は文字列")
+            note = None
+        if note is not None and (len(note) > NOTE_MAX_CHARS or _bad_text(note)):
+            errs.append(f"{where}.note は {NOTE_MAX_CHARS} 文字まで・制御文字なし")
+        safety = d.get("safety", False)
+        if not isinstance(safety, bool):
+            errs.append(f"{where}.safety は真偽")
+            safety = False
+        if action == "approve":
+            if not ev:
+                errs.append(f"{where}: approve には根拠(evidence)が 1 つ以上要る")
+            if safety:
+                errs.append(f"{where}: approve に safety は付けない")
+        if action == "reject" and not (note and note.strip()):
+            errs.append(f"{where}: reject には note(理由)が要る")
+        out.append({"id": mid, "action": action, "evidence": list(ev), "note": note, "safety": safety})
+    approvals = sum(1 for d in out if d["action"] == "approve")
+    if approvals > max_approve:
+        errs.append(f"approve が {approvals} 件ある({max_approve} 件まで。--max-approve)")
+    if errs:
+        raise DecisionError("判断の一覧を当てませんでした(何も変えていない): " + " / ".join(errs))
+    return out
+
+
+def apply_decisions(
+    db_path: str | Path,
+    decisions: Any,
+    *,
+    max_approve: int = DEFAULT_MAX_APPROVE,
+    rejected_path: str | Path | None = None,
+    today: str | None = None,
+) -> dict[str, Any]:
+    """判断の一覧(JSON を読んだもの)を db_path の一覧に当てる。全部確かめてから当てる(DecisionError なら
+    何も書かない)。approve は decided_by "claude-weekly"、reject は safety なら名前を残さない(--hide-name)。
+
+    返す値は PR の本文・実行役に渡す要約。文字はすべて weekly.md で無害にしてある(名前を残さない reject は
+    ID を出さない)。"""
+    from .weekly import md
+
+    p = Path(db_path)
+    db = _load_file(p)
+    items = validate_decisions(decisions, db, max_approve=max_approve)
+    lines: list[str] = []
+    results: list[dict[str, Any]] = []
+    for d in items:
+        shown_id = md(d["id"])
+        if d["action"] == "approve":
+            approve(db, d["id"], d["evidence"], note=d["note"], by=DECIDED_BY_WEEKLY, today=today)
+            result = "approved"
+        elif d["action"] == "reject":
+            lines.append(reject(db, d["id"], d["note"] or "", hide_name=d["safety"], today=today))
+            result = "rejected"
+            if d["safety"]:
+                shown_id = id_hash(d["id"])[:15] + "…"
+        else:
+            result = "held"
+        results.append(
+            {
+                "id": shown_id,
+                "action": d["action"],
+                "result": result,
+                "safety": d["safety"],
+                "evidence": [md(e) for e in d["evidence"]],
+                "note": None if d["safety"] or d["note"] is None else md(d["note"]),
+            }
+        )
+    rp = Path(rejected_path) if rejected_path else default_rejected_path(p)
+    if lines:
+        db.sources["counts"] = _counts(db)
+    _save(db, p)
+    if lines:
+        old = rp.read_text(encoding="utf-8") if rp.is_file() else REJECTED_HEADER
+        if old and not old.endswith("\n"):
+            old += "\n"
+        rp.write_text(old + "".join(lines), encoding="utf-8")
+    counts = {a: sum(1 for d in items if d["action"] == a) for a in DECISION_ACTIONS}
+    return {
+        "applied": True,
+        "db": str(p),
+        "rejected_file": str(rp) if lines else None,
+        "counts": counts,
+        "pending_left": sum(1 for m in db.models if not m.reviewed),
+        "results": results,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
-    """`python -m genmodelfit.review publish <IN> <OUT>`: 配る一覧を作る(data.yml が署名の前に呼ぶ)。"""
+    """`python -m genmodelfit.review publish <IN> <OUT>`: 配る一覧を作る(data.yml が署名の前に呼ぶ)。
+
+    `python -m genmodelfit.review apply <DECISIONS.json> --db PATH [--max-approve 10] [--rejected FILE]
+    [--json]`: 判断の一覧を当てる。終了コード 0 = 当てた、2 = 判断の一覧がおかしい(何も変えていない)、
+    1 = 一覧を読めない。"""
     import argparse
     import sys
 
@@ -483,7 +677,17 @@ def main(argv: list[str] | None = None) -> int:
     pub = sub.add_parser("publish", help="確認待ちの項目を除いた、署名して配る一覧を書く")
     pub.add_argument("src", help="元の一覧(main の src/genmodelfit/data/db.json)")
     pub.add_argument("dst", help="書き出す先(同じパスでもよい)")
+    ap = sub.add_parser("apply", help="確認待ちの項目への判断(approve / reject / hold)の JSON を当てる")
+    ap.add_argument("decisions", help='判断の一覧(JSON。{"decisions": [...]})')
+    ap.add_argument(
+        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+    )
+    ap.add_argument("--max-approve", type=int, default=DEFAULT_MAX_APPROVE, help="approve の上限(既定 10)")
+    ap.add_argument("--rejected", metavar="PATH", help="外した記録(既定は --db と同じフォルダ)")
+    ap.add_argument("--json", action="store_true", help="要約を JSON で出す")
     args = p.parse_args(argv)
+    if args.cmd == "apply":
+        return _apply_main(args)
     try:
         db = _load_file(args.src)
     except ReviewError as e:
@@ -493,6 +697,37 @@ def main(argv: list[str] | None = None) -> int:
     out.save(Path(args.dst))
     withheld = out.sources["review"]["withheld_pending"]
     print(f"{len(out.models)} 件を書きました(確認待ち {withheld} 件を除いた): {args.dst}")
+    return 0
+
+
+def _apply_main(args: Any) -> int:
+    import sys
+
+    def fail(msg: str, code: int) -> int:
+        if args.json:
+            sys.stdout.write(json.dumps({"applied": False, "error": msg}, ensure_ascii=False) + "\n")
+        else:
+            print(f"error: {msg}", file=sys.stderr)
+        return code
+
+    try:
+        data = json.loads(Path(args.decisions).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return fail(f"判断の一覧を読めません: {e}", 2)
+    try:
+        res = apply_decisions(args.db, data, max_approve=args.max_approve, rejected_path=args.rejected)
+    except DecisionError as e:
+        return fail(str(e), 2)
+    except ReviewError as e:
+        return fail(str(e), 1)
+    if args.json:
+        sys.stdout.write(json.dumps(res, ensure_ascii=False) + "\n")
+    else:
+        c = res["counts"]
+        left = res["pending_left"]
+        print(f"approve {c['approve']} / reject {c['reject']} / hold {c['hold']}(残りの確認待ち {left})")
+        for r in res["results"]:
+            print(f"  {r['result']}: {r['id']}")
     return 0
 
 

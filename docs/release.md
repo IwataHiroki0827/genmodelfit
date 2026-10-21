@@ -217,19 +217,33 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 
 役割を分ける:
 
-- **Claude(スキル)はブランチとコミットを用意するだけ**(push・PR・マージはしない):
+- **Claude(スキル)はファイルを書き換えず、コマンドも動かさない**(2026-10-21 のオーナーの決定。読むだけと、
+  Hugging Face・GitHub の WebFetch だけ)。実行役が渡す `review_queue.json` の確認待ちの項目
+  (id・name・modality・reasons・ファイルごとの repo・path・license・license_url・homepage・card_url)を一次資料
+  (ライセンスの原文・モデルカード・上流のリポジトリ)で確かめ、判断の一覧の JSON だけを返す:
+
+  ```json
+  {"decisions": [
+    {"id": "hf:org/model", "action": "approve", "evidence": ["https://huggingface.co/org/model/blob/main/LICENSE"], "note": "Apache-2.0 の原文を確かめた"},
+    {"id": "hf:org/other", "action": "reject", "note": "非商用だけ", "safety": false},
+    {"id": "hf:org/unclear", "action": "hold", "note": "カードにライセンスの記載なし"}
+  ]}
+  ```
+
+  理由が安全(未成年の性的表現など)の reject は `"safety": true`(名前を残さず sha256 だけ記録する)。
+  分からないものは hold(pending のまま。自動のおすすめにも data-latest にも出ない)
+- **実行役のスクリプト**(オーナーの PC。スキルの外)が、作り直し・試験・判断の当て込み・merge-check・PR を行う:
   1. `python -m genmodelfit.weekly --out <dir> --apply src/genmodelfit/data/db.json`(引き継ぎの元と比べる元は main の
-     db.json)。終了コードが 1 なら何もしない(`result.json` の `problems` を報告する)
-  2. `<dir>/review_queue.json` の `classification` と `pending` を見る。`judgement_needed` の項目ごとに一次資料
-     (ライセンスの原文・モデルカード・上流のリポジトリ)を読み、
-     - 確かめられたら `genmodelfit review approve <id> --evidence <https の URL> [--evidence …] --note <確かめた内容> --by claude --db src/genmodelfit/data/db.json`
-     - 入れないなら `genmodelfit review reject <id> --note <理由> --db src/genmodelfit/data/db.json`。
-       **理由が安全(未成年の性的表現など)なら `--hide-name`**(名前を残さず sha256 だけ)
-     - 分からないものは pending のまま残す(自動のおすすめに出ず、data-latest にも出ないので、入れても安全)
-  3. ブランチにコミットする(根拠は db.json の `review.evidence` に残る)
-- **実行役のスクリプト**(オーナーの PC。スキルの外)が push して PR を作り、**機械の確かめがすべて通ったときだけ**
-  マージする:
-  - 変わったファイルが `src/genmodelfit/data/db.json` だけ
+     db.json)。終了コードが 1 なら止める(`result.json` の `problems`)
+  2. `<dir>/review_queue.json` を Claude に渡し、判断の一覧を受け取る
+  3. `python -m genmodelfit.review apply <decisions.json> --db src/genmodelfit/data/db.json --max-approve 10 --json`。
+     形を厳しく確かめ(知らない鍵・action、確認待ちでない id、同じ id、根拠の無い approve、https でホストのない根拠、
+     500 文字を超える・制御文字を含む note、approve の上限超え)、1 つでもおかしければ何も当てない(終了コード 2)。
+     approve は `decided_by: claude-weekly`。出る要約(件数と項目ごとの結果)の文字は `weekly.md` で無害にしてあり、
+     PR の本文にそのまま置ける
+  4. ブランチにコミットして push し、PR を作る。**機械の確かめがすべて通ったときだけ**マージする:
+  - 変わったファイルが `src/genmodelfit/data/db.json` だけ(approve・reject を当てた週は status が変わるので、
+    下の条件で必ずオーナーが見る)
   - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
     終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
   - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)

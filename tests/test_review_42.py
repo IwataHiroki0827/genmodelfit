@@ -567,3 +567,177 @@ def test_published_list_has_no_pending(tmp_path, bundled):
     assert db.models[0].id not in {m["id"] for m in pub["models"]}
     # 0.5.x の読み方(知らない鍵 review を捨てる)でも確認待ちが出てこない
     assert all(m.get("review", {}).get("status") == "ok" for m in pub["models"])
+
+
+# --- 同じ ID・判断の一覧を当てる(apply)・確認待ちの一覧の中身 -----------------------------------------
+
+
+def test_duplicate_ids_are_refused(tmp_path, bundled, capsys):
+    """Checker の作った例: 自動で出せる項目を写し、URL・sha256 を差し替えて元の前に置く。"""
+    base, head = tmp_path / "base.json", tmp_path / "head.json"
+    bundled.save(base)
+    data = json.loads(base.read_text(encoding="utf-8"))
+    orig_id = _auto(bundled).id
+    k = next(i for i, m in enumerate(data["models"]) if m["id"] == orig_id)
+    evil = copy.deepcopy(data["models"][k])
+    for f in evil["files"]:
+        f["url"] = "https://huggingface.co/evil/repo/resolve/main/" + f["name"]
+        f["sha256"] = "d" * 64
+    data["models"].insert(k, evil)
+    head.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(DatabaseError, match="同じモデル ID"):
+        parse_db(json.loads(json.dumps(data)), "path")
+    with pytest.raises(DatabaseError, match="同じモデル ID"):
+        load(head)
+    code = weekly.main(["merge-check", "--base", str(base), "--head", str(head), "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 1 and "safe" not in out and "同じモデル ID" in out["error"]
+    db = copy.deepcopy(bundled)
+    db.models.insert(0, copy.deepcopy(db.models[3]))
+    with pytest.raises(DatabaseError):
+        db.save(tmp_path / "dup.json")
+
+
+def test_files_changed_is_listed_once(bundled):
+    old, new = _pair(bundled)
+    m = next(x for x in new.models if len(x.files) >= 2)
+    for f in m.files:
+        f.sha256 = "c" * 64
+        f.url = (f.url or "") + "?v=2"
+    assert _reasons_for(old, new, m.id).count("files_changed") == 1
+
+
+@pytest.fixture
+def pending_db(tmp_path, bundled):
+    db = copy.deepcopy(bundled)
+    for m in db.models[:4]:
+        m.review = Review("pending", ["new"])
+    p = tmp_path / "data" / "db.json"
+    db.save(p)
+    return p, [m.id for m in db.models[:4]]
+
+
+def _apply(tmp_path, dbp, decisions, *extra):
+    f = tmp_path / "decisions.json"
+    f.write_text(json.dumps(decisions, ensure_ascii=False), encoding="utf-8")
+    return review.main(["apply", str(f), "--db", str(dbp), "--json", *extra])
+
+
+def test_apply_decisions(tmp_path, pending_db, capsys):
+    p, ids = pending_db
+    evil_note = "<!-- @owner [x](javascript:alert(1)) | <img src=x> `code`"
+    decisions = {
+        "decisions": [
+            {"id": ids[0], "action": "approve", "evidence": [URL], "note": evil_note},
+            {"id": ids[1], "action": "reject", "note": "非商用だけ", "evidence": [], "safety": False},
+            {"id": ids[2], "action": "reject", "note": "安全上の理由", "safety": True},
+            {"id": ids[3], "action": "hold"},
+        ]
+    }
+    assert _apply(tmp_path, p, decisions) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["applied"] and out["counts"] == {"approve": 1, "reject": 2, "hold": 1}
+    assert out["pending_left"] == 1
+    text = json.dumps(out, ensure_ascii=False)
+    assert "<!--" not in text and "<img" not in text and "@owner" not in text and "[x](" not in text
+    assert ids[2] not in text  # 安全上の理由で外したものは名前を出さない
+    db = load(p)
+    m = db.get(ids[0])
+    assert m.review.status == "ok" and m.review.decided_by == review.DECIDED_BY_WEEKLY
+    assert m.review.note == evil_note and m.review.evidence == [URL]  # 一覧にはそのまま(データ)
+    assert db.get(ids[1]) is None and db.get(ids[2]) is None and not db.get(ids[3]).reviewed
+    rej = (p.parent / review.REJECTED_FILE).read_text(encoding="utf-8")
+    assert f"{ids[1]}\t" in rej and ids[2] not in rej and review.id_hash(ids[2]) in rej
+
+
+CONTROL = [chr(10), chr(13), chr(0), chr(0x1B), chr(0x202E), chr(0x200B)]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"decisions": [{"id": "X", "action": "approve", "evidence": [URL]}], "extra": 1},  # 知らない鍵(外)
+        {"decisions": [{"id": "X", "action": "approve", "evidence": [URL], "by": "me"}]},  # 知らない鍵
+        {"decisions": [{"id": "X", "action": "merge"}]},  # 知らない action
+        {"decisions": [{"id": "X", "action": "approve", "evidence": []}]},  # 根拠なし
+        {"decisions": [{"id": "X", "action": "approve", "evidence": ["https://"]}]},
+        {"decisions": [{"id": "X", "action": "approve", "evidence": ["javascript:alert(1)"]}]},
+        {"decisions": [{"id": "X", "action": "approve", "evidence": ["http://example.com/"]}]},
+        {"decisions": [{"id": "X", "action": "approve", "evidence": URL}]},  # 並びでない
+        {"decisions": [{"id": "X", "action": "approve", "evidence": [URL], "safety": True}]},
+        {"decisions": [{"id": "X", "action": "reject"}]},  # 理由なし
+        {"decisions": [{"id": "X", "action": "reject", "note": "x", "safety": "yes"}]},
+        {"decisions": [{"id": "X", "action": "hold", "note": "a" * 501}]},
+        *[{"decisions": [{"id": "X", "action": "hold", "note": f"a{c}b"}]} for c in CONTROL],
+        {"decisions": [{"id": "X", "action": "hold"}, {"id": "X", "action": "hold"}]},  # 同じ id
+        {"decisions": [{"id": "NOT_PENDING", "action": "hold"}]},
+        {
+            "decisions": [
+                {"id": "X", "action": "hold"},
+                {"id": "nope", "action": "approve", "evidence": [URL]},
+            ]
+        },
+        {"decisions": {"id": "X"}},
+        [],
+    ],
+)
+def test_apply_refuses_bad_decisions_and_changes_nothing(tmp_path, pending_db, bundled, capsys, bad):
+    p, ids = pending_db
+    text = (
+        json.dumps(bad)
+        .replace('"X"', json.dumps(ids[0]))
+        .replace('"NOT_PENDING"', json.dumps(bundled.models[9].id))
+    )
+    bad = json.loads(text)
+    before = p.read_bytes()
+    first_ok = {"id": ids[1], "action": "approve", "evidence": [URL]}  # 正しい判断があっても全部当てない
+    if isinstance(bad, dict) and isinstance(bad.get("decisions"), list) and "extra" not in bad:
+        bad["decisions"].insert(0, first_ok)
+    assert _apply(tmp_path, p, bad) == 2
+    out = json.loads(capsys.readouterr().out)
+    assert out["applied"] is False and out["error"]
+    assert p.read_bytes() == before
+    assert not (p.parent / review.REJECTED_FILE).exists()
+
+
+def test_apply_max_approve_and_unreadable(tmp_path, pending_db, capsys):
+    p, ids = pending_db
+    before = p.read_bytes()
+    many = {"decisions": [{"id": i, "action": "approve", "evidence": [URL]} for i in ids[:3]]}
+    assert _apply(tmp_path, p, many, "--max-approve", "2") == 2
+    assert p.read_bytes() == before
+    (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
+    assert review.main(["apply", str(tmp_path / "broken.json"), "--db", str(p)]) == 2
+    good = {"decisions": [{"id": ids[0], "action": "hold"}]}
+    assert _apply(tmp_path, tmp_path / "missing.json", good) == 1
+    capsys.readouterr()
+
+
+def test_queue_items_have_what_the_reviewer_needs(bundled):
+    db = copy.deepcopy(bundled)
+    hf_entry = next(m for m in db.models if m.id.startswith("hf:"))
+    tmpl = next(m for m in db.models if m.source == "comfyui-template" and m.files)
+    for m in (hf_entry, tmpl):
+        m.review = Review("pending", ["new"])
+    q = review.queue(db, {"safe": False})
+    items = {i["id"]: i for i in q["pending"]}
+    for m in (hf_entry, tmpl):
+        it = items[m.id]
+        assert {"id", "name", "modality", "reasons", "files", "homepage", "card_url"} <= set(it)
+        assert it["card_url"] and it["card_url"].startswith("https://")
+        f = it["files"][0]
+        assert {"repo", "path", "license", "license_url"} <= set(f)
+    assert items[hf_entry.id]["card_url"] == "https://huggingface.co/" + hf_entry.id[3:]
+
+
+def test_python_m_review_has_no_runpy_warning():
+    import subprocess
+    import sys
+
+    r = subprocess.run(
+        [sys.executable, "-W", "error::RuntimeWarning", "-m", "genmodelfit.review", "apply", "--help"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    assert r.returncode == 0 and b"RuntimeWarning" not in r.stderr

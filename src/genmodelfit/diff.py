@@ -40,7 +40,6 @@ from .gate import (
     recorded_comfyui_version,
 )
 from .models import ModelEntry
-from .review import review_reasons
 
 # 一式の大きさの変化を出すしきい値(両方を超えたとき): 比で 10%、量で 100 MiB
 SIZE_REL_THRESHOLD = 0.10
@@ -220,7 +219,7 @@ def field_change_reasons(
         out.append("license_permissive")
     elif move == "other":
         out.append(f"{OTHER_CHANGE}:license")
-    return out
+    return list(dict.fromkeys(out))  # 同じ理由はまとめる(ファイルが何本変わっても files_changed は 1 つ)
 
 
 def _review_ok(r: Any) -> bool:
@@ -264,6 +263,8 @@ def classify(
     raw: (old, new) の一覧の JSON の dict(`merge-check` がファイルから読んだもの。知らない鍵も比べる)。
     None なら Database から作る(知らない鍵は読むときに捨てられている)。
     """
+    from .review import review_reasons  # 遅く読む(`python -m genmodelfit.review` の runpy の警告を出さない)
+
     measurements = new.measurements or old.measurements
     old_by = {m.id: m for m in old.models}
     new_by = {m.id: m for m in new.models}

@@ -73,6 +73,9 @@ class Database:
         }
 
     def save(self, path: Path) -> None:
+        dup = duplicate_ids(self.models)
+        if dup:
+            raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8")
@@ -167,6 +170,18 @@ def check_entry(d: Any, i: int) -> None:
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
 
 
+def duplicate_ids(models: list[Any]) -> list[str]:
+    """2 回以上出てくる ID(並びは最初に出た順)。"""
+    seen: set[str] = set()
+    dup: list[str] = []
+    for m in models:
+        i = m.get("id") if isinstance(m, dict) else getattr(m, "id", None)
+        if i in seen and i not in dup:
+            dup.append(i)
+        seen.add(i)
+    return dup
+
+
 def parse_db(data: dict[str, Any], origin: str) -> Database:
     if not isinstance(data, dict):
         raise DatabaseError("一覧の形が正しくありません(JSON のオブジェクトではない)")
@@ -177,6 +192,10 @@ def parse_db(data: dict[str, Any], origin: str) -> Database:
         raise DatabaseError("models がありません")
     for i, m in enumerate(data["models"]):
         check_entry(m, i)
+    dup = duplicate_ids(data["models"])
+    if dup:
+        # 同じ ID が 2 つあると get() が片方だけを黙って選ぶ(差し替えた項目を紛れ込ませられる)。#42
+        raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
     try:
         models = [ModelEntry.from_dict(m) for m in data["models"]]
     except (TypeError, AttributeError, ValueError) as e:

@@ -383,11 +383,14 @@ gated が無く、カスタムノードの無い公式の ComfyUI ワークフ�
 
 llmfit と同じく、一覧は毎週作り直し、確かめたものだけを配ります。
 
-1. 週に 1 回、オーナーの PC で Claude Code のスキル `genmodelfit-weekly` が動きます(Windows のタスク スケジューラ)。
-   一覧を作り直し(`python -m genmodelfit.weekly`: テンプレート・Hugging Face・HEAD の確認・ファイルの先頭の見出し)、
+1. 週に 1 回、オーナーの PC で実行役のスクリプトと Claude Code のスキル `genmodelfit-weekly` が動きます
+   (Windows のタスク スケジューラ)。実行役が一覧を作り直し(`python -m genmodelfit.weekly`: テンプレート・Hugging Face・HEAD の確認・ファイルの先頭の見出し)、
    確かめ(スキーマ・auto の数・30 日の HEAD の期限が 7 日より先)、変化の分類(`diff.json`・`review_queue.json` の
-   `classification`)を読み、確認待ちのモデルを一次資料で確かめます(根拠の URL を付けて `genmodelfit review approve`、
-   または `review reject`。安全上の理由なら `--hide-name`)。Claude がするのはブランチとコミットの用意だけです。
+   `classification`)を出します。Claude はファイルを書き換えず、コマンドも動かしません。`review_queue.json` の
+   確認待ちのモデルを一次資料(Hugging Face・GitHub)で確かめ、判断の一覧の JSON を返すだけです(根拠の URL を付けた
+   `approve`、`reject`、`hold`。安全上の理由の reject は `"safety": true`)。実行役のスクリプトがそれを
+   `python -m genmodelfit.review apply decisions.json --db src/genmodelfit/data/db.json` で当て(厳しく確かめ、
+   全部か無し)、コミットします。
 2. 実行役のスクリプトがブランチを push し、Pull Request を作ります。**機械の確かめがすべて通ったときだけ**マージします:
    変わったファイルが `src/genmodelfit/data/db.json` だけ、2 つのファイルから計算し直した分類が安全
    (`python -m genmodelfit.weekly merge-check --base <main の db.json> --head <新しい db.json> --json` が終了コード 0。

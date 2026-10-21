@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from ._version import __version__
-from .db import Database, DatabaseError
+from .db import Database, DatabaseError, duplicate_ids
 from .db import load as load_db
 from .diff import diff_db
 from .fetch import DirFetcher, Fetcher, RecordingFetcher
@@ -581,6 +581,10 @@ def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
             raws.append(json.loads(Path(path).read_text(encoding="utf-8")))
         except (OSError, ValueError) as e:
             raise DatabaseError(f"一覧のファイルを読めません: {path}: {e}") from e
+        models = raws[-1].get("models") if isinstance(raws[-1], dict) else None
+        dup = duplicate_ids(models if isinstance(models, list) else [])
+        if dup:  # 同じ ID の 2 つ目に差し替えた項目を紛れ込ませられないように(load も断る)
+            raise DatabaseError(f"同じモデル ID が 2 回以上あります: {path}: {', '.join(map(str, dup[:5]))}")
     old, new = load_db(base), load_db(head)
     cl = diff_db(old, new, raw=(raws[0], raws[1]))["classification"]
     return {
