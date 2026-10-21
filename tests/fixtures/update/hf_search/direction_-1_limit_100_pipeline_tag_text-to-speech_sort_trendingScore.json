@@ -7,7 +7,8 @@
   "tags": [
    "text-to-speech"
   ],
-  "pipeline_tag": "text-to-speech"
+  "pipeline_tag": "text-to-speech",
+  "trendingScore": 3.0
  },
  {
   "id": "newcomer/new-voice",
@@ -17,7 +18,8 @@
   "tags": [
    "text-to-speech"
   ],
-  "pipeline_tag": "text-to-speech"
+  "pipeline_tag": "text-to-speech",
+  "trendingScore": 1.2
  },
  {
   "id": "newcomer/brand-new-voice",
@@ -27,13 +29,26 @@
   "tags": [
    "text-to-speech"
   ],
-  "pipeline_tag": "text-to-speech"
+  "pipeline_tag": "text-to-speech",
+  "trendingScore": 1.0
  },
  {
   "id": "dual/both-voice",
   "downloads": 5000,
   "downloadsAllTime": 5000,
   "likes": 50,
+  "tags": [
+   "text-to-speech"
+  ],
+  "pipeline_tag": "text-to-speech",
+  "trendingScore": 2.0
+ },
+ {
+  "id": "stale/old-voice",
+  "downloads": 50,
+  "downloadsAllTime": 2000,
+  "likes": 400,
+  "trendingScore": 0.1,
   "tags": [
    "text-to-speech"
   ],

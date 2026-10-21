@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push → ユーザの承認 | PyPI と GitHub Release |
 | データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
+| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | 毎週月曜 03:00 UTC・手動実行 | PR `automated/weekly-data` |
 
 データの配布は `v*` のタグではないので、PyPI には出ません。
 
@@ -88,7 +89,7 @@ environment `pypi` の Trusted Publisher を事前登録してある。事前登
 ## データの配布
 
 `.github/workflows/data.yml` は、**main にコミットされた `src/genmodelfit/data/db.json` をそのまま**署名して配る
-(上流から作り直さない。作り直して PR にする流れと毎日の実行は Issue #19)。きっかけは、main の db.json が変わった
+(上流から作り直さない。作り直して PR にする流れは下の「毎週の一覧の更新」)。きっかけは、main の db.json が変わった
 push と手動実行。
 
 1. sign: environment `data-signing`(main だけ)で、コミットされた一覧を読めることを確かめ、署名し、同梱の公開鍵で
@@ -98,7 +99,8 @@ push と手動実行。
 
 checkout は `persist-credentials: false`。
 
-同梱の一覧の HEAD の確認は 30 日で切れる(切れると自動のおすすめが 0 件になる)。切れる前に
+同梱の一覧の HEAD の確認は 30 日で切れる(切れると自動のおすすめが 0 件になる)。普段は毎週の PR(下)をマージすれば
+延びる。毎週の PR が止まっているときは、切れる前に
 `genmodelfit update --heads-only --no-cache --output src/genmodelfit/data/db.json` で取り直して PR にし、main に入れると
 data.yml が配り直す。今の一覧の期限は `genmodelfit system --no-cache` の Data の欄(`valid until`)で分かる。
 
@@ -138,6 +140,102 @@ db = update_from_release()  # 失敗したら RemoteError(DatabaseError の仲�
 
 署名は Ed25519。`db.json.sig` は 64 バイトの署名を base64 にした 1 行。
 署名の確認だけ手でやるなら `python -m genmodelfit.signing verify db.json`(同梱の信じる鍵のどれかで確かめる)。
+
+## 毎週の一覧の更新(#19)
+
+llmfit の weekly-model-update.yml にならい、上流から作り直した一覧を毎週 PR にする。**公開するのは人が見て
+マージした一覧だけ**(作り直しと公開を分ける)。
+
+```text
+weekly-data.yml(毎週月曜 03:00 UTC)→ PR automated/weekly-data → 作者が見てマージ
+  → data.yml が main の db.json に署名して data-latest に置く → 使う側は genmodelfit update --from-release
+```
+
+`.github/workflows/weekly-data.yml`:
+
+1. build(`contents: read` だけ):
+   - キャッシュを戻す(`actions/cache/restore`。`file_headers.json`・`repo_precision.json`。鍵は毎回違う run_id で、
+     restore-keys で一番新しいものを取る)
+   - `python -m genmodelfit.weekly --out weekly-out --apply src/genmodelfit/data/db.json --rate-limit-budget 900`
+     (時間の上限 90 分)。`genmodelfit update` と同じ作り直し(テンプレート・HF・HEAD・ファイルの見出しと精度)に続けて `update --inspect-only` と同じ読み直し(同梱の一覧と同じ 2 段)。
+     引き継ぎの元は main の一覧。HF の 429 は Retry-After を守って待ち、待ち時間の合計が 900 秒を超えたら止まる
+     (HF_TOKEN は使わない)
+   - 確かめ(どれかに落ちたら終了コード 1 で、PR を作らない。理由は `weekly-out/result.json` の `problems` と
+     実行の要約): 形(読み直し)、自動のおすすめが 0 件でない、
+     **区分ごとに main の半分未満に減っていない**(全体・HF・公式テンプレート・無検閲・自動のおすすめ。元が 4 件以上の
+     区分だけ)、**HEAD の期限(`expires_at`)が 7 日より先**(作り直した直後なのに近ければ HEAD の取り直しが効いていない。
+     `genmodelfit system --json` の側からも二重に確かめる)、**新しく無検閲の印が付いた項目が 5 件まで**(超えたら
+     選び方の規則が緩んだ疑い。手動実行で `allow_many_uncensored` を選んだときだけ、失敗にせず本文の先頭に警告)
+   - キャッシュを保存する(`if: always()`。失敗・時間切れでも残す。GitHub は 7 日使わないキャッシュを消す)
+   - 新しい一覧を入れた状態で `ruff check`・`ruff format --check`・`pytest -q`(CI の代わり。下の注意)
+   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす
+   - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)
+2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
+   `result.json` が ok の一覧だけを入れ、`peter-evans/create-pull-request`(コミットで固定)で PR を作る・更新する
+   (ブランチ `automated/weekly-data`、ラベル `automated`・`data-update`、本文は `weekly-out/pr_body.md`)
+
+決めたこと:
+
+- **PR の本文の上流の文字はすべて無害にする**: モデルの名前・ID・ライセンスの名前・根拠・URL・リポジトリ名・
+  失敗の理由は `weekly.md()` で、HTML の文字を実体参照に(`<!--`・`<img>`・`</details>` が効かない)、Markdown の
+  記号をバックスラッシュで(リンク・画像・強調・表の区切り)、`@` の後に幅の無い空白(メンションしない)。
+  長い本文は行の切れ目で切り、開いたままの `<details>` を閉じる。#34 の実測の集計(利用者の出した値を含む)は
+  `weekly.code_block()` の囲みに入れる。実行の要約(`$GITHUB_STEP_SUMMARY`)にも同じ本文を出す
+
+- **自動ではマージしない**(auto-merge も使わない)。ここでは署名も公開もしない
+- **GITHUB_TOKEN で作った PR では CI(ci.yml)が自動で動かない**(GitHub の仕様。ループを防ぐため)。代わりに同じ
+  ワークフローの build で、新しい一覧を入れた状態の ruff と pytest を通してから PR を作る(PR の本文にもそう書く)。
+  CI も見たいときは PR を閉じて開き直すか、手元で `pytest -q` を回す
+- **一部を取得できなかったとき**(`sources.partial`): 既定は失敗(PR を作らない)。手動実行で `allow_partial` を
+  選んだときだけ、欠けたのが HF のリポジトリの一時的な失敗だけで前の一覧から引き継げたとき(429 の待ち時間の
+  上限に達していない・HF の検索が失敗していない・読めないテンプレートが無い・前の一覧と `license_policy` が同じ)に
+  限って「一部欠け」の警告を本文の先頭に付けて PR にする(`weekly.partial_problems`)。それ以外の欠け方は、
+  消えた・古いままの項目が「変化」に見えてしまうので PR にしない
+- 試験が落ちたら PR を作らない。上流の変化で試験が落ちたとき(例: 2026-10 に HF のリポジトリの名前が変わり、
+  出どころの表の当て直しが合わなくなった)は、直す PR を別に作る
+
+### PR で確かめること
+
+本文(`genmodelfit diff` と同じ中身)の「注意」と表を見る:
+
+- **⚠ ライセンスが寛容な側に変わった項目**(段階が下がった、または許可リストに入った。不明 → 何か、も含む)。
+  自動のおすすめに出る側の変化なので、`license_url` の原文で確かめる
+- **自動のおすすめに入った・外れた項目**(両方の一覧に同じ方針を当てる: ComfyUI の版は新しい一覧の記録、
+  HEAD の古さは見ない)。外れた項目に AI生成キットが使うものが無いか
+- **新しく HEAD が失敗した URL**(gated になった・消えた)。前から失敗している URL は畳んである
+- **消えた項目**(上流から消えた・検索の上位から外れた)
+- **新しく無検閲の印が付いた項目**の根拠(未成年の性的表現を目的とするものは除外する。docs/sources.md)
+- 実測のあるモデルのファイルが変わっていたら、`python -m genmodelfit.calibrate` で直す PR を別に作る
+- 全部の違いは artifact の `diff.json`(形は docs/schema.md「diff」)
+
+### 手元で同じ流れを試す
+
+```powershell
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out                         # 上流から(書くのは out だけ)
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out --record $env:TEMP\weekly-rec   # 応答も残す
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out2 --offline-sources $env:TEMP\weekly-rec  # 通信しない
+.venv\Scripts\genmodelfit diff src\genmodelfit\data\db.json $env:TEMP\weekly-out\db.json
+```
+
+`--offline-sources` は、`--record` で残した GET の応答と HEAD の応答コードだけで作り直す(ファイルの見出しと
+リポジトリの精度はキャッシュ `GENMODELFIT_CACHE_DIR` にあるものだけ)。HEAD の日時は実行した時刻になるので、
+期限の確かめは本物にならない。失敗した応答(401・つながらない)は残らないので、読み直した結果は本物の実行と
+少し違う(2026-10-21 の試しでは 335 件に対して 334 件)。流れを試す・PR の本文の形を見るためのもの。手元のキャッシュを汚したくなければ `GENMODELFIT_CACHE_DIR` を別の場所にする。
+終了コード: 0 = 通った、1 = 確かめに落ちた(`result.json` の `problems`)、2 = 使い方の誤り。
+
+### 作者が一度だけ設定すること
+
+- Settings → Actions → General → Workflow permissions の **「Allow GitHub Actions to create and approve pull
+  requests」を有効にする**(無効だと create-pull-request が失敗する)。確認:
+  `gh api repos/laxshmate/genmodelfit/actions/permissions/workflow`(`can_approve_pull_request_reviews` が true)。
+  この設定は名前のとおり**承認(approve)も許す**(GitHub に PR の作成だけを許す設定は無い)。weekly-data.yml は
+  承認しない(`gh pr review` も auto-merge も使わない。tests/test_workflows.py が検査)。レビューとマージは作者が行う
+- **60 日リポジトリに動き(コミットなど)が無いと、GitHub は schedule のワークフローを止める**。止まったら
+  Actions の「Weekly data」で「Enable workflow」を押すか、手動実行(workflow_dispatch)すると戻る
+- ラベル `automated`・`data-update` を作る(ワークフローも作ろうとするが、`pull-requests: write` だけでは
+  作れないことがある): `gh label create automated -R laxshmate/genmodelfit`、`gh label create data-update -R laxshmate/genmodelfit`
+- main のブランチ保護で必須のチェックを決めているなら、GITHUB_TOKEN の PR では ci.yml が動かないので、
+  PR を閉じて開き直して CI を動かしてからマージする
 
 ## 鍵
 

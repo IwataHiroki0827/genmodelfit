@@ -34,3 +34,10 @@ def console_script() -> str | None:
     """venv に入った genmodelfit のコマンド(無ければ None)。"""
     scripts = Path(sys.executable).parent
     return shutil.which("genmodelfit", path=str(scripts))
+
+
+def bundled_uncensored() -> int:
+    """同梱の一覧の無検閲の件数(毎週の更新(#19)で変わるので、決め打ちせずに数える)。"""
+    from genmodelfit.db import load
+
+    return sum(1 for m in load(use_cache=False).models if m.content == "uncensored")

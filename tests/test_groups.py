@@ -106,7 +106,7 @@ DIFFERENT = [  # 大きさ・版・種類が違う
     ("image_z_image", "image_z_image_turbo"),  # 素の版と turbo
     ("image_qwen_image", "image_qwen_image_edit"),
     ("video_wan2_2_14B_t2v", "video_wan2_2_14B_i2v"),  # テキストエンコーダ(umt5)は同じでも別のモデル
-    ("image_qwen_image_2_1_t2i", "hf:0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF"),  # 内容(無検閲)が違う
+    ("image_qwen_image_2_1_t2i", "hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized"),  # 内容(無検閲)が違う
 ]
 
 

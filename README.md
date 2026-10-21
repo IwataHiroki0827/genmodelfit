@@ -355,7 +355,8 @@ Measured values win. Models whose download size is unknown are not judged (shown
 
 ## Data sources / データ源
 
-The bundled list has 323 entries (image 161, video 114, TTS 20, music 15, 3D 10, SFX 3) that make 204 models.
+The bundled list has 326 entries (image 163, video 115, TTS 20, music 15, 3D 10, SFX 3) that make 207 models
+(2026-10-21; refreshed weekly, see "Maintenance").
 Like llmfit, Hugging Face models are included only with at least 10,000 all-time downloads (1,000 for trending
 ones), and merges and test stubs are skipped ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
 llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数が 10,000 以上のもの(伸びているものは 1,000 以上)だけを入れます。
@@ -395,11 +396,35 @@ upstream, not the uploader's label) is on a commercial-use allowlist (apache-2.0
 replaceable), nothing is gated, an official ComfyUI workflow without custom nodes, the ComfyUI version is
 supported, every download URL answered an anonymous HEAD within the last 30 days, sha256 is known, the size is
 known, and the content is `sfw`. Otherwise it is held with machine-readable reasons (`held_reasons` in JSON, e.g. `license`; the table's Auto column shows the first one).
-In the bundled list 83 of 323 entries are auto. When a license cannot be verified it is treated as unknown
+In the bundled list 99 of 326 entries are auto (2026-10-21). When a license cannot be verified it is treated as unknown
 and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
 
 すべての条件を満たすものだけを自動でおすすめに出し、残りは理由付きで保留にします。ライセンスが確かめられない
 ものは「不明」として保留にします。アプリは使う ComfyUI の版を `--comfyui-version` で渡してください。
+
+## Maintenance / 一覧の保守
+
+Like llmfit, the list is rebuilt every week and published only after a person has reviewed it:
+
+1. Every Monday (03:00 UTC) `.github/workflows/weekly-data.yml` rebuilds the list from upstream
+   (`python -m genmodelfit.weekly`: templates, Hugging Face, HEAD checks, file headers; caches are kept between
+   runs), checks it (schema, auto count, the 30-day HEAD expiry must be more than 7 days away), runs ruff and
+   pytest with the new list, and opens or updates the pull request `automated/weekly-data` (labels `automated`,
+   `data-update`). The body is made by `genmodelfit diff` (added / removed models, license changes — the
+   ones toward the permissive side are marked —, auto-recommendation changes, failed HEAD checks).
+   It is never merged automatically.
+2. The owner reviews and merges it.
+3. On merge, `.github/workflows/data.yml` signs main's `db.json` and replaces the `data-latest` release.
+4. Apps take it with `genmodelfit update --from-release` (signature checked).
+
+```powershell
+genmodelfit diff old_db.json new_db.json            # what changed between two lists (--json for tools)
+python -m genmodelfit.weekly --dry-run --out weekly-out   # the same pipeline locally (writes only weekly-out)
+```
+
+毎週、上流から作り直した一覧を自動で PR にし(自動ではマージしない)、作者が見てマージしたものだけを
+署名して配ります。PR で確かめることは [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md)
+「毎週の一覧の更新」。
 
 ## Contributing measurements / 実測を送る
 

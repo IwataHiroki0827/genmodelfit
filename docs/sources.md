@@ -406,13 +406,21 @@ text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audienc
 
 1. 除外の判定(下)に当たるものを外す(数だけ数える)
 2. **全期間のダウンロード数が 10,000 未満**のものを外す(`skip_downloads`)。trendingScore・likes30d の検索だけで
-   見つけたものは 1,000 以上で入れる。llmfit の `scripts/scrape_hf_models.py`(`min_downloads=10000`、
-   trendingScore・likes30d での発見)にならった(2026-10-20 に利用者が決めた)。一覧に「誰も使っていないモデル」を入れないため
+   見つけたもので、**本当に伸びているもの**(検索の結果の trendingScore が 0.5 以上で、直近 30 日のダウンロード数が
+   100 以上)だけは 1,000 以上で入れる。llmfit の `scripts/scrape_hf_models.py`(`min_downloads=10000`、
+   trendingScore・likes30d での発見)にならった(2026-10-20 に利用者が決めた)。一覧に「誰も使っていないモデル」を入れないため。
+   伸びている条件は 2026-10-21 に足した(#19。likes30d の順で、古くて使われていないもの(直近 30 日 5 件など)が
+   1,000 の下限で入っていた)
+   - **無検閲は直近 30 日のダウンロード数も 100 以上**(`uncensored_inactive`。#19)
 3. 試験用・作りかけの名前(`tiny-random`・`tiny-dummy`・`-random-init`・`ci-random-`・`test-` で始まる)を外す(`test_stub`)。
-   `merge` / `mergekit` のタグのある混ぜ合わせ(merge)を外す(`merge`。llmfit と同じ)
+   `merge` / `mergekit` のタグか、**リポジトリ名に merge / mergekit の語**のある混ぜ合わせを外す(`merge`。llmfit と同じ。
+   名前は #19 で足した。「mix」は入れない)
 4. LoRA・LyCORIS・アダプタ・埋め込み(名前か `lora` / `peft` / `adapter` / `qlora` タグ)を外す。本体が無いと動かず、適否は本体で決まるため
 5. 部品だけのもの(名前に text-encoder・VL・CLIP・VAE・GPTQ・AWQ・MLX など)を外す
-6. 同じリポジトリ名の写し(持ち主違い)は一番ダウンロード数の多いものだけ。持ち主ごとに種類あたり 2 件まで
+6. 同じリポジトリ名の写し(持ち主違い)は一番ダウンロード数の多いものだけ。名前は末尾の量子化・形式の語
+   (`-GGUF`・`-Q8_0`・`_K_M`・`-fp8`・`-nf4`・`-int8`・`_diffusers`・`-Quantized` など)を取り、英数字だけにして比べる
+   (`update.copy_name`。#19。例: `Wai-NSFW-Illustrious-v140-Q8-GGUF` は `waiNSFWIllustrious_v140` の写し)。
+   持ち主ごとに種類あたり 2 件まで
 7. 種類ごとに**上位 30 件**まで(一覧を大きくしすぎない)。リポジトリの情報とモデルカードを取り、カードで
    除外に当たるもの・重みが選べないもの・本体が 30 MB 未満のもの(差分や中身の無いリポジトリ)を外す
 8. **同じ重みの写し**(名前が違う)を外す: 選んだファイルの sha256 の組が同じもの、または元のモデル(たどった
@@ -424,7 +432,7 @@ text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audienc
 ID は `hf:<owner>/<repo>`、`source: "huggingface"`、`discovered_from` に見つけた検索の URL、`downloads`(直近 30 日)/
 `downloads_all_time`(全期間)/ `likes` を入れる。
 同梱の一覧も 2026-10-20 にこの規則へそろえた(HF の 64 件から、全期間 10,000 未満の 16 件と merge のタグの 2 件を外して 46 件。
-無検閲は 39 → 24 件)。
+無検閲は 39 → 24 件)。2026-10-21 に #19 の規則で作り直した(HF 50 件、無検閲 28 件。docs/release.md)。
 
 **利用者のテンプレート**: index.json の `username` が `ComfyUI` でないテンプレート(2026-10-20 時点で 32 件。hellorob・
 PurzBeats など)は `Template.username` に持ち、`community: true` とする。同じ重みの公式のワークフローがあれば表の代表にしない
@@ -469,6 +477,7 @@ MMAudio・AudioLDM・Stable Audio Open の系統で music の語が無いもの)
 |---|---|---|
 | STRONG | loli(s)・lolicon(s)・loli con・lolita(s)・shota(s)・shotacon(s)・shota con・jailbait・preteen(s)・pedo・pedophile・pedophilia・paedophile・paedophilia・toddlercon・underage、ロリ・ロリコン・ロリータ・ショタ・ショタコン・児童ポルノ | すべてのモデルの ID・名前・タグ、モデルカード・説明 |
 | CONTEXT | child・children・kid(s)・minor(s)・teen(s)・teenage(r/rs)・schoolgirl(s)・school girl(s)・schoolboy(s)・school boy(s)・little girl(s) / boy(s)・young girl(s) / boy(s)・toddler・infant・cub・jk、幼女・児童・女子小学生・女子中学生・小学生・中学生、JC・JS(大文字のときだけ) | 無検閲のモデルの ID・名前・タグにあれば外す。カードでは、同じ文に性的な語(sex・nude・naked・porn・erotic・nsfw・explicit・lewd・hentai・topless・エロ・ヌード・裸・性的・アダルト・R18 など)があるとき(無検閲の印の無いモデルにも当てる) |
+| DATASET | e621(学習データに未成年の性的表現の分類を含むことが知られている画像の集まり。2026-10-21 オーナーの判断) | 無検閲のモデルの ID・名前・タグ・モデルカードにあれば外す(目的が未成年でなくても、出力に含まれうるため) |
 
 - 語は英数字の境界で照合する(`minor` は `minority`、`kid` は `kidney`、`teen` は `fifteen` に当たらない。
   `Loli-XL` や `shota_v2` には当たる)。カタカナの語は前後がカタカナでないときだけ(ロリ は カロリー・ロリポップに

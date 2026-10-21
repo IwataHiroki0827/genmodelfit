@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 import pytest
-from clihelp import child_env, console_script, run_cli
+from clihelp import bundled_uncensored, child_env, console_script, run_cli
 from rich.cells import cell_len
 
 from genmodelfit import __version__, cli
@@ -23,6 +23,7 @@ SUBCOMMANDS = [
     "gate",
     "bench",
     "download",
+    "diff",
     "contrib",
 ]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
@@ -145,11 +146,16 @@ def test_width(cache, args, columns):
 
 def test_fit_says_uncensored_hidden(cache):
     out = run_cli(["fit", *HW], cache).stdout.decode("utf-8")
-    # 同梱の無検閲は 24 件。ライセンスの分からないものも既定では隠す(#28)。
+    # 同梱の無検閲の件数(毎週の更新で変わるので一覧から数える。#19)。
+    # ライセンスの分からないものも既定では隠す(#28)。
     # 同じモデルの別のワークフローは「same model」に数える
     assert (
         "All models: " in out
-        and re.search(r"\(\d+ hidden: uncensored 24, tools \d+, license unknown \d+, too tight \d+", out)
+        and re.search(
+            rf"\(\d+ hidden: uncensored {bundled_uncensored()}, tools \d+, "
+            r"license unknown \d+, too tight \d+",
+            out,
+        )
         and " more workflows merged into" in re.sub(r"\s+", " ", out)  # 見出しは幅 100 で折り返す
     )
     assert "add --content all" in out and "--include-unknown-license" in out
@@ -163,7 +169,9 @@ def test_fit_says_uncensored_hidden(cache):
 def test_pc_line_and_sections(cache):
     out = run_cli(["recommend", *HW, "-n", "3"], cache).stdout.decode("utf-8").splitlines()
     assert out[0] == "PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)"
-    assert out[1].startswith("Recommended: ") and "hidden: uncensored 24, tools " in out[1]
+    assert (
+        out[1].startswith("Recommended: ") and f"hidden: uncensored {bundled_uncensored()}, tools " in out[1]
+    )
     heads = [x for x in out if x.startswith("== ")]
     assert [h.split()[1] for h in heads] == ["image", "video", "music", "sfx", "tts", "3d"]
     header = next(x for x in out if x.startswith("Type"))

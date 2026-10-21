@@ -14,8 +14,8 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `contrib` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `contrib` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `contrib` |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `diff` / `contrib` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
@@ -26,7 +26,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 
 | command | network | writes |
 |---|---|---|
-| `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate` (and the Python API) | none | none |
+| `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate`, `diff` (and the Python API) | none | none |
 | `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
@@ -307,7 +307,7 @@ becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48
 Tested in `tests/test_groups.py`.
 逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
 
-On the bundled list (323 entries) this gives 204 models; 55 of them have more than one entry.
+On the bundled list (326 entries, 2026-10-21) this gives 207 models; 55 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
@@ -486,6 +486,32 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 `filters` (`modality`, `only_auto`, `only_held`), `summary` (`models`, `auto`, `held`,
 `failing` = models failing each check, `first_failing` = models whose first failed check is that one),
 `models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
+
+## diff
+
+`genmodelfit diff OLD NEW --json` (Python: `gmf.diff_db(old_db, new_db)`, the same dict without `genmodelfit` /
+`command`; #19). Compares two `db.json` files; no network, nothing written. Used for the weekly pull request
+(`python -m genmodelfit.weekly`, docs/release.md). No `system` / `database`.
+
+| key | meaning |
+|---|---|
+| `old`, `new` | `generated_at`, `models` (count), `license_policy`, `comfyui_latest_release`, `partial`, `comfyui_checked_at` |
+| `policy` | the gate policy applied to **both** lists (GatePolicy.to_dict): `comfyui_version` = `--comfyui-version`, else the version recorded in the new list (else the old one); `max_head_age_days` = null (HEAD age ignored; HEAD status codes still count) |
+| `summary` | `models_old`, `models_new`, `added`, `removed`, `license_changed`, `license_permissive_side`, `auto_old`, `auto_new`, `auto_gained`, `auto_lost`, `size_changed`, `precision_changed`, `newly_uncensored`, `head_failures`, `head_failures_new`, `head_unchecked` (new `sources.head_check.unchecked`), `unauthorized_added`, `unauthorized_removed` |
+| `added`, `removed` | `{id, name, modality, content, source, license}` (`license` is the label: `mit`, `other(<name>)`, `不明` for unknown) |
+| `license_changes` | entries whose `(license, license_name)` changed: `{id, name, old, new, old_tier, new_tier, allowed_old, allowed_new, permissive_side}`. Tiers are `hf.license_tier` (1 permissive … 6 unknown). `permissive_side` = the tier went down (unknown → anything included) or the license newly passes the allowlist |
+| `auto_changes` | entries whose auto result differs (added / removed entries too; `old` / `new` is null when absent): `{id, name, old, new, held_by, held_by_old}` |
+| `size_changes` | total size changed by ≥ 10 % **and** ≥ 100 MiB (or became known / unknown): `{id, old_bytes, new_bytes, ratio}` |
+| `precision_changes` | `{id, old, new, old_source, new_source}` |
+| `newly_uncensored` | `content` became `uncensored`, or an added `uncensored` entry: the `added` fields + `evidence` (`content_evidence`), `added` (bool) |
+| `head_failures` | URLs in the new list whose HEAD answered other than 200 / 302 / 307: `{url, status, ids, new}`; `new` = that URL did not fail (or was absent) in the old list |
+| `unauthorized` | `{added, removed}`: repo ids in `sources.huggingface.unauthorized` (401) that appeared / disappeared |
+| `partial_counts` | the new list's `sources.partial_counts` (null if absent) |
+| `stats` | changed values of `sources`, flattened to dotted keys (`counts.modality.image`, `head_check.status.302`, …): `{key, old, new}`; lists are compared by length; `checked_at` / `url` / `api` / `generator` / `failures` / `errors` are skipped |
+
+`python -m genmodelfit.weekly --out DIR` writes `DIR/db.json`, `DIR/diff.json` (the dict above), `DIR/pr_body.md` and
+`DIR/result.json`: `genmodelfit`, `ok`, `problems` (str[], why it failed), `base`, `offline`, `run_url`, `partial`,
+`status` (DataStatus of the new list), `summary` (as above), `files`, and `applied_to` with `--apply`.
 
 ## info
 
