@@ -171,9 +171,7 @@ def _file_reasons(fa: list[Any], fb: list[Any], allow: frozenset[str]) -> list[s
     if not all(isinstance(f, dict) for f in [*fa, *fb]):
         return ["files_changed"]
     pairs, gone, new = _file_match(fa, fb)  # entry_changes と同じ組み方(#59)
-    pos = {id(f): k for k, f in enumerate(fa)}
-    idx = [pos[id(a)] for a, _ in pairs]
-    if gone or new or idx != sorted(idx):
+    if gone or new or _order_changed(fa, pairs):
         return ["files_changed"]  # ファイルの増減・並びの変化
     out: list[str] = []
     for a, b in pairs:
@@ -247,6 +245,13 @@ def _file_match(
     return pairs, rest_a, rest_b
 
 
+def _order_changed(fa: list[Any], pairs: list[tuple[dict[str, Any], dict[str, Any]]]) -> bool:
+    """組んだファイルの並び(new の順)が、old の並びと違うか。"""
+    pos = {id(f): k for k, f in enumerate(fa)}
+    idx = [pos[id(a)] for a, _ in pairs]
+    return idx != sorted(idx)
+
+
 def _file_pairs(fa: list[Any], fb: list[Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     return _file_match(fa, fb)[0]
 
@@ -274,7 +279,9 @@ def entry_changes(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
                 found.append("files")
             for fa_, fb_ in pairs:
                 found += [f"files.{t}" for t in sorted(set(fa_) | set(fb_)) if fa_.get(t) != fb_.get(t)]
-            out += found or ["files"]  # 何も見つからないのに違う = 並びだけの変化
+            if not found and _order_changed(fa, pairs):
+                found.append("files")  # 並びだけの変化(値が null の鍵が増えただけ、は変化にしない)
+            out += found
         elif va == vb:
             continue
         elif k == "template" and isinstance(va, dict) and isinstance(vb, dict):
@@ -362,6 +369,9 @@ def _raw_pair(
 _VALUE_FIELDS = ("name", "modality", "tasks", "runtime", "comfy_family", "content", "precision")
 # ファイルの「どれか」を決める項目。変わったら old → new を出す(file_changed)
 _FILE_IDENTITY_SHOWN = ("url", "sha256", "repo_id", "directory", "gated", "role")
+# ライセンスの出どころ(どこで確かめたか)。ライセンスと同じ大事さで、値の前 → 後を出す
+_ENTRY_LICENSE_SOURCE = ("license_url",)
+_FILE_LICENSE_SOURCE = ("license_url", "license_from", "license_path", "repo_license")
 
 
 def _file_source(f: dict[str, Any]) -> str | None:
@@ -450,7 +460,25 @@ def _model_items(
                     "new": _license_label(*lb_),
                 }
             )
-    used |= {f"files.{k}" for k in _FILE_IDENTITY_SHOWN} | {"files.license", "files.license_name"}
+    for k in _ENTRY_LICENSE_SOURCE:
+        if k in todo:
+            items.append(
+                {"kind": "license_source", "name": None, "field": k, "old": a.get(k), "new": b.get(k)}
+            )
+    for g, f in pairs:
+        for k in _FILE_LICENSE_SOURCE:
+            if f"files.{k}" in todo and g.get(k) != f.get(k):
+                items.append(
+                    {
+                        "kind": "license_source",
+                        "name": f.get("name"),
+                        "field": k,
+                        "old": g.get(k),
+                        "new": f.get(k),
+                    }
+                )
+    used |= {f"files.{k}" for k in (*_FILE_IDENTITY_SHOWN, *_FILE_LICENSE_SOURCE)}
+    used |= {"files.license", "files.license_name", *_ENTRY_LICENSE_SOURCE}
     size_paths = {"files", "files.size_bytes", "template", "template.size_bytes"}
     if sizes[0] != sizes[1] and size_paths & set(todo):
         items.append({"kind": "size", "old": sizes[0], "new": sizes[1]})
@@ -767,15 +795,39 @@ def diff_db(
     }
 
 
+# diff_db の summary の鍵(empty_diff も同じ鍵を返す)
+SUMMARY_KEYS = (
+    "models_old",
+    "models_new",
+    "added",
+    "removed",
+    "license_changed",
+    "license_permissive_side",
+    "auto_old",
+    "auto_new",
+    "auto_gained",
+    "auto_lost",
+    "size_changed",
+    "precision_changed",
+    "newly_uncensored",
+    "head_failures",
+    "head_failures_new",
+    "head_unchecked",
+    "unauthorized_added",
+    "unauthorized_removed",
+)
+
+
 def empty_diff(note: str) -> dict[str, Any]:
     """比べる一覧が無いとき(`genmodelfit diff` で取ってきた一覧がまだ無い)の、diff_db と同じ鍵の dict。#59
 
-    鍵の形は diff_db と同じにし、値は空(old / new / policy / classification は null)。理由は note。"""
+    鍵の形は diff_db と同じにし、値は空(old / new / policy / classification は null、summary の数は 0)。
+    理由は note。"""
     return {
         "old": None,
         "new": None,
         "policy": None,
-        "summary": {},
+        "summary": dict.fromkeys(SUMMARY_KEYS, 0) | {"head_unchecked": None},
         "added": [],
         "removed": [],
         "license_changes": [],

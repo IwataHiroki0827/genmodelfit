@@ -161,6 +161,11 @@ LABELS = {
     "files.repo_id": "部品 ",
     "files.gated": "部品 ",
     "files.role": "部品 ",
+    "license_url": "ライセンスの出どころ",
+    "files.license_url": "ライセンスの出どころ",
+    "files.license_from": "ライセンスの出どころ",
+    "files.license_path": "ライセンスの出どころ",
+    "files.repo_license": "ライセンスの出どころ",
     "files.size_bytes": "大きさ",
 }
 
@@ -757,7 +762,10 @@ def test_old_cache_warns(capsys, tmp_path):
 def test_no_cache_json_has_usual_shape(capsys):
     d = json.loads(_run(capsys, "--json")[1])
     assert set(OLD_KEYS) <= set(d) and {"note", "warnings", "field_changes", "model_changes"} <= set(d)
-    assert d["summary"] == {} and d["model_changes"] == [] and d["old"] is None and "error" not in d
+    assert d["model_changes"] == [] and d["old"] is None and "error" not in d
+    # summary は普段と同じ鍵(数は 0)
+    normal = diff_db(load(NEW), load(NEW))["summary"]
+    assert set(d["summary"]) == set(normal) and all(v in (0, None) for v in d["summary"].values())
 
 
 def test_non_string_license_name_is_rejected(capsys, tmp_path):
@@ -769,3 +777,196 @@ def test_non_string_license_name_is_rejected(capsys, tmp_path):
         p = _write_raw(tmp_path, f"bad_{where}.json", bad)
         code, out = _run(capsys, str(NEW), str(p), "--json")
         assert code == 1 and "license_name" in json.loads(out)["error"]
+
+
+# ---- 2 回目の検証の指摘(#59) ----
+
+
+def _model(data: dict[str, Any], i: str) -> dict[str, Any]:
+    return next(m for m in data["models"] if m["id"] == i)
+
+
+@pytest.mark.parametrize(
+    ("field", "old", "new"),
+    [
+        (
+            "url",
+            "https://huggingface.co/org/repo/resolve/main/split_files/diffusion_models/model_fp16.safetensors",
+            "https://huggingface.co/org/repo/resolve/0123abc/split_files/diffusion_models/model_fp16.safetensors",
+        ),
+        ("sha256", "a" * 30 + "b" + "c" * 33, "a" * 30 + "d" + "c" * 33),
+        ("sha256", "1" * 64, "2" * 64),
+        (
+            "license_path",
+            ["org/a-very-long-repository-name-x", "base/model-" + "y" * 50],
+            ["org/a-very-long-repository-name-x", "base/model-" + "z" * 50],
+        ),
+    ],
+)
+def test_shortened_values_differ(field, old, new):
+    """縮めた前と後が同じ文字列にならない(真ん中だけ違う URL・sha256 でも)。"""
+    a, b = cli._diff_pair(field, old, new)
+    assert a != b and len(a) < 90 and len(b) < 90
+
+
+def test_url_middle_change_via_cli(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    f = _model(new, SFX)["files"][0]
+    f["url"] = f["url"].replace("/resolve/main/", "/resolve/0123abcd/")
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    flat = " ".join(x.strip() for x in _block(out, SFX).splitlines())  # 折り返しを戻す
+    a, b = flat.split(" の url ", 1)[1].split(" ")[0], flat.split(" → ", 1)[1].split(" ")[0]
+    assert a != b and "main" in a and "0123abcd" in b
+
+
+def test_permissive_and_uncensored_marks(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    m = _model(new, "audio_yue2_text2music")  # cc-by-nc-4.0 → apache-2.0(寛容な側)
+    m["license"] = "apache-2.0"
+    for f in m["files"]:
+        f["license"] = "apache-2.0"
+    _model(new, MUSIC[0])["content"] = "uncensored"
+    _model(new, MUSIC[0])["content_evidence"] = ["name:nsfw"]
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert "ライセンス cc-by-nc-4.0 → apache-2.0  ! 寛容な側(原文で確かめる)" in _block(
+        out, "audio_yue2_text2music"
+    )
+    assert "内容 sfw → uncensored  ! 新しく無検閲(name:nsfw)" in _block(out, MUSIC[0])
+
+
+def _first_block_ids(out: str) -> list[str]:
+    section = out.split("変わったモデル(大事な変化の順):\n", 1)[1]
+    return [ln.rsplit("— ", 1)[1] for ln in section.splitlines() if ln.startswith("  ") and "— " in ln]
+
+
+@pytest.mark.parametrize("kind", ["license", "files_order", "gated", "license_source"])
+def test_important_kinds_come_before_languages(kind, capsys, tmp_path):
+    """ライセンス・部品の変化は、ID が後ろでも、言語だけ変わったモデル(ID が前)より先に出る。"""
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    _model(new, "3d_hunyuan3d-v2.1")["languages"] = {"prompt": ["xx"]}
+    m = _model(new, "hf:sesame/csm-1b")
+    if kind == "license":
+        m["license"] = "mit"
+    elif kind == "files_order":
+        m["files"].reverse()
+    elif kind == "gated":
+        m["files"][0]["gated"] = not m["files"][0]["gated"]
+    else:
+        m["files"][0]["license_from"] = "someone/else"
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    ids = _first_block_ids(out)
+    assert ids.index("hf:sesame/csm-1b") < ids.index("3d_hunyuan3d-v2.1"), out
+    if kind == "gated":
+        assert "部品 transformers-00001-of-00002.safetensors の gated True → False" in out
+    if kind == "license_source":
+        assert "ライセンスの出どころ 部品" in out and "license_from" in out and "someone/else" in out
+
+
+def test_license_and_file_lines_are_never_collapsed(capsys, tmp_path):
+    """同じライセンスの変化・部品の追加が多くのモデルにあっても、モデルごとに出す(ID を隠さない)。"""
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    targets = [m["id"] for m in new["models"]][:5]
+    for i in targets:
+        m = _model(new, i)
+        m["license"] = "mit-zz"
+        m["files"].append({"name": "extra.safetensors", "size_bytes": 10, "license": "mit"})
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    for i in targets:
+        block = _block(out, i)
+        assert "ライセンス" in block and "部品 + extra.safetensors" in block, (i, out)
+
+
+def test_collapsed_small_group_lists_ids(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    targets = [m["id"] for m in new["models"]][:4]
+    for i in targets:
+        m = _model(new, i)
+        m["languages"] = {**(m.get("languages") or {}), "zz": ["xx"]}
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    lines = out.splitlines()
+    k = lines.index("  言語(zz) なし → xx: 4 件")  # 「(ID は --all)」にしない(8 件まではその場に出す)
+    listed = " ".join(lines[k + 1 : k + 3])
+    assert all(i in listed for i in targets), out
+
+
+def test_long_language_list_is_truncated_by_default(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    _model(new, MUSIC[0])["languages"] = {"prompt": [f"l{k}" for k in range(40)]}
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert _has(out, "…ほか 24(全 40)") and "l39" not in out
+    a, b = _write_raw(tmp_path, "a.json", old), _write_raw(tmp_path, "b.json", new)
+    _, out_all = _run(capsys, str(a), str(b), "--all")
+    assert "l39" in out_all and "…ほか 24" not in out_all
+
+
+def test_auto_group_lists_ids_without_all(capsys):
+    """自動のおすすめの変化(判断が要る)は、まとめても ID を --all に隠さない(-n で切る)。"""
+    for a, b in (("0.1.0", "0.7.1"), ("0.3.0", "0.4.0")):
+        d = diff_db(load(_pair_paths(f"{a}-{b}")[0]), load(_pair_paths(f"{a}-{b}")[1]))
+        gained = [
+            c["id"] for c in d["auto_changes"] if c["new"] and not c["old"] and c["id"] in d["field_changes"]
+        ]
+        lines = cli._diff_lines(d, 20)
+        text = "\n".join(lines)
+        group = [ln for ln in lines if ln.startswith("  自動のおすすめ") and "件" in ln]
+        for g in group:
+            assert "(ID は --all)" not in g
+        assert all(i in text for i in gained[:3]), text
+    # -n で切ると「…ほか N 件(-n で増やす)」
+    d = diff_db(load(_pair_paths("0.1.0-0.7.1")[0]), load(_pair_paths("0.1.0-0.7.1")[1]))
+    entries = cli._diff_changed_entries(d, False, limit=2)
+    group = next(b for _, b in entries if b[0].startswith("  自動のおすすめ 保留 → 出す"))
+    assert "(ID は --all)" not in group[0] and group[-1].startswith("    …ほか 14 件(-n 16 で増やす)"), group
+
+
+def test_other_changes_grouped_per_field():
+    d = diff_db(load(_pair_paths("0.1.0-0.7.1")[0]), load(_pair_paths("0.1.0-0.7.1")[1]))
+    lines = cli._diff_lines(d, None)
+    groups = [ln for ln in lines if ln.startswith("  その他の変化: ") and " 件" in ln]
+    assert groups and all(", " not in ln.split(": ", 1)[1].split(":")[0] for ln in groups), groups
+
+
+def test_null_valued_new_file_key_is_no_change(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    for f in _model(new, SFX)["files"]:
+        f["zz_new_key"] = None
+    out, d, mc = _cli_and_merge(capsys, tmp_path, old, new)
+    assert "部品の並び・形が変わった" not in out and SFX not in {c["id"] for c in d["model_changes"]}
+    assert mc["safe"] is True
+
+
+def test_long_id_is_never_split(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    long_id = "hf:darknight9121/FLUX.2-klein-base-9B-bucket-uncensored-with-a-much-longer-name"
+    for d in (old, new):
+        _model(d, MUSIC[0])["id"] = long_id
+        _model(d, long_id)["name"] = "とても長い名前のモデル" * 3
+    _model(new, long_id)["runtime"] = "x-changed"
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert any(ln.strip() == long_id for ln in out.splitlines()), out
+    huge = "hf:" + "x" * 120  # 幅より長い ID は 1 行にはみ出す(切らない)
+    for d in (old, new):
+        _model(d, long_id)["id"] = huge
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert any(ln.strip() == huge for ln in out.splitlines())
+
+
+def test_older_new_list_warns_for_one_and_two_args(capsys, tmp_path):
+    old = _raw(NEW)
+    older = copy.deepcopy(old)
+    older["generated_at"] = "2000-01-01T00:00:00Z"
+    p = _write_raw(tmp_path, "older.json", older)
+    _, out = _run(capsys, str(p))  # 同梱 → 古いファイル
+    assert "注意:" in out and "古いです" in out
+    _, out = _run(capsys, str(NEW), str(p))
+    assert "注意:" in out and "向きが逆" in out
+    _, out = _run(capsys, str(p), str(NEW))
+    assert "注意:" not in out

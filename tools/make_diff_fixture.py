@@ -6,11 +6,11 @@
 
 元の db.json は 1 つ約 1.7 MB あるので、試験に要る項目だけを残す:
 - 部品・ライセンス・内容(無検閲)・言語のどれかが変わったモデルのうち、大事なもの
-  (部品・ライセンス・内容は全部、言語だけの変化は先頭から KEEP_LANG 件)
+  (部品の増減・内容は全部、ライセンスなどは先頭から KEEP_LICENSE 件、言語だけの変化は KEEP_LANG 件)
 - 大事でない変化(確認の印・動かし方など)だけのモデルを ID の順に先頭から KEEP_FILLER 件。
   既定の --limit(20)より多く残し、ID の順に並べると大事な変化が隠れる、という問題を再現できるようにする
 - 変わっていないモデル・両方で HEAD が失敗しているモデル(先頭から 3 件ずつ)
-- 増えた・消えたモデル(全部)
+- 増えた・消えたモデル(全部)、自動のおすすめが変わったモデル(全部)
 sources(内部の数)はそのまま残す。
 
 使い方(リポジトリの一番上で。git のタグから読む。tests/fixtures/diff/<前>-<後>/old.json・new.json に書く):
@@ -24,7 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from genmodelfit.diff import entry_changes, is_safe_path
+from genmodelfit.db import parse_db
+from genmodelfit.diff import diff_db, entry_changes, is_safe_path
 
 OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "diff"
 DB = "src/genmodelfit/data/db.json"
@@ -32,6 +33,7 @@ KEEP_UNCHANGED = 3
 KEEP_HEAD_FAILED = 3
 KEEP_FILLER = 25
 KEEP_LANG = 6
+KEEP_LICENSE = 25
 # 大事な変化(部品・ライセンス・内容)
 IMPORTANT = ("files", "files.", "license", "content")
 
@@ -53,14 +55,19 @@ def main(old_tag: str, new_tag: str) -> None:
     mb = {m["id"]: m for m in b["models"]}
     common = sorted(ma.keys() & mb.keys())
     paths = {i: [p for p in entry_changes(ma[i], mb[i]) if not is_safe_path(p)] for i in common}
-    important = [i for i in common if any(p.startswith(IMPORTANT) for p in paths[i])]
+    # 部品の増減・内容は全部、ライセンス(とファイルの項目)だけの変化は先頭から KEEP_LICENSE 件
+    core = [i for i in common if any(p == "files" or p == "content" for p in paths[i])]
+    lic = [i for i in common if i not in core and any(p.startswith(IMPORTANT) for p in paths[i])]
+    important = core + lic[:KEEP_LICENSE]
     lang = [i for i in common if i not in important and "languages" in paths[i]][:KEEP_LANG]
     filler = [i for i in common if paths[i] and i not in important and i not in lang][:KEEP_FILLER]
     rest = [i for i in common if not paths[i]]
     same = [i for i in rest if not _failed(mb[i])][:KEEP_UNCHANGED]
     both_failed = [i for i in common if _failed(ma[i]) and _failed(mb[i])]
     failed = [i for i in both_failed if i not in important][:KEEP_HEAD_FAILED]
-    keep = set(important) | set(lang) | set(filler) | set(same) | set(failed) | (ma.keys() ^ mb.keys())
+    # 自動のおすすめが変わったモデル(全部。まとめた行でも ID を隠さないことを確かめる)
+    auto = {c["id"] for c in diff_db(parse_db(a, "path"), parse_db(b, "path"))["auto_changes"]}
+    keep = set(important) | set(lang) | set(filler) | set(same) | set(failed) | auto | (ma.keys() ^ mb.keys())
     out = OUT / f"{old_tag.lstrip('v')}-{new_tag.lstrip('v')}"
     out.mkdir(parents=True, exist_ok=True)
     for name, d in (("old", a), ("new", b)):

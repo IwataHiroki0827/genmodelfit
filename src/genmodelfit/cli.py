@@ -837,6 +837,7 @@ _DIFF_RANK = {
     "file_changed": 0,
     "license": 1,
     "file_license": 1,
+    "license_source": 1,
     "auto": 4,
     "languages": 5,
     "size": 5,
@@ -844,14 +845,16 @@ _DIFF_RANK = {
 }
 _DIFF_VALUE_RANK = {"content": 2, "precision": 5}  # ほかの値(名前・種類・用途・動かし方・系統)は 3
 _DIFF_OTHER_RANK = 6
+_DIFF_OTHER_HEAD = "その他の変化: "
 # この大事さ以下(数が大きい)の同じ行が、この件数以上のモデルにあれば 1 行にまとめる。部品・ライセンス・
-# 内容(無検閲)はまとめない(モデルごとに確かめるもの)。まとめた行の ID は、この件数までならその場に出す
+# 内容(無検閲)はまとめない(モデルごとに確かめるもの)
 _DIFF_COLLAPSE_RANK = 3
 _DIFF_COLLAPSE_MIN = 3
+# まとめた行の ID は、この件数までならその場に出す(多ければ --all)
 _DIFF_COLLAPSE_SHOW_IDS = 8
+# まとめても ID を必ず出す種類(分類で判断が要る変化: 自動のおすすめ)。数は -n で切る
+_DIFF_COLLAPSE_KEEP_IDS = frozenset({"auto"})
 DIFF_DEFAULT_LIMIT = 20
-
-
 _DIFF_LIST_MAX = 20  # 既定の表示で並べる数の上限(言語など。--all では全部)
 
 
@@ -870,26 +873,90 @@ def _diff_auto(v: Any) -> str:
     return "出す" if v else ("なし" if v is None else "保留")
 
 
-def _diff_short(field: str, v: Any) -> str:
-    """URL・sha256 などの長い値を縮める(old → new の見分けが付く程度)。"""
+def _diff_text(field: str, v: Any) -> str:
     if v is None:
         return "なし"
+    if isinstance(v, list):
+        return " > ".join(str(x) for x in v)
     text = str(v)
-    if field == "sha256" and len(text) > 16:
-        return text[:12] + "…"
-    if field == "url":
-        text = text.split("://", 1)[-1]
-        if len(text) > 64:
-            return text[:26] + "…" + text[-34:]
-    return text
+    return text.split("://", 1)[-1] if field.endswith("url") else text
+
+
+def _diff_pair(field: str, a: Any, b: Any, room: int = 72) -> tuple[str, str]:
+    """前と後の値を、違うところが見えるように縮める(前と後が同じ文字列にならない)。
+
+    sha256 は違う桁まで伸ばす。長い URL などは、同じ頭と尻を「…」にして、違うところとその前後を残す。"""
+    ta, tb = _diff_text(field, a), _diff_text(field, b)
+    if ta == tb:
+        return ta, tb
+    p = 0
+    while p < min(len(ta), len(tb)) and ta[p] == tb[p]:
+        p += 1
+    if field == "sha256" and a is not None and b is not None:
+        n = max(12, p + 4)
+        return ta[:n] + ("…" if n < len(ta) else ""), tb[:n] + ("…" if n < len(tb) else "")
+    if a is None or b is None or (len(ta) <= room and len(tb) <= room):
+        return ta, tb  # 片方が無いときは、もう片方を全部出す
+    s = 0
+    while s < min(len(ta), len(tb)) - p and ta[-1 - s] == tb[-1 - s]:
+        s += 1
+    ctx = 12
+    start = max(0, p - ctx)
+
+    def cut(t: str) -> str:
+        end = len(t) - max(0, s - ctx)
+        seg, tail = t[start:end], end < len(t)
+        if len(seg) > room:
+            seg, tail = seg[:room], True  # 違うところ(先頭から ctx 文字目)は残る
+        return ("…" if start else "") + seg + ("…" if tail else "")
+
+    return cut(ta), cut(tb)
 
 
 def _diff_model(m: dict[str, Any]) -> str:
     """モデルの見出し: 名前 (種類) — ID。名前が「(種類)」で終わるときは種類を重ねない。"""
+    return f"{_diff_name(m)} — {m['id']}"
+
+
+def _diff_name(m: dict[str, Any]) -> str:
     name, kind = str(m.get("name") or "?"), m.get("modality")
     if kind and not name.rstrip().lower().endswith(f"({kind})".lower()):
         name = f"{name} ({kind})"
-    return f"{name} — {m['id']}"
+    return name
+
+
+def _diff_head(m: dict[str, Any], indent: str, width: int, extra: str = "") -> list[str]:
+    """モデルの見出しの行。幅に収まらなければ ID を次の行に分ける(ID の途中では折り返さない)。"""
+    from rich.cells import cell_len
+
+    line = f"{indent}{_diff_model(m)}{extra}"
+    if cell_len(line) <= width:
+        return [line]
+    out = [f"{indent}{_diff_name(m)} —", f"{indent}    {m['id']}"]
+    if extra:
+        if cell_len(out[1] + extra) <= width:
+            out[1] += extra
+        else:
+            out.append(f"{indent}    {extra.strip()}")
+    return out
+
+
+def _diff_ids(ids: list[str], indent: str, width: int) -> list[str]:
+    """ID の並びを、ID の途中で切らずに幅に詰める(幅より長い ID は 1 行にはみ出す)。"""
+    from rich.cells import cell_len
+
+    out: list[str] = []
+    cur = ""
+    for k, i in enumerate(ids):
+        piece = i + ("," if k < len(ids) - 1 else "")
+        cand = f"{cur} {piece}" if cur else f"{indent}{piece}"
+        if cur and cell_len(cand) > width:
+            out.append(cur)
+            cand = f"{indent}{piece}"
+        cur = cand
+    if cur:
+        out.append(cur)
+    return out
 
 
 def _diff_side(tag: str, side: dict[str, Any], label: str | None) -> str:
@@ -917,6 +984,10 @@ def _diff_item(
     if kind == "license":
         mark = "  ! 寛容な側(原文で確かめる)" if (lic.get(c["id"]) or {}).get("permissive_side") else ""
         return rank, f"ライセンス {it['old']} → {it['new']}{mark}"
+    if kind == "license_source":
+        where = f"部品 {it['name']} の " if it.get("name") else ""
+        a, b = _diff_pair(it["field"], it["old"], it["new"])
+        return rank, f"ライセンスの出どころ {where}{it['field']} {a} → {b}"
     if kind == "languages":
         what = _DIFF_LANG_LABELS.get(it["key"], it["key"])
         return rank, f"言語({what}) {_diff_val(it['old'], full)} → {_diff_val(it['new'], full)}"
@@ -928,8 +999,8 @@ def _diff_item(
     if kind == "files_order":
         return rank, "部品の並び・形が変わった"
     if kind == "file_changed":
-        f = it["field"]
-        return rank, f"部品 {it['name']} の {f} {_diff_short(f, it['old'])} → {_diff_short(f, it['new'])}"
+        a, b = _diff_pair(it["field"], it["old"], it["new"])
+        return rank, f"部品 {it['name']} の {it['field']} {a} → {b}"
     if kind == "file_license":
         return rank, f"部品 {it['name']} のライセンス {it['old']} → {it['new']}"
     if kind == "size":
@@ -953,20 +1024,22 @@ def _diff_item(
     return rank, f"{kind}: {json.dumps(it, ensure_ascii=False)}"
 
 
-def _diff_changed_entries(d: dict[str, Any], show_all: bool) -> list[tuple[tuple[Any, ...], list[str]]]:
+def _diff_changed_entries(
+    d: dict[str, Any], show_all: bool, limit: int | None = None, width: int = 100
+) -> list[tuple[tuple[Any, ...], list[str]]]:
     """「変わったモデル」の節の並び: (並べる鍵, 行)。大事な変化のあるモデルが先。
 
-    大事さの低い同じ行(確認の印が付いた など)が多くのモデルにあれば 1 行(件数)にまとめる
-    (ID は --all で出す)。まとめた行も同じ大事さの順に並ぶので、--limit で大事なものが隠れない。"""
+    大事さの低い同じ行(確認の印が付いた など。「その他の変化」は項目ごと)が多くのモデルにあれば 1 行
+    (件数)にまとめる。まとめた行も同じ大事さの順に並ぶので、--limit で大事なものが隠れない。
+    まとめた行の ID: 自動のおすすめの変化は必ず出す(limit まで)。ほかは少なければその場に、多ければ --all。"""
     lic = {c["id"]: c for c in d["license_changes"]}
     unc = {c["id"]: c for c in d["newly_uncensored"]}
-    per: list[tuple[dict[str, Any], list[tuple[int, str]]]] = []
+    per: list[tuple[dict[str, Any], list[tuple[int, str, str]]]] = []
     for c in d.get("model_changes") or []:
-        rows = [_diff_item(c, it, lic, unc, show_all) for it in c["items"]]
-        if c["other"]:
-            rows.append((_DIFF_OTHER_RANK, "その他の変化: " + ", ".join(c["other"])))
+        rows = [(*_diff_item(c, it, lic, unc, show_all), it["kind"]) for it in c["items"]]
+        rows += [(_DIFF_OTHER_RANK, _DIFF_OTHER_HEAD + f, "other") for f in c["other"]]
         per.append((c, rows))
-    count: dict[tuple[int, str], list[str]] = {}
+    count: dict[tuple[int, str, str], list[str]] = {}
     for c, rows in per:
         for r in dict.fromkeys(rows):
             if r[0] >= _DIFF_COLLAPSE_RANK:
@@ -975,12 +1048,22 @@ def _diff_changed_entries(d: dict[str, Any], show_all: bool) -> list[tuple[tuple
     out: list[tuple[tuple[Any, ...], list[str]]] = []
     for c, rows in per:
         keep = sorted((r for r in rows if r not in groups), key=lambda r: r[0])
-        if keep:
-            out.append(((keep[0][0], 0, c["id"]), [f"  {_diff_model(c)}", *(f"    {t}" for _, t in keep)]))
-    for (rank, text), ids in groups.items():
+        if not keep:
+            continue
+        texts = [t for _, t, k in keep if k != "other"]
+        others = [t[len(_DIFF_OTHER_HEAD) :] for _, t, k in keep if k == "other"]
+        if others:
+            texts.append(_DIFF_OTHER_HEAD + ", ".join(others))
+        out.append(((keep[0][0], 0, c["id"]), [*_diff_head(c, "  ", width), *(f"    {t}" for t in texts)]))
+    for (rank, text, kind), ids in groups.items():
         lines = [f"  {text}: {len(ids)} 件"]
-        if show_all or len(ids) <= _DIFF_COLLAPSE_SHOW_IDS:
-            lines.append("    " + ", ".join(ids))
+        if kind in _DIFF_COLLAPSE_KEEP_IDS:  # 判断が要る変化は ID を隠さない
+            shown = ids if limit is None else ids[:limit]
+            lines += _diff_ids(shown, "    ", width)
+            if len(shown) < len(ids):
+                lines.append(f"    …ほか {len(ids) - len(shown)} 件(-n {len(ids)} で増やす)")
+        elif show_all or len(ids) <= _DIFF_COLLAPSE_SHOW_IDS:
+            lines += _diff_ids(ids, "    ", width)
         else:
             lines[0] += "(ID は --all)"
         out.append(((rank, 1, text), lines))
@@ -988,12 +1071,13 @@ def _diff_changed_entries(d: dict[str, Any], show_all: bool) -> list[tuple[tuple
     return out
 
 
-def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False) -> list[str]:
+def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False, width: int = 100) -> list[str]:
     """`genmodelfit diff` の表示(折り返し前の行)。#59
 
     既定は利用者に関係のある変化だけ(増えた・消えた・変わったモデルの変化(自動のおすすめを含む)・
     新しい HEAD の失敗)。show_all(--all)は保守用の、前からの HEAD の失敗・401 のリポジトリ・
-    sources の数・人気の数などだけの変化と、まとめた行の ID も出す。limit は節ごとの上限(None = 全部)。"""
+    sources の数・人気の数などだけの変化と、まとめた行の ID も出す。limit は節ごとの上限(None = 全部)。
+    width はモデルの ID を途中で折り返さないための幅(ID は自分の行に分ける)。"""
     s = d["summary"]
 
     def cut(items: list[Any]) -> list[Any]:
@@ -1030,9 +1114,9 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False) ->
             lines += ["", f"{title}:"]
             for m in cut(d[key]):
                 auto = "  自動のおすすめに出す" if key == "added" and m["id"] in auto_new else ""
-                lines.append(f"  {_diff_model(m)}  [{m['content']}/{m['license']}]{auto}")
+                lines += _diff_head(m, "  ", width, f"  [{m['content']}/{m['license']}]{auto}")
             lines += more(d[key])
-    entries = _diff_changed_entries(d, show_all)
+    entries = _diff_changed_entries(d, show_all, limit, width)
     if entries:
         lines += ["", "変わったモデル(大事な変化の順):"]
         for _, block in cut(entries):
@@ -1079,6 +1163,18 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False) ->
     return lines
 
 
+def _diff_print(lines: list[str], width: int) -> None:
+    """幅に折り返して出す。字下げのあとが 1 語だけの行(ID だけの行)は折り返さない(はみ出してよい)。"""
+    from .table import wrap_line
+
+    for line in lines:
+        if line.strip() and " " not in line.strip():
+            print(line)
+            continue
+        for part in wrap_line(line, width):
+            print(part)
+
+
 def _gib(b: int | None) -> str:
     return "?" if not b else f"{b / GIB:.2f}"
 
@@ -1089,9 +1185,10 @@ _DIFF_HOWTO = (
     "実行してください(2 つのファイルを比べるときは `genmodelfit diff old.json new.json`)。"
 )
 _DIFF_OLDER = (
-    "取ってきた一覧({new})が同梱の一覧({old})より古いです。この表示は「同梱 → 取ってきた一覧」の向きなので、"
-    "新しいモデルが「消えた」に見えます。`genmodelfit update --from-release` で取り直してください。"
+    "後の一覧({new_label}、{new})が前の一覧({old_label}、{old})より古いです。比べる向きが逆かもしれません"
+    "(新しいモデルが「消えた」に見えます)。"
 )
+_DIFF_OLDER_CACHE = "`genmodelfit update --from-release` で取り直してください。"
 
 
 def _diff_raw(path: str | Path | None) -> dict[str, Any]:
@@ -1110,7 +1207,8 @@ def _diff_inputs(
     """比べる 2 つの一覧(Database・JSON・説明)と注意。#59
 
     引数なし = 同梱の一覧 ↔ 取ってきた一覧(update・update --from-release が書くキャッシュ)、
-    1 つ = 同梱の一覧 ↔ そのファイル、2 つ = そのまま。取ってきた一覧が無ければ案内の文を返す。"""
+    1 つ = 同梱の一覧 ↔ そのファイル、2 つ = そのまま。取ってきた一覧が無ければ案内の文を返す。
+    後の一覧が前の一覧より古い(生成日時)ときは、どの形でも注意を付ける。"""
     from .db import cached_db_path
 
     def side(path: str | Path | None, label: str) -> tuple[Database, dict[str, Any], str]:
@@ -1118,24 +1216,28 @@ def _diff_inputs(
         return db, _diff_raw(path), label
 
     bundled = f"同梱の一覧(genmodelfit {__version__})"
+    from_cache = False
     if args.old and args.new:
-        return side(args.old, str(args.old)), side(args.new, str(args.new)), []
-    if args.old:
-        return side(None, bundled), side(args.old, str(args.old)), []
-    cp = cached_db_path()
-    if not cp.exists():
-        return _DIFF_HOWTO.format(path=cp)
-    old, new = side(None, bundled), side(cp, f"取ってきた一覧({cp})")
+        old, new = side(args.old, str(args.old)), side(args.new, str(args.new))
+    elif args.old:
+        old, new = side(None, bundled), side(args.old, str(args.old))
+    else:
+        cp = cached_db_path()
+        if not cp.exists():
+            return _DIFF_HOWTO.format(path=cp)
+        old, new = side(None, bundled), side(cp, f"取ってきた一覧({cp})")
+        from_cache = True
     warn = []
     ga, gb = old[0].generated_at, new[0].generated_at
     if ga and gb and gb < ga:
-        warn.append(_DIFF_OLDER.format(old=ga, new=gb))
+        text = _DIFF_OLDER.format(old_label=old[2], old=ga, new_label=new[2], new=gb)
+        warn.append(text + (_DIFF_OLDER_CACHE if from_cache else ""))
     return old, new, warn
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
     from .diff import diff_db, empty_diff
-    from .table import output_width, wrap_line
+    from .table import output_width
 
     width = output_width()
     got = _diff_inputs(args)
@@ -1143,8 +1245,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
         if args.json:
             _out({"genmodelfit": __version__, "command": "diff", **empty_diff(got), "warnings": []})
         else:
-            for part in wrap_line(got, width):
-                print(part)
+            _diff_print([got], width)
         return 0
     (old, raw_old, old_label), (new, raw_new, new_label), warnings = got
     d = diff_db(
@@ -1160,9 +1261,7 @@ def cmd_diff(args: argparse.Namespace) -> int:
         _out({"genmodelfit": __version__, "command": "diff", **d})
         return 0
     limit = args.limit if args.limit is not None else (None if args.all else DIFF_DEFAULT_LIMIT)
-    for line in _diff_lines(d, limit, show_all=args.all):
-        for part in wrap_line(line, width):
-            print(part)
+    _diff_print(_diff_lines(d, limit, show_all=args.all, width=width), width)
     return 0
 
 
@@ -2124,8 +2223,8 @@ given (default -n 20 per section otherwise).
 
 PRECONDITIONS:
   No arguments: a fetched list in the cache (run `genmodelfit update --from-release` first; without
-  it, a short how-to is printed and the exit code is 0). A warning is printed when the fetched list
-  is older than the bundled one. Otherwise one or two db.json files.
+  it, a short how-to is printed and the exit code is 0). Otherwise one or two db.json files.
+  A warning is printed when the new list is older (generated_at) than the old one.
 
 SIDE EFFECTS:
   None - read-only. No network access.

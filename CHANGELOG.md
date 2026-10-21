@@ -33,6 +33,13 @@ All notable changes to this project are documented here. The format is based on
   when the name already ends with it. With no arguments, a warning is shown when the fetched list is older than the
   bundled one; without a fetched list, `--json` has the usual keys (empty) plus `note`.
 - The loader rejects a non-string `license_name` (entry or file), which used to crash `diff` with AttributeError.
+- Second review of `diff` (#59): before → after values are shortened around the part that differs (a URL changed only in
+  the middle, or two sha256 that share a prefix, never look the same); the license provenance (`license_url`,
+  `license_from`, `license_path`, `repo_license`) is shown with the license, not as 「その他の変化」; collapsed lines
+  of auto-recommendation changes always list the ids (cut by `-n` with 「…ほか N 件(-n M で増やす)」); 「その他の変化」 is
+  collapsed per field; a file key that is missing on one side and null on the other is no change; model ids are never
+  broken by wrapping (a long id gets its own line); the "older list" warning is shown for every argument form; the
+  no-cache `--json` has the usual `summary` keys with 0.
 
 ### Added
 
