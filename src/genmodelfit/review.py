@@ -472,7 +472,7 @@ def reject_file(
         old += "\n"
     db.sources["counts"] = _counts(db)
     _save(db, p)
-    rp.write_text(old + line, encoding="utf-8")
+    rp.write_text(old + line, encoding="utf-8", newline="\n")
     key, date, text = line.rstrip("\n").split("\t", 2)
     return {"key": key, "date": date, "note": text, "rejected_file": str(rp), "db": str(p)}
 
@@ -651,7 +651,7 @@ def apply_decisions(
         old = rp.read_text(encoding="utf-8") if rp.is_file() else REJECTED_HEADER
         if old and not old.endswith("\n"):
             old += "\n"
-        rp.write_text(old + "".join(lines), encoding="utf-8")
+        rp.write_text(old + "".join(lines), encoding="utf-8", newline="\n")
     counts = {a: sum(1 for d in items if d["action"] == a) for a in DECISION_ACTIONS}
     return {
         "applied": True,

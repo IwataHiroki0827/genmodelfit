@@ -233,18 +233,38 @@ def card_repos(e: ModelEntry) -> list[str]:
 
 
 def _card_for_entry(e: ModelEntry, client: Any) -> list[str] | None:
-    """カードの language(最初に言語のあったもの)。どれかを読めたが言語が無ければ []、1 つも読めていなければ
-    None(前に保存した値を使う)。"""
-    seen = False
-    for r in card_repos(e):
+    """カードの language。card_repos の順に見て、最初に言語のあったカードのもの。
+
+    途中のカードが読めなかった(401・失敗・まだ取っていない)ら、そこで None にする(前に保存した値を使う)。
+    読めなかったカードを飛ばして次のカードを使うと、読めたかどうかで答えが毎回変わるため(#42 の毎週の
+    作り直しで、gated の facebook/sam3 が読めない回だけ Wan のカードの zh が付いた)。すべて読めて、どれにも
+    言語が無ければ []。読むカードが無ければ None。"""
+    repos = card_repos(e)
+    if not repos:
+        return None  # 読むカードが無い(前の値のまま。無ければ None = まだ読んでいない)
+    for r in repos:
         info = client.cached_repo(r)
         if info is None:
-            continue
-        seen = True
+            return None
         langs = card_languages(info)
         if langs:
             return langs
-    return [] if seen else None
+    return []
+
+
+def carry_card_languages(entries: list[ModelEntry], previous: list[ModelEntry]) -> int:
+    """作り直した項目に、前の一覧で保存したカードの言語(card_languages)を引き継ぐ(まだ入っていないものだけ)。
+    カードが読めなかった回に言語が消えたり変わったりしないように
+    (apply_app_fields は読めたときだけ上書きする)。
+    返す値は引き継いだ数。"""
+    prev = {m.id: m for m in previous}
+    n = 0
+    for e in entries:
+        old = prev.get(e.id)
+        if e.card_languages is None and old is not None and old.card_languages is not None:
+            e.card_languages = list(old.card_languages)
+            n += 1
+    return n
 
 
 # --- 手で足すモデル -----------------------------------------------------------------------------------

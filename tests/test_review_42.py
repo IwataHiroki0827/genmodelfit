@@ -741,3 +741,84 @@ def test_python_m_review_has_no_runpy_warning():
         check=False,
     )
     assert r.returncode == 0 and b"RuntimeWarning" not in r.stderr
+
+
+# --- 改行は LF・カードの言語は読めない回に揺れない(毎週の実行の試しで見つかったもの) -----------------------
+
+
+def test_writers_use_lf_and_bundled_round_trips(tmp_path, bundled):
+    from importlib import resources
+
+    src = Path(str(resources.files("genmodelfit.data").joinpath("db.json")))
+    raw = src.read_bytes()
+    assert b"\r\n" not in raw
+    db = parse_db(json.loads(raw.decode("utf-8")), "path")
+    out = tmp_path / "db.json"
+    db.save(out)
+    assert out.read_bytes() == raw  # 同じ形(indent=1・ensure_ascii=False・末尾の改行なし)で LF
+    data = load(out)
+    data.models[0].review = Review("pending", ["new"])
+    data.save(out)
+    assert b"\r\n" not in out.read_bytes()
+    assert review.approve_file(out, data.models[0].id, [URL]).reviewed
+    assert b"\r\n" not in out.read_bytes()
+    review.reject_file(out, data.models[1].id, "理由")
+    assert b"\r\n" not in out.read_bytes()
+    assert b"\r\n" not in (tmp_path / review.REJECTED_FILE).read_bytes()
+    assert review.main(["publish", str(out), str(tmp_path / "pub.json")]) == 0
+    assert b"\r\n" not in (tmp_path / "pub.json").read_bytes()
+    weekly._write_json(tmp_path / "w.json", {"a": [1, 2]})
+    assert b"\r\n" not in (tmp_path / "w.json").read_bytes()
+
+
+class _Cards:
+    """cached_repo だけの偽の HfClient。None は読めなかった(401・失敗)。"""
+
+    def __init__(self, cards):
+        self.cards = cards
+
+    def cached_repo(self, repo):
+        langs = self.cards.get(repo)
+        if langs is None:
+            return None
+
+        from types import SimpleNamespace
+
+        return SimpleNamespace(card={"language": langs})
+
+
+def test_card_languages_do_not_flap_when_a_card_is_unreadable(bundled):
+    from genmodelfit import appinfo
+
+    m = copy.deepcopy(bundled.get("video_wan_vace_inpainting"))
+    repos = appinfo.card_repos(m)
+    assert len(repos) >= 3
+    every = {r: [] for r in repos}
+    every[repos[1]] = ["en"]
+    every[repos[-1]] = ["en", "zh"]
+    assert appinfo._card_for_entry(m, _Cards(every)) == ["en"]
+    gated = dict(every)
+    gated[repos[1]] = None  # gated のカードが読めない回
+    assert appinfo._card_for_entry(m, _Cards(gated)) is None  # 次のカードの zh を使わない
+    assert appinfo._card_for_entry(m, _Cards({r: [] for r in repos})) == []
+    no_repo = copy.deepcopy(m)
+    no_repo.files = []
+    assert appinfo._card_for_entry(no_repo, _Cards({})) is None  # 読むカードが無い
+    m.card_languages = ["en"]
+    appinfo.apply_app_fields([m], _Cards(gated))
+    assert m.card_languages == ["en"] and m.languages.get("prompt") == ["en"]
+
+
+def test_rebuild_carries_card_languages_from_the_previous_list(bundled):
+    from genmodelfit import appinfo
+
+    prev = [copy.deepcopy(bundled.get("video_wan_dancer"))]
+    assert "zh" in prev[0].card_languages
+    fresh = copy.deepcopy(prev[0])
+    fresh.card_languages, fresh.languages = None, {}
+    assert appinfo.carry_card_languages([fresh], prev) == 1
+    appinfo.apply_app_fields([fresh], _Cards({}))  # どのカードも読めない
+    assert fresh.card_languages == prev[0].card_languages and fresh.languages == prev[0].languages
+    read = copy.deepcopy(fresh)
+    appinfo.apply_app_fields([read], _Cards({r: ["en"] for r in appinfo.card_repos(read)}))
+    assert read.card_languages == ["en"]  # 読めたら作り直す

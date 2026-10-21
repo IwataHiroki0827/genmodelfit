@@ -78,7 +78,9 @@ class Database:
             raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=1), encoding="utf-8", newline="\n"
+        )
         tmp.replace(path)
 
 

@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"error: 秘密鍵がありません(環境変数 {args.key_env})", file=sys.stderr)
                 return 1
             out = path.with_name(path.name + ".sig")
-            out.write_text(encode_sig(sign(path.read_bytes(), pem)), encoding="ascii")
+            out.write_text(encode_sig(sign(path.read_bytes(), pem)), encoding="ascii", newline="\n")
             print(f"署名しました: {out}")
             return 0
         sig_path = Path(args.sig) if args.sig else path.with_name(path.name + ".sig")

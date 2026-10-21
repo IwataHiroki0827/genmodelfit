@@ -93,7 +93,7 @@ class WeeklyRecorder(RecordingFetcher):
     def save_heads(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root / HEADS_FILE).write_text(
-            json.dumps(self.statuses, indent=1, sort_keys=True), encoding="utf-8"
+            json.dumps(self.statuses, indent=1, sort_keys=True), encoding="utf-8", newline="\n"
         )
 
     def __getattr__(self, name: str) -> Any:  # get_range・budget_exhausted・rate_limited などは中身のもの
@@ -555,7 +555,7 @@ def run(
             + "\n"
             + body
         )
-    (out / "pr_body.md").write_text(body, encoding="utf-8")
+    (out / "pr_body.md").write_text(body, encoding="utf-8", newline="\n")
     if result["ok"] and apply_to:
         shutil.copyfile(new_path, apply_to)
         result["applied_to"] = str(apply_to)
@@ -564,7 +564,7 @@ def run(
 
 
 def _write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 
 MERGE_NOT_SAFE = 3

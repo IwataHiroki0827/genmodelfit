@@ -374,7 +374,9 @@ class HeaderCache:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         body = {"note": "genmodelfit が読んだ重みのファイルの見出し(精度・要素の数)", "files": self.data}
-        tmp.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8", newline="\n"
+        )
         tmp.replace(self.path)
 
 

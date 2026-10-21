@@ -919,7 +919,7 @@ def default_output_path(m: Measurement) -> Path:
 def save(m: Measurement, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"measurements": [asdict(m)]}
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
 
 
 def save_decision(
