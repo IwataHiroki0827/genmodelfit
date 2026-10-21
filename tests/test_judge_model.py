@@ -102,6 +102,11 @@ def test_judge_model_matches_what_the_app_computes(app_db, mid, gpu):
     d = fit.to_dict()
     got = (d["fit_level"], d["run_mode"], d["memory_required_gb"], d["estimate_confidence"])
     need = round(want[2], 2) if want[2] is not None else None
+    if want[1] == "cpu":
+        # CPU で動く判定(#39 の SD 系・Stable Audio)では、アプリの vram_need は None で、memory_required_gb は
+        # メインメモリの量(memory_kind が ram)。段階・動かし方・根拠は同じ
+        assert d["memory_kind"] == "ram" and need is None
+        need = d["memory_required_gb"]
     assert got == (want[0], want[1], need, want[3])
     assert d["id"] == mid
     # 見積もりそのものも同じ(丸める前の値)
