@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from clihelp import run_cli
+from clihelp import bundled_uncensored, run_cli
 
 from genmodelfit import load_db
 from genmodelfit.groups import build_index
@@ -421,7 +421,7 @@ def test_recommend(cache):
     assert d["filters"]["min_fit"] == "marginal" and d["filters"]["license"] is None
     assert [g["modality"] for g in d["groups"]] == ["image", "video", "music", "sfx", "tts", "3d"]
     assert all(g["shown"] == min(5, g["matched"]) for g in d["groups"])
-    assert d["hidden"]["uncensored"] == 24 and d["hidden"]["same_model"]
+    assert d["hidden"]["uncensored"] == bundled_uncensored() and d["hidden"]["same_model"]
     for m in d["models"]:
         check_fit(m)
         assert m["fit_level"] != "too_tight" and m["content"] == "sfw"
@@ -528,8 +528,12 @@ def test_search(cache):
     for m in d["models"]:
         check_fit(m)
     check_list_order(d["models"])
-    every = call(["search", "flux", *HW, "--content", "all", "--all-workflows"], cache)
-    assert len(every["models"]) == len(d["models"]) + d["hidden"]["uncensored"]
+    # 無検閲を出すと、隠していた数だけ増える(ライセンスの分からないものも出して比べる。無検閲には
+    # ライセンスの分からないものがあり、--content all でもそれは隠れるため。#19 の毎週の更新で見つかった)
+    unk = ["--all-workflows", "--include-unknown-license"]
+    sfw = call(["search", "flux", *HW, *unk], cache)
+    every = call(["search", "flux", *HW, "--content", "all", *unk], cache)
+    assert len(every["models"]) == len(sfw["models"]) + sfw["hidden"]["uncensored"]
     grouped = call(["search", "flux", *HW], cache)
     assert grouped["matched"] + grouped["hidden"]["same_model"] == len(d["models"])
     none = call(["search", "no_such_model_xyz", *HW], cache)  # 0 件でも終了コード 0

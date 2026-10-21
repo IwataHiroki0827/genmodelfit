@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-21
+## [0.5.0] - 2026-10-21
 
 ### Added
 
@@ -16,8 +16,8 @@ All notable changes to this project are documented here. The format is based on
   (`{"ja", "en"}`), also in `recommend` / `fit` / `search` JSON and `info`. Languages come from the hand table
   `data/overrides.json`, then the Hugging Face card's `language` (plus the text-encoder table), then the text-encoder
   table (umt5 / Qwen3 / Qwen3.5 / Qwen2.5-VL = multilingual, CLIP / T5 = English; undecided stays empty), see
-  docs/sources.md. `schema_version` stays 1: readers up to 0.3.0 drop the unknown keys (`tests/test_appinfo.py` reads the
-  bundled list with a copy of the 0.3.0 reader).
+  docs/sources.md. `schema_version` stays 1: readers up to 0.4.0 drop the unknown keys (`tests/test_appinfo.py` reads the
+  bundled list with a copy of the old reader).
 - Hand-added models (`source: "manual"`, `data/manual.json`, ids `manual:<name>`) that `update` merges, HEAD-checks and
   header-inspects like the others and whose per-file licenses it compares with the upstream cards (stricter wins, with a
   warning). First three: Tsukuyomi-chan (piper-plus), Irodori-TTS v4.1 Small, Stable Audio 3 Small (music).
@@ -25,6 +25,22 @@ All notable changes to this project are documented here. The format is based on
   アプリが一覧だけで画面を作れるように、言語・動かし方・説明の項目と、手で足すモデル(最初の 3 件)を足した。
 - The estimator counts `.onnx` and other non-ComfyUI weight files for models whose `runtime` is neither `comfyui` nor
   unknown (piper). Other models are counted as before.
+
+## [0.4.0] - 2026-10-21
+
+### Added
+
+- `genmodelfit diff OLD NEW [--json]` and `gmf.diff_db(old, new)` (Issue #19): what changed between two lists —
+  added / removed models, license changes (changes toward the permissive side are marked), auto-recommendation
+  changes under one policy for both lists (HEAD age ignored), size / precision changes beyond a threshold, newly
+  uncensored models, failed HEAD checks, 401 repos and changed `sources` numbers. JSON: docs/schema.md "diff".
+  2 つの一覧の違いをまとめる `diff` を足した。
+- Weekly data refresh (Issue #19): `.github/workflows/weekly-data.yml` rebuilds the list every Monday with
+  `python -m genmodelfit.weekly` (caches kept between runs), checks it (auto count, the HEAD expiry must be more than
+  7 days away, ruff and pytest with the new list) and opens a pull request `automated/weekly-data` whose body is the
+  diff. It is never merged automatically; publishing stays in data.yml after the owner merges. A partial rebuild
+  fails unless run by hand with `allow_partial` and only HF repos failed transiently. docs/release.md.
+  毎週、作り直した一覧を PR にする(自動ではマージしない。配るのはマージした一覧だけ)。
 
 - Measurement submissions from users (Issue #34). `genmodelfit bench … --submission PATH` and
   `genmodelfit contrib make --from <bench result>` write a submission file (`contrib_schema` 1:
@@ -54,6 +70,39 @@ All notable changes to this project are documented here. The format is based on
   RTX 3070 runs) to `calibration.json` (`check`) and the accuracy table; LOO rows carry `gpu_name` and `origin`.
   Coefficients are unchanged.
   利用者の実測の提出(作る・見る・検査・まとめ・毎週の精度の点検)と、根拠の段階 `basis_detail` を足した。
+
+### Changed
+
+- Hugging Face selection (Issue #19): the 1,000 all-time floor for models found only by the trending / likes30d
+  searches now needs a trendingScore of at least 0.5 and at least 100 downloads in the last 30 days (otherwise
+  10,000 applies); repo names containing `merge` / `mergekit` are skipped like the tag; quantized / format copies
+  are recognized by name (`-GGUF`, `-Q8_0`, `_K_M`, `-fp8`, `-nf4`, `-int8`, `_diffusers`, `-Quantized`, …) and
+  only the most downloaded is kept; uncensored models also need 100 downloads in the last 30 days.
+  HF の選び方を締めた(伸びている条件・名前の merge・量子化の写し・無検閲は直近 30 日も使われているもの)。
+- The bundled list was rebuilt with these rules (326 entries: HF 48, uncensored 26; auto 99 unchanged).
+  Added: 6 uncensored HF models that meet the rules and the new official template `video_fasth3_ominiref_r2v`;
+  removed: `hf:0xSojalSec/Qwen-Image-2.1-Uncensored-GGUF` (a quantized copy of
+  `hf:abenzerps/Qwen-Image-2.1-Uncensored-Quantized`) and `hf:TheImposterImposters/lustifySDXLNSFW_v20-inpainting`
+  (the same weights, by sha256, as the more downloaded `hf:andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING`).
+  同梱の一覧を新しい規則で作り直した。
+- Weekly PR body: every upstream string is HTML-escaped and Markdown-neutralized (`weekly.md`), mentions are
+  broken, truncation keeps `<details>` balanced; a scheduled run fails when more than 5 entries become uncensored
+  or when HF / template / uncensored / auto counts fall below half.
+
+### Fixed
+
+- Exclusion (safety): uncensored models whose ID, name, tags or card mention a dataset known to include a category
+  of sexual content involving minors (`DATASET_TERMS`: e621) are excluded, even when that is not their purpose
+  (owner decision, 2026-10-21; `hf:hearmeneigh/sd21-e621-rising-v2` and `hf:Laxhar/noobai-XL-1.1` — its card says it was trained on the full Danbooru and e621 datasets — removed from the bundled list).
+  学習データに未成年の性的表現の分類を含む画像の集まり(e621)を使う無検閲のモデルは外す(安全側)。
+
+- When a Hugging Face repo was renamed, `update` applied the license-source table with the new name from the API
+  while re-applying it uses the name in the file URL, so the two disagreed (`license_path`). Both now use the URL's
+  name. Found by the first weekly rebuild (Comfy-Org/flux2-klein-9B → vae-text-encorder-for-flux-klein-9b).
+  リポジトリの名前が変わったとき、出どころの表をファイルの URL の名前で当てるようにした。
+- Tests no longer pin numbers of the bundled list (uncensored count, HEAD check date) so that the weekly rebuild
+  can pass them.
+
 
 ## [0.3.0] - 2026-10-21
 

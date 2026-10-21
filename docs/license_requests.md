@@ -200,6 +200,6 @@
   Civitai は v0.1 では読まない(docs/sources.md「Civitai」)ので、一覧の側で決められない。依頼の前に扱いを決める
 - **無検閲のモデルだけに効くもの**(既定の sfw では出ないので後回し): ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8・
   LTX-2.5-uncensored-v1.1-FP8・qwen-image-edit-uncensored-GGUF、Heartsync/NSFW-Uncensored、Meina/MeinaHentai、
-  SulphurAI/Sulphur-2-base、TenStrip/LTX2.3-10Eros、TheImposterImposters/lustifySDXLNSFW_v20-inpainting、
+  SulphurAI/Sulphur-2-base、TenStrip/LTX2.3-10Eros、andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING(2026-10-21 から同じ重みの写しのこちらを載せる)、
   kkkkk26/lustify_v9、sinkinai/hassaku-hentai(記載が無い)、AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF・
   kpsss34/FHDR_Uncensored(元の規約より寛容)。出すなら A・B の文を使える

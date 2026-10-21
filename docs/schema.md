@@ -14,8 +14,8 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `contrib` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `contrib` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `contrib` |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `diff` / `contrib` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
@@ -26,7 +26,7 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 
 | command | network | writes |
 |---|---|---|
-| `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate` (and the Python API) | none | none |
+| `system`, `recommend`, `fit`, `search`, `types`, `info`, `gate`, `diff` (and the Python API) | none | none |
 | `update` | GET / HEAD to GitHub (ComfyUI templates, releases), the Hugging Face Hub API and model URLs (HEAD; for main weight files also a ranged GET of the file header only, never the weights) | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --fields-only` | for the hand-added models only: HEAD, ranged GET of the file header, GET of the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
@@ -308,7 +308,7 @@ becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48
 Tested in `tests/test_groups.py`.
 逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
 
-On the bundled list (326 entries) this gives 207 models; 55 of them have more than one entry.
+On the bundled list (329 entries, 2026-10-21) this gives 210 models; 55 of them have more than one entry.
 
 ### Uses / 用途(`--task`, `genmodelfit types`)
 
@@ -346,9 +346,9 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `name`, `modality`, `tasks` | | modality ∈ `image` `video` `music` `sfx` `tts` `3d`; `tasks` is a list (`t2i`, `i2v`, …) |
 | `content` | str | `sfw` or `uncensored` (see README) |
 | `source` | str | `comfyui-template` / `huggingface` / `manual` |
-| `runtime` | str \| null | how the model runs: `comfyui` / `piper` / `irodori-tts` / … (`ModelEntry.runtime`, 0.4.0); null = unknown |
-| `languages` | object | `{"prompt": [...], "speech": [...]}` ISO 639-1 (`ModelEntry.languages`, 0.4.0); a missing key = unknown, `[]` = none (an image-to-3D model takes no prompt; a music model without vocals has no speech) |
-| `description` | object | `{"ja": "...", "en": "..."}` hand-written, only for some models (`ModelEntry.description`, 0.4.0); `{}` = none |
+| `runtime` | str \| null | how the model runs: `comfyui` / `piper` / `irodori-tts` / … (`ModelEntry.runtime`, 0.5.0); null = unknown |
+| `languages` | object | `{"prompt": [...], "speech": [...]}` ISO 639-1 (`ModelEntry.languages`, 0.5.0); a missing key = unknown, `[]` = none (an image-to-3D model takes no prompt; a music model without vocals has no speech) |
+| `description` | object | `{"ja": "...", "en": "..."}` hand-written, only for some models (`ModelEntry.description`, 0.5.0); `{}` = none |
 | `fit_level` | str | `perfect` / `good` / `marginal` / `too_tight` (= `estimate.fit`), or `unknown` when the size is unknown and nothing was judged (0.1.1; until 0.1.0 these were `too_tight`) |
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
@@ -491,6 +491,32 @@ Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for
 `failing` = models failing each check, `first_failing` = models whose first failed check is that one),
 `models` (`{"id", …Gate}`; all, or only auto / held with `--only-auto` / `--only-held`).
 
+## diff
+
+`genmodelfit diff OLD NEW --json` (Python: `gmf.diff_db(old_db, new_db)`, the same dict without `genmodelfit` /
+`command`; #19). Compares two `db.json` files; no network, nothing written. Used for the weekly pull request
+(`python -m genmodelfit.weekly`, docs/release.md). No `system` / `database`.
+
+| key | meaning |
+|---|---|
+| `old`, `new` | `generated_at`, `models` (count), `license_policy`, `comfyui_latest_release`, `partial`, `comfyui_checked_at` |
+| `policy` | the gate policy applied to **both** lists (GatePolicy.to_dict): `comfyui_version` = `--comfyui-version`, else the version recorded in the new list (else the old one); `max_head_age_days` = null (HEAD age ignored; HEAD status codes still count) |
+| `summary` | `models_old`, `models_new`, `added`, `removed`, `license_changed`, `license_permissive_side`, `auto_old`, `auto_new`, `auto_gained`, `auto_lost`, `size_changed`, `precision_changed`, `newly_uncensored`, `head_failures`, `head_failures_new`, `head_unchecked` (new `sources.head_check.unchecked`), `unauthorized_added`, `unauthorized_removed` |
+| `added`, `removed` | `{id, name, modality, content, source, license}` (`license` is the label: `mit`, `other(<name>)`, `不明` for unknown) |
+| `license_changes` | entries whose `(license, license_name)` changed: `{id, name, old, new, old_tier, new_tier, allowed_old, allowed_new, permissive_side}`. Tiers are `hf.license_tier` (1 permissive … 6 unknown). `permissive_side` = the tier went down (unknown → anything included) or the license newly passes the allowlist |
+| `auto_changes` | entries whose auto result differs (added / removed entries too; `old` / `new` is null when absent): `{id, name, old, new, held_by, held_by_old}` |
+| `size_changes` | total size changed by ≥ 10 % **and** ≥ 100 MiB (or became known / unknown): `{id, old_bytes, new_bytes, ratio}` |
+| `precision_changes` | `{id, old, new, old_source, new_source}` |
+| `newly_uncensored` | `content` became `uncensored`, or an added `uncensored` entry: the `added` fields + `evidence` (`content_evidence`), `added` (bool) |
+| `head_failures` | URLs in the new list whose HEAD answered other than 200 / 302 / 307: `{url, status, ids, new}`; `new` = that URL did not fail (or was absent) in the old list |
+| `unauthorized` | `{added, removed}`: repo ids in `sources.huggingface.unauthorized` (401) that appeared / disappeared |
+| `partial_counts` | the new list's `sources.partial_counts` (null if absent) |
+| `stats` | changed values of `sources`, flattened to dotted keys (`counts.modality.image`, `head_check.status.302`, …): `{key, old, new}`; lists are compared by length; `checked_at` / `url` / `api` / `generator` / `failures` / `errors` are skipped |
+
+`python -m genmodelfit.weekly --out DIR` writes `DIR/db.json`, `DIR/diff.json` (the dict above), `DIR/pr_body.md` and
+`DIR/result.json`: `genmodelfit`, `ok`, `problems` (str[], why it failed), `base`, `offline`, `run_url`, `partial`,
+`status` (DataStatus of the new list), `summary` (as above), `files`, and `applied_to` with `--apply`.
+
 ## info
 
 `model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]), `group_key`, `same_model` (the other
@@ -522,7 +548,7 @@ unknown — entries start with `license_unverified:`), `files_complete`, `size_f
 optional, 0.2.0), `precision_source` (str \| null: `header` / `filename` / `hf_api` / `config` / `workflow`, where
 `precision` came from; null = unknown or older data; optional, 0.2.0).
 
-**For apps that build their screens from the list alone** (0.4.0, #36; all optional, `schema_version` stays 1 — older
+**For apps that build their screens from the list alone** (0.5.0, #36; all optional, `schema_version` stays 1 — older
 readers drop unknown keys, see "Database file"):
 
 - `languages` (`{"prompt": str[], "speech": str[]}`, ISO 639-1 codes): `prompt` = languages the text prompt works in,
@@ -857,10 +883,10 @@ DownloadResult:
 `downloads`, `likes`, `license_from`, `repo_license`, and (PR #13 review) `ModelEntry.license_name` /
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
 `license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at`, and (#30) `ModelEntry.workflow_precision` /
-`precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.4.0) `ModelEntry.languages` /
+`precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.5.0) `ModelEntry.languages` /
 `runtime` / `description` and `source: "manual"` were added without changing `schema_version` (optional fields; older
 readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks the keys it knows, and `source` is a free
-string there. `tests/test_appinfo.py` reads the bundled list with a copy of the 0.3.0 reader).
+string there. `tests/test_appinfo.py` reads the bundled list with a copy of the old reader).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
 
 `sources` (written by `genmodelfit update`, see docs/sources.md):
@@ -880,8 +906,8 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
 | `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
-| `manual` | `models` (number of hand-added models from `data/manual.json`), `ids` (0.4.0) |
-| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries whose language came from the Hugging Face card) (0.4.0) |
+| `manual` | `models` (number of hand-added models from `data/manual.json`), `ids` (0.5.0) |
+| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries whose language came from the Hugging Face card) (0.5.0) |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
 | `warnings` | str[] |

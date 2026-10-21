@@ -98,7 +98,7 @@ _ENTRY_TYPES = {
     "downloads_all_time": (int, type(None)),
     "files_complete": (bool, type(None)),
     "size_floor_bytes": (int, type(None)),
-    # 後から足した任意の項目(0.4.0、#36)。古い版はこのキーを見ずに捨てる
+    # 後から足した任意の項目(0.5.0、#36)。古い版はこのキーを見ずに捨てる
     "languages": (dict, type(None)),
     "runtime": _OPT_STR,
     "description": (dict, type(None)),

@@ -160,7 +160,7 @@ class ModelEntry:
     workflow_precision: str | None = None
     # precision をどこから決めたか(PRECISION_SOURCES。None は精度が分からない・古いデータ)。#30、0.2.0
     precision_source: str | None = None
-    # アプリが一覧だけで画面を作るための任意の項目(0.4.0、#36。古い版は知らないキーとして捨てるので読める)。
+    # アプリが一覧だけで画面を作るための任意の項目(0.5.0、#36。古い版は知らないキーとして捨てるので読める)。
     #   languages    {"prompt": ["en", ...], "speech": ["ja", ...]}(ISO 639-1。どちらも省略可、
     #                分からなければ省く)。prompt = 指示(プロンプト)で通じる言語、
     #                speech = 読み上げ・歌詞で出せる言語。appinfo.py が決める

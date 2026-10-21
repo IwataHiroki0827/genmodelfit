@@ -18,7 +18,20 @@ from genmodelfit.gate import GatePolicy, evaluate_offline
 from genmodelfit.status import DataStatus, compute
 
 UTC = timezone.utc
-CHECKED = datetime(2026, 10, 20, 10, 33, 7, tzinfo=UTC)  # 同梱の一覧の HEAD の確認日時
+
+
+def _bundled_checked() -> datetime:
+    """同梱の一覧の HEAD の確認日時(一番古いもの)。毎週の更新(#19)で変わるので、一覧から読む。"""
+    db = load_db(use_cache=False)
+    times = [f.head_checked_at for m in db.models for f in m.files if f.head_checked_at]
+    return datetime.fromisoformat(min(times).replace("Z", "+00:00"))
+
+
+CHECKED = _bundled_checked()
+
+
+def _z(t: datetime) -> str:
+    return t.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _auto(db, m, now) -> bool:
@@ -38,25 +51,26 @@ def cache(tmp_path, monkeypatch):
 
 
 def test_bundled_is_fresh_today(bundled):
-    st = gmf.data_status(bundled, now=datetime(2026, 10, 20, tzinfo=UTC))
+    st = gmf.data_status(bundled, now=CHECKED + timedelta(hours=1))
     assert isinstance(st, DataStatus)
     assert st.source == "bundled"
     assert st.expired is False
     assert st.auto_count == st.auto_count_if_fresh > 0
     assert st.models == len(bundled.models)
     assert st.max_head_age_days == 30
-    assert st.heads_checked_oldest == "2026-10-20T10:33:07Z"
-    assert st.expires_at == "2026-11-19T10:33:07Z"
+    assert st.heads_checked_oldest == _z(CHECKED)
+    assert st.expires_at == _z(CHECKED + timedelta(days=30))
     assert st.generated_at == bundled.generated_at
 
 
 def test_bundled_expires_after_30_days(bundled):
-    st = gmf.data_status(bundled, now=datetime(2026, 12, 1, tzinfo=UTC))
+    later = (CHECKED + timedelta(days=42)).replace(hour=0, minute=0, second=0, microsecond=0)
+    st = gmf.data_status(bundled, now=later)
     assert st.expired is True
     assert st.auto_count == 0
     assert st.auto_count_if_fresh > 0
-    assert st.expires_at == "2026-11-19T10:33:07Z"
-    assert st.checked_at == "2026-12-01T00:00:00Z"
+    assert st.expires_at == _z(CHECKED + timedelta(days=30))
+    assert st.checked_at == _z(later)
 
 
 @pytest.mark.parametrize(("delta", "expired"), [(timedelta(0), False), (timedelta(seconds=1), True)])
@@ -91,8 +105,9 @@ def test_no_age_limit_never_expires(bundled):
 
 
 def test_naive_now_is_utc(bundled):
-    st = gmf.data_status(bundled, now=datetime(2026, 12, 1))
-    assert st.expired is True and st.checked_at == "2026-12-01T00:00:00Z"
+    naive = (CHECKED + timedelta(days=42)).replace(hour=0, minute=0, second=0, tzinfo=None)
+    st = gmf.data_status(bundled, now=naive)
+    assert st.expired is True and st.checked_at == _z(naive.replace(tzinfo=UTC))
 
 
 def test_default_clock_is_gate_clock(bundled):
@@ -159,7 +174,7 @@ def test_cli_system_json(cache, capsys):
 def test_cli_system_text_shows_expired(cache, capsys, monkeypatch):
     from genmodelfit import gate
 
-    monkeypatch.setattr(gate, "_now", lambda: datetime(2026, 12, 1, tzinfo=UTC))
+    monkeypatch.setattr(gate, "_now", lambda: CHECKED + timedelta(days=42))
     assert cli.main(["system", "--no-cache", "--vram", "8", "--ram", "32"]) == 0
     out = capsys.readouterr().out
     assert "=== Data ===" in out

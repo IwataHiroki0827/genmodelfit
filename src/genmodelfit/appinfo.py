@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""アプリが一覧だけで画面を作るための項目(`languages` / `runtime` / `description`。0.4.0、#36)と、
+"""アプリが一覧だけで画面を作るための項目(`languages` / `runtime` / `description`。0.5.0、#36)と、
 手で足すモデル(`source: "manual"`)。
 
 - 言語の決め方(`apply_app_fields`):
