@@ -4,9 +4,9 @@
 
 """`genmodelfit diff` の表示を、利用者が使える形で・変化を黙って落とさずに出すことの試験(#59)。
 
-本物の一覧は tests/fixtures/diff の、0.6.0 と 0.7.0 の同梱の一覧を縮めたもの
-(tools/make_diff_fixture.py で作る。元は 1 つ約 1.8 MB)。変わったモデル(全部)・変わっていないモデル・
-前から HEAD が失敗しているモデルを残してある。
+本物の一覧は tests/fixtures/diff/<前>-<後>/ の、過去の版の同梱の一覧を縮めたもの
+(tools/make_diff_fixture.py で作る。元は 1 つ約 1.7 MB)。大事な変化のモデル(全部)・確認の印などだけ
+変わったモデル(既定の --limit より多く)・変わっていないモデル・前から HEAD が失敗しているモデルを残してある。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import pytest
 from rich.cells import cell_len
 
 from genmodelfit import cli, weekly
-from genmodelfit.db import Database, load
+from genmodelfit.db import Database, bundled_text, load
 from genmodelfit.diff import (
     SAFE_ENTRY_FIELDS,
     SAFE_FILE_FIELDS,
@@ -36,7 +36,7 @@ from genmodelfit.models import ModelEntry, ModelFile, Review, Template
 from genmodelfit.table import wrap_line
 
 FIX = Path(__file__).parent / "fixtures" / "diff"
-OLD, NEW = FIX / "db_0.6.0.json", FIX / "db_0.7.0.json"
+OLD, NEW = FIX / "0.6.0-0.7.0" / "old.json", FIX / "0.6.0-0.7.0" / "new.json"
 SFX = "hf:stabilityai/stable-audio-3-small-sfx"
 MUSIC = ("audio_ace_step_1_t2a_instrumentals", "audio_ace_step_1_t2a_song", "audio_yue2_text2music")
 MAX_COLS = 100
@@ -52,6 +52,11 @@ def _isolated_cache(tmp_path, monkeypatch):
 def _run(capsys, *args: str) -> tuple[int, str]:
     code = cli.main(["diff", *args])
     return code, capsys.readouterr().out
+
+
+def _has(out: str, text: str) -> bool:
+    """折り返しを気にせずに含むか(空白を除いて比べる)。"""
+    return "".join(text.split()) in "".join(out.split())
 
 
 def _width_ok(text: str) -> None:
@@ -74,7 +79,8 @@ def test_real_default_shows_languages_and_component(capsys):
     assert "言語(指示) zh, en → en" in out
     # 効果音の部品(T5Gemma)とそのライセンス、一式の大きさ
     assert f"stable-audio-3-small-sfx (sfx) — {SFX}" in out
-    assert "部品 + text_encoders/t5gemma_b_b_ul2.safetensors(1.11 GiB、ライセンス gemma)" in out
+    part = "部品 + text_encoders/t5gemma_b_b_ul2.safetensors"
+    assert _has(out, part + "(1.11 GiB、ライセンス gemma、Comfy-Org/stable-audio-3)")
     assert "大きさ 2.11 → 3.22 GiB" in out
     assert "変わった 4" in out
     # 前からの HEAD の失敗と sources の数は既定では出さない(数だけ --all へ案内する)
@@ -123,6 +129,7 @@ def test_real_json_has_new_keys(capsys):
             "size_bytes": 1187264003,
             "license": "gemma",
             "role": "text_encoder",
+            "source": "Comfy-Org/stable-audio-3",
         }
     ]
     song = {it["key"]: it for it in by[MUSIC[1]]["items"] if it["kind"] == "languages"}
@@ -137,6 +144,7 @@ LABELS = {
     "modality": "種類",
     "tasks": "用途",
     "runtime": "動かし方",
+    "comfy_family": "ComfyUI の系統",
     "content": "内容",
     "precision": "精度",
     "license": "ライセンス",
@@ -147,6 +155,12 @@ LABELS = {
     "files.license": "のライセンス",
     "files.license_name": "のライセンス",
     "files.name": "部品 ",
+    "files.directory": "部品 ",
+    "files.url": "部品 ",
+    "files.sha256": "部品 ",
+    "files.repo_id": "部品 ",
+    "files.gated": "部品 ",
+    "files.role": "部品 ",
     "files.size_bytes": "大きさ",
 }
 
@@ -235,7 +249,11 @@ def test_no_silent_change(where, name):
     path = _mutate(where, name, new.get(i))
     d = diff_db(old, new)
     paths = d["field_changes"].get(i, [])
-    assert path in paths or (where == "file" and name == "name" and "files" in paths), (path, paths)
+    # 名前・置き場所はファイルを組む鍵なので、変えると「消えた + 増えた」になる
+    assert path in paths or (where == "file" and name in ("name", "directory") and "files" in paths), (
+        path,
+        paths,
+    )
     out, out_all = _render(old, new), _render(old, new, show_all=True)
     _width_ok(out)
     _width_ok(out_all)
@@ -434,7 +452,13 @@ def test_json_keeps_old_keys_and_types():
     d = diff_db(load(OLD), load(NEW))
     for k, t in OLD_KEYS.items():
         assert isinstance(d[k], t), k
-    assert set(d) == set(OLD_KEYS) | {"old_label", "new_label", "field_changes", "model_changes"}
+    assert set(d) == set(OLD_KEYS) | {
+        "old_label",
+        "new_label",
+        "field_changes",
+        "model_changes",
+        "top_changes",
+    }
     assert d["summary"]["size_changed"] == 1 and d["size_changes"][0]["id"] == SFX
     assert d["summary"]["head_failures"] > 0 and d["summary"]["head_failures_new"] == 0
     assert set(d["classification"]) == {"safe", "judgement_needed", "safe_changes"}
@@ -449,3 +473,299 @@ def test_weekly_pr_body_ignores_new_keys():
     trimmed = {k: v for k, v in d.items() if k in OLD_KEYS}
     assert weekly.pr_body(trimmed, result) == body
     assert "判断が要る変化: 4 件" in body  # 分類は今までどおり(音楽 3 件の言語・効果音の部品)
+
+
+# ---- 大事な変化の順・まとめ(本物の 0.5.0 / 0.4.0 → 0.7.0) ----
+
+
+def _pair_paths(name: str) -> tuple[Path, Path]:
+    return FIX / name / "old.json", FIX / name / "new.json"
+
+
+@pytest.mark.parametrize("pair", ["0.5.0-0.7.0", "0.4.0-0.7.0"])
+def test_real_important_change_is_not_buried(pair, capsys):
+    """持ち主の指摘(#59): ID の順だと T5Gemma(Gemma 規約)の追加が 20 件の後ろに隠れていた。"""
+    old, new = _pair_paths(pair)
+    d = diff_db(load(old), load(new))
+    before = [c["id"] for c in d["model_changes"] if c["id"] < SFX]
+    assert len(before) > cli.DIFF_DEFAULT_LIMIT  # ID の順に並べると隠れる一覧であること(試験の前提)
+    code, out = _run(capsys, str(old), str(new))
+    assert code == 0
+    _width_ok(out)
+    assert _has(out, "部品 + text_encoders/t5gemma_b_b_ul2.safetensors(1.11 GiB、ライセンス gemma")
+    # 大事な変化(部品)のモデルが、変わったモデルの節の先頭
+    section = out.split("変わったモデル(大事な変化の順):\n", 1)[1]
+    assert section.splitlines()[0].endswith(f"— {SFX}")
+    # 上限 1 でも、部品の変化は隠れない。隠れたことを示す行は -n と --all を案内する
+    _, one = _run(capsys, str(old), str(new), "-n", "1")
+    assert "t5gemma" in one and "…ほか" in one and "--all で全部" in one and "-n " in one
+
+
+def test_real_review_marks_are_collapsed(capsys):
+    old, new = _pair_paths("0.5.0-0.7.0")
+    _, out = _run(capsys, str(old), str(new))
+    n = sum(1 for m in load(new).models if m.review is not None)
+    assert f"確認の印が付いた(ok): {n} 件(ID は --all)" in out
+    assert "のまま" not in out  # 印が無かったものに「ok のまま」とは書かない
+    _, out_all = _run(capsys, str(old), str(new), "--all")
+    assert f"確認の印が付いた(ok): {n} 件\n" in out_all and "3d_hunyuan3d-v2.1" in out_all
+    assert "…ほか" not in out_all  # --all は上限なし
+
+
+def test_limit_never_hides_more_important():
+    """どの上限でも、出した変化より大事な変化を隠さない(並べる鍵の順に切る)。"""
+    for pair in ("0.4.0-0.7.0", "0.5.0-0.7.0"):
+        old, new = _pair_paths(pair)
+        entries = cli._diff_changed_entries(diff_db(load(old), load(new)), False)
+        ranks = [k[0] for k, _ in entries]
+        assert ranks == sorted(ranks) and ranks[0] == 0
+
+
+# ---- CLI が JSON をそのまま比べる(知らない鍵も merge-check と同じに拾う) ----
+
+
+def _raw(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_raw(tmp_path: Path, name: str, data: dict[str, Any]) -> Path:
+    p = tmp_path / name
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def _cli_and_merge(
+    capsys, tmp_path, old: dict[str, Any], new: dict[str, Any]
+) -> tuple[str, dict[str, Any], dict]:
+    a, b = _write_raw(tmp_path, "a.json", old), _write_raw(tmp_path, "b.json", new)
+    code, out = _run(capsys, str(a), str(b))
+    assert code == 0
+    _, js = _run(capsys, str(a), str(b), "--json")
+    return out, json.loads(js), weekly.merge_check(a, b)
+
+
+def test_cli_sees_unknown_keys_like_merge_check(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    m = new["models"][0]
+    m["zz_future"] = "x"  # この版が知らない項目
+    new["models"][1]["files"][0]["zz_file"] = 1
+    new["zz_top"] = {"a": 1}
+    out, d, mc = _cli_and_merge(capsys, tmp_path, old, new)
+    assert _block(out, m["id"]) and "その他の変化: zz_future" in _block(out, m["id"])
+    assert "files.zz_file" in _block(out, new["models"][1]["id"])
+    assert "一覧の上の段で変わった鍵: zz_top" in out and d["top_changes"] == ["zz_top"]
+    judged = {x["id"] for x in mc["reasons"]}
+    assert judged == {c["id"] for c in d["model_changes"]} | {"(database)"}
+    assert {x["id"] for x in d["classification"]["judgement_needed"]} == judged
+
+
+# ---- 同じ名前のファイル(URL・ライセンスだけ違う)を取り違えない ----
+
+
+def _dup_files() -> list[dict[str, Any]]:
+    def f(k: int, lic: str) -> dict[str, Any]:
+        return {
+            "name": "t5.safetensors",
+            "url": f"https://huggingface.co/org{k}/repo/resolve/main/t5.safetensors",
+            "sha256": f"{k:064x}",
+            "size_bytes": 2**30,
+            "directory": "text_encoders",
+            "repo_id": f"org{k}/repo",
+            "license": lic,
+        }
+
+    return [f(1, "mit"), f(2, "apache-2.0"), f(3, "bsd-3-clause")]
+
+
+def _dup_items(capsys, tmp_path, change) -> tuple[list[dict[str, Any]], str, dict]:
+    old = _raw(NEW)
+    i = old["models"][0]["id"]
+    old["models"][0]["files"] = _dup_files()
+    new = copy.deepcopy(old)
+    change(new["models"][0]["files"])
+    out, d, mc = _cli_and_merge(capsys, tmp_path, old, new)
+    items = next(c for c in d["model_changes"] if c["id"] == i)["items"]
+    return items, _block(out, i), mc
+
+
+@pytest.mark.parametrize("op", ["swap", "reverse"])
+def test_duplicate_names_reorder_is_only_order(op, capsys, tmp_path):
+    def change(fs):
+        if op == "swap":
+            fs[0], fs[1] = fs[1], fs[0]
+        else:
+            fs.reverse()
+
+    items, block, mc = _dup_items(capsys, tmp_path, change)
+    assert [it["kind"] for it in items] == ["files_order"], items
+    assert "部品の並び・形が変わった" in block and " url " not in block and "ライセンス" not in block
+    assert mc["safe"] is False  # 並びの変化も判断が要る(今までどおり)
+
+
+def test_duplicate_names_delete_first(capsys, tmp_path):
+    items, block, _ = _dup_items(capsys, tmp_path, lambda fs: fs.pop(0))
+    kinds = [it["kind"] for it in items if it["kind"] != "size"]
+    assert kinds == ["file_removed"], items
+    gone = next(it for it in items if it["kind"] == "file_removed")
+    assert gone["license"] == "mit" and gone["source"] == "org1/repo"
+    assert _has(block, "部品 - text_encoders/t5.safetensors(1.00 GiB、ライセンス mit、org1/repo)")
+
+
+def test_duplicate_names_insert_in_middle(capsys, tmp_path):
+    def change(fs):
+        extra = copy.deepcopy(fs[0])
+        extra.update(
+            url="https://example.org/x/t5.safetensors", sha256="f" * 64, repo_id=None, license="gemma"
+        )
+        fs.insert(1, extra)
+
+    items, block, _ = _dup_items(capsys, tmp_path, change)
+    kinds = [it["kind"] for it in items if it["kind"] != "size"]
+    assert kinds == ["file_added"], items
+    added = items[0]
+    assert added["license"] == "gemma" and added["source"] == "example.org/x/t5.safetensors"
+    assert "ライセンス gemma" in block and "のライセンス" not in block and " url " not in block
+
+
+def test_url_and_sha256_changes_show_values(capsys, tmp_path):
+    def change(fs):
+        fs[1]["url"] = "https://huggingface.co/neworg/repo/resolve/main/t5.safetensors"
+
+    def change_sha(fs):
+        fs[2]["sha256"] = "a" * 64
+
+    _, block, mc = _dup_items(capsys, tmp_path, change)
+    assert _has(block, "部品 t5.safetensors の url huggingface.co/org2/repo/resolve/main/t5.safetensors →")
+    assert "neworg" in block and mc["safe"] is False
+    _, block, _ = _dup_items(capsys, tmp_path, change_sha)
+    assert f"の sha256 {3:064x}"[:20] in block and "aaaaaaaaaaaa…" in block
+
+
+# ---- 安全の表を守る(識別・ライセンスの項目を「安全」に入れたら落ちる) ----
+
+# 安全の表(変わっても判断が要らない項目)。増やすときは、利用者に関係しないことを確かめてこの表も直す
+EXPECTED_SAFE_ENTRY = {"downloads", "downloads_all_time", "likes", "updated", "discovered_from"}
+EXPECTED_SAFE_FILE = {"head_status", "head_checked_at"}
+EXPECTED_SAFE_TEMPLATE = {"usage"}
+# ファイルがどれか・何を落とすか・どの条件で使えるかを決める項目。安全の表に入れてはいけない
+# (size_bytes も入れない: 小さくなるのは need_decreased で判断が要る。大きくなるのは分類では安全だが、
+#  表示には必ず出す)
+NEVER_SAFE_FILE = {
+    "name",
+    "url",
+    "sha256",
+    "directory",
+    "repo_id",
+    "license",
+    "license_name",
+    "gated",
+    "size_bytes",
+}
+NEVER_SAFE_ENTRY = {"files", "license", "license_name", "content", "tasks", "modality", "runtime", "review"}
+
+
+def test_safe_tables_are_exactly_the_allowlist():
+    assert set(SAFE_ENTRY_FIELDS) == EXPECTED_SAFE_ENTRY
+    assert set(SAFE_FILE_FIELDS) == EXPECTED_SAFE_FILE
+    assert set(SAFE_TEMPLATE_FIELDS) == EXPECTED_SAFE_TEMPLATE
+    assert not NEVER_SAFE_FILE & set(SAFE_FILE_FIELDS)
+    assert not NEVER_SAFE_ENTRY & set(SAFE_ENTRY_FIELDS)
+
+
+_FILE_CHANGES = {
+    "name": "renamed.safetensors",
+    "url": "https://huggingface.co/other/repo/resolve/main/x.safetensors",
+    "sha256": "b" * 64,
+    "directory": "zz_other_folder",
+    "repo_id": "other/repo",
+    "license": "apache-2.0",
+    "license_name": "some-other-name",
+    "gated": True,
+    "size_bytes": 1,  # 小さくなる
+}
+
+
+@pytest.mark.parametrize("field", sorted(_FILE_CHANGES))
+def test_identity_fields_show_and_are_not_safe(field, capsys, tmp_path):
+    old = _raw(NEW)
+    m = next(x for x in old["models"] if x["files"] and x["files"][0].get("license") == "other")
+    new = copy.deepcopy(old)
+    nm = next(x for x in new["models"] if x["id"] == m["id"])
+    nm["files"][0][field] = _FILE_CHANGES[field]
+    out, _, mc = _cli_and_merge(capsys, tmp_path, old, new)
+    assert _block(out, m["id"]), (field, out)
+    assert mc["safe"] is False and m["id"] in {x["id"] for x in mc["reasons"]}
+
+
+def test_size_growth_is_shown_but_safe(capsys, tmp_path):
+    old = _raw(NEW)
+    m = next(x for x in old["models"] if x["files"] and x["files"][0].get("size_bytes"))
+    new = copy.deepcopy(old)
+    next(x for x in new["models"] if x["id"] == m["id"])["files"][0]["size_bytes"] += 3 * 2**30
+    out, _, mc = _cli_and_merge(capsys, tmp_path, old, new)
+    assert "大きさ" in _block(out, m["id"]) and mc["safe"] is True
+
+
+# ---- 表示の細かいところ ----
+
+
+def test_review_mark_wording(capsys, tmp_path):
+    old = _raw(NEW)
+    for x in old["models"]:
+        x.pop("review", None)
+    new = copy.deepcopy(old)
+    new["models"][0]["review"] = {"status": "pending", "reasons": ["new"], "evidence": []}
+    new["models"][1]["review"] = {"status": "ok", "reasons": ["baseline"], "evidence": []}
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert "確認の印が付いた(pending)(理由: new)" in _block(out, new["models"][0]["id"])
+    assert "確認の印が付いた(ok)" in _block(out, new["models"][1]["id"])
+    old2, new2 = copy.deepcopy(new), copy.deepcopy(new)
+    new2["models"][1].pop("review")
+    new2["models"][0]["review"]["evidence"] = ["https://example.org"]
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old2, new2)
+    assert "確認の印が外れた(前は ok)" in out and "確認の印(pending)の中身が変わった: evidence" in out
+
+
+def test_empty_vs_missing_languages_not_shown(capsys, tmp_path):
+    old = _raw(NEW)
+    new = copy.deepcopy(old)
+    m = new["models"][0]
+    m["languages"] = {**(m.get("languages") or {}), "zzz": []}
+    out, _, _ = _cli_and_merge(capsys, tmp_path, old, new)
+    assert "なし → なし" not in out
+
+
+def test_type_not_repeated_when_name_has_it():
+    assert cli._diff_model({"id": "x", "name": "Foo (music)", "modality": "music"}) == "Foo (music) — x"
+    assert cli._diff_model({"id": "x", "name": "Foo", "modality": "music"}) == "Foo (music) — x"
+
+
+def test_old_cache_warns(capsys, tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    bundled = json.loads(bundled_text("db.json"))
+    bundled["generated_at"] = "2000-01-01T00:00:00Z"
+    (cache / "db.json").write_text(json.dumps(bundled, ensure_ascii=False), encoding="utf-8")
+    code, out = _run(capsys)
+    assert code == 0 and "注意:" in out and "古いです" in out and _has(out, "update --from-release")
+    _width_ok(out)
+    d = json.loads(_run(capsys, "--json")[1])
+    assert d["warnings"] and "古いです" in d["warnings"][0]
+
+
+def test_no_cache_json_has_usual_shape(capsys):
+    d = json.loads(_run(capsys, "--json")[1])
+    assert set(OLD_KEYS) <= set(d) and {"note", "warnings", "field_changes", "model_changes"} <= set(d)
+    assert d["summary"] == {} and d["model_changes"] == [] and d["old"] is None and "error" not in d
+
+
+def test_non_string_license_name_is_rejected(capsys, tmp_path):
+    """license_name が文字でない一覧は読むときに断る(以前は diff の途中で AttributeError で落ちた)。"""
+    for where in ("entry", "file"):
+        bad = _raw(NEW)
+        target = bad["models"][0] if where == "entry" else bad["models"][0]["files"][0]
+        target["license_name"] = 123
+        p = _write_raw(tmp_path, f"bad_{where}.json", bad)
+        code, out = _run(capsys, str(NEW), str(p), "--json")
+        assert code == 1 and "license_name" in json.loads(out)["error"]

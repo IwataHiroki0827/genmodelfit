@@ -98,6 +98,7 @@ _ENTRY_TYPES = {
     "params_b": _OPT_NUM,
     "precision": _OPT_STR,
     "license": _OPT_STR,
+    "license_name": _OPT_STR,  # 文字でないと、ライセンスの段階の判定(diff・gate)が落ちる(#59)
     "content": _STR,
     "downloads": (int, type(None)),
     "downloads_all_time": (int, type(None)),
@@ -126,6 +127,7 @@ _FILE_TYPES = {
     "size_bytes": (int, type(None)),
     "directory": _OPT_STR,
     "license": _OPT_STR,
+    "license_name": _OPT_STR,
     "gated": (bool, type(None)),
     "role": _OPT_STR,
 }

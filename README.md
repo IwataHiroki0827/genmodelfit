@@ -299,7 +299,8 @@ it, `diff` only prints how to). `diff NEW.json` compares the bundled list with a
 files. It shows models as `name (type) — id`: added and removed models, auto-recommendation changes, and for each
 changed model its license (`!` = toward the permissive side), size, precision, prompt / speech languages, added /
 removed files with their license, newly uncensored, review status, and the names of any other changed fields
-(「その他の変化」). Changes of popularity numbers, dates and HEAD results, old HEAD failures and the `sources` numbers
+(「その他の変化」), most important first (files, then license, …); the same minor change on many models is one
+line with a count. Changes of popularity numbers, dates and HEAD results, old HEAD failures and the `sources` numbers
 are only counted; `--all` lists them (the content of the weekly pull request). `--json`: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff).
 
 ### Contributing measurements

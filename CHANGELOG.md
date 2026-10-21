@@ -19,12 +19,24 @@ All notable changes to this project are documented here. The format is based on
   popularity / date-only changes are counted and listed with `--all`. 0.6.0 → 0.7.0 used to show only a size change;
   it now shows the three music language changes and the T5Gemma text encoder (Gemma license) of
   stable-audio-3-small-sfx.
-- `diff` and `weekly merge-check` find changes with one function (`diff.entry_changes`), so they cannot disagree.
-  Files with the same name in one entry (only the URL differs) are paired in order.
+- Changed models are listed by importance (files, then license, uncensored, runtime / use, auto-recommendation,
+  languages / size / precision, then review marks and other fields), so `--limit` never hides a more important change.
+  The same low-importance change on many models is one line with a count (`確認の印が付いた(ok): 329 件`; ids with
+  `--all`). The `…ほか N 件` line points to `-n N` / `--all`; `--all` has no line limit unless `-n` is given.
+  0.5.0 → 0.7.0 and 0.4.0 → 0.7.0 now show the T5Gemma (Gemma license) file first instead of after 300 review marks.
+- `diff` and `weekly merge-check` find changes with one function (`diff.entry_changes`), so they cannot disagree, and
+  the CLI compares the raw JSON like merge-check (unknown keys of entries, files and the top level are shown).
+  Files are paired in tiers (same name + url + sha256 + directory + repo, then directory + name + sha256, then
+  directory + name + url, then by order), so same-named files are not mixed up; added / removed files show their
+  source (repo or URL). A changed url / sha256 / repo / directory shows the old → new value. Review marks read
+  「確認の印が付いた(ok)」 / 「確認の印が外れた」; a missing vs empty language list is not shown; the type is not repeated
+  when the name already ends with it. With no arguments, a warning is shown when the fetched list is older than the
+  bundled one; without a fetched list, `--json` has the usual keys (empty) plus `note`.
+- The loader rejects a non-string `license_name` (entry or file), which used to crash `diff` with AttributeError.
 
 ### Added
 
-- `diff --json`: `old_label`, `new_label`, `field_changes`, `model_changes` (docs/schema.md「diff」). Existing keys are
+- `diff --json`: `old_label`, `new_label`, `field_changes`, `model_changes`, `top_changes`, `warnings` (docs/schema.md「diff」). Existing keys are
   unchanged, and the weekly pull request body is the same.
 - Tests for `diff` with the real 0.6.0 / 0.7.0 lists (trimmed by `tools/make_diff_fixture.py`), a test that changes
   every field of `ModelEntry` / `ModelFile` / `Template` / `Review` one at a time and requires it in the output, the
