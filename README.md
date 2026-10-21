@@ -121,6 +121,9 @@ ok = [e for e in gmf.load_db().models if e.review is None or e.review.status == 
 # one model, with the GPU your app detected (generation and precision are decided here)
 fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
 print(fit.to_dict()["fit_level"])  # only names in gmf.__all__ are stable API
+
+# fetch the signed list (the only Python call that uses the network) with your own session, e.g. the app's CA bundle
+db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```
 
 ### Judge another PC
@@ -296,7 +299,7 @@ a pull request yourself. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/g
 
 ### Privacy
 
-- Judging commands and the Python API make **no network access** (tested with every socket blocked).
+- Judging commands and the Python API (except `update_from_release`, which you call on purpose) make **no network access** (tested with every socket blocked).
 - `update` reads public data only (GitHub, Hugging Face API, HEAD on model URLs); `--from-release` only fetches
   `db.json` and its signature. `download` only fetches model files. `bench` talks only to your `--url`.
 - Hardware details, measurements and prompts are never sent. No `~/.netrc` credentials, no telemetry.

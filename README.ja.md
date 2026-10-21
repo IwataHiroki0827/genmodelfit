@@ -121,6 +121,9 @@ ok = [e for e in gmf.load_db().models if e.review is None or e.review.status == 
 # アプリが調べた GPU で 1 モデルを判定する(世代と精度は genmodelfit が決める)
 fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
 print(fit.to_dict()["fit_level"])  # 互換を守るのは gmf.__all__ の名前だけ
+
+# 署名つきの一覧を取り込む(Python で通信するのはこれだけ)。自分のセッション(アプリの CA バンドルなど)とデータフォルダで
+db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```
 
 ### ほかの PC で判定する
@@ -295,7 +298,7 @@ Pull Request はご自身で出してください。手順: [CONTRIBUTING.md](ht
 
 ### 送るもの・送らないもの
 
-- 判定のコマンドと Python の関数は**ネットにつなぎません**(すべてのソケットをふさいだ試験で確かめています)。
+- 判定のコマンドと Python の関数(自分で呼ぶ `update_from_release` を除く)は**ネットにつなぎません**(すべてのソケットをふさいだ試験で確かめています)。
 - `update` は公開の情報(GitHub・Hugging Face の API・モデルの URL への HEAD)を読むだけ、`--from-release` は `db.json` と署名を取るだけです。
   `download` はモデルのファイルを取るだけ、`bench` は `--url` で指定した ComfyUI とだけ話します。
 - PC の情報・実測・プロンプトは送りません。`~/.netrc` の資格情報は付けません。テレメトリもありません。
