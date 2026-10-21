@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-21
+
 Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_version` stays 1.
 
 ### Added
@@ -427,5 +429,6 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.0
 [0.1.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.1.0
