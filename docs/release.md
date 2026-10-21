@@ -215,6 +215,18 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 (Windows のタスク スケジューラで週 1 回)。**weekly-data.yml の定期の実行(schedule)はやめた**。手動の予備
 (workflow_dispatch)としてだけ残す。
 
+動かし方(オーナーの PC。起動スクリプトと設定はリポジトリの外に置く):
+
+- 起動スクリプト: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1`(PowerShell 7 が要る: `#Requires -Version 7`)
+- Claude の設定: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`(Read は専用のクローンの中だけ、
+  WebFetch は huggingface.co・github.com・raw.githubusercontent.com だけ)。Claude は `--restricted --tools Read Grep Glob WebFetch
+  --strict-mcp-config` で呼ぶ(実行系の道具・ユーザーの設定・MCP は使えない)。approve は別のモデル(opus)が同じ制限で確かめ直す
+- 専用のクローン: `C:\workspace\genmodelfit-weekly`(開発用の作業フォルダとは分ける。毎回 main に合わせ、venv を作り直す)
+- タスクの登録(毎週月曜 9:00、ログオン中に実行):
+  `schtasks /Create /TN genmodelfit-weekly /SC WEEKLY /D MON /ST 09:00 /TR "pwsh.exe -NoProfile -File %USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1"`
+- ログ: `%LOCALAPPDATA%\genmodelfit-weekly\logs`(直近 26 回)。失敗したら Issue「毎週の更新が失敗しました」が立ち、次に成功したら閉じる
+- 試すとき: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush`(GitHub に何も出さない)。別の版の中身で試すなら `-Ref origin/<ブランチ> -NoPush`
+
 役割を分ける:
 
 - **Claude(スキル)はファイルを書き換えず、コマンドも動かさない**(2026-10-21 のオーナーの決定。読むだけと、
