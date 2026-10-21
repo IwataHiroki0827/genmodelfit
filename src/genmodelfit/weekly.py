@@ -29,6 +29,11 @@
 
 終了コード: 0 = 通った、1 = 確かめに落ちた・作り直しをやめた(<dir>/result.json の problems に理由)、
 2 = 使い方の誤り。
+
+    python -m genmodelfit.weekly merge-check --base <main の db.json> --head <新しい db.json> [--json]
+
+は、2 つのファイルから分類(diff の classification)を計算し直す(#42。毎週のスキルの実行役が、マージしてよいかの
+機械の確かめに使う)。終了コード: 0 = 安全な向きだけ、3 = 判断が要る、1 = 読めない、2 = 使い方の誤り。
 公開(署名と data-latest)はここではしない。PR が main に入ったときに data.yml が行う。
 """
 
@@ -562,7 +567,65 @@ def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
+MERGE_NOT_SAFE = 3
+
+
+def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
+    """2 つの一覧のファイルから分類を計算し直す(何も書かず、通信しない)。読めなければ DatabaseError。
+
+    返す値: safe・judgement_needed(件数)・reasons([{id, name, reasons}])・safe_changes・base・head。
+    ファイルの JSON をそのまま比べるので、この版が知らない鍵の変化も判断が要るに数える。"""
+    raws = []
+    for path in (base, head):
+        try:
+            raws.append(json.loads(Path(path).read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            raise DatabaseError(f"一覧のファイルを読めません: {path}: {e}") from e
+    old, new = load_db(base), load_db(head)
+    cl = diff_db(old, new, raw=(raws[0], raws[1]))["classification"]
+    return {
+        "genmodelfit": __version__,
+        "command": "merge-check",
+        "base": str(base),
+        "head": str(head),
+        "safe": cl["safe"],
+        "judgement_needed": len(cl["judgement_needed"]),
+        "reasons": cl["judgement_needed"],
+        "safe_changes": cl["safe_changes"],
+    }
+
+
+def merge_check_main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        prog="python -m genmodelfit.weekly merge-check",
+        description="2 つの一覧から分類を計算し直す(#42)。0 = 安全な向きだけ、3 = 判断が要る、1 = 読めない",
+    )
+    p.add_argument("--base", required=True, metavar="PATH", help="main の一覧(src/genmodelfit/data/db.json)")
+    p.add_argument("--head", required=True, metavar="PATH", help="マージしようとする一覧")
+    p.add_argument("--json", action="store_true", help="結果を JSON で出す")
+    args = p.parse_args(argv)
+    try:
+        r = merge_check(args.base, args.head)
+    except DatabaseError as e:
+        if args.json:
+            err = {"command": "merge-check", "error": str(e)}
+            sys.stdout.write(json.dumps(err, ensure_ascii=False) + "\n")
+        else:
+            print(f"error: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        sys.stdout.write(json.dumps(r, ensure_ascii=False) + "\n")
+    else:
+        print("SAFE" if r["safe"] else f"NOT SAFE: 判断が要る {r['judgement_needed']} 件")
+        for j in r["reasons"]:
+            print(f"  {j['id']}: {', '.join(j['reasons'])}")
+    return 0 if r["safe"] else MERGE_NOT_SAFE
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["merge-check"]:
+        return merge_check_main(argv[1:])
     p = argparse.ArgumentParser(
         prog="python -m genmodelfit.weekly",
         description="毎週の一覧の作り直し(上流から)・確かめ・差分と PR の本文を作る(公開はしない)。"

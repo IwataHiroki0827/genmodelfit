@@ -34,6 +34,8 @@ The same as the SIDE EFFECTS of each command's `--help` and README "Privacy":
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
 | `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate`: none |
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
+| `python -m genmodelfit.weekly merge-check` | none | none |
+| `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
 | `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
@@ -524,23 +526,24 @@ a key per check id, `app_runtime` included since 0.5.0, `reviewed` since 0.6.0),
 | `classification` | 0.6.0 (#42): `{safe, judgement_needed, safe_changes}`; see below |
 | `stats` | changed values of `sources`, flattened to dotted keys (`counts.modality.image`, `head_check.status.302`, …): `{key, old, new}`; lists are compared by length; `checked_at` / `url` / `api` / `generator` / `failures` / `errors` are skipped |
 
-**classification** (0.6.0, #42) splits the changes so that the weekly Claude skill (`genmodelfit-weekly`,
-docs/release.md) can decide whether it may merge the week itself (`safe: true`) or must open an evidence pull request
-for the owner.
+**classification** (0.6.0, #42) splits the changes so that the weekly run can tell whether a week may be merged
+without the owner (`safe: true`; the runner recomputes it with `python -m genmodelfit.weekly merge-check`) or needs an
+evidence pull request for the owner. It is an **allowlist**: for every common entry every field and every file field is
+compared, and only the changes listed as safe below are safe; anything else, including fields this version does not
+know, is judgement-needed.
 
 | key | meaning |
 |---|---|
 | `safe` | true when `judgement_needed` is empty |
-| `judgement_needed` | `[{id, name, reasons}]`, sorted by id. `reasons`, in this order: `new` (added entry), `license_permissive`, `need_decreased`, `uncensored_new` (the same rules as the review pending reasons, decided by `review.review_reasons` for every common entry, not only those in `license_changes` / `size_changes`), `auto_gained` (newly auto-recommendable, unless the old list held it only by `url_reachable`), `review_approved` (`review` went from not ok to ok: someone ran `review approve`; the owner checks the evidence), `review_pending` (went from ok to pending for a reason not listed before; the review's own reasons follow) |
-| `safe_changes` | counts of the changes judged safe: `removed`, `license_stricter` (license changes without `permissive_side`), `size_changed`, `precision_changed` (all of them; the ones that lower the needs are also in `judgement_needed`), `head_failures_new`, `unauthorized_added`, `unauthorized_removed`, `stats` (changed `sources` values), `auto_gained_head_only`, `auto_lost`, `pending_carried` (pending in both lists) |
+| `judgement_needed` | `[{id, name, reasons}]`, sorted by id (`id` `(database)` for a changed top-level key other than `generated_at` / `sources` / `models`, merge-check only). `reasons`, in this order: `new` (added entry), `license_permissive` (entry or file license tier went down or newly on the allowlist, or the gate's license check newly passes), `need_decreased` (a file got smaller, or the estimate's needs went down: `review.review_reasons`), `uncensored_new`, `files_changed` (files added / removed / reordered, or a file's `name`, `url`, `sha256`, `repo_id`, `directory` changed, or its size became known / unknown), `use_changed` (`tasks` / `modality`), `auto_gained` (newly auto-recommendable, unless the old list held it only by `url_reachable` **and** no file's name / url / sha256 changed), `review_approved` (`review` went from not ok to ok), `review_pending` (from ok to not ok; `status` must be exactly `ok`, so `"OK"` is not ok; the review's own reasons follow), then `other_change:<field>` for every other changed field (`other_change:name`, `other_change:languages`, `other_change:description`, `other_change:license_url`, `other_change:precision`, `other_change:template.<key>`, `other_change:files.<key>`, `other_change:license` for a same-tier license rename, `other_change:review` for any other review change, …) |
+| `safe_changes` | counts of changes seen in the safe direction: `removed`, `license_stricter`, `size_changed`, `precision_changed` (as in the diff; entries among them can still be judgement-needed), `head_failures_new`, `unauthorized_added`, `unauthorized_removed`, `stats` (changed `sources` values), `auto_gained_head_only`, `auto_lost`, `pending_carried` (the same pending `review` in both lists) |
 
-Safe direction (never in `judgement_needed`): removed entries; licenses that became stricter; size / precision changes
-that do not lower the needs (no fit level goes up and neither the full-load VRAM nor the RAM goes down by more than 1 %
-at any reference PC, `review.REFERENCE_PCS`); HEAD dates, status codes and failures (and auto-recommendation regained
-only because HEAD recovered); models dropping out of auto-recommendation; 401 repositories; `sources` statistics;
-models that stay pending. Anything that could put an unchecked model in front of users is judgement-needed.
-安全な向き: HEAD の日付・失敗、必要量が増える向き、消えた項目、sources の数など。判断が要る: review の pending の理由と、
-自動のおすすめに入った・確認済みにした・確認待ちになった項目。
+Safe (the allowlist; never in `judgement_needed` by itself): entry `downloads`, `downloads_all_time`, `likes`,
+`updated`; template `usage`; file `head_status`, `head_checked_at`; a file's `size_bytes` growing (needs go up); a
+license moving to a stricter tier (entry or file); removed entries; models dropping out of auto-recommendation;
+auto-recommendation regained only because HEAD recovered with the same files; `sources` statistics; a pending `review`
+carried over unchanged. Everything else is judgement-needed.
+安全とみなすのは上の表の変化だけ(許すものの表)。知らない項目の変化も判断が要る。
 
 ```json
 "classification": {
@@ -562,6 +565,11 @@ models that stay pending. Anything that could put an unchecked model in front of
 `review_pending` (the review list items), `files` (`db`, `diff`, `pr_body`, `review_queue`), and `applied_to` with
 `--apply`. The pull request body has a 「分類」 section and a 「確認待ち」 table (names escaped like every upstream
 text). Exit codes are unchanged: a judgement-needed week is still `ok` (exit 0).
+
+`python -m genmodelfit.weekly merge-check --base <main db.json> --head <new db.json> [--json]` recomputes the
+classification from the two files (raw JSON, so unknown keys count): `{genmodelfit, command: "merge-check", base, head,
+safe, judgement_needed (count), reasons ([{id, name, reasons}]), safe_changes}`. Exit 0 = safe, 3 = not safe,
+1 = a file cannot be read (`error` with `--json`), 2 = usage error. No network, nothing written.
 
 ## review
 
@@ -599,6 +607,11 @@ list, or the base list in the weekly run):
 `update --heads-only` / `--fields-only` / `--inspect-only` apply the same rule against the list as it was before the
 run. `sources.review`: `{ok, pending, marked: {reason: count}, rejected_skipped}`.
 
+The signed list published to `data-latest` (data.yml) leaves out pending entries
+(`python -m genmodelfit.review publish`; `sources.review.withheld_pending` counts them): genmodelfit 0.5.x drops the
+unknown `review` key and would auto-recommend them. The bundled `db.json` on main keeps them (0.6.0 holds them by the
+`reviewed` check).
+
 Rejected entries stay out: `data/review_rejected.txt` (bundled), one line per entry
 `<id or sha256:<hex of the id>><TAB><YYYY-MM-DD><TAB><reason>`, `#` comments. `update` drops matching ids
 (`rejected_skipped`). With `--hide-name` only the hash is stored (like the safety exclusions, the name is not kept).
@@ -611,7 +624,7 @@ genmodelfit review approve <id> --evidence <https URL> [--evidence …] [--note 
 genmodelfit review reject <id> --note TEXT --db PATH [--rejected FILE] [--hide-name] [--json]
 ```
 
-`approve` refuses (exit 1) without at least one `https://` evidence URL, for an unknown id, or when the entry is not
+`approve` refuses (exit 1) without at least one evidence URL that is `https` with a host (`https://` alone is refused), for an unknown id, or when the entry is not
 pending; it keeps `reasons` and sets `status: ok`, `decided_by`, `decided_at` (today, UTC), `evidence` and `note`.
 `reject` requires `--note`, removes the entry, updates `sources.counts` / `sources.review` and appends the line.
 Python: `gmf.review_list(db=None, include_ok=False)`, `gmf.review_approve(db_path, id, evidence, note=, by=)`,

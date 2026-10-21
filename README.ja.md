@@ -381,22 +381,35 @@ gated が無く、カスタムノードの無い公式の ComfyUI ワークフ�
 
 ## 一覧の保守
 
-llmfit と同じく、一覧は毎週作り直し、人が確かめたものだけを配ります。
+llmfit と同じく、一覧は毎週作り直し、確かめたものだけを配ります。
 
-1. 毎週月曜(03:00 UTC)に `.github/workflows/weekly-data.yml` が上流から一覧を作り直します
-   (`python -m genmodelfit.weekly`: テンプレート・Hugging Face・HEAD の確認・ファイルの先頭の見出し。キャッシュは回をまたいで残す)。
-   スキーマ・auto の数・30 日の HEAD の期限が 7 日より先であることを確かめ、新しい一覧で ruff と pytest を回し、
-   Pull Request `automated/weekly-data`(ラベル `automated`・`data-update`)を作るか更新します。
-   本文は `genmodelfit diff` が作ります(増えた・減ったモデル、ライセンスの変化(緩くなる向きには印)、
-   自動おすすめの変化、HEAD に失敗したもの)。自動ではマージしません。
-2. 作者が見てマージします。
-3. マージされると `.github/workflows/data.yml` が main の `db.json` に署名し、Release `data-latest` を置き換えます。
+1. 週に 1 回、オーナーの PC で Claude Code のスキル `genmodelfit-weekly` が動きます(Windows のタスク スケジューラ)。
+   一覧を作り直し(`python -m genmodelfit.weekly`: テンプレート・Hugging Face・HEAD の確認・ファイルの先頭の見出し)、
+   確かめ(スキーマ・auto の数・30 日の HEAD の期限が 7 日より先)、変化の分類(`diff.json`・`review_queue.json` の
+   `classification`)を読み、確認待ちのモデルを一次資料で確かめます(根拠の URL を付けて `genmodelfit review approve`、
+   または `review reject`。安全上の理由なら `--hide-name`)。Claude がするのはブランチとコミットの用意だけです。
+2. 実行役のスクリプトがブランチを push し、Pull Request を作ります。**機械の確かめがすべて通ったときだけ**マージします:
+   変わったファイルが `src/genmodelfit/data/db.json` だけ、2 つのファイルから計算し直した分類が安全
+   (`python -m genmodelfit.weekly merge-check --base <main の db.json> --head <新しい db.json> --json` が終了コード 0。
+   前から確認待ちのまま変わらないモデルはよい)、確認の印の status が変わっていない、CI が通った。
+   どれかが通らなければ、オーナーが見てマージします。
+3. マージされると `.github/workflows/data.yml` が main の `db.json` から確認待ちのモデルを除いて署名し、
+   Release `data-latest` を置き換えます(0.5.x は `review` を知らないので、確認待ちのモデルは配りません)。
 4. アプリは `genmodelfit update --from-release` で取り込みます(署名を確かめる)。
+
+`.github/workflows/weekly-data.yml` は定期の実行をやめ、手動の予備(workflow_dispatch)として残しています。
 
 ```powershell
 genmodelfit diff old_db.json new_db.json            # 2 つの一覧の差(ツール向けは --json)
 python -m genmodelfit.weekly --dry-run --out weekly-out   # 同じ流れを手元で回す(書くのは weekly-out だけ)
+python -m genmodelfit.weekly merge-check --base old_db.json --head new_db.json --json   # 0 = 安全 / 3 = 判断が要る
 ```
+
+安全とみなすのは、許すものの表にある変化だけです: 人気の数(`downloads`・`downloads_all_time`・`likes`・
+テンプレートの `usage`)、`updated`、HEAD の結果、ファイルが大きくなる、ライセンスが厳しくなる、消えたモデル、
+自動おすすめから外れたモデル、`sources` の数、確認待ちのまま変わらないモデル。それ以外(新しいモデル、ファイルの
+URL・sha256 の変化、用途・言語・説明・ライセンスのリンク・名前の変化、知らない項目、確認の印の変化など)は
+判断が要ります。
 
 変更の確認: `genmodelfit update` は、新しいモデル・ライセンスが緩くなったもの・必要なメモリが減ったもの・
 新しく無検閲になったものに `review.status: "pending"` を付けます。pending のモデルは、一次資料の根拠を付けて

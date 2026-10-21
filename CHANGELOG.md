@@ -25,12 +25,27 @@ Targets 0.6.0 (`_version.py` is 0.6.0; 0.5.0 is tagged and awaits release).
   an https evidence URL), `review reject <id> --note TEXT --db PATH [--hide-name]` (removes the entry and records it in
   `data/review_rejected.txt`, which `update` honors). Python: `gmf.review_list()`, `gmf.review_approve()`,
   `gmf.review_reject()`.
-- `diff` adds `classification` `{safe, judgement_needed: [{id, name, reasons}], safe_changes}` for the weekly Claude
-  skill (safe-only week → merge; otherwise an evidence pull request for the owner). The weekly run writes
-  `review_queue.json` and adds 「分類」/「確認待ち」 sections to the pull request body; exit codes are unchanged.
+- `diff` adds `classification` `{safe, judgement_needed: [{id, name, reasons}], safe_changes}` for the weekly run
+  (safe-only week → the runner may merge; otherwise an evidence pull request for the owner). It is an allowlist: only
+  popularity counts, `updated`, template `usage`, HEAD results, growing files, stricter licenses, removed entries,
+  auto-recommendation lost (or regained by HEAD with the same files), `sources` statistics and unchanged pending
+  marks are safe; any other field change (`files_changed`, `use_changed`, `other_change:<field>`, unknown fields
+  included) needs judgement. The weekly run writes `review_queue.json` and adds 「分類」/「確認待ち」 sections to the pull
+  request body; exit codes are unchanged.
+- `python -m genmodelfit.weekly merge-check --base A --head B [--json]`: recompute the classification from two files
+  (exit 0 safe / 3 not safe / 1 unreadable) for the runner script that decides the merge.
+- `python -m genmodelfit.review publish SRC DST`: the list to sign without pending entries.
 
 ### Changed
 
+- **Published data (data-latest) leaves out pending entries.** genmodelfit 0.5.x does not know `review` (it drops the
+  key), so a pending entry that passes the other checks would be auto-recommended there. data.yml now runs
+  `python -m genmodelfit.review publish` before signing; pending entries reach data-latest only after approval.
+  The bundled `db.json` keeps them (0.6.0 holds them with the `reviewed` check).
+  0.5.x は review を知らないので、確認待ちの項目は data-latest に配らない。
+- The weekly update now runs as a Claude Code skill on the owner's PC; `weekly-data.yml` no longer runs on a schedule
+  (manual `workflow_dispatch` backup only). See docs/release.md.
+- `review approve` requires evidence URLs that are https with a host (`https://` alone is refused).
 - Tables: the "Auto" column is now **"Verified"** (values unchanged: `yes` or the first failed check). JSON keeps
   `auto`, `held_by` and the check ids. `info` says `verified (auto-recommend)`.
 - Tables: the `[U] ` prefix on uncensored model names is replaced by a **"Censored"** column right after Score

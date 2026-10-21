@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from . import hf
@@ -119,18 +120,128 @@ def _side(db: Database) -> dict[str, Any]:
 
 
 # 自動のおすすめに入った(auto_gained)理由が、前の一覧ではこの条件だけで保留だったなら安全な向き
-# (HEAD の一時的な失敗が直った)。ほかの条件が外れて入ったものは判断が要る
+# (HEAD の一時的な失敗が直った)。ただし、どのファイルの URL・sha256 も変わっていないときだけ
 SAFE_AUTO_GAIN = frozenset({"url_reachable"})
-# 判断が要る理由(classification.judgement_needed[].reasons)。上の 4 つは review の pending の理由と同じ
+# 判断が要る理由(classification.judgement_needed[].reasons)の並び。
+# 最初の 4 つは review の pending の理由と同じ。
+# このほかに other_change:<項目>(安全の表に無い項目の変化。知らない項目も含む)が後ろに付く
 JUDGEMENT_REASONS = (
     "new",
     "license_permissive",
     "need_decreased",
     "uncensored_new",
+    # ファイルの増減・URL(置き場所・パス)・sha256・置き場所のフォルダ・大きさが分かった・分からなくなった
+    "files_changed",
+    "use_changed",  # tasks・modality の変化
     "auto_gained",  # 自動のおすすめに入った(HEAD が直っただけのものを除く)
     "review_approved",  # 確認待ち → 確認済み(review approve)。根拠をオーナーが見る
-    "review_pending",  # 確認済み → 確認待ちになった(上の理由で説明できない分。review の理由を付ける)
+    "review_pending",  # 確認済み → 確認待ち(review の理由を付ける)
 )
+OTHER_CHANGE = "other_change"
+
+# 安全の表(#42 の Checker の指摘: 許すものだけを並べ、表に無い項目の変化はすべて判断が要る)。
+# 項目の値が変わっても安全なもの。人気の数(downloads など)・更新日・テンプレートの使用回数・HEAD の結果
+SAFE_ENTRY_FIELDS = frozenset({"downloads", "downloads_all_time", "likes", "updated"})
+SAFE_TEMPLATE_FIELDS = frozenset({"usage"})
+SAFE_FILE_FIELDS = frozenset({"head_status", "head_checked_at"})
+# 一覧の項目から計算する値(比べない。元の項目の変化で見る)
+_DERIVED_FIELDS = frozenset({"total_size_bytes"})
+_FILE_IDENTITY = ("name", "url", "sha256", "repo_id", "directory")
+_LICENSE = ("license", "license_name")
+# 一覧の上の段で、変わってよい鍵(sources の数は安全。schema_version などほかの鍵の変化は判断が要る)
+SAFE_TOP_KEYS = frozenset({"generated_at", "sources", "models"})
+
+
+def _license_move(a: dict[str, Any], b: dict[str, Any], allow: frozenset[str]) -> str | None:
+    """(license, license_name) の動き: None = 同じ、stricter = 厳しい側、permissive = 寛容な側、
+    other = 同じ段階で名前だけ違う(判断が要る)。"""
+    la, lb = (a.get("license"), a.get("license_name")), (b.get("license"), b.get("license_name"))
+    if la == lb:
+        return None
+    ta, tb = hf.license_tier(*la), hf.license_tier(*lb)
+    if tb < ta or (license_allowed(*lb, allow) and not license_allowed(*la, allow)):
+        return "permissive"
+    return "stricter" if tb > ta else "other"
+
+
+def _file_reasons(fa: list[Any], fb: list[Any], allow: frozenset[str]) -> list[str]:
+    na = [f.get("name") if isinstance(f, dict) else f for f in fa]
+    nb = [f.get("name") if isinstance(f, dict) else f for f in fb]
+    if na != nb or not all(isinstance(f, dict) for f in [*fa, *fb]):
+        return ["files_changed"]  # ファイルの増減・並びの変化
+    out: list[str] = []
+    for a, b in zip(fa, fb, strict=True):
+        for k in sorted((set(a) | set(b)) - SAFE_FILE_FIELDS):
+            va, vb = a.get(k), b.get(k)
+            if va == vb or k in _LICENSE:
+                continue
+            if k in _FILE_IDENTITY:
+                out.append("files_changed")
+            elif k == "size_bytes":
+                if isinstance(va, int) and isinstance(vb, int) and vb < va:
+                    out.append("need_decreased")
+                elif not (isinstance(va, int) and isinstance(vb, int) and vb > va):
+                    out.append("files_changed")  # 大きさが分かった・分からなくなった
+            else:
+                out.append(f"{OTHER_CHANGE}:files.{k}")
+        move = _license_move(a, b, allow)
+        if move == "permissive":
+            out.append("license_permissive")
+        elif move == "other":
+            out.append(f"{OTHER_CHANGE}:files.license")
+    return out
+
+
+def field_change_reasons(
+    a: dict[str, Any], b: dict[str, Any], allow: frozenset[str] = DEFAULT_LICENSE_ALLOWLIST
+) -> list[str]:
+    """一覧の 1 項目(JSON の dict)の old → new の変化のうち、安全の表に無いものの理由。review は別に見る。"""
+    out: list[str] = []
+    for k in sorted((set(a) | set(b)) - {"id", "review"} - _DERIVED_FIELDS):
+        va, vb = a.get(k), b.get(k)
+        if va == vb or k in SAFE_ENTRY_FIELDS or k in _LICENSE:
+            continue
+        if k in ("tasks", "modality"):
+            out.append("use_changed")
+        elif k == "files":
+            out += _file_reasons(va or [], vb or [], allow)
+        elif k == "template" and isinstance(va, dict) and isinstance(vb, dict):
+            out += [
+                f"{OTHER_CHANGE}:template.{t}"
+                for t in sorted((set(va) | set(vb)) - SAFE_TEMPLATE_FIELDS)
+                if va.get(t) != vb.get(t)
+            ]
+        elif k == "content" and vb == "uncensored":
+            out.append("uncensored_new")
+        else:
+            out.append(f"{OTHER_CHANGE}:{k}")
+    move = _license_move(a, b, allow)
+    if move == "permissive":
+        out.append("license_permissive")
+    elif move == "other":
+        out.append(f"{OTHER_CHANGE}:license")
+    return out
+
+
+def _review_ok(r: Any) -> bool:
+    """JSON の review が確認済みか(無い = 確認済み。status は小文字の ok だけ)。"""
+    return r is None or (isinstance(r, dict) and r.get("status") == "ok")
+
+
+def _same_files(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """どのファイルの名前・URL・sha256 も変わっていない。"""
+
+    def key(d: dict[str, Any]) -> list[tuple[Any, ...]]:
+        return [
+            (f.get("name"), f.get("url"), f.get("sha256")) if isinstance(f, dict) else (f,)
+            for f in d.get("files") or []
+        ]
+
+    return key(a) == key(b)
+
+
+def _raw_models(db: Database) -> dict[str, dict[str, Any]]:
+    return {m.id: json.loads(json.dumps(m.to_dict())) for m in db.models}
 
 
 def classify(
@@ -140,20 +251,29 @@ def classify(
     auto_changes: list[dict[str, Any]],
     license_allowlist: frozenset[str] = DEFAULT_LICENSE_ALLOWLIST,
     counts: dict[str, int],
+    raw: tuple[dict[str, Any], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """変化を「安全な向き」と「判断が要る」に分ける(docs/schema.md「diff」の classification)。
 
-    判断が要る(judgement_needed に ID と理由): 増えた項目(new。無検閲なら uncensored_new も)、
-    共通の項目のうち review の pending の理由に当たるもの(license_permissive・need_decreased・uncensored_new。
-    update と同じ review.review_reasons で決める)、自動のおすすめに入ったもの(前の保留が url_reachable
-    だけのものを除く)、確認待ちから確認済みになったもの、確認済みから確認待ちになったもの。
-    それ以外(消えた項目・厳しい側へのライセンスの変化・必要量が増える・変わらない大きさと精度の変化・
-    自動のおすすめから外れた・HEAD の日時と失敗・401 の増減・sources の数・前から確認待ちの項目)は安全な向き。
-    safe は judgement_needed が空のとき True。
+    許すものの表(allowlist)で決める。共通の項目は、すべての項目・ファイルの値を比べ、安全の表
+    (SAFE_ENTRY_FIELDS・SAFE_TEMPLATE_FIELDS・SAFE_FILE_FIELDS、ファイルの大きさが増える、ライセンスが
+    厳しい側、確認待ちのまま変わらない review)に無い変化はすべて判断が要る(知らない項目も)。
+    増えた項目は new、自動のおすすめに入った項目は auto_gained(前の保留が url_reachable だけで、
+    ファイルの URL・sha256 が同じものを除く)。消えた項目・自動のおすすめから外れた項目・sources の数は安全。
+
+    raw: (old, new) の一覧の JSON の dict(`merge-check` がファイルから読んだもの。知らない鍵も比べる)。
+    None なら Database から作る(知らない鍵は読むときに捨てられている)。
     """
     measurements = new.measurements or old.measurements
     old_by = {m.id: m for m in old.models}
     new_by = {m.id: m for m in new.models}
+    if raw is None:
+        ra, rb = _raw_models(old), _raw_models(new)
+        top: list[str] = []
+    else:
+        ra = {m.get("id"): m for m in raw[0].get("models") or [] if isinstance(m, dict)}
+        rb = {m.get("id"): m for m in raw[1].get("models") or [] if isinstance(m, dict)}
+        top = sorted(k for k in (set(raw[0]) | set(raw[1])) - SAFE_TOP_KEYS if raw[0].get(k) != raw[1].get(k))
     found: dict[str, list[str]] = {}
 
     def add(i: str, reasons: list[str]) -> None:
@@ -164,29 +284,39 @@ def classify(
     for i in sorted(new_by.keys() - old_by.keys()):
         add(i, review_reasons(None, new_by[i]))
     common = sorted(old_by.keys() & new_by.keys())
+    pending_carried = 0
     for i in common:
+        a, b = ra.get(i, {}), rb.get(i, {})
+        add(i, field_change_reasons(a, b, license_allowlist))
         add(i, review_reasons(old_by[i], new_by[i], measurements, license_allowlist))
+        rva, rvb = a.get("review"), b.get("review")
+        if rva == rvb:
+            pending_carried += 0 if _review_ok(rvb) else 1
+        elif not _review_ok(rva) and _review_ok(rvb):
+            add(i, ["review_approved"])
+        elif _review_ok(rva) and not _review_ok(rvb):
+            reasons = rvb.get("reasons") if isinstance(rvb, dict) else None
+            add(i, ["review_pending", *(r for r in reasons or [] if isinstance(r, str))])
+        else:
+            add(i, [f"{OTHER_CHANGE}:review"])  # 確認済みのまま根拠が変わった・確認待ちの理由が変わった など
     auto_gained_safe = 0
     for c in auto_changes:
         if c["new"] and not c["old"] and c["id"] in old_by:
-            if set(c["held_by_old"]) <= SAFE_AUTO_GAIN:
+            i = c["id"]
+            if set(c["held_by_old"]) <= SAFE_AUTO_GAIN and _same_files(ra.get(i, {}), rb.get(i, {})):
                 auto_gained_safe += 1
             else:
-                add(c["id"], ["auto_gained"])
-    pending_carried = 0
-    for i in common:
-        a, b = old_by[i], new_by[i]
-        if not a.reviewed and b.reviewed:
-            add(i, ["review_approved"])
-        elif a.reviewed and not b.reviewed and i not in found:
-            add(i, ["review_pending", *(b.review.reasons if b.review else [])])
-        elif not a.reviewed and not b.reviewed:
-            pending_carried += 1
+                add(i, ["auto_gained"])
     order = {r: k for k, r in enumerate(JUDGEMENT_REASONS)}
     judgement = [
-        {"id": i, "name": new_by[i].name, "reasons": sorted(rs, key=lambda r: order.get(r, len(order)))}
+        {
+            "id": i,
+            "name": new_by[i].name,
+            "reasons": sorted(rs, key=lambda r: (order.get(r, len(order)), r)),
+        }
         for i, rs in sorted(found.items())
     ]
+    judgement += [{"id": "(database)", "name": None, "reasons": [f"{OTHER_CHANGE}:{k}"]} for k in top]
     safe_changes = {
         **counts,
         "auto_gained_head_only": auto_gained_safe,
@@ -204,11 +334,13 @@ def diff_db(
     license_allowlist: frozenset[str] = DEFAULT_LICENSE_ALLOWLIST,
     size_rel_threshold: float = SIZE_REL_THRESHOLD,
     size_abs_threshold: int = SIZE_ABS_THRESHOLD,
+    raw: tuple[dict[str, Any], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """old → new の違い(docs/schema.md「diff」の形の dict)。ネットに触らず、何も表示しない。
 
     comfyui_version: 自動のおすすめを比べるときの ComfyUI の版。None なら新しい一覧が記録した最新の版
     (無ければ古い一覧の記録)。両方の一覧に同じ版を当てる(版の違いで可否が揺れないように)。
+    raw: 2 つの一覧の JSON の dict(分類で知らない鍵も比べる。classify)。
     """
     target = comfyui_version or recorded_comfyui_version(new.sources) or recorded_comfyui_version(old.sources)
     policy = GatePolicy(license_allowlist=license_allowlist, comfyui_version=target, max_head_age_days=None)
@@ -325,6 +457,7 @@ def diff_db(
         new,
         auto_changes=auto_changes,
         license_allowlist=license_allowlist,
+        raw=raw,
         counts={
             "removed": len(removed),
             "license_stricter": sum(1 for c in license_changes if not c["permissive_side"]),

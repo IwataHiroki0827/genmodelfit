@@ -387,23 +387,36 @@ and held. See [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/
 
 ## Maintenance
 
-Like llmfit, the list is rebuilt every week and published only after a person has reviewed it:
+Like llmfit, the list is rebuilt every week, and only reviewed data is published:
 
-1. Every Monday (03:00 UTC) `.github/workflows/weekly-data.yml` rebuilds the list from upstream
-   (`python -m genmodelfit.weekly`: templates, Hugging Face, HEAD checks, file headers; caches are kept between
-   runs), checks it (schema, auto count, the 30-day HEAD expiry must be more than 7 days away), runs ruff and
-   pytest with the new list, and opens or updates the pull request `automated/weekly-data` (labels `automated`,
-   `data-update`). The body is made by `genmodelfit diff` (added / removed models, license changes — the
-   ones toward the permissive side are marked —, auto-recommendation changes, failed HEAD checks).
-   It is never merged automatically.
-2. The owner reviews and merges it.
-3. On merge, `.github/workflows/data.yml` signs main's `db.json` and replaces the `data-latest` release.
+1. Once a week a Claude Code skill (`genmodelfit-weekly`) runs on the owner's PC (Windows Task Scheduler). It rebuilds
+   the list (`python -m genmodelfit.weekly`: templates, Hugging Face, HEAD checks, file headers), checks it (schema,
+   auto count, the 30-day HEAD expiry must be more than 7 days away), reads the change classification
+   (`classification` in `diff.json` / `review_queue.json`) and checks the pending models against primary sources
+   (`genmodelfit review approve` with evidence URLs, or `review reject`; `--hide-name` when the reason is safety).
+   Claude only prepares a branch and a commit.
+2. A runner script pushes the branch and opens the pull request. It merges **only if every mechanical check passes**:
+   the only changed file is `src/genmodelfit/data/db.json`, the classification recomputed from the two files is safe
+   (`python -m genmodelfit.weekly merge-check --base <main db.json> --head <new db.json> --json`, exit 0; models that
+   stay pending unchanged are allowed), no review status changed, and CI is green. Otherwise the owner reviews and
+   merges the pull request.
+3. On merge, `.github/workflows/data.yml` signs main's `db.json` without the pending models and replaces the
+   `data-latest` release (0.5.x clients do not know `review`, so pending models are never published).
 4. Apps take it with `genmodelfit update --from-release` (signature checked).
+
+`.github/workflows/weekly-data.yml` no longer runs on a schedule; it is kept as a manual backup (workflow_dispatch).
 
 ```powershell
 genmodelfit diff old_db.json new_db.json            # what changed between two lists (--json for tools)
 python -m genmodelfit.weekly --dry-run --out weekly-out   # the same pipeline locally (writes only weekly-out)
+python -m genmodelfit.weekly merge-check --base old_db.json --head new_db.json --json   # 0 safe / 3 not safe
 ```
+
+Safe changes are only those on an allowlist: popularity counts (`downloads`, `downloads_all_time`, `likes`,
+template `usage`), `updated`, HEAD results, larger files, stricter licenses, removed models, models dropping out of
+auto-recommendation, `sources` statistics and models that stay pending unchanged. Anything else (new models, other
+file URLs or sha256, uses, languages, descriptions, license links, names, unknown fields, review changes, …) needs
+judgement.
 
 Review of changes: `genmodelfit update` marks new models, licenses that became more permissive, lower memory needs and
 newly uncensored models as `review.status: "pending"`. A pending model is never auto-recommended (gate check `reviewed`)

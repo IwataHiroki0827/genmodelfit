@@ -310,13 +310,26 @@ def _today(today: str | None) -> str:
     return today or datetime.now(timezone.utc).date().isoformat()
 
 
+def _https_url(text: str) -> bool:
+    """https で、ホストがあり、空白を含まない URL か("https://" だけ・"https:///x" は断る)。"""
+    from urllib.parse import urlsplit
+
+    if any(c.isspace() for c in text) or not text.startswith(_EVIDENCE_PREFIX):
+        return False
+    try:
+        u = urlsplit(text)
+    except ValueError:
+        return False
+    return u.scheme == "https" and bool(u.hostname)
+
+
 def check_evidence(evidence: Iterable[str]) -> list[str]:
     ev = [e.strip() for e in evidence if e and e.strip()]
     if not ev:
         raise ReviewError("根拠(--evidence の URL。一次資料)が 1 つも無いため確かめられません")
-    bad = [e for e in ev if not e.startswith(_EVIDENCE_PREFIX) or any(c.isspace() for c in e)]
+    bad = [e for e in ev if not _https_url(e)]
     if bad:
-        raise ReviewError(f"根拠は https:// で始まる URL にしてください: {', '.join(bad)}")
+        raise ReviewError(f"根拠は https:// で始まり、ホストのある URL にしてください: {', '.join(bad)}")
     return ev
 
 
@@ -443,6 +456,46 @@ REJECTED_HEADER = """\
 """
 
 
+def publishable(db: Any) -> Any:
+    """署名して配る一覧(data-latest、data.yml)。確認待ちの項目を除いた写し(元の db は変えない)。
+
+    0.5.x までの genmodelfit は review を知らない(知らない鍵として捨てる)ので、確認待ちの項目を配ると、
+    ほかの条件を満たすものは古い版で自動のおすすめに出てしまう。そこで配る一覧には確認済みの項目だけを入れる
+    (新しい版でも、確認待ちの項目は確かめて main に入るまで data-latest に出ない)。同梱の一覧(main の db.json)
+    には確認待ちの項目も残る(新しい版は gate の reviewed で保留にする)。"""
+    out = copy.deepcopy(db)
+    kept = [m for m in out.models if m.reviewed]
+    withheld = len(out.models) - len(kept)
+    out.models = kept
+    rv = out.sources.get("review") if isinstance(out.sources.get("review"), dict) else {}
+    out.sources["review"] = {**rv, "ok": len(kept), "pending": 0, "withheld_pending": withheld}
+    out.sources["counts"] = _counts(out)
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m genmodelfit.review publish <IN> <OUT>`: 配る一覧を作る(data.yml が署名の前に呼ぶ)。"""
+    import argparse
+    import sys
+
+    p = argparse.ArgumentParser(prog="python -m genmodelfit.review", description="確認の印の道具(#42)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    pub = sub.add_parser("publish", help="確認待ちの項目を除いた、署名して配る一覧を書く")
+    pub.add_argument("src", help="元の一覧(main の src/genmodelfit/data/db.json)")
+    pub.add_argument("dst", help="書き出す先(同じパスでもよい)")
+    args = p.parse_args(argv)
+    try:
+        db = _load_file(args.src)
+    except ReviewError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    out = publishable(db)
+    out.save(Path(args.dst))
+    withheld = out.sources["review"]["withheld_pending"]
+    print(f"{len(out.models)} 件を書きました(確認待ち {withheld} 件を除いた): {args.dst}")
+    return 0
+
+
 def queue(db: Any, classification: dict[str, Any] | None = None) -> dict[str, Any]:
     """毎週の review_queue.json の中身。"""
     from ._version import __version__
@@ -457,3 +510,7 @@ def queue(db: Any, classification: dict[str, Any] | None = None) -> dict[str, An
 
 def dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=1) + "\n"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

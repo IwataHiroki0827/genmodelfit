@@ -444,3 +444,126 @@ def test_update_from_fixtures_marks_against_previous(tmp_path):
         m.review = Review("ok", [], "test", "2026-10-21")
     again = build_database(DirFetcher(fix), head=False, previous=first)
     assert again.sources["review"]["pending"] == 0, [m.id for m in again.models if not m.reviewed]
+
+
+# --- Checker の指摘(許すものの表・根拠のホスト・配る一覧・merge-check) -------------------------------
+
+
+def _pair(bundled):
+    return copy.deepcopy(bundled), copy.deepcopy(bundled)
+
+
+def _reasons_for(old, new, mid):
+    got = {j["id"]: j["reasons"] for j in _cl(old, new)["judgement_needed"]}
+    return got.get(mid)
+
+
+def test_url_and_sha_swap_to_another_repo_is_judgement(bundled):
+    old, new = _pair(bundled)
+    m = new.get(_auto(old).id)
+    for f in m.files:  # 大きさは同じのまま、別のリポジトリのファイルに差し替える
+        f.url = (f.url or "").replace("huggingface.co/", "huggingface.co/evil-") + "?x"
+        f.sha256 = "f" * 64
+        f.repo_id = "evil/" + (f.repo_id or "x")
+    assert "files_changed" in _reasons_for(old, new, m.id)
+
+
+@pytest.mark.parametrize(
+    "change,reason",
+    [
+        (lambda m: m.tasks.append("zzz"), "use_changed"),
+        (lambda m: setattr(m, "modality", "video" if m.modality != "video" else "image"), "use_changed"),
+        (
+            lambda m: m.languages.update({"prompt": [*m.languages.get("prompt", []), "ja"]}),
+            "other_change:languages",
+        ),
+        (lambda m: m.description.update({"ja": "説明を変えた"}), "other_change:description"),
+        (lambda m: setattr(m, "license_url", "https://example.com/other"), "other_change:license_url"),
+        (lambda m: setattr(m, "name", m.name + " v2"), "other_change:name"),
+        (lambda m: setattr(m.review, "status", "OK"), "review_pending"),
+    ],
+)
+def test_field_changes_outside_the_allowlist_are_judgement(bundled, change, reason):
+    old, new = _pair(bundled)
+    m = next(x for x in new.models if "ja" not in x.languages.get("prompt", []))
+    change(m)
+    assert reason in (_reasons_for(old, new, m.id) or []), _cl(old, new)["judgement_needed"][:3]
+
+
+def test_pure_head_and_popularity_changes_are_safe(bundled):
+    old, new = _pair(bundled)
+    for m in new.models:
+        m.downloads = (m.downloads or 0) + 7
+        m.likes = (m.likes or 0) + 1
+        m.downloads_all_time = (m.downloads_all_time or 0) + 9
+        m.updated = "2026-10-28T00:00:00Z"
+        if m.template:
+            m.template.usage = (m.template.usage or 0) + 3
+        for f in m.files:
+            f.head_checked_at = "2026-10-28T00:00:00Z"
+    c = _cl(old, new)
+    assert c["safe"] is True, c["judgement_needed"][:3]
+
+
+def test_head_recovery_is_safe_only_with_the_same_files(bundled):
+    old, new = _pair(bundled)
+    mid = _auto(old).id
+    for f in old.get(mid).files:
+        f.head_status = 503
+    assert _cl(old, new)["safe"] is True
+    for f in new.get(mid).files:
+        f.sha256 = "e" * 64
+    assert "auto_gained" in _reasons_for(old, new, mid)
+
+
+def test_unknown_keys_count_in_merge_check(tmp_path, bundled, capsys):
+    base, head = tmp_path / "base.json", tmp_path / "head.json"
+    bundled.save(base)
+    data = json.loads(base.read_text(encoding="utf-8"))
+    for f in data["models"][0]["files"]:
+        f["head_checked_at"] = "2026-10-28T00:00:00Z"
+    head.write_text(json.dumps(data), encoding="utf-8")
+    assert weekly.main(["merge-check", "--base", str(base), "--head", str(head), "--json"]) == 0
+    r = json.loads(capsys.readouterr().out)
+    assert r["safe"] is True and r["reasons"] == []
+    data["models"][1]["future_field"] = {"x": 1}  # この版が知らない鍵
+    data["schema_extra"] = 1
+    head.write_text(json.dumps(data), encoding="utf-8")
+    assert (
+        weekly.main(["merge-check", "--base", str(base), "--head", str(head), "--json"])
+        == weekly.MERGE_NOT_SAFE
+    )
+    r = json.loads(capsys.readouterr().out)
+    got = {j["id"]: j["reasons"] for j in r["reasons"]}
+    assert r["safe"] is False and got[data["models"][1]["id"]] == ["other_change:future_field"]
+    assert got["(database)"] == ["other_change:schema_extra"]
+    assert weekly.main(["merge-check", "--base", str(base), "--head", str(tmp_path / "nope.json")]) == 1
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize(
+    "bad", ["https://", "https:///x", "https:// x", "http://example.com", "ftp://x.example/"]
+)
+def test_evidence_needs_a_host(bad):
+    with pytest.raises(review.ReviewError):
+        review.check_evidence([bad])
+    assert review.check_evidence(["https://huggingface.co/x"]) == ["https://huggingface.co/x"]
+
+
+def test_published_list_has_no_pending(tmp_path, bundled):
+    """0.5.x は review を知らないので、配る一覧(data-latest)には確認待ちを入れない。元の一覧は変えない。"""
+    db = copy.deepcopy(bundled)
+    db.models[0].review = Review("pending", ["new"])
+    out = review.publishable(db)
+    assert db.models[0].review.status == "pending" and len(db.models) == len(bundled.models)
+    assert len(out.models) == len(db.models) - 1 and all(m.reviewed for m in out.models)
+    assert out.sources["review"]["withheld_pending"] == 1 and out.sources["counts"]["models"] == len(
+        out.models
+    )
+    src, dst = tmp_path / "src.json", tmp_path / "dst.json"
+    db.save(src)
+    assert review.main(["publish", str(src), str(dst)]) == 0
+    pub = json.loads(dst.read_text(encoding="utf-8"))
+    assert db.models[0].id not in {m["id"] for m in pub["models"]}
+    # 0.5.x の読み方(知らない鍵 review を捨てる)でも確認待ちが出てこない
+    assert all(m.get("review", {}).get("status") == "ok" for m in pub["models"])

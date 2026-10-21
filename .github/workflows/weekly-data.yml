@@ -1,6 +1,6 @@
 name: Weekly data
 
-# 毎週、一覧(src/genmodelfit/data/db.json)を上流から作り直し、確かめてから PR にする(#19)。
+# 一覧(src/genmodelfit/data/db.json)を上流から作り直し、確かめてから PR にする(#19。今は手動の予備)。
 # llmfit の weekly-model-update.yml にならう(cache の引き継ぎ・時間の上限・試験・create-pull-request)。
 #
 # - ここでは公開しない。PR を人が見て main にマージすると、data.yml が main の db.json に署名して data-latest に置く
@@ -11,13 +11,12 @@ name: Weekly data
 #   筋が通る欠け方(weekly.partial_problems)なら「一部欠け」の警告を付けて PR にする
 # - 新しく無検閲の印が付いた項目が 5 件を超えたら失敗(手動実行で allow_many_uncensored を選べば先頭に警告)
 # - PR の本文の上流の文字(名前・ID・ライセンス・URL など)は weekly.md() で HTML と Markdown を効かなくしてある
-# - 60 日リポジトリに動きが無いと GitHub は schedule を止める。止まったら Actions の画面で有効にし直すか手動実行する
 # - HEAD の期限(30 日)は作り直しで延びる。作り直した直後に期限が 7 日以内なら失敗にする(取り直しが効いていない)
 # 手順と PR で確かめることは docs/release.md「毎週の一覧の更新」。手元では `python -m genmodelfit.weekly --dry-run`。
 
+# 2026-10-21(#42): 定期の実行はやめた。毎週の更新はオーナーの PC のスキル genmodelfit-weekly が行う
+# (docs/release.md「毎週のスキル」)。ここは手動の予備(workflow_dispatch)としてだけ残す
 on:
-  schedule:
-    - cron: "0 3 * * 1" # 毎週月曜 03:00 UTC(日本時間 12:00)
   workflow_dispatch:
     inputs:
       allow_partial:
