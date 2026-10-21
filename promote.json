@@ -1,0 +1,18 @@
+{
+    "slug": "genmodelfit",
+    "name": "genmodelfit",
+    "tagline": "画像・動画・音楽・効果音・読み上げ・3D の生成モデルが、自分の PC で動くかを判定する Python のツール",
+    "description": "README.md",
+    "url": "https://github.com/laxshmate/genmodelfit",
+    "product_type": "Python のライブラリ（コマンドとしても使える）",
+    "install": "pip install genmodelfit",
+    "license": "MPL-2.0",
+    "price": 0,
+    "requirements": "Python 3.10 以上です。Windows と Linux で動きます。GPU は NVIDIA（CUDA）に対応していて、ほかの PC は GPU なしとして判定します。",
+    "promotion": {
+        "audience": "画像・動画・音声などの生成 AI を、自分の PC で動かしてみたい人",
+        "problem": "生成モデルが自分の PC の VRAM とメモリで動くかは、何 GB もダウンロードして試すまで分からない",
+        "hashtags": ["生成AI", "Python"],
+        "note": "llmfit に着想を得たもので、llmfit の公式の派生ではないことを書く。まだ公開していない製品には触れない"
+    }
+}
