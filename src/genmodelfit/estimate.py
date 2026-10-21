@@ -1263,8 +1263,8 @@ def _vendor_label(vendor: str) -> str:
 def _measured_level(
     m: Measurement | None, entry: ModelEntry, s: Settings, system: SystemInfo, prec: GpuPrecision, fit: str
 ) -> tuple[str, str] | None:
-    """同じ設定で成功した実測があり、その GPU の VRAM がこの PC の VRAM 以下なら、
-    実測で決めた段階と理由(#26)。
+    """同じ設定で成功した実測があり、その GPU の VRAM がこの PC の VRAM 以下
+    (97% の許容)で、実測のピークがこの PC の VRAM に収まるなら、実測で決めた段階と理由(#26)。
 
     実測が「GPU で動いた」ことは、それ以上の VRAM の同じ会社・同じ精度の扱いの GPU でも動く根拠になる。
     段階は 実測の VRAM ÷ この PC の VRAM の帯(FIT_BANDS)で、少なくとも good。上限に張り付いた実測

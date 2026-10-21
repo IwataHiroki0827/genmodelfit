@@ -328,7 +328,7 @@ fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model
 ## 同じ GPU で成功した実測(0.7.0、#26)
 
 同じ設定・標準のワークフローで成功(`outcome: ok`)した実測があり、その GPU と同じ会社で、この PC の VRAM が実測の GPU の VRAM 以上
-(公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)なら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
+(公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)で、実測のピークがこの PC の VRAM に収まるなら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
 この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と下限としてだけ使う
 実測(`torch_reserved`)は perfect の根拠にしない(good まで)。ほかの利用者の実測(#34)と、精度の直しで作業用メモリを倍にした
 GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した

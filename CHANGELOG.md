@@ -50,7 +50,8 @@ Targets 0.7.0 (`_version.py` is 0.7.0). JSON changes are additive; `schema_versi
 ### Changed
 
 - **A successful measurement on the same GPU sets the level** (Issue #26): with a successful standard measurement at
-  the same settings on a GPU of the same vendor whose VRAM is at most this PC's, the level is at least Good and the run
+  the same settings on a GPU of the same vendor whose VRAM is at most this PC's (97% tolerance) and
+  whose measured peak fits in this PC's VRAM, the level is at least Good and the run
   mode GPU (Perfect only when the peak is within 60% and not pinned at the GPU limit). Wan 2.2 5B on an RTX 5080 16 GB
   is now Good / GPU (was Marginal / offload with `basis: measured`). Reasons say whether the measurement or the
   estimate decided the level.
