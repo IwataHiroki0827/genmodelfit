@@ -2783,7 +2783,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 REVIEW_HELP = """List, approve or reject models waiting for review (#42).
 確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す。
-pending は update が前の一覧と比べて付ける(new / license_permissive / need_decreased / uncensored_new)。
+pending は update が前の一覧と比べて付ける
+(new / license_permissive / need_decreased / uncensored_new / files_changed)。
 確かめるまで自動のおすすめに出さない(gate の reviewed)。
 
   list     [--json] [--all] [--db PATH]          確認待ちと理由

@@ -117,7 +117,7 @@ class Template:
 # 確認の印(ModelEntry.review。0.6.0、#42)。pending = 確認待ち(自動のおすすめに出さない。gate の reviewed)
 REVIEW_STATUSES = ("ok", "pending")
 # pending にした理由(update が前の一覧と比べて付ける。docs/schema.md「review」)
-REVIEW_REASONS = ("new", "license_permissive", "need_decreased", "uncensored_new")
+REVIEW_REASONS = ("new", "license_permissive", "need_decreased", "uncensored_new", "files_changed")
 
 
 @dataclass
