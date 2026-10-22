@@ -516,11 +516,6 @@ def test_arc_mobile_is_xpu_on_windows(name):
     assert g is not None and g.backend == "xpu" and g.memory == "dedicated"
 
 
-def test_generic_amd_device_name_is_cpu_with_hint():
-    a = Adapter(name="AMD Device 7551", vendor="amd", vram_gb=16.0)
-    assert classify_adapter(a, LINUX, 32.0) is None and "update-pciids" in a.reason
-
-
 def test_unknown_os_versions_are_not_assumed():
     a = Adapter(name="AMD Radeon RX 7900 XTX", vendor="amd", vram_gb=24.0)
     assert classify_adapter(a, Host("Windows"), 32.0) is None and "Windows 11" in a.reason
@@ -599,3 +594,90 @@ def test_pc_line_hides_unknown_vendor_and_legend_caps(db, monkeypatch):
     lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
     cap = [x for x in lines if "AMD / Intel / Apple GPUs are estimates" in x]
     assert len(cap) == 1 and len(cap[0]) <= 100
+
+
+# --- #56: 安全側に倒れすぎていた名前 --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("cpu", ["AMD Ryzen Z1 Extreme", "AMD Ryzen Z1"])
+def test_ryzen_z1_is_gfx1103_apu(cpu):
+    a = Adapter(name="AMD Radeon(TM) Graphics", vendor="amd", vram_gb=4.0)
+    assert hardware.amd_gfx(a.name, cpu) == ("gfx1103", True)
+    g = classify_adapter(a, Host("Windows", 26100, cpu=cpu), 16.0)
+    assert g is not None and g.backend == "rocm" and g.memory == "shared" and g.gfx_target == "gfx1103"
+
+
+@pytest.mark.parametrize(
+    "cpu", ["AMD Ryzen 9 7940HX with Radeon Graphics", "AMD Ryzen 7 7840HX", "AMD Ryzen 9 9850HX"]
+)
+def test_dragon_range_40hx_reason_is_two_cu(cpu):
+    a = Adapter(name="AMD Radeon(TM) Graphics", vendor="amd", vram_gb=0.5)
+    assert hardware.amd_gfx(a.name, cpu) == ("gfx1036", True)
+    assert classify_adapter(a, Host("Windows", 26100, cpu=cpu), 32.0) is None
+    assert "2 CU" in a.reason and "分からない" not in a.reason
+
+
+@pytest.mark.parametrize("name", ["AMD Radeon RX 6300", "AMD Radeon PRO W6400", "AMD Radeon RX 6300M"])
+def test_rx6300_is_navi24(name):
+    assert hardware.amd_gfx(name) == ("gfx1034", False)
+    g = classify_adapter(Adapter(name=name, vendor="amd", vram_gb=2.0), LINUX, 32.0)
+    assert g is not None and g.gfx_target == "gfx1034"
+
+
+def test_lspci_unknown_device_keeps_device_id():
+    text = (
+        "0000:03:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] "
+        "Device [1002:7551] (rev c0)\n"
+        "0000:04:00.0 VGA compatible controller [0300]: Intel Corporation Device [8086:e20b]\n"
+    )
+    names = [a.name for a in parse_lspci(text)]
+    assert names == ["AMD Device 7551", "Intel Device e20b"]
+
+
+@pytest.mark.parametrize(
+    ("name", "vendor", "gfx_or_backend"),
+    [
+        ("AMD Device 7551", "amd", "gfx1201"),  # Navi 48(Radeon AI PRO R9700)
+        ("AMD Device 744c", "amd", "gfx1100"),
+        ("AMD Device 7424", "amd", "gfx1034"),  # RX 6300
+        ("Intel Device e20b", "intel", "xpu"),  # B580
+    ],
+)
+def test_old_pciids_device_is_resolved_by_pci_id(name, vendor, gfx_or_backend):
+    a = Adapter(name=name, vendor=vendor, vram_gb=12.0, source="lspci")
+    g = classify_adapter(a, LINUX, 32.0)
+    assert g is not None and gfx_or_backend in (g.gfx_target, g.backend)
+    assert any("update-pciids" in n for n in g.notes) and a.name == name
+
+
+@pytest.mark.parametrize(("name", "vendor"), [("AMD Device 7fff", "amd"), ("Intel Device e2ff", "intel")])
+def test_unknown_pci_id_hints_update_pciids(name, vendor):
+    a = Adapter(name=name, vendor=vendor, vram_gb=8.0)
+    assert classify_adapter(a, LINUX, 32.0) is None and "update-pciids" in a.reason
+
+
+def test_old_pciids_raphael_is_cpu_with_two_cu_reason():
+    a = Adapter(name="AMD Device 164e", vendor="amd", vram_gb=0.5)
+    assert classify_adapter(a, LINUX, 32.0) is None and "2 CU" in a.reason
+
+
+@pytest.mark.parametrize(
+    ("name", "vram"),
+    [
+        ("Intel Arc A770M Graphics", 16.0),
+        ("Intel Arc A730M Graphics", 12.0),
+        ("Intel Arc A550M Graphics", 8.0),
+        ("Intel Arc A370M Graphics", 4.0),
+        ("Intel Device 5690", 16.0),  # 古い pci.ids の A770M
+    ],
+)
+def test_linux_arc_mobile_uses_nominal_vram(name, vram):
+    a = Adapter(name=name, vendor="intel", source="lspci")  # Linux の xe・i915 は VRAM を sysfs に出さない
+    g = classify_adapter(a, LINUX, 32.0)
+    assert g is not None and g.vram_total_gb == vram and a.vram_source == "name"
+    assert any("公称" in n for n in g.notes)
+
+
+def test_linux_arc_without_nominal_vram_is_cpu():
+    a = Adapter(name="Intel Arc A570M Graphics", vendor="intel", source="lspci")
+    assert classify_adapter(a, LINUX, 32.0) is None and "VRAM" in a.reason

@@ -216,10 +216,10 @@ NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ�
 |---|---|---|---|
 | AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
 | AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
-| AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
-| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 = gfx1034)、Radeon 680M / 660M(gfx1035) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
+| AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
+| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300 = gfx1034)、Radeon 680M / 660M(gfx1035) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
 | AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
-| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、610M = gfx1036)、Van Gogh(gfx1033) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
+| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036)、Van Gogh(gfx1033) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
 | AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
 | AMD(どれでも) | Windows 10・版が分からない | CPU | ComfyUI の案内「Use Windows 11」(分からなければ使わない側) |
 | AMD | macOS | CPU | Apple の MPS 版は Apple silicon だけ(下) |
@@ -235,9 +235,33 @@ GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発�
 「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前(`_AMD_CPU_IGPU`: Ryzen AI Max → gfx1151、Ryzen 7 8845HS → gfx1103 など)で
 決め、決まらなければ CPU(世代が分からない)。Dragon Range(Ryzen 7x45HX)・Fire Range(9x55HX)は 2 CU の
 gfx1036 なので CPU。ノート用の Radeon は同じ番号でも石が違う(RX 6800M・6850M XT は gfx1031、RX 6800S は gfx1032、
-RX 6550M は gfx1034、RX 7700S は gfx1102)。Linux で pci.ids が古く「AMD Device 7551」のように型番が出ないときは、
-型番の ID からは引かず(表を持たない)、`update-pciids` で直ると書いて CPU にする。Intel Arc の VRAM が読めない(Linux の lspci)ときは名前から少ないほうの版の量
-(A770 は 8 GB 版と 16 GB 版があるので 8 GB)とみなす。
+RX 6550M は gfx1034、RX 7700S は gfx1102)。
+
+0.9.0 で足した名前(#56。一次資料は 2026-10-22 に読んだ):
+
+- **Ryzen Z1 Extreme・Z1**(携帯機。WMI の名前は「AMD Radeon(TM) Graphics」なので CPU の名前で決める): AMD の製品ページ
+  (https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1-extreme.html ・
+  https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1.html)は Graphics Core Count 12 / 4。
+  Z1 Extreme は Phoenix1(780M と同じ 12 CU)、Z1 は Zen 4 2 個 + Zen 4c 4 個の Phoenix2(740M と同じ 4 CU)とみなし
+  (石の対応は推定。AMD は書いていない)、どちらも gfx1103(Linux の amdkfd `kfd_device.c` が GC 11.0.1・11.0.4 を
+  gfx_target_version 110003 にする)。740M(4 CU)を GPU にしているので Z1 も GPU。2 CU の 610M だけが CPU
+- **Dragon Range の 7940HX・7840HX**(型番の下 2 桁が 40): AMD の製品ページ(例
+  https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html)で Radeon 610M・2 CU。
+  以前は名前の表が 45HX だけで「gfx が分からない」理由になっていた。理由の文は「2 CU の小さな内蔵 GPU」にした
+- **デスクトップの RX 6300**: pci.ids の「7424 Navi 24 [Radeon RX 6300]」で Navi 24(gfx1034)。TheRock の SUPPORTED_GPUS.md は
+  gfx1034 を Release Ready にしている。2 GB の VRAM なので、動くモデルはほぼ無い(判定は VRAM の量に任せる)
+- **Linux で pci.ids が古いとき**: lspci -nn は「Advanced Micro Devices, Inc. [AMD/ATI] Device [1002:7551]」と出す
+  (pciutils `lib/names.c` の format_name_pair)。名前を「AMD Device 7551」として残し、`hardware.PCI_DEVICE_NAMES`
+  (pci.ids 2026.10.22、pciutils/pciids 86e7077e4b79 から、判定に関わる AMD・Intel の ID だけを写した表)で石・製品の名前に
+  引き直す。理由に「型番の ID から … とみなした(update-pciids で新しくすると製品名が出る)」と書く。表に無い ID は
+  `update-pciids` の案内を付けて CPU(AMD・Intel とも)。型番の ID は製品の種類だけを表し、個体・差し場所は表さないので名前に残す
+- **Linux の Intel の外付け GPU の VRAM**: xe・i915 のドライバは amdgpu の `mem_info_vram_total` に当たる sysfs を出さない
+  (torvalds/linux の `drivers/gpu/drm/xe/xe_tile_sysfs.c`・`xe_device_sysfs.c`・`i915_sysfs.c`・Documentation/ABI を読んだ。
+  量は DRM の ioctl か debugfs(root)でだけ読める)。そこで名前の表の**公称**の量を使い、理由に「名前から公称の … GB
+  (量の違う版があれば少ないほう)」と書く(`Adapter.vram_source: "name"`)。ノート用の公称は Intel の表
+  (https://www.intel.com/content/www/us/en/support/articles/000091109.html: A770M 16 GB・A730M 12 GB・A550M 8 GB・
+  A370M 4 GB・A350M 4 GB)。A770 は 8 GB 版と 16 GB 版があるので 8 GB。A570M・A530M・Pro の M は Intel の資料で
+  確かめられなかったので値を持たず、Linux では CPU のまま
 
 ### 精度(ComfyUI b1a247c の `comfy/model_management.py`)
 
@@ -293,7 +317,8 @@ RX 6550M は gfx1034、RX 7700S は gfx1102)。Linux で pci.ids が古く「AMD
     ConfigManagerErrorCode が 0 でなければ「デバイスマネージャーで問題がある状態」と知らせる。
 - Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。名前は括弧の中の製品名(`Navi 31 [Radeon RX 7900 XT/7900 XTX/…]`
   の括弧の中)。AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total`(VRAM)と `mem_info_gtt_total`(GTT)を読む。
-  rocm-smi は使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。
+  rocm-smi は使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。Intel の外付け GPU は
+  sysfs に VRAM の量が無いので、名前の表の公称の量を使う(上)。型番の分からない部品は「AMD Device 7551」の名前にする。
 - macOS: `system_profiler SPDisplaysDataType -json` の `sppci_model`(「Apple M2 Pro」)と `spdisplays_vendor`。
   統合メモリの量は psutil の搭載量(macOS では `sysctl hw.memsize` と同じ値)、OS の版は `platform.mac_ver()`。
 - PowerShell・lspci・system_profiler が無い・失敗した・時間切れは、黙って飛ばす(空のまま)。
@@ -424,7 +449,8 @@ nvidia-smi だけを 15 回ずつ交互に動かすと、項目を増やした�
 
 ## 試験
 
-`tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)と `tests/fixtures/hardware/`。既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
+`tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)と `tests/fixtures/hardware/`。
+bench が NVIDIA 以外の GPU の使用率・使用中のメモリを読む道具(`gpustat.py`)は `tests/test_gpustat.py`(公式の文書・ソースの出力例と、この PC の typeperf の実際の出力)と `tests/test_bench_vendors.py`。既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
 (`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files` を塞ぐ)。
 フィクスチャ: この PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)、複数の GPU、compute_cap の無い古い版、
 `[N/A]`、壊れた出力、ドライバが動いていない・GPU が無いときの出力、AMD だけ・Intel + NVIDIA・ドライバの無い NVIDIA の WMI、
