@@ -865,6 +865,26 @@ def _sysfs_gtt(slot: str) -> int | None:
     return _sysfs_value(slot, "mem_info_gtt_total")
 
 
+# Apple silicon のチップ名(system_profiler の sppci_model。例 "Apple M2 Pro")。bench の実測の GPU 名に使うのは
+# この形に合うものだけ(チップ名以外の値・シリアルなどを入れない。0.9.0)
+APPLE_CHIP_NAME = re.compile(r"Apple [MA]\d{1,2}(?: (?:Pro|Max|Ultra))?")
+
+
+def apple_chip_name() -> str | None:
+    """この PC の Apple silicon のチップ名(macOS の system_profiler で読む。ほかの OS・読めない・形が合わない
+    ときは None)。bench が ComfyUI の MPS の GPU 名("mps")の代わりに使う。"""
+    if platform.system() != "Darwin":
+        return None
+    r = _run(["system_profiler", "SPDisplaysDataType", "-json"], OTHER_GPU_TIMEOUT)
+    if r is None or r[0] != 0:
+        return None
+    for a in parse_system_profiler(r[1]):
+        name = (a.name or "").strip()
+        if a.vendor == "apple" and APPLE_CHIP_NAME.fullmatch(name):
+            return name
+    return None
+
+
 def parse_system_profiler(text: str) -> list[Adapter]:
     """macOS の `system_profiler SPDisplaysDataType -json` を読む。Apple silicon の GPU は名前が
     「Apple M2 Pro」などで、メモリは統合メモリ(大きさは psutil の搭載量 = sysctl hw.memsize で見る)。"""

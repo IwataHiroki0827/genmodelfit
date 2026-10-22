@@ -250,3 +250,105 @@ def test_contrib_show_lists_vendor_and_backend(tmp_path, capsys):
     cli.main(["contrib", "show", str(p)])
     out = capsys.readouterr().out
     assert "会社 amd" in out and "backend rocm" in out
+
+
+# --- Apple: ComfyUI の MPS の GPU 名("mps")の代わりに、この PC のチップ名を使う(0.9.0) ----------------
+
+
+def _sp(name: str = "Apple M2 Pro") -> str:
+    return json.dumps(
+        {
+            "SPDisplaysDataType": [
+                {"_name": name, "sppci_model": name, "spdisplays_vendor": "sppci_vendor_Apple"}
+            ]
+        }
+    )
+
+
+def test_apple_bench_uses_the_chip_name(monkeypatch, tmp_path):
+    _os(monkeypatch, "Darwin", {"system_profiler": _sp()})
+    with FakeComfy() as fake:
+        fake.device = APPLE_DEV
+        res = bench.run(_opts(fake.url), log=_quiet)
+    m = res.measurement
+    assert (m.gpu_name, m.gpu_backend) == ("Apple M2 Pro", "mps")
+    m.seconds = 30.0  # 偽の ComfyUI はすぐ終わる(0.0 秒は提出の範囲の外。test_contrib の番兵の試験と同じ)
+    data = contrib.build_submission(m)
+    assert data["system"]["gpu"]["name"] == "Apple M2 Pro" and data["system"]["gpu"]["vendor"] == "apple"
+    r = contrib.validate_submission(data, check_filename=False)
+    assert r.ok, r.errors
+    assert all(c["ok"] is not False for c in contrib.privacy_checklist(data)), contrib.privacy_checklist(data)
+    assert contrib.suggested_path(data).startswith("data/contrib/apple-m2-pro/")
+
+
+@pytest.mark.parametrize(
+    "output",
+    [None, _sp("Apple M2 Pro C02XK0ABCDEF"), _sp("Apple M2 Pro (bob's MacBook)")],
+    ids=["unreadable", "serial_like", "free_text"],
+)
+def test_apple_bench_keeps_mps_without_a_plain_chip_name(monkeypatch, output):
+    """チップ名の形(Apple M2 Pro など)に合わない値は入れない(シリアル・名前などを持ち込まない)。"""
+    _os(monkeypatch, "Darwin", {} if output is None else {"system_profiler": output})
+    with FakeComfy() as fake:
+        fake.device = APPLE_DEV
+        res = bench.run(_opts(fake.url), log=_quiet)
+    assert res.measurement.gpu_name == "mps"
+    assert any("チップ名が分からない" in w for w in res.warnings)
+
+
+def test_apple_bench_remote_keeps_mps(monkeypatch):
+    """ComfyUI が別の PC なら、この PC のチップ名は使わない(--force が要るのは今までどおり)。"""
+    calls = []
+    _os(monkeypatch, "Darwin", {"system_profiler": _sp()})
+    monkeypatch.setattr(hardware, "apple_chip_name", lambda: calls.append(1) or "Apple M2 Pro")
+    monkeypatch.setattr(bench, "is_local", lambda url: False)
+    with FakeComfy() as fake:
+        fake.device = APPLE_DEV
+        with pytest.raises(BenchError, match="--force"):
+            bench.run(_opts(fake.url), log=_quiet)
+        res = bench.run(_opts(fake.url, force=True), log=_quiet)
+    assert res.measurement.gpu_name == "mps" and not calls
+
+
+@pytest.mark.parametrize(
+    ("name", "ok"), [("Apple M2 Pro", True), ("mps", True), ("Apple M2 Pro X1234", False)]
+)
+def test_submission_apple_gpu_name_is_chip_or_mps(name, ok):
+    data = contrib.build_submission(_m(name, "mps"))
+    r = contrib.validate_submission(data, check_filename=False)
+    assert r.ok is ok, r.errors
+    if not ok:
+        assert any(e["code"] == "gpu_inconsistent" for e in r.errors)
+
+
+def test_apple_measurement_matches_this_pc_by_chip_name():
+    """判定は、この PC の GPU 名(system_profiler のチップ名)と実測の GPU 名で同じ GPU を見る。
+    古い "mps" の実測は会社 apple としてだけ使う(同じ GPU の実測にはならない)。"""
+    from genmodelfit.db import load
+    from genmodelfit.estimate import _measured_band, gpu_precision, measurement_vendor, same_gpu_name
+    from genmodelfit.hardware import Host, classify_adapter, parse_system_profiler
+    from genmodelfit.models import SystemInfo
+
+    (a,) = parse_system_profiler(_sp())
+    g = classify_adapter(a, Host("Darwin", None, (15, 0)), 32.0)
+    pc = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
+    db = load(use_cache=False)
+    entry = db.get("image_sdxl_simple")
+    base = next(m for m in db.measurements if m.model_id == entry.id)
+    s = base.settings
+    kw = {
+        **vars(base),
+        "settings": s,
+        "gpu_vram_gb": g.vram_total_gb,
+        "peak_vram_gb": 6.0,
+        "vram_metric": "torch_reserved",
+        "origin": "community",
+        "n_used": 1,
+        "n_oom": 0,
+    }
+    chip = Measurement(**{**kw, "gpu_name": "Apple M2 Pro", "gpu_backend": "mps"})
+    assert same_gpu_name(chip.gpu_name, g.name)
+    assert _measured_band(chip, entry, s, pc, gpu_precision(entry, pc, s)) is not None
+    old = Measurement(**{**kw, "gpu_name": "mps", "gpu_backend": None})
+    assert measurement_vendor(old) == "apple"
+    assert _measured_band(old, entry, s, pc, gpu_precision(entry, pc, s)) is None

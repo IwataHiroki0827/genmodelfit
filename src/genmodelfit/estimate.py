@@ -1335,7 +1335,7 @@ def gpu_vendor(name: str) -> str:
         return "amd"
     if n.startswith("intel") or " arc" in f" {n}":
         return "intel"
-    if n.startswith("apple"):
+    if n.startswith("apple") or n == "mps":  # ComfyUI の MPS の GPU 名(0.9.0 より前の bench が書いた)
         return "apple"
     return "nvidia"
 

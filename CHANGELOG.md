@@ -43,7 +43,12 @@ change any level (the estimate was already Perfect where they apply).
 - **The vendor of a measurement comes from its recorded backend** (`gpu_backend` / the submission's `system.gpu.backend`)
   and only falls back to the GPU name when missing. Apple's MPS reports the GPU name `mps`, which the name rule took for
   NVIDIA. Used by the #26 "same vendor" check and by "another vendor's measurement only calibrates".
-  `contrib aggregate` keeps `gpu_backend` on community rows.
+  `contrib aggregate` keeps `gpu_backend` on community rows. A name `mps` without a backend is also Apple.
+- **`bench` on Apple names the GPU by this Mac's chip** (`Apple M2 Pro`, read with system_profiler) instead of
+  ComfyUI's `mps`, when ComfyUI runs on the same Mac, so measurements and submissions match the PC's GPU name and can
+  set the level (#26) on the same chip. Only a plain chip name (`hardware.APPLE_CHIP_NAME`) is used, never serials or
+  other text; otherwise, and for a remote ComfyUI, the name stays `mps` (with a warning) and counts only as Apple.
+  `contrib validate` accepts only a chip name or `mps` for vendor `apple`.
 - **Other users' measurements (#34) are used like llmfit's** (owner's decision, 2026-10-22). The bundled
   `measurements_community.json` is still empty, so no judgement changes today (checked: every model × 33 PCs —
   NVIDIA 4–48 GB × RAM 16 / 32 / 64, RTX 3070 / 5080 / GTX 1080, AMD 8 / 16 / 24, Intel, Apple, CPU — identical

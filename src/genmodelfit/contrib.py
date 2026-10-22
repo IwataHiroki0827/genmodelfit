@@ -51,7 +51,7 @@ from .estimate import (
     gpu_vendor,
     norm_precision,
 )
-from .hardware import arch_of, cc_from_name, parse_compute_cap
+from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, parse_compute_cap
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
 CONTRIB_SCHEMA = 1
@@ -728,6 +728,16 @@ def validate_submission(
             r.error("gpu_inconsistent", "compute capability・arch は NVIDIA の GPU だけに入れます")
         elif vendor and isinstance(name, str) and gpu_vendor(name) not in ("nvidia", vendor):
             r.error("gpu_inconsistent", f"GPU 名({name})の会社と vendor({vendor})が合いません")
+        elif (
+            vendor == "apple"
+            and isinstance(name, str)
+            and name != "mps"
+            and not APPLE_CHIP_NAME.fullmatch(name)
+        ):
+            # Apple の GPU 名は bench が system_profiler で読んだチップ名(Apple M2 Pro など)か mps だけ
+            r.error(
+                "gpu_inconsistent", f"Apple の GPU 名はチップ名(Apple M2 Pro など)か mps だけです: {name}"
+            )
         arch, cc = gpu.get("arch"), gpu.get("compute_capability")
         if arch is not None and arch not in ARCHES:
             r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")

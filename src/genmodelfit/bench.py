@@ -42,6 +42,7 @@ from urllib.parse import urlparse
 import psutil
 import requests
 
+from . import hardware
 from ._version import __version__
 from .db import cache_dir
 from .estimate import gpu_vendor
@@ -836,6 +837,18 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     local = is_local(opts.url)
     proc = find_server_process(opts.url)
     vendor = device_vendor(dev0, stats)
+    if vendor == "apple" and name.lower() in ("mps", "unknown"):
+        # ComfyUI の MPS は GPU 名が "mps" なので、同じ PC ならこの PC のチップ名(Apple M2 Pro など。
+        # system_profiler で読む。チップ名の形のものだけ)にする。判定はこの PC の GPU 名と同じ形で比べる。
+        # 別の PC の ComfyUI(--force が要る)・読めないときは "mps" のまま(会社 apple としてだけ使われる)
+        chip = hardware.apple_chip_name() if local else None
+        if chip:
+            name = chip
+        else:
+            name = "mps"
+            warnings.append(
+                "Apple のチップ名が分からないので GPU 名は mps のまま(同じ GPU の実測としては使われない)"
+            )
     gpu: dict[str, Any] | None = None
     gpu_id = driver = None
     probe: Probe | None = None

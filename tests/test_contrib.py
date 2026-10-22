@@ -1215,9 +1215,10 @@ def test_measurement_vendor_prefers_the_recorded_backend(db):
         }
     )
     assert measurement_vendor(mps) == "apple"
-    assert (
-        measurement_vendor(Measurement(**{**vars(mps), "gpu_backend": None})) == "nvidia"
-    )  # 記録が無ければ名前
+    # 記録が無ければ名前で推す。古い "mps" の実測も apple(会社としてだけ使う)
+    assert measurement_vendor(Measurement(**{**vars(mps), "gpu_backend": None})) == "apple"
+    other = Measurement(**{**vars(mps), "gpu_name": "Some GPU", "gpu_backend": None})
+    assert measurement_vendor(other) == "nvidia"
     rocm = Measurement(**{**vars(mps), "gpu_name": "Some GPU", "gpu_backend": "rocm"})
     assert measurement_vendor(rocm) == "amd"
     # NVIDIA の PC では、Apple の実測は「別の会社の実測」(補正だけ。段階の根拠にしない)

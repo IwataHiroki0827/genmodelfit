@@ -320,6 +320,12 @@ warnings と note に「使用率は確かめていない」と残す。**`stand
 ほかのアプリと取り合ってメモリ不足で逃がした・失敗した結果は `offload`・`outcome` に出るので、そこで分かる。
 ComfyUI が別の PC のときは、NVIDIA と同じく `--force` が要る(この PC の道具では何も確かめられないため)。
 
+Apple の MPS では ComfyUI の GPU 名が `mps` になる。ComfyUI が同じ PC なら、bench は system_profiler で読んだこの PC の
+チップ名(`Apple M2 Pro` など。`hardware.APPLE_CHIP_NAME` の形に合うものだけで、シリアルなどは入れない)を実測と提出の
+`gpu_name` にする。判定はこの PC の GPU 名(同じ system_profiler のチップ名)と比べるので、同じチップの実測が段階の根拠になる。
+別の PC の ComfyUI・チップ名が読めないときは `mps` のまま(警告を出す)。`mps` の実測は会社 apple としてだけ使い、
+同じ GPU の実測にはならない。`contrib validate` は vendor が apple の GPU 名をチップ名か `mps` だけに限る。
+
 ## RTX 3070 8GB の実測との照合(bench、2026-10-19 UTC、係数の合わせには使っていない)
 
 `genmodelfit bench` で、この PC(RTX 3070 8GB、AI生成キットのエンジン ComfyUI 0.40.0)で 2 件を測りました。
