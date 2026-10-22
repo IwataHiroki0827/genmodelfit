@@ -15,6 +15,11 @@
                           ようになった・全部載せの VRAM か RAM が 1% を超えて減った。精度・大きさ・
                           ファイルの変化による)
   - `uncensored_new`      新しく無検閲になった(新しい項目が無検閲のときも付ける)
+  - `files_changed`       ファイルが変わった(前の一覧と同じ ID で、ファイルの増減・URL・
+                          repo_id・大きさの変化(大きくなった・小さくなった・分かった・分からなくなった)・
+                          sha256 の変化(前も今も値があって違う、または確かめた値が消えた。前が空で今入った
+                          のは付けない)。アプリは一覧の URL をそのまま落とすので、確認済みの中身が黙って
+                          差し替わらないようにする。URL はフラグメントだけ除いて比べる。0.9.0)
   それ以外は前の印を引き継ぐ(前の一覧に印が無ければ、確認済みとして引き継いだことを note に書く)。
 - 外した項目(`review reject`)は data/review_rejected.txt に残し、update は作り直しても入れない。
 - gate の `reviewed` が pending を自動のおすすめに出さない。
@@ -137,6 +142,36 @@ def need_decreased(old: ModelEntry, new: ModelEntry, measurements: Iterable[Meas
     return False
 
 
+def _norm_url(url: Any) -> Any:
+    """URL の比べ方: フラグメント(# から後。サーバーに送られない)だけ捨てる。クエリ(?download=true など)は
+    落とすファイルを変えうるので比べる(0.9.0。diff の分類と同じ)。"""
+    if not isinstance(url, str):
+        return url
+    return url.split("#", 1)[0]
+
+
+def files_changed(old: ModelEntry, new: ModelEntry) -> bool:
+    """old → new でファイルが変わったか: ファイルの増減、URL(フラグメントだけ除く)・repo_id・大きさの変化、
+    sha256 の変化(前も今も値があって違う、または今が空になった。前が空で今入ったのは初めて確かめただけなので
+    含めない)。ファイルの対応づけは diff と同じ(`diff._file_match`)。並びだけの変化・HEAD の結果は見ない。"""
+    from .diff import _file_match
+
+    fa, fb = asdict(old)["files"], asdict(new)["files"]
+    pairs, gone, added = _file_match(fa, fb)
+    if gone or added:
+        return True
+    for a, b in pairs:
+        if _norm_url(a.get("url")) != _norm_url(b.get("url")) or a.get("repo_id") != b.get("repo_id"):
+            return True
+        if a.get("size_bytes") != b.get("size_bytes"):
+            # 大きさが変わった(どちらの向きでも)= 同じ URL の中身が差し替わった。
+            # 分かった・分からなくなったも付ける(0.9.0。前は大きくなっただけは付けなかった)
+            return True
+        if a.get("sha256") and a.get("sha256") != b.get("sha256"):
+            return True
+    return False
+
+
 def license_permissive(old: ModelEntry, new: ModelEntry, allow: frozenset[str] | None = None) -> bool:
     """ライセンスが寛容な側に変わったか: 一式の段階(hf.license_tier)が下がった、一式のライセンスが許可リストに
     入るようになった、gate の license(ファイルごとに本家で読む)が通るようになった。"""
@@ -169,6 +204,8 @@ def review_reasons(
         out.append("need_decreased")
     if old.content != "uncensored" and new.content == "uncensored":
         out.append("uncensored_new")
+    if files_changed(old, new):
+        out.append("files_changed")
     return out
 
 

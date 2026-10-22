@@ -168,7 +168,9 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
      選び方の規則が緩んだ疑い。手動実行で `allow_many_uncensored` を選んだときだけ、失敗にせず本文の先頭に警告)
    - キャッシュを保存する(`if: always()`。失敗・時間切れでも残す。GitHub は 7 日使わないキャッシュを消す)
    - 新しい一覧を入れた状態で `ruff check`・`ruff format --check`・`pytest -q`(CI の代わり。下の注意)
-   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす
+   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす。
+     data/contrib がまだ無ければ「提出 0 件」と書く。報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む。
+     2026-10-22 から両方の向きに使うので、上がる・下がるの両方が出る)が入る
    - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)
 2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
    `result.json` が ok の一覧だけを入れ、`peter-evans/create-pull-request`(コミットで固定)で PR を作る・更新する
@@ -268,9 +270,12 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 
 安全な週の条件: classification が safe(前から確認待ちのまま変わらない項目は含んでよい)。分類は**許すものの表**で
 決める(docs/schema.md「diff」の classification): 人気の数(`downloads`・`downloads_all_time`・`likes`・テンプレートの
-`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ファイルが大きくなる、ライセンスが厳しくなる、
+`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ライセンスが厳しくなる、
 消えた項目、自動のおすすめから外れた項目、`sources` の数、確認待ちのまま変わらない項目。それ以外の変化(知らない項目も)は
 すべて判断が要る。HEAD が直って自動のおすすめに戻ったものは、どのファイルの URL・sha256 も変わっていないときだけ安全。
+ファイルの大きさの変化は 0.9.0 から向きによらず判断が要る(`files_changed`。`update` も確認待ちにする)。アプリは一覧の URL を
+そのまま落とすので、同じ URL のファイルが大きくなった = 中身が差し替わった、を黙って通さない。HF のリポジトリでファイルが
+上書きされた週は、自動でマージされずオーナーの確認になる(以前は大きくなっただけなら安全な週としてマージしていた)。
 
 決めたこと:
 

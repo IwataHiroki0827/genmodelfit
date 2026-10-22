@@ -7,6 +7,145 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-22
+
+### Changed — judgements that change
+
+Only the PCs whose GPU #56 now recognizes change with the bundled data. These PCs go from CPU to GPU: Steam Deck
+(Van Gogh / Sephiroth), Ryzen Z1 Extreme / Z1, Radeon RX 6300 / Pro W6300 / W6400, Linux PCs whose old pci.ids shows
+`AMD Device …` / `Intel Device …` for a known ID, and Linux Intel Arc laptop GPUs (A770M / A730M / A550M / A370M / A350M).
+Checked against 0.8.0 over every bundled model × a set of 36 PCs (NVIDIA 4 / 6 / 8 / 12 / 16 / 24 / 48 GB × RAM
+16 / 32 / 64, RX 7900 XTX / 7600 / 6800 XT, 780M, Ryzen 9 7945HX, Arc A770 / B580, M2 Pro, CPU 16 / 32 GB, and five
+#56 PCs): rows changed only on the five #56 PCs (rows / levels changed: Steam Deck 190 / 82, Ryzen Z1 Extreme 127 / 125,
+RX 6300 2 GB 133 / 4, Linux `AMD Device 7551` 291 / 291, Linux Arc A770M 271 / 271); the 31 other PCs are identical.
+PCs outside that set were not compared. The bundled RTX 3070
+`torch_reserved` measurements change no level (the estimate was already Perfect where they apply), and the bundled
+`measurements_community.json` is empty, so the rules for other users' measurements below change nothing today.
+
+- **Non-NVIDIA GPUs that were judged too cautiously** (#56). Sources are in docs/hardware.md「NVIDIA 以外の GPU」.
+  - Steam Deck (Van Gogh, gfx1033; also the OLED model's Sephiroth and the Windows driver name `AMD Custom GPU 0405`)
+    was CPU as a "2 CU" display-only GPU. It has 8 RDNA 2 CUs (Valve's spec) and TheRock lists gfx1033 as Release
+    Ready on Linux and Windows, so it is judged like the 680M / 660M (shared memory, at most Good). Only the 2 CU
+    gfx1036 (610M, Raphael, Granite Ridge, Dragon Range) stays CPU.
+  - Ryzen Z1 Extreme / Z1 (handhelds, 12 / 4 RDNA 3 CUs per AMD's pages) are judged as gfx1103 APUs like the
+    780M / 740M instead of CPU.
+  - Dragon Range 7940HX / 7840HX were CPU with the reason "gfx unknown"; they are now named as the 2 CU Radeon 610M
+    (still CPU), like the 7945HX.
+  - The desktop Radeon RX 6300 (and Pro W6300 / W6400) is Navi 24 (gfx1034).
+  - Linux with an old pci.ids: lspci's `Device [1002:7551]` is kept as `AMD Device 7551` and looked up in a PCI ID
+    table copied from pci.ids 2026.10.22 (AMD and Intel GPUs that matter for judging); the reason says it was
+    resolved from the ID. Unknown IDs get the `update-pciids` hint for Intel too (`Intel Device e20b` used to get none).
+  - Linux Intel Arc laptop GPUs (A770M 16 GB, A730M 12 GB, A550M 8 GB, A370M / A350M 4 GB, from Intel's spec table)
+    use the nominal VRAM, marked as nominal in the reason, because the xe / i915 drivers expose no VRAM size in sysfs.
+    They were CPU before.
+- **Other users' measurements (#34) are used like llmfit's** (owner's decision, 2026-10-22), **only on the same GPU**.
+  A community measurement moves the needs and the level only of a PC whose GPU is the measured one (same PCI model ID
+  when both sides have one, else the same normalized name; generic names such as `AMD Radeon(TM) Graphics` never
+  match). PCs with another GPU, or none, are judged exactly as without it. The maintainer's bundled measurements are
+  still used on every PC (bundled judgements unchanged). `consistent` groups still enter the coefficient calibration.
+  On the same GPU:
+  - an `ok` group is used from **one** submission (median of the group; `n_used` / `n_oom` kept). A group with `ok`
+    and `oom` runs uses the `ok` median and reports the OOM count;
+  - values move the needs **both ways** and `measured_community` scores like `measured`. Physical bounds: the all-in
+    value never goes below weights + fixed overhead (a smaller value becomes that floor; `basis` is then
+    `estimated`), never above the measuring GPU's VRAM × 1.02 + 0.25 GiB, and a value pinned at the GPU limit is a
+    lower bound. `peak_ram_gb` is capped at the submission's RAM × 1.05 + 1 GiB. Spread to other settings
+    (`calibrated`), measured ÷ formula is clamped to [0.6, 1.4] (`estimate.COMMUNITY_CALIBRATION_RANGE`; llmfit uses
+    [0.05, 3.0]). Removed: "never lower the needs", the +15% cap (`COMMUNITY_RAISE_CAP`), ignoring rows that change the
+    level, and the 2-consistent-submissions rule;
+  - a successful measurement at the same settings can set the level (#26) and lifts the AMD / Intel / Apple
+    "at most Good" cap. Perfect needs a peak within 60% of this VRAM (for `torch_reserved`, after adding the context,
+    next item), not pinned at the GPU limit and no OOM report in the group.
+- **`torch_reserved` measurements can now make Perfect** (#26 levels from measurements). Every `bench` result and
+  submission is `torch_reserved` (the ComfyUI process's torch reservation, without the CUDA / HIP context), and the
+  old rule "torch_reserved never makes Perfect" kept AMD / Intel / Apple GPUs at Good even with a measurement of that
+  GPU. The level bands (60 / 85 / 98%) and the fit check now use the peak plus `estimate.TORCH_RESERVED_CONTEXT_GB` =
+  0.5 GiB (the upper end of bench's "about 0.3–0.5 GB" context; the cautious side). Needs (`vram_gb`) and calibration
+  are unchanged.
+- **Same-GPU matching** (`estimate.gpu_key`, `estimate.same_gpu`): one normalization for both the PC's GPU name and the
+  measured one — case, spaces and symbols, `(R)` / `(TM)` / `™` / `®`, and the words "NVIDIA" / "GeForce" (the same
+  card is "NVIDIA GeForce RTX 3070" in nvidia-smi and PyTorch but "GeForce RTX 3070" in lspci; NVIDIA product names do
+  not collide without them; "AMD" / "Intel" are kept so `AMD Device 744c` ≠ `Intel Device 744c`). New `Gpu.pci_id` /
+  `Adapter.pci_id` (PCI model ID `1002:744c` from Windows WMI `PNPDeviceID` or Linux `lspci -nn`; never the bus
+  address) and `Measurement.gpu_pci_id`: when both sides have an ID, the ID decides.
+- **The vendor of a measurement comes from its recorded backend** (`gpu_backend` / the submission's
+  `system.gpu.backend`) and only falls back to the GPU name when missing. A name `mps` is Apple.
+- **`bench` on Apple names the GPU by this Mac's chip** (`Apple M2 Pro`, read with system_profiler) instead of
+  ComfyUI's `mps`, when ComfyUI runs on the same Mac. Only a plain chip name (`hardware.APPLE_CHIP_NAME`) is used,
+  never serials or other text; otherwise, and for a remote ComfyUI, the name stays `mps` (with a warning) and counts
+  only as Apple, never as the same GPU.
+
+### Changed — reviews and the weekly list
+
+- **`update` marks an entry `pending` with `files_changed` when its files changed**: files added / removed, a `url`
+  changed (the query string counts; only a `#fragment` is ignored), a `repo_id` changed, a `size_bytes` changed **in
+  either direction** or became known / unknown, a `sha256` that had a value changed or went empty. Apps download the
+  listed URL as is, so an approved entry no longer gets different files silently. A `sha256` filled in for the first
+  time does not count. `diff`'s classification agrees for every single-file change except that first `sha256` and a
+  pure reordering (tests/test_review_42.py). Over the bundled lists v0.6.0 → v0.7.0 → v0.8.0 it marks 1 entry
+  (stable-audio-3-small-sfx), 0 in the next step.
+- **`diff` / `merge-check`: a file that only grew is no longer safe** (`files_changed`; a smaller file gets
+  `need_decreased` and `files_changed`). A bigger file at the same URL is different content. Weeks where a Hugging
+  Face file was overwritten with a bigger one now go to the owner instead of being merged by the weekly job
+  (docs/release.md). No such change happened between v0.6.0, v0.7.0 and v0.8.0.
+
+### Changed — submissions (`contrib`)
+
+- `contrib validate` (and the Contrib workflow) fails only on mechanical checks, like llmfit. `deviation`,
+  `below_weights`, `fit_change`, `unknown_model`, `unknown_gpu` are **notices** in the job summary for the maintainer
+  who merges; `raise_too_large` is gone.
+- The `fit_change` notice now checks PCs with the submitted GPU (name, PCI model ID, vendor; VRAM = the submission's
+  `vram_gb`; RAM 16 / 32 / 64), since other GPUs are no longer affected. It shows a level going up on that GPU and the
+  AMD / Intel / Apple Good cap being lifted. `contrib aggregate --report`'s fit-level table gains a GPU column.
+- New errors: `system.gpu.vram_gb` above 256 GiB (was 512); `peak_ram_gb` above `ram_total_gb` × 1.05 + 1 GiB (now also
+  capped when read); any NaN / infinity / negative number; a GPU name of another vendor than `system.gpu.vendor`
+  (e.g. an NVIDIA name with `amd`); for `apple`, a name other than a chip name or `mps`; a malformed `pci_id`, one
+  whose vendor ID does not match, or one of `hardware.PCI_DEVICE_NAMES` whose GPU differs from the name (AMD: gfx;
+  Intel: generation and nominal VRAM; an ID outside that table is an `unknown_gpu` notice). Files with `NaN` / `Infinity` are refused when read, and submissions, community rows
+  and bench results are written with `allow_nan=False`.
+- GPU names may contain `(R)`, `(TM)`, `™`, `®` and a size such as `(16GB)` (as ComfyUI, PyTorch and Windows print
+  them, e.g. `Intel(R) Arc(TM) 140V GPU (16GB)`).
+- For GPUs whose nominal VRAM the name table knows (Intel Arc: `hardware._INTEL_XPU`), the `fit_change` check also
+  uses a PC with that VRAM (A770 comes as 8 and 16 GB under one name). NVIDIA has no such table yet.
+- Submissions carry the optional `system.gpu.pci_id` (AMD / Intel, written by bench when ComfyUI runs on this PC;
+  `contrib_schema` stays 1, old files stay valid). `contrib show` lists it; CONTRIBUTING.md lists it under what is
+  sent. Community rows are grouped by it when present and keep `gpu_pci_id`.
+- The weekly workflow writes "提出 0 件" instead of a failure while `data/contrib` does not exist.
+
+### Compatibility
+
+- `contrib`: `Report.review` / `Report.accepted()` are gone (use `Report.notices`; `Report.ok` is the pass / fail);
+  `--allow-review`, `--reviewed` and `data/contrib/REVIEWED` are removed; the JSON count `review` is now `notices`.
+  `Measurement.approved` and `Submission.approved` are removed (old files with `approved` still read; the key is
+  ignored).
+- `estimate.pick_measurement(..., gpu=)` takes the PC's `Gpu` instead of a GPU name.
+- `contrib.COMMON_VRAM_GB` is removed (the check PCs use the submitted GPU).
+- `xpu-smi` is called with `-d -1` (all GPUs). With two or more Intel GPUs it cannot tell which one ComfyUI uses
+  (it reports no total), so bench treats it as unreadable (queue and memory checks only) instead of combining them.
+
+### Changed — bench and other
+
+- **`bench` works on AMD, Intel and Apple GPUs.** The busy check (average utilization ≥ 30% stops) and the GPU-wide
+  delta in `note` use `amd-smi` → `rocm-smi` (AMD, Linux), `xpu-smi` (Intel, Linux), the Windows performance counters
+  through `typeperf` (AMD / Intel, Windows; checked against nvidia-smi on this PC) and `ioreg` (Apple; no sudo)
+  (new `gpustat.py`, stdlib only). When no tool can be read, bench no longer stops: it checks the ComfyUI queue and
+  that other apps hold at most half of the GPU memory, then measures with a warning and a note; `standard` stays true
+  (docs/accuracy.md). A remote ComfyUI still needs `--force`.
+- Measurements record `gpu_backend` (`cuda` / `rocm` / `xpu` / `mps`), and submissions carry the optional
+  `system.gpu.vendor` / `backend` (both or neither). `contrib show` lists them. Non-NVIDIA submissions no longer put a
+  non-NVIDIA generation into `arch`. `contrib aggregate` keeps `gpu_backend` on community rows.
+- The table legend says non-NVIDIA GPUs are at most Good until measured and points to CONTRIBUTING.md; the README
+  says the same next to the GPU requirements. The legend's first line fits in 100 columns again (`Verified=yes` →
+  `Verified`).
+
+### Added
+
+- `Estimate.sample_count` (optional JSON key, like llmfit): measurements behind the value (community: `n_used`;
+  maintainer / this PC: 1; null when estimated). `Measurement.n_used` / `n_oom`. Reasons say
+  「ほかの利用者の実測 3 件(中央値 7.02 GB)」, `info` prints `measured_community n=3`, and the table marks community
+  values with `c` (legend: `VRAM: c = measured by other users`).
+- `Gpu.pci_id`, `Adapter.pci_id`, `Measurement.gpu_pci_id` (optional JSON keys; `schema_version` unchanged).
+
 ## [0.8.0] - 2026-10-22
 
 ### Changed
@@ -494,7 +633,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.0
 [0.8.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.8.0
 [0.7.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.1
 [0.7.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.0

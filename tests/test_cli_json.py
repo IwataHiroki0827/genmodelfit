@@ -54,6 +54,7 @@ GPU = {
     "memory",  # 0.7.0(#22。後から足した項目)
     "gfx_target",
     "carveout_gb",
+    "pci_id",  # 0.9.0(PCI の型番 ID。同じ GPU の照合)
 }
 DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {
@@ -118,6 +119,7 @@ ESTIMATE = {
     "unknown_size",
     "fit_from",  # 0.7.0(#26。後から足した項目)
     "measured_peak_vram_gb",
+    "sample_count",  # 2026-10-22: 見積もりに使った実測の件数
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる
 GATE = {"auto", "held_by", "comfyui_version", "checks"}
@@ -272,7 +274,10 @@ MEASUREMENT = {
     "origin",  # 以下 #34(ほかの利用者の実測のまとめ)
     "n_submissions",
     "consistent",
-    "approved",
+    "n_used",  # 以下 2026-10-22(llmfit に合わせた。件数)
+    "n_oom",
+    "gpu_backend",  # 0.9.0(測った GPU の backend)
+    "gpu_pci_id",  # 0.9.0(測った GPU の PCI の型番 ID)
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 

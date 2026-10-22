@@ -421,6 +421,10 @@ class FakeComfy:
         self.calls: list[str] = []  # 受けた要求の順(「メソッド パス」)
         self.polls = 0
         self.torch = torch_before
+        # /system_stats の GPU(NVIDIA 以外の試験で変える)と、ComfyUI 以外のアプリが使う VRAM
+        self.device = ("cuda:0 NVIDIA GeForce RTX 3070 : cudaMallocAsync", "cuda")
+        self.pytorch_version = "2.9.0+cu128"
+        self.other_apps = GIB
         self.history_calls = 0
         self.submit_time = 0.0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -513,13 +517,14 @@ class FakeComfy:
                     if fake.submitted and fake.behavior not in ("timeout", "timeout_other", "pending_mine"):
                         fake.torch = 5 * GIB  # 実行中は 5 GB
                     dev = {
-                        "name": "cuda:0 NVIDIA GeForce RTX 3070 : cudaMallocAsync",
-                        "type": "cuda",
+                        "name": fake.device[0],
+                        "type": fake.device[1],
                         "vram_total": 8 * GIB - 100 * 1024**2,
-                        "vram_free": 7 * GIB - fake.torch - 100 * 1024**2,
+                        "vram_free": 8 * GIB - fake.torch - 100 * 1024**2 - fake.other_apps,
                         "torch_vram_total": fake.torch,
                     }
-                    return self._send(200, {"system": {"comfyui_version": "0.40.0"}, "devices": [dev]})
+                    system = {"comfyui_version": "0.40.0", "pytorch_version": fake.pytorch_version}
+                    return self._send(200, {"system": system, "devices": [dev]})
                 if p == "/object_info":
                     return self._send(200, OBJECT_INFO)
                 if p == "/queue":

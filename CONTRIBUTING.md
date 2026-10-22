@@ -5,8 +5,9 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 
 **English summary:** Run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
 against your own ComfyUI (in a clone of your fork). It writes a submission file
-`data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver, ComfyUI version,
-OS family, RAM rounded to GiB, the model, settings and results). Check exactly what will be shared with
+`data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver / vendor and
+PyTorch backend / PCI model ID such as `1002:744c` (not the bus address), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
+AMD, Intel and Apple GPUs are especially welcome: they have no measurements yet, so their levels are capped at Good. Check exactly what will be shared with
 `genmodelfit contrib show <file>` (it also runs a privacy checklist), then open a pull request that adds only that file.
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open. The file never
 contains your host name, user name, paths, GPU UUID, PCI address, IP, CPU name or exact time. CI runs
@@ -21,8 +22,15 @@ project. There is no CLA.
 
 1. ComfyUI を起動します(ふだん使っているもので構いません)。**ほかの生成が動いていないとき**に測ってください。
    bench はキューに仕事があると測りません(開始前と、送る直前の 2 回見ます)。GPU の使用率(約 2 秒の平均)が
-   30% 以上のときも止まります。`nvidia-smi` が無い・ComfyUI が別の PC・同じ名前の GPU が複数あってどれか
-   分からない、のように GPU の空きを確かめられないときも、黙って進まずに止まります(`--force` で測れます)
+   30% 以上のときも止まります。使用率は NVIDIA なら `nvidia-smi`、AMD なら `amd-smi` か `rocm-smi`(Linux)、
+   Intel なら `xpu-smi`(Linux)、Windows の AMD・Intel は Windows の性能カウンタ、Apple は `ioreg` で読みます
+   - NVIDIA で `nvidia-smi` が無い・同じ名前の GPU が複数あってどれか分からない・ComfyUI が別の PC、のように
+     GPU の空きを確かめられないときは、黙って進まずに止まります(`--force` で測れます)
+   - NVIDIA 以外で使用率を読む道具が無いときは止まらずに測ります。そのときは ComfyUI のキューが空なことと、
+     ComfyUI 以外のアプリが GPU のメモリを半分より多く使っていないことだけを確かめ、注意と note に残します。
+     ほかのアプリ(ゲーム・動画の書き出しなど)は閉じてから測ってください
+   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、見積もりの段階を Good までに
+     控えています。同じ構成の実測が集まると詰められます
 2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。足りないときは bench が
    どのファイルが無いかを表示します
 3. 測ります
@@ -65,7 +73,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 | 項目 | 測り方 |
 |---|---|
 | `peak_vram_gb` | 生成中に `/system_stats` を 0.2 秒ごとに読み、torch が確保した量(`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含みません |
-| `note` の「GPU 全体の増分」 | `nvidia-smi` の使用量の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります |
+| `note` の「GPU 全体の増分」 | GPU 全体の使用量(`nvidia-smi`。NVIDIA 以外は上の道具、約 1 秒ごと)の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります。道具が無ければ書きません |
 | `peak_ram_gb` | ポートで待ち受けている ComfyUI のプロセス(と子プロセス)の常駐メモリの最大値。コマンドラインに `main.py` か `comfy` を含むプロセスだけを数えます。ComfyUI が別の PC のとき・プロセスを特定できないときは空です |
 | `seconds` | ワークフローを送ってから終わるまで(モデルの読み込みを含む)。ComfyUI が数えた実行時間は `note` に入ります |
 | `offload` | ComfyUI のログから読みます: `dynamic`(動的 VRAM)/ `partial`(一部だけ GPU に載せた)/ `lowvram`(`--lowvram` などの起動オプション)/ `none`(全部載った)/ `oom`(メモリ不足で失敗)。分からなければ空 |
@@ -100,13 +108,16 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 | 入るもの | 例 |
 |---|---|
-| GPU の名前・VRAM の総量・世代・compute capability・ドライバの版 | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
+| GPU の名前・VRAM の総量・世代・compute capability・ドライバの版(世代と compute capability は NVIDIA だけ) | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
+| GPU の会社と PyTorch の backend(0.9.0 の bench から) | `amd` と `rocm`、`intel` と `xpu`、`apple` と `mps`、`nvidia` と `cuda` |
+| GPU の PCI の型番 ID(0.9.0。AMD・Intel で ComfyUI が同じ PC のときだけ。機種の番号で、個体・差し場所は表さない) | `1002:744c`(Radeon RX 7900 XTX。同じ機種ならどの PC でも同じ) |
+| Apple の GPU はチップ名(0.9.0。system_profiler の名前の形に合うものだけ) | `Apple M2 Pro` |
 | ComfyUI の版、OS の種類(版・ビルドは入れない)、メインメモリ(GiB の整数に丸める) | `0.40.0`, `windows`, `32` |
 | モデル ID・設定・結果・最大 VRAM / メモリ・時間・載せ方・測り方 | `image_sdxl_simple`, `832x832`, `ok`, `6.9` … |
 | 日付(UTC の日付だけ) | `2026-10-21` |
 | メモ(note。bench が書いた測り方の説明) | パス・URL・PC 名・ユーザ名・メール・UUID・IP・時刻らしい文字を含む文は、文ごと消す |
 
-**入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所、シリアル番号、IP / MAC アドレス、
+**入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所(バス番号。型番 ID とは別物)、シリアル番号、IP / MAC アドレス、
 CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。決まった項目以外は CI の検査で断ります。
 ただし自動の点検は文字の形を見るだけで、note に普通の言葉で書いた名前(「山田太郎の PC で測った」など)や、base64 などで
 書き換えたパスは見分けられません(下の 3 で自分で読んでください)。
@@ -124,10 +135,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   正しい名前を教えます)
 - **note(メモ)は自分で読んでください**。自動の点検は文の意味までは分かりません。気になる文は消して構いません
 - `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
-- 「要確認」(review)は、式の見積もりから 40% より外れた値・全部 GPU に載せたのに重みより小さい値・見積もりを 15% より
-  上げる値・よくある VRAM で段階を変える値・一覧に無いモデル・知らない GPU です。誤りではありませんが、PR を見る人が
-  確かめるまで受け付けません(測り直すか、PR の説明に事情を書いてください)。確かめた提出は、作者が
-  `data/contrib/REVIEWED` に sha8 と理由を書きます(提出の PR ではこのファイルを変えないでください。CI が失敗にします)
+- 失敗(誤り)にするのは、機械的な検査(形・値の範囲・個人の情報・重複・ファイル名)だけです(llmfit と同じ考え方。2026-10-22)
+- 「確認」(notices)は、式の見積もりから 40% より外れた値・全部 GPU に載せた(`offload: none`)のに下限(重み + 固定分)より小さい値・
+  同じ GPU の PC(VRAM は提出の値、メモリ 16 / 32 / 64 GB)で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
+  PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)
 
 ## 4. 送る(Pull Request)
 
@@ -135,7 +146,8 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 2. コミットして自分のフォークに push し、Pull Request を作ります。説明に、ComfyUI の起動オプション
    (`--lowvram` など、変えたものだけ)を書いてもらえると助かります。個人名やメールアドレスは不要です
 3. CI(`Contrib` のワークフロー)が `genmodelfit contrib validate` で形・値の範囲・個人の情報・重複・ファイル名を検査し、
-   結果をジョブのまとめ(Summary)に出します。検査は、PR の向き先(main)の genmodelfit で動きます
+   結果をジョブのまとめ(Summary)に出します。検査は、PR の向き先(main)の genmodelfit で動きます。
+   マージが作者の確認になります(人が提出ごとに承認する別の仕組みはありません)
 
 **genmodelfit は何も送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです
 (自動で PR を作る機能はありません)。マージされると、提出は MPL-2.0 で公開されます(下の「ライセンス」)。
@@ -143,9 +155,11 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 ### 受け付けたあと
 
 - 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。同じ構成の提出が **2 件以上そろい、OOM が無いと**、その構成の見積もりの
-  根拠が `measured_community`(ほかの利用者の実測)になります。1 件だけの提出は、もう 1 件そろうまで見積もりには使いません。
-  ほかの利用者の実測は、必要量を**上げる向きにだけ**使います(見積もりより小さい値では、段階も点数も変わりません)
+  提出をまとめます(中央値と MAD で外れ値を除く)。使うのは**測った GPU と同じ GPU の PC だけ**です(llmfit と同じ。
+  ほかの GPU の PC の判定は変わりません)。その PC では **1 件から**その構成の見積もりの根拠が `measured_community`
+  (ほかの利用者の実測)になり、件数(`sample_count`)も出ます。値は必要量を下げる向きにも上げる向きにも使います
+  (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ GPU の同じ設定の実測は、段階を決める
+  根拠にもなります(NVIDIA 以外の GPU も、その GPU の実測があれば good の上限が外れます)。詳しくは docs/accuracy.md
 - 毎週の点検(`contrib aggregate --report`)が、校正の誤差の表を作り直します(docs/accuracy.md)
 
 ### 作者の実測(measurements.json)

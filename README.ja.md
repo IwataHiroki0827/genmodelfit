@@ -35,9 +35,11 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 - Windows・Linux・macOS、Python 3.10 以上。
 - GPU: NVIDIA(CUDA)は実測で確かめています。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・
   Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、macOS 14 以降)を
-  推定で判定します(段階は Good まで)。それ以外の GPU(Intel UHD・Iris Xe、古い AMD)と GPU の無い PC は CPU だけとして
-  判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と判定します
+  推定で判定します(段階は Good まで。その GPU の同じ設定の実測があれば外れます)。それ以外の GPU(Intel UHD・
+  Iris Xe、古い AMD)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と判定します
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md))。
+  NVIDIA 以外の GPU は実測が無いので、段階を控えめにしています。`genmodelfit bench` の実測を送ってもらえると詰められます
+  ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md))。
 
 ### 入れ方
 
@@ -166,8 +168,7 @@ tts   ● Perfect      80 VieNeu-TTS-v3-Turbo      gen     q8     1.6  21% GPU  
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 3d    ● Good         64 HY 3D 2.0                gen     fp16  6.7m  84% GPU     other      license
 3d    ● Good         57 TripoSplat               gen     fp16   5.8  72% GPU     other      license
-Order: runs, Verified=yes, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m =
-    measured.
+Order: runs, Verified, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.

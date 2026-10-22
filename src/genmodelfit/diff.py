@@ -179,13 +179,22 @@ def _file_reasons(fa: list[Any], fb: list[Any], allow: frozenset[str]) -> list[s
             va, vb = a.get(k), b.get(k)
             if va == vb or k in _LICENSE:
                 continue
+            if (
+                k == "url"
+                and isinstance(va, str)
+                and isinstance(vb, str)
+                and va.split("#")[0] == vb.split("#")[0]
+            ):
+                continue  # フラグメントだけの違い(サーバーに送られない。review.files_changed と同じ)
             if k in _FILE_IDENTITY:
                 out.append("files_changed")
             elif k == "size_bytes":
+                # 大きさが変わった = 同じ URL の中身が差し替わった(アプリは一覧の URL をそのまま落とす)。
+                # どちらの向きでも files_changed(0.9.0。前は大きくなっただけは安全にしていた)。
+                # 小さくなったときは必要量も下がりうるので need_decreased も付ける
                 if isinstance(va, int) and isinstance(vb, int) and vb < va:
                     out.append("need_decreased")
-                elif not (isinstance(va, int) and isinstance(vb, int) and vb > va):
-                    out.append("files_changed")  # 大きさが分かった・分からなくなった
+                out.append("files_changed")
             else:
                 out.append(f"{OTHER_CHANGE}:files.{k}")
         move = _license_move(a, b, allow)
@@ -513,8 +522,8 @@ def classify(
     """変化を「安全な向き」と「判断が要る」に分ける(docs/schema.md「diff」の classification)。
 
     許すものの表(allowlist)で決める。共通の項目は、すべての項目・ファイルの値を比べ、安全の表
-    (SAFE_ENTRY_FIELDS・SAFE_TEMPLATE_FIELDS・SAFE_FILE_FIELDS、ファイルの大きさが増える、ライセンスが
-    厳しい側、確認待ちのまま変わらない review)に無い変化はすべて判断が要る(知らない項目も)。
+    (SAFE_ENTRY_FIELDS・SAFE_TEMPLATE_FIELDS・SAFE_FILE_FIELDS、ライセンスが厳しい側、
+    確認待ちのまま変わらない review)に無い変化はすべて判断が要る(知らない項目も)。
     増えた項目は new、自動のおすすめに入った項目は auto_gained(前の保留が url_reachable だけで、
     ファイルの URL・sha256 が同じものを除く)。消えた項目・自動のおすすめから外れた項目・sources の数は安全。
 

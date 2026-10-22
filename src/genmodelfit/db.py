@@ -12,6 +12,7 @@ measurements_community.json)とキャッシュのものを合わせて使う。
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from importlib import resources
@@ -212,9 +213,24 @@ def parse_db(data: dict[str, Any], origin: str) -> Database:
     )
 
 
+def _no_constants(name: str) -> Any:
+    raise ValueError(f"JSON に {name} があります(NaN・Infinity は受け付けません)")
+
+
+def _loads_measurements(text: str) -> Any:
+    """実測のファイルを読む。NaN・Infinity は断る(0.9.0。Python の json は既定で読んでしまう)。"""
+    return json.loads(text, parse_constant=_no_constants)
+
+
 def parse_measurements(data: Any) -> list[Measurement]:
     items = data.get("measurements", []) if isinstance(data, dict) else data
-    return [Measurement.from_dict(m) for m in items]
+    out = [Measurement.from_dict(m) for m in items]
+    for m in out:
+        for k in ("gpu_vram_gb", "peak_vram_gb", "peak_ram_gb", "seconds"):
+            v = getattr(m, k)
+            if v is not None and (not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0):
+                raise ValueError(f"実測の {k} が有限の 0 以上の数ではありません: {v!r}")
+    return out
 
 
 # ほかの利用者の実測をまとめたもの(#34。`genmodelfit contrib aggregate --output` が data/contrib から作る)
@@ -223,13 +239,13 @@ COMMUNITY_FILE = "measurements_community.json"
 
 def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]:
     """同梱の実測(作者)+ 同梱のほかの利用者の実測のまとめ + この PC の bench の実測(キャッシュ)。"""
-    out = parse_measurements(json.loads(bundled_text("measurements.json")))
-    out.extend(parse_measurements(json.loads(bundled_text(COMMUNITY_FILE))))
+    out = parse_measurements(_loads_measurements(bundled_text("measurements.json")))
+    out.extend(parse_measurements(_loads_measurements(bundled_text(COMMUNITY_FILE))))
     for d in [cache_dir() / "measurements", *(extra_dirs or [])]:
         if d.is_dir():
             for p in sorted(d.glob("*.json")):
                 try:
-                    out.extend(parse_measurements(json.loads(p.read_text(encoding="utf-8"))))
+                    out.extend(parse_measurements(_loads_measurements(p.read_text(encoding="utf-8"))))
                 except (OSError, ValueError, TypeError) as e:
                     raise DatabaseError(f"実測のファイルを読めません: {p}: {e}") from e
     return out

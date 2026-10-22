@@ -146,13 +146,58 @@ def test_license_toward_permissive_is_pending(bundled):
 
 def test_need_decrease_is_pending_and_increase_is_not(bundled):
     a = _sized(bundled)
-    assert review.review_reasons(a, _scale(a, 0.5)) == ["need_decreased"]
-    assert review.review_reasons(a, _scale(a, 1.5)) == []
-    assert review.review_reasons(a, _scale(a, 0.999)) == []  # 1% 以内の揺れは拾わない
+    # 大きさが変われば files_changed も付く(必要量の比べ方とは別の理由)
+    assert review.review_reasons(a, _scale(a, 0.5)) == ["need_decreased", "files_changed"]
+    # 大きくなっても同じ URL の中身が差し替わったので確認待ち(0.9.0。diff の分類と同じ)
+    assert review.review_reasons(a, _scale(a, 1.5)) == ["files_changed"]
+    assert not review.need_decreased(a, _scale(a, 0.999))  # 1% 以内の揺れは必要量では拾わない
     head_only = copy.deepcopy(a)
     for f in head_only.files:
         f.head_status, f.head_checked_at = 404, "2026-10-01T00:00:00Z"
     assert not review.need_decreased(a, head_only)  # HEAD だけの変化は見積もらない
+
+
+def _with(m: ModelEntry, **kw) -> ModelEntry:
+    m = copy.deepcopy(m)
+    for k, v in kw.items():
+        setattr(m.files[0], k, v)
+    return m
+
+
+def test_files_changed_conditions(bundled):
+    a = _with(_sized(bundled), sha256="a" * 64)
+    fc = review.files_changed
+    assert not fc(a, copy.deepcopy(a))
+    assert fc(a, _with(a, url=a.files[0].url + "x"))  # url が変わった
+    assert fc(a, _with(a, url=a.files[0].url + "?download=true"))  # クエリも比べる(0.9.0。diff と同じ)
+    assert not fc(a, _with(a, url=a.files[0].url + "#frag"))  # フラグメントだけは同じ(サーバーに送られない)
+    assert fc(a, _with(a, repo_id="someone/else"))  # repo_id が変わった(0.9.0)
+    assert fc(a, _with(a, sha256="b" * 64))  # 前も今も値があって違う
+    assert fc(a, _with(a, sha256=None))  # 確かめた値が消えた
+    assert not fc(_with(a, sha256=None), a)  # 初めて確かめた
+    assert fc(a, _with(a, size_bytes=a.files[0].size_bytes - 1))
+    assert fc(a, _with(a, size_bytes=None)) and fc(_with(a, size_bytes=None), a)
+    assert fc(a, _with(a, size_bytes=a.files[0].size_bytes + 1))  # 大きくなっただけでも付ける(0.9.0)
+    gone = copy.deepcopy(a)
+    gone.files = gone.files[:-1]
+    assert fc(a, gone) and fc(gone, a)  # 減った・増えた
+    head = _with(a, head_status=404, head_checked_at="2026-10-01T00:00:00Z")
+    assert not fc(a, head)  # HEAD の結果だけでは付けない
+    assert review.review_reasons(a, _with(a, sha256="b" * 64)) == ["files_changed"]
+    other = copy.deepcopy(a)
+    other.downloads = (other.downloads or 0) + 5
+    other.name = "renamed"
+    assert review.review_reasons(a, other) == []  # ファイル以外の変化では付けない
+
+
+def test_files_changed_turns_ok_into_pending(bundled):
+    a = _with(_sized(bundled), sha256="a" * 64)
+    prev = copy.deepcopy(a)
+    prev.review = Review("ok", [], "owner", "2026-10-14", [URL])
+    cur = _with(a, sha256="b" * 64)
+    stats = review.apply_reviews([cur], [prev])
+    assert cur.review.status == "pending" and cur.review.reasons == ["files_changed"]
+    assert stats["marked"] == {"files_changed": 1}
 
 
 def test_carry_over_and_union_of_reasons(bundled):
@@ -161,7 +206,7 @@ def test_carry_over_and_union_of_reasons(bundled):
     prev.review = Review("pending", ["new"], note="先週から")
     cur = _scale(a, 0.5)
     review.apply_reviews([cur], [prev])
-    assert cur.review.status == "pending" and cur.review.reasons == ["new", "need_decreased"]
+    assert cur.review.status == "pending" and cur.review.reasons == ["new", "need_decreased", "files_changed"]
     assert cur.review.note == "先週から"
     same = copy.deepcopy(a)
     review.apply_reviews([same], [prev])
@@ -315,9 +360,6 @@ def test_classification_safe_changes(bundled):
         "safe_changes": _cl(old, new)["safe_changes"],
     }
     new.models.pop(0)  # 消えた
-    a = _sized(new)
-    i = new.models.index(a)
-    new.models[i] = _scale(a, 1.5)  # 必要量が増える
     r = _restricted(new)
     j = new.models.index(r)
     stricter = copy.deepcopy(r)
@@ -347,6 +389,17 @@ def test_classification_judgement_needed(bundled):
     assert got[gone.id][0] == "new"
     assert "need_decreased" in got[a.id] and "license_permissive" in got[r.id]
     assert got[u.id] == ["uncensored_new"]
+    assert got[a.id][:2] == ["need_decreased", "files_changed"]  # 小さくなった: 両方
+
+
+def test_classification_file_growth_needs_judgement(bundled):
+    """同じ URL のファイルが大きくなった = 中身が差し替わった。安全な週にしない(0.9.0。前は安全)。"""
+    old, new = copy.deepcopy(bundled), copy.deepcopy(bundled)
+    a = _sized(old)
+    new.models[new.models.index(new.get(a.id))] = _scale(a, 1.5)
+    c = _cl(old, new)
+    assert c["safe"] is False
+    assert {j["id"]: j["reasons"] for j in c["judgement_needed"]} == {a.id: ["files_changed"]}
 
 
 def test_classification_review_transitions(bundled):
@@ -838,3 +891,36 @@ def test_discovered_from_change_is_safe():
     hf = next(m for m in new.models if m.source == "huggingface")
     hf.discovered_from = [*hf.discovered_from, "https://huggingface.co/api/models?search=other-query"]
     assert diff_db(old, new)["classification"]["safe"] is True
+
+
+def test_files_changed_agrees_with_diff(bundled):
+    """review の files_changed と diff の分類の files_changed は、1 つのファイルの変化で食い違わない
+    (URL のクエリ・フラグメント・repo_id・大きさの両方の向き・sha256・名前・置き場所)。
+    違うのは、決めて分けた 2 つだけ: 初めて sha256 が入った(review は付けない)・並びだけの変化。"""
+    from dataclasses import asdict
+
+    from genmodelfit.diff import field_change_reasons
+
+    a = _with(_sized(bundled), sha256="a" * 64, repo_id="org/repo")
+    f0 = a.files[0]
+    cases = {
+        "url": dict(url=f0.url + "x"),
+        "query": dict(url=f0.url + "?download=true"),
+        "fragment": dict(url=f0.url + "#frag"),
+        "repo_id": dict(repo_id="org/other"),
+        "grow": dict(size_bytes=f0.size_bytes + 1),
+        "shrink": dict(size_bytes=f0.size_bytes - 1),
+        "size_unknown": dict(size_bytes=None),
+        "sha": dict(sha256="b" * 64),
+        "sha_gone": dict(sha256=None),
+        "head": dict(head_status=404),
+    }
+    for label, kw in cases.items():
+        b = _with(a, **kw)
+        by_review = review.files_changed(a, b)
+        by_diff = "files_changed" in field_change_reasons(asdict(a), asdict(b))
+        assert by_review == by_diff, (label, by_review, by_diff)
+    # 大きくなっただけ: diff の分類だけでも判断が要る(review を通さない経路。変異 M15)
+    assert field_change_reasons(asdict(a), asdict(_with(a, size_bytes=f0.size_bytes + 1))) == [
+        "files_changed"
+    ]

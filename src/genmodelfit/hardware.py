@@ -785,6 +785,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
             )
         elif isinstance(err, int) and err != 0:
             notes.append(f"{name} は Windows のデバイスマネージャーで問題がある状態(コード {err})")
+        ids = re.search(r"ven_([0-9a-f]{4})&dev_([0-9a-f]{4})", hwid)
         out.append(
             Adapter(
                 name=name,
@@ -792,6 +793,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
                 vram_gb=round(vram / GIB, 2) if vram else None,
                 vram_source=src,
                 source="wmi",
+                pci_id=f"{ids.group(1)}:{ids.group(2)}" if ids else None,
             )
         )
     return out, notes
@@ -818,6 +820,11 @@ def parse_lspci(text: str, vram_of=None, gtt_of=None) -> list[Adapter]:
         desc = re.sub(
             r"^(NVIDIA Corporation|Advanced Micro Devices, Inc\. \[AMD/ATI\]|Intel Corporation)\s*", "", desc
         )
+        if desc == "Device" and ids:
+            # pci.ids が古いと、lspci -nn は「<会社> Device [1002:7551]」と出す(pciutils lib/names.c の
+            # format_name_pair)。型番の ID を名前に残し(「AMD Device 7551」)、classify_adapter が
+            # PCI_DEVICE_NAMES で引く。型番の ID は製品の種類を表すだけで、個体・差し場所は表さない
+            desc = f"Device {ids[-1].group(2).lower()}"
         product = re.search(r"\[([^\]]+)\]\s*$", desc)  # "GA104 [GeForce RTX 3070]" の括弧の中が製品名
         label = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}.get(vendor, "")
         prod = product.group(1) if product else desc
@@ -834,6 +841,7 @@ def parse_lspci(text: str, vram_of=None, gtt_of=None) -> list[Adapter]:
                 vram_source="sysfs" if vram else None,
                 source="lspci",
                 shared_gb=round(gtt / GIB, 2) if gtt else None,
+                pci_id=f"{ids[-1].group(1).lower()}:{ids[-1].group(2).lower()}" if ids else None,
             )
         )
     return out
@@ -858,6 +866,42 @@ def _sysfs_vram(slot: str) -> int | None:
 def _sysfs_gtt(slot: str) -> int | None:
     """Linux の amdgpu の GTT(GPU がメインメモリから使える分。mem_info_gtt_total)。"""
     return _sysfs_value(slot, "mem_info_gtt_total")
+
+
+# Apple silicon のチップ名(system_profiler の sppci_model。例 "Apple M2 Pro")。bench の実測の GPU 名に使うのは
+# この形に合うものだけ(チップ名以外の値・シリアルなどを入れない。0.9.0)
+APPLE_CHIP_NAME = re.compile(r"Apple [MA]\d{1,2}(?: (?:Pro|Max|Ultra))?")
+
+
+def apple_chip_name() -> str | None:
+    """この PC の Apple silicon のチップ名(macOS の system_profiler で読む。ほかの OS・読めない・形が合わない
+    ときは None)。bench が ComfyUI の MPS の GPU 名("mps")の代わりに使う。"""
+    if platform.system() != "Darwin":
+        return None
+    r = _run(["system_profiler", "SPDisplaysDataType", "-json"], OTHER_GPU_TIMEOUT)
+    if r is None or r[0] != 0:
+        return None
+    for a in parse_system_profiler(r[1]):
+        name = (a.name or "").strip()
+        if a.vendor == "apple" and APPLE_CHIP_NAME.fullmatch(name):
+            return name
+    return None
+
+
+def local_pci_id(vendor: str, name: str) -> str | None:
+    """この PC の、ComfyUI の GPU(会社と名前)の PCI の型番 ID("1002:744c")。bench が ComfyUI と同じ PC の
+    ときだけ使う。AMD・Intel だけ(NVIDIA は名前がどこでも同じで、判定の側も名前で比べる)。Windows は WMI の
+    PNPDeviceID の VEN・DEV、Linux は lspci -nn。名前が合う部品が 1 つならそれ、その会社の部品が 1 つだけなら
+    それ。決められなければ None。型番 ID は機種の番号で、個体・差し場所(PCI のバス番号)は表さない。"""
+    if vendor not in ("amd", "intel"):
+        return None
+    from .estimate import gpu_key
+
+    adapters, _ = detect_other_gpus()
+    cands = [a for a in adapters if a.vendor == vendor and a.pci_id]
+    named = [a for a in cands if gpu_key(a.name) == gpu_key(name)]
+    pick = named if len(named) == 1 else cands if len(cands) == 1 else []
+    return pick[0].pci_id if pick else None
 
 
 def parse_system_profiler(text: str) -> list[Adapter]:
@@ -935,8 +979,11 @@ AMD_ARCH: dict[str, str] = {
 }
 AMD_SUPPORTED_ARCH = ("RDNA 2", "RDNA 3", "RDNA 3.5", "RDNA 4")  # Windows・Linux
 # 対象の世代でも使わない gfx: 画面を出すための 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 の
-# デスクトップ、Mendocino の 610M)と Van Gogh(Steam Deck)。生成では CPU より速い見込みが無い(判断。実測なし)
-AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036", "gfx1033"})
+# デスクトップ、Mendocino の 610M)。生成では CPU より速い見込みが無い(判断。実測なし)。
+# Van Gogh(Steam Deck、gfx1033)は 8 CU(Valve の仕様 https://www.steamdeck.com/en/tech 「8 RDNA 2 CUs」)で、
+# TheRock の SUPPORTED_GPUS.md が Linux・Windows とも Release Ready にしているので、ほかの RDNA 2 の内蔵 GPU
+# (680M / 660M)と同じく GPU として使う(0.9.0 で直した。以前は 2 CU と誤ってここに入れていた)
+AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036"})
 AMD_LINUX_ONLY_ARCH = ("CDNA",)  # Instinct は Linux だけ(ComfyUI の Windows の案内は Radeon だけ)
 PYTORCH_ROCM_LINUX_GFX = frozenset(
     {
@@ -974,7 +1021,7 @@ _AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
     (r"rx\s*7900|pro w7[89]00|navi\s*31", "gfx1100", False),
     (r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32", "gfx1101", False),
     (r"rx\s*76[05]0|pro w7[56]00|navi\s*33", "gfx1102", False),
-    (r"780m|760m|740m|phoenix|hawk point", "gfx1103", True),
+    (r"780m|760m|740m|phoenix|hawk ?point", "gfx1103", True),
     # ノート用(M・S)は同じ番号でも石が違う: RX 6850M XT / 6800M / 6700M は Navi 22、RX 6800S / 6700S / 6650M /
     # 6600M / 6600S は Navi 23、RX 6550M / 6500M / 6450M / 6300M は Navi 24
     (r"rx\s*6[78][05]0m\b", "gfx1031", False),
@@ -983,10 +1030,13 @@ _AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
     (r"rx\s*6[89]\d0|pro w6800|pro v620|navi\s*21", "gfx1030", False),
     (r"rx\s*67\d0|navi\s*22", "gfx1031", False),
     (r"rx\s*66\d0|pro w6600|navi\s*23", "gfx1032", False),
-    (r"rx\s*6[45]00|navi\s*24", "gfx1034", False),
+    # デスクトップの RX 6300 も Navi 24(pci.ids「7424 Navi 24 [Radeon RX 6300]」、Pro W6300 / W6400 も同じ)
+    (r"rx\s*6[345]00|pro w6[345]00|navi\s*24", "gfx1034", False),
     (r"680m|660m|rembrandt", "gfx1035", True),
-    (r"610m|raphael|granite ridge", "gfx1036", True),
-    (r"van gogh", "gfx1033", True),
+    (r"610m|raphael|granite ridge|mendocino", "gfx1036", True),
+    # Steam Deck(Van Gogh、OLED 版の Sephiroth も gfx1033)。Windows のドライバの名前は「AMD Custom GPU 0405」
+    # (pci.ids「163f VanGogh [AMD Custom GPU 0405]」「1435 Sephiroth [AMD Custom GPU 0405]」)
+    (r"van ?gogh|sephiroth|custom gpu 0405", "gfx1033", True),
     (r"rx\s*5[67]\d0|navi\s*10", "gfx1010", False),
     (r"rx\s*5[35]00|pro w5500|navi\s*14", "gfx1012", False),
     (r"mi35\dx?", "gfx950", False),
@@ -1000,8 +1050,17 @@ _AMD_CPU_IGPU: tuple[tuple[str, str], ...] = (
     (r"ryzen ai max", "gfx1151"),
     (r"ryzen ai 9 (hx )?3[67]\d", "gfx1150"),
     (r"ryzen ai [57] (pro )?3[3-5]\d", "gfx1152"),
-    # Dragon Range(7x45HX)・Fire Range(9x55HX / 9x50HX)は 2 CU の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY_GFX)
-    (r"ryzen [3579] (pro )?7\d45hx3?d?\b|ryzen [3579] (pro )?9\d5[05]hx3?d?\b", "gfx1036"),
+    # Dragon Range(7945HX・7940HX・7840HX・7745HX・7645HX など)・Fire Range(9955HX・9850HX など)は
+    # Radeon 610M(2 CU)の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY_GFX)。AMD の製品ページの「Graphics Model:
+    # AMD Radeon 610M」「Graphics Core Count: 2」(2026-10-22 に読んだ。例
+    # https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html)
+    (r"ryzen [3579] (pro )?7\d4[05]hx3?d?\b|ryzen [3579] (pro )?9\d5[05]hx3?d?\b", "gfx1036"),
+    # 携帯機の Ryzen Z1 Extreme(12 CU)・Z1(4 CU)は RDNA 3 の「AMD Radeon Graphics」(AMD の製品ページ
+    # https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1-extreme.html
+    # ・…/z1.html)。12 CU・Zen 4 8 個は Phoenix1(780M)、4 CU・Zen 4 2 個 + Zen 4c 4 個は
+    # Phoenix2(740M)と同じ石とみなした(推定)。
+    # どちらも gfx1103(Linux の amdkfd kfd_device.c: GC 11.0.1・11.0.4 → gfx_target_version 110003)
+    (r"ryzen z1\b", "gfx1103"),
     (r"ryzen [3579] (pro )?[78]\d4\d(u|hs|h)\b|ryzen [3579] (pro )?8[5-7]00g", "gfx1103"),
     (r"ryzen [3579] (pro )?(6[89]\d0|7[37]35)(u|hs|h|hx)\b", "gfx1035"),
 )
@@ -1015,8 +1074,16 @@ _INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = (
     (r"arc.*\ba750\b|arc.*\ba580\b", "Arc A-Series (Alchemist)", False, 8.0),
     (r"arc.*\ba380\b", "Arc A-Series (Alchemist)", False, 6.0),
     (r"arc.*\ba310\b", "Arc A-Series (Alchemist)", False, 4.0),
-    # ノート用の A770M / A730M / A570M / A550M / A370M / A350M も Alchemist の外付け
-    (r"arc.*\bpro a\d{2}m?\b|arc.*\ba\d{3}m\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
+    # ノート用も Alchemist の外付け。公称の VRAM は Intel の表
+    # (https://www.intel.com/content/www/us/en/support/articles/000091109.html: A770M 16GB・A730M 12GB・
+    # A550M 8GB・A370M 4GB・A350M 4GB)。Linux の xe・i915 は VRAM の量を sysfs に出さない
+    # (docs/hardware.md)ので、Linux ではこの公称の値を使う。A570M・A530M・Pro の M・組み込み用(E)は
+    # Intel の資料で確かめられなかったので値を持たない
+    (r"arc.*\ba770m\b", "Arc A-Series (Alchemist)", False, 16.0),
+    (r"arc.*\ba730m\b", "Arc A-Series (Alchemist)", False, 12.0),
+    (r"arc.*\ba550m\b", "Arc A-Series (Alchemist)", False, 8.0),
+    (r"arc.*\ba3[57]0m\b", "Arc A-Series (Alchemist)", False, 4.0),
+    (r"arc.*\bpro a\d{2}m?\b|arc.*\ba\d{3}[me]\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
     (r"arc.*\bb580\b", "Arc B-Series (Battlemage)", False, 12.0),
     (r"arc.*\bb570\b", "Arc B-Series (Battlemage)", False, 10.0),
     (r"arc.*\bpro b60\b", "Arc B-Series (Battlemage)", False, 24.0),
@@ -1027,6 +1094,99 @@ _INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = (
     (r"arc.*\b1[34]0t\b|arrow lake-[hp]", "Core Ultra Series 2 (Arrow Lake-H)", True, None),
     (r"^(intel )?arc graphics$|meteor lake", "Core Ultra (Meteor Lake-H)", True, None),
 )
+
+# Linux の pci.ids が古く、lspci が「AMD Device 7551」のように型番の ID しか出さないときの表
+# ((会社の ID, 型番の ID) → 上の名前の表で引ける名前)。pci.ids 2026.10.22(pciutils/pciids 86e7077e4b79、
+# https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids)の行から、判定に使う GPU と、使わないと
+# 決めている内蔵 GPU(610M など)だけを写した。石の名前(Navi 31 など)で引くので、ノート用・Pro の違いは
+# gfx に効かない。
+# 「Intel Graphics」とだけある ID(Arc でない内蔵 GPU など)は入れない
+PCI_DEVICE_NAMES: dict[tuple[str, str], str] = {
+    **{("1002", d): "Navi 48" for d in ("7550", "7551")},
+    ("1002", "7590"): "Navi 44",
+    **{("1002", d): "Navi 31" for d in ("744c", "7448", "7449", "744a", "744b", "745e")},
+    **{("1002", d): "Navi 32" for d in ("7460", "7461", "7470", "747e")},
+    **{
+        ("1002", d): "Navi 33"
+        for d in ("7480", "7481", "7483", "7487", "7489", "748b", "7499", "749f", "73f0")
+    },
+    **{("1002", d): "Navi 21" for d in ("73a1", "73a2", "73a3", "73a5", "73ab", "73ae", "73af", "73bf")},
+    **{("1002", d): "Navi 22" for d in ("73c3", "73df")},
+    **{("1002", d): "Navi 23" for d in ("73e0", "73e1", "73e3", "73ef", "73ff")},
+    **{("1002", d): "Navi 24" for d in ("7421", "7422", "7423", "7424", "743f")},
+    **{("1002", d): "Phoenix" for d in ("15bf", "15c8")},
+    **{("1002", d): "Hawk Point" for d in ("1900", "1901")},
+    ("1002", "1681"): "Rembrandt",
+    ("1002", "164e"): "Raphael",
+    ("1002", "13c0"): "Granite Ridge",
+    ("1002", "1506"): "Mendocino",
+    ("1002", "163f"): "Van Gogh",
+    ("1002", "1435"): "Van Gogh (Sephiroth)",
+    ("1002", "150e"): "Strix",
+    ("1002", "1586"): "Strix Halo",
+    ("1002", "1114"): "Krackan",
+    ("8086", "56a0"): "Arc A770",
+    ("8086", "56a1"): "Arc A750",
+    ("8086", "56a2"): "Arc A580",
+    ("8086", "56a5"): "Arc A380",
+    ("8086", "56a6"): "Arc A310",
+    ("8086", "5690"): "Arc A770M",
+    ("8086", "5691"): "Arc A730M",
+    ("8086", "5692"): "Arc A550M",
+    ("8086", "5693"): "Arc A370M",
+    ("8086", "5694"): "Arc A350M",
+    ("8086", "5696"): "Arc A570M",
+    ("8086", "5697"): "Arc A530M",
+    ("8086", "56b0"): "Arc Pro A30M",
+    ("8086", "56b1"): "Arc Pro A40",
+    ("8086", "56b2"): "Arc Pro A60M",
+    ("8086", "56b3"): "Arc Pro A60",
+    ("8086", "e20b"): "Arc B580",
+    ("8086", "e20c"): "Arc B570",
+    ("8086", "e211"): "Arc Pro B60",
+    ("8086", "e212"): "Arc Pro B50",
+    **{
+        ("8086", d): "Battlemage"
+        for d in ("e202", "e20d", "e210", "e215", "e216", "e220", "e221", "e222", "e223")
+    },
+    ("8086", "7d55"): "Arc Graphics",  # Meteor Lake-P [Intel Arc Graphics]
+    ("8086", "7d51"): "Arc 140T",  # Arrow Lake-P [Arc Pro 130T/140T]
+    ("8086", "64a0"): "Arc 140V",  # Lunar Lake の Arc Graphics 130V/140V
+    **{("8086", d): "Arc B390" for d in ("b080", "b082", "b084", "b086")},  # Panther Lake
+    **{("8086", d): "Arc B370" for d in ("b081", "b083", "b085", "b087")},
+}
+_VENDOR_PCI = {"amd": "1002", "intel": "8086"}
+
+
+def pci_device_name(vendor: str, name: str) -> tuple[str, str] | None:
+    """「AMD Device 7551」のような名前 → (型番の ID, 表の名前。表に無ければ空)。
+    その形でない名前(製品名があるとき)は None。"""
+    m = re.fullmatch(r"(amd |intel )?device ([0-9a-f]{4})", _low(name))
+    if not m:
+        return None
+    dev = m.group(2)
+    found = PCI_DEVICE_NAMES.get((_VENDOR_PCI.get(vendor, ""), dev))
+    return (dev, found) if found else (dev, "")
+
+
+def pci_name_conflict(vendor: str, pci_id: str, name: str) -> bool | None:
+    """提出の PCI の型番 ID と GPU 名が食い違うか(0.9.0)。ID が PCI_DEVICE_NAMES に無ければ None。
+    AMD は ID の石と名前の gfx、Intel は名前の表(_INTEL_XPU)の世代と公称の VRAM で比べる。名前から決まらない
+    (「AMD Radeon(TM) Graphics」など)ときは食い違いとしない(False)。"""
+    ven, _, dev = (pci_id or "").partition(":")
+    known = PCI_DEVICE_NAMES.get((ven, dev))
+    if not known:
+        return None
+    if vendor == "amd":
+        a, b = amd_gfx(known), amd_gfx(name)
+        return bool(a and b and a[0] != b[0])
+    if vendor == "intel":
+        a, b = intel_xpu(f"intel {known}"), intel_xpu(name)
+        if not a or not b:
+            return False
+        return a[0] != b[0] or (a[2] is not None and b[2] is not None and a[2] != b[2])
+    return False
+
 
 # 内蔵 GPU・APU(Apple 以外)が使えるメインメモリの割合。Linux は TTM が GPU に貸すページの上限を
 # 「約 50% of the total system memory」にする(torvalds/linux a804c57 drivers/gpu/drm/ttm/ttm_device.c:88〜92。
@@ -1130,14 +1290,25 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
 
     gfx = None
     arch = None
-    if a.vendor == "amd":
-        found = amd_gfx(a.name, host.cpu)
-        if found is None and re.search(r"\bdevice [0-9a-f]{4}\b", _low(a.name)):
-            # Linux の pci.ids が古いと「AMD Device 7551」になる。型番の ID からは引かない(表を持たない)
+    # Linux の pci.ids が古いと「AMD Device 7551」「Intel Device e20b」になる。
+    # 型番の ID を表(PCI_DEVICE_NAMES)で引く
+    name = a.name
+    pci_note = None
+    pci = pci_device_name(a.vendor, a.name)
+    if pci is not None:
+        dev, known = pci
+        if not known:
             refuse(
                 f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)"
             )
             return None
+        name = known
+        pci_note = (
+            f"lspci の pci.ids が古く製品名が出ないので、型番の ID({dev})から {known} とみなした"
+            "(update-pciids で新しくすると製品名が出る)"
+        )
+    if a.vendor == "amd":
+        found = amd_gfx(name, host.cpu)
         if found is None:
             if re.fullmatch(r"(amd )?radeon graphics", _low(a.name)):
                 a.integrated = True  # CPU の名前でも世代が決まらない内蔵 GPU
@@ -1157,7 +1328,10 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             )
             return None
         if gfx in AMD_DISPLAY_ONLY_GFX:
-            refuse(f"{a.name}({gfx})は画面を出すための小さな内蔵 GPU で、生成では CPU より速い見込みが無い")
+            refuse(  # Radeon 610M(Dragon Range・Raphael など)
+                f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、"
+                "生成では CPU より速い見込みが無い"
+            )
             return None
         if host.system == "Windows" and not _windows_ok(host):
             if host.windows_build is not None:  # 版が分からないときは条件を言わない
@@ -1179,9 +1353,9 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             )
         backend, bf16 = "rocm", arch not in AMD_NO_BF16_ARCH
     elif a.vendor == "intel":
-        found_i = intel_xpu(a.name)
+        found_i = intel_xpu(name)
         if found_i is None:
-            if re.search(r"uhd|iris|hd graphics|^intel graphics$", _low(a.name)):
+            if re.search(r"uhd|iris|hd graphics|^intel graphics$", _low(name)):
                 a.integrated = True
             refuse(
                 f"{a.name} は PyTorch の XPU 版が対象にする Intel の GPU"
@@ -1203,7 +1377,10 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         notes = [f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで"]
         if not a.integrated and not a.vram_gb and floor:
             a.vram_gb, a.vram_source = floor, "name"
-            notes.append(f"VRAM の量が読めないので、名前から {floor:g} GB(少ないほうの版)とみなした")
+            notes.append(
+                f"VRAM の量が読めないので、名前から公称の {floor:g} GB"
+                "(量の違う版があれば少ないほう)とみなした"
+            )
         backend, bf16 = "xpu", True
     elif a.vendor == "apple":
         a.integrated = True
@@ -1220,6 +1397,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     else:
         refuse(f"{a.name} は会社が分からない")
         return None
+    if pci_note:
+        notes.insert(1, pci_note)
 
     if a.vendor == "apple":
         pool, memory = ram_gb * UNIFIED_MEMORY_SHARE, "unified"
@@ -1258,6 +1437,7 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         memory=memory,
         gfx_target=gfx,
         carveout_gb=round(a.vram_gb or 0.0, 2) if memory == "shared" else None,
+        pci_id=a.pci_id,
     )
 
 

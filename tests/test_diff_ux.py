@@ -662,8 +662,8 @@ EXPECTED_SAFE_ENTRY = {"downloads", "downloads_all_time", "likes", "updated", "d
 EXPECTED_SAFE_FILE = {"head_status", "head_checked_at"}
 EXPECTED_SAFE_TEMPLATE = {"usage"}
 # ファイルがどれか・何を落とすか・どの条件で使えるかを決める項目。安全の表に入れてはいけない
-# (size_bytes も入れない: 小さくなるのは need_decreased で判断が要る。大きくなるのは分類では安全だが、
-#  表示には必ず出す)
+# (size_bytes も入れない: 大きさの変化は向きによらず files_changed で判断が要る。
+#  小さくなるのは need_decreased も。0.9.0 までは大きくなるのは安全だった)
 NEVER_SAFE_FILE = {
     "name",
     "url",
@@ -711,13 +711,14 @@ def test_identity_fields_show_and_are_not_safe(field, capsys, tmp_path):
     assert mc["safe"] is False and m["id"] in {x["id"] for x in mc["reasons"]}
 
 
-def test_size_growth_is_shown_but_safe(capsys, tmp_path):
+def test_size_growth_is_shown_and_needs_judgement(capsys, tmp_path):
     old = _raw(NEW)
     m = next(x for x in old["models"] if x["files"] and x["files"][0].get("size_bytes"))
     new = copy.deepcopy(old)
     next(x for x in new["models"] if x["id"] == m["id"])["files"][0]["size_bytes"] += 3 * 2**30
     out, _, mc = _cli_and_merge(capsys, tmp_path, old, new)
-    assert "大きさ" in _block(out, m["id"]) and mc["safe"] is True
+    assert "大きさ" in _block(out, m["id"]) and mc["safe"] is False  # 0.9.0 から判断が要る
+    assert {j["id"]: j["reasons"] for j in mc["reasons"]} == {m["id"]: ["files_changed"]}
 
 
 # ---- 表示の細かいところ ----

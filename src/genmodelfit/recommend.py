@@ -94,11 +94,9 @@ def readiness(gate: dict[str, Any] | None) -> float:
 
 
 def _basis_points(e: Estimate) -> float:
-    """根拠の点数。実測 100、推定 0。ほかの利用者の実測(measured_community)は推定と同じ 0
-    (提出は書き換えられるので、点数を上げる向きには使わない。#34 のオーナーの方針)。"""
-    if e.basis != "measured" or e.basis_detail == "measured_community":
-        return 0.0
-    return 100.0
+    """根拠の点数。実測 100、推定 0。ほかの利用者の実測(measured_community)も実測として数える
+    (2026-10-22、llmfit に合わせた。docs/accuracy.md「ほかの利用者の実測」)。"""
+    return 100.0 if e.basis == "measured" else 0.0
 
 
 def score_components(
