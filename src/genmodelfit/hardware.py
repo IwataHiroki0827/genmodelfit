@@ -940,8 +940,11 @@ AMD_ARCH: dict[str, str] = {
 }
 AMD_SUPPORTED_ARCH = ("RDNA 2", "RDNA 3", "RDNA 3.5", "RDNA 4")  # Windows・Linux
 # 対象の世代でも使わない gfx: 画面を出すための 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 の
-# デスクトップ、Mendocino の 610M)と Van Gogh(Steam Deck)。生成では CPU より速い見込みが無い(判断。実測なし)
-AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036", "gfx1033"})
+# デスクトップ、Mendocino の 610M)。生成では CPU より速い見込みが無い(判断。実測なし)。
+# Van Gogh(Steam Deck、gfx1033)は 8 CU(Valve の仕様 https://www.steamdeck.com/en/tech 「8 RDNA 2 CUs」)で、
+# TheRock の SUPPORTED_GPUS.md が Linux・Windows とも Release Ready にしているので、ほかの RDNA 2 の内蔵 GPU
+# (680M / 660M)と同じく GPU として使う(0.9.0 で直した。以前は 2 CU と誤ってここに入れていた)
+AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036"})
 AMD_LINUX_ONLY_ARCH = ("CDNA",)  # Instinct は Linux だけ(ComfyUI の Windows の案内は Radeon だけ)
 PYTORCH_ROCM_LINUX_GFX = frozenset(
     {
@@ -992,7 +995,9 @@ _AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
     (r"rx\s*6[345]00|pro w6[345]00|navi\s*24", "gfx1034", False),
     (r"680m|660m|rembrandt", "gfx1035", True),
     (r"610m|raphael|granite ridge|mendocino", "gfx1036", True),
-    (r"van ?gogh", "gfx1033", True),
+    # Steam Deck(Van Gogh、OLED 版の Sephiroth も gfx1033)。Windows のドライバの名前は「AMD Custom GPU 0405」
+    # (pci.ids「163f VanGogh [AMD Custom GPU 0405]」「1435 Sephiroth [AMD Custom GPU 0405]」)
+    (r"van ?gogh|sephiroth|custom gpu 0405", "gfx1033", True),
     (r"rx\s*5[67]\d0|navi\s*10", "gfx1010", False),
     (r"rx\s*5[35]00|pro w5500|navi\s*14", "gfx1012", False),
     (r"mi35\dx?", "gfx950", False),
@@ -1077,6 +1082,7 @@ PCI_DEVICE_NAMES: dict[tuple[str, str], str] = {
     ("1002", "13c0"): "Granite Ridge",
     ("1002", "1506"): "Mendocino",
     ("1002", "163f"): "Van Gogh",
+    ("1002", "1435"): "Van Gogh (Sephiroth)",
     ("1002", "150e"): "Strix",
     ("1002", "1586"): "Strix Halo",
     ("1002", "1114"): "Krackan",
@@ -1264,9 +1270,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             )
             return None
         if gfx in AMD_DISPLAY_ONLY_GFX:
-            size = "2 CU の" if gfx == "gfx1036" else ""  # Radeon 610M(Dragon Range・Raphael など)
-            refuse(
-                f"{a.name}({gfx})は画面を出すための{size}小さな内蔵 GPU で、生成では CPU より速い見込みが無い"
+            refuse(  # Radeon 610M(Dragon Range・Raphael など)
+                f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、生成では CPU より速い見込みが無い"
             )
             return None
         if host.system == "Windows" and not _windows_ok(host):

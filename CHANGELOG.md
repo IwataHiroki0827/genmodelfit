@@ -38,6 +38,10 @@ All notable changes to this project are documented here. The format is based on
   `review` → `notices`.
 - The weekly workflow writes "提出 0 件" instead of a failure while `data/contrib` does not exist.
 - **Non-NVIDIA GPUs that were judged too cautiously** (#56). Sources are in docs/hardware.md「NVIDIA 以外の GPU」.
+  - Steam Deck (Van Gogh, gfx1033; also the OLED model's Sephiroth and the Windows driver name `AMD Custom GPU 0405`)
+    was CPU as a "2 CU" display-only GPU. It has 8 RDNA 2 CUs (Valve's spec) and TheRock lists gfx1033 as Release
+    Ready on Linux and Windows, so it is judged like the 680M / 660M (shared memory, at most Good). Only the 2 CU
+    gfx1036 (610M, Raphael, Granite Ridge, Dragon Range) stays CPU.
   - Ryzen Z1 Extreme / Z1 (handhelds, 12 / 4 RDNA 3 CUs per AMD's pages) are judged as gfx1103 APUs like the
     780M / 740M instead of CPU.
   - Dragon Range 7940HX / 7840HX were CPU with the reason "gfx unknown"; they are now named as the 2 CU Radeon 610M

@@ -680,3 +680,23 @@ def test_linux_arc_mobile_uses_nominal_vram(name, vram):
 def test_linux_arc_without_nominal_vram_is_cpu():
     a = Adapter(name="Intel Arc A570M Graphics", vendor="intel", source="lspci")
     assert classify_adapter(a, LINUX, 32.0) is None and "VRAM" in a.reason
+
+
+@pytest.mark.parametrize(
+    ("name", "host"),
+    [
+        (
+            "AMD Custom GPU 0405",
+            Host("Windows", 26100, cpu="AMD Custom APU 0405"),
+        ),  # Windows のドライバの名前
+        ("AMD VanGogh [AMD Custom GPU 0405]", LINUX),  # lspci(pci.ids)
+        ("AMD Device 163f", LINUX),  # 古い pci.ids
+        ("AMD Device 1435", LINUX),  # OLED 版(Sephiroth)
+    ],
+)
+def test_steam_deck_van_gogh_is_rdna2_apu(name, host):
+    """Van Gogh(gfx1033)は 8 CU の RDNA 2(Valve の仕様)で、TheRock の Release Ready。680M と同じく GPU。"""
+    a = Adapter(name=name, vendor="amd", vram_gb=1.0)
+    g = classify_adapter(a, host, 16.0)
+    assert g is not None and g.backend == "rocm" and g.gfx_target == "gfx1033" and g.memory == "shared"
+    assert "2 CU" not in (a.reason or "")
