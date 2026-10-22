@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **`update` marks an entry `pending` with `files_changed` when its files changed** (files added / removed, a `url`
+  or `size_bytes` shrank / became known or unknown, a `sha256` that had a value changed or went empty). Apps download the listed URL as is, so
+  an approved entry no longer gets different files silently. A `sha256` filled in for the first time and
+  query-string-only URL differences do not count. Over the bundled lists v0.6.0 → v0.7.0 → v0.8.0 it marks 1 entry
+  (stable-audio-3-small-sfx), 0 in the next step.
+
 ## [0.8.0] - 2026-10-22
 
 ### Changed

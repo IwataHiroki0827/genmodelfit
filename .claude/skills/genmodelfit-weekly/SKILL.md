@@ -33,6 +33,7 @@ reasons の意味:
 - `license_permissive`: ライセンスが緩い向きに変わった。
 - `need_decreased`: 必要量が減った。
 - `uncensored_new`: 新しく無検閲になった。
+- `files_changed`: ファイルが変わった(増減・URL・大きさ・確かめた sha256 の変化)。アプリは URL をそのまま落とすので、差し替わった先が同じ中身・同じ配り元かを一次資料で確かめる。
 
 ## 守ること
 

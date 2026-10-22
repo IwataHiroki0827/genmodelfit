@@ -599,7 +599,7 @@ up to 0.5.0 drop the key):
 | key | type | meaning |
 |---|---|---|
 | `status` | str | `ok` or `pending` (any other value is treated as not ok) |
-| `reasons` | str[] | why it was marked: `new`, `license_permissive`, `need_decreased`, `uncensored_new` (kept after approval: what was checked) |
+| `reasons` | str[] | why it was marked: `new`, `license_permissive`, `need_decreased`, `uncensored_new`, `files_changed` (kept after approval: what was checked) |
 | `decided_by` | str \| null | who approved (`--by`; the bundled list starts with `baseline-2026-10-21`) |
 | `decided_at` | str \| null | `YYYY-MM-DD` (UTC) of the approval |
 | `evidence` | str[] | https URLs of the primary sources (license text, model card, …) |
@@ -620,7 +620,9 @@ list, or the base list in the weekly run):
   (`need_decreased`: at one of the reference PCs `review.REFERENCE_PCS` = (0 GB VRAM, 16 GB RAM), (6, 16), (8, 16),
   (12, 32), (16, 32), (24, 64) the fit level went up, the size became known, or the full-load VRAM or the RAM went down
   by more than 1 %; estimated only when a need-related field changed), or it newly became `uncensored`
-  (`uncensored_new`). Reasons are added to an entry that was already pending
+  (`uncensored_new`), or its files changed (`files_changed`: a file added / removed, a file's `url` (query string and
+  fragment ignored) or `size_bytes` shrank or became known / unknown (growth alone does not count, as in `diff`), or a `sha256` that had a value differs or went empty; a `sha256` that was
+  empty and is now filled in, the first check, does not count. Files are paired as `diff` does). Reasons are added to an entry that was already pending
 - otherwise the previous mark is carried over (`ok` with a note when the previous list had none)
 
 `update --heads-only` / `--fields-only` / `--inspect-only` apply the same rule against the list as it was before the

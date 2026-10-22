@@ -146,13 +146,55 @@ def test_license_toward_permissive_is_pending(bundled):
 
 def test_need_decrease_is_pending_and_increase_is_not(bundled):
     a = _sized(bundled)
-    assert review.review_reasons(a, _scale(a, 0.5)) == ["need_decreased"]
-    assert review.review_reasons(a, _scale(a, 1.5)) == []
-    assert review.review_reasons(a, _scale(a, 0.999)) == []  # 1% 以内の揺れは拾わない
+    # 大きさが変われば files_changed も付く(必要量の比べ方とは別の理由)
+    assert review.review_reasons(a, _scale(a, 0.5)) == ["need_decreased", "files_changed"]
+    assert review.review_reasons(a, _scale(a, 1.5)) == []  # 大きくなっただけは安全(diff の分類と同じ)
+    assert not review.need_decreased(a, _scale(a, 0.999))  # 1% 以内の揺れは必要量では拾わない
     head_only = copy.deepcopy(a)
     for f in head_only.files:
         f.head_status, f.head_checked_at = 404, "2026-10-01T00:00:00Z"
     assert not review.need_decreased(a, head_only)  # HEAD だけの変化は見積もらない
+
+
+def _with(m: ModelEntry, **kw) -> ModelEntry:
+    m = copy.deepcopy(m)
+    for k, v in kw.items():
+        setattr(m.files[0], k, v)
+    return m
+
+
+def test_files_changed_conditions(bundled):
+    a = _with(_sized(bundled), sha256="a" * 64)
+    fc = review.files_changed
+    assert not fc(a, copy.deepcopy(a))
+    assert fc(a, _with(a, url=a.files[0].url + "x"))  # url が変わった
+    assert not fc(a, _with(a, url=a.files[0].url + "?download=true"))  # クエリだけは同じ
+    assert fc(a, _with(a, sha256="b" * 64))  # 前も今も値があって違う
+    assert fc(a, _with(a, sha256=None))  # 確かめた値が消えた
+    assert not fc(_with(a, sha256=None), a)  # 初めて確かめた
+    assert fc(a, _with(a, size_bytes=a.files[0].size_bytes - 1))
+    assert fc(a, _with(a, size_bytes=None)) and fc(_with(a, size_bytes=None), a)
+    assert not fc(a, _with(a, size_bytes=a.files[0].size_bytes + 1))  # 大きくなっただけは付けない
+    gone = copy.deepcopy(a)
+    gone.files = gone.files[:-1]
+    assert fc(a, gone) and fc(gone, a)  # 減った・増えた
+    head = _with(a, head_status=404, head_checked_at="2026-10-01T00:00:00Z")
+    assert not fc(a, head)  # HEAD の結果だけでは付けない
+    assert review.review_reasons(a, _with(a, sha256="b" * 64)) == ["files_changed"]
+    other = copy.deepcopy(a)
+    other.downloads = (other.downloads or 0) + 5
+    other.name = "renamed"
+    assert review.review_reasons(a, other) == []  # ファイル以外の変化では付けない
+
+
+def test_files_changed_turns_ok_into_pending(bundled):
+    a = _with(_sized(bundled), sha256="a" * 64)
+    prev = copy.deepcopy(a)
+    prev.review = Review("ok", [], "owner", "2026-10-14", [URL])
+    cur = _with(a, sha256="b" * 64)
+    stats = review.apply_reviews([cur], [prev])
+    assert cur.review.status == "pending" and cur.review.reasons == ["files_changed"]
+    assert stats["marked"] == {"files_changed": 1}
 
 
 def test_carry_over_and_union_of_reasons(bundled):
@@ -161,7 +203,7 @@ def test_carry_over_and_union_of_reasons(bundled):
     prev.review = Review("pending", ["new"], note="先週から")
     cur = _scale(a, 0.5)
     review.apply_reviews([cur], [prev])
-    assert cur.review.status == "pending" and cur.review.reasons == ["new", "need_decreased"]
+    assert cur.review.status == "pending" and cur.review.reasons == ["new", "need_decreased", "files_changed"]
     assert cur.review.note == "先週から"
     same = copy.deepcopy(a)
     review.apply_reviews([same], [prev])
