@@ -31,7 +31,7 @@ from urllib.parse import urlsplit
 
 from . import appinfo, review, safety
 from ._version import __version__
-from .db import Database, bundled_text, cached_db_path, parse_db
+from .db import Database, DatabaseError, bundled_text, cached_db_path, parse_db
 from .fetch import RATE_LIMIT_BUDGET, DirFetcher, Fetcher, FetchError, HttpFetcher, NetworkError
 from .groups import model_precision_source
 from .hf import (
@@ -1017,7 +1017,9 @@ def _previous_db() -> Database | None:
     """前の一覧: キャッシュ(前回の update の結果)があればそれ、無ければ同梱の一覧。"""
     cp = cached_db_path()
     if cp.exists():
-        with contextlib.suppress(OSError, ValueError):
+        # 読めない・断られる型を含む古いキャッシュは、読むだけのコマンド(db.load)と同じく使わず同梱へ戻る
+        # (update は新しい一覧でキャッシュを上書きするので、案内なしで進めてよい)
+        with contextlib.suppress(OSError, ValueError, DatabaseError):
             return parse_db(json.loads(cp.read_text(encoding="utf-8")), "cache")
     try:
         return parse_db(json.loads(bundled_text("db.json")), "bundled")

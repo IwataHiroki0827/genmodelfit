@@ -886,20 +886,66 @@ def generic_gpu_name(name: str | None) -> bool:
     return k in GENERIC_GPU_KEYS or bool(re.fullmatch(r"\d+(-\d+)?-gb-gpu", k))  # --vram の仮の GPU
 
 
+# 同じ名前で VRAM の量が違うデスクトップの NVIDIA GPU(gpu_key の形 → VRAM の GB)。
+# nvidia-smi の名前は同じなので、
+# ほかの利用者の実測が来たとき、その名前の各 VRAM の PC でも段階の変化を点検する(contrib.community_effect)。
+# NVIDIA の公式の製品ページで確かめたものだけ(2026-10-22 確認。
+# GTX 16 系は 1650・1630 が 4 GB、1660 系が 6 GB で
+# VRAM の違いは無い。ノート用 GPU は別の名前なので入れない):
+#   RTX 2060      6 / 12 GB   https://www.nvidia.com/en-us/geforce/graphics-cards/compare/
+#   RTX 3050      6 / 8 GB    https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3050/
+#   RTX 3060      8 / 12 GB   https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3060-3060ti/
+#   RTX 3080      10 / 12 GB  https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3080-3080ti/
+#   RTX 4060 Ti   8 / 16 GB   https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4060-4060ti/
+#   RTX 5060 Ti   8 / 16 GB   https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5060-family/
+NVIDIA_VRAM_VARIANTS: dict[str, tuple[float, ...]] = {
+    "rtx-2060": (6.0, 12.0),
+    "rtx-3050": (6.0, 8.0),
+    "rtx-3060": (8.0, 12.0),
+    "rtx-3080": (10.0, 12.0),
+    "rtx-4060-ti": (8.0, 16.0),
+    "rtx-5060-ti": (8.0, 16.0),
+}
+
+
+def nvidia_vram_variants(name: str | None) -> tuple[float, ...]:
+    """名前の表で分かる、同じ名前の NVIDIA GPU の公称の VRAM(GB)の版。表に無ければ空。"""
+    return NVIDIA_VRAM_VARIANTS.get(gpu_key(name), ())
+
+
 def _pci(v: str | None) -> str | None:
     v = (v or "").strip().lower()
     return v if re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{4}", v) else None
 
 
-def same_gpu(m_name: str | None, m_pci: str | None, gpu: Any) -> bool:
-    """実測の GPU(名前・PCI の型番 ID)が、この PC の GPU(models.Gpu)と同じか。両方に型番 ID があれば ID で、
-    無ければ gpu_key の名前で比べる(汎用の名前は同じとみなさない)。Apple はチップ名(Apple M2 Pro)で比べる。"""
+def same_vram(m_vram: float | None, gpu: Any) -> bool:
+    """実測の GPU の VRAM(公称)が、この PC の GPU の VRAM と近いか。専用の VRAM の GPU にだけ当てる。
+    同じ名前・同じ型番 ID でも VRAM の違う GPU がある(RTX 4060 Ti の 8 GB と 16 GB、
+    RTX 3060 の 8 GB と 12 GB、
+    PCI ID 744c の RX 7900 XT・XTX・GRE)。VRAM が違うと同じ設定の最大 VRAM・段階が変わるので、同じ GPU の
+    実測として使わない。近いとみなす幅は 実測の VRAM ÷ この PC の総量(小さいほう ÷ 大きいほう)が
+    MEASURED_VRAM_TOLERANCE(0.97。公称 16 と nvidia-smi の 15.9 などの数え方の違い)以上。VRAM の違う版の
+    比は実際には 0.83 以下(RTX 3080 の 10 GB と 12 GB、
+    RX 7900 GRE の 16 GB と XT の 20 GB など)なので、間に十分な余裕がある。
+    共有メモリ・統合メモリの GPU(内蔵 GPU・APU・Apple)は総量が PC のメインメモリで決まり、GPU の違いを
+    表さないので比べない。VRAM が分からない(None)ときも比べない(これまでどおり)。"""
+    if m_vram is None or getattr(gpu, "memory", "dedicated") != "dedicated":
+        return True
+    mine = getattr(gpu, "vram_total_gb", None)
+    if not isinstance(m_vram, (int, float)) or not m_vram > 0 or not mine or not mine > 0:
+        return True
+    return min(m_vram, mine) / max(m_vram, mine) >= MEASURED_VRAM_TOLERANCE
+
+
+def same_gpu(m_name: str | None, m_pci: str | None, gpu: Any, m_vram: float | None = None) -> bool:
+    """実測の GPU(名前・PCI の型番 ID・VRAM)が、この PC の GPU(models.Gpu)と同じか。両方に型番 ID があれば
+    ID で、無ければ gpu_key の名前で比べる(汎用の名前は同じとみなさない)。Apple はチップ名(Apple M2 Pro)で
+    比べる。m_vram を渡したときは、さらに VRAM が近いこと(same_vram)を求める(0.9.1)。"""
     if gpu is None:
         return False
     a, b = _pci(m_pci), _pci(getattr(gpu, "pci_id", None))
-    if a and b:
-        return a == b
-    return same_gpu_name(m_name, getattr(gpu, "name", None))
+    same = a == b if a and b else same_gpu_name(m_name, getattr(gpu, "name", None))
+    return same and same_vram(m_vram, gpu)
 
 
 def same_gpu_name(a: str | None, b: str | None) -> bool:
@@ -907,7 +953,7 @@ def same_gpu_name(a: str | None, b: str | None) -> bool:
 
 
 def measured_on_this_gpu(m: Measurement, gpu: Any) -> bool:
-    return same_gpu(m.gpu_name, getattr(m, "gpu_pci_id", None), gpu)
+    return same_gpu(m.gpu_name, getattr(m, "gpu_pci_id", None), gpu, m.gpu_vram_gb)
 
 
 def pick_measurement(

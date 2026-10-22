@@ -91,7 +91,10 @@ class ModelFile:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
-        return _from_dict(cls, d)
+        f = _from_dict(cls, d)
+        f.license_path = list(f.license_path or [])  # null は空の並び(エントリ側と同じ)
+        f.license_evidence = list(f.license_evidence or [])
+        return f
 
 
 @dataclass
@@ -111,7 +114,9 @@ class Template:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Template:
-        return _from_dict(cls, d)
+        t = _from_dict(cls, d)
+        t.requires_custom_nodes = list(t.requires_custom_nodes or [])
+        return t
 
 
 # 確認の印(ModelEntry.review。0.6.0、#42)。pending = 確認待ち(自動のおすすめに出さない。gate の reviewed)
@@ -244,6 +249,10 @@ class ModelEntry:
         # null で入っていても空の辞書として扱う(後から足した項目。型は db.check_entry が確かめる)
         e.languages = dict(e.languages or {})
         e.description = dict(e.description or {})
+        # 型の表が null を許す並びは空の並びに直す(使う側は None を想定しない)
+        e.content_evidence = list(e.content_evidence or [])
+        e.discovered_from = list(e.discovered_from or [])
+        e.license_evidence = list(e.license_evidence or [])
         e.files = [ModelFile.from_dict(f) if isinstance(f, dict) else f for f in (d.get("files") or [])]
         t = d.get("template")
         e.template = Template.from_dict(t) if isinstance(t, dict) else t

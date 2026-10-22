@@ -1028,20 +1028,27 @@ def community_effect(
     GPU(名前・型番 ID・会社、VRAM は実測の GPU の総量)× メインメモリ CHECK_RAM_GB。既定の設定
     (と settings を渡せばその設定)で比べる。同じ GPU で段階が上がる・NVIDIA 以外の good の上限が
     外れるのも出る。"""
-    from .estimate import estimate, measurement_vendor
+    from .estimate import estimate, measurement_vendor, nvidia_vram_variants
 
     rise = 0.0
     changes: list[dict[str, Any]] = []
     gpus: dict[tuple, Measurement] = {}
     for m in community:
         gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(m.gpu_vram_gb or 0)), m)
-        # 名前の表で公称の VRAM が分かる GPU(今は Intel の Arc だけ: hardware._INTEL_XPU)は、その VRAM の
+        # 名前の表で公称の VRAM が分かる GPU(Intel の Arc は hardware._INTEL_XPU、NVIDIA は
+        # estimate.NVIDIA_VRAM_VARIANTS)は、その VRAM の
         # PC も点検する(同じ名前で VRAM の違う版がある: A770 の 8 GB と 16 GB など。同じ GPU の実測として
         # 使われるため)
         nominal = intel_xpu(m.gpu_name) if measurement_vendor(m) == "intel" else None
         if nominal and nominal[2] and round(nominal[2]) != round(m.gpu_vram_gb or 0):
             v = Measurement(**{**vars(m), "gpu_vram_gb": float(nominal[2])})
             gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(nominal[2])), v)
+        # NVIDIA は estimate.NVIDIA_VRAM_VARIANTS(公式の製品ページで確かめた、VRAM の違う版)の各 VRAM
+        if measurement_vendor(m) == "nvidia":
+            for nv in nvidia_vram_variants(m.gpu_name):
+                if round(nv) != round(m.gpu_vram_gb or 0):
+                    v = Measurement(**{**vars(m), "gpu_vram_gb": nv})
+                    gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(nv)), v)
     for s in [None] if settings is None else [None, settings]:
         for m in gpus.values():
             for ram in CHECK_RAM_GB:

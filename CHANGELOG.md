@@ -7,6 +7,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-22
+
+### Fixed
+
+- **A list with a wrongly typed field is refused when it is read** (#63). `repo_id`, `license_from`, `license_path`,
+  `sampler_stages`, `comfy_family` and the other optional fields of an entry, a file and a template (`source`,
+  `license_url`, `base_model`, `content_evidence`, `discovered_from`, `updated`, `homepage`, `likes`, `license_evidence`,
+  `comfy_vae`, `workflow_precision`, `precision_source`; file: `license_url`, `repo_license`, `license_evidence`,
+  `head_status`, `head_checked_at`, `header_precision`, `header_params`, `repo_precision`, `repo_precision_source`;
+  template: all fields) are type-checked like `license_name` was in 0.8.0. All 27 distinct versions of the bundled list in the git history (`git log --all -- src/genmodelfit/data/db.json`; the 41 commits that touched `data/` include unchanged copies) still load. Top-level `generated_at` / `sources` are checked too.
+- **Other users' measurements are used only for a GPU with a close VRAM.** The same name (or PCI ID) can be a different card:
+  RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RX 7900 XT / XTX / GRE (all `744c`; the 0.9.0 review's N2). A measurement now
+  matches only when `min/max` of its VRAM and the PC's total is at least 0.97 (`estimate.same_vram`; not applied to shared /
+  unified memory). The fit_change check also tries the nominal VRAMs of NVIDIA GPUs with several sizes
+  (`estimate.NVIDIA_VRAM_VARIANTS`, from NVIDIA's product pages). The bundled `measurements_community.json` is empty, so
+  bundled judgements do not change. `--vram` that differs from the measured card's VRAM no longer uses that measurement.
+
 ## [0.9.0] - 2026-10-22
 
 ### Changed — judgements that change
@@ -633,7 +650,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.1
 [0.9.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.0
 [0.8.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.8.0
 [0.7.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.7.1
