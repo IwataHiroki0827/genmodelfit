@@ -31,6 +31,7 @@ from .estimate import (
     activation_features,
     components,
     is_censored,
+    is_community,
     settings_for,
     usable,
 )
@@ -73,8 +74,9 @@ def _rows(db: Database, c: Coefficients | None, *, same_metric: bool) -> list[Ro
     rows = []
     for m in db.measurements:
         e = db.get(m.model_id)
-        # OOM・エラー・標準でない設定の実測と、そろっていないほかの利用者の実測は使わない(estimate.usable)
-        if e is None or not usable(m):
+        # OOM・エラー・標準でない設定の実測は使わない(estimate.usable)。ほかの利用者の実測は、見積もりには
+        # 1 件から使うが、全モデルに効く係数の合わせ直しと照合には、そろったもの(consistent)だけ入れる
+        if e is None or not usable(m) or (is_community(m) and not m.consistent):
             continue
         if (getattr(m, "vram_metric", None) == CALIBRATION_METRIC) != same_metric:
             continue

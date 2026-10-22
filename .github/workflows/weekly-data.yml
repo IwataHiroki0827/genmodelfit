@@ -125,8 +125,11 @@ jobs:
       - name: 実測の集計(あれば)
         run: |
           if uv run --no-sync genmodelfit contrib aggregate --help > /dev/null 2>&1; then
-            # 集計が失敗しても一覧の PR は止めない(本文に失敗したことを書く)
-            if ! uv run --no-sync genmodelfit contrib aggregate --report > weekly-out/contrib-report.txt 2>&1; then
+            # 集計が失敗しても一覧の PR は止めない(本文に失敗したことを書く)。提出がまだ 1 件も無ければ
+            # data/contrib が無いので、失敗ではなく 0 件と書く
+            if [ ! -d data/contrib ]; then
+              echo "data/contrib はまだありません(ほかの利用者の実測の提出 0 件)" > weekly-out/contrib-report.txt
+            elif ! uv run --no-sync genmodelfit contrib aggregate --report > weekly-out/contrib-report.txt 2>&1; then
               echo "(contrib aggregate --report が 0 以外で終わりました。上の出力を確かめてください)" >> weekly-out/contrib-report.txt
             fi
             # 利用者の出した値を含むので、囲みに入れて HTML・リンク・メンションを効かなくする(weekly.code_block)。

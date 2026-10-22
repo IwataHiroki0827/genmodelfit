@@ -206,7 +206,8 @@ VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`
 NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、画面の部品の一覧から AMD・Intel・Apple の GPU を
 下の対応表で判定に使う(`hardware.classify_adapter`)。**NVIDIA の判定は変えない**(NVIDIA の GPU が使えれば、ほかの
 GPU は `--all-gpus` で一覧に出すだけ)。実測は 0 件なので、段階は推定で、理由に「推定(<会社>・実測なし)」を書き、
-**段階は good まで**にする(同じ会社の GPU の、同じ設定で成功した実測があるときだけ外れる: 下の #26)。
+**段階は good まで**にする(同じ会社の GPU の、同じ設定で成功した実測があるときだけ外れる: 下の #26。2026-10-22 から、
+この GPU と同じ名前の GPU のほかの利用者の実測もその根拠になる: docs/accuracy.md「ほかの利用者の実測」)。
 NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
 
@@ -378,7 +379,8 @@ fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model
 同じ設定・標準のワークフローで成功(`outcome: ok`)した実測があり、その GPU と同じ会社で、この PC の VRAM が実測の GPU の VRAM 以上
 (公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)で、実測のピークがこの PC の VRAM に収まるなら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
 この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と下限としてだけ使う
-実測(`torch_reserved`)は perfect の根拠にしない(good まで)。ほかの利用者の実測(#34)と、精度の直しで作業用メモリを倍にした
+実測(`torch_reserved`)と、同じ構成で OOM の報告もあるほかの利用者の実測は perfect の根拠にしない(good まで)。ほかの利用者の
+実測(#34)は、この PC と同じ名前の GPU のものだけ使う(2026-10-22。似た GPU には広げない)。精度の直しで作業用メモリを倍にした
 GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
 (段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは
 「段階は見積もりで決めた」と書く。例: Wan 2.2 5B(RTX 5080 16 GB で 15.8 GB・成功)は、RTX 5080 では good / GPU

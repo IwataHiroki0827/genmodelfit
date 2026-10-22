@@ -781,11 +781,8 @@ def is_censored(m: Measurement) -> bool:
 
 def usable(m: Measurement) -> bool:
     """見積もりに使える実測か。OOM・エラーで終わったもの、標準でない設定(独自のワークフローなど)は使わない。
-    ほかの利用者の実測(origin が community)は、同じ GPU・設定の 2 件以上がそろったもの(consistent)だけ使う
-    (1 件だけ・ばらつきの大きいものは、測り違いを見分けられないため。
-    docs/accuracy.md「ほかの利用者の実測」)。"""
-    if is_community(m) and not m.consistent:
-        return False
+    ほかの利用者の実測(origin が community)は、まとめた行が ok なら 1 件でも使う(llmfit の measured_community
+    と同じ。2026-10-22 のオーナーの決定。docs/accuracy.md「ほかの利用者の実測」)。"""
     return (m.outcome or "ok") == "ok" and m.standard is not False
 
 
@@ -794,27 +791,32 @@ def is_community(m: Measurement) -> bool:
 
 
 # 「これ以上」としてだけ使う測り方。torch_reserved は ComfyUI のプロセスの torch の確保量で、CUDA の文脈などを
-# 含まないので、本当の必要量より小さい(#34 のレビュー、オーナーの方針 2026-10-21)
+# 含まないので、本当の必要量より小さい(#34 のレビュー、オーナーの方針 2026-10-21)。
+# 作者の実測では式より小さければ式の値にする。ほかの利用者の実測では物理的な下限(重み + 固定分)まで
+# 下げてよい(2026-10-22)。どちらも perfect の根拠にしない
 LOWER_BOUND_METRICS = ("torch_reserved",)
-# ほかの利用者の実測が必要量を上げてよい上限(それが無いときの見積もりに対する割合)。人が確かめた(approved)
-# まとめだけが超えられる。#34 のオーナーの方針(書き換えた提出で段階を下げる攻撃を防ぐ)
-COMMUNITY_RAISE_CAP = 0.15
+# 実測の最大 VRAM の上限: GPU の総量 × 1.02 + 0.25 GiB(contrib validate の「ありえない値」と同じ。
+# 総量の数え方の違い(公称 16 と 15.9 など)を許す)
+PEAK_VRAM_RATIO = 1.02
+PEAK_VRAM_SLACK_GB = 0.25
+# ほかの利用者の実測を、設定の違う推定に広げる(calibrated)ときの 実測 ÷ 式の見積もり の範囲。
+# llmfit の補正の倍率の範囲 [0.05, 3.0] に当たる。VRAM は速さより式に近いので、contrib validate が「式から
+# 外れている」と知らせる幅(±40%)と同じにした。作者の実測の 実測 ÷ 式 は 0.64〜1.03(docs/accuracy.md)。
+# 下側は物理的な下限(重み + 固定分。need が作業用メモリを 0 で切る)のほうが先に効くことが多い
+COMMUNITY_DEVIATION = 0.40
+COMMUNITY_CALIBRATION_RANGE = (1 - COMMUNITY_DEVIATION, 1 + COMMUNITY_DEVIATION)
 
 
-def _measured_ram(m: Measurement, ram_est: float) -> float:
-    """実測のメインメモリ。確かめていないほかの利用者の実測は、見積もりの +COMMUNITY_RAISE_CAP まで。"""
-    v = m.peak_ram_gb or 0.0
-    if is_community(m) and not getattr(m, "approved", False):
-        v = min(v, ram_est * (1 + COMMUNITY_RAISE_CAP))
-    return v
+def peak_vram_cap(m: Measurement) -> float:
+    """その GPU で測れる最大 VRAM(これより大きい実測はありえない)。"""
+    return m.gpu_vram_gb * PEAK_VRAM_RATIO + PEAK_VRAM_SLACK_GB
 
 
 def lower_bound_only(m: Measurement) -> bool:
-    """実測を「必要量はこれ以上」としてだけ使うか(式の値より小さければ使わない)。
-
-    ほかの利用者の実測(提出は書き換えられるので、必要量を下げる・段階を上げる・点数を上げる向きには使わない)と、
-    torch_reserved の実測(CUDA の文脈を含まない)。"""
-    return is_community(m) or getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS
+    """作者・この PC の実測を「必要量はこれ以上」としてだけ使うか(式の値より小さければ使わない)。
+    torch_reserved の実測(CUDA の文脈を含まない)。ほかの利用者の実測は両方の向きに使う
+    (物理的な範囲で抑える)。"""
+    return not is_community(m) and getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS
 
 
 def _measured_precision(m: Measurement, entry: ModelEntry) -> str | None:
@@ -840,18 +842,43 @@ def _precision_changed(m: Measurement, s: Settings, entry: ModelEntry) -> bool:
     return bool(want) and want != _measured_precision(m, entry)
 
 
+def gpu_key(name: str | None) -> str:
+    """GPU 名の比べ方(NVIDIA / GeForce / (TM) / (R) の有無・大文字小文字・空白・記号をそろえる)。
+    contrib.gpu_slug(提出のフォルダ名・まとめの鍵)と同じ。"""
+    n = (name or "").lower()
+    for word in ("nvidia", "geforce", "(tm)", "(r)"):
+        n = n.replace(word, " ")
+    return re.sub(r"[^a-z0-9]+", "-", n).strip("-")
+
+
+def same_gpu_name(a: str | None, b: str | None) -> bool:
+    return bool(a) and bool(b) and gpu_key(a) == gpu_key(b)
+
+
 def pick_measurement(
-    measurements: Iterable[Measurement], entry: ModelEntry, s: Settings | None = None
+    measurements: Iterable[Measurement],
+    entry: ModelEntry,
+    s: Settings | None = None,
+    gpu_name: str | None = None,
 ) -> Measurement | None:
-    """そのモデルの実測を 1 つ選ぶ。設定が同じもの → 作者・この PC の実測(ほかの利用者の実測より先)→
-    張り付いていないもの → 大きい GPU → 大きい値 の順(根拠の段階は models.BASIS_DETAILS)。"""
+    """そのモデルの実測を 1 つ選ぶ。設定が同じもの → この PC と同じ名前の GPU の実測 → 作者・この PC の実測
+    (ほかの利用者の実測より先)→ 張り付いていないもの → 大きい GPU → 大きい値 の順
+    (llmfit と同じく、自分の実測 > 同じハードのほかの利用者の実測 > ほかの GPU の実測。根拠の段階は
+    models.BASIS_DETAILS)。"""
     cands = [m for m in measurements if m.model_id == entry.id and usable(m)]
     if not cands:
         return None
 
     def key(m: Measurement):
         same = s is not None and _settings_match(m.settings, s, entry)
-        return (same, not is_community(m), not is_censored(m), m.gpu_vram_gb, m.peak_vram_gb)
+        return (
+            same,
+            same_gpu_name(m.gpu_name, gpu_name),
+            not is_community(m),
+            not is_censored(m),
+            m.gpu_vram_gb,
+            m.peak_vram_gb,
+        )
 
     return max(cands, key=key)
 
@@ -898,28 +925,29 @@ class _Model:
     delta: float  # 実測に合わせて作業用メモリをずらす量(GiB)
     base: Settings
     parts: Parts
-    # 下限としてだけ使う実測(lower_bound_only)が式の値(ほかの利用者の実測なら own の見積もり)より小さく、
-    # その実測ではずらさなかった
+    # 実測の値をそのまま使わなかった(下限・上限で切り詰めた)
     clamped: bool = False
     # ほかの利用者の実測を使うとき、それが無いときの下ごしらえ(精度を変えたときはこちらで見積もる)
     own: _Model | None = None
-    # 確かめていないほかの利用者の実測が +COMMUNITY_RAISE_CAP を超えたので、そこまでにした
-    capped: bool = False
+    # 切り詰めの向き: floor = 下限(作者の torch_reserved は式の値、ほかの利用者は重み + 固定分)まで上げた、
+    # cap = GPU の総量まで下げた
+    clamp: str | None = None
+    # ほかの利用者の実測を設定の違う推定に広げるときのずらし(COMMUNITY_CALIBRATION_RANGE で抑えたもの)。
+    # None は delta と同じ
+    delta_other: float | None = None
 
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
 
     def need(self, s: Settings, prec: GpuPrecision | None = None) -> Need:
-        if (
-            self.own is not None
-            and self.measurement is not None
-            and _precision_changed(self.measurement, s, self.entry)
-        ):
+        m = self.measurement
+        if self.own is not None and m is not None and _precision_changed(m, s, self.entry):
             return self.own.need(s, prec)  # 精度を変えたら、ほかの利用者の実測は使わない(own のまま)
         parts = self.parts_for(s)
         act = activation_gb(self.entry, s, self.c)
-        if self.measurement is not None and not _precision_changed(self.measurement, s, self.entry):
-            act += self.delta
+        if m is not None and not _precision_changed(m, s, self.entry):
+            same = _settings_match(m.settings, s, self.entry)
+            act += self.delta if same or self.delta_other is None else self.delta_other
         if prec is not None and (prec.act_factor != 1 or prec.vae_factor != 1):
             parts.decode *= prec.vae_factor
             act = max(0.0, act) * prec.act_factor
@@ -927,34 +955,41 @@ class _Model:
 
 
 def _prepare(
-    entry: ModelEntry, measurements: Iterable[Measurement], c: Coefficients, s: Settings | None = None
+    entry: ModelEntry,
+    measurements: Iterable[Measurement],
+    c: Coefficients,
+    s: Settings | None = None,
+    gpu_name: str | None = None,
 ) -> _Model:
     measurements = list(measurements)
     parts = components(entry)
-    m = None if parts.unknown else pick_measurement(measurements, entry, s)
+    m = None if parts.unknown else pick_measurement(measurements, entry, s, gpu_name)
     if m is None:
         return _Model(entry, c, None, 0.0, settings_for(entry, None), parts)
     at = settings_for(entry, m.settings)
-    est = need(parts, activation_gb(entry, at, c), c).full
+    act_m = activation_gb(entry, at, c)
+    est = need(parts, act_m, c).full
     delta = m.peak_vram_gb - est
-    clamped = False
     if is_community(m):
-        # ほかの利用者の実測は、それが無いときの見積もり(own)より必要量を下げない。判定する既定の設定も
-        # own のまま(小さな設定の提出で既定を下げられないように)。#34 のオーナーの方針
-        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s)
-        floor = own.delta if own.measurement is not None else 0.0
-        clamped = delta < floor
-        delta = max(delta, floor)
-        capped = False
-        if not getattr(m, "approved", False):
-            ceiling = floor + COMMUNITY_RAISE_CAP * max(0.0, est + floor)
-            capped = delta > ceiling
-            delta = min(delta, ceiling)
-        return _Model(entry, c, m, delta, own.base, parts, clamped or capped, own, capped)
+        # ほかの利用者の実測は両方の向きに使う(2026-10-22 のオーナーの決定。llmfit に合わせた)。抑えるのは
+        # 物理的な範囲だけ: 全部載せの値は重み + 固定分より下げない(作業用メモリを 0 より下げない)、
+        # GPU の総量を超えた値は使わない。張り付いた実測(動的 VRAM が空きを使い切った)は
+        # 「これ以上」としてだけ使う。
+        # 判定する既定の設定は own のまま(小さな設定の提出で、既定の設定そのものを小さくしない)
+        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu_name)
+        lo = 0.0 if is_censored(m) else -max(0.0, act_m)
+        hi = max(lo, peak_vram_cap(m) - est)
+        clamp = "floor" if delta < lo else ("cap" if delta > hi else None)
+        delta = min(max(delta, lo), hi)
+        # 設定の違う推定へは、実測 ÷ 式 を COMMUNITY_CALIBRATION_RANGE に収めて広げる
+        r_lo, r_hi = COMMUNITY_CALIBRATION_RANGE
+        other = min(max(delta, est * (r_lo - 1), lo), max(lo, est * (r_hi - 1)))
+        return _Model(entry, c, m, delta, own.base, parts, clamp is not None, own, clamp, other)
+    clamped = False
     if is_censored(m) or lower_bound_only(m):
         clamped = delta < 0 and lower_bound_only(m)
         delta = max(0.0, delta)  # 張り付いた実測・下限の実測は「これ以上」としてだけ使う
-    return _Model(entry, c, m, delta, at, parts, clamped)
+    return _Model(entry, c, m, delta, at, parts, clamped, clamp="floor" if clamped else None)
 
 
 @dataclass(frozen=True)
@@ -1093,24 +1128,27 @@ def estimate(
 ) -> Estimate:
     """1 モデル × 1 設定 × 1 PC の見積もり。settings を省くと、実測があれば実測の設定、無ければ既定の設定。"""
     c = coefficients or load_coefficients()
-    measurements = list(measurements)
-    unreviewed = [
-        m
-        for m in measurements
-        if m.model_id == entry.id and is_community(m) and not getattr(m, "approved", False)
-    ]
-    if unreviewed:
-        # 人が確かめていないほかの利用者の実測は、段階・動かし方を変えるなら使わない(#34 のオーナーの方針)
-        own = [m for m in measurements if not any(m is u for u in unreviewed)]
-        before = _estimate(entry, system, settings, own, c, with_limits)
-        after = _estimate(entry, system, settings, measurements, c, with_limits)
-        if (after.fit, after.run_mode) != (before.fit, before.run_mode):
-            before.reasons.append(
-                "ほかの利用者の実測(人が確かめていないもの)は、段階を変えるので使わなかった"
-            )
-            return before
-        return after
-    return _estimate(entry, system, settings, measurements, c, with_limits)
+    return _estimate(entry, system, settings, list(measurements), c, with_limits)
+
+
+def _sample_count(m: Measurement) -> int:
+    """実測の件数(ほかの利用者の実測は、まとめの中央値に使った件数。作者・この PC の実測は 1)。"""
+    if not is_community(m):
+        return 1
+    n = getattr(m, "n_used", None)
+    if n is None:  # n_used の無い古いまとめ: 提出の数から OOM を引く
+        n = (m.n_submissions or 1) - (getattr(m, "n_oom", None) or 0)
+    return max(1, n)
+
+
+def community_label(m: Measurement) -> str:
+    """理由に出す「ほかの利用者の実測 3 件(中央値 7.02 GB。OOM 1 件)」。"""
+    oom = getattr(m, "n_oom", None) or 0
+    return (
+        f"ほかの利用者の実測 {_sample_count(m)} 件(中央値 {m.peak_vram_gb:.2f} GB"
+        + (f"。同じ構成で OOM の報告 {oom} 件" if oom else "")
+        + ")"
+    )
 
 
 def _estimate(
@@ -1121,8 +1159,10 @@ def _estimate(
     c: Coefficients,
     with_limits: bool,
 ) -> Estimate:
-    s = settings_for(entry, settings, _prepare(entry, measurements, c).base)
-    prep = _prepare(entry, measurements, c, s)  # 設定が同じ実測があればそれを選び直す
+    g0 = system.best_gpu
+    gname = g0.name if g0 is not None and system.vram_gb > 0 else None
+    s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
+    prep = _prepare(entry, measurements, c, s, gname)  # 設定が同じ実測があればそれを選び直す
     if prep.parts.unknown:
         return _unknown_estimate(entry, prep.parts, s)
     prec = gpu_precision(entry, system, s)
@@ -1133,9 +1173,9 @@ def _estimate(
     if m is not None:
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
         if is_community(m):
-            reasons.append(f"{on} の実測は、ほかの利用者の実測 {m.n_submissions or '?'} 件をまとめた中央値")
-        g0 = system.best_gpu
+            reasons.append(f"{on} の実測は、{community_label(m)}")
         other_vendor = g0 is not None and g0.vendor != gpu_vendor(m.gpu_name)
+        same_settings = _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry)
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
         elif other_vendor:
@@ -1145,23 +1185,30 @@ def _estimate(
         elif prec.act_factor != 1:
             detail = "calibrated"
             reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
-        elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry) and prep.clamped:
-            # 下限としてだけ使う実測が式より小さい・上限を超えた: 値は実測ではないので basis は estimated
+        elif same_settings and prep.clamped:
+            # 実測の値をそのまま使わなかった(下限・上限で切り詰めた): 値は実測ではないので basis は estimated
             detail = "measured_community" if is_community(m) else "calibrated"
-            if prep.capped:
-                reasons.append(
-                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は、それを使わない見積もりの"
-                    f" +{COMMUNITY_RAISE_CAP:.0%} を超えるので、そこまでにした"
-                    "(人が確かめた提出だけが超えられる)"
-                )
-            else:
+            if not is_community(m):
                 reasons.append(
                     f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
                     "それを使わない見積もりのほうが大きいので、そちらの値にした"
                 )
+            elif prep.clamp == "cap":
+                reasons.append(
+                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の総量を超えるので、総量までにした"
+                )
+            else:
+                reasons.append(
+                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限"
+                    f"(重み + 固定分 {n.full:.2f} GB)より小さいので、下限の値にした"
+                    "(一部の重みをメインメモリに置いていた実測)"
+                    if not is_censored(m)
+                    else f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の上限に張り付いた値なので、"
+                    "これ以上としてだけ使い、式の値にした"
+                )
             if m.peak_ram_gb:
-                n.ram_gpu = max(n.ram_gpu, _measured_ram(m, n.ram_gpu))
-        elif _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry):
+                n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
+        elif same_settings:
             basis, measured_on = "measured", on
             detail = "measured_community" if is_community(m) else "measured"
             if is_censored(m):
@@ -1169,7 +1216,7 @@ def _estimate(
                     f"実測 {m.peak_vram_gb:.1f} GB は GPU の上限に張り付いた値(全部載せにはこれ以上要る)"
                 )
             if m.peak_ram_gb:
-                n.ram_gpu = max(n.ram_gpu, _measured_ram(m, n.ram_gpu))
+                n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
         elif not _precision_changed(m, s, entry):
             detail = "calibrated"
             reasons.append(f"{on} の実測({_describe(entry, m.settings)})で補正した推定")
@@ -1180,7 +1227,8 @@ def _estimate(
     disk = parts.files_gb
     fit, mode, why, ram_need = _judge(n, system, prep.c, entry, parts.total)
     fit_from, measured_peak = "estimate", None
-    promoted = _measured_level(m, entry, s, system, prec, fit)
+    band = _measured_band(m, entry, s, system, prec)
+    promoted = band if band is not None and _LEVELS.index(band[0]) < _LEVELS.index(fit) else None
     if promoted is not None:
         level, line = promoted
         fit_from, measured_peak = "measurement", m.peak_vram_gb
@@ -1194,8 +1242,18 @@ def _estimate(
             )
     g = system.best_gpu
     if g is not None and g.vendor != "nvidia" and system.vram_gb > 0 and mode in ("gpu", "offload"):
+        # NVIDIA 以外の GPU は、推定だけなら段階を good までにする。この PC と同じ名前の GPU の同じ設定の
+        # 実測があれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
         label = _vendor_label(g.vendor)
-        if fit == "perfect" and fit_from != "measurement":
+        own = band if band is not None and same_gpu_name(m.gpu_name, g.name) else None
+        if own is not None:
+            if fit == "perfect" and fit_from != "measurement":
+                if own[0] == "perfect":
+                    why = [*why, f"{label} のこの GPU で同じ設定の実測があるので、段階の上限(good)を外した"]
+                else:
+                    fit = own[0]
+                    why = [*why, f"{label} のこの GPU の同じ設定の実測で決まる段階 {own[0]} までにした"]
+        elif fit == "perfect" and fit_from != "measurement":
             fit = "good"
             why = [*why, f"推定({label}・実測なし)なので、段階は good までにした"]
         elif fit_from != "measurement":
@@ -1234,6 +1292,7 @@ def _estimate(
         basis_detail=detail,
         fit_from=fit_from,
         measured_peak_vram_gb=measured_peak,
+        sample_count=_sample_count(m) if m is not None and detail != "estimated" else None,
     )
     if with_limits:
         est.limits = limits(prep, system, s)
@@ -1260,36 +1319,44 @@ def _vendor_label(vendor: str) -> str:
     return {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}.get(vendor, vendor)
 
 
-def _measured_level(
-    m: Measurement | None, entry: ModelEntry, s: Settings, system: SystemInfo, prec: GpuPrecision, fit: str
+def _measured_band(
+    m: Measurement | None, entry: ModelEntry, s: Settings, system: SystemInfo, prec: GpuPrecision
 ) -> tuple[str, str] | None:
     """同じ設定で成功した実測があり、その GPU の VRAM がこの PC の VRAM 以下
     (97% の許容)で、実測のピークがこの PC の VRAM に収まるなら、実測で決めた段階と理由(#26)。
 
     実測が「GPU で動いた」ことは、それ以上の VRAM の同じ会社・同じ精度の扱いの GPU でも動く根拠になる。
     段階は 実測の VRAM ÷ この PC の VRAM の帯(FIT_BANDS)で、少なくとも good。上限に張り付いた実測
-    (動的 VRAM が空きを使い切った)・下限としてだけ使う実測(torch_reserved)は
-    perfect の根拠にしない(good まで)。
-    見積もりの段階のほうが良ければ None。ほかの利用者の実測は段階を上げる向きに使わない(#34 の方針)。"""
-    if m is None or is_community(m) or not usable(m):
+    (動的 VRAM が空きを使い切った)・torch_reserved の実測(CUDA の文脈を含まない)・同じ構成で OOM の報告も
+    あるまとめは perfect の根拠にしない(good まで)。
+    ほかの利用者の実測は、この PC と同じ名前の GPU のものだけ使う(llmfit と同じく、似た GPU には広げない。
+    2026-10-22 のオーナーの決定)。見積もりの段階と比べるのは呼び出し側。"""
+    if m is None or not usable(m):
         return None
     g = system.best_gpu
     vram = system.vram_gb
     if g is None or vram <= 0 or g.vendor != gpu_vendor(m.gpu_name) or prec.act_factor != 1:
+        return None
+    if is_community(m) and not same_gpu_name(m.gpu_name, g.name):
         return None
     if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
         return None
     if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE or m.peak_vram_gb > vram:
         return None  # 実測の GPU より小さい、または実測の VRAM がこの PC の VRAM に収まらない
     band = fit_band(m.peak_vram_gb, vram)
-    level = "perfect" if band == "perfect" and not (is_censored(m) or lower_bound_only(m)) else "good"
-    if _LEVELS.index(level) >= _LEVELS.index(fit):
-        return None
+    weak = (
+        is_censored(m)
+        or getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS
+        or (getattr(m, "n_oom", None) or 0) > 0
+    )
+    level = "perfect" if band == "perfect" and not weak else "good"
     on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
     pinned = "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)" if is_censored(m) else ""
+    who = f"({community_label(m)})" if is_community(m) else ""
     return level, (
-        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{pinned}・成功があり、この PC の VRAM {vram:.1f} GB は"
-        "それ以上なので、GPU で動くと判定した(段階は実測で決めた。見積もりは目安)"
+        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{pinned}{who}・成功があり、"
+        f"この PC の VRAM {vram:.1f} GB はそれ以上なので、"
+        "GPU で動くと判定した(段階は実測で決めた。見積もりは目安)"
     )
 
 
@@ -1606,5 +1673,7 @@ def limits_for(
 ) -> dict | None:
     c = coefficients or load_coefficients()
     measurements = list(measurements)
-    s = settings_for(entry, settings, _prepare(entry, measurements, c).base)
-    return limits(_prepare(entry, measurements, c, s), system, s)
+    g = system.best_gpu
+    gname = g.name if g is not None and system.vram_gb > 0 else None
+    s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
+    return limits(_prepare(entry, measurements, c, s, gname), system, s)

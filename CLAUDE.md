@@ -84,7 +84,7 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - 判定に使う GPU は nvidia-smi で確かめた NVIDIA の GPU だけ(backend `cuda` の最大の 1 枚)。PyTorch の CUDA 版のビルドが
   どれも対応しない世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
   世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
-- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す
+- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(この GPU と同じ名前の GPU の同じ設定の実測があれば外す。2026-10-22)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す
   (PowerShell の起動に約 1 秒)。`system --all-gpus` で調べる
 - 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
   系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す

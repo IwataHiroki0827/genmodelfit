@@ -559,7 +559,6 @@ def test_other_vendor_community_measurement_only_calibrates(db):
         origin="community",
         n_submissions=3,
         consistent=True,
-        approved=True,
     )
     s = vendor_system("amd", 24.0, 64.0)
     e = estimate(m, s, measurements=[comm], coefficients=Coefficients())

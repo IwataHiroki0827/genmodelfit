@@ -617,6 +617,8 @@ def cmd_info(args: argparse.Namespace) -> int:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
         out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
+    if e.sample_count is not None and e.basis_detail != "measured":
+        basis += f" n={e.sample_count}"  # ほかの利用者の実測の件数(2026-10-22)
     out.append(f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
@@ -1477,8 +1479,8 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
         print(f"誤り {e['code']}: {e['message']}")
     for w in report.warnings:
         print(f"注意 {w['code']}: {w['message']}")
-    for v in report.review:
-        print(f"要確認 {v['code']}: {v['message']}(PR を見る人が確かめます)")
+    for v in report.notices:
+        print(f"確認 {v['code']}: {v['message']}(失敗にはしません。PR をマージする人が見ます)")
     print(
         "検査: "
         + ("ok" if good else "NG(直してから出してください)")
@@ -1487,57 +1489,42 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
     return 0 if good else 1
 
 
-def _result_word(r, approved) -> str:
+def _result_word(r) -> str:
     if not r.ok:
         return "NG"
-    return "ok" if r.accepted(approved) else "review"
+    return "notice" if r.notices else "ok"
 
 
-def _sha8_list(text: str) -> list[str]:
-    """--allow-review の値(sha8 をカンマで区切ったもの)。"""
-    import re
-
-    out = [x.strip().lower() for x in text.split(",") if x.strip()]
-    if not out or not all(re.fullmatch(r"[0-9a-f]{8}", x) for x in out):
-        raise argparse.ArgumentTypeError(f"提出の sha8(16 進 8 桁)をカンマで区切って指定してください: {text}")
-    return out
-
-
-def _approved(args: argparse.Namespace, default_reviewed: Path | None) -> set[str]:
-    """人が確かめた提出の sha8: --allow-review の値 + REVIEWED のファイル(--reviewed、無ければ既定の場所)。"""
-    from .contrib import read_reviewed
-
-    out = {x for group in (args.allow_review or []) for x in group}
-    path = Path(args.reviewed) if args.reviewed else default_reviewed
-    if path is not None:
-        try:
-            out |= set(read_reviewed(path))
-        except (OSError, ValueError) as e:
-            raise CliError(f"確かめた提出の一覧を読めません: {e}") from e
-    return out
-
-
-def _validate_markdown(reports: list, approved=()) -> list[str]:
+def _validate_markdown(reports: list) -> list[str]:
     """CI のまとめ用の表。提出から来た文字(パス・モデル ID・GPU 名・メッセージ)は、
-    すべて md_cell で無害にする。"""
+    すべて md_cell で無害にする。確認(notices)は失敗にしないが、マージする人が見るので表の上に数を出す。"""
     from .contrib import md_cell
 
-    words = [_result_word(r, approved) for r in reports]
+    words = [_result_word(r) for r in reports]
     lines = [
         "## genmodelfit contrib validate",
         "",
-        f"{len(reports)} files: {words.count('ok')} ok, {words.count('review')} review,"
+        f"{len(reports)} files: {words.count('ok')} ok, {words.count('notice')} ok with notices,"
         f" {words.count('NG')} NG",
         "",
-        "| 結果 | ファイル | モデル | GPU | 誤り・要確認・注意 |",
+    ]
+    if words.count("notice"):
+        lines += [
+            f"**マージする人へ: 確認の項目のある提出が {words.count('notice')} 件あります**"
+            "(式から大きく外れる・よくある PC で段階を変える・一覧に無いモデルなど。失敗にはしていません。"
+            "マージすると見積もりに使われます)",
+            "",
+        ]
+    lines += [
+        "| 結果 | ファイル | モデル | GPU | 誤り・確認・注意 |",
         "|---|---|---|---|---|",
     ]
     for r, word in zip(reports, words, strict=True):
         msgs = [f"誤り {e['code']}: {e['message']}" for e in r.errors]
-        msgs += [f"要確認 {v['code']}: {v['message']}" for v in r.review]
+        msgs += [f"確認 {v['code']}: {v['message']}" for v in r.notices]
         msgs += [f"注意 {w['code']}: {w['message']}" for w in r.warnings]
         text = "<br>".join(md_cell(m) for m in msgs) or "-"
-        mark = {"ok": "ok", "review": "**review**", "NG": "**NG**"}[word]
+        mark = {"ok": "ok", "notice": "ok(**確認**)", "NG": "**NG**"}[word]
         lines.append(
             f"| {mark} | {md_cell(r.path)} | {md_cell(r.model_id or '-')} |"
             f" {md_cell(r.gpu_name or '-')} | {text} |"
@@ -1553,8 +1540,7 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
         p = Path(f)
         files += find_files(p) if p.is_dir() else [p]
     reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
-    allow = _approved(args, None)
-    bad = [r for r in reports if not r.accepted(allow) or (args.strict and r.warnings)]
+    bad = [r for r in reports if not r.ok or (args.strict and r.warnings)]
     code = 1 if bad else 0
     if args.json:
         _out(
@@ -1567,31 +1553,31 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
                 files=len(reports),
                 valid=sum(r.ok for r in reports),
                 invalid=sum(not r.ok for r in reports),
-                review=sum(1 for r in reports if r.ok and r.review),
+                notices=sum(1 for r in reports if r.ok and r.notices),
                 warnings=sum(len(r.warnings) for r in reports),
                 reports=[r.to_dict() for r in reports],
             )
         )
         return code
     if args.markdown:
-        for line in _validate_markdown(reports, allow):
+        for line in _validate_markdown(reports):
             print(line)
         return code
     if not reports:
         print("検査するファイルがありません")
     for r in reports:
         what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
-        print(f"{_result_word(r, allow):<6}  {r.path}" + (f"  ({what})" if what else ""))
+        print(f"{_result_word(r):<6}  {r.path}" + (f"  ({what})" if what else ""))
         for e in r.errors:
             print(f"      誤り {e['code']}: {e['message']}")
-        for v in r.review:
-            print(f"      要確認 {v['code']}: {v['message']}")
+        for v in r.notices:
+            print(f"      確認 {v['code']}: {v['message']}")
         for w in r.warnings:
             print(f"      注意 {w['code']}: {w['message']}")
-    words = [_result_word(r, allow) for r in reports]
+    words = [_result_word(r) for r in reports]
     print(
-        f"{len(reports)} files: {words.count('ok')} ok, {words.count('review')} review"
-        f"(人が確かめたら --allow-review <sha8> か REVIEWED で受け付ける), {words.count('NG')} NG"
+        f"{len(reports)} files: {words.count('ok')} ok, {words.count('notice')} ok with notices"
+        f"(失敗にはしない。マージする人が見る), {words.count('NG')} NG"
     )
     return code
 
@@ -1663,9 +1649,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     if not Path(args.dir).is_dir():
         raise CliError(f"提出のフォルダがありません: {args.dir}")
     db = _contrib_db(args)
-    from .contrib import REVIEWED_FILE
-
-    subs, reports = load_dir(args.dir, db, approved=_approved(args, Path(args.dir) / REVIEWED_FILE))
+    subs, reports = load_dir(args.dir, db)
     rows = aggregate(subs)
     if args.output and not rows and not args.allow_empty:
         raise CliError(
@@ -1679,7 +1663,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         "files": len(reports),
         "valid": sum(r.ok for r in reports),
         "invalid": sum(not r.ok for r in reports),
-        "review": sum(1 for r in reports if r.ok and r.review),
+        "notices": sum(1 for r in reports if r.ok and r.notices),
         "submissions_used": len(subs),
         "groups": len(rows),
         "consistent": sum(1 for r in rows if r["consistent"]),
@@ -1693,10 +1677,10 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         return code
     print(
         f"提出 {stats['files']} 件(検査を通った {stats['valid']} 件、通らなかった {stats['invalid']} 件)→ "
-        f"{stats['groups']} 組にまとめた(そろった組 {stats['consistent']})"
+        f"{stats['groups']} 組にまとめた(そろった組 {stats['consistent']}。ok の組は 1 件から見積もりに使う)"
     )
     for r in rows:
-        mark = "consistent" if r["consistent"] else "not used"
+        mark = "oom only" if r["outcome"] != "ok" else ("consistent" if r["consistent"] else "used")
         print(
             f"  {md_cell(r['model_id'])}  {md_cell(r['gpu_name'])}  {r['peak_vram_gb']:g} GiB  "
             f"(n={r['n_submissions']}, used={r['n_used']}, outliers={r['n_outliers']}, oom={r['n_oom']}, "
@@ -2763,18 +2747,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="ファイル名(<GPU>/<日付>-<sha8>.json)を確かめない",
     )
     c.add_argument("--markdown", action="store_true", help="Markdown の表で出す(CI のまとめ用)")
-    c.add_argument(
-        "--allow-review",
-        type=_sha8_list,
-        action="append",
-        metavar="SHA8[,SHA8...]",
-        help="人が確かめた提出(sha8 で 1 件ずつ)だけ、要確認の項目があっても受け付ける",
-    )
-    c.add_argument(
-        "--reviewed",
-        metavar="FILE",
-        help="人が確かめた提出の一覧(1 行に「sha8 理由」。作者が data/contrib/REVIEWED に書く)",
-    )
     c.set_defaults(func=cmd_contrib_validate)
     c = csub.add_parser("aggregate", parents=[cj], help="同じモデル・設定・GPU ごとにまとめ、精度を点検する")
     c.add_argument(
@@ -2799,19 +2771,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--fail-on-breach",
         action="store_true",
         help=f"--report で閾値を超えたら終了コード {EXIT_BREACH} にする",
-    )
-    c.add_argument(
-        "--allow-review",
-        type=_sha8_list,
-        action="append",
-        metavar="SHA8[,SHA8...]",
-        help="人が確かめた提出(sha8 で 1 件ずつ)だけ、要確認の項目があっても受け付ける",
-    )
-    c.add_argument(
-        "--reviewed",
-        metavar="FILE",
-        help="人が確かめた提出の一覧(1 行に「sha8 理由」。作者が data/contrib/REVIEWED に書く)。"
-        "aggregate の既定は <DIR>/REVIEWED",
     )
     c.add_argument(
         "--allow-empty",
@@ -2866,7 +2825,8 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
-  1  Error / validate: a file failed, needs review (unless --allow-review) or has a warning with --strict /
+  1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
+     maintainer who merges never fail) /
      show: something to fix / aggregate: no such folder, or an empty result with --output
      (unless --allow-empty)
   2  Usage error

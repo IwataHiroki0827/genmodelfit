@@ -229,7 +229,9 @@ def _vram_cell(e, system) -> Text:
             return Text(_gb(e.vram_offload_gb), style="red")
         return Text("-", style="dim")
     if e.basis == "measured":
-        return Text.assemble(_gb(need), ("m", "bold"))
+        # c = ほかの利用者の実測(件数は info・JSON の sample_count)、m = 作者・この PC の実測
+        mark = "c" if e.basis_detail == "measured_community" else "m"
+        return Text.assemble(_gb(need), (mark, "bold"))
     return Text(_gb(need))
 
 
@@ -451,8 +453,10 @@ def legend(
     system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
     best = system.best_gpu if system is not None else None
     non_nvidia = best is not None and best.vendor != "nvidia"
+    community = any(getattr(f.estimate, "basis_detail", "") == "measured_community" for f in fits)
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
+        *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
         *(
             ["Mode for no run: GPU req = needs a GPU (none usable here), RAM = not enough system RAM."]

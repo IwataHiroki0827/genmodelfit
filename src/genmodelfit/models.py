@@ -39,8 +39,8 @@ BASIS = ("measured", "estimated")
 # 根拠の細かい段階(Estimate.basis_detail。#34)。上ほど確か。basis は後方互換のため 2 値のまま:
 # measured / measured_community → basis "measured"、calibrated / estimated → basis "estimated"
 #   measured           同梱の実測(作者が測ったもの)か、この PC で bench が保存した実測で、設定も同じ
-#   measured_community ほかの利用者の実測(data/contrib を contrib aggregate でまとめたもの)。同じ GPU・
-#                      設定の 2 件以上がそろった(consistent)ものだけ。設定も同じ
+#   measured_community ほかの利用者の実測(data/contrib を contrib aggregate でまとめた中央値。1 件から使う。
+#                      件数は Estimate.sample_count)。設定も同じ
 #   calibrated         設定の違う実測でずらした推定
 #   estimated          式だけの推定
 BASIS_DETAILS = ("measured", "measured_community", "calibrated", "estimated")
@@ -300,17 +300,17 @@ class Measurement:
     # None = 記録が無い(AI生成キットで測った RTX 5080 の 9 件)。測り方が違う値どうしで係数を合わせない
     vram_metric: str | None = None
     # ほかの利用者の実測をまとめたもの(#34。measurements_community.json)の印と件数。
-    # origin が "community" のとき、consistent(同じ GPU・設定の 2 件以上で、ばらつきが小さい)でなければ
-    # 見積もりにも合わせ直しにも使わない(estimate.usable)。None は同梱の作者の実測・この PC の bench
+    # origin が "community" のとき、ok の行は 1 件でも見積もりに使う(2026-10-22、llmfit に合わせた。
+    # estimate.usable)。None は同梱の作者の実測・この PC の bench
     origin: str | None = None
     n_submissions: int | None = None  # まとめた提出の数(外れ値・OOM も含む)
+    # 同じ GPU・設定の 2 件以上で、ばらつきが小さく OOM が無い。係数の合わせ直し(calibrate)に入れる条件
     consistent: bool | None = None
-    # 人が確かめた提出(data/contrib/REVIEWED の sha8)を含むまとめか。確かめていないまとめは、
-    # ほかの利用者の実測が無いときの見積もりの +15% までしか必要量を上げない(estimate.COMMUNITY_RAISE_CAP)
-    approved: bool | None = None
     # 測った GPU の PyTorch の backend(cuda / rocm / xpu / mps。0.9.0、bench が書く)。None は記録が無い
-    # (同梱の実測はすべて NVIDIA の cuda)。見積もりでは使わない(会社は今までどおり GPU 名で見る)
+    # (同梱の実測はすべて NVIDIA の cuda)
     gpu_backend: str | None = None
+    n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除いた数。Estimate.sample_count になる)
+    n_oom: int | None = None  # 同じ構成で OOM だった提出の数(1 件以上なら perfect の根拠にしない)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:
@@ -453,6 +453,9 @@ class Estimate:
     # (そのとき measured_peak_vram_gb にその実測の VRAM)
     fit_from: str = "estimate"
     measured_peak_vram_gb: float | None = None
+    # 見積もりに使った実測の件数(2026-10-22。llmfit の sample_count)。ほかの利用者の実測は中央値に
+    # 使った件数、作者・この PC の実測は 1。実測を使っていない(basis_detail が estimated)ときは None
+    sample_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする
