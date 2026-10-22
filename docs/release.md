@@ -270,9 +270,12 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 
 安全な週の条件: classification が safe(前から確認待ちのまま変わらない項目は含んでよい)。分類は**許すものの表**で
 決める(docs/schema.md「diff」の classification): 人気の数(`downloads`・`downloads_all_time`・`likes`・テンプレートの
-`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ファイルが大きくなる、ライセンスが厳しくなる、
+`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ライセンスが厳しくなる、
 消えた項目、自動のおすすめから外れた項目、`sources` の数、確認待ちのまま変わらない項目。それ以外の変化(知らない項目も)は
 すべて判断が要る。HEAD が直って自動のおすすめに戻ったものは、どのファイルの URL・sha256 も変わっていないときだけ安全。
+ファイルの大きさの変化は 0.9.0 から向きによらず判断が要る(`files_changed`。`update` も確認待ちにする)。アプリは一覧の URL を
+そのまま落とすので、同じ URL のファイルが大きくなった = 中身が差し替わった、を黙って通さない。HF のリポジトリでファイルが
+上書きされた週は、自動でマージされずオーナーの確認になる(以前は大きくなっただけなら安全な週としてマージしていた)。
 
 決めたこと:
 

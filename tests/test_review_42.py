@@ -148,7 +148,8 @@ def test_need_decrease_is_pending_and_increase_is_not(bundled):
     a = _sized(bundled)
     # 大きさが変われば files_changed も付く(必要量の比べ方とは別の理由)
     assert review.review_reasons(a, _scale(a, 0.5)) == ["need_decreased", "files_changed"]
-    assert review.review_reasons(a, _scale(a, 1.5)) == []  # 大きくなっただけは安全(diff の分類と同じ)
+    # 大きくなっても同じ URL の中身が差し替わったので確認待ち(0.9.0。diff の分類と同じ)
+    assert review.review_reasons(a, _scale(a, 1.5)) == ["files_changed"]
     assert not review.need_decreased(a, _scale(a, 0.999))  # 1% 以内の揺れは必要量では拾わない
     head_only = copy.deepcopy(a)
     for f in head_only.files:
@@ -174,7 +175,7 @@ def test_files_changed_conditions(bundled):
     assert not fc(_with(a, sha256=None), a)  # 初めて確かめた
     assert fc(a, _with(a, size_bytes=a.files[0].size_bytes - 1))
     assert fc(a, _with(a, size_bytes=None)) and fc(_with(a, size_bytes=None), a)
-    assert not fc(a, _with(a, size_bytes=a.files[0].size_bytes + 1))  # 大きくなっただけは付けない
+    assert fc(a, _with(a, size_bytes=a.files[0].size_bytes + 1))  # 大きくなっただけでも付ける(0.9.0)
     gone = copy.deepcopy(a)
     gone.files = gone.files[:-1]
     assert fc(a, gone) and fc(gone, a)  # 減った・増えた
@@ -357,9 +358,6 @@ def test_classification_safe_changes(bundled):
         "safe_changes": _cl(old, new)["safe_changes"],
     }
     new.models.pop(0)  # 消えた
-    a = _sized(new)
-    i = new.models.index(a)
-    new.models[i] = _scale(a, 1.5)  # 必要量が増える
     r = _restricted(new)
     j = new.models.index(r)
     stricter = copy.deepcopy(r)
@@ -389,6 +387,17 @@ def test_classification_judgement_needed(bundled):
     assert got[gone.id][0] == "new"
     assert "need_decreased" in got[a.id] and "license_permissive" in got[r.id]
     assert got[u.id] == ["uncensored_new"]
+    assert got[a.id][:2] == ["need_decreased", "files_changed"]  # 小さくなった: 両方
+
+
+def test_classification_file_growth_needs_judgement(bundled):
+    """同じ URL のファイルが大きくなった = 中身が差し替わった。安全な週にしない(0.9.0。前は安全)。"""
+    old, new = copy.deepcopy(bundled), copy.deepcopy(bundled)
+    a = _sized(old)
+    new.models[new.models.index(new.get(a.id))] = _scale(a, 1.5)
+    c = _cl(old, new)
+    assert c["safe"] is False
+    assert {j["id"]: j["reasons"] for j in c["judgement_needed"]} == {a.id: ["files_changed"]}
 
 
 def test_classification_review_transitions(bundled):

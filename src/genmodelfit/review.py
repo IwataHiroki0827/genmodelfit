@@ -16,7 +16,7 @@
                           ファイルの変化による)
   - `uncensored_new`      新しく無検閲になった(新しい項目が無検閲のときも付ける)
   - `files_changed`       ファイルが変わった(前の一覧と同じ ID で、ファイルの増減・URL・
-                          大きさの変化(大きくなっただけは除く)・
+                          大きさの変化(大きくなった・小さくなった・分かった・分からなくなった)・
                           sha256 の変化(前も今も値があって違う、または確かめた値が消えた。前が空で今入った
                           のは付けない)。アプリは一覧の URL をそのまま落とすので、確認済みの中身が黙って
                           差し替わらないようにする。URL は末尾のクエリ・フラグメントを除いて比べる)
@@ -162,9 +162,10 @@ def files_changed(old: ModelEntry, new: ModelEntry) -> bool:
     for a, b in pairs:
         if _norm_url(a.get("url")) != _norm_url(b.get("url")):
             return True
-        sa, sb = a.get("size_bytes"), b.get("size_bytes")
-        if sa != sb and not (isinstance(sa, int) and isinstance(sb, int) and sb > sa):
-            return True  # 大きくなっただけは diff の分類でも安全(小さくなる・分かる/分からなくなるは付ける)
+        if a.get("size_bytes") != b.get("size_bytes"):
+            # 大きさが変わった(どちらの向きでも)= 同じ URL の中身が差し替わった。
+            # 分かった・分からなくなったも付ける(0.9.0。前は大きくなっただけは付けなかった)
+            return True
         if a.get("sha256") and a.get("sha256") != b.get("sha256"):
             return True
     return False

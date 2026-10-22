@@ -425,7 +425,8 @@ def review_section(d: dict[str, Any], pending: list[dict[str, Any]]) -> list[str
     lines = ["### 分類(毎週のスキルが使う)", ""]
     if cl.get("safe"):
         lines.append(
-            "- **安全な向きの変化だけ**(HEAD の日時・失敗、必要量が増える向き、消えた項目、sources の数など)"
+            "- **安全な向きの変化だけ**(HEAD の日時・失敗、ライセンスが厳しくなる向き、消えた項目、"
+            "sources の数など)"
         )
     else:
         lines.append(f"- **判断が要る変化があります: {len(cl.get('judgement_needed') or [])} 件**")

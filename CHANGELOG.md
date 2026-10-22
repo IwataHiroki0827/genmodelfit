@@ -27,10 +27,14 @@ All notable changes to this project are documented here. The format is based on
     (#26), and lifts the AMD / Intel / Apple "at most Good" cap (Perfect only when the #26 rules allow it: not pinned,
     not `torch_reserved`, no OOM report in the group).
 - **`update` marks an entry `pending` with `files_changed` when its files changed** (files added / removed, a `url`
-  or `size_bytes` shrank / became known or unknown, a `sha256` that had a value changed or went empty). Apps download the listed URL as is, so
-  an approved entry no longer gets different files silently. A `sha256` filled in for the first time and
-  query-string-only URL differences do not count. Over the bundled lists v0.6.0 → v0.7.0 → v0.8.0 it marks 1 entry
-  (stable-audio-3-small-sfx), 0 in the next step.
+  changed, a `size_bytes` changed **in either direction** or became known / unknown, a `sha256` that had a value
+  changed or went empty). Apps download the listed URL as is, so an approved entry no longer gets different files
+  silently. A `sha256` filled in for the first time and query-string-only URL differences do not count. Over the
+  bundled lists v0.6.0 → v0.7.0 → v0.8.0 it marks 1 entry (stable-audio-3-small-sfx), 0 in the next step.
+- **`diff` / `merge-check`: a file that only grew is no longer safe** (`files_changed`; a smaller file gets
+  `need_decreased` and `files_changed`). A bigger file at the same URL is different content. Weeks where a Hugging
+  Face file was overwritten with a bigger one now go to the owner instead of being merged by the weekly job
+  (docs/release.md). No such change happened between v0.6.0, v0.7.0 and v0.8.0.
 - **`torch_reserved` measurements can now make Perfect** (#26 levels from measurements). Every `bench` result and
   submission is `torch_reserved` (the ComfyUI process's torch reservation, without the CUDA / HIP context), and the
   rule "torch_reserved never makes Perfect" kept AMD / Intel / Apple GPUs at Good even with a measurement of that GPU,
