@@ -13,7 +13,9 @@
    PC 名・ユーザ名・パス・GPU の UUID・PCI の位置・シリアル・IP・時刻は入れない(note の中も消す)
 2. `contrib show` で、送る中身をそのまま見せる(同意のため)。個人の情報の点検の結果も出す
 3. `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` として PR にする
-4. CI(.github/workflows/contrib.yml)が `contrib validate` で形・値・個人の情報・重複を検査する
+4. CI(.github/workflows/contrib.yml)が `contrib validate` で形・値・個人の情報・重複を機械的に検査する
+   (llmfit の validate_community_benchmarks.py と同じ考え方。2026-10-22)。式から大きく外れる・段階を変える
+   などは失敗にせず、注意(notices)としてジョブのまとめに出す。マージするメンテナが見て決める
 5. `contrib aggregate` が同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、
    同梱の `measurements_community.json` を作る。`--report` は校正(leave-one-out)の誤差の表と閾値の判定
 
@@ -32,7 +34,6 @@ import re
 import statistics
 import unicodedata
 from collections import Counter
-from collections.abc import Collection
 from dataclasses import asdict, dataclass, field
 from datetime import date as _date
 from datetime import datetime, timedelta, timezone
@@ -41,7 +42,14 @@ from typing import Any
 
 from ._version import __version__
 from .db import Database
-from .estimate import PRECISION_BYTES, norm_precision
+from .estimate import (
+    COMMUNITY_DEVIATION,
+    PEAK_VRAM_RATIO,
+    PEAK_VRAM_SLACK_GB,
+    PRECISION_BYTES,
+    gpu_key,
+    norm_precision,
+)
 from .hardware import arch_of, cc_from_name, parse_compute_cap
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
@@ -50,7 +58,7 @@ CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足�
 KIND = "genmodelfit-measurement"
 
 # 値の健全さの許容
-VRAM_TOLERANCE_GB = 0.25  # 最大 VRAM は GPU の総量 × 1.02 + これまで
+VRAM_TOLERANCE_GB = PEAK_VRAM_SLACK_GB  # 最大 VRAM は GPU の総量 × 1.02 + これまで(estimate.peak_vram_cap)
 RAM_TOLERANCE_GB = 1.0  # 最大メモリはメインメモリ × 1.05 + これまで
 MAX_GPU_VRAM_GB = 512.0
 MAX_RAM_GB = 4096.0
@@ -370,12 +378,9 @@ def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]
 
 
 def gpu_slug(name: str) -> str:
-    """GPU 名 → フォルダ名(例 'NVIDIA GeForce RTX 3070' → 'rtx-3070')。"""
-    n = name.lower()
-    for word in ("nvidia", "geforce", "(tm)", "(r)"):
-        n = n.replace(word, " ")
-    n = re.sub(r"[^a-z0-9]+", "-", n).strip("-")
-    return n or "unknown-gpu"
+    """GPU 名 → フォルダ名(例 'NVIDIA GeForce RTX 3070' → 'rtx-3070')。見積もりで「同じ GPU」と見る比べ方
+    (estimate.gpu_key)と同じ。"""
+    return gpu_key(name) or "unknown-gpu"
 
 
 def canonical(data: dict[str, Any]) -> bytes:
@@ -542,15 +547,17 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
 
 @dataclass
 class Report:
-    """1 ファイルの検査の結果。errors があれば受け付けない。warnings は受け付けるが知らせる。
-    review は人が確かめるまで受け付けない
-    (validate は --allow-review が無ければ失敗、aggregate は使わない)。"""
+    """1 ファイルの検査の結果。errors(機械的な検査: 形・値の範囲・個人の情報・重複・ファイル名)があれば
+    受け付けない。warnings は受け付けるが提出した人に知らせる。notices も受け付ける(失敗にしない)が、
+    マージするメンテナが見るもの(式から大きく外れる・段階を変える・一覧に無いモデルなど。
+    CI のジョブのまとめに出す)。2026-10-22 に llmfit に合わせた
+    (それまでの「人が確かめるまで受け付けない」review と REVIEWED は外した)。"""
 
     path: str
     ok: bool = True
     errors: list[dict[str, str]] = field(default_factory=list)
     warnings: list[dict[str, str]] = field(default_factory=list)
-    review: list[dict[str, str]] = field(default_factory=list)
+    notices: list[dict[str, str]] = field(default_factory=list)
     sha256: str | None = None
     suggested_path: str | None = None
     model_id: str | None = None
@@ -563,13 +570,8 @@ class Report:
     def warn(self, code: str, message: str) -> None:
         self.warnings.append({"code": code, "message": message})
 
-    def needs_review(self, code: str, message: str) -> None:
-        self.review.append({"code": code, "message": message})
-
-    def accepted(self, approved: Collection[str] = ()) -> bool:
-        """受け付けるか: 誤りが無く、人が見る項目が無いか、この提出の sha8 を人が確かめた(approved)か。
-        確かめたことは提出ごとに(sha8 で)示す(全部をまとめて許す方法は持たない)。"""
-        return self.ok and (not self.review or (self.sha256 or "")[:8] in approved)
+    def notice(self, code: str, message: str) -> None:
+        self.notices.append({"code": code, "message": message})
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -600,7 +602,9 @@ _TOOL_VERSION = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,4}((a|b|rc|\.dev|\.post)\d{1
 _GPU_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 .-]{1,63}")  # 括弧・記号・自由な文は入れられない
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,199}")
 _PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
-REVIEW_DEVIATION = 0.40  # 式の見積もりから 40% より外れた値は、人が確かめる
+# 式の見積もりから 40% より外れた値は注意(マージするメンテナが見る)。
+# 見積もりで設定の違う推定へ広げる範囲と同じ
+NOTICE_DEVIATION = COMMUNITY_DEVIATION
 _CC = re.compile(r"\d{1,2}\.\d")
 _FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})\.json")
 
@@ -704,9 +708,7 @@ def validate_submission(
             r.gpu_name = name
             known = cc_from_name(name)
             if known is None:
-                r.needs_review(
-                    "unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}"
-                )
+                r.notice("unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}")
             elif cc and parse_compute_cap(cc) != known:
                 r.error(
                     "gpu_inconsistent",
@@ -728,7 +730,7 @@ def validate_submission(
 
     r.sha256 = content_hash(data)
     r.suggested_path = suggested_path(data)
-    if r.ok and db is not None and r.model_id and not r.review:  # 既に人が見るものは重い検査を省く
+    if r.ok and db is not None and r.model_id:
         _check_effect(r, data, db)
     if path is not None and check_filename:
         _check_filename(r, Path(path), data)
@@ -744,7 +746,7 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         r.model_id = mid
         entry = db.get(mid) if db is not None else None
         if db is not None and entry is None:
-            r.needs_review("unknown_model", f"モデル ID が同梱の一覧にありません: {mid}")
+            r.notice("unknown_model", f"モデル ID が同梱の一覧にありません: {mid}")
     outcome = mm.get("outcome")
     if outcome not in OUTCOMES:
         r.error("value", f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}")
@@ -772,7 +774,7 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
     else:
         if outcome == "ok" and peak <= 0:
             r.error("value", "最後まで動いた(ok)のに peak_vram_gb が 0 です")
-        if _num(vram) and peak > vram * 1.02 + VRAM_TOLERANCE_GB:
+        if _num(vram) and peak > vram * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB:
             r.error("value", f"最大 VRAM {peak} GB が GPU の総量 {vram} GB を超えています")
     pram = mm.get("peak_ram_gb")
     if pram is not None:
@@ -827,7 +829,7 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
 def _check_against_estimate(
     r: Report, entry: Any, mm: dict[str, Any], s: dict[str, Any], peak: float
 ) -> None:
-    """式の見積もりと比べ、ありそうにない値を「人が見る」にする(書き換えた提出で見積もりを動かさないため)。"""
+    """式の見積もりと比べ、ありそうにない値を注意にする(失敗にはしない。マージするメンテナが見る)。"""
     from .estimate import activation_gb, apply_precision, components, load_coefficients, need, settings_for
 
     parts = components(entry)
@@ -840,19 +842,21 @@ def _check_against_estimate(
         full = need(parts, activation_gb(entry, settings, c), c).full
     except (TypeError, ValueError):
         return
-    if full > 0 and abs(peak - full) / full > REVIEW_DEVIATION:
-        r.needs_review(
+    if full > 0 and abs(peak - full) / full > NOTICE_DEVIATION:
+        r.notice(
             "deviation",
             f"最大 VRAM {peak} GB が式の見積もり {full:.2f} GB から"
-            f" {abs(peak - full) / full:.0%} 外れています"
-            f"(±{REVIEW_DEVIATION:.0%} を超えたものは人が確かめる)",
+            f" {abs(peak - full) / full:.0%} 外れています(±{NOTICE_DEVIATION:.0%} を超えた。"
+            f"設定の違う推定へは ±{NOTICE_DEVIATION:.0%} までしか広げない)",
         )
-    floor = parts.total + c.overhead_gb
+    # 動的 VRAM・partial で下限より小さいのは普通(一部の重みをメインメモリに置く)。全部載せ(none)と言うのに
+    # 小さいものだけ知らせる。見積もりはどちらも下限(重み + 固定分)で切り詰める(estimate._prepare)
+    floor = parts.total * c.weight_factor + c.overhead_gb
     if mm.get("offload") == "none" and peak < floor:
-        r.needs_review(
+        r.notice(
             "below_weights",
-            f"全部 GPU に載せた(offload: none)のに、最大 VRAM {peak} GB が"
-            f"重みと固定分 {floor:.2f} GB より小さい",
+            f"全部 GPU に載せた(offload: none)のに、最大 VRAM {peak} GB が全部載せの下限"
+            f"(重み + 固定分 {floor:.2f} GB)より小さい。見積もりでは下限の値にする",
         )
 
 
@@ -875,8 +879,8 @@ def _own_measurements(db: Database) -> list[Measurement]:
 def community_effect(
     entry: Any, own: list[Measurement], community: list[Measurement], settings: Settings | None = None
 ) -> tuple[float, list[dict[str, Any]]]:
-    """ほかの利用者の実測を足したときの (全部載せの VRAM が上がる割合, 段階が変わる VRAM の一覧)。
-    段階は COMMON_VRAM_GB で、既定の設定(と settings を渡せばその設定)で比べる。"""
+    """ほかの利用者の実測を足したときの (全部載せの VRAM が変わる割合(符号つき。絶対値の最大のもの),
+    段階が変わる VRAM の一覧)。段階は COMMON_VRAM_GB で、既定の設定(と settings を渡せばその設定)で比べる。"""
     from .estimate import estimate
 
     rise = 0.0
@@ -885,7 +889,8 @@ def community_effect(
         a24 = estimate(entry, _pc(24), s, own)
         b24 = estimate(entry, _pc(24), s, [*own, *community])
         if a24.vram_gb and not a24.unknown_size:
-            rise = max(rise, (b24.vram_gb - a24.vram_gb) / a24.vram_gb)
+            rel = (b24.vram_gb - a24.vram_gb) / a24.vram_gb
+            rise = rel if abs(rel) > abs(rise) else rise
         for v in COMMON_VRAM_GB:
             for ram in CHECK_RAM_GB:
                 a = estimate(entry, _pc(v, ram), s, own)
@@ -898,32 +903,24 @@ def community_effect(
 
 
 def _check_effect(r: Report, data: dict[str, Any], db: Database) -> None:
-    """この提出を(確かめたものとして)足すと、見積もりがどれだけ変わるか。上げすぎ・段階が変わるものは人が見る。"""
-    from .estimate import COMMUNITY_RAISE_CAP
-
+    """この提出だけを足すと、よくある PC で段階がどう変わるか(注意として出す。マージするメンテナが見る)。"""
     mm = data["measurement"]
     entry = db.get(mm["model_id"])
     if entry is None or mm.get("outcome") != "ok" or mm.get("standard") is False:
         return
     m = to_measurement(data)
-    m.consistent, m.approved, m.n_submissions = True, True, 1
+    m.n_submissions, m.n_used, m.n_oom = 1, 1, 0
     own = _own_measurements(db)
     try:
-        rise, changes = community_effect(entry, own, [m], m.settings)
+        _rel, changes = community_effect(entry, own, [m], m.settings)
     except (TypeError, ValueError, ZeroDivisionError):
         return
-    if rise > COMMUNITY_RAISE_CAP:
-        r.needs_review(
-            "raise_too_large",
-            f"見積もりの全部載せの VRAM を {rise:.0%} 上げます"
-            f"(+{COMMUNITY_RAISE_CAP:.0%} を超えるものは人が確かめる)",
-        )
     if changes:
         where = "、".join(
             f"VRAM {c['vram_gb']} GB・メモリ {c['ram_gb']:g} GB: {c['before']} → {c['after']}"
             for c in changes[:6]
         )
-        r.needs_review("fit_change", f"よくある VRAM で段階が変わります({where})")
+        r.notice("fit_change", f"よくある VRAM で段階が変わります({where})")
 
 
 def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
@@ -944,28 +941,6 @@ def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
 
 class SubmissionReadError(ValueError):
     """読めない提出(大きすぎる・シンボリックリンク・JSON でない・入れ子が深すぎる)。"""
-
-
-REVIEWED_FILE = "REVIEWED"  # data/contrib/REVIEWED: 人が確かめた提出の sha8 と理由(作者だけが書く)
-_REVIEWED_LINE = re.compile(r"([0-9a-f]{8})\s+(\S.*)")
-
-
-def read_reviewed(path: str | os.PathLike[str]) -> dict[str, str]:
-    """人が確かめた提出の一覧 {sha8: 理由}。1 行に「sha8 理由」(# で始まる行と空行は飛ばす)。
-    形の違う行は ValueError(理由の無い承認を作らない)。ファイルが無ければ空。"""
-    p = Path(path)
-    if not p.is_file() or p.is_symlink():
-        return {}
-    out: dict[str, str] = {}
-    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        m = _REVIEWED_LINE.fullmatch(s)
-        if not m:
-            raise ValueError(f"{p.name} の {i} 行目は「sha8 理由」の形にしてください")
-        out[m.group(1)] = m.group(2)
-    return out
 
 
 def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
@@ -1086,7 +1061,6 @@ class Submission:
     path: str
     sha256: str
     data: dict[str, Any]
-    approved: bool = False  # 人が確かめた(REVIEWED にある)提出
 
     @property
     def measurement(self) -> Measurement:
@@ -1094,20 +1068,17 @@ class Submission:
 
 
 def load_dir(
-    root: str | os.PathLike[str], db: Database | None = None, *, approved: Collection[str] | None = None
+    root: str | os.PathLike[str], db: Database | None = None
 ) -> tuple[list[Submission], list[Report]]:
-    """フォルダの提出を読み、検査を通ったものだけ返す(同じ内容は 1 件)。(通ったもの, 全部の検査結果)。
-    人が見る項目(review)のある提出は、その sha8 が approved(省くと <root>/REVIEWED)に無ければ使わない。"""
-    if approved is None:
-        approved = set(read_reviewed(Path(root) / REVIEWED_FILE))
+    """フォルダの提出を読み、検査を通ったもの(誤りの無いもの。注意があっても使う)だけ返す
+    (同じ内容は 1 件)。(通ったもの, 全部の検査結果)。"""
     files = find_files(root)
     reports = validate_files(files, db)
     subs: list[Submission] = []
     for p, r in zip(files, reports, strict=True):
-        if r.accepted(approved) and r.sha256:
+        if r.ok and r.sha256:
             data, _ = read_submission(p)
-            reviewed = bool(r.review)  # 人が確かめて受け付けた
-            subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data, approved=reviewed))
+            subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
     return subs, reports
 
 
@@ -1155,7 +1126,8 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
             mad, rel = 0.0, 0.0
             outcome = "oom"
         first = ms[0]
-        # OOM を含む組はそろったとみなさない(同じ構成で動かなかった人がいる)
+        # consistent は係数の合わせ直し(calibrate)に入れる条件。見積もりは ok の行を 1 件から使う
+        # (estimate.usable)。OOM を含む組はそろったとみなさない(同じ構成で動かなかった人がいる)
         consistent = outcome == "ok" and not oom and len(used) >= MIN_CONSISTENT and rel <= CONSISTENT_REL
         settings = {k: v for k, v in asdict(first.settings).items() if v is not None}
         if settings.get("precision"):
@@ -1184,8 +1156,6 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 "origin": ORIGIN_COMMUNITY,
                 "n_submissions": len(ms),
                 "consistent": consistent,
-                # 人が確かめた提出を含む組だけが、見積もりを +15% より上げられる(estimate.COMMUNITY_RAISE_CAP)
-                "approved": any(s.approved for s in members),
                 "n_used": len(used),
                 "n_outliers": len(outliers),
                 "n_oom": len(oom),
@@ -1212,9 +1182,10 @@ def community_document(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "最後まで動いた(ok)ものの最大 VRAM で、"
             f"|x - 中央値| / ({MAD_SCALE} × MAD) > {OUTLIER_Z} を外れ値として除き"
             "(3 件以上のとき。MAD は中央値の "
-            f"{MAD_FLOOR_REL:.0%} を下限)、残りの中央値を値にする。使った件数が {MIN_CONSISTENT} 以上で、"
-            "幅が中央値の "
-            f"{CONSISTENT_REL:.0%} 以内なら consistent(見積もりに使う)"
+            f"{MAD_FLOOR_REL:.0%} を下限)、残りの中央値を値にする。ok の行は 1 件から見積もりに使う"
+            "(件数は n_used、同じ構成の OOM は n_oom)。使った件数が "
+            f"{MIN_CONSISTENT} 以上で、幅が中央値の {CONSISTENT_REL:.0%} 以内で、OOM が無ければ consistent"
+            "(係数の合わせ直しに入れる)"
         ),
         "measurements": rows,
     }
@@ -1297,7 +1268,9 @@ def accuracy_report(db: Database, threshold_pct: float = DEFAULT_THRESHOLD_PCT) 
             b[f"{k}_mean_abs_pct"] = round(sum(errs) / len(errs), 1) if errs else None
             b[f"{k}_max_abs_pct"] = round(max(errs), 1) if errs else None
     own = _own_measurements(db)
-    comm = [m for m in db.measurements if getattr(m, "origin", None) == ORIGIN_COMMUNITY and m.consistent]
+    from .estimate import usable
+
+    comm = [m for m in db.measurements if getattr(m, "origin", None) == ORIGIN_COMMUNITY and usable(m)]
     fit_changes: list[dict[str, Any]] = []
     for mid in sorted({m.model_id for m in comm}):
         entry = db.get(mid)

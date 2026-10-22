@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 from datetime import date
 from pathlib import Path
@@ -19,7 +20,7 @@ from genmodelfit.calibrate import build_check_rows, build_rows, calibrate
 from genmodelfit.db import COMMUNITY_FILE, Database, bundled_text, load, parse_measurements
 from genmodelfit.estimate import estimate, pick_measurement, usable
 from genmodelfit.models import BASIS_DETAILS, Gpu, Measurement, Settings, SystemInfo
-from genmodelfit.recommend import score_components, total_score
+from genmodelfit.recommend import score_components
 
 FIX = Path(__file__).parent / "fixtures" / "contrib"
 TODAY = date(2026, 10, 21)
@@ -332,7 +333,7 @@ def test_validate_warnings_do_not_fail(key, value, code, db):
     d = good()
     _set(d, key, value)
     r = contrib.validate_submission(d, db, today=TODAY)
-    assert r.ok and r.accepted(), (r.errors, r.review)
+    assert r.ok, r.errors
     assert code in {w["code"] for w in r.warnings}
 
 
@@ -342,48 +343,47 @@ def test_validate_warnings_do_not_fail(key, value, code, db):
         ("measurement.model_id", "image_not_in_db", "unknown_model"),
         ("system.gpu.name", "AMD Radeon RX 7900 XTX", "unknown_gpu"),
         ("measurement.peak_vram_gb", 2.0, "deviation"),  # 式の見積もり(約 8 GB)から 40% より外れる
-        ("measurement.offload", "none", "below_weights"),  # 全部載せなのに重み + 固定分より小さい
+        (
+            "measurement.offload",
+            "none",
+            "below_weights",
+        ),  # 全部載せなのに重み + 固定分より小さい(見積もりは下限)
     ],
 )
-def test_validate_review_required(key, value, code, db, tmp_path, capsys):
+def test_validate_notices_do_not_fail(key, value, code, db, tmp_path, capsys):
+    """llmfit と同じく、機械的な検査だけを失敗にする(2026-10-22)。式から外れる・一覧に無いモデルなどは
+    確認(notices)としてジョブのまとめに出すだけで、まとめにも使う(マージするメンテナが見る)。"""
     d = good()
     _set(d, key, value)
     if key == "system.gpu.name":  # 表に無い GPU は世代・compute の照合もしない
         d["system"]["gpu"]["arch"] = d["system"]["gpu"]["compute_capability"] = None
     r = contrib.validate_submission(d, db, today=TODAY)
-    assert r.ok and code in {v["code"] for v in r.review}, r.review
-    sha8 = r.sha256[:8]
-    assert not r.accepted() and not r.accepted({"00000000"}) and r.accepted({sha8})  # 確かめるのは提出ごと
+    assert r.ok and code in {v["code"] for v in r.notices}, (r.errors, r.notices)
     p = tmp_path / contrib.suggested_path(d).split("/", 2)[2]
     p.parent.mkdir(parents=True)
     p.write_text(contrib.dumps(d), encoding="utf-8")
-    assert cli.main(["contrib", "validate", str(p)]) == 1  # 人が確かめるまで通さない
-    assert cli.main(["contrib", "validate", str(p), "--allow-review", "00000000"]) == 1
-    assert cli.main(["contrib", "validate", str(p), "--allow-review", f"00000000,{sha8}"]) == 0
-    capsys.readouterr()
+    assert cli.main(["contrib", "validate", str(p)]) == 0
+    out = capsys.readouterr().out
+    assert "確認 " + code in out and "ok with notices" in out
+    assert cli.main(["contrib", "validate", str(p), "--markdown"]) == 0
+    md = capsys.readouterr().out
+    assert "マージする人へ: 確認の項目のある提出が 1 件あります" in md and "ok(**確認**)" in md
     subs, _ = contrib.load_dir(tmp_path, db)
-    assert subs == []  # まとめにも使わない
-    (tmp_path / "REVIEWED").write_text(f"# 作者が確かめた提出\n{sha8} PR #99 で確かめた\n", encoding="utf-8")
-    subs, _ = contrib.load_dir(tmp_path, db)  # <DIR>/REVIEWED を読む
-    assert len(subs) == 1 and subs[0].approved
-    assert contrib.aggregate(subs)[0]["approved"] is True
-    assert cli.main(["contrib", "validate", str(p), "--reviewed", str(tmp_path / "REVIEWED")]) == 0
-    capsys.readouterr()
+    assert len(subs) == 1  # まとめにも使う
 
 
-def test_reviewed_list_and_allow_review_need_sha8(tmp_path, capsys):
-    bad = tmp_path / "REVIEWED"
-    bad.write_text("deadbeef\n", encoding="utf-8")  # 理由の無い承認は作らない
-    with pytest.raises(ValueError):
-        contrib.read_reviewed(bad)
-    assert contrib.read_reviewed(tmp_path / "none") == {}
-    with pytest.raises(SystemExit) as e:  # 全部をまとめて許す書き方は無い
-        cli.main(["contrib", "validate", str(FIX), "--allow-review"])
-    assert e.value.code == 2
-    with pytest.raises(SystemExit) as e:
-        cli.main(["contrib", "validate", str(FIX), "--allow-review", "all"])
-    assert e.value.code == 2
-    assert cli.main(["contrib", "validate", str(FIX), "--reviewed", str(bad)]) == 1
+def test_review_flags_and_reviewed_list_are_gone(tmp_path, capsys):
+    """人が sha8 ごとに確かめる仕組み(--allow-review・--reviewed・data/contrib/REVIEWED)は外した
+    (2026-10-22)。"""
+    assert not hasattr(contrib, "read_reviewed") and not hasattr(contrib, "REVIEWED_FILE")
+    for args in (
+        ["contrib", "validate", str(FIX), "--allow-review", "deadbeef"],
+        ["contrib", "validate", str(FIX), "--reviewed", str(tmp_path / "REVIEWED")],
+        ["contrib", "aggregate", str(FIX), "--allow-review", "deadbeef"],
+    ):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args)
+        assert e.value.code == 2
     capsys.readouterr()
 
 
@@ -510,16 +510,22 @@ def test_aggregate_outliers_counts_and_determinism():
     assert main["outlier_submissions"] == [_sub(3.1).sha256[:8]]
     assert main["origin"] == "community" and main["source"].startswith("community")
     one = by[("NVIDIA GeForce RTX 4060", 832, "ok")]
-    assert one["n_used"] == 1 and one["consistent"] is False  # 1 件だけは使わない
+    assert one["n_used"] == 1 and one["consistent"] is False  # 1 件は係数の合わせ直しには入れない
     oom = by[("NVIDIA GeForce RTX 3070", 1024, "oom")]
     assert oom["n_oom"] == 2 and oom["consistent"] is False
     ms = parse_measurements(contrib.community_document(rows))
-    assert [usable(m) for m in ms].count(True) == 1  # まとめた行のうち見積もりに使うのは 1 行
+    # 見積もりには ok の行を 1 件から使う(OOM だけの行は使わない)。件数(n_used・n_oom)も読める
+    assert [usable(m) for m in ms].count(True) == 2
+    assert {(m.n_used, m.n_oom) for m in ms if usable(m)} == {(3, 0), (1, 0)}
+    assert "approved" not in main
 
 
 def test_group_with_any_oom_is_not_consistent():
+    """ok と OOM が混ざる組は ok の中央値を使い、OOM の件数も持つ(perfect の根拠にはしない)。"""
     rows = contrib.aggregate([_sub(6.9), _sub(7.0), _sub(7.9, outcome="oom")])
     assert rows[0]["n_oom"] == 1 and rows[0]["consistent"] is False
+    assert rows[0]["outcome"] == "ok" and rows[0]["peak_vram_gb"] == 6.95 and rows[0]["n_used"] == 2
+    assert usable(Measurement.from_dict(rows[0]))
 
 
 def test_grouping_normalizes_gpu_names_and_precision():
@@ -558,61 +564,136 @@ def test_bundled_community_file_is_regenerated_from_data_contrib(db):
 
 
 def _community(m: Measurement, **kw) -> Measurement:
-    d = {**vars(m), "settings": m.settings, "origin": "community", "n_submissions": 3, "consistent": True}
+    d = {
+        **vars(m),
+        "settings": m.settings,
+        "origin": "community",
+        "n_submissions": 3,
+        "n_used": 3,
+        "n_oom": 0,
+        "consistent": True,
+        "vram_metric": None,
+    }
     d.update(kw)
     return Measurement(**d)
 
 
+def _floor(entry, s: Settings) -> float:
+    """全部 GPU に載せたときの物理的な下限(重み + 固定分。作業用メモリ 0)。"""
+    from genmodelfit.estimate import apply_precision, components, load_coefficients, need
+
+    c = load_coefficients()
+    return need(apply_precision(components(entry), entry, s), 0.0, c).full
+
+
 def test_basis_ordering(db):
+    """ほかの利用者の実測は 1 件から、両方の向きに使う(2026-10-22、llmfit に合わせた)。"""
     entry = db.get("image_sdxl_simple")
     maint = [m for m in db.measurements if m.model_id == entry.id and m.origin is None and usable(m)]
     assert len(maint) == 1 and maint[0].settings.width == 832
-    s640 = Settings(width=640, height=640)
+    s1536 = Settings(width=1536, height=1536)
     system = pc(12)
 
-    def est(ms, s=s640):
-        return estimate(entry, system, s, ms)
+    def est(ms, s=s1536, sysi=system):
+        return estimate(entry, sysi, s, ms)
 
     base = est(maint)
     assert (est([]).basis, est([]).basis_detail) == ("estimated", "estimated")
     assert (base.basis, base.basis_detail) == ("estimated", "calibrated")
-    # 正直に大きい値: 必要量を上げ、値は実測そのもの(basis measured、点数は推定と同じ 0)
+    assert base.sample_count == 1 and est([]).sample_count is None
+    # 大きい値: 値は実測そのもの(basis measured、点数も実測として数える)。件数を持つ
     high = _community(
-        maint[0],
-        gpu_name="NVIDIA GeForce RTX 3070",
-        gpu_vram_gb=12.0,
-        peak_vram_gb=base.vram_gb + 2,
-        approved=True,  # 人が確かめた(+15% を超えて上げられる)
+        maint[0], gpu_name="NVIDIA GeForce RTX 3070", gpu_vram_gb=12.0, peak_vram_gb=base.vram_gb + 2
     )
-    high.settings = Settings(width=640, height=640, steps=20)
+    high.settings = Settings(width=1536, height=1536, steps=20)
     e = est([*maint, high])
-    assert (e.basis, e.basis_detail) == ("measured", "measured_community")
+    assert (e.basis, e.basis_detail, e.sample_count) == ("measured", "measured_community", 3)
     assert e.vram_gb == round(high.peak_vram_gb, 2) and e.vram_gb > base.vram_gb
-    assert e.measured_on.startswith("NVIDIA GeForce RTX 3070") and any("中央値" in r for r in e.reasons)
-    assert score_components(entry, e, system)["basis"] == 0.0
-    # 小さい値: 使わない(値・段階・点数は、ほかの利用者の実測が無いときと同じ)
-    low = _community(high, peak_vram_gb=1.0)
-    e = est([*maint, low])
-    assert (e.basis, e.basis_detail) == ("estimated", "measured_community")
-    for k in ("vram_gb", "vram_sequential_gb", "vram_offload_gb", "ram_gb", "fit", "run_mode"):
-        assert getattr(e, k) == getattr(base, k), k
-    assert score_components(entry, e, system) == score_components(entry, base, system)
-    # 同じ設定なら作者の実測が先
-    same_maint = Measurement(**{**vars(maint[0]), "settings": Settings(width=640, height=640)})
-    e = est([high, same_maint])
-    assert (e.basis, e.basis_detail) == ("measured", "measured")
+    assert e.measured_on.startswith("NVIDIA GeForce RTX 3070")
+    assert any(f"ほかの利用者の実測 3 件(中央値 {high.peak_vram_gb:.2f} GB)" in r for r in e.reasons)
     assert score_components(entry, e, system)["basis"] == 100.0
-    loose = _community(high, consistent=False)
-    e = est([*maint, loose])  # そろっていない提出は使わない
-    assert e.basis_detail == "calibrated" and e.measured_on is None
-    assert pick_measurement([loose], entry, s640) is None
+    assert e.to_dict()["sample_count"] == 3
+    # 小さい値: 必要量を下げる。ただし重み + 固定分(物理的な下限)より下げない
+    floor = _floor(entry, s1536)
+    low = _community(high, peak_vram_gb=floor - 1.0)
+    e = est([*maint, low])
+    assert e.vram_gb == round(floor, 2) < base.vram_gb
+    assert (e.basis, e.basis_detail) == ("estimated", "measured_community")  # 値は実測ではない(下限)
+    assert any("下限" in r for r in e.reasons)
+    mid = _community(high, peak_vram_gb=round(floor + 0.3, 2))  # 下限より上なら、そのまま使う
+    e = est([*maint, mid])
+    assert e.vram_gb == mid.peak_vram_gb < base.vram_gb and e.basis == "measured"
+    # 1 件だけ・そろっていない(consistent でない)まとめも使う
+    one = _community(high, n_submissions=1, n_used=1, consistent=False)
+    e = est([*maint, one])
+    assert e.basis_detail == "measured_community" and e.sample_count == 1
+    assert pick_measurement([one], entry, s1536) is one
+    # 同じ設定なら、この PC と同じ名前の GPU の実測 → 作者の実測 → ほかの利用者の実測
+    same_maint = Measurement(**{**vars(maint[0]), "settings": Settings(width=1536, height=1536)})
+    e = est([high, same_maint])  # この PC は RTX 3070。同じ GPU のほかの利用者の実測が先
+    assert e.basis_detail == "measured_community"
+    e = est([high, same_maint], sysi=pc(12, "NVIDIA GeForce RTX 4090"))  # 別の GPU なら作者の実測が先
+    assert (e.basis, e.basis_detail) == ("measured", "measured")
     assert set(BASIS_DETAILS) == {"measured", "measured_community", "calibrated", "estimated"}
-    d = e.to_dict()  # JSON は後方互換: basis は 2 値のまま、basis_detail を足しただけ
+    d = e.to_dict()  # JSON は後方互換: basis は 2 値のまま、basis_detail と sample_count を足しただけ
     assert d["basis"] in ("measured", "estimated") and d["basis_detail"] in BASIS_DETAILS
 
 
+def test_community_value_is_capped_at_the_gpu_size(db):
+    """GPU の総量 × 1.02 + 0.25 GiB を超える値(validate の「ありえない値」)は、見積もりでも総量までにする。"""
+    entry = db.get("image_sdxl_simple")
+    m = next(x for x in db.measurements if x.model_id == entry.id)
+    big = _community(m, gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24.0, peak_vram_gb=40.0)
+    e = estimate(entry, pc(48, "NVIDIA GeForce RTX 4090"), Settings(width=832, height=832), [big])
+    assert e.vram_gb == round(24.0 * 1.02 + 0.25, 2) and e.basis == "estimated"
+    assert any("GPU の総量を超える" in r for r in e.reasons)
+
+
+def _unmeasured_image(db):
+    measured = {m.model_id for m in db.measurements}
+    return next(
+        e
+        for e in db.models
+        if e.modality == "image" and e.id not in measured and e.total_size_bytes and e.reviewed
+    )
+
+
+def test_calibrated_spread_is_bounded(db):
+    """設定の違う推定へ広げるときは、実測 ÷ 式 を [0.6, 1.4] に収める(llmfit の [0.05, 3.0] に当たる)。"""
+    from genmodelfit.estimate import COMMUNITY_CALIBRATION_RANGE
+
+    assert COMMUNITY_CALIBRATION_RANGE == (0.6, 1.4)
+    entry = _unmeasured_image(db)
+    s512, sdef = Settings(width=512, height=512), None
+    sysi = pc(48, "NVIDIA GeForce RTX 4090")
+    est_m = estimate(entry, sysi, s512, []).vram_gb
+    a = estimate(entry, sysi, sdef, [])
+    assert a.settings["width"] == 1024  # 既定の設定は、ほかの利用者の実測の設定に変えない
+    for factor, sign in ((1.8, 1), (0.2, -1)):
+        m = _community(
+            Measurement(
+                model_id=entry.id, gpu_name="NVIDIA A100-SXM4-80GB", gpu_vram_gb=80.0, peak_vram_gb=1
+            ),
+            peak_vram_gb=round(est_m * factor, 2),
+            settings=s512,
+        )
+        same = estimate(entry, sysi, s512, [m])
+        other = estimate(entry, sysi, sdef, [m])
+        assert other.basis_detail == "calibrated" and other.sample_count == 3
+        if sign > 0:
+            assert same.vram_gb == m.peak_vram_gb  # 同じ設定なら実測そのもの(上は GPU の総量まで)
+            assert other.vram_gb == pytest.approx(a.vram_gb + 0.4 * est_m, abs=0.02)
+        else:
+            assert same.vram_gb == round(_floor(entry, s512), 2)  # 同じ設定でも物理的な下限まで
+            assert other.vram_gb >= max(
+                _floor(entry, Settings(width=1024, height=1024)), a.vram_gb - 0.4 * est_m
+            )
+            assert other.vram_gb < a.vram_gb
+
+
 def test_torch_reserved_is_a_lower_bound(db):
-    """torch_reserved(CUDA の文脈を含まない)は「これ以上」としてだけ使う。作者の RTX 3070 の 2 件も同じ。"""
+    """作者の torch_reserved の実測(CUDA の文脈を含まない)は「これ以上」としてだけ使う(RTX 3070 の 2 件)。
+    ほかの利用者の実測は物理的な下限まで下げてよい(上の試験)。"""
     for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
         entry = db.get(mid)
         ms = [m for m in db.measurements if m.model_id == mid]
@@ -646,23 +727,25 @@ def _poison(db, peaks, *, offload="none", gpu=("NVIDIA GeForce RTX 4090", 24.0, 
     return out
 
 
-def test_poisoned_submissions_cannot_lower_needs_or_raise_levels_and_scores(db):
+def test_poisoned_low_submissions_stop_at_the_physical_floor(db):
+    """書き換えた小さな値の提出 2 件(以前の決まりで防いでいた攻撃)。今の決まりでは必要量を下げるが、
+    全部載せの値は重み + 固定分より下げない。validate は失敗にせず、確認(below_weights・deviation)を出す
+    (マージするメンテナが見る。docs/accuracy.md「残る危険」)。"""
     poisoned = _poison(db, (0.5, 0.505))
     assert len(poisoned) > 250
-    flagged = 0
+    noticed = 0
     for t, subs in poisoned:
         r = contrib.validate_submission(subs[0].data, db, today=TODAY, check_filename=False)
-        flagged += not r.accepted()
+        assert r.ok
+        noticed += bool({v["code"] for v in r.notices} & {"below_weights", "deviation"})
         cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
-        assert cm[0].consistent  # 検査を素通りさせても(--allow-review)、見積もりは動かない
-        for v in (8, 12, 16, 24):
+        for v in (8, 24):
             a = estimate(t, pc(v), None, db.measurements)
             b = estimate(t, pc(v), None, [*db.measurements, *cm])
-            for k in ("vram_gb", "vram_sequential_gb", "vram_offload_gb", "ram_gb"):
-                assert (getattr(b, k) or 0) >= (getattr(a, k) or 0) - 1e-9, (t.id, v, k)
-            assert ORDER.index(b.fit) <= ORDER.index(a.fit), (t.id, v, a.fit, b.fit)
-            assert total_score(score_components(t, b, pc(v))) <= total_score(score_components(t, a, pc(v)))
-    assert flagged == len(poisoned)  # どれも人が確かめる(式から 40% より外れ、重み + 固定分より小さい)
+            s = Settings(**b.settings)
+            assert b.vram_gb >= round(_floor(t, s), 2) - 0.011, (t.id, v)
+            assert b.vram_gb <= a.vram_gb + 1e-9, (t.id, v)
+    assert noticed == len(poisoned)  # どれもマージする人に知らせる
 
 
 def _upward(db, factor, models):
@@ -687,73 +770,121 @@ def _sized(db):
     return [t for t in db.models if not estimate(t, pc(24), None, db.measurements).unknown_size]
 
 
-def test_upward_poisoning_needs_per_sha_approval(db):
-    """攻撃の台本 poison3.py: 検査の閾値 40% の内側(+39%)の提出 2 件。確かめていなければ、検査を素通りさせても
-    段階を変えず、必要量は +15% までしか上げない。"""
-    models = _sized(db)
+def test_upward_submissions_raise_needs_and_are_noticed(db):
+    """+39% の提出 2 件: 同じ設定では値をそのまま使い(必要量を上げる)、validate は失敗にしない。
+    よくある PC で段階を変える提出は確認(fit_change)としてマージする人に知らせる。"""
+    measured = {m.model_id for m in db.measurements}
+    models = [t for t in _sized(db) if t.id not in measured][::12]
+    changed = 0
     for t, subs in _upward(db, 1.39, models):
         cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
-        assert cm[0].consistent and not cm[0].approved
-        for v in (4, 6, 8, 12, 16, 24, 32, 48):
-            for ram in (16, 64):
-                sysi = pc(v)
-                sysi.ram_total_gb = sysi.ram_available_gb = ram
-                a = estimate(t, sysi, None, db.measurements)
-                b = estimate(t, sysi, None, [*db.measurements, *cm])
-                assert (b.fit, b.run_mode) == (a.fit, a.run_mode), (t.id, v, ram)
-                assert b.vram_gb <= a.vram_gb * 1.15 + 0.011, (t.id, v)
-                assert total_score(score_components(t, b, sysi)) <= total_score(score_components(t, a, sysi))
-
-
-def test_upward_submissions_are_review_required(db):
-    """validate は、段階を変える・+15% を超えて上げる提出を「要確認」にする
-    (確かめたものとして足したときの効き目で見る)。"""
-    models = _sized(db)[::12]
-    accepted = 0
-    for t, subs in _upward(db, 1.39, models):
+        b = estimate(t, pc(24), None, [*db.measurements, *cm])
+        assert b.vram_gb == cm[0].peak_vram_gb and b.basis_detail == "measured_community", t.id
+        assert b.sample_count == 2
         r = contrib.validate_submission(subs[0].data, db, today=TODAY, check_filename=False)
         assert r.ok
-        if r.accepted():
-            accepted += 1
-            approved = [Measurement.from_dict({**x, "approved": True}) for x in contrib.aggregate(subs)]
-            rise, changes = contrib.community_effect(t, contrib._own_measurements(db), approved)
-            assert rise <= 0.15 + 1e-9 and changes == [], (t.id, rise, changes)
-        else:
-            assert {v["code"] for v in r.review} & {"raise_too_large", "fit_change", "deviation"}
-    assert accepted < len(models)
+        _rel, changes = contrib.community_effect(t, contrib._own_measurements(db), cm)
+        if changes:
+            changed += 1
+            assert "fit_change" in {v["code"] for v in r.notices}, t.id
+    assert changed > 0
 
 
-def test_honest_higher_submissions_raise_needs(db):
-    measured = {m.model_id for m in db.measurements}
-    entry = next(
-        e for e in db.models if e.modality == "image" and e.id not in measured and e.total_size_bytes
-    )
+def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path):
+    """理由・info・JSON に区分と件数を出す(info の fit の行は measured_community n=3、表の VRAM は c)。"""
+    entry = _unmeasured_image(db)
     a = estimate(entry, pc(16), None, db.measurements)
-    sett = {k: v for k, v in a.settings.items() if k != "batch" and v is not None}
-    subs = []
-    for i, v in enumerate((a.vram_gb * 1.3, a.vram_gb * 1.31)):
-        d = good()
-        d["system"]["gpu"].update(
-            name="NVIDIA GeForce RTX 4090", vram_gb=24.0, arch="ada", compute_capability="8.9"
-        )
-        d["measurement"].update(model_id=entry.id, settings=sett, peak_vram_gb=round(v, 2), note=f"x{i}")
-        subs.append(contrib.Submission(path=f"p{i}", sha256=contrib.content_hash(d), data=d))
-    for s in subs:
-        s.approved = True  # 人が確かめた(REVIEWED にある)提出
-    cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
-    assert cm[0].approved
-    b = estimate(entry, pc(16), None, [*db.measurements, *cm])
-    assert b.vram_gb > a.vram_gb and (b.basis, b.basis_detail) == ("measured", "measured_community")
-    assert b.vram_gb == cm[0].peak_vram_gb  # measured のときの値は実測そのもの
-    # 確かめていなければ +15% まで(値は実測ではないので basis は estimated)
-    for s in subs:
-        s.approved = False
-    cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
-    c = estimate(entry, pc(48), None, [*db.measurements, *cm])
-    a48 = estimate(entry, pc(48), None, db.measurements)
-    assert a48.vram_gb < c.vram_gb <= round(a48.vram_gb * 1.15, 2) + 0.01
-    assert (c.basis, c.basis_detail) == ("estimated", "measured_community")
-    assert any("+15%" in r for r in c.reasons)
+    sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
+    row = _community(
+        Measurement(model_id=entry.id, gpu_name="NVIDIA A100-SXM4-80GB", gpu_vram_gb=80.0, peak_vram_gb=1),
+        peak_vram_gb=round(a.vram_gb * 1.1, 2),
+        settings=sett,
+    )
+    meas = tmp_path / "cache" / "measurements"
+    meas.mkdir(parents=True)
+    (meas / "community.json").write_text(
+        json.dumps({"measurements": [vars(row) | {"settings": vars(row.settings)}]}), encoding="utf-8"
+    )
+    assert cli.main(["info", entry.id, "--vram", "16", "--ram", "32", "--no-cache"]) == 0
+    out = capsys.readouterr().out
+    assert "measured: measured_community n=3" in out and "ほかの利用者の実測 3 件(中央値" in out
+    assert cli.main(["info", entry.id, "--vram", "16", "--ram", "32", "--no-cache", "--json"]) == 0
+    e = json.loads(capsys.readouterr().out)["estimate"]
+    assert (e["basis_detail"], e["sample_count"]) == ("measured_community", 3)
+    args = ["fit", "--vram", "16", "--ram", "32", "--no-cache", "--all-workflows", "--min-fit", "too_tight"]
+    assert cli.main([*args, "--modality", "image", "-n", "500"]) == 0
+    out = capsys.readouterr().out
+    assert "c = measured by other users" in out  # 凡例
+    assert re.search(r" \d+\.\dc ", out), out  # 表の VRAM はほかの利用者の実測に c を付ける
+
+
+# --- NVIDIA 以外の GPU の段階(同じ GPU の実測があれば good の上限を外す) -----------------------------
+
+FAKE_AMD = "AMD Radeon RX 9999 XT"  # 架空の GPU(試験用)
+
+
+def amd_pc(vram: float = 24.0, name: str = FAKE_AMD) -> SystemInfo:
+    g = Gpu(
+        name=name,
+        vendor="amd",
+        vram_total_gb=vram,
+        backend="rocm",
+        compute_dtype="fp16",
+        bf16=True,
+        fp8=False,
+        gfx_target="gfx1201",
+    )
+    return SystemInfo(os="test", cpu="test", cpu_cores=8, ram_total_gb=64, ram_available_gb=64, gpus=[g])
+
+
+def test_non_nvidia_good_cap_is_lifted_by_a_same_gpu_measurement(db):
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id]
+    a = estimate(entry, amd_pc(), None, maint)
+    assert a.fit == "good" and any("推定(AMD・実測なし)なので" in r for r in a.reasons)
+    sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
+    amd = _community(maint[0], gpu_name=FAKE_AMD, gpu_vram_gb=24.0, peak_vram_gb=8.2, settings=sett, n_used=1)
+    b = estimate(entry, amd_pc(), None, [*maint, amd])
+    assert (b.fit, b.basis_detail, b.sample_count) == ("perfect", "measured_community", 1)
+    assert any("段階の上限(good)を外した" in r for r in b.reasons)
+    # ほかの条件は残す: 名前の違う GPU の実測・torch_reserved・同じ構成の OOM の報告・張り付いた実測は
+    # perfect の根拠にしない
+    for kw in (
+        {"gpu_name": "AMD Radeon RX 7900 XTX"},
+        {"vram_metric": "torch_reserved"},
+        {"n_oom": 1},
+        {"gpu_vram_gb": 8.0, "peak_vram_gb": 7.9},
+    ):
+        c = estimate(entry, amd_pc(), None, [*maint, _community(amd, **kw)])
+        assert c.fit == "good", kw
+    c = estimate(entry, amd_pc(), None, [*maint, _community(amd, n_oom=1)])
+    assert any("OOM の報告 1 件" in r for r in c.reasons)
+    # 実測の GPU より小さい VRAM の同じ名前の GPU(別の版)では段階の根拠にしない
+    assert estimate(entry, amd_pc(16.0), None, [*maint, amd]).fit == "good"
+
+
+def test_community_measurement_on_the_same_gpu_sets_the_level(db):
+    """#26 の「実測で段階を決める」は、同じ名前の GPU のほかの利用者の実測にも使う(作者の実測と同じ扱い)。"""
+    from genmodelfit.estimate import _measured_band, gpu_precision
+
+    entry = db.get("video_wan2_2_5B_ti2v")
+    a = estimate(entry, pc(16, "NVIDIA GeForce RTX 4060 Ti"), None, [])
+    sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
+    m = _community(
+        Measurement(
+            model_id=entry.id, gpu_name="NVIDIA GeForce RTX 4060 Ti", gpu_vram_gb=16.0, peak_vram_gb=1
+        ),
+        peak_vram_gb=15.2,
+        settings=sett,
+        offload="dynamic",
+    )
+    for name, expect in (("NVIDIA GeForce RTX 4060 Ti", "good"), ("NVIDIA GeForce RTX 4070 Ti SUPER", None)):
+        sysi = pc(16, name)
+        s = Settings(**a.settings)
+        band = _measured_band(m, entry, s, sysi, gpu_precision(entry, sysi, s))
+        assert (band[0] if band else None) == expect, name
+    e = estimate(entry, pc(16, "NVIDIA GeForce RTX 4060 Ti"), None, [m])
+    assert e.fit in ("perfect", "good") and e.run_mode == "gpu"
 
 
 def test_cli_info_json_has_basis_detail(capsys):
@@ -820,7 +951,7 @@ def test_cli_validate_json_and_exit_codes(tmp_path, capsys):
         "files",
         "valid",
         "invalid",
-        "review",
+        "notices",
         "warnings",
         "reports",
     }
@@ -830,7 +961,7 @@ def test_cli_validate_json_and_exit_codes(tmp_path, capsys):
         "ok",
         "errors",
         "warnings",
-        "review",
+        "notices",
         "sha256",
         "suggested_path",
         "model_id",
@@ -936,7 +1067,7 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
         "files",
         "valid",
         "invalid",
-        "review",
+        "notices",
         "submissions_used",
         "groups",
         "consistent",
@@ -1028,9 +1159,9 @@ def test_contrib_workflow_is_read_only_and_uses_base_tool():
     for s in job["steps"]:
         if "genmodelfit contrib" in s.get("run", ""):
             assert "::stop-commands::" in s["run"] and "cat " not in s["run"]
-            assert "--reviewed tool/data/contrib/REVIEWED" in s["run"]  # 確かめた一覧は PR の向き先のもの
+            assert "--reviewed" not in s["run"] and "--allow-review" not in s["run"]  # 2026-10-22 に外した
             assert "SHOW_ERR" in s["run"]  # 標準エラーも無害にしてまとめに書く
     assert "md_cell" in doc["env"]["SHOW_ERR"]
-    assert "data/contrib/REVIEWED" in outside_text(job)
+    assert "REVIEWED" not in json.dumps(doc)
     outside = next(s for s in job["steps"] if "data/contrib の外" in s.get("name", ""))
     assert "exit 1" in outside["run"]  # data/contrib の外を変えた PR は失敗
