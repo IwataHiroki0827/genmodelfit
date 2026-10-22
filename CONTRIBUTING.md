@@ -5,8 +5,9 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 
 **English summary:** Run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
 against your own ComfyUI (in a clone of your fork). It writes a submission file
-`data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver, ComfyUI version,
-OS family, RAM rounded to GiB, the model, settings and results). Check exactly what will be shared with
+`data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver / vendor and
+PyTorch backend, ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
+AMD, Intel and Apple GPUs are especially welcome: they have no measurements yet, so their levels are capped at Good. Check exactly what will be shared with
 `genmodelfit contrib show <file>` (it also runs a privacy checklist), then open a pull request that adds only that file.
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open. The file never
 contains your host name, user name, paths, GPU UUID, PCI address, IP, CPU name or exact time. CI runs
@@ -21,8 +22,15 @@ project. There is no CLA.
 
 1. ComfyUI を起動します(ふだん使っているもので構いません)。**ほかの生成が動いていないとき**に測ってください。
    bench はキューに仕事があると測りません(開始前と、送る直前の 2 回見ます)。GPU の使用率(約 2 秒の平均)が
-   30% 以上のときも止まります。`nvidia-smi` が無い・ComfyUI が別の PC・同じ名前の GPU が複数あってどれか
-   分からない、のように GPU の空きを確かめられないときも、黙って進まずに止まります(`--force` で測れます)
+   30% 以上のときも止まります。使用率は NVIDIA なら `nvidia-smi`、AMD なら `amd-smi` か `rocm-smi`(Linux)、
+   Intel なら `xpu-smi`(Linux)、Windows の AMD・Intel は Windows の性能カウンタ、Apple は `ioreg` で読みます
+   - NVIDIA で `nvidia-smi` が無い・同じ名前の GPU が複数あってどれか分からない・ComfyUI が別の PC、のように
+     GPU の空きを確かめられないときは、黙って進まずに止まります(`--force` で測れます)
+   - NVIDIA 以外で使用率を読む道具が無いときは止まらずに測ります。そのときは ComfyUI のキューが空なことと、
+     ComfyUI 以外のアプリが GPU のメモリを半分より多く使っていないことだけを確かめ、注意と note に残します。
+     ほかのアプリ(ゲーム・動画の書き出しなど)は閉じてから測ってください
+   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、見積もりの段階を Good までに
+     控えています。同じ構成の実測が集まると詰められます
 2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。足りないときは bench が
    どのファイルが無いかを表示します
 3. 測ります
@@ -65,7 +73,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 | 項目 | 測り方 |
 |---|---|
 | `peak_vram_gb` | 生成中に `/system_stats` を 0.2 秒ごとに読み、torch が確保した量(`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含みません |
-| `note` の「GPU 全体の増分」 | `nvidia-smi` の使用量の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります |
+| `note` の「GPU 全体の増分」 | GPU 全体の使用量(`nvidia-smi`。NVIDIA 以外は上の道具、約 1 秒ごと)の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります。道具が無ければ書きません |
 | `peak_ram_gb` | ポートで待ち受けている ComfyUI のプロセス(と子プロセス)の常駐メモリの最大値。コマンドラインに `main.py` か `comfy` を含むプロセスだけを数えます。ComfyUI が別の PC のとき・プロセスを特定できないときは空です |
 | `seconds` | ワークフローを送ってから終わるまで(モデルの読み込みを含む)。ComfyUI が数えた実行時間は `note` に入ります |
 | `offload` | ComfyUI のログから読みます: `dynamic`(動的 VRAM)/ `partial`(一部だけ GPU に載せた)/ `lowvram`(`--lowvram` などの起動オプション)/ `none`(全部載った)/ `oom`(メモリ不足で失敗)。分からなければ空 |
@@ -100,7 +108,8 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 | 入るもの | 例 |
 |---|---|
-| GPU の名前・VRAM の総量・世代・compute capability・ドライバの版 | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
+| GPU の名前・VRAM の総量・世代・compute capability・ドライバの版(世代と compute capability は NVIDIA だけ) | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
+| GPU の会社と PyTorch の backend(0.9.0 の bench から) | `amd` と `rocm`、`intel` と `xpu`、`apple` と `mps`、`nvidia` と `cuda` |
 | ComfyUI の版、OS の種類(版・ビルドは入れない)、メインメモリ(GiB の整数に丸める) | `0.40.0`, `windows`, `32` |
 | モデル ID・設定・結果・最大 VRAM / メモリ・時間・載せ方・測り方 | `image_sdxl_simple`, `832x832`, `ok`, `6.9` … |
 | 日付(UTC の日付だけ) | `2026-10-21` |

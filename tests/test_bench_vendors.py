@@ -1,0 +1,252 @@
+"""bench を NVIDIA 以外の GPU(AMD・Intel・Apple)で使う(0.9.0)。
+空きの確かめ方・道具が無いとき・提出の会社と backend。
+
+ComfyUI は test_bench の偽のサーバー。道具の出力は test_gpustat の公式の出力例で差し替える
+(本物の道具は呼ばない)。"""
+
+from __future__ import annotations
+
+import json
+import threading
+
+import pytest
+from test_bench import GIB, FakeComfy, _opts, _quiet
+from test_gpustat import IOREG, ROCM_SMI, XPU_SMI
+
+from genmodelfit import bench, contrib, gpustat, hardware
+from genmodelfit.bench import BenchError, device_vendor
+from genmodelfit.models import Measurement, Settings
+
+AMD_DEV = ("cuda:0 AMD Radeon RX 7900 XTX : native", "cuda")
+INTEL_DEV = ("xpu:0 Intel(R) Arc(TM) B580 Graphics", "xpu")
+APPLE_DEV = ("mps", "mps")
+
+
+@pytest.fixture(autouse=True)
+def _isolated(tmp_path, monkeypatch):
+    monkeypatch.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path / "cache"))
+
+    def no_smi():
+        raise AssertionError("NVIDIA 以外の GPU で nvidia-smi を呼んだ")
+
+    monkeypatch.setattr(bench, "smi_gpus", no_smi)
+    monkeypatch.setattr(bench, "_nvidia_smi", lambda: None)
+    monkeypatch.setattr(bench, "find_server_process", lambda url: None)
+    monkeypatch.setattr(bench.time, "sleep", lambda s: None)
+
+
+def _os(monkeypatch, system: str, outputs: dict[str, str]):
+    """道具の名前 → 出力。無い道具は「見つからない」(None)。"""
+    monkeypatch.setattr(gpustat.platform, "system", lambda: system)
+    monkeypatch.setattr(
+        hardware, "_run", lambda args, timeout: (0, outputs[args[0]]) if args[0] in outputs else None
+    )
+
+
+def _amd(fake: FakeComfy) -> FakeComfy:
+    fake.device = AMD_DEV
+    fake.pytorch_version = "2.9.1+rocm7.1"
+    return fake
+
+
+def test_device_vendor_from_system_stats():
+    def stats(v="2.9.0+cu128"):
+        return {"system": {"pytorch_version": v}}
+
+    assert device_vendor({"name": AMD_DEV[0], "type": "cuda"}, stats()) == "amd"
+    assert (
+        device_vendor({"name": "cuda:0 Radeon 8060S Graphics : native", "type": "cuda"}, stats("2.9+rocm"))
+        == "amd"
+    )
+    assert (
+        device_vendor({"name": "cuda:0 NVIDIA GeForce RTX 3070 : cudaMallocAsync", "type": "cuda"}, stats())
+        == "nvidia"
+    )
+    assert device_vendor({"name": INTEL_DEV[0], "type": "xpu"}, stats()) == "intel"
+    assert device_vendor({"name": "mps", "type": "mps"}, {}) == "apple"
+
+
+def test_amd_linux_checks_with_rocm_smi_and_records_backend(monkeypatch):
+    idle = json.dumps({"card0": {"GPU use (%)": "3", "VRAM Total Used Memory (B)": str(GIB)}})
+    _os(monkeypatch, "Linux", {"rocm-smi": idle})  # amd-smi は無い
+    with FakeComfy() as fake:
+        res = bench.run(_opts(_amd(fake).url), log=_quiet)
+    m = res.measurement
+    assert m.outcome == "ok" and m.standard and m.gpu_backend == "rocm"
+    assert "rocm-smi" in m.note and "確かめていない" not in m.note
+    assert not any("--force" in w for w in res.warnings)
+
+
+def test_amd_busy_gpu_is_refused_before_any_write(monkeypatch):
+    _os(monkeypatch, "Linux", {"rocm-smi": ROCM_SMI})  # card0 の使用率 45%
+    with FakeComfy() as fake:
+        with pytest.raises(BenchError, match=r"rocm-smi.*45%"):
+            bench.run(_opts(_amd(fake).url, free_before=True), log=_quiet)
+        assert fake.mutations == []
+        res = bench.run(_opts(fake.url, force=True), log=_quiet)
+    assert any("45%" in w and "--force" in w for w in res.warnings)
+
+
+def test_intel_linux_xpu_smi(monkeypatch):
+    _os(monkeypatch, "Linux", {"xpu-smi": XPU_SMI.replace("41.50", "2.00")})
+    with FakeComfy() as fake:
+        fake.device = INTEL_DEV
+        res = bench.run(_opts(fake.url), log=_quiet)
+    assert res.measurement.gpu_backend == "xpu" and "xpu-smi" in res.measurement.note
+
+
+def test_intel_windows_uses_performance_counters(monkeypatch):
+    head = (
+        '"(PDH-CSV 4.0)",'
+        '"\\\\HOST\\GPU Engine(pid_1_luid_0x00000000_0x00000001_phys_0_eng_0_engtype_3D)'
+        '\\Utilization Percentage",'
+        '"\\\\HOST\\GPU Adapter Memory(luid_0x00000000_0x00000001_phys_0)\\Dedicated Usage"\n'
+    )
+    _os(monkeypatch, "Windows", {"typeperf": head + '"t","1.5","1073741824"\n'})
+    with FakeComfy() as fake:
+        fake.device = INTEL_DEV
+        res = bench.run(_opts(fake.url), log=_quiet)
+    assert "性能カウンタ" in res.measurement.note and res.measurement.standard
+
+
+def test_apple_ioreg_busy_is_refused(monkeypatch):
+    _os(monkeypatch, "Darwin", {"ioreg": IOREG})  # Device Utilization 82%
+    with FakeComfy() as fake:
+        fake.device = APPLE_DEV
+        with pytest.raises(BenchError, match="82%"):
+            bench.run(_opts(fake.url), log=_quiet)
+
+
+@pytest.mark.parametrize("output", [None, "garbage"], ids=["missing_or_timeout", "broken"])
+def test_no_tool_proceeds_with_queue_check_and_notes(monkeypatch, output):
+    _os(monkeypatch, "Linux", {} if output is None else {"amd-smi": output, "rocm-smi": output})
+    with FakeComfy() as fake:
+        res = bench.run(_opts(_amd(fake).url), log=_quiet)
+    m = res.measurement
+    # 止めずに測る。standard は変えない(--force と同じ扱い。docs/accuracy.md)
+    assert m.outcome == "ok" and m.standard and m.gpu_backend == "rocm"
+    assert "使用率は確かめていない" in m.note and "amd-smi・rocm-smi" in m.note
+    assert any("ほかのアプリが GPU を使っていても分からない" in w for w in res.warnings)
+
+
+def test_no_tool_refuses_when_other_apps_hold_most_vram(monkeypatch):
+    _os(monkeypatch, "Linux", {})
+    with FakeComfy() as fake:
+        _amd(fake).other_apps = 6 * GIB  # 8 GB のうち 6 GB をほかのアプリが使っている
+        with pytest.raises(BenchError, match="ComfyUI 以外"):
+            bench.run(_opts(fake.url), log=_quiet)
+        assert fake.mutations == []
+        res = bench.run(_opts(fake.url, force=True), log=_quiet)
+    assert any("ComfyUI 以外" in w for w in res.warnings)
+
+
+def test_no_tool_apple_does_not_use_vram_share(monkeypatch):
+    _os(monkeypatch, "Darwin", {})  # 統合メモリはメインメモリと同じなので、ほかのアプリの分を見ない
+    with FakeComfy() as fake:
+        fake.device = APPLE_DEV
+        fake.other_apps = 7 * GIB
+        res = bench.run(_opts(fake.url), log=_quiet)
+    assert res.measurement.gpu_backend == "mps"
+
+
+def test_remote_non_nvidia_still_needs_force(monkeypatch):
+    _os(monkeypatch, "Linux", {"rocm-smi": ROCM_SMI})
+    monkeypatch.setattr(bench, "is_local", lambda url: False)
+    with FakeComfy() as fake:
+        with pytest.raises(BenchError, match=r"別の PC.*--force"):
+            bench.run(_opts(_amd(fake).url), log=_quiet)
+        res = bench.run(_opts(fake.url, force=True), log=_quiet)
+    assert "確かめていない(--force)" in res.measurement.note
+
+
+def test_monitor_reads_other_vendor_peak():
+    class Stats:
+        def system_stats(self):
+            return {"devices": [{"torch_vram_total": GIB, "vram_total": 8 * GIB, "vram_free": 6 * GIB}]}
+
+    values = iter([1000.0, None, 3000.0])
+    seen = threading.Event()
+
+    def read():
+        v = next(values, 2000.0)
+        if v == 2000.0:
+            seen.set()
+        if v is None:
+            raise OSError("道具が一度失敗しても測定は止めない")
+        return v
+
+    mon = bench.Monitor(Stats(), None, None, interval=0.01, use_smi=False, other_used=read)
+    real_wait = mon._stop.wait
+    mon._stop.wait = lambda t=None: real_wait(0.001)  # 1 秒待たずに次を読む
+    mon.start()
+    assert seen.wait(5)
+    peaks = mon.stop()
+    assert peaks.gpu_used_mib == 3000.0 and peaks.smi_samples >= 3
+
+
+# --- 提出の会社・backend -------------------------------------------------------------------------
+
+
+def _m(name: str, backend: str | None) -> Measurement:
+    return Measurement(
+        model_id="image_sdxl_simple",
+        gpu_name=name,
+        gpu_vram_gb=24.0,
+        peak_vram_gb=7.0,
+        settings=Settings(width=1024, height=1024, steps=20),
+        seconds=30.0,
+        comfyui_version="0.40.0",
+        date="2026-10-21",
+        outcome="ok",
+        vram_metric="torch_reserved",
+        gpu_backend=backend,
+    )
+
+
+def test_submission_records_vendor_and_backend():
+    data = contrib.build_submission(_m("AMD Radeon RX 7900 XTX", "rocm"))
+    gpu = data["system"]["gpu"]
+    assert gpu["vendor"] == "amd" and gpu["backend"] == "rocm"
+    assert gpu["arch"] is None and gpu["compute_capability"] is None
+    r = contrib.validate_submission(data, check_filename=False)
+    assert r.ok, r.errors
+    assert contrib.to_measurement(data).gpu_backend == "rocm"
+    # 記録が無い古い bench の結果からは、会社・backend を入れない(これまでと同じ形)
+    old = contrib.build_submission(_m("NVIDIA GeForce RTX 3070", None))
+    assert "vendor" not in old["system"]["gpu"] and contrib.validate_submission(old, check_filename=False).ok
+
+
+def test_submission_keeps_privacy_checklist_known_fields():
+    data = contrib.build_submission(_m("Intel Arc B580 Graphics", "xpu"))
+    items = {c["id"]: c for c in contrib.privacy_checklist(data)}
+    assert items["known_fields"]["ok"] is True
+
+
+@pytest.mark.parametrize(
+    ("change", "code"),
+    [
+        ({"vendor": "amd", "backend": "cuda"}, "gpu_inconsistent"),
+        ({"vendor": "amd"}, "gpu_inconsistent"),  # backend が無い
+        ({"vendor": "matrox", "backend": "rocm"}, "value"),
+        ({"vendor": "amd", "backend": "vulkan"}, "value"),
+        ({"vendor": "nvidia", "backend": "cuda"}, "gpu_inconsistent"),  # 名前は AMD
+        ({"compute_capability": "8.6"}, "gpu_inconsistent"),  # NVIDIA 以外に compute capability
+    ],
+)
+def test_submission_vendor_backend_checks(change, code):
+    data = contrib.build_submission(_m("AMD Radeon RX 7900 XTX", "rocm"))
+    data["system"]["gpu"].update(change)
+    if "vendor" in change and "backend" not in change:
+        data["system"]["gpu"].pop("backend")
+    r = contrib.validate_submission(data, check_filename=False)
+    assert any(e["code"] == code for e in r.errors), r.errors
+
+
+def test_contrib_show_lists_vendor_and_backend(tmp_path, capsys):
+    from genmodelfit import cli
+
+    data = contrib.build_submission(_m("AMD Radeon RX 7900 XTX", "rocm"))
+    p = contrib.write_submission(data, tmp_path / "data" / "contrib")
+    cli.main(["contrib", "show", str(p)])
+    out = capsys.readouterr().out
+    assert "会社 amd" in out and "backend rocm" in out

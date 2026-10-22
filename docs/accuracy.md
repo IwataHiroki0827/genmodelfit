@@ -274,6 +274,25 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 - 同じ人が同じ構成で何度も出すと、件数が水増しされる(提出に個人を見分ける情報を入れないので見分けられない)。
   同じ内容(hash)は重複として断るが、測り直した別の値は断れない。PR を見る人が、同じ PR に同じ構成が並んでいないかを見る
 
+### NVIDIA 以外の GPU の bench(0.9.0)
+
+NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、段階を good までにしている(docs/hardware.md)。実測を集めやすく
+するため、bench の「GPU が空いているか」の確かめを各社の道具でも行う(`gpustat.py`。Linux の AMD は amd-smi → rocm-smi、
+Linux の Intel は xpu-smi、Windows の AMD・Intel は性能カウンタ、Apple は ioreg)。読めれば NVIDIA と同じく使用率 30% で断る。
+
+道具が無い・読めないとき(rocm-smi の入っていない Linux など)は、`--force` を求めずに測る。確かめるのは ComfyUI の
+キューが空なことと、ComfyUI 以外が使う GPU のメモリが全体の半分以下なこと(Apple の統合メモリでは見ない)だけで、
+warnings と note に「使用率は確かめていない」と残す。**`standard` は true のまま**にした。理由:
+
+- `standard` は「公式テンプレートのままで、ComfyUI でほかの仕事が混ざらず、全部のノードを実行したか」で、ComfyUI の
+  キューの中のことだけを見る。キューは開始前・送る直前・測っている間に確かめている
+- 見積もりに使う値(`peak_vram_gb`)は ComfyUI のプロセスの torch の確保量で、ほかのアプリが GPU を使っていても
+  ほぼ変わらない(変わるのは時間と、GPU 全体の増分の note)。
+- NVIDIA で `--force` を付けて確かめずに測った結果も、これまで `standard` を変えていない(同じ扱いにそろえる)
+
+ほかのアプリと取り合ってメモリ不足で逃がした・失敗した結果は `offload`・`outcome` に出るので、そこで分かる。
+ComfyUI が別の PC のときは、NVIDIA と同じく `--force` が要る(この PC の道具では何も確かめられないため)。
+
 ## RTX 3070 8GB の実測との照合(bench、2026-10-19 UTC、係数の合わせには使っていない)
 
 `genmodelfit bench` で、この PC(RTX 3070 8GB、AI生成キットのエンジン ComfyUI 0.40.0)で 2 件を測りました。

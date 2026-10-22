@@ -273,6 +273,7 @@ MEASUREMENT = {
     "n_submissions",
     "consistent",
     "approved",
+    "gpu_backend",  # 0.9.0(測った GPU の backend)
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 

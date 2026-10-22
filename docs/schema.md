@@ -806,7 +806,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
 `comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`, and (#34) `origin`,
-`n_submissions`, `consistent`.
+`n_submissions`, `consistent`, and (0.9.0) `gpu_backend`.
 
 | key | type | meaning |
 |---|---|---|
@@ -818,6 +818,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_used`, `n_outliers`, `n_oom`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
 | `approved` | bool \| null | community rows: contains a submission approved per sha8 (`data/contrib/REVIEWED`); only then may it raise the needs by more than 15% |
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Community rows that are not consistent are ignored by estimates and calibration |
+| `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Not used by estimates (the vendor still comes from the GPU name) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -842,7 +843,13 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 How bench fills Measurement / 測り方:
 
 - `peak_vram_gb`: max of `/system_stats` `devices[0].torch_vram_total` polled every 0.2 s (the ComfyUI process,
-  without the CUDA context). The GPU-wide `nvidia-smi` delta from the pre-run baseline goes to `note`.
+  without the CUDA context). The GPU-wide delta from the pre-run baseline goes to `note`: `nvidia-smi` for NVIDIA;
+  for other GPUs (0.9.0, `gpustat.py`) `amd-smi` → `rocm-smi` (AMD, Linux), `xpu-smi` (Intel, Linux), the Windows
+  performance counters via `typeperf` (AMD / Intel, Windows) and `ioreg` (Apple). The same tools give the
+  pre-run busy check (average utilization ≥ 30% refuses without `--force`). When no tool can be read, bench does
+  not stop: it checks that the ComfyUI queue is empty and that apps other than ComfyUI hold at most 50% of the
+  device memory (not on Apple's unified memory), then measures, with a warning and a `note` sentence;
+  `standard` is not changed (docs/accuracy.md). A remote ComfyUI still needs `--force`.
 - `peak_ram_gb`: max resident memory of the process listening on the port (and its children), only when its
   command line contains `main.py` or `comfy`; null when remote or not identified.
 - `seconds`: wall time from submit to completion, including model loading. `/free` is sent first only with `--free`;
@@ -892,7 +899,7 @@ no spaces, UTF-8), so the name does not depend on indentation and two identical 
 | `date` | str | UTC date only (`YYYY-MM-DD`); no time |
 | `system.os_family` | str \| null | `windows` / `linux` / `macos`; no version or build. null when ComfyUI ran on another PC |
 | `system.ram_total_gb` | int \| null | RAM in GiB rounded to an integer; null when unknown or overridden with `--ram` |
-| `system.gpu` | object | `name`, `vram_gb` (as measured), `arch` / `compute_capability` (from nvidia-smi on this PC when the names match, else from the GPU name table), `driver` |
+| `system.gpu` | object | `name`, `vram_gb` (as measured), `arch` / `compute_capability` (NVIDIA only: from nvidia-smi on this PC when the names match, else from the GPU name table), `driver`, and (0.9.0, optional) `vendor` (`nvidia` / `amd` / `intel` / `apple`) with `backend` (`cuda` / `rocm` / `xpu` / `mps`), written only when bench recorded the backend (`Measurement.gpu_backend`); both or neither. Older files without them stay valid (`contrib_schema` stays 1) |
 | `measurement` | object | the Measurement fields that matter (settings without `batch: 1`). `note` is split into sentences (`。`, newline, `;`); every sentence that contains this PC's host / user name / home folder or matches a privacy pattern (below) is dropped whole, and the count of dropped sentences is appended (`contrib.scrub_text`) |
 
 Not written by genmodelfit: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses,
@@ -927,9 +934,9 @@ model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, 
 | `unknown_field` | a key outside the schema (anywhere, including `settings`) |
 | `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains: a drive path (`C:\`, `C:/`), any backslash, two or more path separators between words (`a/b/c`, `Users\name\`), `/home/`-like roots, `//server`, `~/`, `%VAR%`, `$HOME`, URL-encoded separators (`%2F` `%5C` `%3A`), `@` followed by a letter (e-mail, @handle), a UUID / GPU UUID, a PCI address (`0000:01:00.0`, `01:00.0`), an IPv4 / IPv6 / MAC address, a URL (`scheme://`, `www.`), a host-like name (`DESKTOP-XXXX`, `*-PC`, `*.local`, the words "host name" / "PC 名" …), a time (`14:05`, `2pm`, `14時05分`, ISO date-time) or a serial number (`SN:`). Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`) |
 | `date` | not `YYYY-MM-DD`, or in the future |
-| `value` | out of range: `peak_vram_gb` > GPU VRAM × 1.02 + 0.25, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0 or missing for `ok`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch`, malformed `driver` / `comfyui_version` / `compute_capability` |
+| `value` | out of range: `peak_vram_gb` > GPU VRAM × 1.02 + 0.25, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0 or missing for `ok`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch` / `vendor` / `backend`, malformed `driver` / `comfyui_version` / `compute_capability` |
 | `settings` | width / height 64–8192, frames 1–2000, seconds 0.1–3600, steps 1–1000, batch 1–64 (integers except seconds) |
-| `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's |
+| `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's; `vendor` and `backend` do not pair up (or only one is given); `compute_capability` / `arch` on a non-NVIDIA `vendor`; a GPU name of another vendor (AMD / Intel / Apple) than `vendor` |
 | `filename` | name not `<date>-<sha8>.json`, date or sha8 not matching the content, folder not the GPU slug |
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |

@@ -11,7 +11,8 @@ ComfyUI のコードは import しない(GPL のため)。使うのは HTTP の 
 測り方:
 - 最大 VRAM(peak_vram_gb): 生成中に `/system_stats` を短い間隔で読み、torch が確保した量
   (`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含まない
-- GPU 全体: `nvidia-smi` の使用量の最大値から、開始前の値を引いたもの(他のアプリの増減も入る)。note に書く
+- GPU 全体: `nvidia-smi` の使用量の最大値から、開始前の値を引いたもの(他のアプリの増減も入る)。note に書く。
+  NVIDIA 以外は各社の道具(amd-smi・rocm-smi・xpu-smi・Windows の性能カウンタ・ioreg。gpustat.py)で読む
 - メモリ(peak_ram_gb): ポートで待ち受けている ComfyUI のプロセス(と子)の常駐メモリの最大値(同じ PC のときだけ)
 - 時間(seconds): ワークフローを送ってから終わるまで(モデルの読み込みを含む)
 
@@ -43,7 +44,10 @@ import requests
 
 from ._version import __version__
 from .db import cache_dir
+from .estimate import gpu_vendor
 from .fetch import make_session
+from .gpustat import Probe
+from .hardware import VENDOR_LABEL
 from .hardware import find_nvidia_smi as _nvidia_smi
 from .models import Measurement
 from .workflow import (
@@ -253,12 +257,15 @@ class Monitor:
         gpu_id: str | None,
         interval: float = 0.2,
         use_smi: bool = True,
+        other_used=None,
     ):
         self.client = client
         self.proc = proc
         self.gpu_id = gpu_id  # nvidia-smi の -i に渡す値(UUID か番号)
         self.interval = interval
         self.use_smi = use_smi
+        # NVIDIA 以外: GPU 全体の使用中のメモリ(MiB)を 1 回読む関数(gpustat.Probe.used_mib)。約 1 秒ごとに呼ぶ
+        self.other_used = other_used
         self.peaks = Peaks()
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -318,8 +325,21 @@ class Monitor:
         finally:
             _end_process(proc)
 
+    def _read_other(self) -> None:
+        while not self._stop.is_set():
+            v = None
+            with contextlib.suppress(Exception):  # 道具の失敗で測定を止めない
+                v = self.other_used()
+            if v is not None:
+                with self._lock:
+                    self.peaks.gpu_used_mib = max(self.peaks.gpu_used_mib, v)
+                    self.peaks.smi_samples += 1
+            self._stop.wait(1.0)
+
     def start(self) -> None:
         targets = [self._poll] + ([self._read_smi] if self.use_smi else [])
+        if self.other_used is not None:
+            targets.append(self._read_other)
         for t in targets:
             th = threading.Thread(target=t, daemon=True)
             th.start()
@@ -436,6 +456,96 @@ def device_name(dev: dict[str, Any]) -> str:
 
 def is_local(url: str) -> bool:
     return (urlparse(url).hostname or "") in LOCAL_HOSTS
+
+
+BACKEND_OF_VENDOR = {"nvidia": "cuda", "amd": "rocm", "intel": "xpu", "apple": "mps"}
+# 使用率を読む道具が無いとき、ComfyUI 以外が GPU のメモリをこの割合より多く使っていたら、ほかのアプリが
+# GPU を使っているとみなして断る(統合メモリの Apple では、メインメモリと同じなので見ない)
+OTHER_APPS_VRAM_SHARE = 0.5
+
+
+def device_vendor(dev: dict[str, Any], stats: dict[str, Any]) -> str:
+    """ComfyUI の GPU の会社。ROCm 版 PyTorch も type は "cuda" なので、
+    PyTorch の版(+rocm)と GPU 名で見分ける。"""
+    t = str(dev.get("type") or "")
+    if t == "xpu":
+        return "intel"
+    if t == "mps":
+        return "apple"
+    if t == "rocm":
+        return "amd"
+    torch_ver = str((stats.get("system") or {}).get("pytorch_version") or "").lower()
+    if "rocm" in torch_ver or gpu_vendor(device_name(dev)) == "amd":
+        return "amd"
+    return "nvidia"
+
+
+def _check_other_gpu(
+    opts: BenchOptions, vendor: str, dev0: dict[str, Any], local: bool, warnings: list[str]
+) -> tuple[tuple[float, float] | None, Probe | None, str | None]:
+    """NVIDIA 以外の GPU が空いているかを確かめる(読むだけ)。(開始前の (使用中 MiB, 使用率 %), 読み取り役,
+    確かめられなかったことの note)。断るときは BenchError。
+
+    道具(gpustat.tools_for)で読めれば NVIDIA と同じく使用率 30% で断る。道具が無い・読めないときは
+    止めずに、ComfyUI のキューが空なこと(呼ぶ前に確かめた)と、ComfyUI 以外が使う GPU のメモリが
+    多くないことだけを確かめて進む(warnings と note に残す。standard は変えない:
+    docs/accuracy.md「NVIDIA 以外の GPU の bench」)。"""
+    label = VENDOR_LABEL.get(vendor, vendor)
+    if not local:
+        why = "ComfyUI が別の PC で動いているので、この PC からは GPU の空きを確かめられません"
+        if not opts.force:
+            raise BenchError(f"{why}。確かめずに測るなら --force を付けてください")
+        warnings.append(f"{why}(--force なので確かめずに測った)")
+        return None, None, "GPU の空きは確かめていない(--force)"
+    vram_total = int(dev0.get("vram_total") or 0)
+    probe = Probe(vendor, total_mib=vram_total / 1024**2 if vram_total else None)
+    samples: list[tuple[float, float]] = []
+    for i in range(3):
+        r = probe.read()
+        if r is not None and r.util_pct is not None:
+            samples.append((r.used_mib or 0.0, r.util_pct))
+        if probe.tool is None:  # どの道具でも読めなければ繰り返さない
+            break
+        if i < 2:
+            time.sleep(0.5)
+    if samples:
+        tool = probe.tool.name if probe.tool else "?"
+        util = sum(u for _, u in samples) / len(samples)
+        if probe.combined:
+            warnings.append(
+                f"{tool} に GPU が複数あり、ComfyUI の GPU を選べないので、使用率はいちばん高い GPU、"
+                "使用中のメモリは合計で見た"
+            )
+        if util >= opts.busy_util_pct:
+            if not opts.force:
+                raise BenchError(
+                    f"GPU が他の仕事で使われています({tool}、平均の使用率 {util:.0f}%)。"
+                    "空いてから測るか、--force を付けてください"
+                )
+            warnings.append(f"GPU の使用率が {util:.0f}% のまま測った(--force)")
+        return (min(m for m, _ in samples), util), probe, None
+    # 使用率を読む道具が無い・読めない
+    used = vram_total - int(dev0.get("vram_free") or 0)
+    other = used - int(dev0.get("torch_vram_total") or 0)
+    if vendor != "apple" and vram_total and other > vram_total * OTHER_APPS_VRAM_SHARE:
+        msg = (
+            f"ComfyUI 以外が GPU のメモリを {other / GIB:.1f} GB(全体の {other / vram_total:.0%})使っています"
+            "(ほかのアプリが GPU を使っているおそれ)"
+        )
+        if not opts.force:
+            raise BenchError(f"{msg}。空いてから測るか、--force を付けてください")
+        warnings.append(f"{msg}(--force)")
+    warnings.append(
+        f"{label} の GPU の使用率を読む道具({probe.tool_names})が無いか読めないので、"
+        "ComfyUI のキューが空なことと GPU のメモリだけを確かめて測った"
+        "(ほかのアプリが GPU を使っていても分からない)"
+    )
+    return (
+        None,
+        None,
+        f"GPU の使用率は確かめていない({probe.tool_names} で読めない。"
+        "ComfyUI のキューと GPU のメモリだけ確かめた)",
+    )
 
 
 def _looks_like_comfy(p: psutil.Process) -> bool:
@@ -725,14 +835,23 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     name = device_name(dev0)
     local = is_local(opts.url)
     proc = find_server_process(opts.url)
-    gpu, why = match_gpu(name, smi_gpus(), proc, local)
-    gpu_id = str(gpu.get("uuid") or gpu["index"]) if gpu else None
-    driver = gpu.get("driver") if gpu else None
-    if gpu is None:
-        if not opts.force:
-            raise BenchError(f"{why}。確かめずに測るなら --force を付けてください")
-        warnings.append(f"{why}(--force なので確かめずに測った)")
+    vendor = device_vendor(dev0, stats)
+    gpu: dict[str, Any] | None = None
+    gpu_id = driver = None
+    probe: Probe | None = None
+    unchecked: str | None = None  # GPU の空きを確かめられなかったことの note
     base_smi: tuple[float, float] | None = None
+    if vendor != "nvidia":
+        base_smi, probe, unchecked = _check_other_gpu(opts, vendor, dev0, local, warnings)
+    else:
+        gpu, why = match_gpu(name, smi_gpus(), proc, local)
+        gpu_id = str(gpu.get("uuid") or gpu["index"]) if gpu else None
+        driver = gpu.get("driver") if gpu else None
+        if gpu is None:
+            if not opts.force:
+                raise BenchError(f"{why}。確かめずに測るなら --force を付けてください")
+            warnings.append(f"{why}(--force なので確かめずに測った)")
+            unchecked = "GPU の空きは確かめていない(--force)"
     if gpu_id is not None:
         samples = sample_gpu(gpu_id)
         if not samples:
@@ -773,7 +892,14 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     # 3. 送る直前にもう一度キューを見る
     _check_queue_empty(client, "送る直前")
     log_before = client.log_entries()
-    mon = Monitor(client, proc, gpu_id, interval=opts.interval, use_smi=gpu_id is not None)
+    mon = Monitor(
+        client,
+        proc,
+        gpu_id,
+        interval=opts.interval,
+        use_smi=gpu_id is not None,
+        other_used=probe.used_mib if probe is not None and probe.tool is not None else None,
+    )
     client_id = uuid.uuid4().hex
     log(f"{opts.model_id} を {opts.url} で実行します …")
     mon.start()
@@ -855,8 +981,11 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     note_parts = []
     if base_smi and peaks.smi_samples:
         gpu_delta = max(0.0, peaks.gpu_used_mib - base_smi[0]) / 1024
+        tool = probe.tool.name if probe is not None and probe.tool is not None else "nvidia-smi"
+        if probe is not None and probe.combined:
+            tool += "、複数の GPU の合計"
         note_parts.append(
-            f"GPU 全体(nvidia-smi)の増分 {gpu_delta:.2f} GB(開始前 {base_smi[0] / 1024:.2f} GB 使用、"
+            f"GPU 全体({tool})の増分 {gpu_delta:.2f} GB(開始前 {base_smi[0] / 1024:.2f} GB 使用、"
             f"最大 {peaks.gpu_used_mib / 1024:.2f} GB)"
         )
     note_parts.append(f"/system_stats の GPU 全体の増分 {dev_delta / GIB:.2f} GB")
@@ -881,8 +1010,8 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         note_parts.append("変えた入力: " + describe_sets(opts.sets))
     if nonstandard:
         note_parts.append("標準でない条件: " + "、".join(nonstandard))
-    if gpu is None:
-        note_parts.append("GPU の空きは確かめていない(--force)")
+    if unchecked:
+        note_parts.append(unchecked)
     if opts.note:
         note_parts.append(opts.note)
 
@@ -903,6 +1032,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         outcome=outcome,
         standard=not nonstandard,
         vram_metric="torch_reserved",
+        gpu_backend=BACKEND_OF_VENDOR.get(vendor),
     )
     return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
 

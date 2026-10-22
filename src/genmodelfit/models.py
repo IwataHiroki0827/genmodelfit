@@ -308,6 +308,9 @@ class Measurement:
     # 人が確かめた提出(data/contrib/REVIEWED の sha8)を含むまとめか。確かめていないまとめは、
     # ほかの利用者の実測が無いときの見積もりの +15% までしか必要量を上げない(estimate.COMMUNITY_RAISE_CAP)
     approved: bool | None = None
+    # 測った GPU の PyTorch の backend(cuda / rocm / xpu / mps。0.9.0、bench が書く)。None は記録が無い
+    # (同梱の実測はすべて NVIDIA の cuda)。見積もりでは使わない(会社は今までどおり GPU 名で見る)
+    gpu_backend: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:

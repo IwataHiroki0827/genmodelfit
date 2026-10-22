@@ -41,7 +41,7 @@ from typing import Any
 
 from ._version import __version__
 from .db import Database
-from .estimate import PRECISION_BYTES, norm_precision
+from .estimate import PRECISION_BYTES, gpu_vendor, norm_precision
 from .hardware import arch_of, cc_from_name, parse_compute_cap
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
@@ -84,7 +84,11 @@ VRAM_METRICS = ("torch_reserved",)
 TOP_KEYS = {"contrib_schema", "kind", "tool", "date", "system", "comfyui_version", "measurement"}
 TOOL_KEYS = {"name", "version"}
 SYSTEM_KEYS = {"os_family", "ram_total_gb", "gpu"}
-GPU_KEYS = {"name", "vram_gb", "arch", "compute_capability", "driver"}
+# vendor・backend は 0.9.0 で足した任意の項目
+# (NVIDIA 以外の GPU の実測を見分けるため。docs/schema.md「contrib」)
+GPU_KEYS = {"name", "vram_gb", "arch", "compute_capability", "driver", "vendor", "backend"}
+# GPU の会社 → PyTorch の backend(models.USABLE_BACKENDS)
+VENDOR_BACKEND = {"nvidia": "cuda", "amd": "rocm", "intel": "xpu", "apple": "mps"}
 MEASUREMENT_KEYS = {
     "model_id",
     "settings",
@@ -435,6 +439,12 @@ def build_submission(
     elif arch is None:
         parsed = parse_compute_cap(cc)
         arch = arch_of(parsed) if parsed else None
+    if arch not in ARCHES:  # NVIDIA 以外の世代(RDNA 3 など)は arch に入れない(ARCHES は NVIDIA の世代だけ)
+        arch = None
+    backend = m.gpu_backend if m.gpu_backend in VENDOR_BACKEND.values() else None
+    vendor = next((v for v, b in VENDOR_BACKEND.items() if b == backend), None)
+    if vendor not in (None, "nvidia"):
+        arch = cc = None  # compute capability は NVIDIA だけ
     ram = None
     os_family = None
     if system is not None:
@@ -458,6 +468,8 @@ def build_submission(
                 "arch": arch,
                 "compute_capability": cc,
                 "driver": driver,
+                # 会社・backend は bench が記録したときだけ入れる(古い結果から作るときは入れない)
+                **({"vendor": vendor, "backend": backend} if backend else {}),
             },
         },
         "comfyui_version": m.comfyui_version,
@@ -534,6 +546,7 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
         standard=bool(mm.get("standard", True)),
         vram_metric=mm.get("vram_metric"),
         origin=ORIGIN_COMMUNITY,
+        gpu_backend=gpu.get("backend"),
     )
 
 
@@ -694,6 +707,22 @@ def validate_submission(
             r.error("value", f"system.gpu.driver はドライバの版にしてください: {drv!r}")
         if drv is None:
             r.warn("driver_missing", "system.gpu.driver がありません")
+        vendor, backend = gpu.get("vendor"), gpu.get("backend")
+        if vendor is not None and vendor not in VENDOR_BACKEND:
+            r.error("value", f"system.gpu.vendor は {' / '.join(VENDOR_BACKEND)} か無しです: {vendor!r}")
+        elif backend is not None and backend not in VENDOR_BACKEND.values():
+            r.error(
+                "value",
+                f"system.gpu.backend は {' / '.join(VENDOR_BACKEND.values())} か無しです: {backend!r}",
+            )
+        elif (vendor is None) != (backend is None) or (vendor and VENDOR_BACKEND[vendor] != backend):
+            r.error(
+                "gpu_inconsistent", f"system.gpu の vendor({vendor!r})と backend({backend!r})が合いません"
+            )
+        elif vendor not in (None, "nvidia") and (gpu.get("compute_capability") or gpu.get("arch")):
+            r.error("gpu_inconsistent", "compute capability・arch は NVIDIA の GPU だけに入れます")
+        elif vendor and isinstance(name, str) and gpu_vendor(name) not in ("nvidia", vendor):
+            r.error("gpu_inconsistent", f"GPU 名({name})の会社と vendor({vendor})が合いません")
         arch, cc = gpu.get("arch"), gpu.get("compute_capability")
         if arch is not None and arch not in ARCHES:
             r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")

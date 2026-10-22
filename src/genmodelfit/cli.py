@@ -1379,6 +1379,12 @@ def format_submission(data: dict[str, Any]) -> list[str]:
         f"世代 {_shown(gpu.get('arch'))}",
         f"compute {_shown(gpu.get('compute_capability'))}",
         f"ドライバ {_shown(gpu.get('driver'))}",
+        # 会社・backend(0.9.0)。入っているときだけ出す(古い提出には無い)
+        *(
+            [f"会社 {_shown(gpu.get('vendor'))}", f"backend {_shown(gpu.get('backend'))}"]
+            if {"vendor", "backend"} & set(gpu)
+            else []
+        ),
     ]
     peak = mm.get("peak_vram_gb")
     return [
