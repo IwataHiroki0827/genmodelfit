@@ -847,11 +847,9 @@ def test_non_nvidia_good_cap_is_lifted_by_a_same_gpu_measurement(db):
     b = estimate(entry, amd_pc(), None, [*maint, amd])
     assert (b.fit, b.basis_detail, b.sample_count) == ("perfect", "measured_community", 1)
     assert any("段階の上限(good)を外した" in r for r in b.reasons)
-    # ほかの条件は残す: 名前の違う GPU の実測・torch_reserved・同じ構成の OOM の報告・張り付いた実測は
-    # perfect の根拠にしない
+    # ほかの条件は残す: 名前の違う GPU の実測・同じ構成の OOM の報告・張り付いた実測は perfect の根拠にしない
     for kw in (
         {"gpu_name": "AMD Radeon RX 7900 XTX"},
-        {"vram_metric": "torch_reserved"},
         {"n_oom": 1},
         {"gpu_vram_gb": 8.0, "peak_vram_gb": 7.9},
     ):
@@ -1165,3 +1163,118 @@ def test_contrib_workflow_is_read_only_and_uses_base_tool():
     assert "REVIEWED" not in json.dumps(doc)
     outside = next(s for s in job["steps"] if "data/contrib の外" in s.get("name", ""))
     assert "exit 1" in outside["run"]  # data/contrib の外を変えた PR は失敗
+
+
+def test_torch_reserved_measurement_sets_perfect_with_the_context_added(db):
+    """bench の提出(torch_reserved)は文脈の分(0.5 GiB)を足した値で帯を決め、perfect の根拠にもなる(0.9.0)。
+    足した値が 60% を超えれば good。上限に張り付いた実測は今までどおり perfect にしない。"""
+    from genmodelfit.estimate import TORCH_RESERVED_CONTEXT_GB, _measured_band, gpu_precision
+
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id]
+    a = estimate(entry, amd_pc(), None, maint)
+    sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
+    tr = _community(
+        maint[0],
+        gpu_name=FAKE_AMD,
+        gpu_vram_gb=24.0,
+        peak_vram_gb=8.2,
+        settings=sett,
+        n_used=1,
+        vram_metric="torch_reserved",
+        gpu_backend="rocm",
+    )
+    b = estimate(entry, amd_pc(), None, [*maint, tr])
+    assert b.fit == "perfect" and any("段階の上限(good)を外した" in r for r in b.reasons)
+    pc = amd_pc()
+    band = _measured_band(tr, entry, sett, pc, gpu_precision(entry, pc, sett))
+    assert band is not None and band[0] == "perfect"
+    assert f"{TORCH_RESERVED_CONTEXT_GB:g} GB を足して 8.7 GB" in band[1]
+    # 14.0 + 0.5 = 14.5 GB は 24 GB の 60.4%: 足さなければ perfect(58.3%)だが、足すと good
+    edge = _community(tr, peak_vram_gb=14.0, vram_metric="torch_reserved")
+    assert estimate(entry, amd_pc(), None, [*maint, edge]).fit == "good"
+    pinned = _community(tr, gpu_vram_gb=8.0, peak_vram_gb=7.9, vram_metric="torch_reserved")
+    assert estimate(entry, amd_pc(8.0), None, [*maint, pinned]).fit != "perfect"
+
+
+def test_measurement_vendor_prefers_the_recorded_backend(db):
+    """Apple の MPS の実測は GPU 名が "mps"。名前から推すと NVIDIA になるので、
+    backend の記録を先に見る(0.9.0)。"""
+    from genmodelfit.estimate import _measured_band, gpu_precision, measurement_vendor
+
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id]
+    mps = Measurement(
+        **{
+            **vars(maint[0]),
+            "gpu_name": "mps",
+            "gpu_backend": "mps",
+            "gpu_vram_gb": 21.0,
+            "peak_vram_gb": 8.0,
+            "vram_metric": "torch_reserved",
+        }
+    )
+    assert measurement_vendor(mps) == "apple"
+    assert (
+        measurement_vendor(Measurement(**{**vars(mps), "gpu_backend": None})) == "nvidia"
+    )  # 記録が無ければ名前
+    rocm = Measurement(**{**vars(mps), "gpu_name": "Some GPU", "gpu_backend": "rocm"})
+    assert measurement_vendor(rocm) == "amd"
+    # NVIDIA の PC では、Apple の実測は「別の会社の実測」(補正だけ。段階の根拠にしない)
+    nv = SystemInfo(
+        os="test",
+        cpu="test",
+        cpu_cores=8,
+        ram_total_gb=64,
+        ram_available_gb=64,
+        gpus=[
+            Gpu(
+                name="NVIDIA GeForce RTX 4090",
+                vendor="nvidia",
+                vram_total_gb=24.0,
+                backend="cuda",
+                compute_dtype="bf16",
+                bf16=True,
+                fp8=True,
+            )
+        ],
+    )
+    s = Settings(**{k: v for k, v in vars(mps.settings).items()})
+    e = estimate(entry, nv, s, [mps])
+    assert e.basis_detail == "calibrated" and e.fit_from != "measurement"
+    assert _measured_band(mps, entry, s, nv, gpu_precision(entry, nv, s)) is None
+    # Apple の PC では同じ会社の実測(この PC の bench の実測なら段階の根拠になる)
+    apple = SystemInfo(
+        os="test",
+        cpu="test",
+        cpu_cores=8,
+        ram_total_gb=32,
+        ram_available_gb=32,
+        gpus=[
+            Gpu(
+                name="Apple M2 Pro",
+                vendor="apple",
+                vram_total_gb=21.0,
+                backend="mps",
+                compute_dtype="fp16",
+                bf16=True,
+                fp8=False,
+                memory="shared",
+            )
+        ],
+    )
+    assert _measured_band(mps, entry, s, apple, gpu_precision(entry, apple, s)) is not None
+
+
+def test_aggregate_keeps_gpu_backend():
+    """まとめた行にも backend を残す(estimate.measurement_vendor が会社を名前より先にこれで決める)。"""
+    a, b = _sub(6.9, gpu="mps"), _sub(7.0, gpu="mps")
+    for s in (a, b):
+        s.data["system"]["gpu"].update(vendor="apple", backend="mps")
+        s.data["system"]["gpu"].pop("arch", None)
+        s.data["system"]["gpu"].pop("compute_capability", None)
+        s.sha256 = contrib.content_hash(s.data)
+    rows = contrib.aggregate([a, b])
+    assert rows[0]["gpu_backend"] == "mps"
+    assert Measurement.from_dict(rows[0]).gpu_backend == "mps"
+    assert contrib.aggregate([_sub(6.9)])[0]["gpu_backend"] is None  # 記録の無い提出

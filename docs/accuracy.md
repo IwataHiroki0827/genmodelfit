@@ -267,8 +267,8 @@ music・video は張り付いていない実測が 1 件以下のため評価で
   記号をそろえて比べる(`estimate.gpu_key` = `contrib.gpu_slug`)
 - **段階**(#26 の「実測で段階を決める」、`estimate._measured_band`): この PC と**同じ名前の GPU** の、同じ設定で成功した
   ほかの利用者の実測は、作者の実測と同じく段階の根拠にする(似た GPU には広げない)。条件は作者の実測と同じ: この PC の VRAM が
-  実測の GPU の 97% 以上、ピークが収まる、perfect は 60% 以内で、張り付いた実測・`torch_reserved`・OOM の報告のある組は
-  perfect の根拠にしない(good まで)。**NVIDIA 以外の GPU の「good まで」の上限は、この GPU の同じ設定の実測があれば外す**
+  実測の GPU の 97% 以上、ピークが収まる、perfect は 60% 以内で、張り付いた実測・OOM の報告のある組は
+  perfect の根拠にしない(good まで)。`torch_reserved` は文脈の分 0.5 GiB を足した値で帯を決め、perfect の根拠にもする(0.9.0)。**NVIDIA 以外の GPU の「good まで」の上限は、この GPU の同じ設定の実測があれば外す**
   (その実測で決まる段階まで。perfect になりうる)。実測が無ければこれまでどおり good まで
 - **根拠の段階**(`Estimate.basis_detail`。`basis` は後方互換のため measured / estimated の 2 値のまま)と件数
   (`Estimate.sample_count`。JSON に足しただけ。info は `measured_community n=3`、表の VRAM の印は `c`、理由は

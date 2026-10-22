@@ -218,9 +218,9 @@ NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ�
 | AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
 | AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
 | AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
-| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300 = gfx1034)、Radeon 680M / 660M(gfx1035) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
+| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh(Steam Deck、8 CU、gfx1033) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
 | AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
-| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036)、Van Gogh(gfx1033) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
+| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
 | AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
 | AMD(どれでも) | Windows 10・版が分からない | CPU | ComfyUI の案内「Use Windows 11」(分からなければ使わない側) |
 | AMD | macOS | CPU | Apple の MPS 版は Apple silicon だけ(下) |
@@ -354,8 +354,13 @@ ComfyUI の README に合わせている。
   ComfyUI に合わせて使うが、段階は good までの推定
 - **RDNA 1・Vega・Polaris**: llmfit は名前と VRAM が取れれば GPU 扱い、Ollama・llama.cpp は Vulkan で動かせるが、
   ComfyUI の README の対象外なので CPU
-- **2 CU の内蔵 GPU(gfx1036・gfx1033)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU
+- **2 CU の内蔵 GPU(gfx1036)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU
   (対応の有無ではなく性能の判断。理由の文もそう書く)
+- **Van Gogh(Steam Deck、gfx1033)**: 0.8.0 までは gfx1036 と一緒に「2 CU の小さな内蔵 GPU」として CPU にしていたが、
+  Valve の仕様(https://www.steamdeck.com/en/tech 「GPU: 8 RDNA 2 CUs, 1.6GHz (1.6 TFlops FP32)」)で 8 CU あり、
+  TheRock の SUPPORTED_GPUS.md(2026-10-22 に読んだ main)は gfx1033 を Linux・Windows とも Release Ready、
+  ComfyUI の README は「supported architectures include RDNA 2」。680M(12 CU)・660M(6 CU)と同じく GPU(共有メモリ、
+  段階は good まで)にした。pytorch.org の ROCm 版には入っていないので TheRock の版を使う、と notes に出る
 
 ## CPU で動く系統(0.7.0、#39)
 
@@ -378,8 +383,11 @@ fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model
 
 同じ設定・標準のワークフローで成功(`outcome: ok`)した実測があり、その GPU と同じ会社で、この PC の VRAM が実測の GPU の VRAM 以上
 (公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)で、実測のピークがこの PC の VRAM に収まるなら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
-この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と下限としてだけ使う
-実測(`torch_reserved`)と、同じ構成で OOM の報告もあるほかの利用者の実測は perfect の根拠にしない(good まで)。ほかの利用者の
+この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と、
+同じ構成で OOM の報告もあるほかの利用者の実測は perfect の根拠にしない(good まで)。`torch_reserved` の実測(bench。CUDA / HIP の
+文脈を含まない)は文脈の分 0.5 GiB(`estimate.TORCH_RESERVED_CONTEXT_GB`)を足した値で帯を決め、perfect の根拠にもする(0.9.0。
+以前は perfect にしなかったので、bench の提出しか無い NVIDIA 以外の GPU は実測があっても good 止まりだった)。会社は実測の
+`gpu_backend` があればそれで、無いときだけ GPU 名で決める(Apple の MPS は GPU 名が "mps" になる)。ほかの利用者の
 実測(#34)は、この PC と同じ名前の GPU のものだけ使う(2026-10-22。似た GPU には広げない)。精度の直しで作業用メモリを倍にした
 GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
 (段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは

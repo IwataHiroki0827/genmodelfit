@@ -793,7 +793,7 @@ def is_community(m: Measurement) -> bool:
 # 「これ以上」としてだけ使う測り方。torch_reserved は ComfyUI のプロセスの torch の確保量で、CUDA の文脈などを
 # 含まないので、本当の必要量より小さい(#34 のレビュー、オーナーの方針 2026-10-21)。
 # 作者の実測では式より小さければ式の値にする。ほかの利用者の実測では物理的な下限(重み + 固定分)まで
-# 下げてよい(2026-10-22)。どちらも perfect の根拠にしない
+# 下げてよい(2026-10-22)。段階を実測で決めるときは文脈の分を足して使う(TORCH_RESERVED_CONTEXT_GB。0.9.0)
 LOWER_BOUND_METRICS = ("torch_reserved",)
 # 実測の最大 VRAM の上限: GPU の総量 × 1.02 + 0.25 GiB(contrib validate の「ありえない値」と同じ。
 # 総量の数え方の違い(公称 16 と 15.9 など)を許す)
@@ -1174,7 +1174,7 @@ def _estimate(
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
         if is_community(m):
             reasons.append(f"{on} の実測は、{community_label(m)}")
-        other_vendor = g0 is not None and g0.vendor != gpu_vendor(m.gpu_name)
+        other_vendor = g0 is not None and g0.vendor != measurement_vendor(m)
         same_settings = _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry)
         if system.vram_gb <= 0:
             reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
@@ -1266,8 +1266,8 @@ def _estimate(
             n.full, n.sequential, n.offload, system.vram_gb, allow_offload=not shared_memory(system)
         )
         use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
-        if fit_from == "measurement":
-            use = measured_peak
+        if fit_from == "measurement" and m is not None:
+            use = measured_total_gb(m)
         if use > g.vram_free_gb:
             free_short = True
             others = f"(ほかのアプリが {g.vram_used_gb:.1f} GB 使用中)" if g.vram_used_gb is not None else ""
@@ -1303,6 +1303,31 @@ def _estimate(
 MEASURED_VRAM_TOLERANCE = 0.97
 
 
+# 実測の backend(bench が書く。提出の system.gpu.backend)→ 会社
+BACKEND_VENDOR = {"cuda": "nvidia", "rocm": "amd", "xpu": "intel", "mps": "apple"}
+
+
+def measurement_vendor(m: Measurement) -> str:
+    """実測の GPU の会社。backend の記録(gpu_backend)があればそれを使い、無いときだけ GPU 名から推す
+    (Apple の MPS では ComfyUI の GPU 名が "mps" になり、名前からは分からない。0.9.0)。"""
+    backend = getattr(m, "gpu_backend", None)
+    if backend in BACKEND_VENDOR:
+        return BACKEND_VENDOR[backend]
+    return gpu_vendor(m.gpu_name)
+
+
+# torch_reserved の実測(ComfyUI のプロセスの torch の確保量)に含まれない、CUDA / HIP の文脈などの分(GiB)。
+# bench の説明(bench.py の冒頭)の「CUDA の文脈(約 0.3〜0.5 GB)」の多いほうをとる(段階を甘くしない向き)。
+# 段階を実測で決める(#26)ときだけ足す。見積もりの必要量の下限・係数の合わせには使わない(0.9.0)
+TORCH_RESERVED_CONTEXT_GB = 0.5
+
+
+def measured_total_gb(m: Measurement) -> float:
+    """段階を決めるのに使う実測の VRAM。torch_reserved なら文脈の分を足す。"""
+    extra = TORCH_RESERVED_CONTEXT_GB if getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS else 0.0
+    return m.peak_vram_gb + extra
+
+
 def gpu_vendor(name: str) -> str:
     """GPU 名から会社(実測の gpu_name は名前だけなので)。分からなければ nvidia(同梱の実測はすべて NVIDIA)。"""
     n = name.lower()
@@ -1327,34 +1352,38 @@ def _measured_band(
 
     実測が「GPU で動いた」ことは、それ以上の VRAM の同じ会社・同じ精度の扱いの GPU でも動く根拠になる。
     段階は 実測の VRAM ÷ この PC の VRAM の帯(FIT_BANDS)で、少なくとも good。上限に張り付いた実測
-    (動的 VRAM が空きを使い切った)・torch_reserved の実測(CUDA の文脈を含まない)・同じ構成で OOM の報告も
-    あるまとめは perfect の根拠にしない(good まで)。
+    (動的 VRAM が空きを使い切った)・同じ構成で OOM の報告もあるまとめは perfect の根拠にしない(good まで)。
+    torch_reserved の実測(CUDA / HIP の文脈を含まない)は文脈の分(TORCH_RESERVED_CONTEXT_GB)を足した値で
+    帯を決め、perfect の根拠にもする(0.9.0。bench の提出はすべて torch_reserved なので、そうしないと
+    NVIDIA 以外の GPU が実測があっても perfect にならない)。会社は measurement_vendor(backend の記録が先)。
     ほかの利用者の実測は、この PC と同じ名前の GPU のものだけ使う(llmfit と同じく、似た GPU には広げない。
     2026-10-22 のオーナーの決定)。見積もりの段階と比べるのは呼び出し側。"""
     if m is None or not usable(m):
         return None
     g = system.best_gpu
     vram = system.vram_gb
-    if g is None or vram <= 0 or g.vendor != gpu_vendor(m.gpu_name) or prec.act_factor != 1:
+    if g is None or vram <= 0 or g.vendor != measurement_vendor(m) or prec.act_factor != 1:
         return None
     if is_community(m) and not same_gpu_name(m.gpu_name, g.name):
         return None
     if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
         return None
-    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE or m.peak_vram_gb > vram:
+    total = measured_total_gb(m)
+    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE or total > vram:
         return None  # 実測の GPU より小さい、または実測の VRAM がこの PC の VRAM に収まらない
-    band = fit_band(m.peak_vram_gb, vram)
-    weak = (
-        is_censored(m)
-        or getattr(m, "vram_metric", None) in LOWER_BOUND_METRICS
-        or (getattr(m, "n_oom", None) or 0) > 0
-    )
+    band = fit_band(total, vram)
+    weak = is_censored(m) or (getattr(m, "n_oom", None) or 0) > 0
     level = "perfect" if band == "perfect" and not weak else "good"
     on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
     pinned = "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)" if is_censored(m) else ""
+    ctx = (
+        f"(torch の確保量。文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足して {total:.1f} GB とみた)"
+        if total != m.peak_vram_gb
+        else ""
+    )
     who = f"({community_label(m)})" if is_community(m) else ""
     return level, (
-        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{pinned}{who}・成功があり、"
+        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{ctx}{pinned}{who}・成功があり、"
         f"この PC の VRAM {vram:.1f} GB はそれ以上なので、"
         "GPU で動くと判定した(段階は実測で決めた。見積もりは目安)"
     )

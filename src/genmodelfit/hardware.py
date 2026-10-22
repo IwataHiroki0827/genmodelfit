@@ -1271,7 +1271,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             return None
         if gfx in AMD_DISPLAY_ONLY_GFX:
             refuse(  # Radeon 610M(Dragon Range・Raphael など)
-                f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、生成では CPU より速い見込みが無い"
+                f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、"
+                "生成では CPU より速い見込みが無い"
             )
             return None
         if host.system == "Windows" and not _windows_ok(host):

@@ -1167,6 +1167,9 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 "model_id": first.model_id,
                 "gpu_name": _mode([m.gpu_name for m in ms]),
                 "gpu_vram_gb": _med([m.gpu_vram_gb for m in base] or [first.gpu_vram_gb]),
+                # 測った GPU の backend(estimate.measurement_vendor が会社を名前より先にこれで決める。
+                # Apple の MPS は GPU 名が "mps" になる)
+                "gpu_backend": _mode([m.gpu_backend for m in ms]),
                 "peak_vram_gb": round(med, 2),
                 "settings": settings,
                 "peak_ram_gb": _med([m.peak_ram_gb for m in base]),

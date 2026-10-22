@@ -31,6 +31,17 @@ All notable changes to this project are documented here. The format is based on
   an approved entry no longer gets different files silently. A `sha256` filled in for the first time and
   query-string-only URL differences do not count. Over the bundled lists v0.6.0 → v0.7.0 → v0.8.0 it marks 1 entry
   (stable-audio-3-small-sfx), 0 in the next step.
+- **`torch_reserved` measurements can now make Perfect** (#26 levels from measurements). Every `bench` result and
+  submission is `torch_reserved` (the ComfyUI process's torch reservation, without the CUDA / HIP context), and the
+  rule "torch_reserved never makes Perfect" kept AMD / Intel / Apple GPUs at Good even with a measurement of that GPU,
+  against the llmfit-like goal. The level bands (60 / 85 / 98%) and the fit check now use the peak plus
+  `estimate.TORCH_RESERVED_CONTEXT_GB` = 0.5 GiB (the upper end of bench's "about 0.3–0.5 GB" context; the cautious
+  side). Values pinned at the GPU limit and groups with an OOM report still stop at Good. Needs (`vram_gb`) and
+  calibration are unchanged.
+- **The vendor of a measurement comes from its recorded backend** (`gpu_backend` / the submission's `system.gpu.backend`)
+  and only falls back to the GPU name when missing. Apple's MPS reports the GPU name `mps`, which the name rule took for
+  NVIDIA. Used by the #26 "same vendor" check and by "another vendor's measurement only calibrates".
+  `contrib aggregate` keeps `gpu_backend` on community rows.
 - `contrib validate` (and the Contrib workflow) fails only on mechanical checks, like llmfit. `deviation`,
   `below_weights`, `fit_change`, `unknown_model`, `unknown_gpu` are **notices** in the job summary for
   the maintainer who merges; `raise_too_large` is gone. Removed: `--allow-review`, `--reviewed`, `data/contrib/REVIEWED`,
