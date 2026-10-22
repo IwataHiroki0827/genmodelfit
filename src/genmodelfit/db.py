@@ -96,11 +96,25 @@ _ENTRY_TYPES = {
     "tasks": (list,),
     "files": (list,),
     "template": (dict, type(None)),
+    "source": _OPT_STR,
     "params_b": _OPT_NUM,
     "precision": _OPT_STR,
     "license": _OPT_STR,
     "license_name": _OPT_STR,  # 文字でないと、ライセンスの段階の判定(diff・gate)が落ちる(#59)
+    "license_url": _OPT_STR,
+    "base_model": _OPT_STR,
     "content": _STR,
+    "content_evidence": (list, type(None)),
+    "discovered_from": (list, type(None)),
+    "updated": _OPT_STR,
+    "homepage": _OPT_STR,
+    "likes": (int, type(None)),
+    "license_evidence": (list, type(None)),
+    "comfy_family": _OPT_STR,  # 文字でないと、bf16 を持たない GPU の判定(estimate)が落ちる(#63)
+    "comfy_vae": _OPT_STR,
+    "sampler_stages": (list, type(None)),
+    "workflow_precision": _OPT_STR,
+    "precision_source": _OPT_STR,
     "downloads": (int, type(None)),
     "downloads_all_time": (int, type(None)),
     "files_complete": (bool, type(None)),
@@ -131,7 +145,37 @@ _FILE_TYPES = {
     "license_name": _OPT_STR,
     "gated": (bool, type(None)),
     "role": _OPT_STR,
+    "repo_id": _OPT_STR,  # 文字でないと、ファイルの鍵(license・estimate)が落ちる(#63)
+    "license_from": _OPT_STR,
+    "license_url": _OPT_STR,
+    "repo_license": _OPT_STR,
+    "license_path": (list, type(None)),
+    "license_evidence": (list, type(None)),
+    "head_status": (int, type(None)),
+    "head_checked_at": _OPT_STR,
+    "header_precision": _OPT_STR,
+    "header_params": (int, type(None)),
+    "repo_precision": _OPT_STR,
+    "repo_precision_source": _OPT_STR,
 }
+_TEMPLATE_TYPES = {
+    "name": _STR,
+    "title": _OPT_STR,
+    "category": _OPT_STR,
+    "min_comfyui_version": _OPT_STR,
+    "open_source": (bool, type(None)),
+    "requires_custom_nodes": (list, type(None)),
+    "usage": (int, type(None)),
+    "date": _OPT_STR,
+    "size_bytes": (int, type(None)),
+    "username": _OPT_STR,
+}
+
+
+def _check_str_list(d: dict, key: str, where: str) -> None:
+    v = d.get(key)
+    if v is not None and not all(isinstance(x, str) for x in v):
+        raise DatabaseError(f"{where} の {key} は文字列の並びです")
 
 
 def _check_types(d: Any, types: dict[str, tuple], where: str) -> None:
@@ -154,6 +198,14 @@ def check_entry(d: Any, i: int) -> None:
     _check_types(d, _ENTRY_TYPES, where)
     if not all(isinstance(t, str) for t in d.get("tasks", [])):
         raise DatabaseError(f"{where} の tasks は文字列の並びです")
+    for key in ("content_evidence", "discovered_from", "license_evidence"):
+        _check_str_list(d, key, where)
+    ss = d.get("sampler_stages")
+    if ss is not None and not all(isinstance(g, list) and all(isinstance(x, str) for x in g) for g in ss):
+        raise DatabaseError(f"{where} の sampler_stages は文字列の並びの並びです: {ss!r}")
+    if d.get("template") is not None:
+        _check_types(d["template"], _TEMPLATE_TYPES, f"{where}.template")
+        _check_str_list(d["template"], "requires_custom_nodes", f"{where}.template")
     langs = d.get("languages")
     for k, v in (langs or {}).items():
         if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(x, str) for x in v):
@@ -173,6 +225,8 @@ def check_entry(d: Any, i: int) -> None:
                 raise DatabaseError(f"{where}.review の {key} は文字列の並びです")
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
+        for key in ("license_path", "license_evidence"):
+            _check_str_list(f, key, f"{where}.files[{j}]")
 
 
 def duplicate_ids(models: list[Any]) -> list[str]:

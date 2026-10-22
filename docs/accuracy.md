@@ -247,7 +247,15 @@ music・video は張り付いていない実測が 1 件以下のため評価で
   ok と OOM が混ざる組は ok の中央値を使い、OOM の件数を理由に出す。OOM だけの組は `outcome: oom` の 1 行(見積もりには使わない)
 - **使う条件**: **この PC と同じ GPU** の実測だけを、この PC の必要量・段階に使う(llmfit と同じ。0.9.0。別の GPU・GPU の無い PC の判定は、
   ほかの利用者の実測があっても無くても同じ)。同じ GPU かは `estimate.same_gpu`: 両方に PCI の型番 ID(`1002:744c`)があれば ID、
-  無ければ `estimate.gpu_key` でそろえた名前((R)・(TM)・™・®・大小・空白・NVIDIA / GeForce の語を除く)。「AMD Radeon(TM) Graphics」
+  無ければ `estimate.gpu_key` でそろえた名前((R)・(TM)・™・®・大小・空白・NVIDIA / GeForce の語を除く)。
+  **加えて VRAM が近いこと**(0.9.1。`estimate.same_vram`): 実測の GPU の VRAM と この PC の総量の比(小さい ÷ 大きい)が 0.97 以上。
+  同じ名前・同じ型番 ID でも VRAM の違う GPU があるため(RTX 4060 Ti の 8 / 16 GB、RTX 3060 の 8 / 12 GB、PCI ID `744c` の
+  RX 7900 XT・XTX・GRE)。0.97 は公称 16 GB と nvidia-smi の 15.9 GB のような数え方の違い(`MEASURED_VRAM_TOLERANCE` と同じ)を許す幅で、
+  VRAM の違う版の比は 0.83 以下(RTX 3080 の 10 / 12 GB など)なので間に余裕がある。内蔵 GPU・APU・Apple(共有・統合メモリ。総量が
+  PC のメインメモリで決まる)は比べない。ほかの利用者の実測の点検(`contrib` の fit_change)は、名前の表で公称の VRAM が分かる
+  GPU(Intel Arc と、NVIDIA の `estimate.NVIDIA_VRAM_VARIANTS`: RTX 2060・3050・3060・3080・4060 Ti・5060 Ti。NVIDIA の公式の
+  製品ページで確認、出典は定数のコメント)ではその VRAM の PC でも行う。ノート用 GPU・GTX 16 系は VRAM 違いが無い・名前が別なので表に無い。
+  「AMD Radeon(TM) Graphics」
   「Intel(R) Arc(TM) Graphics」のような汎用の名前は、世代の違う GPU が同じ名前になるので名前では一致させない。
   作者の同梱の実測はどの PC にも使う(今までどおり)。ok の行は **1 件から**使う(`consistent` は係数の合わせ直しに入れる条件として
   残す: 2 件以上・幅 15% 以内・OOM なし)

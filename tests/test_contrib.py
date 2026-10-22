@@ -647,7 +647,7 @@ def test_community_value_is_capped_at_the_gpu_size(db):
     entry = db.get("image_sdxl_simple")
     m = next(x for x in db.measurements if x.model_id == entry.id)
     big = _community(m, gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24.0, peak_vram_gb=40.0)
-    e = estimate(entry, pc(48, "NVIDIA GeForce RTX 4090"), Settings(width=832, height=832), [big])
+    e = estimate(entry, pc(24, "NVIDIA GeForce RTX 4090"), Settings(width=832, height=832), [big])
     assert e.vram_gb == round(24.0 * 1.02 + 0.25, 2) and e.basis == "estimated"
     assert any("GPU の総量を超える" in r for r in e.reasons)
 
@@ -804,6 +804,7 @@ def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypa
     from genmodelfit import hardware
 
     # この PC の GPU は実測と同じ A100(ほかの利用者の実測は同じ GPU の PC にだけ使う。0.9.0)
+    # --vram で上書きした総量は実測の GPU の VRAM と合わせる(VRAM の違う GPU の実測は使わない。0.9.1)
     a100 = Gpu(name="NVIDIA A100-SXM4-80GB", vendor="nvidia", vram_total_gb=80.0, backend="cuda")
     monkeypatch.setattr(hardware, "detect_gpus", lambda **kw: ([a100], []))
     entry = _unmeasured_image(db)
@@ -819,13 +820,13 @@ def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypa
     (meas / "community.json").write_text(
         json.dumps({"measurements": [vars(row) | {"settings": vars(row.settings)}]}), encoding="utf-8"
     )
-    assert cli.main(["info", entry.id, "--vram", "16", "--ram", "32", "--no-cache"]) == 0
+    assert cli.main(["info", entry.id, "--vram", "80", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "measured: measured_community n=3" in out and "ほかの利用者の実測 3 件(中央値" in out
-    assert cli.main(["info", entry.id, "--vram", "16", "--ram", "32", "--no-cache", "--json"]) == 0
+    assert cli.main(["info", entry.id, "--vram", "80", "--ram", "32", "--no-cache", "--json"]) == 0
     e = json.loads(capsys.readouterr().out)["estimate"]
     assert (e["basis_detail"], e["sample_count"]) == ("measured_community", 3)
-    args = ["fit", "--vram", "16", "--ram", "32", "--no-cache", "--all-workflows", "--min-fit", "too_tight"]
+    args = ["fit", "--vram", "80", "--ram", "32", "--no-cache", "--all-workflows", "--min-fit", "too_tight"]
     assert cli.main([*args, "--modality", "image", "-n", "500"]) == 0
     out = capsys.readouterr().out
     assert "c = measured by other users" in out  # 凡例
@@ -1597,7 +1598,8 @@ def test_submission_pci_id_matches_the_name(name, vendor, pci, expect):
 
 
 def test_fit_change_also_checks_the_nominal_vram(db, monkeypatch):
-    """N3: 名前の表で公称の VRAM が分かる GPU(Intel の Arc)は、提出の VRAM に加えて公称の VRAM の PC でも
+    """N3: 名前の表で公称の VRAM が分かる GPU(Intel の Arc、0.9.1 から NVIDIA の VRAM 違いのある GPU)は、
+    提出の VRAM に加えて公称の VRAM の PC でも
     点検する(A770 は 8 GB と 16 GB の版が同じ名前)。"""
     seen = []
     real = contrib._measured_pc
@@ -1615,4 +1617,59 @@ def test_fit_change_also_checks_the_nominal_vram(db, monkeypatch):
     seen.clear()
     nv = _community(m0, gpu_name="NVIDIA GeForce RTX 4060 Ti", gpu_vram_gb=16.0)
     contrib.community_effect(entry, contrib._own_measurements(db), [nv])
-    assert set(seen) == {16.0}  # 公称の VRAM の表が無い GPU は今のまま
+    assert set(seen) == {16.0, 8.0}  # 0.9.1: NVIDIA も公称の VRAM の表(estimate.NVIDIA_VRAM_VARIANTS)で点検
+    seen.clear()
+    nv = _community(m0, gpu_name="NVIDIA GeForce RTX 4070", gpu_vram_gb=12.0)
+    contrib.community_effect(entry, contrib._own_measurements(db), [nv])
+    assert set(seen) == {12.0}  # VRAM 違いの無い GPU は今のまま
+
+
+# --- 0.9.1: 同じ名前で VRAM の違う GPU の実測を同じ GPU として使わない ----------------------------------
+
+
+def test_same_gpu_requires_close_vram():
+    """同じ名前・同じ型番 ID でも VRAM が違えば別の GPU(RTX 4060 Ti の 8 / 16 GB、
+    PCI ID 744c の XT・XTX・GRE)。
+    公称 16 と nvidia-smi の 15.9 のような数え方の違い(97% 以上)は同じ。"""
+    from genmodelfit.estimate import nvidia_vram_variants, same_gpu
+
+    nv = "NVIDIA GeForce RTX 4060 Ti"
+    assert same_gpu(nv, None, pc(16, nv).gpus[0], 16.0)
+    assert same_gpu(nv, None, pc(15.9, nv).gpus[0], 16.0)
+    assert not same_gpu(nv, None, pc(8, nv).gpus[0], 16.0)
+    assert not same_gpu("NVIDIA GeForce RTX 3060", None, pc(12, "NVIDIA GeForce RTX 3060").gpus[0], 8.0)
+    assert same_gpu(nv, None, pc(8, nv).gpus[0])  # VRAM を渡さなければ従来どおり
+    lspci = "AMD Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M"
+    xtx, gre = _amd_gpu(lspci, 24.0, "1002:744c"), _amd_gpu(lspci, 16.0, "1002:744c")
+    assert same_gpu("AMD Radeon RX 7900 XTX", "1002:744c", xtx, 24.0)
+    assert not same_gpu("AMD Radeon RX 7900 XTX", "1002:744c", gre, 24.0)  # 0.9.0 の検証役の指摘 N2
+    # 統合メモリ・共有メモリの GPU は総量が PC のメインメモリで決まるので比べない
+    apple = Gpu(name="Apple M2 Pro", vendor="apple", vram_total_gb=24.0, backend="mps", memory="unified")
+    assert same_gpu("Apple M2 Pro", None, apple, 16.0)
+    assert nvidia_vram_variants("NVIDIA GeForce RTX 4060 Ti") == (8.0, 16.0)
+    assert nvidia_vram_variants("NVIDIA GeForce RTX 4060 Ti Laptop GPU") == ()
+    assert nvidia_vram_variants("NVIDIA GeForce RTX 4070") == ()
+
+
+def test_community_16gb_measurement_not_used_on_8gb_card(db):
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id and m.origin is None]
+    s = Settings(width=1024, height=1024)
+    nv = "NVIDIA GeForce RTX 4060 Ti"
+    c16 = _community(maint[0], gpu_name=nv, gpu_vram_gb=16.0, peak_vram_gb=14.0, settings=s)
+    assert estimate(entry, pc(8, nv), s, [*maint, c16]) == estimate(entry, pc(8, nv), s, maint)
+    assert estimate(entry, pc(16, nv), s, [*maint, c16]).vram_gb == 14.0
+
+
+def test_community_effect_also_checks_nvidia_vram_variants(db):
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id and m.origin is None]
+    nv = "NVIDIA GeForce RTX 3060"
+    s = Settings(width=1024, height=1024)
+    m = _community(maint[0], gpu_name=nv, gpu_vram_gb=12.0, peak_vram_gb=9.0, settings=s)
+    from genmodelfit.contrib import community_effect
+
+    _rel, changes = community_effect(entry, maint, [m], m.settings)
+    assert all(c["vram_gb"] in (8.0, 12.0) for c in changes)
+    # 8 GB 版の PC では 12 GB の実測は使われないので、段階は変わらない
+    assert not [c for c in changes if c["vram_gb"] == 8.0]
