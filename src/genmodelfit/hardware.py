@@ -785,6 +785,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
             )
         elif isinstance(err, int) and err != 0:
             notes.append(f"{name} は Windows のデバイスマネージャーで問題がある状態(コード {err})")
+        ids = re.search(r"ven_([0-9a-f]{4})&dev_([0-9a-f]{4})", hwid)
         out.append(
             Adapter(
                 name=name,
@@ -792,6 +793,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
                 vram_gb=round(vram / GIB, 2) if vram else None,
                 vram_source=src,
                 source="wmi",
+                pci_id=f"{ids.group(1)}:{ids.group(2)}" if ids else None,
             )
         )
     return out, notes
@@ -839,6 +841,7 @@ def parse_lspci(text: str, vram_of=None, gtt_of=None) -> list[Adapter]:
                 vram_source="sysfs" if vram else None,
                 source="lspci",
                 shared_gb=round(gtt / GIB, 2) if gtt else None,
+                pci_id=f"{ids[-1].group(1).lower()}:{ids[-1].group(2).lower()}" if ids else None,
             )
         )
     return out
@@ -883,6 +886,22 @@ def apple_chip_name() -> str | None:
         if a.vendor == "apple" and APPLE_CHIP_NAME.fullmatch(name):
             return name
     return None
+
+
+def local_pci_id(vendor: str, name: str) -> str | None:
+    """この PC の、ComfyUI の GPU(会社と名前)の PCI の型番 ID("1002:744c")。bench が ComfyUI と同じ PC の
+    ときだけ使う。AMD・Intel だけ(NVIDIA は名前がどこでも同じで、判定の側も名前で比べる)。Windows は WMI の
+    PNPDeviceID の VEN・DEV、Linux は lspci -nn。名前が合う部品が 1 つならそれ、その会社の部品が 1 つだけなら
+    それ。決められなければ None。型番 ID は機種の番号で、個体・差し場所(PCI のバス番号)は表さない。"""
+    if vendor not in ("amd", "intel"):
+        return None
+    from .estimate import gpu_key
+
+    adapters, _ = detect_other_gpus()
+    cands = [a for a in adapters if a.vendor == vendor and a.pci_id]
+    named = [a for a in cands if gpu_key(a.name) == gpu_key(name)]
+    pick = named if len(named) == 1 else cands if len(cands) == 1 else []
+    return pick[0].pci_id if pick else None
 
 
 def parse_system_profiler(text: str) -> list[Adapter]:
@@ -1399,6 +1418,7 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         memory=memory,
         gfx_target=gfx,
         carveout_gb=round(a.vram_gb or 0.0, 2) if memory == "shared" else None,
+        pci_id=a.pci_id,
     )
 
 

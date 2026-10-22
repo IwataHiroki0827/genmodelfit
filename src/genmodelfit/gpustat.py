@@ -11,7 +11,8 @@
 - AMD・Linux: `amd-smi metric --usage --mem-usage --json`(usage.gfx_activity %・mem_usage.used_vram MB)
 - AMD・Linux: `rocm-smi --showuse --showmeminfo vram --json`
   (「GPU use (%)」・「VRAM Total Used Memory (B)」)
-- Intel・Linux: `xpu-smi dump -d 0 -m 0,18 -n 1`(項目 0 = 全エンジンの平均 %・項目 18 = 使用中 MiB)
+- Intel・Linux: `xpu-smi dump -d -1 -m 0,18 -n 1`(-1 = 全部の GPU。項目 0 = 全エンジンの平均 %・
+  項目 18 = 使用中 MiB。GPU が 2 枚以上で ComfyUI の GPU を決められなければ、読めないものとして扱う)
 - AMD・Intel・Windows: `typeperf` の性能カウンタ GPU Engine・GPU Adapter Memory
   (エンジンの種類ごとの合計のうち最大 = タスク マネージャーと同じ・Dedicated Usage バイト)
 - Apple・macOS: `ioreg -r -d 1 -w 0 -c IOAccelerator`
@@ -127,9 +128,9 @@ def parse_rocm_smi(text: str) -> list[Reading]:
 
 
 def parse_xpu_smi_dump(text: str) -> list[Reading]:
-    """xpu-smi dump(`-d 0 -m 0,18 -n 1`)の CSV(「Timestamp, DeviceId,
+    """xpu-smi dump(`-d -1 -m 0,18 -n 1`)の CSV(「Timestamp, DeviceId,
     Average % utilization of all GPU Engines, GPU Memory Used (MiB)」)。
-    列は見出しの文字で探す。時刻は読まない。"""
+    列は見出しの文字で探す。時刻は読まない。GPU(DeviceId)ごとに最後の行を 1 つ返す。"""
     lines = [x for x in text.splitlines() if x.strip()]
     head = next((i for i, x in enumerate(lines) if x.lstrip().lower().startswith("timestamp")), None)
     if head is None:
@@ -137,17 +138,18 @@ def parse_xpu_smi_dump(text: str) -> list[Reading]:
     cols = [c.strip().lower() for c in lines[head].split(",")]
     ui = next((i for i, c in enumerate(cols) if "utilization" in c and "memory" not in c), None)
     mi = next((i for i, c in enumerate(cols) if "memory used" in c), None)
+    di = next((i for i, c in enumerate(cols) if c.replace(" ", "") == "deviceid"), None)
     if ui is None and mi is None:
         return []
-    out = []
+    by_dev: dict[str, Reading] = {}
     for line in lines[head + 1 :]:
         parts = [p.strip() for p in line.split(",")]
         if len(parts) != len(cols):
             continue
         r = Reading(_num(parts[ui]) if ui is not None else None, _num(parts[mi]) if mi is not None else None)
         if _keep(r):
-            out.append(r)
-    return out[-1:]  # -n 1 でも念のため最後の行だけ(1 台分)
+            by_dev[parts[di] if di is not None else "0"] = r  # 同じ GPU は最後の行(-n 1 でも念のため)
+    return list(by_dev.values())
 
 
 _PDH_INSTANCE = re.compile(r"\(([^()]*)\)\\[^\\]*$")
@@ -218,11 +220,16 @@ class Tool:
     name: str  # 利用者に見せる名前
     args: tuple[str, ...]
     parse: Any  # (text) -> list[Reading]
+    # GPU が複数で ComfyUI の GPU を決められないとき、まとめた値(使用率は最大・メモリは合計)を使うか。
+    # False なら読めないものとして扱う(xpu-smi は総量を出さず、どれが ComfyUI の GPU か決められないため)
+    combine: bool = True
 
 
 AMD_SMI = Tool("amd-smi", ("amd-smi", "metric", "--usage", "--mem-usage", "--json"), parse_amd_smi)
 ROCM_SMI = Tool("rocm-smi", ("rocm-smi", "--showuse", "--showmeminfo", "vram", "--json"), parse_rocm_smi)
-XPU_SMI = Tool("xpu-smi", ("xpu-smi", "dump", "-d", "0", "-m", "0,18", "-n", "1"), parse_xpu_smi_dump)
+XPU_SMI = Tool(
+    "xpu-smi", ("xpu-smi", "dump", "-d", "-1", "-m", "0,18", "-n", "1"), parse_xpu_smi_dump, combine=False
+)
 TYPEPERF = Tool(
     "Windows の性能カウンタ(typeperf)",
     (
@@ -303,6 +310,8 @@ class Probe:
     def read(self) -> Reading | None:
         for tool in [self.tool] if self.tool else self.tools:
             got, combined = pick(read_tool(tool), self.total_mib)
+            if combined and not tool.combine:
+                continue  # 複数の GPU のどれが ComfyUI のか決められない(道具で読めないのと同じ)
             if got is not None:
                 self.tool = tool
                 self.combined = self.combined or combined

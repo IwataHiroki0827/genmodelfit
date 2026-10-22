@@ -54,6 +54,7 @@ GPU = {
     "memory",  # 0.7.0(#22。後から足した項目)
     "gfx_target",
     "carveout_gb",
+    "pci_id",  # 0.9.0(PCI の型番 ID。同じ GPU の照合)
 }
 DATABASE = {"origin", "generated_at", "models", "measurements"}
 FIT = {
@@ -276,6 +277,7 @@ MEASUREMENT = {
     "n_used",  # 以下 2026-10-22(llmfit に合わせた。件数)
     "n_oom",
     "gpu_backend",  # 0.9.0(測った GPU の backend)
+    "gpu_pci_id",  # 0.9.0(測った GPU の PCI の型番 ID)
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 

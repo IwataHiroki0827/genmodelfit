@@ -1387,6 +1387,8 @@ def format_submission(data: dict[str, Any]) -> list[str]:
             if {"vendor", "backend"} & set(gpu)
             else []
         ),
+        # PCI の型番 ID(0.9.0。機種の番号で、個体・差し場所は表さない)。入っているときだけ
+        *([f"型番 ID {_shown(gpu.get('pci_id'))}"] if "pci_id" in gpu else []),
     ]
     peak = mm.get("peak_vram_gb")
     return [
@@ -1585,7 +1587,7 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
 def format_report(rep: dict[str, Any]) -> list[str]:
     """精度の点検の表(Markdown。毎週の自動 PR にそのまま貼れる形)。"""
     from .calibrate import check_table
-    from .contrib import CHECK_RAM_GB, COMMON_VRAM_GB, md_cell
+    from .contrib import CHECK_RAM_GB, md_cell
 
     thr = rep["threshold_pct"]
     lines = [
@@ -1620,16 +1622,17 @@ def format_report(rep: dict[str, Any]) -> list[str]:
         lines.append(f"閾値 {thr:g}% を超えたものはありません。")
     lines += ["", "### ほかの利用者の実測で変わる段階 / Fit-level changes caused by community data", ""]
     if rep.get("fit_changes"):
-        lines += ["| モデル | VRAM | メモリ | 前 | 後 |", "|---|---:|---:|---|---|"]
+        lines += ["| モデル | GPU | VRAM | メモリ | 前 | 後 |", "|---|---|---:|---:|---|---|"]
         for c in rep["fit_changes"]:
             lines.append(
-                f"| {md_cell(c['model_id'])} | {c['vram_gb']} GB | {c['ram_gb']:g} GB |"
-                f" {c['before']} | {c['after']} |"
+                f"| {md_cell(c['model_id'])} | {md_cell(c.get('gpu_name') or '?')} | {c['vram_gb']:g} GB |"
+                f" {c['ram_gb']:g} GB | {c['before']} | {c['after']} |"
             )
     else:
-        vram = ", ".join(str(v) for v in COMMON_VRAM_GB)
         ram = ", ".join(f"{v:g}" for v in CHECK_RAM_GB)
-        lines.append(f"ありません(VRAM {vram} GB × メモリ {ram} GB で確かめた)。")
+        lines.append(
+            f"ありません(実測と同じ GPU の PC × メモリ {ram} GB で確かめた。ほかの GPU の PC には使わない)。"
+        )
     if rep.get("check"):
         lines += ["", *check_table(rep["check"])]
     return lines

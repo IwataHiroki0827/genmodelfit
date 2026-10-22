@@ -6,7 +6,7 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 **English summary:** Run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
 against your own ComfyUI (in a clone of your fork). It writes a submission file
 `data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver / vendor and
-PyTorch backend, ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
+PyTorch backend / PCI model ID such as `1002:744c` (not the bus address), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
 AMD, Intel and Apple GPUs are especially welcome: they have no measurements yet, so their levels are capped at Good. Check exactly what will be shared with
 `genmodelfit contrib show <file>` (it also runs a privacy checklist), then open a pull request that adds only that file.
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open. The file never
@@ -110,12 +110,14 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 |---|---|
 | GPU の名前・VRAM の総量・世代・compute capability・ドライバの版(世代と compute capability は NVIDIA だけ) | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
 | GPU の会社と PyTorch の backend(0.9.0 の bench から) | `amd` と `rocm`、`intel` と `xpu`、`apple` と `mps`、`nvidia` と `cuda` |
+| GPU の PCI の型番 ID(0.9.0。AMD・Intel で ComfyUI が同じ PC のときだけ。機種の番号で、個体・差し場所は表さない) | `1002:744c`(Radeon RX 7900 XTX。同じ機種ならどの PC でも同じ) |
+| Apple の GPU はチップ名(0.9.0。system_profiler の名前の形に合うものだけ) | `Apple M2 Pro` |
 | ComfyUI の版、OS の種類(版・ビルドは入れない)、メインメモリ(GiB の整数に丸める) | `0.40.0`, `windows`, `32` |
 | モデル ID・設定・結果・最大 VRAM / メモリ・時間・載せ方・測り方 | `image_sdxl_simple`, `832x832`, `ok`, `6.9` … |
 | 日付(UTC の日付だけ) | `2026-10-21` |
 | メモ(note。bench が書いた測り方の説明) | パス・URL・PC 名・ユーザ名・メール・UUID・IP・時刻らしい文字を含む文は、文ごと消す |
 
-**入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所、シリアル番号、IP / MAC アドレス、
+**入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所(バス番号。型番 ID とは別物)、シリアル番号、IP / MAC アドレス、
 CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。決まった項目以外は CI の検査で断ります。
 ただし自動の点検は文字の形を見るだけで、note に普通の言葉で書いた名前(「山田太郎の PC で測った」など)や、base64 などで
 書き換えたパスは見分けられません(下の 3 で自分で読んでください)。
@@ -135,7 +137,7 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
 - 失敗(誤り)にするのは、機械的な検査(形・値の範囲・個人の情報・重複・ファイル名)だけです(llmfit と同じ考え方。2026-10-22)
 - 「確認」(notices)は、式の見積もりから 40% より外れた値・全部 GPU に載せた(`offload: none`)のに下限(重み + 固定分)より小さい値・
-  よくある VRAM で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
+  同じ GPU の PC(VRAM は提出の値、メモリ 16 / 32 / 64 GB)で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
   PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)
 
 ## 4. 送る(Pull Request)
@@ -153,9 +155,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 ### 受け付けたあと
 
 - 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。**1 件から**その構成の見積もりの根拠が `measured_community`
+  提出をまとめます(中央値と MAD で外れ値を除く)。使うのは**測った GPU と同じ GPU の PC だけ**です(llmfit と同じ。
+  ほかの GPU の PC の判定は変わりません)。その PC では **1 件から**その構成の見積もりの根拠が `measured_community`
   (ほかの利用者の実測)になり、件数(`sample_count`)も出ます。値は必要量を下げる向きにも上げる向きにも使います
-  (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ名前の GPU の同じ設定の実測は、段階を決める
+  (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ GPU の同じ設定の実測は、段階を決める
   根拠にもなります(NVIDIA 以外の GPU も、その GPU の実測があれば good の上限が外れます)。詳しくは docs/accuracy.md
 - 毎週の点検(`contrib aggregate --report`)が、校正の誤差の表を作り直します(docs/accuracy.md)
 

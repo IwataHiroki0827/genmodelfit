@@ -28,6 +28,7 @@ import contextlib
 import getpass
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -48,7 +49,6 @@ from .estimate import (
     PEAK_VRAM_SLACK_GB,
     PRECISION_BYTES,
     gpu_key,
-    gpu_vendor,
     norm_precision,
 )
 from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, parse_compute_cap
@@ -61,7 +61,7 @@ KIND = "genmodelfit-measurement"
 # 値の健全さの許容
 VRAM_TOLERANCE_GB = PEAK_VRAM_SLACK_GB  # 最大 VRAM は GPU の総量 × 1.02 + これまで(estimate.peak_vram_cap)
 RAM_TOLERANCE_GB = 1.0  # 最大メモリはメインメモリ × 1.05 + これまで
-MAX_GPU_VRAM_GB = 512.0
+MAX_GPU_VRAM_GB = 256.0  # 1 枚の GPU の VRAM の上限(超えたら誤り。0.9.0 で 512 から下げた)
 MAX_RAM_GB = 4096.0
 MAX_NOTE_CHARS = 2000
 # 設定の範囲(テンプレートで使うありえる幅。外れたら誤り)
@@ -95,7 +95,11 @@ TOOL_KEYS = {"name", "version"}
 SYSTEM_KEYS = {"os_family", "ram_total_gb", "gpu"}
 # vendor・backend は 0.9.0 で足した任意の項目
 # (NVIDIA 以外の GPU の実測を見分けるため。docs/schema.md「contrib」)
-GPU_KEYS = {"name", "vram_gb", "arch", "compute_capability", "driver", "vendor", "backend"}
+# pci_id(PCI の型番 ID "1002:744c"。機種の番号で、個体・差し場所は表さない)も 0.9.0 の任意の項目
+GPU_KEYS = {"name", "vram_gb", "arch", "compute_capability", "driver", "vendor", "backend", "pci_id"}
+# PCI の vendor ID → 会社(提出の pci_id と vendor が合うかを見る)
+PCI_VENDORS = {"10de": "nvidia", "1002": "amd", "8086": "intel"}
+_PCI_ID = re.compile(r"[0-9a-f]{4}:[0-9a-f]{4}")
 # GPU の会社 → PyTorch の backend(models.USABLE_BACKENDS)
 VENDOR_BACKEND = {"nvidia": "cuda", "amd": "rocm", "intel": "xpu", "apple": "mps"}
 MEASUREMENT_KEYS = {
@@ -390,7 +394,8 @@ def gpu_slug(name: str) -> str:
 
 def canonical(data: dict[str, Any]) -> bytes:
     """内容の決まった並べ方(キーの順・空白によらない)。重複と名前の hash に使う。"""
-    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    text = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return text.encode("utf-8")
 
 
 def content_hash(data: dict[str, Any]) -> str:
@@ -476,6 +481,8 @@ def build_submission(
                 "driver": driver,
                 # 会社・backend は bench が記録したときだけ入れる(古い結果から作るときは入れない)
                 **({"vendor": vendor, "backend": backend} if backend else {}),
+                # PCI の型番 ID は bench が ComfyUI と同じ PC の検出から書いたときだけ(機種の番号だけ)
+                **({"pci_id": m.gpu_pci_id} if getattr(m, "gpu_pci_id", None) else {}),
             },
         },
         "comfyui_version": m.comfyui_version,
@@ -495,7 +502,7 @@ def build_submission(
 
 
 def dumps(data: dict[str, Any]) -> str:
-    return json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+    return json.dumps(data, ensure_ascii=False, indent=1, allow_nan=False) + "\n"
 
 
 def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Path:
@@ -513,7 +520,7 @@ def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Pa
 def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
     """bench が保存した JSON({"measurements": [...]})か、`bench --json` の出力({"measurement": {...}})。"""
     p = Path(path)
-    data = json.loads(p.read_text(encoding="utf-8"))
+    data = loads_strict(p.read_text(encoding="utf-8"))
     if isinstance(data, dict) and isinstance(data.get("measurement"), dict):
         items = [data["measurement"]]
     elif isinstance(data, dict) and isinstance(data.get("measurements"), list):
@@ -531,16 +538,21 @@ def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
 
 
 def to_measurement(data: dict[str, Any]) -> Measurement:
-    """提出 1 件 → Measurement(まとめる前の 1 件)。"""
+    """提出 1 件 → Measurement(まとめる前の 1 件)。最大メモリは、提出のメインメモリ(丸めた GiB)× 1.05 + 1 GiB
+    (validate の上限と同じ)で切り詰める(見積もりの ram_gpu に入るため。0.9.0)。"""
     gpu = data["system"]["gpu"]
     mm = data["measurement"]
+    pram = mm.get("peak_ram_gb")
+    ram = (data.get("system") or {}).get("ram_total_gb")
+    if _num(pram) and _num(ram) and ram > 0:
+        pram = min(pram, ram * 1.05 + RAM_TOLERANCE_GB)
     return Measurement(
         model_id=mm["model_id"],
         gpu_name=gpu["name"],
         gpu_vram_gb=float(gpu["vram_gb"]),
         peak_vram_gb=float(mm["peak_vram_gb"]),
         settings=Settings.from_dict(mm.get("settings") or {}),
-        peak_ram_gb=mm.get("peak_ram_gb"),
+        peak_ram_gb=pram,
         seconds=mm.get("seconds"),
         driver=gpu.get("driver"),
         comfyui_version=data.get("comfyui_version"),
@@ -553,6 +565,7 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
         vram_metric=mm.get("vram_metric"),
         origin=ORIGIN_COMMUNITY,
         gpu_backend=gpu.get("backend"),
+        gpu_pci_id=gpu.get("pci_id"),
     )
 
 
@@ -592,7 +605,49 @@ class Report:
 
 
 def _num(x: Any) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool)
+    """有限の数か(NaN・inf は数とみなさない)。"""
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def number_problems(data: Any) -> list[str]:
+    """NaN・inf・負の数の場所(提出のどの数も有限で 0 以上。0.9.0)。"""
+    out: list[str] = []
+
+    def walk(x: Any, where: str) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                walk(v, f"{where}.{k}")
+        elif isinstance(x, (int, float)) and not isinstance(x, bool):
+            if not math.isfinite(x):
+                out.append(f"{where} が有限の数ではありません(NaN・inf)")
+            elif x < 0:
+                out.append(f"{where} が負の数です: {x!r}")
+
+    walk(data, "$")
+    return out
+
+
+def _no_constants(name: str) -> Any:
+    raise ValueError(f"JSON に {name} があります(NaN・Infinity は受け付けません)")
+
+
+def loads_strict(text: str) -> Any:
+    """JSON を読む。NaN・Infinity・-Infinity は断る(Python の json は既定で読んでしまう)。"""
+    return json.loads(text, parse_constant=_no_constants)
+
+
+def name_vendor(name: str) -> str | None:
+    """GPU 名から分かる会社(分からなければ None。estimate.gpu_vendor と違い NVIDIA を既定にしない)。"""
+    n = (name or "").lower()
+    if re.search(r"nvidia|geforce|quadro|tesla|\brtx\b|\bgtx\b", n):
+        return "nvidia"
+    if "radeon" in n or n.startswith("amd") or "instinct" in n:
+        return "amd"
+    if n.startswith("intel") or re.search(r"\barc\b", n):
+        return "intel"
+    if n.startswith("apple") or n == "mps":
+        return "apple"
+    return None
 
 
 def _check_keys(r: Report, d: Any, allowed: set[str], where: str, required: set[str]) -> bool:
@@ -613,7 +668,9 @@ _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DRIVER = re.compile(r"\d{2,4}(\.\d{1,3}){1,3}")
 _VERSION = re.compile(r"v?\d{1,3}\.\d{1,3}\.\d{1,4}")  # ComfyUI の版(厳密な x.y.z。後ろに何も付けない)
 _TOOL_VERSION = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,4}((a|b|rc|\.dev|\.post)\d{1,4})?")
-_GPU_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 .-]{1,63}")  # 括弧・記号・自由な文は入れられない
+# GPU の名前: 英数字・空白・. - と、ComfyUI・PyTorch・Windows の名前に入る (R)・(TM)・™・® だけ
+# (ほかの括弧・記号・自由な文は入れられない。0.9.0 で (R) などを許した)
+_GPU_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 .-]|\((?:R|TM|r|tm)\)|[™®]){1,63}")
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,199}")
 _PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
 # 式の見積もりから 40% より外れた値は注意(マージするメンテナが見る)。
@@ -640,6 +697,11 @@ def validate_submission(
         return r
     for msg in string_problems(data):
         r.error("string", msg)
+    numbers = number_problems(data)
+    for msg in numbers:
+        r.error("value", msg)
+    if any("NaN" in msg for msg in numbers):
+        return r  # NaN・inf は JSON に書けない(中身の hash も作れない)ので、ここで止める
     for f in privacy_findings(data, raw):
         r.error("privacy", f"{f['where']}: {f['what']}らしい文字があります。消してから出してください")
     _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
@@ -702,7 +764,11 @@ def validate_submission(
     vram = gpu.get("vram_gb")
     if gpu:
         if not isinstance(name, str) or not _GPU_NAME.fullmatch(name):
-            r.error("value", "system.gpu.name は GPU の名前(英数字・空白・. -、64 字まで)だけにしてください")
+            r.error(
+                "value",
+                "system.gpu.name は GPU の名前(英数字・空白・. -・(R)・(TM)・™・®、64 字まで)"
+                "だけにしてください",
+            )
             name = None
         if not _num(vram) or not 0 < vram <= MAX_GPU_VRAM_GB:
             r.error("value", f"system.gpu.vram_gb がありえない値です: {vram!r}")
@@ -726,7 +792,7 @@ def validate_submission(
             )
         elif vendor not in (None, "nvidia") and (gpu.get("compute_capability") or gpu.get("arch")):
             r.error("gpu_inconsistent", "compute capability・arch は NVIDIA の GPU だけに入れます")
-        elif vendor and isinstance(name, str) and gpu_vendor(name) not in ("nvidia", vendor):
+        elif vendor and isinstance(name, str) and name_vendor(name) not in (None, vendor):
             r.error("gpu_inconsistent", f"GPU 名({name})の会社と vendor({vendor})が合いません")
         elif (
             vendor == "apple"
@@ -738,6 +804,16 @@ def validate_submission(
             r.error(
                 "gpu_inconsistent", f"Apple の GPU 名はチップ名(Apple M2 Pro など)か mps だけです: {name}"
             )
+        pci = gpu.get("pci_id")
+        if pci is not None:
+            if not isinstance(pci, str) or not _PCI_ID.fullmatch(pci):
+                r.error("value", f"system.gpu.pci_id は PCI の型番 ID(1002:744c の形、小文字)です: {pci!r}")
+            elif (vendor or "nvidia") != PCI_VENDORS.get(pci[:4]):
+                r.error(
+                    "gpu_inconsistent",
+                    f"system.gpu.pci_id の会社({PCI_VENDORS.get(pci[:4], pci[:4])})と"
+                    f" vendor({vendor})が合いません",
+                )
         arch, cc = gpu.get("arch"), gpu.get("compute_capability")
         if arch is not None and arch not in ARCHES:
             r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")
@@ -900,15 +976,31 @@ def _check_against_estimate(
         )
 
 
-# 段階が変わらないかを確かめる VRAM とメインメモリ(よくある大きさ)
-COMMON_VRAM_GB = (4, 6, 8, 12, 16, 24, 32, 48)
+# 段階が変わるかを確かめるメインメモリ(よくある大きさ。GPU は実測と同じ GPU。_measured_pc)
 CHECK_RAM_GB = (16.0, 32.0, 64.0)
 
 
-def _pc(vram: float, ram: float = 32.0) -> SystemInfo:
+def _measured_pc(m: Measurement, ram: float) -> SystemInfo:
+    """実測と同じ GPU(名前・PCI の型番 ID・会社。VRAM は実測の GPU の総量)の仮の PC。ほかの利用者の実測は
+    同じ GPU の PC にだけ使われる(estimate.pick_measurement)ので、段階が変わるかはこの PC で見る(0.9.0)。"""
+    from .estimate import measurement_vendor
+    from .hardware import classify_gpu
     from .models import Gpu
 
-    g = Gpu(name="(check)", vendor="nvidia", vram_total_gb=vram, backend="cuda")
+    vendor = measurement_vendor(m)
+    g = Gpu(
+        name=m.gpu_name,
+        vendor=vendor,
+        vram_total_gb=float(m.gpu_vram_gb),
+        backend=VENDOR_BACKEND.get(vendor, "cuda"),
+        pci_id=getattr(m, "gpu_pci_id", None),
+    )
+    if vendor == "nvidia":
+        g = classify_gpu(g, windows_driver=True, comfy_windows=True)
+        g.backend = "cuda"
+    else:
+        g.compute_dtype, g.bf16, g.fp8 = "fp16", True, False
+        g.memory = "unified" if vendor == "apple" else "dedicated"
     return SystemInfo(os="-", cpu="-", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=[g])
 
 
@@ -920,24 +1012,39 @@ def community_effect(
     entry: Any, own: list[Measurement], community: list[Measurement], settings: Settings | None = None
 ) -> tuple[float, list[dict[str, Any]]]:
     """ほかの利用者の実測を足したときの (全部載せの VRAM が変わる割合(符号つき。絶対値の最大のもの),
-    段階が変わる VRAM の一覧)。段階は COMMON_VRAM_GB で、既定の設定(と settings を渡せばその設定)で比べる。"""
+    段階が変わる PC の一覧)。ほかの利用者の実測は同じ GPU の PC にだけ使われる(0.9.0)ので、PC は実測と同じ
+    GPU(名前・型番 ID・会社、VRAM は実測の GPU の総量)× メインメモリ CHECK_RAM_GB。既定の設定
+    (と settings を渡せばその設定)で比べる。同じ GPU で段階が上がる・NVIDIA 以外の good の上限が
+    外れるのも出る。"""
     from .estimate import estimate
 
     rise = 0.0
     changes: list[dict[str, Any]] = []
+    gpus: dict[tuple, Measurement] = {}
+    for m in community:
+        gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(m.gpu_vram_gb or 0)), m)
     for s in [None] if settings is None else [None, settings]:
-        a24 = estimate(entry, _pc(24), s, own)
-        b24 = estimate(entry, _pc(24), s, [*own, *community])
-        if a24.vram_gb and not a24.unknown_size:
-            rel = (b24.vram_gb - a24.vram_gb) / a24.vram_gb
-            rise = rel if abs(rel) > abs(rise) else rise
-        for v in COMMON_VRAM_GB:
+        for m in gpus.values():
             for ram in CHECK_RAM_GB:
-                a = estimate(entry, _pc(v, ram), s, own)
-                b = estimate(entry, _pc(v, ram), s, [*own, *community])
-                if a.fit != b.fit and not any(c["vram_gb"] == v and c["ram_gb"] == ram for c in changes):
+                sysi = _measured_pc(m, ram)
+                a = estimate(entry, sysi, s, own)
+                b = estimate(entry, sysi, s, [*own, *community])
+                if ram == CHECK_RAM_GB[-1] and a.vram_gb and not a.unknown_size:
+                    rel = (b.vram_gb - a.vram_gb) / a.vram_gb
+                    rise = rel if abs(rel) > abs(rise) else rise
+                v = m.gpu_vram_gb
+                if a.fit != b.fit and not any(
+                    c["gpu_name"] == m.gpu_name and c["vram_gb"] == v and c["ram_gb"] == ram for c in changes
+                ):
                     changes.append(
-                        {"model_id": entry.id, "vram_gb": v, "ram_gb": ram, "before": a.fit, "after": b.fit}
+                        {
+                            "model_id": entry.id,
+                            "gpu_name": m.gpu_name,
+                            "vram_gb": v,
+                            "ram_gb": ram,
+                            "before": a.fit,
+                            "after": b.fit,
+                        }
                     )
     return rise, changes
 
@@ -957,10 +1064,10 @@ def _check_effect(r: Report, data: dict[str, Any], db: Database) -> None:
         return
     if changes:
         where = "、".join(
-            f"VRAM {c['vram_gb']} GB・メモリ {c['ram_gb']:g} GB: {c['before']} → {c['after']}"
+            f"{c['gpu_name']} {c['vram_gb']:g} GB・メモリ {c['ram_gb']:g} GB: {c['before']} → {c['after']}"
             for c in changes[:6]
         )
-        r.notice("fit_change", f"よくある VRAM で段階が変わります({where})")
+        r.notice("fit_change", f"同じ GPU の PC で段階が変わります({where})")
 
 
 def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
@@ -994,7 +1101,7 @@ def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
         raise SubmissionReadError(f"大きすぎます({size} バイト。{MAX_FILE_BYTES} まで)")
     try:
         raw = p.read_bytes().decode("utf-8")
-        return json.loads(raw), raw
+        return loads_strict(raw), raw
     except RecursionError as e:
         raise SubmissionReadError("入れ子が深すぎます") from e
     except (UnicodeDecodeError, ValueError) as e:
@@ -1137,7 +1244,8 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
         # VRAM(1 GB に丸める)も鍵に入れる(RTX 4060 Ti の 8 GB と 16 GB を混ぜない)
         key = (
             m.model_id,
-            gpu_slug(m.gpu_name),
+            # 型番 ID があれば ID で(Linux と Windows で名前の違う同じ GPU をまとめる)、無ければ名前で
+            getattr(m, "gpu_pci_id", None) or gpu_slug(m.gpu_name),
             round(m.gpu_vram_gb or 0),
             m.vram_metric or "",
             _settings_key(m.settings),
@@ -1180,6 +1288,7 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 # 測った GPU の backend(estimate.measurement_vendor が会社を名前より先にこれで決める。
                 # Apple の MPS は GPU 名が "mps" になる)
                 "gpu_backend": _mode([m.gpu_backend for m in ms]),
+                "gpu_pci_id": _mode([getattr(m, "gpu_pci_id", None) for m in ms]),
                 "peak_vram_gb": round(med, 2),
                 "settings": settings,
                 "peak_ram_gb": _med([m.peak_ram_gb for m in base]),

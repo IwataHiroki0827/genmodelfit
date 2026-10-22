@@ -207,7 +207,7 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 下の対応表で判定に使う(`hardware.classify_adapter`)。**NVIDIA の判定は変えない**(NVIDIA の GPU が使えれば、ほかの
 GPU は `--all-gpus` で一覧に出すだけ)。実測は 0 件なので、段階は推定で、理由に「推定(<会社>・実測なし)」を書き、
 **段階は good まで**にする(同じ会社の GPU の、同じ設定で成功した実測があるときだけ外れる: 下の #26。2026-10-22 から、
-この GPU と同じ名前の GPU のほかの利用者の実測もその根拠になる: docs/accuracy.md「ほかの利用者の実測」)。
+この GPU と同じ GPU のほかの利用者の実測もその根拠になる: docs/accuracy.md「ほかの利用者の実測」)。
 NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
 
@@ -388,7 +388,8 @@ fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model
 文脈を含まない)は文脈の分 0.5 GiB(`estimate.TORCH_RESERVED_CONTEXT_GB`)を足した値で帯を決め、perfect の根拠にもする(0.9.0。
 以前は perfect にしなかったので、bench の提出しか無い NVIDIA 以外の GPU は実測があっても good 止まりだった)。会社は実測の
 `gpu_backend` があればそれで、無いときだけ GPU 名で決める(Apple の MPS は GPU 名が "mps" になる)。ほかの利用者の
-実測(#34)は、この PC と同じ名前の GPU のものだけ使う(2026-10-22。似た GPU には広げない)。精度の直しで作業用メモリを倍にした
+実測(#34)は、この PC と同じ GPU(型番 ID か、そろえた名前。汎用の名前は除く。`estimate.same_gpu`)のものだけ使う
+(2026-10-22。似た GPU には広げない。0.9.0 から必要量にも同じ GPU のものだけ)。精度の直しで作業用メモリを倍にした
 GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
 (段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは
 「段階は見積もりで決めた」と書く。例: Wan 2.2 5B(RTX 5080 16 GB で 15.8 GB・成功)は、RTX 5080 では good / GPU

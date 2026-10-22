@@ -107,6 +107,21 @@ def test_xpu_smi_dump_finds_columns_by_header():
         "Timestamp, DeviceId, GPU Memory Used (MiB), Average % utilization of all GPU Engines\n1, 0, 10, 5\n"
     )
     assert parse_xpu_smi_dump(swapped) == [Reading(5.0, 10.0)]
+    # -d -1 は GPU ごとに 1 行(DeviceId で分ける)
+    two = XPU_SMI + "06:14:46.000,    1, 3.00,  512\n"
+    assert parse_xpu_smi_dump(two) == [Reading(41.5, 2048.0), Reading(3.0, 512.0)]
+
+
+def test_xpu_smi_two_gpus_is_unreadable(monkeypatch):
+    """xpu-smi は総量を出さないので、GPU が 2 枚以上だと ComfyUI の GPU を決められない。まとめた値は使わず、
+    道具で読めないのと同じにする(bench はキューとメモリだけ確かめて測る)。"""
+    two = XPU_SMI + "06:14:46.000,    1, 3.00,  512\n"
+    monkeypatch.setattr(gpustat.hardware, "_run", lambda args, timeout: (0, two))
+    p = gpustat.Probe("intel", system="Linux")
+    assert p.read() is None and p.tool is None
+    monkeypatch.setattr(gpustat.hardware, "_run", lambda args, timeout: (0, XPU_SMI))
+    assert gpustat.Probe("intel", system="Linux").read() == Reading(41.5, 2048.0)
+    assert gpustat.XPU_SMI.args[:4] == ("xpu-smi", "dump", "-d", "-1")
 
 
 def test_typeperf_real_output_takes_busiest_engine_and_dedicated_memory():

@@ -169,7 +169,9 @@ def test_files_changed_conditions(bundled):
     fc = review.files_changed
     assert not fc(a, copy.deepcopy(a))
     assert fc(a, _with(a, url=a.files[0].url + "x"))  # url が変わった
-    assert not fc(a, _with(a, url=a.files[0].url + "?download=true"))  # クエリだけは同じ
+    assert fc(a, _with(a, url=a.files[0].url + "?download=true"))  # クエリも比べる(0.9.0。diff と同じ)
+    assert not fc(a, _with(a, url=a.files[0].url + "#frag"))  # フラグメントだけは同じ(サーバーに送られない)
+    assert fc(a, _with(a, repo_id="someone/else"))  # repo_id が変わった(0.9.0)
     assert fc(a, _with(a, sha256="b" * 64))  # 前も今も値があって違う
     assert fc(a, _with(a, sha256=None))  # 確かめた値が消えた
     assert not fc(_with(a, sha256=None), a)  # 初めて確かめた
@@ -889,3 +891,36 @@ def test_discovered_from_change_is_safe():
     hf = next(m for m in new.models if m.source == "huggingface")
     hf.discovered_from = [*hf.discovered_from, "https://huggingface.co/api/models?search=other-query"]
     assert diff_db(old, new)["classification"]["safe"] is True
+
+
+def test_files_changed_agrees_with_diff(bundled):
+    """review の files_changed と diff の分類の files_changed は、1 つのファイルの変化で食い違わない
+    (URL のクエリ・フラグメント・repo_id・大きさの両方の向き・sha256・名前・置き場所)。
+    違うのは、決めて分けた 2 つだけ: 初めて sha256 が入った(review は付けない)・並びだけの変化。"""
+    from dataclasses import asdict
+
+    from genmodelfit.diff import field_change_reasons
+
+    a = _with(_sized(bundled), sha256="a" * 64, repo_id="org/repo")
+    f0 = a.files[0]
+    cases = {
+        "url": dict(url=f0.url + "x"),
+        "query": dict(url=f0.url + "?download=true"),
+        "fragment": dict(url=f0.url + "#frag"),
+        "repo_id": dict(repo_id="org/other"),
+        "grow": dict(size_bytes=f0.size_bytes + 1),
+        "shrink": dict(size_bytes=f0.size_bytes - 1),
+        "size_unknown": dict(size_bytes=None),
+        "sha": dict(sha256="b" * 64),
+        "sha_gone": dict(sha256=None),
+        "head": dict(head_status=404),
+    }
+    for label, kw in cases.items():
+        b = _with(a, **kw)
+        by_review = review.files_changed(a, b)
+        by_diff = "files_changed" in field_change_reasons(asdict(a), asdict(b))
+        assert by_review == by_diff, (label, by_review, by_diff)
+    # 大きくなっただけ: diff の分類だけでも判断が要る(review を通さない経路。変異 M15)
+    assert field_change_reasons(asdict(a), asdict(_with(a, size_bytes=f0.size_bytes + 1))) == [
+        "files_changed"
+    ]

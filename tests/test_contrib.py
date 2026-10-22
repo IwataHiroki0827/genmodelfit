@@ -627,7 +627,10 @@ def test_basis_ordering(db):
     one = _community(high, n_submissions=1, n_used=1, consistent=False)
     e = est([*maint, one])
     assert e.basis_detail == "measured_community" and e.sample_count == 1
-    assert pick_measurement([one], entry, s1536) is one
+    assert pick_measurement([one], entry, s1536, system.best_gpu) is one
+    # 別の GPU・GPU の無い PC では、ほかの利用者の実測は使わない(llmfit と同じ。0.9.0)
+    assert pick_measurement([one], entry, s1536) is None
+    assert pick_measurement([one], entry, s1536, pc(12, "NVIDIA GeForce RTX 4090").best_gpu) is None
     # 同じ設定なら、この PC と同じ名前の GPU の実測 → 作者の実測 → ほかの利用者の実測
     same_maint = Measurement(**{**vars(maint[0]), "settings": Settings(width=1536, height=1536)})
     e = est([high, same_maint])  # この PC は RTX 3070。同じ GPU のほかの利用者の実測が先
@@ -665,7 +668,7 @@ def test_calibrated_spread_is_bounded(db):
     assert COMMUNITY_CALIBRATION_RANGE == (0.6, 1.4)
     entry = _unmeasured_image(db)
     s512, sdef = Settings(width=512, height=512), None
-    sysi = pc(48, "NVIDIA GeForce RTX 4090")
+    sysi = pc(80, "NVIDIA A100-SXM4-80GB")  # ほかの利用者の実測は同じ GPU の PC にだけ使う(0.9.0)
     est_m = estimate(entry, sysi, s512, []).vram_gb
     a = estimate(entry, sysi, sdef, [])
     assert a.settings["width"] == 1024  # 既定の設定は、ほかの利用者の実測の設定に変えない
@@ -757,9 +760,9 @@ def _upward(db, factor, models):
         for i, eps in enumerate((0, 0.005)):
             d = good()
             d["system"]["gpu"].update(
-                name="NVIDIA A100-SXM4-80GB", vram_gb=80.0, arch="ampere", compute_capability="8.0"
+                name="NVIDIA GeForce RTX 4090", vram_gb=24.0, arch="ada", compute_capability="8.9"
             )
-            v = min(80.0, round(e0.vram_gb * factor * (1 + eps), 2))
+            v = min(24.0, round(e0.vram_gb * factor * (1 + eps), 2))
             d["measurement"].update(model_id=t.id, settings=sett, peak_vram_gb=v, note=f"x{i}")
             subs.append(contrib.Submission(path=f"p{i}", sha256=contrib.content_hash(d), data=d))
         out.append((t, subs))
@@ -778,8 +781,14 @@ def test_upward_submissions_raise_needs_and_are_noticed(db):
     changed = 0
     for t, subs in _upward(db, 1.39, models):
         cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
-        b = estimate(t, pc(24), None, [*db.measurements, *cm])
-        assert b.vram_gb == cm[0].peak_vram_gb and b.basis_detail == "measured_community", t.id
+        # ほかの利用者の実測は同じ GPU(RTX 4090)の PC にだけ使う。別の GPU の PC は動かさない(0.9.0)
+        assert estimate(t, pc(24), None, [*db.measurements, *cm]) == estimate(
+            t, pc(24), None, db.measurements
+        )
+        b = estimate(t, pc(24, "NVIDIA GeForce RTX 4090"), None, [*db.measurements, *cm])
+        assert b.basis_detail == "measured_community", t.id
+        if cm[0].peak_vram_gb < 0.9 * 24:  # 張り付いた値は「これ以上」としてだけ使う
+            assert b.vram_gb == cm[0].peak_vram_gb, t.id
         assert b.sample_count == 2
         r = contrib.validate_submission(subs[0].data, db, today=TODAY, check_filename=False)
         assert r.ok
@@ -790,8 +799,13 @@ def test_upward_submissions_raise_needs_and_are_noticed(db):
     assert changed > 0
 
 
-def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path):
+def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypatch):
     """理由・info・JSON に区分と件数を出す(info の fit の行は measured_community n=3、表の VRAM は c)。"""
+    from genmodelfit import hardware
+
+    # この PC の GPU は実測と同じ A100(ほかの利用者の実測は同じ GPU の PC にだけ使う。0.9.0)
+    a100 = Gpu(name="NVIDIA A100-SXM4-80GB", vendor="nvidia", vram_total_gb=80.0, backend="cuda")
+    monkeypatch.setattr(hardware, "detect_gpus", lambda **kw: ([a100], []))
     entry = _unmeasured_image(db)
     a = estimate(entry, pc(16), None, db.measurements)
     sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
@@ -1279,3 +1293,276 @@ def test_aggregate_keeps_gpu_backend():
     assert rows[0]["gpu_backend"] == "mps"
     assert Measurement.from_dict(rows[0]).gpu_backend == "mps"
     assert contrib.aggregate([_sub(6.9)])[0]["gpu_backend"] is None  # 記録の無い提出
+
+
+# --- 0.9.0 の検証役の指摘: 同じ GPU だけ・切り詰め・NaN・名前と型番 ID・点検の PC・会社の食い違い -------
+
+
+def _amd_gpu(name: str = "AMD Radeon RX 7900 XTX", vram: float = 24.0, pci: str | None = None) -> Gpu:
+    return Gpu(
+        name=name,
+        vendor="amd",
+        vram_total_gb=vram,
+        backend="rocm",
+        compute_dtype="fp16",
+        bf16=True,
+        fp8=False,
+        gfx_target="gfx1100",
+        pci_id=pci,
+    )
+
+
+def _sys(g: Gpu, ram: float = 64.0) -> SystemInfo:
+    return SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=[g])
+
+
+def test_community_measurement_moves_only_the_same_gpu(db):
+    """A: ほかの利用者の実測は、この PC と同じ GPU のときだけ必要量・段階に使う(llmfit と同じ)。
+    別の GPU・GPU の無い PC の判定は、足しても足さなくても同じ。
+    作者の同梱の実測は今までどおりどの PC にも使う。"""
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id and m.origin is None]
+    s = Settings(width=1024, height=1024)
+    big = _community(
+        maint[0], gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24.0, peak_vram_gb=20.0, settings=s
+    )
+    others = [pc(8), pc(12, "NVIDIA GeForce RTX 3060"), pc(24, "NVIDIA RTX A5000"), _sys(_amd_gpu())]
+    cpu = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[])
+    for sysi in [*others, cpu]:
+        assert estimate(entry, sysi, s, [*maint, big]) == estimate(entry, sysi, s, maint), sysi.gpus
+        assert estimate(entry, sysi, None, [*maint, big]) == estimate(entry, sysi, None, maint)
+    same = estimate(entry, pc(24, "NVIDIA GeForce RTX 4090"), s, [*maint, big])
+    assert same.vram_gb == 20.0 and same.basis_detail == "measured_community"
+    # 書き方の違う同じ GPU の名前((R)・(TM)・™・®・NVIDIA / GeForce の有無・大小)でも同じ GPU
+    for name in ("GeForce RTX 4090", "NVIDIA(R) GeForce(TM) RTX 4090", "nvidia geforce rtx™ 4090"):
+        assert estimate(entry, pc(24, name), s, [*maint, big]).vram_gb == 20.0, name
+    # 作者の実測(origin なし)は別の GPU の PC でも使う(同梱の判定を保つ)
+    assert estimate(entry, pc(12, "NVIDIA GeForce RTX 3060"), s, maint).basis_detail == "calibrated"
+
+
+def test_generic_gpu_names_never_match_but_pci_ids_do(db):
+    """D・E: 「AMD Radeon(TM) Graphics」のような汎用の名前は同じ GPU とみなさない(APU の世代が違うもの
+    が一致する)。型番 ID が両方にあれば ID で照合する(Linux と Windows で名前が違っても同じ GPU)。"""
+    from genmodelfit.estimate import gpu_key, same_gpu
+
+    generic = "AMD Radeon(TM) Graphics"
+    assert not same_gpu(generic, None, _amd_gpu(generic))
+    assert not same_gpu("Intel(R) Arc(TM) Graphics", None, _amd_gpu("Intel(R) Arc(TM) Graphics"))
+    assert same_gpu(generic, "1002:15bf", _amd_gpu(generic, pci="1002:15bf"))
+    assert not same_gpu(generic, "1002:15c8", _amd_gpu(generic, pci="1002:15bf"))  # 740M と 780M
+    # Linux の lspci の名前と ComfyUI の名前が違っても、ID が同じなら同じ GPU
+    lspci = "AMD Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M"
+    assert same_gpu("AMD Radeon RX 7900 XTX", "1002:744c", _amd_gpu(lspci, pci="1002:744c"))
+    assert not same_gpu("AMD Radeon RX 7900 XTX", None, _amd_gpu(lspci, pci="1002:744c"))
+    # 名前の正規化: (R)・(TM)・™・®・大小・空白・NVIDIA / GeForce の語
+    assert gpu_key("NVIDIA GeForce RTX™ 4090®") == gpu_key("rtx 4090") == "rtx-4090"
+    assert gpu_key("AMD Device 744c") != gpu_key("Intel Device 744c")
+    entry = db.get("image_sdxl_simple")
+    m0 = next(m for m in db.measurements if m.model_id == entry.id)
+    comm = _community(m0, gpu_name=generic, gpu_vram_gb=16.0, peak_vram_gb=3.0, gpu_backend="rocm")
+    apu = _sys(_amd_gpu(generic, vram=16.0))
+    assert estimate(entry, apu, None, [comm]) == estimate(entry, apu, None, [])
+
+
+def test_peak_ram_and_vram_bounds(db):
+    """B: vram_gb は 256 GiB まで。peak_ram_gb は提出の ram_total_gb × 1.05 + 1 を超えたら誤り。
+    見積もりの側もその値で切り詰める。影響は同じ GPU の PC だけ(A)。"""
+    d = good()
+    d["system"]["gpu"]["vram_gb"] = 257.0
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    assert any("vram_gb" in e["message"] for e in r.errors), r.errors
+    d = good()
+    d["measurement"]["peak_ram_gb"] = 32 * 1.05 + 1.01
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    assert any("最大メモリ" in e["message"] for e in r.errors), r.errors
+    m = contrib.to_measurement(d)
+    assert m.peak_ram_gb == pytest.approx(32 * 1.05 + 1.0)
+    d["measurement"]["peak_ram_gb"] = 500.0  # 検査を通らないファイルでも、見積もりへはこの値まで
+    m = contrib.to_measurement(d)
+    assert m.peak_ram_gb == pytest.approx(34.6)
+    m.n_used, m.n_oom = 1, 0
+    entry = db.get(m.model_id)
+    s = m.settings
+    on_3070 = estimate(entry, pc(8), s, [m])
+    assert on_3070.ram_gb <= 34.6 + 1e-6
+    assert estimate(entry, pc(8, "NVIDIA GeForce RTX 3060 Ti"), s, [m]) == estimate(
+        entry, pc(8, "NVIDIA GeForce RTX 3060 Ti"), s, []
+    )
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["measurement.peak_vram_gb", "measurement.seconds", "measurement.peak_ram_gb", "system.gpu.vram_gb"],
+)
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0])
+def test_nan_inf_negative_are_errors(where, bad):
+    """C: NaN・inf・負の数は、どの数の項目でも誤り。"""
+    d = good()
+    _set(d, where, bad)
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    assert not r.ok and any(e["code"] == "value" for e in r.errors), r.errors
+
+
+def test_nan_is_refused_when_reading_and_writing(tmp_path):
+    """C: 書き出し(提出・まとめ・bench の保存)は NaN を書かない。読み込み(提出・実測のファイル)は断る。"""
+    from genmodelfit import db as dbm
+
+    d = good()
+    d["measurement"]["peak_vram_gb"] = float("nan")
+    with pytest.raises(ValueError):
+        contrib.dumps(d)
+    with pytest.raises(ValueError):
+        contrib.canonical(d)
+    p = tmp_path / "x.json"
+    p.write_text(json.dumps(good()).replace('"peak_vram_gb": 6.9', '"peak_vram_gb": NaN'), encoding="utf-8")
+    with pytest.raises(contrib.SubmissionReadError):
+        contrib.read_submission(p)
+    rows = (
+        '{"measurements": [{"model_id": "x", "gpu_name": "g", "gpu_vram_gb": 8, "peak_vram_gb": Infinity}]}'
+    )
+    with pytest.raises(ValueError):
+        dbm.parse_measurements(dbm._loads_measurements(rows))
+    with pytest.raises(ValueError):  # 読めても有限でない値は断る
+        dbm.parse_measurements(
+            {"measurements": [{"model_id": "x", "gpu_name": "g", "gpu_vram_gb": 8, "peak_vram_gb": -1}]}
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "ok"),
+    [
+        ("NVIDIA GeForce RTX 3070", True),
+        ("NVIDIA(R) GeForce(TM) RTX 3070", True),
+        ("NVIDIA GeForce RTX™ 3070®", True),
+        ("NVIDIA GeForce RTX 3070 (bob)", False),
+        ("NVIDIA GeForce RTX 3070 [x]", False),
+    ],
+)
+def test_gpu_name_allows_trademarks_only(name, ok):
+    """D: GPU 名に ComfyUI・PyTorch・Windows の (R)・(TM)・™・® は入れられる(ほかの括弧・記号は断る)。"""
+    d = good()
+    d["system"]["gpu"]["name"] = name
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    assert (not any(e["code"] == "value" and "gpu.name" in e["message"] for e in r.errors)) is ok, r.errors
+
+
+@pytest.mark.parametrize(
+    ("name", "vendor", "backend"),
+    [
+        ("NVIDIA GeForce RTX 3070", "amd", "rocm"),
+        ("NVIDIA GeForce RTX 3070", "intel", "xpu"),
+        ("AMD Radeon RX 7900 XTX", "nvidia", "cuda"),
+        ("Intel(R) Arc(TM) A770 Graphics", "amd", "rocm"),
+        ("Apple M2 Pro", "amd", "rocm"),
+    ],
+)
+def test_name_and_vendor_mismatch_is_an_error(name, vendor, backend):
+    """I: 提出の GPU 名と vendor が食い違えば誤り(名前が NVIDIA なのに amd など)。"""
+    d = good()
+    gpu = d["system"]["gpu"]
+    gpu.update(name=name, vendor=vendor, backend=backend)
+    if vendor != "nvidia":
+        gpu.update(arch=None, compute_capability=None)
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    assert any(e["code"] == "gpu_inconsistent" for e in r.errors), r.errors
+
+
+@pytest.mark.parametrize(
+    ("pci", "vendor", "ok"),
+    [
+        ("1002:744c", "amd", True),
+        ("8086:56a0", "intel", True),
+        ("10de:2484", None, True),
+        ("1002:744c", "intel", False),
+        ("1002:744C", "amd", False),  # 小文字だけ
+        ("0000:03:00.0", "amd", False),  # 差し場所(バス番号)は入れない
+    ],
+)
+def test_submission_pci_id(pci, vendor, ok):
+    """E: 提出の pci_id は PCI の型番 ID(vendor:device、小文字)で、vendor ID が会社と合うものだけ。"""
+    d = good()
+    gpu = d["system"]["gpu"]
+    if vendor == "amd":
+        gpu.update(
+            name="AMD Radeon RX 7900 XTX", vendor="amd", backend="rocm", arch=None, compute_capability=None
+        )
+    elif vendor == "intel":
+        gpu.update(
+            name="Intel(R) Arc(TM) A770 Graphics",
+            vendor="intel",
+            backend="xpu",
+            arch=None,
+            compute_capability=None,
+        )
+    gpu["pci_id"] = pci
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    bad = [e for e in r.errors if "pci_id" in e["message"]]
+    assert (not bad) is ok, r.errors
+    if ok:
+        assert contrib.to_measurement(d).gpu_pci_id == pci
+        checks = {c["id"]: c for c in contrib.privacy_checklist(d)}
+        assert checks["known_fields"]["ok"] is True
+
+
+def test_aggregate_groups_by_pci_id():
+    """E: 型番 ID のある提出は ID でまとめる(Linux と Windows で名前の違う同じ GPU を 1 つの組に)。"""
+    a, b = _sub(6.9, gpu="AMD Radeon RX 7900 XTX"), _sub(7.0, gpu="AMD Radeon RX 7900 XT 7900 XTX 7900 GRE")
+    for s in (a, b):
+        s.data["system"]["gpu"].update(
+            vendor="amd", backend="rocm", arch=None, compute_capability=None, pci_id="1002:744c"
+        )
+        s.sha256 = contrib.content_hash(s.data)
+    rows = contrib.aggregate([a, b])
+    assert len(rows) == 1 and rows[0]["gpu_pci_id"] == "1002:744c" and rows[0]["n_used"] == 2
+
+
+def test_fit_change_check_uses_a_pc_with_the_submitted_gpu(db):
+    """F: fit_change の点検は、提出と同じ GPU(名前・ID・会社、VRAM は提出の vram_gb、RAM 16/32/64)の PC で
+    見る。同じ GPU で NVIDIA 以外の good の上限が外れるのも notices に出る。"""
+    entry = db.get("image_sdxl_simple")
+    d = good()
+    d["system"]["gpu"].update(
+        name="AMD Radeon RX 7900 XTX",
+        vram_gb=24.0,
+        vendor="amd",
+        backend="rocm",
+        arch=None,
+        compute_capability=None,
+        driver="25.10.1",
+        pci_id="1002:744c",
+    )
+    a = estimate(entry, _sys(_amd_gpu(pci="1002:744c")), None, db.measurements)
+    sett = {k: v for k, v in a.settings.items() if k != "batch" and v is not None}
+    d["measurement"].update(settings=sett, peak_vram_gb=5.0, offload="none")
+    r = contrib.validate_submission(d, db, check_filename=False, today=TODAY)
+    assert r.ok, r.errors
+    notes = [n["message"] for n in r.notices if n["code"] == "fit_change"]
+    assert notes and "AMD Radeon RX 7900 XTX 24 GB" in notes[0] and "good → perfect" in notes[0], r.notices
+    m = contrib.to_measurement(d)
+    m.n_used, m.n_oom = 1, 0
+    _rel, changes = contrib.community_effect(entry, contrib._own_measurements(db), [m], m.settings)
+    assert {c["ram_gb"] for c in changes} <= set(contrib.CHECK_RAM_GB)
+    assert all(c["gpu_name"] == "AMD Radeon RX 7900 XTX" and c["vram_gb"] == 24.0 for c in changes)
+
+
+def test_good_cap_needs_the_same_gpu_name(db):
+    """変異 M06: NVIDIA 以外の good の上限は、この PC と同じ GPU の実測でだけ外す。同じ会社・同じ VRAM でも
+    名前の違う GPU の実測(作者・この PC の bench の実測も)では外さない。"""
+    entry = db.get("image_sdxl_simple")
+    maint = [m for m in db.measurements if m.model_id == entry.id]
+    a = estimate(entry, amd_pc(), None, maint)
+    sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
+    other = Measurement(
+        **{
+            **vars(maint[0]),
+            "gpu_name": "AMD Radeon RX 9998 XT",
+            "gpu_vram_gb": 24.0,
+            "peak_vram_gb": 5.0,
+            "settings": sett,
+            "gpu_backend": "rocm",
+        }
+    )
+    e = estimate(entry, amd_pc(), None, [*maint, other])
+    assert e.fit == "good" and not any("上限(good)を外した" in x for x in e.reasons)
+    same = Measurement(**{**vars(other), "gpu_name": FAKE_AMD})
+    assert estimate(entry, amd_pc(), None, [*maint, same]).fit == "perfect"

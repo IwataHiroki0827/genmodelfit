@@ -562,6 +562,11 @@ def test_other_vendor_community_measurement_only_calibrates(db):
     )
     s = vendor_system("amd", 24.0, 64.0)
     e = estimate(m, s, measurements=[comm], coefficients=Coefficients())
+    # ほかの利用者の実測は同じ GPU の PC にだけ使う(0.9.0)。別の会社の GPU では使わない
+    assert e.basis == "estimated" and e.basis_detail == "estimated" and e.fit_from == "estimate"
+    # 作者・この PC の実測(origin なし)は、別の会社の GPU でも補正だけに使う(今までどおり)
+    own = Measurement(**{**vars(comm), "origin": None, "n_submissions": None, "consistent": None})
+    e = estimate(m, s, measurements=[own], coefficients=Coefficients())
     assert e.basis == "estimated" and e.basis_detail == "calibrated" and e.fit_from == "estimate"
 
 

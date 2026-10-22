@@ -35,6 +35,7 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 from .db import bundled_text
 from .models import (
@@ -843,29 +844,88 @@ def _precision_changed(m: Measurement, s: Settings, entry: ModelEntry) -> bool:
 
 
 def gpu_key(name: str | None) -> str:
-    """GPU 名の比べ方(NVIDIA / GeForce / (TM) / (R) の有無・大文字小文字・空白・記号をそろえる)。
-    contrib.gpu_slug(提出のフォルダ名・まとめの鍵)と同じ。"""
+    """GPU 名の照合の鍵(ここだけが正本。PC 側の GPU 名にも実測の GPU 名にも使う)。
+    大文字小文字・空白・記号をそろえ、(TM)・(R)・™・® を除き、"NVIDIA" "GeForce" の語も除く。
+    NVIDIA の語を除くのは、同じ GPU が nvidia-smi・PyTorch では「NVIDIA GeForce RTX 3070」、lspci では
+    「GeForce RTX 3070」、提出では NVIDIA を省いた名前になりうるため。NVIDIA の製品名(RTX 3070・RTX A6000・
+    Quadro RTX 6000・RTX 6000 Ada など)は語を除いても重ならない。AMD・Intel の語は残す(「AMD Device 744c」と
+    「Intel Device 744c」を同じにしない)。contrib.gpu_slug(提出のフォルダ名)も同じ。"""
     n = (name or "").lower()
-    for word in ("nvidia", "geforce", "(tm)", "(r)"):
+    for word in ("nvidia", "geforce", "(tm)", "(r)", "™", "®"):
         n = n.replace(word, " ")
     return re.sub(r"[^a-z0-9]+", "-", n).strip("-")
 
 
+# 名前だけでは GPU が決まらない汎用の名前(gpu_key の形)。同じ名前でも世代・大きさの違う GPU がある
+# (「AMD Radeon(TM) Graphics」は Raphael の 2 CU から Phoenix の 12 CU まで、「Intel(R) Arc(TM) Graphics」は
+# Meteor Lake・Arrow Lake・Lunar Lake)。名前では同じ GPU とみなさない(PCI の型番 ID があればそれで照合する)
+GENERIC_GPU_KEYS = frozenset(
+    {
+        "",
+        "gpu",
+        "unknown",
+        "mps",
+        "amd-gpu",
+        "amd-radeon-graphics",
+        "radeon-graphics",
+        "amd-graphics",
+        "intel-gpu",
+        "intel-graphics",
+        "intel-arc-graphics",
+        "arc-graphics",
+        "intel-uhd-graphics",
+        "intel-iris-xe-graphics",
+        "intel-hd-graphics",
+        "apple-gpu",
+    }
+)
+
+
+def generic_gpu_name(name: str | None) -> bool:
+    k = gpu_key(name)
+    return k in GENERIC_GPU_KEYS or bool(re.fullmatch(r"\d+(-\d+)?-gb-gpu", k))  # --vram の仮の GPU
+
+
+def _pci(v: str | None) -> str | None:
+    v = (v or "").strip().lower()
+    return v if re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{4}", v) else None
+
+
+def same_gpu(m_name: str | None, m_pci: str | None, gpu: Any) -> bool:
+    """実測の GPU(名前・PCI の型番 ID)が、この PC の GPU(models.Gpu)と同じか。両方に型番 ID があれば ID で、
+    無ければ gpu_key の名前で比べる(汎用の名前は同じとみなさない)。Apple はチップ名(Apple M2 Pro)で比べる。"""
+    if gpu is None:
+        return False
+    a, b = _pci(m_pci), _pci(getattr(gpu, "pci_id", None))
+    if a and b:
+        return a == b
+    return same_gpu_name(m_name, getattr(gpu, "name", None))
+
+
 def same_gpu_name(a: str | None, b: str | None) -> bool:
-    return bool(a) and bool(b) and gpu_key(a) == gpu_key(b)
+    return bool(a) and bool(b) and gpu_key(a) == gpu_key(b) and not generic_gpu_name(a)
+
+
+def measured_on_this_gpu(m: Measurement, gpu: Any) -> bool:
+    return same_gpu(m.gpu_name, getattr(m, "gpu_pci_id", None), gpu)
 
 
 def pick_measurement(
     measurements: Iterable[Measurement],
     entry: ModelEntry,
     s: Settings | None = None,
-    gpu_name: str | None = None,
+    gpu: Any = None,
 ) -> Measurement | None:
-    """そのモデルの実測を 1 つ選ぶ。設定が同じもの → この PC と同じ名前の GPU の実測 → 作者・この PC の実測
-    (ほかの利用者の実測より先)→ 張り付いていないもの → 大きい GPU → 大きい値 の順
-    (llmfit と同じく、自分の実測 > 同じハードのほかの利用者の実測 > ほかの GPU の実測。根拠の段階は
-    models.BASIS_DETAILS)。"""
-    cands = [m for m in measurements if m.model_id == entry.id and usable(m)]
+    """そのモデルの実測を 1 つ選ぶ。ほかの利用者の実測は、この PC と同じ GPU(same_gpu)のものだけ候補にする
+    (llmfit と同じ。別の GPU の PC の必要量・段階は動かさない。0.9.0)。作者の同梱の実測・この PC の bench は
+    今までどおりどの PC にも使う。並びは 設定が同じもの → この PC と同じ GPU の実測 → 作者・この PC の実測 →
+    張り付いていないもの → 大きい GPU → 大きい値(根拠の段階は models.BASIS_DETAILS)。
+    gpu は判定に使う models.Gpu(GPU が無いときは None)。"""
+    cands = [
+        m
+        for m in measurements
+        if m.model_id == entry.id and usable(m) and (not is_community(m) or measured_on_this_gpu(m, gpu))
+    ]
     if not cands:
         return None
 
@@ -873,7 +933,7 @@ def pick_measurement(
         same = s is not None and _settings_match(m.settings, s, entry)
         return (
             same,
-            same_gpu_name(m.gpu_name, gpu_name),
+            measured_on_this_gpu(m, gpu),
             not is_community(m),
             not is_censored(m),
             m.gpu_vram_gb,
@@ -959,11 +1019,11 @@ def _prepare(
     measurements: Iterable[Measurement],
     c: Coefficients,
     s: Settings | None = None,
-    gpu_name: str | None = None,
+    gpu: Any = None,
 ) -> _Model:
     measurements = list(measurements)
     parts = components(entry)
-    m = None if parts.unknown else pick_measurement(measurements, entry, s, gpu_name)
+    m = None if parts.unknown else pick_measurement(measurements, entry, s, gpu)
     if m is None:
         return _Model(entry, c, None, 0.0, settings_for(entry, None), parts)
     at = settings_for(entry, m.settings)
@@ -976,7 +1036,7 @@ def _prepare(
         # GPU の総量を超えた値は使わない。張り付いた実測(動的 VRAM が空きを使い切った)は
         # 「これ以上」としてだけ使う。
         # 判定する既定の設定は own のまま(小さな設定の提出で、既定の設定そのものを小さくしない)
-        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu_name)
+        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu)
         lo = 0.0 if is_censored(m) else -max(0.0, act_m)
         hi = max(lo, peak_vram_cap(m) - est)
         clamp = "floor" if delta < lo else ("cap" if delta > hi else None)
@@ -1160,7 +1220,7 @@ def _estimate(
     with_limits: bool,
 ) -> Estimate:
     g0 = system.best_gpu
-    gname = g0.name if g0 is not None and system.vram_gb > 0 else None
+    gname = g0 if g0 is not None and system.vram_gb > 0 else None
     s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
     prep = _prepare(entry, measurements, c, s, gname)  # 設定が同じ実測があればそれを選び直す
     if prep.parts.unknown:
@@ -1245,7 +1305,7 @@ def _estimate(
         # NVIDIA 以外の GPU は、推定だけなら段階を good までにする。この PC と同じ名前の GPU の同じ設定の
         # 実測があれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
         label = _vendor_label(g.vendor)
-        own = band if band is not None and same_gpu_name(m.gpu_name, g.name) else None
+        own = band if band is not None and measured_on_this_gpu(m, g) else None
         if own is not None:
             if fit == "perfect" and fit_from != "measurement":
                 if own[0] == "perfect":
@@ -1364,7 +1424,7 @@ def _measured_band(
     vram = system.vram_gb
     if g is None or vram <= 0 or g.vendor != measurement_vendor(m) or prec.act_factor != 1:
         return None
-    if is_community(m) and not same_gpu_name(m.gpu_name, g.name):
+    if is_community(m) and not measured_on_this_gpu(m, g):
         return None
     if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
         return None
@@ -1703,6 +1763,6 @@ def limits_for(
     c = coefficients or load_coefficients()
     measurements = list(measurements)
     g = system.best_gpu
-    gname = g.name if g is not None and system.vram_gb > 0 else None
+    gname = g if g is not None and system.vram_gb > 0 else None
     s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
     return limits(_prepare(entry, measurements, c, s, gname), system, s)

@@ -85,6 +85,7 @@ Gpu:
 | `memory` | str | (0.7.0) `dedicated` (own VRAM) / `shared` (integrated GPU or APU using system RAM) / `unified` (Apple silicon). Shared and unified GPUs never offload (`GPU+RAM`) |
 | `gfx_target` | str \| null | (0.7.0) AMD LLVM target, e.g. `gfx1100` |
 | `carveout_gb` | float \| null | (0.7.0) for `memory: shared`, the VRAM the BIOS sets aside (not part of `ram_total_gb`); the RAM check counts only GPU use above it. null otherwise |
+| `pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` (`1002:744c`) for AMD / Intel GPUs (Windows WMI `PNPDeviceID`, Linux `lspci -nn`); null for NVIDIA (nvidia-smi names match everywhere) and Apple. Used to match other users' measurements of the same GPU (`estimate.same_gpu`) |
 
 Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` / `unknown`), `vram_gb` (Windows: registry
 `HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; Intel Arc on Linux: the
@@ -809,7 +810,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
 `comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`, and (#34) `origin`,
-`n_submissions`, `consistent`, and (2026-10-22, optional) `n_used`, `n_oom`, `gpu_backend`.
+`n_submissions`, `consistent`, and (2026-10-22, optional) `n_used`, `n_oom`, `gpu_backend`, `gpu_pci_id`.
 
 | key | type | meaning |
 |---|---|---|
@@ -823,6 +824,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `n_oom` | int \| null | community rows: submissions of the same group that ran out of memory. A group with `ok` and `oom` uses the `ok` median and keeps this count (shown in the reasons; such a row never makes Perfect) |
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
+| `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -903,7 +905,7 @@ no spaces, UTF-8), so the name does not depend on indentation and two identical 
 | `date` | str | UTC date only (`YYYY-MM-DD`); no time |
 | `system.os_family` | str \| null | `windows` / `linux` / `macos`; no version or build. null when ComfyUI ran on another PC |
 | `system.ram_total_gb` | int \| null | RAM in GiB rounded to an integer; null when unknown or overridden with `--ram` |
-| `system.gpu` | object | `name`, `vram_gb` (as measured), `arch` / `compute_capability` (NVIDIA only: from nvidia-smi on this PC when the names match, else from the GPU name table), `driver`, and (0.9.0, optional) `vendor` (`nvidia` / `amd` / `intel` / `apple`) with `backend` (`cuda` / `rocm` / `xpu` / `mps`), written only when bench recorded the backend (`Measurement.gpu_backend`); both or neither. Older files without them stay valid (`contrib_schema` stays 1) |
+| `system.gpu` | object | `name`, `vram_gb` (as measured), `arch` / `compute_capability` (NVIDIA only: from nvidia-smi on this PC when the names match, else from the GPU name table), `driver`, and (0.9.0, optional) `vendor` (`nvidia` / `amd` / `intel` / `apple`) with `backend` (`cuda` / `rocm` / `xpu` / `mps`), written only when bench recorded the backend (`Measurement.gpu_backend`); both or neither; and (0.9.0, optional) `pci_id` (PCI model ID `1002:744c`, lower case; its vendor ID must match `vendor`). Older files without them stay valid (`contrib_schema` stays 1). The name may contain `(R)`, `(TM)`, `™`, `®`; a name of another vendor than `vendor` is an error; for `apple` only a chip name (`Apple M2 Pro`) or `mps`. `vram_gb` above 256 GiB, `peak_ram_gb` above `ram_total_gb` × 1.05 + 1 GiB, and any NaN / infinity / negative number are errors (NaN in the file is refused when reading) |
 | `measurement` | object | the Measurement fields that matter (settings without `batch: 1`). `note` is split into sentences (`。`, newline, `;`); every sentence that contains this PC's host / user name / home folder or matches a privacy pattern (below) is dropped whole, and the count of dropped sentences is appended (`contrib.scrub_text`) |
 
 Not written by genmodelfit: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses,
@@ -953,8 +955,9 @@ the review): `unknown_model` (not in the bundled list), `unknown_gpu` (not in th
 Apple), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
 `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead; estimates use that floor for
 every submission below it — with dynamic VRAM / partial loading a smaller peak is normal), `fit_change` (this
-submission alone would change the level at a common size: VRAM 4 / 6 / 8 / 12 / 16 / 24 / 32 / 48 GB × RAM 16 / 32 /
-64 GB, at the default and the submitted settings). Until 2026-10-21 these were "review required" and needed a
+submission alone would change the level on a PC with the submitted GPU — same name, PCI model ID and vendor, VRAM =
+the submission's `vram_gb` — × RAM 16 / 32 / 64 GB, at the default and the submitted settings; this includes a level
+going up and the AMD / Intel / Apple Good cap being lifted. Other GPUs are never affected since 0.9.0). Until 2026-10-21 these were "review required" and needed a
 per-sha8 approval (`--allow-review`, `data/contrib/REVIEWED`); both were removed.
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
@@ -987,8 +990,9 @@ the bundled copy is `src/genmodelfit/data/measurements_community.json`, which is
 `check_mean_abs_pct`, `check_max_abs_pct`, plus `breaches` [{kind (`loo` / `community_check`), model_id, gpu_name,
 origin, error_pct}] and `breach`. Counted against the threshold (default 25%): LOO errors of evaluable modalities and
 the check errors of community rows; the maintainer's own check rows (RTX 3070) are shown but not counted.
-`fit_changes` [{model_id, vram_gb, ram_gb, before, after}] lists the level changes the community rows cause at the
-common sizes above (section "Fit-level changes caused by community data" in the text report).
+`fit_changes` [{model_id, gpu_name, vram_gb, ram_gb, before, after}] lists the level changes the community rows cause
+on PCs with the measured GPU (name, PCI model ID, vendor, the measured GPU's VRAM) × RAM 16 / 32 / 64 GB; other GPUs
+are never affected since 0.9.0 (section "Fit-level changes caused by community data" in the text report).
 Text output is Markdown (for the weekly pull request of #19).
 
 `--json`: envelope + `action: "aggregate"`, `dir`, `files`, `valid`, `invalid`, `notices`, `submissions_used`, `groups`,

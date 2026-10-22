@@ -849,6 +849,9 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
             warnings.append(
                 "Apple のチップ名が分からないので GPU 名は mps のまま(同じ GPU の実測としては使われない)"
             )
+    # PCI の型番 ID(同じ GPU の照合に使う。Linux と Windows で名前が違う AMD・Intel のため)。
+    # ComfyUI が同じ PC のときだけ
+    pci_id = hardware.local_pci_id(vendor, name) if local else None
     gpu: dict[str, Any] | None = None
     gpu_id = driver = None
     probe: Probe | None = None
@@ -1046,6 +1049,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         standard=not nonstandard,
         vram_metric="torch_reserved",
         gpu_backend=BACKEND_OF_VENDOR.get(vendor),
+        gpu_pci_id=pci_id,
     )
     return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
 
@@ -1062,7 +1066,8 @@ def default_output_path(m: Measurement) -> Path:
 def save(m: Measurement, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"measurements": [asdict(m)]}
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+    text = json.dumps(data, ensure_ascii=False, indent=1, allow_nan=False)  # NaN・inf は書かない
+    path.write_text(text + "\n", encoding="utf-8", newline="\n")
 
 
 def save_decision(

@@ -179,6 +179,13 @@ def _file_reasons(fa: list[Any], fb: list[Any], allow: frozenset[str]) -> list[s
             va, vb = a.get(k), b.get(k)
             if va == vb or k in _LICENSE:
                 continue
+            if (
+                k == "url"
+                and isinstance(va, str)
+                and isinstance(vb, str)
+                and va.split("#")[0] == vb.split("#")[0]
+            ):
+                continue  # フラグメントだけの違い(サーバーに送られない。review.files_changed と同じ)
             if k in _FILE_IDENTITY:
                 out.append("files_changed")
             elif k == "size_bytes":

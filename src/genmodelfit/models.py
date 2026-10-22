@@ -311,6 +311,10 @@ class Measurement:
     gpu_backend: str | None = None
     n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除いた数。Estimate.sample_count になる)
     n_oom: int | None = None  # 同じ構成で OOM だった提出の数(1 件以上なら perfect の根拠にしない)
+    # 測った GPU の PCI の型番 ID("1002:744c" = vendor:device。機種の番号で、個体・差し場所は表さない。
+    # 0.9.0、bench が ComfyUI と同じ PC の検出から書く)。同じ GPU かの照合に名前より先に使う
+    # (estimate.same_gpu)
+    gpu_pci_id: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:
@@ -360,6 +364,9 @@ class Gpu:
     gfx_target: str | None = None
     # memory が shared のとき、BIOS で取り分けた VRAM(GiB。メインメモリの搭載量に入らない分)。ほかは None
     carveout_gb: float | None = None
+    # PCI の型番 ID("1002:744c"。0.9.0)。Windows の PNPDeviceID・Linux の lspci -nn から。NVIDIA(nvidia-smi)は
+    # None(名前がどこでも同じなので名前で照合する)。個体・差し場所は表さない
+    pci_id: str | None = None
 
 
 @dataclass
@@ -380,6 +387,7 @@ class Adapter:
         None  # Linux の amdgpu の GTT(メインメモリから使える分。sysfs mem_info_gtt_total)
     )
     needs: str | None = None  # 使えるようにする条件(今は "Windows 11" だけ。OS の版だけで断ったとき)
+    pci_id: str | None = None  # PCI の型番 ID("1002:744c"。0.9.0。Gpu.pci_id)
 
 
 @dataclass

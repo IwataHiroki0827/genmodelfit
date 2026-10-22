@@ -352,3 +352,60 @@ def test_apple_measurement_matches_this_pc_by_chip_name():
     old = Measurement(**{**kw, "gpu_name": "mps", "gpu_backend": None})
     assert measurement_vendor(old) == "apple"
     assert _measured_band(old, entry, s, pc, gpu_precision(entry, pc, s)) is None
+
+
+# --- PCI の型番 ID(0.9.0): ComfyUI と同じ PC なら、検出した部品から vendor:device を記録する ----------
+
+
+def _wmi(*items: tuple[str, str]) -> str:
+    return json.dumps(
+        [
+            {"Name": n, "PNPDeviceID": f"PCI\\VEN_{v}&DEV_{d}&SUBSYS_0E3A1002&REV_C8\6&1&0&0"}
+            for n, (v, d) in items
+        ]
+    )
+
+
+@pytest.mark.skipif(
+    not hasattr(hardware.os, "name") or hardware.os.name != "nt", reason="WMI は Windows だけ"
+)
+def test_bench_records_pci_id_of_the_same_pc(monkeypatch):
+    wmi = _wmi(("AMD Radeon RX 7900 XTX", ("1002", "744C")), ("Intel(R) UHD Graphics 770", ("8086", "4680")))
+    _os(monkeypatch, "Windows", {"powershell.exe": wmi})
+    with FakeComfy() as fake:
+        res = bench.run(_opts(_amd(fake).url), log=_quiet)
+    m = res.measurement
+    assert m.gpu_pci_id == "1002:744c"
+    m.seconds = 30.0
+    data = contrib.build_submission(m)
+    assert data["system"]["gpu"]["pci_id"] == "1002:744c"
+    assert contrib.validate_submission(data, check_filename=False).ok
+    # 同じ会社の部品が 2 つで名前も合わなければ決めない
+    two = _wmi(("AMD Radeon RX 6600", ("1002", "73FF")), ("AMD Radeon 780M Graphics", ("1002", "15BF")))
+    _os(monkeypatch, "Windows", {"powershell.exe": two})
+    with FakeComfy() as fake:
+        assert bench.run(_opts(_amd(fake).url), log=_quiet).measurement.gpu_pci_id is None
+
+
+def test_bench_remote_does_not_record_pci_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(hardware, "local_pci_id", lambda v, n: calls.append(1) or "1002:744c")
+    _os(monkeypatch, "Linux", {"rocm-smi": ROCM_SMI})
+    monkeypatch.setattr(bench, "is_local", lambda url: False)
+    with FakeComfy() as fake:
+        res = bench.run(_opts(_amd(fake).url, force=True), log=_quiet)
+    assert res.measurement.gpu_pci_id is None and not calls
+
+
+def test_lspci_and_wmi_keep_the_pci_model_id_only():
+    """型番 ID は vendor:device だけ(差し場所のバス番号・SUBSYS・個体の番号は入れない)。"""
+    adapters, _ = hardware.parse_wmi_video(_wmi(("AMD Radeon RX 7900 XTX", ("1002", "744C"))))
+    assert adapters[0].pci_id == "1002:744c"
+    lspci = (
+        "0000:03:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] "
+        "Navi 31 [Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M] [1002:744c] (rev c8)\n"
+    )
+    (a,) = hardware.parse_lspci(lspci, vram_of=lambda slot: 24 * 2**30)
+    assert a.pci_id == "1002:744c" and "0000:03" not in json.dumps(vars(a))
+    g = hardware.classify_adapter(a, hardware.Host("Linux", None, cpu="AMD Ryzen 7 7700"), 32.0)
+    assert g is not None and g.pci_id == "1002:744c"
