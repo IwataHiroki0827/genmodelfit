@@ -431,7 +431,7 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Verified=yes, Perfect/Good, Marginal, Score.",
+    "auto": "Order: runs, Verified, Perfect/Good, Marginal, Score.",
     "type": "Order: Type, Status, Score (--sort).",
     "score": "Order: Status, Score (all types).",
     "vram": "Order: runs, VRAM (least first).",
@@ -461,7 +461,10 @@ def legend(
         ),
         "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
         *(
-            ["Level caps: AMD / Intel / Apple GPUs are estimates (no measurements), at most Good."]
+            [  # 実測を送ってもらう案内(1 行だけ。#56 の後の 0.9.0)
+                "Level caps: AMD / Intel / Apple GPUs are estimates, at most Good until measured"
+                " (CONTRIBUTING.md)."
+            ]
             if non_nvidia
             else []
         ),

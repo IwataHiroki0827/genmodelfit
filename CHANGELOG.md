@@ -7,6 +7,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Non-NVIDIA GPUs that were judged too cautiously** (#56). Sources are in docs/hardware.md「NVIDIA 以外の GPU」.
+  - Ryzen Z1 Extreme / Z1 (handhelds, 12 / 4 RDNA 3 CUs per AMD's pages) are judged as gfx1103 APUs like the
+    780M / 740M instead of CPU.
+  - Dragon Range 7940HX / 7840HX were CPU with the reason "gfx unknown"; they are now named as the 2 CU Radeon 610M
+    (still CPU), like the 7945HX.
+  - The desktop Radeon RX 6300 (and Pro W6300 / W6400) is Navi 24 (gfx1034).
+  - Linux with an old pci.ids: lspci's `Device [1002:7551]` is kept as `AMD Device 7551` and looked up in a PCI ID
+    table copied from pci.ids 2026.10.22 (AMD and Intel GPUs that matter for judging); the reason says it was
+    resolved from the ID. Unknown IDs get the `update-pciids` hint for Intel too (`Intel Device e20b` used to get none).
+  - Linux Intel Arc laptop GPUs (A770M 16 GB, A730M 12 GB, A550M 8 GB, A370M / A350M 4 GB, from Intel's spec table)
+    use the nominal VRAM, marked as nominal in the reason, because the xe / i915 drivers expose no VRAM size in sysfs.
+    They were CPU before.
+- **`bench` works on AMD, Intel and Apple GPUs.** The busy check (average utilization ≥ 30% stops) and the GPU-wide
+  delta in `note` use `amd-smi` → `rocm-smi` (AMD, Linux), `xpu-smi` (Intel, Linux), the Windows performance counters
+  through `typeperf` (AMD / Intel, Windows; checked against nvidia-smi on this PC) and `ioreg` (Apple; no sudo)
+  (new `gpustat.py`, stdlib only). When no tool can be read, bench no longer stops: it checks the ComfyUI queue and
+  that other apps hold at most half of the GPU memory, then measures with a warning and a note; `standard` stays true
+  (docs/accuracy.md). A remote ComfyUI still needs `--force`.
+- Measurements record `gpu_backend` (`cuda` / `rocm` / `xpu` / `mps`), and submissions carry the optional
+  `system.gpu.vendor` / `backend` (both or neither; `contrib_schema` stays 1, old files stay valid). `contrib show`
+  lists them. Non-NVIDIA submissions no longer put a non-NVIDIA generation into `arch`.
+- The table legend says non-NVIDIA GPUs are at most Good until measured and points to CONTRIBUTING.md; the README
+  says the same next to the GPU requirements. The legend's first line fits in 100 columns again (`Verified=yes` →
+  `Verified`).
+
 ## [0.8.0] - 2026-10-22
 
 ### Changed

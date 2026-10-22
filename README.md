@@ -38,6 +38,8 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
   judged as estimates (at most Good). Other GPUs (Intel UHD / Iris Xe, older AMD) and PCs without a GPU are judged as
   CPU-only; SD-family image models and Stable Audio count as running on CPU (slow)
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
+  Non-NVIDIA GPUs have no measurements yet, so their levels are kept low; your `genmodelfit bench` results let us
+  tighten them ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
 ### Install
 
@@ -167,8 +169,7 @@ tts   ● Perfect      80 VieNeu-TTS-v3-Turbo      gen     q8     1.6  21% GPU  
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 3d    ● Good         64 HY 3D 2.0                gen     fp16  6.7m  84% GPU     other      license
 3d    ● Good         57 TripoSplat               gen     fp16   5.8  72% GPU     other      license
-Order: runs, Verified=yes, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m =
-    measured.
+Order: runs, Verified, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.
