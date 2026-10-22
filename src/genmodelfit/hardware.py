@@ -1169,6 +1169,25 @@ def pci_device_name(vendor: str, name: str) -> tuple[str, str] | None:
     return (dev, found) if found else (dev, "")
 
 
+def pci_name_conflict(vendor: str, pci_id: str, name: str) -> bool | None:
+    """提出の PCI の型番 ID と GPU 名が食い違うか(0.9.0)。ID が PCI_DEVICE_NAMES に無ければ None。
+    AMD は ID の石と名前の gfx、Intel は名前の表(_INTEL_XPU)の世代と公称の VRAM で比べる。名前から決まらない
+    (「AMD Radeon(TM) Graphics」など)ときは食い違いとしない(False)。"""
+    ven, _, dev = (pci_id or "").partition(":")
+    known = PCI_DEVICE_NAMES.get((ven, dev))
+    if not known:
+        return None
+    if vendor == "amd":
+        a, b = amd_gfx(known), amd_gfx(name)
+        return bool(a and b and a[0] != b[0])
+    if vendor == "intel":
+        a, b = intel_xpu(f"intel {known}"), intel_xpu(name)
+        if not a or not b:
+            return False
+        return a[0] != b[0] or (a[2] is not None and b[2] is not None and a[2] != b[2])
+    return False
+
+
 # 内蔵 GPU・APU(Apple 以外)が使えるメインメモリの割合。Linux は TTM が GPU に貸すページの上限を
 # 「約 50% of the total system memory」にする(torvalds/linux a804c57 drivers/gpu/drm/ttm/ttm_device.c:88〜92。
 # amdgpu の GTT の既定はこの値: docs.kernel.org の amdgpu の gttsize「-1 = Use value specified by TTM」)。

@@ -99,10 +99,14 @@ PCs outside that set were not compared. The bundled RTX 3070
   AMD / Intel / Apple Good cap being lifted. `contrib aggregate --report`'s fit-level table gains a GPU column.
 - New errors: `system.gpu.vram_gb` above 256 GiB (was 512); `peak_ram_gb` above `ram_total_gb` × 1.05 + 1 GiB (now also
   capped when read); any NaN / infinity / negative number; a GPU name of another vendor than `system.gpu.vendor`
-  (e.g. an NVIDIA name with `amd`); for `apple`, a name other than a chip name or `mps`; a malformed `pci_id` or one
-  whose vendor ID does not match. Files with `NaN` / `Infinity` are refused when read, and submissions, community rows
+  (e.g. an NVIDIA name with `amd`); for `apple`, a name other than a chip name or `mps`; a malformed `pci_id`, one
+  whose vendor ID does not match, or one of `hardware.PCI_DEVICE_NAMES` whose GPU differs from the name (AMD: gfx;
+  Intel: generation and nominal VRAM; an ID outside that table is an `unknown_gpu` notice). Files with `NaN` / `Infinity` are refused when read, and submissions, community rows
   and bench results are written with `allow_nan=False`.
-- GPU names may contain `(R)`, `(TM)`, `™`, `®` (as ComfyUI, PyTorch and Windows print them).
+- GPU names may contain `(R)`, `(TM)`, `™`, `®` and a size such as `(16GB)` (as ComfyUI, PyTorch and Windows print
+  them, e.g. `Intel(R) Arc(TM) 140V GPU (16GB)`).
+- For GPUs whose nominal VRAM the name table knows (Intel Arc: `hardware._INTEL_XPU`), the `fit_change` check also
+  uses a PC with that VRAM (A770 comes as 8 and 16 GB under one name). NVIDIA has no such table yet.
 - Submissions carry the optional `system.gpu.pci_id` (AMD / Intel, written by bench when ComfyUI runs on this PC;
   `contrib_schema` stays 1, old files stay valid). `contrib show` lists it; CONTRIBUTING.md lists it under what is
   sent. Community rows are grouped by it when present and keep `gpu_pci_id`.

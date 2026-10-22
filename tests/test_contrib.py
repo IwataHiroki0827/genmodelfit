@@ -1566,3 +1566,53 @@ def test_good_cap_needs_the_same_gpu_name(db):
     assert e.fit == "good" and not any("上限(good)を外した" in x for x in e.reasons)
     same = Measurement(**{**vars(other), "gpu_name": FAKE_AMD})
     assert estimate(entry, amd_pc(), None, [*maint, same]).fit == "perfect"
+
+
+@pytest.mark.parametrize(
+    ("name", "vendor", "pci", "expect"),
+    [
+        ("AMD Radeon RX 7900 XTX", "amd", "1002:744c", "ok"),
+        ("AMD Radeon RX 7600", "amd", "1002:744c", "error"),  # 744c は Navi 31、7600 は Navi 33
+        ("AMD Radeon(TM) Graphics", "amd", "1002:15bf", "ok"),  # 名前から決まらないときは誤りにしない
+        ("AMD Radeon RX 7900 XTX", "amd", "1002:ffff", "notice"),  # 表に無い ID
+        ("Intel(R) Arc(TM) A770 Graphics", "intel", "8086:56a0", "ok"),
+        ("Intel(R) Arc(TM) B580 Graphics", "intel", "8086:56a0", "error"),
+        ("Intel(R) Arc(TM) A770 Graphics", "intel", "8086:5690", "error"),  # 5690 は A770M(16 GB)
+        ("Intel(R) Arc(TM) 140V GPU (16GB)", "intel", "8086:64a0", "ok"),
+    ],
+)
+def test_submission_pci_id_matches_the_name(name, vendor, pci, expect):
+    """N1: 提出の pci_id を名前と照らす。表(hardware.PCI_DEVICE_NAMES)にある ID なのに名前と合わなければ誤り、
+    表に無い ID は確認(notices の unknown_gpu)。"""
+    d = good()
+    backend = {"amd": "rocm", "intel": "xpu"}[vendor]
+    d["system"]["gpu"].update(
+        name=name, vendor=vendor, backend=backend, arch=None, compute_capability=None, pci_id=pci
+    )
+    r = contrib.validate_submission(d, check_filename=False, today=TODAY)
+    bad = [e for e in r.errors if e["code"] == "gpu_inconsistent"]
+    unknown = [n for n in r.notices if n["code"] == "unknown_gpu" and pci in n["message"]]
+    assert (bool(bad), bool(unknown)) == (expect == "error", expect == "notice"), (r.errors, r.notices)
+    assert not [e for e in r.errors if "gpu.name" in e["message"]], r.errors  # N4: (16GB) も名前に入れられる
+
+
+def test_fit_change_also_checks_the_nominal_vram(db, monkeypatch):
+    """N3: 名前の表で公称の VRAM が分かる GPU(Intel の Arc)は、提出の VRAM に加えて公称の VRAM の PC でも
+    点検する(A770 は 8 GB と 16 GB の版が同じ名前)。"""
+    seen = []
+    real = contrib._measured_pc
+
+    def spy(m, ram):
+        seen.append(m.gpu_vram_gb)
+        return real(m, ram)
+
+    monkeypatch.setattr(contrib, "_measured_pc", spy)
+    entry = db.get("image_sdxl_simple")
+    m0 = next(m for m in db.measurements if m.model_id == entry.id)
+    m = _community(m0, gpu_name="Intel(R) Arc(TM) A770 Graphics", gpu_vram_gb=16.0, gpu_backend="xpu")
+    contrib.community_effect(entry, contrib._own_measurements(db), [m])
+    assert set(seen) == {16.0, 8.0}
+    seen.clear()
+    nv = _community(m0, gpu_name="NVIDIA GeForce RTX 4060 Ti", gpu_vram_gb=16.0)
+    contrib.community_effect(entry, contrib._own_measurements(db), [nv])
+    assert set(seen) == {16.0}  # 公称の VRAM の表が無い GPU は今のまま

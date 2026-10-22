@@ -163,7 +163,13 @@ def parse_typeperf(text: str) -> list[Reading]:
     プロセスの使用率を足し、いちばん大きい種類を使用率にする(タスク マネージャーと同じ。100 で切る)。
     使用中のメモリは Dedicated Usage。PC 名・プロセス ID・LUID・時刻は読み捨てる。
     何も使っていない仮想のアダプタは除く。"""
-    rows = [r for r in csv.reader(io.StringIO(text)) if r and any(c.strip() for c in r)]
+    # NUL は捨てる(Python 3.10 の csv は NUL のある行で csv.Error を出す。3.11 からは読む)。壊れた CSV は空
+    try:
+        rows = [
+            r for r in csv.reader(io.StringIO(text.replace("\x00", ""))) if r and any(c.strip() for c in r)
+        ]
+    except csv.Error:
+        return []
     head = next((i for i, r in enumerate(rows) if r[0].startswith("(PDH-CSV")), None)
     if head is None or head + 1 >= len(rows):
         return []

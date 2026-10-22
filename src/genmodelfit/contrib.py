@@ -51,7 +51,7 @@ from .estimate import (
     gpu_key,
     norm_precision,
 )
-from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, parse_compute_cap
+from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, intel_xpu, parse_compute_cap, pci_name_conflict
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
 CONTRIB_SCHEMA = 1
@@ -669,8 +669,9 @@ _DRIVER = re.compile(r"\d{2,4}(\.\d{1,3}){1,3}")
 _VERSION = re.compile(r"v?\d{1,3}\.\d{1,3}\.\d{1,4}")  # ComfyUI の版(厳密な x.y.z。後ろに何も付けない)
 _TOOL_VERSION = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,4}((a|b|rc|\.dev|\.post)\d{1,4})?")
 # GPU の名前: 英数字・空白・. - と、ComfyUI・PyTorch・Windows の名前に入る (R)・(TM)・™・® だけ
+# と、Intel の内蔵 GPU の名前に付く大きさ「(16GB)」(「Intel(R) Arc(TM) 140V GPU (16GB)」)
 # (ほかの括弧・記号・自由な文は入れられない。0.9.0 で (R) などを許した)
-_GPU_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 .-]|\((?:R|TM|r|tm)\)|[™®]){1,63}")
+_GPU_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 .-]|\((?:R|TM|r|tm)\)|\(\d{1,3} ?GB\)|[™®]){1,63}")
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,199}")
 _PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
 # 式の見積もりから 40% より外れた値は注意(マージするメンテナが見る)。
@@ -814,6 +815,17 @@ def validate_submission(
                     f"system.gpu.pci_id の会社({PCI_VENDORS.get(pci[:4], pci[:4])})と"
                     f" vendor({vendor})が合いません",
                 )
+            elif isinstance(name, str):
+                conflict = pci_name_conflict(vendor or "nvidia", pci, name)
+                if conflict is None:
+                    r.notice(
+                        "unknown_gpu",
+                        f"system.gpu.pci_id {pci} が型番 ID の表(hardware.PCI_DEVICE_NAMES)にありません",
+                    )
+                elif conflict:
+                    r.error(
+                        "gpu_inconsistent", f"system.gpu.pci_id {pci} の GPU と GPU 名({name})が合いません"
+                    )
         arch, cc = gpu.get("arch"), gpu.get("compute_capability")
         if arch is not None and arch not in ARCHES:
             r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")
@@ -1016,13 +1028,20 @@ def community_effect(
     GPU(名前・型番 ID・会社、VRAM は実測の GPU の総量)× メインメモリ CHECK_RAM_GB。既定の設定
     (と settings を渡せばその設定)で比べる。同じ GPU で段階が上がる・NVIDIA 以外の good の上限が
     外れるのも出る。"""
-    from .estimate import estimate
+    from .estimate import estimate, measurement_vendor
 
     rise = 0.0
     changes: list[dict[str, Any]] = []
     gpus: dict[tuple, Measurement] = {}
     for m in community:
         gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(m.gpu_vram_gb or 0)), m)
+        # 名前の表で公称の VRAM が分かる GPU(今は Intel の Arc だけ: hardware._INTEL_XPU)は、その VRAM の
+        # PC も点検する(同じ名前で VRAM の違う版がある: A770 の 8 GB と 16 GB など。同じ GPU の実測として
+        # 使われるため)
+        nominal = intel_xpu(m.gpu_name) if measurement_vendor(m) == "intel" else None
+        if nominal and nominal[2] and round(nominal[2]) != round(m.gpu_vram_gb or 0):
+            v = Measurement(**{**vars(m), "gpu_vram_gb": float(nominal[2])})
+            gpus.setdefault((gpu_key(m.gpu_name), getattr(m, "gpu_pci_id", None), round(nominal[2])), v)
     for s in [None] if settings is None else [None, settings]:
         for m in gpus.values():
             for ram in CHECK_RAM_GB:
