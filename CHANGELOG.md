@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format is based on
   `license_url`, `base_model`, `content_evidence`, `discovered_from`, `updated`, `homepage`, `likes`, `license_evidence`,
   `comfy_vae`, `workflow_precision`, `precision_source`; file: `license_url`, `repo_license`, `license_evidence`,
   `head_status`, `head_checked_at`, `header_precision`, `header_params`, `repo_precision`, `repo_precision_source`;
-  template: all fields) are type-checked like `license_name` was in 0.8.0. All 41 bundled lists in the git history still load.
+  template: all fields) are type-checked like `license_name` was in 0.8.0. All 27 distinct versions of the bundled list in the git history (`git log --all -- src/genmodelfit/data/db.json`; the 41 commits that touched `data/` include unchanged copies) still load. Top-level `generated_at` / `sources` are checked too.
 - **Other users' measurements are used only for a GPU with a close VRAM.** The same name (or PCI ID) can be a different card:
   RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RX 7900 XT / XTX / GRE (all `744c`; the 0.9.0 review's N2). A measurement now
   matches only when `min/max` of its VRAM and the PC's total is at least 0.97 (`estimate.same_vram`; not applied to shared /

@@ -925,7 +925,8 @@ def same_vram(m_vram: float | None, gpu: Any) -> bool:
     PCI ID 744c の RX 7900 XT・XTX・GRE)。VRAM が違うと同じ設定の最大 VRAM・段階が変わるので、同じ GPU の
     実測として使わない。近いとみなす幅は 実測の VRAM ÷ この PC の総量(小さいほう ÷ 大きいほう)が
     MEASURED_VRAM_TOLERANCE(0.97。公称 16 と nvidia-smi の 15.9 などの数え方の違い)以上。VRAM の違う版の
-    比は実際には 0.83 以下(RTX 3080 の 10 GB と 12 GB、RX 6600 と 6600 XT など)なので、間に十分な余裕がある。
+    比は実際には 0.83 以下(RTX 3080 の 10 GB と 12 GB、
+    RX 7900 GRE の 16 GB と XT の 20 GB など)なので、間に十分な余裕がある。
     共有メモリ・統合メモリの GPU(内蔵 GPU・APU・Apple)は総量が PC のメインメモリで決まり、GPU の違いを
     表さないので比べない。VRAM が分からない(None)ときも比べない(これまでどおり)。"""
     if m_vram is None or getattr(gpu, "memory", "dedicated") != "dedicated":

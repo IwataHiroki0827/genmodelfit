@@ -249,6 +249,10 @@ def parse_db(data: dict[str, Any], origin: str) -> Database:
         raise DatabaseError(f"未対応のデータ形式です(schema_version={ver}、対応={SCHEMA_VERSION})")
     if not isinstance(data.get("models"), list):
         raise DatabaseError("models がありません")
+    if not isinstance(data.get("generated_at"), (str, type(None))):
+        raise DatabaseError(f"generated_at の型が正しくありません: {data.get('generated_at')!r}")
+    if not isinstance(data.get("sources"), (dict, type(None))):
+        raise DatabaseError("sources の型が正しくありません(オブジェクトではない)")
     for i, m in enumerate(data["models"]):
         check_entry(m, i)
     dup = duplicate_ids(data["models"])

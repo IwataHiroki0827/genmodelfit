@@ -1661,7 +1661,7 @@ def test_community_16gb_measurement_not_used_on_8gb_card(db):
     assert estimate(entry, pc(16, nv), s, [*maint, c16]).vram_gb == 14.0
 
 
-def test_community_effect_also_checks_nvidia_vram_variants(db):
+def test_community_effect_also_checks_nvidia_vram_variants(db, monkeypatch):
     entry = db.get("image_sdxl_simple")
     maint = [m for m in db.measurements if m.model_id == entry.id and m.origin is None]
     nv = "NVIDIA GeForce RTX 3060"
@@ -1669,7 +1669,13 @@ def test_community_effect_also_checks_nvidia_vram_variants(db):
     m = _community(maint[0], gpu_name=nv, gpu_vram_gb=12.0, peak_vram_gb=9.0, settings=s)
     from genmodelfit.contrib import community_effect
 
+    seen = []
+    real = contrib._measured_pc
+    monkeypatch.setattr(
+        contrib, "_measured_pc", lambda mm, ram: (seen.append(mm.gpu_vram_gb), real(mm, ram))[1]
+    )
     _rel, changes = community_effect(entry, maint, [m], m.settings)
+    assert set(seen) == {12.0, 8.0}  # 表の両方の VRAM の PC を見た(M14)
     assert all(c["vram_gb"] in (8.0, 12.0) for c in changes)
     # 8 GB 版の PC では 12 GB の実測は使われないので、段階は変わらない
     assert not [c for c in changes if c["vram_gb"] == 8.0]
