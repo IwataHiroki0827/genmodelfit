@@ -7,6 +7,39 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed (levels and needs can change once community measurements exist)
+
+- **Other users' measurements (#34) are used like llmfit's** (owner's decision, 2026-10-22). The bundled
+  `measurements_community.json` is still empty, so no judgement changes today (checked: every model × 33 PCs —
+  NVIDIA 4–48 GB × RAM 16 / 32 / 64, RTX 3070 / 5080 / GTX 1080, AMD 8 / 16 / 24, Intel, Apple, CPU — identical
+  before and after). When submissions are merged:
+  - an `ok` group is used from **one** submission (median of the group; `n_used` / `n_oom` kept). A group with `ok`
+    and `oom` runs uses the `ok` median and reports the OOM count;
+  - values move the needs **both ways** and `measured_community` scores like `measured`. Only physical bounds apply:
+    the all-in value never goes below weights + fixed overhead (a smaller value becomes that floor; `basis` is then
+    `estimated`), never above the measuring GPU's VRAM × 1.02 + 0.25 GiB, and a value pinned at the GPU limit is a
+    lower bound. Spread to other settings (`calibrated`), measured ÷ formula is clamped to [0.6, 1.4]
+    (`estimate.COMMUNITY_CALIBRATION_RANGE`; llmfit uses [0.05, 3.0]). Removed: "never lower the needs", the +15% cap
+    (`COMMUNITY_RAISE_CAP`), ignoring rows that change the level, and the 2-consistent-submissions rule
+    (`consistent` now only gates calibration);
+  - at the same settings a measurement on a GPU with this PC's name comes first (then the maintainer's / this PC's);
+  - a successful community measurement on a GPU with **this PC's name** and the same settings can set the level
+    (#26), and lifts the AMD / Intel / Apple "at most Good" cap (Perfect only when the #26 rules allow it: not pinned,
+    not `torch_reserved`, no OOM report in the group).
+- `contrib validate` (and the Contrib workflow) fails only on mechanical checks, like llmfit. `deviation`,
+  `below_weights`, `fit_change`, `unknown_model`, `unknown_gpu` are **notices** in the job summary for
+  the maintainer who merges; `raise_too_large` is gone. Removed: `--allow-review`, `--reviewed`, `data/contrib/REVIEWED`,
+  `Report.review` / `accepted()` (now `Report.notices`), `Measurement.approved`, `Submission.approved`. JSON counts
+  `review` → `notices`.
+- The weekly workflow writes "提出 0 件" instead of a failure while `data/contrib` does not exist.
+
+### Added
+
+- `Estimate.sample_count` (optional JSON key, like llmfit): measurements behind the value (community: `n_used`;
+  maintainer / this PC: 1; null when estimated). `Measurement.n_used` / `n_oom`. Reasons say
+  「ほかの利用者の実測 3 件(中央値 7.02 GB)」, `info` prints `measured_community n=3`, and the table marks community
+  values with `c` (legend: `VRAM: c = measured by other users`).
+
 ## [0.8.0] - 2026-10-22
 
 ### Changed

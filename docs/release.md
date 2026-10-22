@@ -168,7 +168,9 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
      選び方の規則が緩んだ疑い。手動実行で `allow_many_uncensored` を選んだときだけ、失敗にせず本文の先頭に警告)
    - キャッシュを保存する(`if: always()`。失敗・時間切れでも残す。GitHub は 7 日使わないキャッシュを消す)
    - 新しい一覧を入れた状態で `ruff check`・`ruff format --check`・`pytest -q`(CI の代わり。下の注意)
-   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす
+   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす。
+     data/contrib がまだ無ければ「提出 0 件」と書く。報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む。
+     2026-10-22 から両方の向きに使うので、上がる・下がるの両方が出る)が入る
    - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)
 2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
    `result.json` が ok の一覧だけを入れ、`peter-evans/create-pull-request`(コミットで固定)で PR を作る・更新する

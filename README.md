@@ -35,8 +35,8 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 - Windows, Linux or macOS, Python 3.10 or newer.
 - GPU: NVIDIA (CUDA) as measured. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or newer, Windows 11 / Linux),
   Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon (MPS, macOS 14 or newer) are
-  judged as estimates (at most Good). Other GPUs (Intel UHD / Iris Xe, older AMD) and PCs without a GPU are judged as
-  CPU-only; SD-family image models and Stable Audio count as running on CPU (slow)
+  judged as estimates (at most Good, unless someone measured that GPU at the same settings). Other GPUs (Intel UHD /
+  Iris Xe, older AMD) and PCs without a GPU are judged as CPU-only; SD-family image models and Stable Audio count as running on CPU (slow)
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
 
 ### Install

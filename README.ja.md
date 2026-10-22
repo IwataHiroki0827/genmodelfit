@@ -35,8 +35,8 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 - Windows・Linux・macOS、Python 3.10 以上。
 - GPU: NVIDIA(CUDA)は実測で確かめています。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・
   Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、macOS 14 以降)を
-  推定で判定します(段階は Good まで)。それ以外の GPU(Intel UHD・Iris Xe、古い AMD)と GPU の無い PC は CPU だけとして
-  判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と判定します
+  推定で判定します(段階は Good まで。その GPU の同じ設定の実測があれば外れます)。それ以外の GPU(Intel UHD・
+  Iris Xe、古い AMD)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と判定します
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md))。
 
 ### 入れ方

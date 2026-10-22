@@ -428,9 +428,10 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present. Stays two-valued for compatibility; the finer level is `basis_detail` |
-| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions, at least 2 consistent ones without OOM, same settings) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Community measurements and `torch_reserved` measurements are lower bounds: they can only **raise** the needs (never lower VRAM / RAM, never improve the level, never raise the score). Community rows without an approved submission raise the needs by at most 15% over the estimate without community data (`estimate.COMMUNITY_RAISE_CAP`), and are ignored on a PC where they would change the level or run mode. When such a value is below the estimate without it, the value is not used: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
-| `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`: a successful standard measurement at the same settings on a GPU of the same vendor whose VRAM is at most this PC's (within 3%: nominal 16 vs reported 15.9) sets the level to at least Good — Perfect only when its peak is within 60% of this VRAM and it was neither pinned at the GPU limit nor a lower-bound metric. The measured peak must also fit this PC's VRAM. Other users' measurements never do this, and a measurement from another vendor's GPU only calibrates (`basis: estimated`). The run mode is then `gpu` and the reasons say which decided |
+| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions aggregated by `contrib aggregate`, from **one** submission, same settings; the count is `sample_count`) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Since 2026-10-22 (like llmfit) community measurements are used in **both directions** (they can lower or raise the needs, and `measured_community` scores like `measured`), bounded only physically: the all-in value is never below weights + fixed overhead (zero working memory), never above the measuring GPU's VRAM × 1.02 + 0.25 GiB, and a value pinned at the GPU limit is a lower bound. Spread to other settings, the ratio measured ÷ formula is clamped to [0.6, 1.4] (`estimate.COMMUNITY_CALIBRATION_RANGE`; llmfit uses [0.05, 3.0] for speed). Among measurements at the same settings, one on a GPU with this PC's name comes first, then the maintainer's / this PC's, then other users'. The maintainer's `torch_reserved` rows stay lower bounds (only raise). When a bound was applied the value is not the measurement: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
+| `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`: a successful standard measurement at the same settings on a GPU of the same vendor whose VRAM is at most this PC's (within 3%: nominal 16 vs reported 15.9) sets the level to at least Good — Perfect only when its peak is within 60% of this VRAM and it was neither pinned at the GPU limit, nor a `torch_reserved` measurement, nor a community group with an OOM report. The measured peak must also fit this PC's VRAM. Other users' measurements count only when the GPU name is this PC's (since 2026-10-22; never similar GPUs), and a measurement from another vendor's GPU only calibrates (`basis: estimated`). AMD / Intel / Apple GPUs are capped at Good unless such a measurement of this GPU (same name, same settings) allows Perfect. The run mode is then `gpu` and the reasons say which decided |
 | `measured_peak_vram_gb` | float \| null | (0.7.0) that measurement's peak VRAM when `fit_from` is `measurement` (the table's VRAM column shows it with `m`) |
+| `sample_count` | int \| null | (2026-10-22, optional; like llmfit) number of measurements behind the value: for other users' measurements the submissions used for the median (`n_used`), 1 for the maintainer's / this PC's. null when no measurement was used (`basis_detail` `estimated`). `info` prints it as `n=3`; the table's VRAM column marks other users' measurements with `c` (the maintainer's with `m`) |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
@@ -806,7 +807,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 `model_id`, `gpu_name`, `gpu_vram_gb`, `peak_vram_gb`, `peak_ram_gb`, `seconds` (wall time), `settings`
 (`width`, `height`, `frames`, `seconds` = audio length, `steps`, `precision`, `batch`), `driver`,
 `comfyui_version`, `offload`, `source`, `date`, `note`, `outcome`, `standard`, `vram_metric`, and (#34) `origin`,
-`n_submissions`, `consistent`.
+`n_submissions`, `consistent`, and (2026-10-22, optional) `n_used`, `n_oom`.
 
 | key | type | meaning |
 |---|---|---|
@@ -815,9 +816,10 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `outcome` | str | `ok` (finished) / `oom` (out of memory) / `error` (failed for another reason). Default `"ok"` |
 | `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`) |
 | `origin` | str \| null | (#34) `community` for rows of `measurements_community.json` (other users' submissions aggregated by `contrib aggregate`); null for the maintainer's bundled rows and this PC's bench results |
-| `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_used`, `n_outliers`, `n_oom`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
-| `approved` | bool \| null | community rows: contains a submission approved per sha8 (`data/contrib/REVIEWED`); only then may it raise the needs by more than 15% |
-| `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Community rows that are not consistent are ignored by estimates and calibration |
+| `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_outliers`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
+| `n_used` | int \| null | community rows: `ok` submissions behind the median (outliers removed). Becomes `Estimate.sample_count` |
+| `n_oom` | int \| null | community rows: submissions of the same group that ran out of memory. A group with `ok` and `oom` uses the `ok` median and keeps this count (shown in the reasons; such a row never makes Perfect) |
+| `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -915,9 +917,12 @@ to check), detail}], `report` (below). Exit code 1 when something must be fixed.
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 
-For each file a report `{path, ok, errors: [{code, message}], warnings: [{code, message}], sha256, suggested_path,
-model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, `valid`, `invalid`, `warnings` (count),
-`reports`. `--markdown`: a table for the CI job summary.
+For each file a report `{path, ok, errors: [{code, message}], warnings: [{code, message}], notices: [{code,
+message}], sha256, suggested_path, model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`,
+`valid`, `invalid`, `notices` (files with notices), `warnings` (count), `reports`. `--markdown`: a table for the CI
+job summary, with a line for the maintainer above it when some files have notices.
+
+Like llmfit's `validate_community_benchmarks.py`, **only mechanical checks fail** (2026-10-22): errors below.
 
 | error code | when |
 |---|---|
@@ -934,18 +939,14 @@ model_id, gpu_name}`. `--json`: envelope + `action: "validate"`, `ok`, `files`, 
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |
 
-Review required (the file is valid, but a person must check it): `unknown_model` (not in the bundled list),
-`unknown_gpu` (not in the GPU name table), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate
-for those settings), `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead),
-`raise_too_large` (adding it would raise the all-in estimate by more than 15% over the estimate without community
-data), `fit_change` (adding it would change the level at a common size: VRAM 4 / 6 / 8 / 12 / 16 / 24 / 32 / 48 GB ×
-RAM 16 / 32 / 64 GB, at the default and the submitted settings).
-
-Approval is **per submission**: `--allow-review <sha8>[,<sha8>…]` (repeatable) or a list file `--reviewed FILE`
-(`data/contrib/REVIEWED`: one `<sha8> <reason>` per line, `#` comments; written only by maintainers — CI reads the
-base branch's copy and fails a pull request that changes it). There is no switch that approves everything. Without
-approval the file fails `validate` (exit 1) and `aggregate` does not use it; `aggregate` reads `<DIR>/REVIEWED` by
-default. An aggregated row records `approved: true` when it contains an approved submission.
+Notices (the file is valid and is aggregated; shown in the CI summary for the maintainer who merges — merging is
+the review): `unknown_model` (not in the bundled list), `unknown_gpu` (not in the GPU name table, e.g. AMD / Intel /
+Apple), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
+`below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead; estimates use that floor for
+every submission below it — with dynamic VRAM / partial loading a smaller peak is normal), `fit_change` (this
+submission alone would change the level at a common size: VRAM 4 / 6 / 8 / 12 / 16 / 24 / 32 / 48 GB × RAM 16 / 32 /
+64 GB, at the default and the submitted settings). Until 2026-10-21 these were "review required" and needed a
+per-sha8 approval (`--allow-review`, `data/contrib/REVIEWED`); both were removed.
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
 `metric_missing`, `driver_missing`, `comfyui_version_missing`, `ram_not_rounded`, `settings_missing` /
@@ -953,19 +954,20 @@ Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (ke
 
 `--markdown` escapes every cell (`| \` < > [ ] & @`, newlines, and GFM autolinks: `://` and `www.`) so file names
 and values cannot inject Markdown, HTML, links or workflow commands into the CI summary. CI appends genmodelfit's
-stderr to the summary through the same escaping. Report JSON has `review` [{code, message}] too; `--json` counts `review`.
+stderr to the summary through the same escaping.
 
-Exit codes: 0 every file passed (warnings allowed) / 1 a file failed, needs review (without `--allow-review`) or has a
-warning with `--strict` / 2 usage error.
+Exit codes: 0 every file passed (warnings and notices allowed) / 1 a file failed or has a warning with `--strict` /
+2 usage error.
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
-Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (and
-need no review or were approved per sha8), and groups standard submissions by model id, GPU name (normalized: case,
+Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (notices
+allowed), and groups standard submissions by model id, GPU name (normalized: case,
 `NVIDIA` / `GeForce`, spaces), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
 `vram_metric` and settings (precision normalized: `BF16` = `bfloat16` = `bf16`). Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
-are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value. A group is
-`consistent` with at least 2 used runs whose range is within 15% of the median and no OOM in the group. Output rows are Measurement records
+are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value, with
+`n_used` and `n_oom` (a group of only OOM runs becomes one `outcome: oom` row, never used). A group is `consistent`
+(enters the calibration) with at least 2 used runs whose range is within 15% of the median and no OOM in the group. Output rows are Measurement records
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
 `--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, measurements}`
 (an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake);
@@ -980,7 +982,7 @@ the check errors of community rows; the maintainer's own check rows (RTX 3070) a
 common sizes above (section "Fit-level changes caused by community data" in the text report).
 Text output is Markdown (for the weekly pull request of #19).
 
-`--json`: envelope + `action: "aggregate"`, `dir`, `files`, `valid`, `invalid`, `submissions_used`, `groups`,
+`--json`: envelope + `action: "aggregate"`, `dir`, `files`, `valid`, `invalid`, `notices`, `submissions_used`, `groups`,
 `consistent`, `written_to`, `community` (the document above), and `report` with `--report`.
 Exit codes: 0 / 1 error (no such folder; empty result with `--output` without `--allow-empty`) / 2 usage error /
 **3** a breach with `--report --fail-on-breach`.

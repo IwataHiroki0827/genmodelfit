@@ -124,10 +124,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   正しい名前を教えます)
 - **note(メモ)は自分で読んでください**。自動の点検は文の意味までは分かりません。気になる文は消して構いません
 - `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
-- 「要確認」(review)は、式の見積もりから 40% より外れた値・全部 GPU に載せたのに重みより小さい値・見積もりを 15% より
-  上げる値・よくある VRAM で段階を変える値・一覧に無いモデル・知らない GPU です。誤りではありませんが、PR を見る人が
-  確かめるまで受け付けません(測り直すか、PR の説明に事情を書いてください)。確かめた提出は、作者が
-  `data/contrib/REVIEWED` に sha8 と理由を書きます(提出の PR ではこのファイルを変えないでください。CI が失敗にします)
+- 失敗(誤り)にするのは、機械的な検査(形・値の範囲・個人の情報・重複・ファイル名)だけです(llmfit と同じ考え方。2026-10-22)
+- 「確認」(notices)は、式の見積もりから 40% より外れた値・全部 GPU に載せた(`offload: none`)のに下限(重み + 固定分)より小さい値・
+  よくある VRAM で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
+  PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)
 
 ## 4. 送る(Pull Request)
 
@@ -135,7 +135,8 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 2. コミットして自分のフォークに push し、Pull Request を作ります。説明に、ComfyUI の起動オプション
    (`--lowvram` など、変えたものだけ)を書いてもらえると助かります。個人名やメールアドレスは不要です
 3. CI(`Contrib` のワークフロー)が `genmodelfit contrib validate` で形・値の範囲・個人の情報・重複・ファイル名を検査し、
-   結果をジョブのまとめ(Summary)に出します。検査は、PR の向き先(main)の genmodelfit で動きます
+   結果をジョブのまとめ(Summary)に出します。検査は、PR の向き先(main)の genmodelfit で動きます。
+   マージが作者の確認になります(人が提出ごとに承認する別の仕組みはありません)
 
 **genmodelfit は何も送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです
 (自動で PR を作る機能はありません)。マージされると、提出は MPL-2.0 で公開されます(下の「ライセンス」)。
@@ -143,9 +144,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 ### 受け付けたあと
 
 - 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。同じ構成の提出が **2 件以上そろい、OOM が無いと**、その構成の見積もりの
-  根拠が `measured_community`(ほかの利用者の実測)になります。1 件だけの提出は、もう 1 件そろうまで見積もりには使いません。
-  ほかの利用者の実測は、必要量を**上げる向きにだけ**使います(見積もりより小さい値では、段階も点数も変わりません)
+  提出をまとめます(中央値と MAD で外れ値を除く)。**1 件から**その構成の見積もりの根拠が `measured_community`
+  (ほかの利用者の実測)になり、件数(`sample_count`)も出ます。値は必要量を下げる向きにも上げる向きにも使います
+  (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ名前の GPU の同じ設定の実測は、段階を決める
+  根拠にもなります(NVIDIA 以外の GPU も、その GPU の実測があれば good の上限が外れます)。詳しくは docs/accuracy.md
 - 毎週の点検(`contrib aggregate --report`)が、校正の誤差の表を作り直します(docs/accuracy.md)
 
 ### 作者の実測(measurements.json)
