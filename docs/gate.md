@@ -1,239 +1,275 @@
-# 自動でおすすめに出してよいかの判定(gate)
+# The gate: when a model may be auto-recommended
 
-使う側(AI生成キット)は、**人が確かめずに**おすすめのモデルを PC 初心者に出す。そのため判定は保守的にし、
-分からないもの(ライセンス不明・HEAD 未確認・版不明など)はすべて「保留」にする。全部の条件を満たしたものだけ
-`auto: true`。保留でも一覧・`recommend`(`--auto-only` を付けないとき)・`fit`・`info` には今までどおり出る。
-**auto を間違えて出すことが一番悪い**。迷うものは保留にする。
+**English** · [日本語](gate.ja.md)
 
-実装は `src/genmodelfit/gate.py`。結果は一覧(db.json)に持たず、毎回計算する。一覧に持つのは `update` が
-記録した HEAD の結果・ComfyUI の最新の版・確認の印(`review`)だけ。
+The rule behind `auto: true` ("Verified" in the tables): which models may be shown to PC beginners without a human checking.
+This page is for app developers who use the list and for contributors who change the rule or the list.
 
-## 使い方
+## Contents
+
+- [Usage](#usage)
+- [Checks](#checks)
+- [Allowlist (default)](#allowlist-default)
+- [How file licenses are read](#how-file-licenses-are-read)
+  - [Auto mistakes found in review (#14, 2026-10-20)](#auto-mistakes-found-in-review-14-2026-10-20)
+- [Checking URLs (`url_reachable`)](#checking-urls-url_reachable)
+  - [Check expiry (`max_head_age_days`)](#check-expiry-max_head_age_days)
+- [ComfyUI version (`comfyui_version`)](#comfyui-version-comfyui_version)
+- [Uncensored models (`content`)](#uncensored-models-content)
+- [What can be auto](#what-can-be-auto)
+
+The app (AI生成キット) shows recommended models to PC beginners **without a human checking**.
+So the gate is conservative: anything unknown (unknown license, HEAD not checked, unknown version and so on) is held.
+
+- Only models that meet all the checks get `auto: true`.
+- A held model still appears in the list, in `recommend` (without `--auto-only`), in `fit` and in `info`, as before.
+- **Wrongly marking a model auto is the worst outcome.** When in doubt, hold it.
+
+The implementation is `src/genmodelfit/gate.py`.
+
+- The result is not stored in the list (db.json); it is computed every time.
+- The list stores only what `update` recorded: the HEAD results, the latest ComfyUI version and the review mark (`review`).
+
+## Usage
 
 ```powershell
-genmodelfit gate [--json] [--modality image] [--only-auto | --only-held]   # 条件ごとの件数
-genmodelfit recommend --auto-only --vram 8 --comfyui-version 0.40.0         # 自動で出せるものだけ
-genmodelfit info image_z_image_turbo --comfyui-version 0.40.0               # 条件ごとの結果と理由
-# 方針の差し替え(recommend / fit / info / gate に共通)
---comfyui-version 0.40.0                # 使う ComfyUI の版(アプリは必ず渡す。下の「ComfyUI の版」)
---license-allowlist mit,apache-2.0      # または 1 行に 1 つ書いたファイル(# から後は注釈)
---max-head-age-days 30                  # HEAD の確認をこの日数まで信じる(既定 30。none で期限なし)
---allow-uncensored-auto                 # 無検閲のモデルも自動で出してよい
+genmodelfit gate [--json] [--modality image] [--only-auto | --only-held]   # counts per check
+genmodelfit recommend --auto-only --vram 8 --comfyui-version 0.40.0         # only what can be shown automatically
+genmodelfit info image_z_image_turbo --comfyui-version 0.40.0               # result and reason per check
+# Policy overrides (shared by recommend / fit / info / gate)
+--comfyui-version 0.40.0                # the ComfyUI version you use (the app must always pass it; see "ComfyUI version" below)
+--license-allowlist mit,apache-2.0      # or a file with one entry per line (text after # is a comment)
+--max-head-age-days 30                  # trust HEAD checks up to this many days (default 30; none = no limit)
+--allow-uncensored-auto                 # let uncensored models be auto too
 ```
 
-`recommend` / `fit` / `info` / `search` / `diff` の `--limit` / `-n` は 1 以上(0 や負の数はエラーで終了コード 2)。
+`--limit` / `-n` of `recommend` / `fit` / `info` / `search` / `diff` must be 1 or more (0 or a negative number is an error, exit code 2).
 
 ```python
 from genmodelfit.db import load
 from genmodelfit.gate import GatePolicy, evaluate_offline
 
 db = load()
-policy = GatePolicy(comfyui_version="0.40.0")  # アプリが同梱・導入する ComfyUI の版
+policy = GatePolicy(comfyui_version="0.40.0")  # the ComfyUI version the app bundles / installs
 r = evaluate_offline(db.get("image_z_image_turbo"), policy, sources=db.sources)
 r.auto, r.held_by, r.to_dict()
 ```
 
-`to_dict()` の形: `{"auto": bool, "held_by": [落ちた条件の id], "comfyui_version": 比べた版,
-"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順に 10 個(`runtime` が `comfyui` でも null でもないモデルは、`official_workflow`・`custom_nodes`・`comfyui_version` の位置に `app_runtime` が 1 つ入って 8 個)。`held_by[0]`(最初に落ちた条件)は、表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)に短い名前(`workflow` など)で、`gate --only-held` に `held:<id>` で出る。
-`detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
+The shape of `to_dict()`:
 
-## 条件
+```json
+{"auto": true, "held_by": ["<id of each failed check>"], "comfyui_version": "<version compared>",
+ "checks": [{"id": "", "passed": true, "detail": ""}]}
+```
 
-| id | 通る条件 | 保留になる例 |
+- `checks` follows the order of the table below. A ComfyUI model (`runtime` is `comfyui` or null) has 10: every row except `app_runtime`.
+- For a model whose `runtime` is neither `comfyui` nor null, one `app_runtime` takes the place of `official_workflow`, `custom_nodes` and `comfyui_version`, so there are 8.
+- `held_by[0]` (the first failed check) is shown in the Verified column of the tables (called Auto up to 0.5.0; it shows JSON `auto`) as a short name such as `workflow`. In `gate --only-held` it appears as `held:<id>`.
+- `detail` is Japanese text for people. The wording may change; machines should read `id` and `passed`.
+
+## Checks
+
+| id | Passes when | Example of a hold |
 |---|---|---|
-| `license` | すべてのファイル(LoRA・アップスケーラ・画像の読み取り部なども)のライセンスが許可リストにある。ライセンスは下の「ファイルのライセンスの読み方」で決める | `other`・openrail 系・非商用・コミュニティライセンス・llama / gemma / DINOv3 の規約・不明 |
-| `gated` | どのファイルも `gated: false`。部品の本家が利用申請(規約への同意)を求めるもの(DINOv3・SAM 3)も保留 | `true`、不明(`null`)、本家が申請を求める部品 |
-| `official_workflow` | ComfyUI 公式テンプレート(`source: comfyui-template`)で `openSource` が false でない | Hugging Face だけの項目 |
-| `custom_nodes` | テンプレートの `requiresCustomNodes` が空 | カスタムノードが要る、テンプレートが無い |
-| `comfyui_version` | テンプレートの `minComfyUIVersion` ≦ 使う版(数字で比べる。`0.3.9 < 0.3.10`) | 版が読めない・記載なし・使う版が不明 |
-| `url_reachable` | すべてのファイルの URL に、匿名の HEAD が 200 / 302 / 307(`/api/resolve-cache` への転送)を返した記録があり、その確認が `max_head_age_days`(既定 30 日)より新しい | 401(gated)・404・記録なし(未確認)・URL なし・確認が古い・確認の日時が無い |
-| `sha256` | すべてのファイルに 64 桁の 16 進の sha256 がある | Civitai のファイルなど |
-| `content` | 無検閲(`content: uncensored`)でない | 無検閲(`--allow-uncensored-auto` で外せる) |
-| `size_known` | すべてのファイルの大きさが分かり、ファイルの一覧が完全(`files_complete` が false でない) | 大きさ不明、ファイルの記載なし |
-| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。表の Verified の列では `review`。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。docs/schema.md「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。docs/sources.md「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
-| `app_runtime` | (`runtime` が `comfyui` でも null でもないモデルだけ。`official_workflow`・`custom_nodes`・`comfyui_version` の代わり)通らない。動かす仕組み(piper・irodori-tts)はこの一覧では確かめられないので、使う側が確かめる。点数(readiness)の重みは 3 条件の和の 40(0.5.0、#36) | 手のモデルのつくよみちゃん・Irodori-TTS |
+| `license` | Every file's license is on the allowlist, including LoRAs, upscalers and image encoders. The license is decided as in "How file licenses are read" below | `other`, openrail family, non-commercial, community licenses, llama / gemma / DINOv3 terms, unknown |
+| `gated` | Every file has `gated: false`. A component whose original source asks for an access request (agreeing to terms), such as DINOv3 and SAM 3, is also held | `true`, unknown (`null`), a component whose original source asks for a request |
+| `official_workflow` | An official ComfyUI template (`source: comfyui-template`) whose `openSource` is not false | An entry that exists only on Hugging Face |
+| `custom_nodes` | The template's `requiresCustomNodes` is empty | Custom nodes are needed, or there is no template |
+| `comfyui_version` | The template's `minComfyUIVersion` ≤ the version you use (compared numerically: `0.3.9 < 0.3.10`) | Version unreadable, not stated, or the version you use is unknown |
+| `app_runtime` | (Only for models whose `runtime` is neither `comfyui` nor null; it takes the place of `official_workflow`, `custom_nodes` and `comfyui_version`.) Never passes. This list cannot verify the runtime (piper, irodori-tts), so the app does. Its weight in the score (readiness) is 40, the sum of the 3 checks it replaces (0.5.0, #36) | The models added by hand in `src/genmodelfit/data/manual.json`: Tsukuyomi-chan (つくよみちゃん, runtime `piper`) and Irodori-TTS (runtime `irodori-tts`) |
+| `url_reachable` | Every file's URL has a record of an anonymous HEAD returning 200 / 302 / 307 (a redirect to `/api/resolve-cache`), and that check is newer than `max_head_age_days` (default 30 days) | 401 (gated), 404, no record (unchecked), no URL, an old check, no check time |
+| `sha256` | Every file has a 64-digit hexadecimal sha256 | Civitai files and similar |
+| `content` | Not uncensored (`content: uncensored`) | Uncensored (can be lifted with `--allow-uncensored-auto`) |
+| `size_known` | Every file's size is known and the file list is complete (`files_complete` is not false) | Size unknown, no files listed |
+| `reviewed` | The review mark (`review`) is not awaiting review (`pending`). Old lists without the mark (up to 0.5.0) pass. In the Verified column of the tables it shows as `review`. Its weight in the score (readiness) is 0. It is always the last check (0.6.0, #42; [schema.md](schema.md), "review") | A new entry added by `update` (rebuild, `--heads-only`, `--fields-only`, `--inspect-only`); a license that moved to the permissive side; a drop in the required amount; newly uncensored; a file change (`files_changed`: a change or loss of a URL (including the query) or sha256, a size increase or decrease, files added or removed, repo_id; 0.9.0; [sources.md](sources.md), "Review marks") — held until confirmed with evidence by `genmodelfit review approve` |
 
-ファイルが 1 つも書かれていない項目は、ファイルについての条件がすべて保留になる(空なら通る、にはしない)。
+- An entry with no files at all is held on every file-related check (an empty list does not pass).
+- A template with no `openSource` entry is treated as a template that runs locally.
+  - These are old templates such as SDXL, FLUX.1 schnell and Wan 2.1: 51 entries in the bundled list of 2026-10-21T06:20Z.
+  - `update` treats them the same way.
+  - `update` does not put API templates (those starting with `api_`) or `openSource: false` into the list.
 
-`openSource` の記載が無いテンプレート(SDXL・FLUX.1 schnell・Wan 2.1 などの古いもの、2026-10-21T06:20Z の同梱の一覧で 51 件)は
-ローカルで動くテンプレートとして通す(`update` も同じ扱い。`api_` で始まる API のテンプレートと
-`openSource: false` は `update` が一覧に入れていない)。
+## Allowlist (default)
 
-## 許可リスト(既定)
+`apache-2.0`, `mit`, `bsd-2-clause`, `bsd-3-clause`, `cc0-1.0`, `unlicense`.
 
-`apache-2.0`・`mit`・`bsd-2-clause`・`bsd-3-clause`・`cc0-1.0`・`unlicense`。
+How they were chosen: **commercial use is allowed, and there are no usage restrictions (such as a list of banned uses), no revenue or user-count thresholds, no access requests and no attribution duties** (the "1 permissive" tier of `hf.license_tier`).
 
-選び方: **商用で使えて、使い方の制限(用途の禁止の一覧など)・売上や利用者数の基準・申請・表示の義務が無い**もの
-(`hf.license_tier` の「1 寛容」の段)。これらの条件(著作権表示・ライセンス文を残す)は、重みを**再配布するとき**に
-かかる。genmodelfit と使う側のアプリは重みを配らず、利用者の PC が Hugging Face から直接取るので、アプリ側で
-守ることが残らない。
+- Their conditions (keep the copyright notice and license text) apply when you **redistribute** the weights.
+- genmodelfit and the apps that use it do not distribute weights. The user's PC fetches them directly from Hugging Face, so nothing is left for the app to comply with.
 
-- 入れないもの:
-  - `cc-by-*`(`cc-by-4.0` など): 一覧の決め方(#13)では「2 表示の義務」の段。表示(帰属)を出せるアプリは
-    `--license-allowlist apache-2.0,mit,bsd-2-clause,bsd-3-clause,cc0-1.0,unlicense,cc-by-4.0` のように足して使う。
-    #14 の最初の版では既定に入れていたが、#13 の段と合わせて外した(2026-10-20 の一覧に cc-by-4.0 のファイルは無い)
-  - `openrail` / `openrail++` / `creativeml-openrail-m` などの RAIL: 用途の制限(Attachment A)を利用者に
-    引き継ぐ義務がある。人が条件を読んで、アプリの規約に入れる必要がある
-  - 非商用(`cc-by-nc-*`・`flux-1-dev-non-commercial-license` など): 販売するアプリでは使えない
-  - 売上・利用者数の基準つきのコミュニティライセンス(`stabilityai-ai-community`・`stable-audio-community`・
-    `tencent-hunyuan-community`・`ltx-2-community-license`・MiniMax のものなど): 基準を超えたら別の契約が要り、
-    表示や地域の条件が付くものもある
-  - `llama*`・`gemma`・`dinov3-license`: 独自の規約(利用者数の基準・用途の制限・表示)
-  - `other`(上のどれでもない独自のもの)・不明: 読んでいないので通さない。`other` は `license_name` で照合するので、
-    人が読んで問題ないと判断したもの(例: `mit-and-apache-2.0`)は許可リストに名前を足せば通せる
+Not included:
 
-## ファイルのライセンスの読み方
+- `cc-by-*` (such as `cc-by-4.0`): in the list's tiering (#13) this is the "2 attribution duty" tier.
+  - An app that can show attribution can add it, for example `--license-allowlist apache-2.0,mit,bsd-2-clause,bsd-3-clause,cc0-1.0,unlicense,cc-by-4.0`.
+  - The first version of #14 had it in the default. It was removed to match the #13 tiers (the 2026-10-20 list has no cc-by-4.0 file).
+- RAIL licenses such as `openrail`, `openrail++`, `creativeml-openrail-m`: they oblige you to pass the use restrictions (Attachment A) on to users. A person must read the terms and put them in the app's terms.
+- Non-commercial (`cc-by-nc-*`, `flux-1-dev-non-commercial-license` and so on): cannot be used in an app that is sold.
+- Community licenses with revenue or user-count thresholds (`stabilityai-ai-community`, `stable-audio-community`, `tencent-hunyuan-community`, `ltx-2-community-license`, MiniMax's and so on): above the threshold a separate contract is needed, and some add attribution or regional conditions.
+- `llama*`, `gemma`, `dinov3-license`: their own terms (user-count thresholds, use restrictions, attribution).
+- `other` (a custom license that is none of the above) and unknown: not passed, because nobody has read them.
+  - `other` is matched by `license_name`.
+  - A license that a person has read and judged fine (for example `mit-and-apache-2.0`) can be let through by adding its name to the allowlist.
 
-一覧の `license` は、置き場所のリポジトリの表記をそのまま持つことがある。リポジトリの中には別のモデルの部品
-(テキストエンコーダ・画像の読み取り部・検出器など)が入っていて、本当のライセンスはリポジトリの表記と違うことがある
-(例: VAST-AI/TripoSplat(表記 mit)の `dino_v3_vit_h` は DINOv3 の規約。Comfy-Org/SDPose の
-`rt_detr_v4-x-hgnet` は SDPose ではなく RT-DETRv4)。また、カードの表記が元のモデルより寛容なことがある
-(例: SDPose のカードは mit だが、U-Net は Stable Diffusion 2 から作られている)。
+## How file licenses are read
 
-gate は一覧を書き換えずに、判定の中で次の順に読む(どれかで決まったらそこで止める):
+The `license` in the list sometimes keeps the notation of the repository where the file lives.
 
-1. **ファイル名が制限付きの部品**なら、どのリポジトリの中にあっても、一覧の値より優先してその規約で読む(保留):
+- A repository can contain parts of other models (text encoders, image encoders, detectors and so on), and their real license can differ from the repository's.
+  - Example: `dino_v3_vit_h` in VAST-AI/TripoSplat (notation mit) is under the DINOv3 terms.
+  - Example: `rt_detr_v4-x-hgnet` in Comfy-Org/SDPose is not SDPose; it is RT-DETRv4.
+- A card's notation can also be more permissive than the original model's.
+  - Example: the SDPose card says mit, but its U-Net was made from Stable Diffusion 2.
 
-   | ファイル名 | 読み方 | 根拠 |
+The gate does not rewrite the list. It reads in this order during the judgment, and stops at the first rule that decides:
+
+1. **A file name that is a restricted component** is read under that component's terms (held), whichever repository it is in, taking priority over the list's value:
+
+   | File name | Read as | Source |
    |---|---|---|
    | `llama` / `llava` | llama3.1 | https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct |
-   | `gemma` 1〜3・`t5gemma` | gemma | https://ai.google.dev/gemma/terms。Gemma 4 は Apache-2.0(https://ai.google.dev/gemma/docs/gemma_4_license)なので当てない |
-   | `dino_v3`・`dinov3` | other(dinov3-license)、本家が申請を求める | https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m(gated: manual)。原文 https://ai.meta.com/resources/models-and-libraries/dinov3-license は配るときに規約の写しと「Built with DINOv3」の表示を求め、用途を制限する |
-   | `sam3`・`sam3.1` | other(sam-license)、本家が申請を求める | https://huggingface.co/facebook/sam3(gated: manual) |
+   | `gemma` 1 to 3, `t5gemma` | gemma | https://ai.google.dev/gemma/terms. Gemma 4 is Apache-2.0 (https://ai.google.dev/gemma/docs/gemma_4_license), so it is not matched |
+   | `dino_v3`, `dinov3` | other (dinov3-license); the original source asks for a request | https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m (gated: manual). The original text https://ai.meta.com/resources/models-and-libraries/dinov3-license requires a copy of the terms and the "Built with DINOv3" notice when distributing, and restricts use |
+   | `sam3`, `sam3.1` | other (sam-license); the original source asks for a request | https://huggingface.co/facebook/sam3 (gated: manual) |
    | `depth_anything_v2_vit{b,l,g}` | cc-by-nc-4.0 | https://huggingface.co/depth-anything/Depth-Anything-V2-Large |
-   | Lumina 2 系の一式(`lumina_2.safetensors`・`…lumina…all_in_one`・`NetaYume…all_in_one`) | gemma | テキストエンコーダ Gemma 2 2B を含む(https://huggingface.co/neta-art/Neta-Lumina・https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0 のカード) |
+   | Lumina 2 family bundles (`lumina_2.safetensors`, `…lumina…all_in_one`, `NetaYume…all_in_one`) | gemma | They include the text encoder Gemma 2 2B (cards: https://huggingface.co/neta-art/Neta-Lumina and https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0) |
 
-   ほかに、`hf.COMPONENTS` の寛容でない行・申請を求める行(Qwen2.5-VL-3B の qwen-research など)も同じ扱い
-2. **本家を確かめられない部品**(`hf.UNVERIFIED_COMPONENTS`)は不明: `rt_detr_v4`(RT-DETRv4。
-   https://github.com/RT-DETRs/RT-DETRv4 のコードは Apache-2.0 だが、重みは DINOv3 を教師にした蒸留で作られ、
-   重みのライセンスの記載が無い)
-3. **元のライセンスを読めない系統**(`hf.LINEAGES`)は不明。名前はファイル名と、ライセンスを読んだ道
-   (`license_from`・`license_path`。再配布のリポジトリの名前は除く)で見る:
+   Rows of `hf.COMPONENTS` that are not permissive or that ask for a request (such as qwen-research for Qwen2.5-VL-3B) are treated the same way.
+2. **A component whose original source cannot be verified** (`hf.UNVERIFIED_COMPONENTS`) is unknown: `rt_detr_v4`.
+   RT-DETRv4's code at https://github.com/RT-DETRs/RT-DETRv4 is Apache-2.0, but the weights were made by distillation with DINOv3 as the teacher, and no weight license is stated.
+3. **A lineage whose original license cannot be read** (`hf.LINEAGES`) is unknown.
+   The name is looked up in the file name and in the path the license was read through (`license_from`, `license_path`; names of redistribution repositories are excluded):
 
-   | 系統 | 根拠 |
+   | Lineage | Source |
    |---|---|
-   | `sdpose` | https://huggingface.co/teemosliang/SDPose-Wholebody のカード「U-Net backbone initialized with Stable Diffusion v2 weights」(表記は mit) |
-   | `lotus`(lotus-depth / lotus-normal) | https://github.com/EnVision-Research/Lotus の学習の設定が `stabilityai/stable-diffusion-2-base` から始める(https://huggingface.co/jingheya/lotus-depth-d-v1-1 の表記は apache-2.0) |
-   | `sd2`(sd2・sd21・stable-diffusion-2) | Stable Diffusion 2 の元(stabilityai/stable-diffusion-2・-2-base)は 2026-10-20 に匿名で読めない(401)。写し https://huggingface.co/sd2-community/stable-diffusion-2-base の表記は openrail++ |
-   | `void-model`(void_pass・netflix/void-model) | https://huggingface.co/netflix/void-model のカード「VOID is built on CogVideoX-Fun-V1.5-5b-InP」。元の LICENSE は The CogVideoX License(VOID の表記は apache-2.0。#28) |
+   | `sdpose` | The card of https://huggingface.co/teemosliang/SDPose-Wholebody: "U-Net backbone initialized with Stable Diffusion v2 weights" (notation mit) |
+   | `lotus` (lotus-depth / lotus-normal) | The training config of https://github.com/EnVision-Research/Lotus starts from `stabilityai/stable-diffusion-2-base` (the notation of https://huggingface.co/jingheya/lotus-depth-d-v1-1 is apache-2.0) |
+   | `sd2` (sd2, sd21, stable-diffusion-2) | The Stable Diffusion 2 originals (stabilityai/stable-diffusion-2 and -2-base) could not be read anonymously on 2026-10-20 (401). The copy https://huggingface.co/sd2-community/stable-diffusion-2-base is notated openrail++ |
+   | `void-model` (void_pass, netflix/void-model) | The card of https://huggingface.co/netflix/void-model: "VOID is built on CogVideoX-Fun-V1.5-5b-InP". The original LICENSE is The CogVideoX License (VOID's notation is apache-2.0; #28) |
 
-   系統の表(`hf.FAMILIES`。SDXL・SD1.5・Marigold v1(openrail++)など)より寛容な値も不明
-4. ライセンスを**再配布側の表記からしか読めていない**(`license_from` が再配布のリポジトリ)なら、確かめられない
-   として保留。ただし出どころの分かる部品は、その本家のライセンスで読む:
+   A value more permissive than the family table (`hf.FAMILIES`: SDXL, SD1.5, Marigold v1 (openrail++) and so on) is also unknown.
+4. If the license **could only be read from the redistributor's notation** (`license_from` is a redistribution repository), it cannot be verified and is held.
+   Components whose origin is known are read under their original source's license:
 
-   | ファイル名 | ライセンス | 本家 |
+   | File name | License | Original source |
    |---|---|---|
    | `umt5_xxl…` | apache-2.0 | https://huggingface.co/google/umt5-xxl |
-   | `t5xxl…`・`t5-v1_1…`・`t5-base…` | apache-2.0 | https://huggingface.co/google/t5-v1_1-xxl |
+   | `t5xxl…`, `t5-v1_1…`, `t5-base…` | apache-2.0 | https://huggingface.co/google/t5-v1_1-xxl |
    | `clip_l…` | mit | https://github.com/openai/CLIP |
    | `clip_g…` | mit | https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k |
    | `clip_vision_h…` | mit | https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K |
-   | `wan_2.1_vae…`・`Wan2_1_VAE…` | apache-2.0 | https://huggingface.co/Wan-AI/Wan2.1-T2V-14B |
+   | `wan_2.1_vae…`, `Wan2_1_VAE…` | apache-2.0 | https://huggingface.co/Wan-AI/Wan2.1-T2V-14B |
 
-5. **別の系統の部品**: ファイル名に別のモデルの印(`hf.FOREIGN_MARKERS`: dino・sam・siglip・clip・t5・qwen・
-   llama・gemma・mistral・birefnet・depth-anything・moge・detr・flux・wan・trellis・hunyuan・stable-diffusion・
-   lumina・ltx など)があり、その印が置き場所のリポジトリ・ライセンスを読んだ道の名前に出てこなければ、
-   **本家を確かめた行**(`hf.COMPONENTS`・`hf.FAMILIES`)がファイル名に当たるときだけ通す(部品の表の行なら
-   その本家のライセンス)。当たらなければ不明。例: TripoSplat の `flux2-vae` は部品の表の FLUX.2-VAE(apache-2.0)、
-   Pixal3D の `trellis_2_shape_vae` は microsoft/TRELLIS.2-4B(mit)、JoyAI の `qwen3vl_8b_joyimage_edit` は
-   系統の表の Qwen3-VL(apache-2.0)
-6. それ以外は一覧の値(本家から読んだもの)
+5. **A component of another lineage.** The file name carries a mark of another model (`hf.FOREIGN_MARKERS`: dino, sam, siglip, clip, t5, qwen, llama, gemma, mistral, birefnet, depth-anything, moge, detr, flux, wan, trellis, hunyuan, stable-diffusion, lumina, ltx and so on), and that mark does not appear in the name of the hosting repository or of the path the license was read through.
+   - Then it passes only when a **row whose original source has been verified** (`hf.COMPONENTS`, `hf.FAMILIES`) matches the file name. For a row of the components table, the license is the original source's.
+   - If no row matches, it is unknown.
+   - Examples: TripoSplat's `flux2-vae` is the FLUX.2-VAE row of the components table (apache-2.0). Pixal3D's `trellis_2_shape_vae` is microsoft/TRELLIS.2-4B (mit). JoyAI's `qwen3vl_8b_joyimage_edit` is the Qwen3-VL row of the family table (apache-2.0).
+6. Otherwise, the list's value (read from the original source).
 
-`update` も同じ表(部品の表・確かめられない部品・系統・別の系統の部品)で決め、確かめられないものは `null` にする
-(docs/sources.md の「ライセンス」)。gate のこの読み方は、一覧が古い決め方で作られていても判定で落とせるようにする
-二重の守り。
+`update` decides with the same tables (components, unverifiable components, lineages, components of another lineage) and sets what it cannot verify to `null` ([sources.md](sources.md), "Licenses").
+This reading in the gate is a second layer of protection, so that a list built with an older rule can still be held at judgment time.
 
-### レビューで見つかった、auto を間違えていたもの(#14、2026-10-20)
+### Auto mistakes found in review (#14, 2026-10-20)
 
-最初の版は 93 件を auto にしていたが、次の 10 件は間違いだった(カードと食い違ったまま auto になっていた)。
-今は一覧の決め方(update)と gate の両方で保留になる。`tests/test_gate_real.py` に回帰のテストがある。
+The first version marked 93 entries auto, and the following 10 were mistakes (they were auto while disagreeing with their cards).
+Now they are held by both the list rule (update) and the gate. `tests/test_gate_real.py` has regression tests.
 
-| モデル | 間違っていた理由 |
+| Model | Why it was wrong |
 |---|---|
-| `3d_pixal3d_multi_views`・`3d_pixal3d_trellis2_image_to_model` | Comfy-Org/Pixal3D の `dino_v3_L_naf_fp32` に、本家 TencentARC/Pixal3D の mit が付いていた(DINOv3 の規約・申請が要る) |
-| `3d_triposplat_image_to_gaussian_splat` | VAST-AI/TripoSplat の `dino_v3_vit_h` に、リポジトリの mit が付いていた |
-| `utility_sdpose_ood_image_to_pose`・`utility_sdpose_multi_person`・`utility_sdpose_multi_person_video`・`utility_sdpose_ood_video_to_pose_map` | SDPose のカードは mit だが Stable Diffusion 2 から作られている。同じリポジトリの `rt_detr_v4` も SDPose の mit になっていた |
-| `image_lotus_depth_v1_1`・`image_qwen_image_instantx_controlnet`(Lotus を含む) | Lotus のカードは apache-2.0 だが stable-diffusion-2-base から学習している |
-| `image_netayume_lumina_t2i` | 一式のファイル `NetaYumev35_pretrained_all_in_one` はテキストエンコーダ Gemma 2 2B を含む(レビューの後の見直しで見つけた) |
+| `3d_pixal3d_multi_views`, `3d_pixal3d_trellis2_image_to_model` | `dino_v3_L_naf_fp32` in Comfy-Org/Pixal3D carried the mit of the original TencentARC/Pixal3D (the DINOv3 terms and a request are required) |
+| `3d_triposplat_image_to_gaussian_splat` | `dino_v3_vit_h` in VAST-AI/TripoSplat carried the repository's mit |
+| `utility_sdpose_ood_image_to_pose`, `utility_sdpose_multi_person`, `utility_sdpose_multi_person_video`, `utility_sdpose_ood_video_to_pose_map` | The SDPose card says mit, but it was made from Stable Diffusion 2. The `rt_detr_v4` in the same repository also got SDPose's mit |
+| `image_lotus_depth_v1_1`, `image_qwen_image_instantx_controlnet` (contains Lotus) | The Lotus card says apache-2.0, but it was trained from stable-diffusion-2-base |
+| `image_netayume_lumina_t2i` | The bundle file `NetaYumev35_pretrained_all_in_one` contains the text encoder Gemma 2 2B (found in a re-check after the review) |
 
-## URL の確かめ方(`url_reachable`)
+## Checking URLs (`url_reachable`)
 
-`genmodelfit update` が、すべてのファイルの Hugging Face の URL に匿名の HEAD を送り、応答コードを
-`files[].head_status`、日時を `head_checked_at` に記録する。同じ URL は 1 回だけ、同時に 8 本まで、
-429 は `Retry-After` を守って待つ。Civitai など HF 以外には送らない(未確認として保留)。
+`genmodelfit update` sends an anonymous HEAD to the Hugging Face URL of every file. It records the response code in `files[].head_status` and the time in `head_checked_at`.
 
-転送は基本的に追わない。ただし **307 で転送先が `/api/resolve-cache/…` でないもの**(リポジトリの名前が変わったもの)は、
-無いファイルでも 307 が返るので、転送先に 1 回だけ HEAD を送ってその応答を記録する(`fetch.follow_rename`)。
-その先がまた別の転送なら未確認(`null`)。このため一覧に残る 307 は `/api/resolve-cache` への転送だけで、
-gate は 200・302・307 を「取れる」とみなす。応答の内訳は一覧の `sources.head_check` で分かる(2026-10-21T06:20Z の
-同梱の一覧では、HEAD を送った 487 URL のうち 302 が 461・307 が 3・401 が 23。Civitai の 6 か所には送らない)。
-2026-10-20 の一覧で 307 だった 6 件は、名前の変わったリポジトリで、転送先はどれも 302 だった。
+- The same URL is checked only once, up to 8 at a time. 429 is waited out following `Retry-After`.
+- Nothing is sent to non-HF hosts such as Civitai (they stay unchecked and held).
 
-2026-10-20 に実際に送って確かめた応答:
+Redirects are basically not followed.
 
-| ファイル | 応答 | 転送先 | 記録 |
+- Exception: a **307 whose target is not `/api/resolve-cache/…`** (a renamed repository). A missing file also returns 307, so one HEAD is sent to the target and its response is recorded (`fetch.follow_rename`).
+- If that target is another redirect, it stays unchecked (`null`).
+- So the only 307 left in the list is a redirect to `/api/resolve-cache`, and the gate treats 200, 302 and 307 as "fetchable".
+- The breakdown of responses is in `sources.head_check` of the list.
+  - In the bundled list of 2026-10-21T06:20Z, 487 URLs got a HEAD: 302 for 461, 307 for 3, 401 for 23. Nothing is sent to Civitai's 6 locations.
+  - The 6 entries that returned 307 in the 2026-10-20 list were renamed repositories, and all their targets returned 302.
+
+Responses actually observed on 2026-10-20:
+
+| File | Response | Redirect target | Recorded |
 |---|---|---|---|
-| LFS(Xet)のファイル(重みのほぼ全部。小さい safetensors も) | 302 | `https://us.aws.cdn.hf.co/xet-bridge-us/…`。`x-linked-size`・`x-linked-etag`(sha256)付き | 302 |
-| LFS でない小さいファイル(`model_index.json` など) | 307 | `/api/resolve-cache/models/…`(相対) | 307 |
-| リポジトリの名前が変わったもの(`Comfy-Org/flux2-klein` など) | 307 | 新しいリポジトリの `/resolve/…`(相対) | 転送先の応答(302・404 など) |
-| gated のリポジトリ | 401 | なし | 401 |
-| 無いファイル | 404 | なし | 404 |
+| LFS (Xet) files (almost all weights, small safetensors too) | 302 | `https://us.aws.cdn.hf.co/xet-bridge-us/…`, with `x-linked-size` and `x-linked-etag` (sha256) | 302 |
+| Small non-LFS files (such as `model_index.json`) | 307 | `/api/resolve-cache/models/…` (relative) | 307 |
+| A renamed repository (such as `Comfy-Org/flux2-klein`) | 307 | `/resolve/…` of the new repository (relative) | The target's response (302, 404 and so on) |
+| A gated repository | 401 | None | 401 |
+| A missing file | 404 | None | 404 |
 
-HEAD は HF の "resolvers" の枠(応答の `ratelimit-policy: "fixed window";"resolvers";q=3000;w=300`。
-API の 500 回 / 5 分とは別)で数えられるので、1 回の update で使い切ることは無い。
+HEAD is counted in HF's "resolvers" window (the response header `ratelimit-policy: "fixed window";"resolvers";q=3000;w=300`), which is separate from the API's 500 requests per 5 minutes. One update cannot use it up.
 
-### 確認の期限(`max_head_age_days`)
+### Check expiry (`max_head_age_days`)
 
-上流ではファイルが消えたり、リポジトリが gated になったりする。HEAD の確認は既定で **30 日**まで信じ、
-それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 「確認が古い」)。
-`GatePolicy(max_head_age_days=…)` / `--max-head-age-days N`(`none` で期限なし)で変えられる。
+Upstream, files disappear and repositories become gated.
 
-**同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD の確認の日時**は `genmodelfit system --json` の `database.status`
-(`heads_checked_oldest`・`expires_at`。docs/schema.md「Data status」)で分かる。`expires_at` を過ぎると、同梱の一覧だけでは
-auto が 0 件になる(2026-10-21T06:20Z の同梱の一覧なら 2026-11-20T06:20Z)。使う側のアプリは、定期的に(30 日以内に)
-`genmodelfit update --from-release`(署名つきの配布。勧める)か、次の HEAD のやり直しを実行する:
+- HEAD checks are trusted for **30 days** by default.
+- If any file's check is older than that (or has no recorded time), `url_reachable` is held (detail: 「確認が古い」, "the check is old").
+- Change it with `GatePolicy(max_head_age_days=…)` or `--max-head-age-days N` (`none` = no limit).
+
+**The HEAD check time of the bundled list (`src/genmodelfit/data/db.json`)** is in `database.status` of `genmodelfit system --json` (`heads_checked_oldest`, `expires_at`; [schema.md](schema.md), "Data status").
+
+- After `expires_at`, the bundled list alone has 0 auto entries. For the bundled list of 2026-10-21T06:20Z, that is 2026-11-20T06:20Z.
+- An app that uses the list should, regularly (within 30 days), run `genmodelfit update --from-release` (a signed release; recommended) or redo the HEAD checks as follows:
 
 ```powershell
-genmodelfit update --heads-only [--db PATH] [--output PATH]   # 既定はキャッシュの一覧を読んでキャッシュに書く
+genmodelfit update --heads-only [--db PATH] [--output PATH]   # by default reads the cached list and writes the cache
 ```
 
-キャッシュが読めない・型が合わないときは、同梱の一覧を読んで書く(0.9.1、#63)。
+If the cache cannot be read or has the wrong type, it reads and writes the bundled list (0.9.1, #63).
 
-## ComfyUI の版(`comfyui_version`)
+## ComfyUI version (`comfyui_version`)
 
-**使う側のアプリは、自分が導入・同梱する ComfyUI の版を必ず渡す**(`--comfyui-version` /
-`GatePolicy(comfyui_version=…)`)。例: AI生成キット は ComfyUI v0.40.0 を導入するので
-`GatePolicy(comfyui_version="0.40.0")`。渡さないと、利用者の ComfyUI より新しい版が要るテンプレートを auto に
-してしまうことがある。
+**The app that uses the list must always pass the ComfyUI version it installs or bundles** (`--comfyui-version` / `GatePolicy(comfyui_version=…)`).
+Example: AI生成キット installs ComfyUI v0.40.0, so it uses `GatePolicy(comfyui_version="0.40.0")`.
+If you do not pass it, a template that needs a newer version than the user's ComfyUI can end up auto.
 
-渡さないときの既定:
+Defaults when it is not passed:
 
-- ライブラリ(`evaluate_offline`): `sources` に記録された版を使う。`sources` も渡さなければ `comfyui_version` は保留
-- CLI: 一覧に `update` が記録した最新のリリース(`sources.comfyui.latest_release`)
+- Library (`evaluate_offline`): the version recorded in `sources`. If `sources` is not passed either, `comfyui_version` is held.
+- CLI: the latest release that `update` recorded in the list (`sources.comfyui.latest_release`).
 
-`update` は `https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest` を認証なしで 1 回だけ取り、
-`tag_name` を記録する(2026-10-20 は `v0.42.1`)。取れなければ `null` と警告。`update --heads-only` で取れなかったときは、
-前に記録した版を残して警告を出す。
+How `update` records it:
 
-版は数字の桁で比べる(足りない桁は 0)。数字が同じなら、プレリリース(`0.4.0-rc1`・`0.4.0rc1`・`0.4.0.dev3`)は
-リリース(`0.4.0`)より前とみなす。必要な版の側でも使う版の側でも同じ(使う版が `0.4.0-rc1` なら、`0.4.0` が要る
-テンプレートは保留)。`+build` の後ろは見ない。読めない印(`0.4.0-foo`)は版を読めないとして保留。
+- It fetches `https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest` once, without authentication, and records `tag_name` (`v0.42.1` on 2026-10-20).
+- If it cannot fetch, it records `null` and warns.
+- If `update --heads-only` cannot fetch, it keeps the previously recorded version and warns.
 
-## 無検閲のモデル(`content`)
+How versions are compared:
 
-自動のおすすめは初心者向けなので、無検閲のモデルは既定で保留にする。一覧から外すわけではなく、
-`recommend --content uncensored`・`fit`・`info` などの一覧・絞り込みには今までどおり出る。
+- By numeric parts (missing parts are 0).
+- With equal numbers, a prerelease (`0.4.0-rc1`, `0.4.0rc1`, `0.4.0.dev3`) counts as earlier than the release (`0.4.0`).
+- This holds for both the required version and the version you use. If you use `0.4.0-rc1`, a template that needs `0.4.0` is held.
+- Anything after `+build` is ignored.
+- An unreadable mark (`0.4.0-foo`) is held as an unreadable version.
 
-## 自動で出せるもの
+## Uncensored models (`content`)
 
-件数は `genmodelfit gate --only-auto --comfyui-version <版>` で確かめる(2026-10-21T06:20Z の同梱の一覧で、0.40.0 なら
-95 件(画像 57・動画 29・音楽 9)、記録の v0.42.1 なら 99 件。3D・読み上げ・効果音は 0)。2026-10-20 の時点では 83 件で、
-レビューの指摘を直したあと、そのすべてのファイルについて、ライセンスと根拠(部品の表・系統の表の行、
-または本家のカード)を人が確かめた(PR #14 の説明に一覧)。その後に増えた分は、tests/test_license_sources.py の `JUSTIFIED_AUTO`
-(docs/sources.md「出どころの表」)。確かめた中で注意が要るもの:
+Automatic recommendations are for beginners, so uncensored models are held by default.
 
-- `black-forest-labs/FLUX.1-schnell` は HF で gated(auto: 同意を押せばすぐ取れる)。ライセンスは apache-2.0 で、
-  一覧のファイルは gated でない置き場所(Comfy-Org など)から取るので通している。部品の本家の gated を
-  一般には見ていない(部品の表で申請が要ると書いた DINOv3・SAM 3 だけ)
-- `video_wan_ati` の本体(Kijai/WanVideo_comfy)は、update が本家を Wan2.1-VACE と選んでいるが、本当の本家は
-  https://huggingface.co/bytedance-research/ATI(apache-2.0、base_model は Wan2.1-I2V-14B-480P)。結果は同じ apache-2.0
+- They are not removed from the list.
+- They still appear in lists and filters such as `recommend --content uncensored`, `fit` and `info`, as before.
+
+## What can be auto
+
+Check the counts with `genmodelfit gate --only-auto --comfyui-version <version>`.
+
+- In the bundled list of 2026-10-21T06:20Z: with 0.40.0, 95 entries (image 57, video 29, music 9); with the recorded v0.42.1, 99 entries. 3D, speech and sound effects are 0.
+- On 2026-10-20 there were 83. After the review findings were fixed, a person checked the license and its basis for every file of those (a table row of components or families, or the original card). The list is in the PR #14 description.
+- Entries added since are in `JUSTIFIED_AUTO` in tests/test_license_sources.py ([sources.md](sources.md), "Source table").
+
+Points that need care among the ones checked:
+
+- `black-forest-labs/FLUX.1-schnell` is gated on HF (`gated: auto`: access is granted as soon as you press agree). Its license is apache-2.0, and the list's files come from places that are not gated (Comfy-Org and others), so it passes. The gating of the original source of components is not checked in general (only DINOv3 and SAM 3, which the components table says need a request).
+- The main body of `video_wan_ati` (Kijai/WanVideo_comfy): update picks Wan2.1-VACE as the original source, but the real original is https://huggingface.co/bytedance-research/ATI (apache-2.0; base_model is Wan2.1-I2V-14B-480P). The result is the same, apache-2.0.

@@ -1,29 +1,50 @@
-# ライセンスの記載のお願い(下書き)
+# Requests to state a license (drafts)
 
-重みのライセンスが分からない(記載が無い・元のモデルの規約と食い違う)ため、genmodelfit が「ライセンス不明」として
-扱っているモデルの、本家の持ち主へのお願いの下書き(Issue #30)。
+**English** · [日本語](license_requests.ja.md)
 
-- **まだどこにも出していない。出すのはオーナー(laxshmate)の確認の後**(他人のリポジトリに書き込むため)。
-  出すときは、Hugging Face のリポジトリなら Community の Discussion、GitHub なら Issue に、下の英文をそのまま使う
-- 一覧は同梱の一覧(`src/genmodelfit/data/db.json`)のライセンス不明のファイルから作り、本家ごとにまとめた(2026-10-20 に作り、
-  2026-10-21 の同梱の一覧で、どれもまだ不明なことを確かめた。今の状態は `genmodelfit info <id> --json` の `model.license`(null なら不明)と、ファイルごとの `license`(null なら不明。`license_from` は読んだ出どころ)で分かる)。
-  決め方は docs/sources.md「ライセンス」。記載が入ったら `license_sources.py` の表か本家の表記で一覧を作り直す
-- 利用者への影響(共通): genmodelfit はライセンス不明を「許されていない」と同じに扱う(docs/schema.md「License
-  contract」)。`recommend` / `fit` / `search` には既定で出さず(`--include-unknown-license` で出る)、自動のおすすめ
-  (gate)にも出さない。ソースを公開せずに配るアプリ(AI生成キットなど)は、そのモデルを利用者に勧められない
+Drafts of requests to upstream owners, for models that genmodelfit treats as "license unknown"
+because the license of the weights is unknown (not stated, or different from the base model's terms) (Issue #30).
+This page is for maintainers.
+The draft texts are meant to be posted on other people's English-language repositories, so they are not translated: the same text is in the English and Japanese pages.
 
-## A. 重みにライセンスの記載が無い
+## Contents
 
-| 本家 | 足りないもの | 影響する項目(無検閲を除く) |
+- [Background](#background)
+- [A. No license stated for the weights](#a-no-license-stated-for-the-weights)
+- [B. The stated license is more permissive than the base model's terms (mismatch)](#b-the-stated-license-is-more-permissive-than-the-base-models-terms-mismatch)
+- [B2. A license exists, but the card metadata is empty](#b2-a-license-exists-but-the-card-metadata-is-empty)
+- [C. Repositories that cannot be read anonymously (401): check again once public](#c-repositories-that-cannot-be-read-anonymously-401-check-again-once-public)
+- [D. Cases with no draft](#d-cases-with-no-draft)
+
+## Background
+
+- **Nothing has been posted anywhere yet. Posting waits for the maintainer's (laxshmate's) confirmation**, because it writes to other people's repositories.
+  - When posting, use the English drafts below as they are: a Community Discussion for a Hugging Face repository, an Issue for GitHub.
+- How the list was made:
+  - It was built from the files with an unknown license in the bundled list (`src/genmodelfit/data/db.json`) and grouped by upstream owner.
+  - It was made on 2026-10-20, and on 2026-10-21 the bundled list confirmed that all of them are still unknown.
+  - The current state can be read from:
+    - `model.license` in `genmodelfit info <id> --json` (null means unknown)
+    - `license` of each file (null means unknown; `license_from` is the source it was read from)
+  - How a license is decided: "License" in [sources.md](sources.md).
+  - Once a license is stated, rebuild the list with the table in `license_sources.py` or the upstream's statement.
+- Effect on users (common to all):
+  - genmodelfit treats an unknown license the same as "not permitted" ("License contract" in [schema.md](schema.md)).
+  - By default such models are not shown by `recommend` / `fit` / `search` (`--include-unknown-license` shows them), and not in the automatic recommendation (gate) either.
+  - An app that is distributed without its source (such as AI生成キット) cannot recommend those models to its users.
+
+## A. No license stated for the weights
+
+| Upstream | What is missing | Affected items (uncensored ones excluded) |
 |---|---|---|
-| [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo) | README は「Model assets are governed by the repository license」と書くが、リポジトリにライセンス(メタデータ・LICENSE)が無い | MiniMax H3 の i2v・続き・t2v の 3 件 |
-| [yl4579/StyleTTS2-LJSpeech](https://huggingface.co/yl4579/StyleTTS2-LJSpeech) | ライセンスが無い。Kokoro-82M(apache-2.0)の base_model なので、Kokoro も不明になる | 読み上げ Kokoro-82M |
-| [xtuner/llava-llama-3-8b](https://huggingface.co/xtuner/llava-llama-3-8b) | ライセンスが無い(Llama 3 から作った重み)。HunyuanVideo のテキストエンコーダ `llava_llama3_*` の元 | HunyuanVideo の文章から動画 1 件 |
-| [ByteZSzn/Flux.2-Turbo-ComfyUI](https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI) | ライセンスが無い(`Flux2TurboComfyv2`。FLUX.2 [dev] の LoRA) | FLUX.2 fp8 の 1 件 |
-| [google-research/frame-interpolation](https://github.com/google-research/frame-interpolation)(FILM) | コードは Apache-2.0。重みは Google Drive にあり、重みのライセンスの記載が無い(Comfy-Org/frame_interpolation の `film_net_fp16`) | フレーム補間(FILM)1 件 |
-| [RT-DETRs/RT-DETRv4](https://github.com/RT-DETRs/RT-DETRv4) | コードは Apache-2.0。重みは DINOv3 を教師にした蒸留で、重みのライセンスの記載が無い(Comfy-Org/SDPose の `rt_detr_v4-x-hgnet_*`) | SDPose の複数人・SAM 3D Body・MiniMax H3 の ControlNet の 4 件 |
+| [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo) | The README says "Model assets are governed by the repository license", but the repository has no license (metadata or LICENSE) | 3 items: MiniMax H3 i2v, continuation, t2v |
+| [yl4579/StyleTTS2-LJSpeech](https://huggingface.co/yl4579/StyleTTS2-LJSpeech) | No license. It is the base_model of Kokoro-82M (apache-2.0), so Kokoro becomes unknown too | TTS Kokoro-82M |
+| [xtuner/llava-llama-3-8b](https://huggingface.co/xtuner/llava-llama-3-8b) | No license (weights made from Llama 3). The origin of HunyuanVideo's text encoder `llava_llama3_*` | 1 item: HunyuanVideo text-to-video |
+| [ByteZSzn/Flux.2-Turbo-ComfyUI](https://huggingface.co/ByteZSzn/Flux.2-Turbo-ComfyUI) | No license (`Flux2TurboComfyv2`, a LoRA for FLUX.2 [dev]) | 1 item: FLUX.2 fp8 |
+| [google-research/frame-interpolation](https://github.com/google-research/frame-interpolation) (FILM) | The code is Apache-2.0. The weights are on Google Drive, with no statement of a weight license (`film_net_fp16` in Comfy-Org/frame_interpolation) | 1 item: frame interpolation (FILM) |
+| [RT-DETRs/RT-DETRv4](https://github.com/RT-DETRs/RT-DETRv4) | The code is Apache-2.0. The weights are distilled with DINOv3 as the teacher, with no statement of a weight license (`rt_detr_v4-x-hgnet_*` in Comfy-Org/SDPose) | 4 items: SDPose multi-person, SAM 3D Body, MiniMax H3 ControlNet |
 
-### 下書き(英語)
+### Drafts (English)
 
 **lightx2v/Minimax-h3-Turbo**
 
@@ -82,23 +103,23 @@
 > official SDPose / SAM 3D Body templates use these weights, and license-aware tools treat them as "license unknown".
 > Could you state the license of the weights in the README (and whether the DINOv3 license affects them)? Thank you!
 
-## B. 表記が、元のモデルの規約より寛容(食い違う)
+## B. The stated license is more permissive than the base model's terms (mismatch)
 
-本家の表記はあるが、元のモデル(base)の規約より寛容なので、表記どおりとは言えず不明にしたもの。
+The upstream states a license, but it is more permissive than the base model's terms, so it cannot be taken at face value and the license was set to unknown.
 
-| 本家 | 表記 | 元のモデル | 影響する項目(無検閲を除く) |
+| Upstream | Stated | Base model | Affected items (uncensored ones excluded) |
 |---|---|---|---|
-| [jingheya/lotus-depth-d-v1-1](https://huggingface.co/jingheya/lotus-depth-d-v1-1) | apache-2.0 | Stable Diffusion 2 base(CreativeML Open RAIL++-M) | Lotus の深度を使う 5 件(Lotus Depth・FLUX の深度 LoRA・Qwen Image ControlNet・SD3.5 Large の深度・LTX-2 の深度から動画) |
-| [teemosliang/SDPose-Wholebody](https://huggingface.co/teemosliang/SDPose-Wholebody) | mit | Stable Diffusion 2 の U-Net(CreativeML Open RAIL++-M) | SDPose の 4 件と MiniMax H3 の ControlNet 1 件 |
-| [netflix/void-model](https://huggingface.co/netflix/void-model) | apache-2.0 | CogVideoX-Fun-V1.5-5b-InP(Transformer は CogVideoX License) | VOID の動画の消去 1 件 |
-| [joyfox/LTX-2.3-Transition-LORA](https://huggingface.co/joyfox/LTX-2.3-Transition-LORA) | apache-2.0 | Lightricks/LTX-2.3(LTX-2 Community License) | LTX-2.3 Style Transition 1 件(ComfyUI の公式ではなく、利用者 shane のテンプレート) |
-| [lrzjason/ObjectRemovalFluxFill](https://huggingface.co/lrzjason/ObjectRemovalFluxFill) | mit | FLUX.1 Fill [dev](FLUX.1 [dev] Non-Commercial License) | FLUX.1 Fill dev OneReward 1 件 |
-| [bytedance-research/USO](https://huggingface.co/bytedance-research/USO) | apache-2.0 | FLUX.1 [dev](FLUX.1 [dev] Non-Commercial License) | FLUX.1 dev USO 1 件 |
-| [Jmica/Drama-3-GGUF](https://huggingface.co/Jmica/Drama-3-GGUF) | other(fish-audio-community-license-v1.0) | fishaudio/drama-3(fish-audio-research-license) | 読み上げ Drama-3 GGUF |
+| [jingheya/lotus-depth-d-v1-1](https://huggingface.co/jingheya/lotus-depth-d-v1-1) | apache-2.0 | Stable Diffusion 2 base (CreativeML Open RAIL++-M) | 5 items that use Lotus depth (Lotus Depth, FLUX depth LoRA, Qwen Image ControlNet, SD3.5 Large depth, LTX-2 depth-to-video) |
+| [teemosliang/SDPose-Wholebody](https://huggingface.co/teemosliang/SDPose-Wholebody) | mit | Stable Diffusion 2 U-Net (CreativeML Open RAIL++-M) | 4 SDPose items and 1 MiniMax H3 ControlNet item |
+| [netflix/void-model](https://huggingface.co/netflix/void-model) | apache-2.0 | CogVideoX-Fun-V1.5-5b-InP (the transformer is under the CogVideoX License) | 1 item: VOID video erasing |
+| [joyfox/LTX-2.3-Transition-LORA](https://huggingface.co/joyfox/LTX-2.3-Transition-LORA) | apache-2.0 | Lightricks/LTX-2.3 (LTX-2 Community License) | 1 item: LTX-2.3 Style Transition (not an official ComfyUI template, but user shane's template) |
+| [lrzjason/ObjectRemovalFluxFill](https://huggingface.co/lrzjason/ObjectRemovalFluxFill) | mit | FLUX.1 Fill [dev] (FLUX.1 [dev] Non-Commercial License) | 1 item: FLUX.1 Fill dev OneReward |
+| [bytedance-research/USO](https://huggingface.co/bytedance-research/USO) | apache-2.0 | FLUX.1 [dev] (FLUX.1 [dev] Non-Commercial License) | 1 item: FLUX.1 dev USO |
+| [Jmica/Drama-3-GGUF](https://huggingface.co/Jmica/Drama-3-GGUF) | other (fish-audio-community-license-v1.0) | fishaudio/drama-3 (fish-audio-research-license) | TTS Drama-3 GGUF |
 
-### 下書き(英語)
+### Drafts (English)
 
-**jingheya/lotus-depth-d-v1-1**(同じ文を SDPose にも使える。「Lotus」→「SDPose」、「apache-2.0」→「MIT」)
+**jingheya/lotus-depth-d-v1-1** (the same text can be used for SDPose: replace "Lotus" with "SDPose" and "apache-2.0" with "MIT")
 
 > Title: Question about the license of the weights (base model terms)
 >
@@ -163,14 +184,16 @@
 > original LICENSE and align the `license_name` here, so tools that compare the two can show the right terms?
 > Thank you!
 
-## B2. ライセンスはあるが、カードのメタデータが空
+## B2. A license exists, but the card metadata is empty
 
-ライセンスの原文はあるので、genmodelfit は表(`license_sources.py` の `anima-official-loras`)で決めている。
-自動で読めるように、メタデータだけをお願いする(出さなくても困らない。優先度は低い)。
+The license text exists, so genmodelfit decides it with a table (`anima-official-loras` in `license_sources.py`).
+We only ask for the metadata so that tools can read it automatically (not posting it causes no trouble; low priority).
 
-| 本家 | 状態 | 影響 |
+| Upstream | State | Effect |
 |---|---|---|
-| [circlestone-labs/Anima-Official-LoRAs](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs) | [LICENSE.md](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md)(CircleStone Labs Non-Commercial License v1.0、2026-05-26 に追加)はあるが、カードの `license:` が空 | 表で other(circlestone-labs-non-commercial-v1.0)に決めた。非商用なので自動のおすすめには出ない |
+| [circlestone-labs/Anima-Official-LoRAs](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs) | [LICENSE.md](https://huggingface.co/circlestone-labs/Anima-Official-LoRAs/blob/main/LICENSE.md) (CircleStone Labs Non-Commercial License v1.0, added on 2026-05-26) exists, but `license:` on the card is empty | Decided in the table as other (circlestone-labs-non-commercial-v1.0). It is non-commercial, so it is not in the automatic recommendation |
+
+### Drafts (English)
 
 **circlestone-labs/Anima-Official-LoRAs**
 
@@ -181,26 +204,38 @@
 > the license by hand. Could you add `license: other`, `license_name: circlestone-labs-non-commercial-v1.0` and
 > `license_link: LICENSE.md` to the README front matter? Thank you!
 
-## C. 匿名で読めない(401)リポジトリ — 公開されたら確かめ直す
+## C. Repositories that cannot be read anonymously (401): check again once public
 
-非公開(または消えた)ので、依頼は出せない。毎週の更新(#19)で公開されたかを確かめる:
-`update` が `sources.huggingface.unauthorized` に並べ、`update --inspect-only` が API を送り直して
-`sources.huggingface.unauthorized_recheck`(`unauthorized` / `readable` / `failed`)に書く。
-公開されたら(readable)、作り直し(`update`)でライセンスを読み、記載が無ければ A に移して依頼を書く。
+They are private (or gone), so no request can be posted. The weekly update (#19) checks whether they became public.
 
-| リポジトリ | 影響 | 2026-10-20 の状態 |
+- `update` lists them in `sources.huggingface.unauthorized`.
+- `update --inspect-only` sends the API request again and writes the result to `sources.huggingface.unauthorized_recheck` (`unauthorized` / `readable` / `failed`).
+- Once one becomes public (readable), rebuilding (`update`) reads its license. If none is stated, move it to A and write a request.
+
+| Repository | Effect | State on 2026-10-20 |
 |---|---|---|
-| [microsoft/Mage-Flow](https://huggingface.co/microsoft/Mage-Flow) | Comfy-Org/Mage-Flow の本家。Mage-Flow の 4 件(t2i・turbo・edit・edit turbo)のライセンス不明。GitHub も見つからない | 401 |
-| [microsoft/Lens](https://huggingface.co/microsoft/Lens) | Comfy-Org/Lens の本家。Lens・Lens Turbo の 2 件(gpt-oss のテキストエンコーダも)。GitHub のコードは MIT だが重みの記載が無い | 401 |
-| [Wan-AI/Wan2.2-Dancer-14B](https://huggingface.co/Wan-AI/Wan2.2-Dancer-14B) | 出どころの表で Wan-AI/Wan-Dancer-14B(apache-2.0)から決めているので、ライセンス不明には効かない | 401 |
-| google/gemma-3-12b | **無い名前**(Google の公開の一覧は gemma-3-12b-it・-pt と QAT 版だけ。匿名の API は無い名前にも 401 を返す)。`unauthorized_missing` に分けた。ライセンス不明には効かない | 401(無い) |
+| [microsoft/Mage-Flow](https://huggingface.co/microsoft/Mage-Flow) | The upstream of Comfy-Org/Mage-Flow. The license of the 4 Mage-Flow items (t2i, turbo, edit, edit turbo) is unknown. No GitHub repository was found either | 401 |
+| [microsoft/Lens](https://huggingface.co/microsoft/Lens) | The upstream of Comfy-Org/Lens. 2 items: Lens and Lens Turbo (and the gpt-oss text encoder). The GitHub code is MIT, but the weights have no statement | 401 |
+| [Wan-AI/Wan2.2-Dancer-14B](https://huggingface.co/Wan-AI/Wan2.2-Dancer-14B) | The source table decides it from Wan-AI/Wan-Dancer-14B (apache-2.0), so it does not affect the unknown-license count | 401 |
+| google/gemma-3-12b | **A name that does not exist** (Google's public list has only gemma-3-12b-it, -pt and the QAT versions; the anonymous API also returns 401 for names that do not exist). Split out as `unauthorized_missing`. It does not affect the unknown-license count | 401 (does not exist) |
 
-## D. 下書きを作らないもの
+## D. Cases with no draft
 
-- **Civitai のファイル**(realismByStableYogi v4 LCM、zimage-grainscape、ltx23-obscura_remova、SDXL の肌・そばかすの LoRA):
-  genmodelfit は Civitai を読まない(docs/sources.md「Civitai: 使わない」)ので、一覧の側で決められない。依頼の前に扱いを決める
-- **無検閲のモデルだけに効くもの**(既定の sfw では出ないので後回し): ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8・
-  LTX-2.5-uncensored-v1.1-FP8・qwen-image-edit-uncensored-GGUF、Heartsync/NSFW-Uncensored、Meina/MeinaHentai、
-  SulphurAI/Sulphur-2-base、TenStrip/LTX2.3-10Eros、andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING(2026-10-21 から同じ重みの写しのこちらを載せる)、
-  kkkkk26/lustify_v9、sinkinai/hassaku-hentai(記載が無い)、AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF・
-  kpsss34/FHDR_Uncensored(元の規約より寛容)。出すなら A・B の文を使える
+- **Civitai files** (realismByStableYogi v4 LCM, zimage-grainscape, ltx23-obscura_remova, SDXL skin and freckle LoRAs):
+  - genmodelfit does not read Civitai ("Civitai: not used" in [sources.md](sources.md)), so the list cannot decide them.
+  - Decide how to treat them before sending any request.
+- **Items that only affect uncensored models** (not shown by the default sfw, so postponed):
+  - No license stated:
+    - ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8, ChrisColeTech/LTX-2.5-uncensored-v1.1-FP8 and ChrisColeTech/qwen-image-edit-uncensored-GGUF
+    - Heartsync/NSFW-Uncensored
+    - Meina/MeinaHentai
+    - TenStrip/LTX2.3-10Eros
+    - kkkkk26/lustify_v9
+    - sinkinai/hassaku-hentai
+  - More permissive than the base model's terms:
+    - AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF
+    - kpsss34/FHDR_Uncensored
+  - No longer needed (checked against the list of 2026-10-22):
+    - SulphurAI/Sulphur-2-base: no longer in the list (since 2026-10-20).
+    - andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING (the copy of the same weights that the list has used since 2026-10-21): its license is now read as creativeml-openrail-m.
+  - If they are posted, the A and B texts can be used.
