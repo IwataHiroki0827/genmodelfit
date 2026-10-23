@@ -471,6 +471,70 @@ def test_workflow_yaml_parses(name: str) -> None:
     assert _wf(name)["jobs"]
 
 
+def test_ci_workflow_runs_only_after_merge_or_for_forks() -> None:
+    # 全試験は手元(tools/ci_local.py)で通してから push する。ci.yml はマージ後・手動・フォークからの PR だけ
+    doc = _wf("ci.yml")
+    assert set(doc[True]) == {"push", "pull_request", "workflow_dispatch"}
+    assert doc[True]["push"] == {"branches": ["main"]}
+    fork_only = (
+        "github.event_name != 'pull_request' || "
+        "github.event.pull_request.head.repo.full_name != github.repository"
+    )
+    for job in doc["jobs"].values():
+        assert job["if"] == fork_only
+
+
+def test_ci_local_matches_ci_workflow() -> None:
+    # 手元の台本が ci.yml と同じ版・同じコマンドを流すこと(片方だけ変えない)
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("ci_local", ROOT / "tools" / "ci_local.py")
+    ci_local = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ci_local)
+    jobs = _wf("ci.yml")["jobs"]
+    assert jobs["test"]["strategy"]["matrix"]["python"] == ci_local.VERSIONS
+    assert jobs["wheel"]["strategy"]["matrix"]["python"] == ci_local.WHEEL_VERSIONS
+    assert set(jobs["test"]["strategy"]["matrix"]["os"]) == {"ubuntu-latest", "windows-latest"}
+    lint = next(st for st in jobs["test"]["steps"] if st.get("name") == "Lint")
+    assert lint["if"] == f"matrix.python == '{ci_local.LINT_VERSION}'"
+    test_runs = "\n".join(st.get("run", "") for st in jobs["test"]["steps"])
+    for args in ci_local.SMOKE:
+        assert "genmodelfit " + " ".join(args) in test_runs
+    wheel_runs = "\n".join(st.get("run", "") for st in jobs["wheel"]["steps"])
+    for args in ci_local.WHEEL_COMMANDS:
+        assert "genmodelfit " + " ".join(args) in wheel_runs
+    assert "tools/check_dist.py dist" in wheel_runs
+
+
+def test_check_dist(tmp_path: Path) -> None:
+    import importlib.util
+    import tarfile
+    import zipfile
+
+    spec = importlib.util.spec_from_file_location("check_dist", ROOT / "tools" / "check_dist.py")
+    check_dist = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check_dist)
+
+    def build(extra_whl: list[str], drop_sdist: str = "") -> Path:
+        d = tmp_path / f"d{len(list(tmp_path.iterdir()))}"
+        d.mkdir()
+        with zipfile.ZipFile(d / "g-1-py3-none-any.whl", "w") as z:
+            for n in check_dist.NEED_WHEEL + extra_whl:
+                z.writestr("genmodelfit-1.dist-info/" + n if n.startswith("licenses/") else n, "x")
+        src = tmp_path / "src.txt"
+        src.write_text("x")
+        with tarfile.open(d / "g-1.tar.gz", "w:gz") as t:
+            for n in check_dist.NEED_SDIST:
+                if n != drop_sdist:
+                    t.add(src, arcname="g-1/" + n)
+        return d
+
+    assert check_dist.check(build([])) == []
+    assert check_dist.check(build(["genmodelfit/__pycache__/a.pyc"])) != []
+    assert check_dist.check(build([], drop_sdist="CHANGELOG.md")) == ["sdist に CHANGELOG.md がない"]
+    assert check_dist.check(tmp_path / "missing") != []
+
+
 def test_release_workflow_shape() -> None:
     doc = _wf("release.yml")
     pub = doc["jobs"]["publish"]

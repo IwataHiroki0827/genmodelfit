@@ -1,9 +1,13 @@
 name: CI
 
+# 全試験は手元で tools/ci_local.py を通してから push する(2026-10-22 オーナー決定)。ここは確認用:
+# - main へのマージの後(push)と手動実行
+# - 外の人のフォークからの PR(外のコードを手元で動かさないため)。このリポジトリのブランチの PR では動かさない
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,6 +19,7 @@ concurrency:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     # Python 3.10〜3.13 × Ubuntu / Windows。ruff と網羅率は 3.12 だけ(時間を節約する)
     strategy:
       fail-fast: false
@@ -51,6 +56,7 @@ jobs:
 
   # wheel と sdist を作り、dev 依存の無いまっさらな venv に wheel を入れて、利用者と同じ形で主なコマンドを通す
   wheel:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -71,19 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           uvx twine check --strict dist/*
-          uv run --no-project --python ${{ matrix.python }} python - <<'PY'
-          import glob, tarfile, zipfile
-          whl = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          sdist = tarfile.open(glob.glob("dist/*.tar.gz")[0]).getnames()
-          need_whl = ["genmodelfit/py.typed", "genmodelfit/data/db.json", "licenses/LICENSE", "licenses/THIRD_PARTY_NOTICES"]
-          for n in need_whl:
-              assert any(x.endswith(n) for x in whl), f"wheel に {n} がない"
-          for n in ["LICENSE", "THIRD_PARTY_NOTICES", "CHANGELOG.md", "README.md", "src/genmodelfit/py.typed"]:
-              assert any(x.endswith("/" + n) for x in sdist), f"sdist に {n} がない"
-          for n in ["CLAUDE.md", ".github", "__pycache__", ".pyc"]:
-              assert not any(n in x for x in whl + sdist), f"配布物に {n} が入っている"
-          print(len(whl), "files in wheel,", len(sdist), "in sdist")
-          PY
+          uv run --no-project --python ${{ matrix.python }} python tools/check_dist.py dist
       - name: Install into a fresh venv
         run: |
           venv="$RUNNER_TEMP/wheel-venv"

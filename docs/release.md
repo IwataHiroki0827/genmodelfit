@@ -261,7 +261,8 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
   - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
     終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
   - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)
-  - CI が通った
+  - 手元の試験(ruff と pytest。新しい一覧を入れた状態)が通った。PR では ci.yml が動かないので(手元で通してから
+    push する決まり。2026-10-22)、CI は待たない。マージの後に main で ci.yml が動く
   
   どれかが通らなければマージせず、**オーナーが PR を見てマージする**(本文の「分類」「確認待ち」の節と、
   `review approve` が残した `evidence`)
