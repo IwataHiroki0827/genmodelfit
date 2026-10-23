@@ -10,7 +10,24 @@ LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit
 llmfit の公式のプロジェクトでも派生(フォーク)でもありません。状態: アルファ版
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md))。
 
-すぐ試す:
+![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.png)
+
+`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-22 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+
+## すぐ試す
+
+**入れずに試す。** [uv](https://docs.astral.sh/uv/getting-started/installation/) があれば、コマンド 1 つで動きます。
+uv が専用の一時的な環境で genmodelfit を動かします(Python が無ければ uv が用意します)。お使いの Python や PATH には何も足しません。
+
+```
+uvx genmodelfit recommend         # この PC に合うモデルを種類ごとに出す
+uvx genmodelfit system            # この PC で見つけたもの
+```
+
+この README のコマンドはすべて、`genmodelfit` を `uvx genmodelfit` に替えれば同じように動きます。
+`uvx genmodelfit@latest …` とすると、uv が新しい版が出ていないかを先に確かめます。
+
+**入れて使う。** `genmodelfit` コマンドをそのまま使えるようにします([詳しく](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#入れ方))。
 
 ```
 pipx install genmodelfit          # または uv tool install genmodelfit / pip install genmodelfit
@@ -32,18 +49,21 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 
 ### 動く環境
 
-- Windows・Linux・macOS、Python 3.10 以上。
+- Windows・Linux・macOS、Python 3.10 以上(`uvx` で使うときは、Python が無くても uv が用意します)。
 - GPU: NVIDIA(CUDA)は、NVIDIA の実測で較正した推定で判定します。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、
   Windows 11・Linux)・Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、
   macOS 14 以降)を推定で判定します(段階は Good まで。同じ設定の実測で段階が決まれば外れます: 同じ会社の GPU での作者・この PC の実測か、同じ GPU のほかの利用者の実測)。内蔵 GPU・APU
   (Radeon 780M / 680M・Steam Deck・Ryzen Z1 など)は共有メモリで判定します。それ以外の GPU(Intel UHD・Iris Xe、2 CU の
   Radeon 610M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します
-  ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md))。
+  ([docs/hardware.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.ja.md))。
   NVIDIA 以外の GPU は実測が無いので、段階を控えめにしています。`genmodelfit bench` はこれらの GPU でも測れます。実測を
-  Pull Request で出してもらえると詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md))。
+  Pull Request で出してもらえると詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md))。
 
 ### 入れ方
+
+試すだけなら入れなくても使えます: `uvx genmodelfit …`([すぐ試す](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#すぐ試す))。
+`genmodelfit` コマンドを手元に置くときは:
 
 ```
 pipx install genmodelfit        # 1 回だけ pipx ensurepath を実行し、端末を開き直す
@@ -105,7 +125,7 @@ PATH を変える前に開いた端末には反映されないので、新しい
 
 ### アプリから使う(Python / JSON)
 
-各コマンドは `--json` を付けると JSON で出します([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md))。
+各コマンドは `--json` を付けると JSON で出します([docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md))。
 Python では次のとおりです。
 
 ```python
@@ -134,7 +154,7 @@ print(fit.to_dict()["fit_level"])  # 互換を守るのは gmf.__all__ の名前
 db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```
 
-互換を守るのは `gmf.__all__` の名前だけです([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#python-api-stable--python-の公開の範囲))。
+互換を守るのは `gmf.__all__` の名前だけです([docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#python-api-stable--公開の範囲))。
 
 ### ほかの PC で判定する
 
@@ -214,7 +234,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 |---|---|
 | Type | image・video・music・sfx・tts・3d |
 | Status | 段階(下の表) |
-| Score | 0〜100。段階・VRAM の余裕・Verified か・実測か・人気から計算([式](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)) |
+| Score | 0〜100。段階・VRAM の余裕・Verified か・実測か・人気から計算([式](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#score--点数)) |
 | Censored | `Y` 検閲あり / `N` 無検閲。`--content all` か `uncensored` のときだけ出る |
 | Model | 同じ重みを 1 行にまとめたモデル。長い名前は真ん中を `…` で詰める |
 | Use | `gen`・`edit`・`i2v` など(`genmodelfit types`)。`+N` = 同じモデルのほかのワークフローが N 個(`--all-workflows`) |
@@ -249,9 +269,11 @@ llmfit と同じく、動かし方で使うメモリ(GPU なら VRAM、CPU な�
 0.9.1 の時点では、見積もりの較正に使った実測は少なく、GPU も 1 種類(RTX 5080 16 GB)です。照合に RTX 3070 8 GB の実測も
 少し使っています。ほかの利用者の実測はまだ同梱していません。`m`・`c` の無い値は目安として見てください。
 ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で測ったピークは最低限の必要量ではありません。
-今の件数と詳しい誤差は [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md)。
+今の件数と詳しい誤差は [docs/accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md)。
 
 ## 4. 参考
+
+文書の一覧と、それぞれ誰向けか: [docs/README.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/README.ja.md)。
 
 ### コマンド
 
@@ -277,33 +299,33 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 一覧は [ComfyUI のワークフローテンプレート](https://github.com/Comfy-Org/workflow_templates)(MIT)と
 [Hugging Face Hub の API](https://huggingface.co/docs/hub/api)(上流までたどったライセンス・大きさ・sha256)から作り、
 少しだけ手で足したモデルがあります。llmfit と同じく、Hugging Face のモデルは全期間のダウンロード数 10,000 以上が条件です(はっきり伸びているものは 1,000 以上)。
-Civitai は使いません(規約が自動アクセスを制限しているため)。詳しくは [docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)。
+Civitai は使いません(規約が自動アクセスを制限しているため)。詳しくは [docs/sources.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.ja.md)。
 
 ### 内容の印
 
 安全フィルタを外したモデルや成人向けの出力を想定したモデルは `uncensored` の印を付け、**既定では出しません**。
 `--content all`(または `uncensored`)で `Censored` の列と一緒に出します。既定では Verified になりません。
 未成年の性的表現を目的とするモデルは一覧から除外しています
-([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md))。
+([docs/sources.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.ja.md))。
 
 ### Verified(自動でおすすめに出す条件)
 
 `Verified: yes`(JSON の `auto`)は、次を**すべて**満たすときだけです: すべてのファイルのライセンスが商用利用できる許可リストにある、
 gated が無い、カスタムノードの無い公式の ComfyUI ワークフロー、対応する ComfyUI の版、すべての URL が 30 日以内の匿名の HEAD に答えた、
 sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満たさない理由は `held_reasons` に入ります。
-詳しくは [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md)。
+詳しくは [docs/gate.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.ja.md)。
 
 ### ダウンロード
 
 一覧にある https の URL だけを使い、転送先は Hugging Face・GitHub のホストだけ、書きながら sha256 を確かめ、Ctrl-C のあとは続きから、
 置き場所の外には書きません。gated・無検閲・ライセンス不明のファイルは、許可しない限り落としません。
-詳しい決まりと Python の関数は [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md)。
+詳しい決まりと Python の関数は [docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md)。
 
 ### 一覧の保守
 
 一覧は毎週作り直します。新しいモデル、ファイルが変わったモデル(URL・大きさ・sha256)、危うい変化には `pending` の印を付け、人が一次資料の根拠を付けて承認する
 (`genmodelfit review`)まで Verified にしません。署名して `update --from-release` に配るのは確認済みのデータだけです。
-詳しくは [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md)。
+詳しくは [docs/release.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.ja.md)。
 
 ### 一覧の変化
 
@@ -313,7 +335,7 @@ sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満�
 ライセンス(`!` = 寛容な側)・大きさ・精度・言語(指示・読み上げ)・増えた・消えた部品とそのライセンス・新しく無検閲・
 確認の印、ほかに変わった項目の名前(「その他の変化」)を、3 つの節(部品・ライセンス・内容・動かし方 → 自動のおすすめ(ID 付き) → ライセンスの出どころ・言語・大きさなど)に分け、大事な変化から順に出します。多くのモデルで同じ小さな変化は件数の 1 行にまとめます。人気の数・日付・HEAD の結果だけの変化、前からの
 HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出します(毎週の PR の本文と同じ中身)。
-`--json` の形は [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff)。
+`--json` の形は [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#diff)。
 
 ### 実測を出す(Pull Request)
 
@@ -322,7 +344,7 @@ HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出し
 (保存済みの結果は `genmodelfit contrib make --from <ファイル>` で変換できます)。`genmodelfit contrib show <ファイル>` で中身を
 そのまま確かめられます。入るのは GPU 名・VRAM・ドライバ・vendor / backend・AMD・Intel の GPU では PCI の型番 ID(例 `1002:744c`)・
 ComfyUI の版・OS の種類・GiB に丸めたメモリ・モデル・設定・結果です。`bench` はホスト名・ユーザー名・パス・GPU の UUID・PCI のアドレス・
-IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送りません。Pull Request はご自身で出してください。手順: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)。
+IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送りません。Pull Request はご自身で出してください。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
 
 ### 送るもの・送らないもの
 
@@ -332,7 +354,7 @@ IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送�
 - genmodelfit は PC の情報・実測・プロンプトを送りません。実測が共有されるのは、ご自身で Pull Request を出したときだけです
   ([実測を出す](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測を出すpull-request))。
   `~/.netrc` の資格情報は付けません。テレメトリもありません。
-- コマンドごとの表: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects--通信と書き込み)(「Side effects」)。
+- コマンドごとの表: [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#side-effects--通信と書き込み)(「Side effects」)。
 
 ### ライセンス
 

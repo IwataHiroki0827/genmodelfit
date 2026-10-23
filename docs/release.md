@@ -1,348 +1,412 @@
-# リリースとデータの配り方
+# Releases and data distribution
 
-3 つの流れがあります。
+**English** · [日本語](release.ja.md)
 
-| 流れ | 何を配る | きっかけ | 配り先 |
+How genmodelfit is released and how its model list is distributed: package releases, the signed data release, the weekly list update and signing keys.
+This page is for the maintainer. App developers who only consume the list can skip to [Data releases](#data-releases).
+
+## Contents
+
+- [GitHub environments (set up 2026-10-20)](#github-environments-set-up-2026-10-20)
+- [First release (v0.1.0)](#first-release-v010)
+- [Releasing later versions](#releasing-later-versions)
+- [Data releases](#data-releases)
+- [Weekly list update (#19)](#weekly-list-update-19)
+  - [What to check in the PR](#what-to-check-in-the-pr)
+  - [Weekly skill (genmodelfit-weekly, #42)](#weekly-skill-genmodelfit-weekly-42)
+  - [Trying the same flow locally](#trying-the-same-flow-locally)
+  - [One-time setup by the maintainer](#one-time-setup-by-the-maintainer)
+- [Keys](#keys)
+  - [Rotating keys (regularly, or as a precaution)](#rotating-keys-regularly-or-as-a-precaution)
+  - [If a key leaks](#if-a-key-leaks)
+- [What we do not use](#what-we-do-not-use)
+
+There are three flows.
+
+| Flow | What it ships | Trigger | Where it goes |
 |---|---|---|---|
-| 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push(タグは管理者だけが作れる) | PyPI と GitHub Release |
-| データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
-| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | オーナーの PC のタスク スケジューラ(毎週月曜 9:00 JST)。weekly-data.yml は手動の予備 | PR(安全な週だけ自動でマージ。下の「毎週のスキル」) |
+| Version release | The package (sdist and wheel) | Push a `v*` tag (only admins can create the tag) | PyPI and a GitHub Release |
+| Data release | The model list `db.json` and its signature `db.json.sig` | A push that changes `db.json` on main, or a manual run | GitHub Release `data-latest` |
+| Weekly list update | A PR with a rebuilt `db.json` (nothing is shipped) | Task Scheduler on the maintainer's PC (every Monday 9:00 JST). weekly-data.yml is a manual backup | A PR (merged automatically only in a safe week; see [Weekly skill](#weekly-skill-genmodelfit-weekly-42) below) |
 
-データの配布は `v*` のタグではないので、PyPI には出ません。
+- Data releases are not `v*` tags, so they do not go to PyPI.
+- Branch protection on main requires PRs and forbids force pushes and deletion.
 
-main はブランチの保護で PR を必須にし、force push と削除を禁じている。
+## GitHub environments (set up 2026-10-20)
 
-## GitHub の environment(2026-10-20 に設定)
-
-| environment | 使えるところ | 承認 | シークレット |
+| Environment | Usable from | Approval | Secrets |
 |---|---|---|---|
-| `pypi` | `v*` のタグだけ | なし(2026-10-21 にオーナーが外した。代わりにルールセットで `v*` のタグを管理者だけにする) | なし(Trusted Publishing) |
-| `data-signing` | `main` ブランチだけ | なし | `GENMODELFIT_SIGNING_KEY`(署名の秘密鍵) |
+| `pypi` | `v*` tags only | None (the maintainer removed it on 2026-10-21; instead a ruleset limits `v*` tags to admins) | None (Trusted Publishing) |
+| `data-signing` | The `main` branch only | None | `GENMODELFIT_SIGNING_KEY` (the private signing key) |
 
-リポジトリ全体のシークレットには何も置かない。秘密鍵は `data-signing` だけにあるので、main 以外のブランチや
-PR のワークフローからは読めない。data.yml でも、署名する 1 ステップにだけ環境変数で渡す。
+- Repository-wide secrets hold nothing.
+- The private key exists only in `data-signing`, so workflows on branches other than main and on PRs cannot read it.
+- data.yml also passes it, as an environment variable, to the one signing step only.
 
-設定の確認: `gh api repos/laxshmate/genmodelfit/environments` と
-`gh secret list -R laxshmate/genmodelfit`(空であること)・`gh secret list --env data-signing -R laxshmate/genmodelfit`。
+To check the settings, run:
 
-## 最初の公開(v0.1.0)の手順
+- `gh api repos/laxshmate/genmodelfit/environments`
+- `gh secret list -R laxshmate/genmodelfit` (must be empty)
+- `gh secret list --env data-signing -R laxshmate/genmodelfit`
 
-**公開はユーザの承認を得てから。** 2026-10-20 にユーザが v0.1.0 のマージ(Claude が行う)と公開を承認した。
-環境 `pypi` の承認(Review deployments)はユーザが押す(v0.1.0 のとき。2026-10-21 に承認者を外した)。
-2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`。2026-10-21 に外した)と `data-signing`(`main` だけ・
-シークレット `GENMODELFIT_SIGNING_KEY` あり)はそろっている。リポジトリ全体のシークレットは空。PyPI の
-`genmodelfit` はまだ無い(404)。
+## First release (v0.1.0)
 
-1. **PR をマージする**(この順。どれも前の PR のブランチから作ってある):
-   PR #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #20(Issue #17)→ #18 の PR → #21 の PR。
-   - 積み重ねた PR は、土台が前の PR のブランチになっている。そのままマージすると main ではなく前のブランチに入るので、
-     **マージする前に土台を main に付け替える**(`gh pr edit <番号> --base main`)。付け替えると差分はその PR の分だけになる。
-   - **squash や rebase でマージしない**(普通のマージコミット)。squash すると後ろの PR の履歴と合わなくなる。
-   - 付け替えたあと CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする
-     (v0.1.0 のとき。今はブランチの PR で ci.yml が動かないので、`tools/ci_local.py --linux` を手元で通し、結果を PR に書く)。
-2. **一覧を配る**: #18 のマージで main の `src/genmodelfit/data/db.json` が変わっていれば、push で
-   `.github/workflows/data.yml` が動く。動いていなければ Actions の「Data」→「Run workflow」(ブランチ main)で動かす。
-   緑になったら、Release `data-latest` に `db.json` と `db.json.sig` があることを確かめる。
+**Publish only after the user approves.**
+
+- On 2026-10-20 the user approved merging v0.1.0 (Claude does the merge) and publishing it.
+- Approving the `pypi` environment (Review deployments) was the user's click for v0.1.0. The approver was removed on 2026-10-21.
+- Checked on 2026-10-20: environment `pypi` (`v*` tags only; approver `KoyoYeager`, removed on 2026-10-21) and `data-signing` (`main` only; secret `GENMODELFIT_SIGNING_KEY` present) are in place.
+- The repository-wide secrets are empty.
+- `genmodelfit` does not exist on PyPI yet (404).
+
+Steps:
+
+1. **Merge the PRs**, in this order. Each was branched from the previous PR's branch:
+   PR #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #20 (Issue #17) → the PR for #18 → the PR for #21.
+   - Stacked PRs have the previous PR's branch as their base. Merged as they are, they land in that branch, not in main.
+     **Before merging, retarget the base to main** (`gh pr edit <number> --base main`). The diff then shows only that PR's changes.
+   - **Do not squash or rebase.** Use a normal merge commit. Squashing breaks the history of the later PRs.
+   - After retargeting, confirm CI is all green before merging (Python 3.10 to 3.13 × Ubuntu / Windows, wheel).
+     That was the rule for v0.1.0. Today ci.yml does not run on branch PRs, so run `tools/ci_local.py --linux` locally and put the result in the PR.
+2. **Ship the list.** If merging #18 changed `src/genmodelfit/data/db.json` on main, the push starts `.github/workflows/data.yml`.
+   If it did not run, start it from Actions → "Data" → "Run workflow" (branch main).
+   When it is green, check that Release `data-latest` has `db.json` and `db.json.sig`:
 
    ```powershell
    gh release view data-latest -R laxshmate/genmodelfit
    ```
-3. **タグを push する**(版の正本は `src/genmodelfit/_version.py`。`0.1.0` になっていること):
+3. **Push the tag.** The source of truth for the version is `src/genmodelfit/_version.py`; it must read `0.1.0`.
 
    ```powershell
    git switch main; git pull
    git tag v0.1.0
    git push origin v0.1.0
    ```
-4. `.github/workflows/release.yml` が次の順に進む。
-   - test: ruff と pytest(3.12)
-   - build: `uv build` → タグと `_version.py`・wheel / sdist の名前の版が一致するか確認 → `twine check --strict`
-   - publish: environment `pypi`(承認者なし。`v*` のタグはルールセットで管理者だけが作れる)で PyPI に公開する
-     (Trusted Publishing。API トークンは使わない)
-   - github-release: 同じ dist を付けた GitHub Release `v0.1.0` を作る
-5. **確かめる**(まっさらな venv で。キャッシュも別の場所にする):
+4. `.github/workflows/release.yml` runs these jobs in order:
+   - test: ruff and pytest (3.12)
+   - build: `uv build` → check that the tag, `_version.py` and the version in the wheel / sdist names agree → `twine check --strict`
+   - publish: publish to PyPI from environment `pypi` (no approver; only admins can create `v*` tags, by ruleset).
+     Uses Trusted Publishing, so no API token.
+   - github-release: create GitHub Release `v0.1.0` with the same dist files attached
+5. **Verify** in a clean venv, with a separate cache location:
 
    ```powershell
    uv venv -p 3.12 $env:TEMP\gmf-check
    uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==0.1.0
    $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
    & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit 0.1.0
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data の欄: List: bundled …
-   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # 署名を確かめて取り込む
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release、HEAD checks の期限
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data section: List: bundled …
+   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # verifies the signature and imports
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release, HEAD checks expiry
    & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
    ```
-6. AI生成キット(laxshmate/local_model_ai_gen_kit)の Issue #8 に公開を知らせる。
+6. Tell Issue #8 of AI生成キット (laxshmate/local_model_ai_gen_kit) that the release is out.
 
-## 次からの版を出す手順
+## Releasing later versions
 
-1. `src/genmodelfit/_version.py` の `__version__` を上げ(pyproject.toml は hatch がここから読む)、
-   `CHANGELOG.md` に書いて PR で main に入れる。PR では ci.yml が動かないので、PR の説明に
-   `tools/ci_local.py --linux` の結果を書く。
-2. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめてから、main の先頭にタグ `v<版>` を付けて push する
-   (上の 3〜5 と同じ)。
+1. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
+   Write the change in `CHANGELOG.md` and merge it to main by PR.
+   ci.yml does not run on the PR, so put the result of `tools/ci_local.py --linux` in the PR description.
+2. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
+   Then tag the head of main as `v<version>` and push it (same as steps 3 to 5 above).
 
-手動実行(workflow_dispatch)はビルドまでで、公開しない。タグを選んで手動実行しても、publish と github-release は
-`github.event_name == 'push'` の条件で飛ばす。タグを打つ前の試し用。
+About manual runs and PyPI:
 
-PyPI 側の準備は済み。アカウント `laxshmate`(2 段階認証あり)に、`genmodelfit` / `laxshmate/genmodelfit` / `release.yml` /
-environment `pypi` の Trusted Publisher を事前登録してある。事前登録では名前は確保されず、最初の公開で確定する。
-**PEP 541(放棄された名前の扱い)があるので、中身の無い仮の版で名前だけ押さえない。動く v0.1 を公開する。**
+- A manual run (workflow_dispatch) stops after the build and publishes nothing.
+  Even when you pick a tag, publish and github-release are skipped by the condition `github.event_name == 'push'`.
+  It is a dry run before tagging.
+- The PyPI side is ready. On account `laxshmate` (two-factor on), a Trusted Publisher is pre-registered for
+  `genmodelfit` / `laxshmate/genmodelfit` / `release.yml` / environment `pypi`.
+- Pre-registration does not reserve the name. The name is fixed by the first publish.
+- **Because of PEP 541 (handling of abandoned names), do not claim the name with an empty placeholder version. Publish a working v0.1.**
+- A published version cannot be deleted (only yanked). Version numbers cannot be reused, so to fix a release, ship the next version.
 
-公開した版は消せない(取り下げ=yank だけ)。版の番号は使い回せないので、直すなら次の版を出す。
+## Data releases
 
-## データの配布
+`.github/workflows/data.yml` signs and ships **the `src/genmodelfit/data/db.json` committed on main, as it is**.
+It does not rebuild from upstream; the rebuild-and-PR flow is in [Weekly list update](#weekly-list-update-19) below.
+The triggers are a push that changes db.json on main, and a manual run.
 
-`.github/workflows/data.yml` は、**main にコミットされた `src/genmodelfit/data/db.json` をそのまま**署名して配る
-(上流から作り直さない。作り直して PR にする流れは下の「毎週の一覧の更新」)。きっかけは、main の db.json が変わった
-push と手動実行。
+1. sign:
+   - Runs in environment `data-signing` (main only).
+   - Checks that the committed list can be read, signs it, and verifies the signature with the bundled public key.
+   - Uses `contents: read`. The private key is available only to this job's "sign" step.
+   - A manual run on a branch other than main does not run, because of `if: github.ref == 'refs/heads/main'`.
+2. upload: replace `db.json` and `db.json.sig` in Release `data-latest` (prerelease). This is the only job with `contents: write`.
+3. verify:
+   - Right after the upload, run `update --from-release` in clean venvs: one with the code from main, and one with `genmodelfit==0.5.0` (the oldest supported version, which does not know `review`).
+   - Check that the source is release, the list has not expired, it has more than 100 entries, and there is at least 1 auto-recommendation.
 
-1. sign: environment `data-signing`(main だけ)で、コミットされた一覧を読めることを確かめ、署名し、同梱の公開鍵で
-   確かめる(`contents: read`。秘密鍵はこのジョブの「署名する」ステップだけ)。main 以外のブランチを選んだ手動実行は
-   `if: github.ref == 'refs/heads/main'` で動かない
-2. upload: Release `data-latest`(prerelease)の `db.json` と `db.json.sig` を置き換える(ここだけ `contents: write`)
-3. verify: 置いた直後に、まっさらな venv(main のコードと、`genmodelfit==0.5.0`(`review` を知らない、いちばん古い対応の版))で
-   `update --from-release` を流し、source が release・期限切れでない・100 件超・自動のおすすめが 1 件以上なのを確かめる
+checkout uses `persist-credentials: false`.
 
-checkout は `persist-credentials: false`。
+HEAD checks in the bundled list expire after 30 days. When they expire, auto-recommendations drop to 0.
+Normally, merging the weekly PR (below) extends them. If the weekly PR is stalled, do this before the expiry:
 
-同梱の一覧の HEAD の確認は 30 日で切れる(切れると自動のおすすめが 0 件になる)。普段は毎週の PR(下)をマージすれば
-延びる。毎週の PR が止まっているときは、切れる前に
-`genmodelfit update --heads-only --no-cache --output src/genmodelfit/data/db.json` で取り直して PR にし、main に入れると
-data.yml が配り直す。今の一覧の期限は `genmodelfit system --no-cache` の Data の欄(`valid until`)で分かる。
+1. Fetch again with `genmodelfit update --heads-only --no-cache --output src/genmodelfit/data/db.json`.
+2. Make a PR and merge it to main. data.yml then ships the list again.
 
-使う側:
+To see the current expiry, read the Data section of `genmodelfit system --no-cache` (`valid until`).
+
+For consumers:
 
 ```powershell
-genmodelfit update --from-release                       # キャッシュに取り込む
-genmodelfit update --from-release --output db.json      # 確かめた一覧を指定の場所に書く(キャッシュは触らない)
-genmodelfit update --from-release --force               # 前に取り込んだ配布より古くても取り込む(下記)
+genmodelfit update --from-release                       # import into the cache
+genmodelfit update --from-release --output db.json      # write the verified list to the given path (the cache is not touched)
+genmodelfit update --from-release --force               # import even if older than the previously imported release (see below)
 ```
 
 ```python
 from genmodelfit.remote import update_from_release
 
-db = update_from_release()  # 失敗したら RemoteError(DatabaseError の仲間)
+db = update_from_release()  # on failure, RemoteError (a kind of DatabaseError)
 ```
 
-取り込みの手順:
+Import steps:
 
-1. `db.json` と `db.json.sig` を取る(それぞれ 64 MB まで。読みながら数え、超えたらそこでやめる)
-2. 同梱の信じる公開鍵(`src/genmodelfit/data/signing_keys/*.pub`)の**どれか 1 つ**で署名が合うか確かめる。
-   合わなければ 5 秒待って**1 回だけ**取り直す。GitHub Release の資産は 1 つずつ置き換わるので、
-   data.yml の upload の途中に取ると、新しい `db.json` と古い `db.json.sig` の組になることがあるため。
-   取り直しても合わなければ失敗
-3. `schema_version` と形を確かめる。`generated_at` は必須で、タイムゾーン付きの ISO 8601(`Z` も可)
-4. 前に取り込んだ配布より古くないか確かめる(巻き戻しの防止)。比べる相手はキャッシュの `release_state.json`
-   (前に取り込んだ配布の `generated_at`)。キャッシュの `db.json` は手元の `genmodelfit update` も書くので比べない。
-   日時は UTC に直して比べる(`Z` と `+00:00` は同じ時刻)。同じ日時の取り直しは通す
-5. `release_state.json` を進めてから、書き出し先(既定はキャッシュの `db.json`)を原子的に置き換える
+1. Fetch `db.json` and `db.json.sig`. Each is limited to 64 MB; the size is counted while reading and reading stops when it is exceeded.
+2. Check the signature against **any one** of the bundled trusted public keys (`src/genmodelfit/data/signing_keys/*.pub`).
+   - If it does not match, wait 5 seconds and fetch again **once**. GitHub Release assets are replaced one at a time, so a fetch in the middle of data.yml's upload can pair a new `db.json` with an old `db.json.sig`.
+   - If it still does not match, fail.
+3. Check `schema_version` and the shape. `generated_at` is required, as an ISO 8601 time with a timezone (`Z` is fine).
+4. Check that it is not older than the previously imported release (rollback protection).
+   - Compare against `release_state.json` in the cache (the `generated_at` of the previously imported release).
+   - Do not compare against the cache's `db.json`, because a local `genmodelfit update` writes it too.
+   - Times are converted to UTC before comparing (`Z` and `+00:00` are the same time). Fetching the same time again is allowed.
+5. Advance `release_state.json`, then replace the output (by default the cache's `db.json`) atomically.
 
-どれかが失敗したら、書き出し先(無ければ同梱のデータ)はそのままで、メッセージを出して終了コード 1(`--json` なら
-`{"error": ...}` の形)。ほかのプログラムがキャッシュを開いていて置き換えられないとき(Windows)も同じ。
+If any step fails:
 
-`release_state.json` の日時が未来になってしまった(作り直した一覧の日時が戻った等)ときは、普段の取り込みは
-「古い一覧です」で止まる。正しい配布だと確かめたうえで `--force` を付けると取り込み、記録もその日時に直す。
-`release_state.json` が壊れているときは無いものとして扱い、次の取り込みで書き直す。
+- The output (or the bundled data if there is none) is left as it was.
+- A message is printed and the exit code is 1 (with `--json`, the form `{"error": ...}`).
+- The same happens when another program has the cache open and it cannot be replaced (Windows).
 
-署名は Ed25519。`db.json.sig` は 64 バイトの署名を base64 にした 1 行。
-署名の確認だけ手でやるなら `python -m genmodelfit.signing verify db.json`(同梱の信じる鍵のどれかで確かめる)。
+If the time in `release_state.json` ended up in the future (for example, a rebuilt list's time went backward):
 
-## 毎週の一覧の更新(#19)
+- A normal import stops with "the list is older".
+- Once you have confirmed the release is genuine, add `--force`. It imports and resets the record to that time.
+- If `release_state.json` is broken, it is treated as absent and rewritten at the next import.
 
-llmfit の weekly-model-update.yml にならい、上流から作り直した一覧を毎週 PR にする。**公開するのは人が見て
-マージした一覧だけ**(作り直しと公開を分ける)。
+The signature is Ed25519. `db.json.sig` is one line: the 64-byte signature in base64.
+To check a signature by hand, run `python -m genmodelfit.signing verify db.json` (it checks against any of the bundled trusted keys).
+
+## Weekly list update (#19)
+
+Following llmfit's weekly-model-update.yml, a list rebuilt from upstream becomes a PR every week.
+**Only a list that a person has reviewed and merged is published** (rebuilding and publishing are separate).
 
 ```text
-weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC の起動スクリプト)→ PR automated/weekly-data → 作者が見てマージ
-  → data.yml が main の db.json に署名して data-latest に置く → 使う側は genmodelfit update --from-release
+weekly-data.yml (manual backup; since #42 the scheduled run is a startup script on the maintainer's PC) → PR automated/weekly-data → the maintainer reviews and merges
+  → data.yml signs main's db.json and puts it in data-latest → consumers run genmodelfit update --from-release
 ```
 
-`.github/workflows/weekly-data.yml`:
+`.github/workflows/weekly-data.yml` has two jobs.
 
-1. build(`contents: read` だけ):
-   - キャッシュを戻す(`actions/cache/restore`。`file_headers.json`・`repo_precision.json`。鍵は毎回違う run_id で、
-     restore-keys で一番新しいものを取る)
-   - `python -m genmodelfit.weekly --out weekly-out --apply src/genmodelfit/data/db.json --rate-limit-budget 900`
-     (時間の上限 90 分)。`genmodelfit update` と同じ作り直し(テンプレート・HF・HEAD・ファイルの見出しと精度)に続けて `update --inspect-only` と同じ読み直し(同梱の一覧と同じ 2 段)。
-     引き継ぎの元は main の一覧。HF の 429 は Retry-After を守って待ち、待ち時間の合計が 900 秒を超えたら止まる
-     (HF_TOKEN は使わない)
-   - 確かめ(どれかに落ちたら終了コード 1 で、PR を作らない。理由は `weekly-out/result.json` の `problems` と
-     実行の要約): 形(読み直し)、自動のおすすめが 0 件でない、
-     **区分ごとに main の半分未満に減っていない**(全体・HF・公式テンプレート・無検閲・自動のおすすめ。元が 4 件以上の
-     区分だけ)、**HEAD の期限(`expires_at`)が 7 日より先**(作り直した直後なのに近ければ HEAD の取り直しが効いていない。
-     `genmodelfit system --json` の側からも二重に確かめる)、**新しく無検閲の印が付いた項目が 5 件まで**(超えたら
-     選び方の規則が緩んだ疑い。手動実行で `allow_many_uncensored` を選んだときだけ、失敗にせず本文の先頭に警告)
-   - キャッシュを保存する(`if: always()`。失敗・時間切れでも残す。GitHub は 7 日使わないキャッシュを消す)
-   - 新しい一覧を入れた状態で `ruff check`・`ruff format --check`・`pytest -q`(CI の代わり。下の注意)
-   - `genmodelfit contrib aggregate --report` の結果を PR の本文に足す(この手動の予備だけ。オーナーの PC の起動スクリプトは
-     流さない)。data/contrib がまだ無ければ「提出 0 件」と書く。報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む。
-     2026-10-22 から両方の向きに使うので、上がる・下がるの両方が出る)が入る
-   - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)
-2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
-   `result.json` が ok の一覧だけを入れ、`peter-evans/create-pull-request`(コミットで固定)で PR を作る・更新する
-   (ブランチ `automated/weekly-data`、ラベル `automated`・`data-update`、本文は `weekly-out/pr_body.md`)
+1. build (`contents: read` only):
+   - Restore the cache (`actions/cache/restore`; `file_headers.json` and `repo_precision.json`).
+     The key differs every run (run_id); restore-keys picks the newest.
+   - Run `python -m genmodelfit.weekly --out weekly-out --apply src/genmodelfit/data/db.json --rate-limit-budget 900` (time limit 90 minutes).
+     - It does the same rebuild as `genmodelfit update` (templates, HF, HEAD, file headers and precision).
+     - Then it re-reads the result like `update --inspect-only` (the same 2 passes as the bundled list).
+     - Carry-over comes from main's list.
+     - HF 429 responses are waited out following Retry-After. It stops when the total wait exceeds 900 seconds (HF_TOKEN is not used).
+   - Checks. If any fails, the exit code is 1 and no PR is made. The reason is in `problems` of `weekly-out/result.json` and in the run summary.
+     - Shape (after re-reading).
+     - The number of auto-recommendations is not 0.
+     - **No category dropped below half of main's.** Categories: all, HF, official templates, uncensored, auto-recommendations. Only categories that had 4 or more entries in main.
+     - **The HEAD expiry (`expires_at`) is more than 7 days away.** Right after a rebuild, a closer date means the HEAD refetch did not work. This is double-checked from the `genmodelfit system --json` side as well.
+     - **At most 5 entries newly marked uncensored.** More suggests the selection rules loosened. Only when `allow_many_uncensored` is chosen in a manual run, this is not a failure and a warning goes at the top of the body.
+   - Save the cache (`if: always()`, so it survives failures and timeouts). GitHub deletes caches unused for 7 days.
+   - With the new list in place, run `ruff check`, `ruff format --check` and `pytest -q` (a stand-in for CI; see the notes below).
+   - Append the result of `genmodelfit contrib aggregate --report` to the PR body.
+     - Only for this manual backup. The startup script on the maintainer's PC does not run it.
+     - If data/contrib does not exist yet, it says "0 submissions".
+     - The report includes a table of levels that change because of other users' measurements (including a single submission). Since 2026-10-22 it is used in both directions, so both raises and drops appear.
+   - Keep `weekly-out/` (db.json, diff.json, pr_body.md, result.json, gate.json, system.json) as an artifact for 30 days.
+2. pr (`contents: write` and `pull-requests: write` only in this job; the signing-key environment is not used):
+   - Take in only a list whose `result.json` is ok.
+   - Create or update the PR with `peter-evans/create-pull-request` (pinned by commit).
+   - Branch `automated/weekly-data`, labels `automated` and `data-update`, body `weekly-out/pr_body.md`.
 
-決めたこと:
+Decisions:
 
-- **PR の本文の上流の文字はすべて無害にする**: モデルの名前・ID・ライセンスの名前・根拠・URL・リポジトリ名・
-  失敗の理由は `weekly.md()` で、HTML の文字を実体参照に(`<!--`・`<img>`・`</details>` が効かない)、Markdown の
-  記号をバックスラッシュで(リンク・画像・強調・表の区切り)、`@` の後に幅の無い空白(メンションしない)。
-  長い本文は行の切れ目で切り、開いたままの `<details>` を閉じる。#34 の実測の集計(利用者の出した値を含む)は
-  `weekly.code_block()` の囲みに入れる。実行の要約(`$GITHUB_STEP_SUMMARY`)にも同じ本文を出す
+- **Everything from upstream in the PR body is made harmless.**
+  - This covers model names, IDs, license names, evidence, URLs, repository names and failure reasons. It is done in `weekly.md()`.
+  - HTML characters become entities (so `<!--`, `<img>` and `</details>` have no effect).
+  - Markdown symbols get a backslash (links, images, emphasis, table separators).
+  - A zero-width space goes after `@` (no mentions).
+  - A long body is cut at a line break, and any open `<details>` is closed.
+  - The #34 measurement summary (which includes values submitted by users) goes inside the `weekly.code_block()` fence.
+  - The same body goes to the run summary (`$GITHUB_STEP_SUMMARY`).
+- **No automatic merge** (auto-merge is not used either). This workflow neither signs nor publishes.
+- **CI (ci.yml) does not run automatically on a PR created with GITHUB_TOKEN.** This is GitHub's rule, to prevent loops.
+  - Instead, the build job of the same workflow runs ruff and pytest with the new list before making the PR, and the PR body says so.
+  - ci.yml also does not run on PRs from branches of the same repository (#68).
+  - To check, run `python tools/ci_local.py --linux` locally, or look at ci.yml, which runs on main after the merge.
+- **When some data could not be fetched (`sources.partial`)**: the default is failure (no PR).
+  - Only when `allow_partial` is chosen in a manual run, a PR is made with a "partially missing" warning at the top of the body.
+  - This applies only when everything missing was a temporary failure of HF repositories and could be carried over from the previous list (`weekly.partial_problems`). That requires all of:
+    - the 429 wait limit was not reached;
+    - the HF search did not fail;
+    - there is no unreadable template;
+    - `license_policy` is the same as the previous list.
+  - Other kinds of gaps do not become a PR, because entries that disappeared or stayed stale would look like "changes".
+- **If the tests fail, no PR is made.** When an upstream change breaks the tests, make a separate PR to fix them.
+  Example: in 2026-10 an HF repository was renamed and the re-match in the sources table no longer fit.
 
-- **自動ではマージしない**(auto-merge も使わない)。ここでは署名も公開もしない
-- **GITHUB_TOKEN で作った PR では CI(ci.yml)が自動で動かない**(GitHub の仕様。ループを防ぐため)。代わりに同じ
-  ワークフローの build で、新しい一覧を入れた状態の ruff と pytest を通してから PR を作る(PR の本文にもそう書く)。
-  同じリポジトリのブランチの PR では ci.yml は動かない(#68)。確かめるなら手元で `python tools/ci_local.py --linux` を回すか、
-  マージの後に main で動く ci.yml を見る
-- **一部を取得できなかったとき**(`sources.partial`): 既定は失敗(PR を作らない)。手動実行で `allow_partial` を
-  選んだときだけ、欠けたのが HF のリポジトリの一時的な失敗だけで前の一覧から引き継げたとき(429 の待ち時間の
-  上限に達していない・HF の検索が失敗していない・読めないテンプレートが無い・前の一覧と `license_policy` が同じ)に
-  限って「一部欠け」の警告を本文の先頭に付けて PR にする(`weekly.partial_problems`)。それ以外の欠け方は、
-  消えた・古いままの項目が「変化」に見えてしまうので PR にしない
-- 試験が落ちたら PR を作らない。上流の変化で試験が落ちたとき(例: 2026-10 に HF のリポジトリの名前が変わり、
-  出どころの表の当て直しが合わなくなった)は、直す PR を別に作る
+### What to check in the PR
 
-### PR で確かめること
+Read the "Notes" and the tables in the body (same content as `genmodelfit diff`):
 
-本文(`genmodelfit diff` と同じ中身)の「注意」と表を見る:
+- **⚠ Entries whose license moved to the permissive side.** That means the tier went down, or the license entered the allowlist. This includes unknown → something.
+  It changes what gets auto-recommended, so verify against the original text at `license_url`.
+- **Entries that entered or left auto-recommendations.** The same policy is applied to both lists: the ComfyUI version is the one recorded in the new list, and HEAD age is ignored.
+  Check that no removed entry is one that AI生成キット uses.
+- **URLs whose HEAD newly fails** (became gated, or vanished). URLs that were already failing are folded.
+- **Removed entries** (gone from upstream, or dropped out of the top search results).
+- **The evidence for entries newly marked uncensored.** Entries aimed at sexual content involving minors are excluded ([sources.md](sources.md)).
+- **If a file of a measured model changed**, make a separate PR to fix it with `python -m genmodelfit.calibrate`.
+- **Entries awaiting review (review)** and the URLs of the `evidence` attached by `review approve` (#42; see [Weekly skill](#weekly-skill-genmodelfit-weekly-42) below).
+- The full differences are in `diff.json` of the artifact (its shape is in [schema.md, "diff"](schema.md#diff)).
 
-- **⚠ ライセンスが寛容な側に変わった項目**(段階が下がった、または許可リストに入った。不明 → 何か、も含む)。
-  自動のおすすめに出る側の変化なので、`license_url` の原文で確かめる
-- **自動のおすすめに入った・外れた項目**(両方の一覧に同じ方針を当てる: ComfyUI の版は新しい一覧の記録、
-  HEAD の古さは見ない)。外れた項目に AI生成キットが使うものが無いか
-- **新しく HEAD が失敗した URL**(gated になった・消えた)。前から失敗している URL は畳んである
-- **消えた項目**(上流から消えた・検索の上位から外れた)
-- **新しく無検閲の印が付いた項目**の根拠(未成年の性的表現を目的とするものは除外する。docs/sources.md)
-- 実測のあるモデルのファイルが変わっていたら、`python -m genmodelfit.calibrate` で直す PR を別に作る
-- **確認待ち(review)の項目**と、`review approve` で付けた根拠(`evidence`)の URL(#42。下の「毎週のスキル」)
-- 全部の違いは artifact の `diff.json`(形は docs/schema.md「diff」)
+### Weekly skill (genmodelfit-weekly, #42)
 
-### 毎週のスキル(genmodelfit-weekly、#42)
+Maintainer's decision of 2026-10-21:
 
-2026-10-21 のオーナーの決定: 毎週の更新は、オーナーの PC の起動スクリプトが行い(Windows のタスク スケジューラで
-週 1 回)、確認待ちの判断だけを Claude Code のスキル `genmodelfit-weekly` に任せる。**weekly-data.yml の定期の実行(schedule)はやめた**。手動の予備
-(workflow_dispatch)としてだけ残す。
+- The weekly update is run by a startup script on the maintainer's PC (Windows Task Scheduler, once a week).
+- Only the judgment on entries awaiting review is delegated to the Claude Code skill `genmodelfit-weekly`.
+- **The scheduled run (schedule) of weekly-data.yml was dropped.** It remains only as a manual backup (workflow_dispatch).
 
-動かし方(オーナーの PC。起動スクリプトと設定はリポジトリの外に置く):
+How it runs (on the maintainer's PC; the startup script and settings live outside the repository):
 
-- 起動スクリプト: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1`(PowerShell 7 が要る: `#Requires -Version 7`)
-- Claude の設定: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`(Read は専用のクローンの中だけ、
-  WebFetch は huggingface.co・github.com・raw.githubusercontent.com だけ)。Claude は `--restricted --tools Read Grep Glob WebFetch
-  --strict-mcp-config` で呼ぶ(実行系の道具・ユーザーの設定・MCP は使えない)。approve は別のモデル(opus)が同じ制限で確かめ直す
-- 専用のクローン: `C:\workspace\genmodelfit-weekly`(開発用の作業フォルダとは分ける。毎回 main に合わせ、venv を作り直す)
-- タスクの登録(毎週月曜 9:00、ログオン中に実行):
+- Startup script: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1` (needs PowerShell 7: `#Requires -Version 7`).
+- Claude settings: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`.
+  - Read is allowed only inside the dedicated clone.
+  - WebFetch is allowed only for huggingface.co, github.com and raw.githubusercontent.com.
+- Claude is called with `--restricted --tools Read Grep Glob WebFetch --strict-mcp-config`. Execution tools, the user's settings and MCP are unavailable.
+- approve is re-checked by a different model (opus) under the same restrictions.
+- Dedicated clone: `C:\workspace\genmodelfit-weekly`. Keep it separate from the development working folder. Each run syncs it to main and recreates the venv.
+- Register the task (every Monday 9:00, run while logged on):
   `schtasks /Create /TN genmodelfit-weekly /SC WEEKLY /D MON /ST 09:00 /TR "pwsh.exe -NoProfile -File %USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1"`
-- ログ: `%LOCALAPPDATA%\genmodelfit-weekly\logs`(直近 26 回)。失敗したら Issue「毎週の更新が失敗しました」が立ち、次に成功したら閉じる
-- 試すとき: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush`(GitHub に何も出さない)。別の版の中身で試すなら `-Ref origin/<ブランチ> -NoPush`
+- Logs: `%LOCALAPPDATA%\genmodelfit-weekly\logs` (the latest 26 runs).
+  On failure an Issue "毎週の更新が失敗しました" ("The weekly update failed") is opened, and it is closed at the next success.
+- To try it: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush` (publishes nothing to GitHub).
+  To try the contents of another version: `-Ref origin/<branch> -NoPush`.
 
-役割を分ける:
+Roles are split.
 
-- **Claude(スキル)はファイルを書き換えず、コマンドも動かさない**(2026-10-21 のオーナーの決定。読むだけと、
-  Hugging Face・GitHub の WebFetch だけ)。実行役が渡す `review_queue.json` の確認待ちの項目
-  (id・name・modality・reasons・ファイルごとの repo・path・license・license_url・homepage・card_url)を一次資料
-  (ライセンスの原文・モデルカード・上流のリポジトリ)で確かめ、判断の一覧の JSON だけを返す:
+- **Claude (the skill) does not rewrite files and does not run commands** (the maintainer's decision of 2026-10-21). It only reads, and uses WebFetch for Hugging Face and GitHub.
+  - The runner passes `review_queue.json`, with the entries awaiting review: id, name, modality, reasons, and per file the repo, path, license, license_url, homepage and card_url.
+  - Claude checks them against primary sources (license text, model card, upstream repository) and returns only a JSON list of decisions:
 
-  ```json
-  {"decisions": [
-    {"id": "hf:org/model", "action": "approve", "evidence": ["https://huggingface.co/org/model/blob/main/LICENSE"], "note": "Apache-2.0 の原文を確かめた"},
-    {"id": "hf:org/other", "action": "reject", "evidence": ["https://huggingface.co/org/other/blob/main/LICENSE"], "note": "非商用だけ", "safety": false},
-    {"id": "hf:org/unclear", "action": "hold", "note": "カードにライセンスの記載なし"}
-  ]}
-  ```
+    ```json
+    {"decisions": [
+      {"id": "hf:org/model", "action": "approve", "evidence": ["https://huggingface.co/org/model/blob/main/LICENSE"], "note": "Apache-2.0 の原文を確かめた"},
+      {"id": "hf:org/other", "action": "reject", "evidence": ["https://huggingface.co/org/other/blob/main/LICENSE"], "note": "非商用だけ", "safety": false},
+      {"id": "hf:org/unclear", "action": "hold", "note": "カードにライセンスの記載なし"}
+    ]}
+    ```
 
-  理由が安全(未成年の性的表現など)の reject は `"safety": true`(名前を残さず sha256 だけ記録する)。
-  分からないものは hold(pending のまま。自動のおすすめにも data-latest にも出ない)
-- **実行役のスクリプト**(オーナーの PC。スキルの外)が、作り直し・試験・判断の当て込み・merge-check・PR を行う:
-  1. `python -m genmodelfit.weekly --out <dir> --apply src/genmodelfit/data/db.json`(引き継ぎの元と比べる元は main の
-     db.json)。終了コードが 1 なら止める(`result.json` の `problems`)
-  2. `<dir>/review_queue.json` を Claude に渡し、判断の一覧を受け取る
-  3. `python -m genmodelfit.review apply <decisions.json> --db src/genmodelfit/data/db.json --max-approve 10 --json`。
-     形を厳しく確かめ(知らない鍵・action、確認待ちでない id、同じ id、根拠の無い approve、https でホストのない根拠、
-     500 文字を超える・制御文字を含む note、approve の上限超え)、1 つでもおかしければ何も当てない(終了コード 2)。
-     approve は `decided_by: claude-weekly`。出る要約(件数と項目ごとの結果)の文字は `weekly.md` で無害にしてあり、
-     PR の本文にそのまま置ける
-  4. ブランチにコミットして push し、PR を作る。**機械の確かめがすべて通ったときだけ**マージする:
-     - 変わったファイルが `src/genmodelfit/data/db.json` だけ(approve・reject を当てた週は status が変わるので、
-       下の条件で必ずオーナーが見る)
-     - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
-       終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
-     - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)
-     - 手元の試験(ruff と pytest。新しい一覧を入れた状態)が通った。PR では ci.yml が動かないので(手元で通してから
-       push する決まり。2026-10-22)、CI は待たない。マージの後に main で ci.yml が動く
+  - A reject for a safety reason (such as sexual content involving minors) gets `"safety": true` (the name is not kept; only the sha256 is recorded).
+  - Anything unclear is a hold (stays pending; it appears neither in auto-recommendations nor in data-latest).
+- **The runner script** (on the maintainer's PC, outside the skill) does the rebuild, tests, applying decisions, merge-check and the PR:
+  1. Run `python -m genmodelfit.weekly --out <dir> --apply src/genmodelfit/data/db.json`. Carry-over and the comparison baseline are main's db.json. If the exit code is 1, stop (see `problems` in `result.json`).
+  2. Pass `<dir>/review_queue.json` to Claude and receive the list of decisions.
+  3. Run `python -m genmodelfit.review apply <decisions.json> --db src/genmodelfit/data/db.json --max-approve 10 --json`.
+     - The shape is checked strictly. These are rejected: unknown keys or actions, ids not awaiting review, duplicate ids, an approve without evidence, evidence that is not https or has no host, a note over 500 characters or with control characters, and going over the approve limit.
+     - If even one is wrong, nothing is applied (exit code 2).
+     - approve is recorded as `decided_by: claude-weekly`.
+     - The summary it prints (counts and per-entry results) is made harmless by `weekly.md`, so it can go into the PR body as it is.
+  4. Commit to a branch, push, and make a PR. **Merge only when every machine check passes:**
+     - The only changed file is `src/genmodelfit/data/db.json`. In a week where approve or reject was applied, statuses change, so the condition below always sends the PR to the maintainer.
+     - `python -m genmodelfit.weekly merge-check --base <main's db.json> --head <branch's db.json> --json` exits 0 (`safe: true`). The classification is recomputed from the file's JSON; the skill's report is not trusted.
+     - No review status changed. A change to approved or to awaiting review also becomes "needs judgment" in the classification.
+     - Local tests (ruff and pytest, with the new list) passed. ci.yml does not run on PRs (the rule since 2026-10-22 is to pass locally before pushing), so CI is not awaited. ci.yml runs on main after the merge.
 
-     どれかが通らなければマージせず、**オーナーが PR を見てマージする**(本文の「分類」「確認待ち」の節と、
-     `review approve` が残した `evidence`)
-- マージの後の署名と公開は data.yml が行う(いままでどおり)。**配る一覧からは確認待ちの項目を除く**
-  (`python -m genmodelfit.review publish`。0.5.x は `review` を知らず、確認待ちを自動のおすすめに出してしまうため)
+    If any check fails, do not merge. **The maintainer reads the PR and merges.** Look at the "classification" and "awaiting review" sections of the body, and at the `evidence` left by `review approve`.
+- Signing and publishing after the merge are done by data.yml, as before. **Entries awaiting review are removed from the list that is shipped** (`python -m genmodelfit.review publish`), because 0.5.x does not know `review` and would put them in auto-recommendations.
 
-安全な週の条件: classification が safe(前から確認待ちのまま変わらない項目は含んでよい)。分類は**許すものの表**で
-決める(docs/schema.md「diff」の classification): 人気の数(`downloads`・`downloads_all_time`・`likes`・テンプレートの
-`usage`)、`updated`、HEAD の結果(`head_status`・`head_checked_at`)、ライセンスが厳しくなる、
-消えた項目、自動のおすすめから外れた項目、`sources` の数、確認待ちのまま変わらない項目。それ以外の変化(知らない項目も)は
-すべて判断が要る。HEAD が直って自動のおすすめに戻ったものは、どのファイルの URL・sha256 も変わっていないときだけ安全。
-ファイルの大きさの変化は 0.9.0 から向きによらず判断が要る(`files_changed`。`update` も確認待ちにする)。アプリは一覧の URL を
-そのまま落とすので、同じ URL のファイルが大きくなった = 中身が差し替わった、を黙って通さない。HF のリポジトリでファイルが
-上書きされた週は、自動でマージされずオーナーの確認になる(以前は大きくなっただけなら安全な週としてマージしていた)。
+Conditions for a safe week: the classification is safe. Entries that stay awaiting review unchanged from before may be included.
+The classification is decided by a **table of what is allowed** (classification in [schema.md, "diff"](schema.md#diff)). Allowed changes:
 
-決めたこと:
+- popularity counts (`downloads`, `downloads_all_time`, `likes`, template `usage`);
+- `updated`;
+- HEAD results (`head_status`, `head_checked_at`);
+- a license becoming stricter;
+- removed entries;
+- entries that dropped out of auto-recommendations;
+- `sources` counts;
+- entries that stay awaiting review unchanged.
 
-- pending の項目も main の一覧には入る(0.6.0 以降の `recommend` / `fit` / `info` には出る)。自動のおすすめ(gate)は
-  `reviewed` で保留にする。アプリは `entry.review is None or entry.review.status == "ok"` で絞る
-- 承認には https でホストのある根拠の URL が 1 つ以上要る(無ければ断る)
-- `review reject` した項目は `src/genmodelfit/data/review_rejected.txt` に残り、`update` は作り直しても入れない
-- 同梱の一覧は 0.6.0 で全部 `ok`(`decided_by: baseline-2026-10-21`)から始めた
+Every other change (including unknown fields) needs judgment.
 
-### 手元で同じ流れを試す
+- An entry whose HEAD recovered and which returned to auto-recommendations is safe only when no file's URL or sha256 changed.
+- Since 0.9.0, any change in a file's size needs judgment, in either direction (`files_changed`; `update` also puts it awaiting review).
+- The reason: apps download the list's URLs as they are, so a file at the same URL getting bigger means the contents were swapped. That must not pass silently.
+- A week when a file in an HF repository was overwritten is therefore not merged automatically, and the maintainer checks. Before, a file that only got bigger was merged as a safe week.
+
+Decisions:
+
+- Pending entries are also in main's list (they appear in `recommend` / `fit` / `info` from 0.6.0). The gate (auto-recommendation) holds them through `reviewed`.
+  Apps filter with `entry.review is None or entry.review.status == "ok"`.
+- Approval needs at least 1 evidence URL that is https and has a host. Without it, it is refused.
+- An entry given `review reject` stays in `src/genmodelfit/data/review_rejected.txt`, and `update` does not add it back even when rebuilding.
+- The bundled list started in 0.6.0 with everything `ok` (`decided_by: baseline-2026-10-21`).
+
+### Trying the same flow locally
 
 ```powershell
-.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out                         # 上流から(書くのは out だけ)
-.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out --record $env:TEMP\weekly-rec   # 応答も残す
-.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out2 --offline-sources $env:TEMP\weekly-rec  # 通信しない
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out                         # from upstream (writes only out)
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out --record $env:TEMP\weekly-rec   # also record responses
+.venv\Scripts\python -m genmodelfit.weekly --dry-run --out $env:TEMP\weekly-out2 --offline-sources $env:TEMP\weekly-rec  # no network
 .venv\Scripts\genmodelfit diff src\genmodelfit\data\db.json $env:TEMP\weekly-out\db.json
 ```
 
-`--offline-sources` は、`--record` で残した GET の応答と HEAD の応答コードだけで作り直す(ファイルの見出しと
-リポジトリの精度はキャッシュ `GENMODELFIT_CACHE_DIR` にあるものだけ)。HEAD の日時は実行した時刻になるので、
-期限の確かめは本物にならない。失敗した応答(401・つながらない)は残らないので、読み直した結果は本物の実行と
-少し違う(2026-10-21 の試しでは 335 件に対して 334 件)。流れを試す・PR の本文の形を見るためのもの。手元のキャッシュを汚したくなければ `GENMODELFIT_CACHE_DIR` を別の場所にする。
-終了コード: 0 = 通った、1 = 確かめに落ちた(`result.json` の `problems`)、2 = 使い方の誤り。
+About `--offline-sources`:
 
-### 作者が一度だけ設定すること
+- It rebuilds using only the GET responses and HEAD status codes saved by `--record`. File headers and repository precision come only from what is in the cache `GENMODELFIT_CACHE_DIR`.
+- HEAD times become the time of the run, so the expiry check is not real.
+- Failed responses (401, no connection) are not saved, so the re-read result differs a little from a real run (in the 2026-10-21 trial, 334 entries against 335).
+- It is for trying the flow and seeing the shape of the PR body.
+- To keep your local cache clean, point `GENMODELFIT_CACHE_DIR` somewhere else.
 
-- Settings → Actions → General → Workflow permissions の **「Allow GitHub Actions to create and approve pull
-  requests」を有効にする**(無効だと create-pull-request が失敗する)。確認:
-  `gh api repos/laxshmate/genmodelfit/actions/permissions/workflow`(`can_approve_pull_request_reviews` が true)。
-  この設定は名前のとおり**承認(approve)も許す**(GitHub に PR の作成だけを許す設定は無い)。weekly-data.yml は
-  承認しない(`gh pr review` も auto-merge も使わない。tests/test_workflows.py が検査)。レビューとマージは作者が行う
-- (定期の実行をやめたので今は関係しない)**60 日リポジトリに動き(コミットなど)が無いと、GitHub は schedule のワークフローを止める**。止まったら
-  Actions の「Weekly data」で「Enable workflow」を押すか、手動実行(workflow_dispatch)すると戻る
-- ラベル `automated`・`data-update` を作る(ワークフローも作ろうとするが、`pull-requests: write` だけでは
-  作れないことがある): `gh label create automated -R laxshmate/genmodelfit`、`gh label create data-update -R laxshmate/genmodelfit`
-- 同じリポジトリの PR では ci.yml のジョブは飛ばされる(#68)。ブランチの保護の必須のチェックに ci.yml を入れない。
-  手元の `tools/ci_local.py` の結果を PR の説明に書く
+Exit codes: 0 = passed, 1 = a check failed (`problems` in `result.json`), 2 = usage error.
 
-## 鍵
+### One-time setup by the maintainer
 
-- 公開鍵: `src/genmodelfit/data/signing_keys/*.pub`(パッケージに同梱。取り込む側はこのどれか 1 つで合えば通す)。
-  今は `2026-10.pub` の 1 つ
-- 秘密鍵: environment `data-signing` のシークレット `GENMODELFIT_SIGNING_KEY`(laxshmate/genmodelfit)
-- 秘密鍵のバックアップ: `%USERPROFILE%\.config\genmodelfit\signing_key.pem`(1 か所だけ。ACL は本人のみ)。
-  コミットしない。画面や Issue に貼らない。
+- Settings → Actions → General → Workflow permissions: **turn on "Allow GitHub Actions to create and approve pull requests".** Without it, create-pull-request fails.
+  Check with `gh api repos/laxshmate/genmodelfit/actions/permissions/workflow` (`can_approve_pull_request_reviews` must be true).
+  - As its name says, this setting **also allows approving**; GitHub has no setting that allows only creating PRs.
+  - weekly-data.yml does not approve (it uses neither `gh pr review` nor auto-merge; tests/test_workflows.py checks this).
+  - The maintainer does review and merge.
+- (Not relevant now, since the scheduled run was dropped.) **If a repository has no activity (commits and so on) for 60 days, GitHub stops its scheduled workflows.**
+  If that happens, press "Enable workflow" on "Weekly data" in Actions, or run it manually (workflow_dispatch).
+- Create the labels `automated` and `data-update`. The workflow also tries to create them, but `pull-requests: write` alone sometimes cannot:
+  `gh label create automated -R laxshmate/genmodelfit`, `gh label create data-update -R laxshmate/genmodelfit`
+- ci.yml jobs are skipped on PRs in the same repository (#68). Do not put ci.yml in the required checks of branch protection.
+  Put the result of the local `tools/ci_local.py` in the PR description.
 
-### 鍵を替える(定期・または念のため)
+## Keys
 
-公開鍵は版に同梱されるため、**その版が信じる鍵は版を出したときに決まる**。新旧の鍵を並べて同梱し、段階を踏んで替える。
+- Public keys: `src/genmodelfit/data/signing_keys/*.pub` (bundled in the package). The importing side accepts a signature that matches any one of them. Today there is one, `2026-10.pub`.
+- Private key: the secret `GENMODELFIT_SIGNING_KEY` of environment `data-signing` (laxshmate/genmodelfit).
+- Private key backup: `%USERPROFILE%\.config\genmodelfit\signing_key.pem`. One place only; the ACL is the maintainer alone.
+  Do not commit it. Do not paste it on screen or in an Issue.
 
-1. 新しい鍵を作る(下記)。公開鍵を `src/genmodelfit/data/signing_keys/<年-月>.pub` として**足す**(古い鍵は残す)。
-   この版を出し、利用者(特に AI生成キット)に上げてもらう。この時点では署名はまだ古い鍵。
-   新旧どちらの版も、古い鍵の署名を通す。
-2. 新しい版が普及したら、`data-signing` のシークレットを新しい鍵に替え、バックアップも置き換える。以後の署名は新しい鍵。
-   手順 1 の版以降は通す。手順 1 より前の版は新しい署名を通せなくなる(`--from-release` が失敗し、手元のデータのまま動く)。
-3. さらに後の版で古い公開鍵のファイルを消す。
+### Rotating keys (regularly, or as a precaution)
 
-鍵の作り方(秘密鍵はファイルにだけ書く。画面に出さない。上書きする前に古いバックアップを別名で残す):
+The public keys are bundled with each version, so **the keys a version trusts are fixed when the version is released.** Bundle the old and new keys side by side and switch in stages.
+
+1. Create a new key (see below).
+   - **Add** its public key as `src/genmodelfit/data/signing_keys/<year-month>.pub` (keep the old key).
+   - Release this version and have users (especially AI生成キット) upgrade.
+   - Signing still uses the old key at this point.
+   - Both old and new versions accept signatures from the old key.
+2. When the new version is widespread, switch the `data-signing` secret to the new key and replace the backup. Signing then uses the new key.
+   - Versions from step 1 onward accept it.
+   - Versions before step 1 can no longer accept new signatures (`--from-release` fails, and they keep working with the data they have).
+3. In a later version, delete the old public key file.
+
+How to create a key. Write the private key to a file only and never show it on screen. Before overwriting, keep the old backup under another name.
 
 ```powershell
 python -c "
@@ -356,25 +420,25 @@ open(sys.argv[2], 'wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.Publ
 icacls "$env:USERPROFILE\.config\genmodelfit" /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
 ```
 
-手順 2 でシークレットを替えるとき(値は標準入力から渡し、画面に出さない):
+To replace the secret in step 2 (pass the value on standard input, never on screen):
 
 ```powershell
 cmd /c "gh secret set GENMODELFIT_SIGNING_KEY --env data-signing -R laxshmate/genmodelfit < ""%USERPROFILE%\.config\genmodelfit\signing_key.new.pem"""
 ```
 
-### 鍵が漏れたら
+### If a key leaks
 
-署名の信頼が失われるので急ぐ。`data-latest` を消しても、鍵を持つ攻撃者は通信の途中に割り込める立場
-(社内の TLS 検査の装置・乗っ取った DNS など)から偽の一覧を配れる。漏れた鍵を信じている版が残る限り
-被害は止まらないので、**回復は鍵の入れ替えと新しい版の配布**で行う。
+Trust in signatures is lost, so move fast.
 
-1. `data-signing` のシークレット `GENMODELFIT_SIGNING_KEY` を削除し、data.yml を無効にする。
-2. 新しい鍵を作り、漏れた鍵の公開鍵ファイルを**消して**新しい公開鍵だけを同梱した版を**緊急で**出す
-   (段階を踏む入れ替えはしない)。利用者(特に AI生成キット)に上げてもらう。
-3. 漏れた鍵を信じている古い版には、`--from-release` を使わないよう案内する(同梱のデータだけで動く)。
-4. シークレットを新しい鍵で入れ直し、data.yml で新しい鍵の署名の一覧を配る。
+- Deleting `data-latest` is not enough. An attacker with the key can serve a fake list from a position on the network path, such as a corporate TLS-inspection device or a hijacked DNS.
+- Harm continues as long as versions that trust the leaked key remain. **Recovery is replacing the key and shipping a new version.**
 
-## 使わないものの確認
+1. Delete the secret `GENMODELFIT_SIGNING_KEY` of `data-signing`, and disable data.yml.
+2. Create a new key. **Delete** the leaked key's public key file, and release **urgently** a version that bundles only the new public key (no staged rotation). Have users (especially AI生成キット) upgrade.
+3. Tell users of old versions that trust the leaked key not to use `--from-release` (they work with the bundled data alone).
+4. Set the secret again with the new key, and ship a list signed with the new key through data.yml.
 
-- PyPI の API トークンは作らない・保存しない(Trusted Publishing だけ)。
-- 秘密鍵はリポジトリに入れない。リポジトリ全体のシークレットにも置かない。CI のログに出さない(`--key-env` で環境変数から読む)。
+## What we do not use
+
+- PyPI API tokens are not created or stored (Trusted Publishing only).
+- The private key is not put in the repository, and not in repository-wide secrets. It is kept out of CI logs (it is read from an environment variable with `--key-env`).

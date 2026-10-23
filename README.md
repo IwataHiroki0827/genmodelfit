@@ -10,7 +10,25 @@ It is inspired by [llmfit](https://github.com/AlexsJones/llmfit), which does thi
 It is **not** an official llmfit project or fork. Status: alpha
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md)).
 
-Quick start:
+![genmodelfit recommend on a PC with 8 GiB VRAM and 32 GiB RAM](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.png)
+
+The top of `genmodelfit recommend --vram 8 --ram 32 -n 2` (model list as of 2026-10-22). The list is updated weekly, so the models and counts change.
+
+## Quick start
+
+**Try it without installing.** If you have [uv](https://docs.astral.sh/uv/getting-started/installation/), one command
+is enough. uv runs genmodelfit in its own temporary environment (and fetches Python if needed); nothing is added to
+your Python or PATH.
+
+```
+uvx genmodelfit recommend         # the best models for this PC, per type
+uvx genmodelfit system            # what was detected on this PC
+```
+
+Every command in this README works this way: write `uvx genmodelfit` instead of `genmodelfit`.
+`uvx genmodelfit@latest …` makes uv check for a newer version first.
+
+**Install it** to use the `genmodelfit` command directly ([details](https://github.com/laxshmate/genmodelfit#install)):
 
 ```
 pipx install genmodelfit          # or: uv tool install genmodelfit / pip install genmodelfit
@@ -32,7 +50,7 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 
 ### Requirements
 
-- Windows, Linux or macOS, Python 3.10 or newer.
+- Windows, Linux or macOS, Python 3.10 or newer (with `uvx`, uv provides Python if you have none).
 - GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
   newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
   (MPS, macOS 14 or newer) are judged as estimates (at most Good, unless a measurement at the same settings sets the
@@ -45,6 +63,9 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
   too; your results let us tighten them ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
 ### Install
+
+Not needed to try it: `uvx genmodelfit …` runs it without installing ([Quick start](https://github.com/laxshmate/genmodelfit#quick-start)).
+To keep the `genmodelfit` command:
 
 ```
 pipx install genmodelfit        # once: pipx ensurepath, then open a new terminal
@@ -135,7 +156,7 @@ print(fit.to_dict()["fit_level"])  # only names in gmf.__all__ are stable API
 db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```
 
-Only names in `gmf.__all__` are stable API ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#python-api-stable--python-の公開の範囲)).
+Only names in `gmf.__all__` are stable API ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#python-api-stable)).
 
 ### Judge another PC
 
@@ -216,7 +237,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 |---|---|
 | Type | image, video, music, sfx, tts, 3d |
 | Status | fit level (below) |
-| Score | 0–100: fit level, VRAM headroom, Verified, measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)) |
+| Score | 0–100: fit level, VRAM headroom, Verified, measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score)) |
 | Censored | `Y` censored / `N` uncensored; only with `--content all` or `uncensored` |
 | Model | one row per model (same weights); long names are cut in the middle with `…` |
 | Use | `gen`, `edit`, `i2v`, … (`genmodelfit types`); `+N` = N more workflows of the same model (`--all-workflows`) |
@@ -255,6 +276,8 @@ ComfyUI uses more VRAM when more is free, so a peak measured on a large GPU is n
 Current counts and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md).
 
 ## 4. Reference
+
+Every page of the documentation, with who each one is for: [docs/README.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/README.md).
 
 ### Commands
 
@@ -338,7 +361,7 @@ measurements; you open the pull request yourself. Steps: [CONTRIBUTING.md](https
 - genmodelfit never sends hardware details, measurements or prompts. A measurement is shared only if you open a
   pull request yourself ([Contributing measurements](https://github.com/laxshmate/genmodelfit#contributing-measurements)).
   No `~/.netrc` credentials, no telemetry.
-- Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects--通信と書き込み) ("Side effects").
+- Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects) ("Side effects").
 
 ### License
 

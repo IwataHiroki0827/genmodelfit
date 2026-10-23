@@ -40,6 +40,10 @@
   Windows と WSL で順に流す(約 1 時間。メモリを食わないよう 1 つずつ)。GitHub の ci.yml は確認用で、このリポジトリの
   ブランチの PR では動かない(main へのマージ後・手動・フォークからの PR だけ)。PR の説明に手元の結果を書く。
   ci.yml の検査を変えたら ci_local.py も合わせる(tests/test_release.py が対応を見る)
+- **文書は英語版と日本語版の組**(2026-10-23。README / README.ja、CONTRIBUTING / CONTRIBUTING.ja、docs の X.md / X.ja.md。
+  目次は docs/README.md)。片方を直したらもう片方も同じ内容に直す。1 つのファイルに 2 つの言語を混ぜない。
+  コードのコメントは `docs/<ページ>.md「節の名前」` で引き、節の名前は日本語版の見出しの文字にする。
+  README.md は PyPI にも出るので、中のリンクは GitHub の絶対 URL にする。tests/test_docs.py が組・リンク・見出し・引いた節の名前を検査する
 
 ## コマンド
 
@@ -84,7 +88,7 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
   言語は当て推量で `ja` を付けない(HF のカードか手の表に根拠があるものだけ。多言語の部品の表だけでは付けない。
   カードの言語が上限)。当てるたびに材料(保存した `card_languages`・表・手の表)から作り直し、前の値は引き継がない。手のモデルのライセンスは HF のカードの原文で確かめて書く
 - **実測や、実測のあるモデルのファイル情報を変えたら `python -m genmodelfit.calibrate` で合わせ直し、
-  出た表で docs/accuracy.md を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
+  出た表で docs/accuracy.ja.md(出力をそのまま貼る)と docs/accuracy.md(同じ数で英語に訳す)を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
 - キャッシュ: platformdirs の user_cache_dir(`GENMODELFIT_CACHE_DIR` で変えられる)
 
 ## ハードウェアの検出(2026-10-20、#21。docs/hardware.md が正本)

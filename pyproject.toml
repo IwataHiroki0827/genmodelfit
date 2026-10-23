@@ -47,7 +47,7 @@ genmodelfit = "genmodelfit.cli:main"
 Homepage = "https://github.com/laxshmate/genmodelfit"
 Issues = "https://github.com/laxshmate/genmodelfit/issues"
 Changelog = "https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md"
+Documentation = "https://github.com/laxshmate/genmodelfit/blob/main/docs/README.md"
 
 [tool.hatch.version]
 path = "src/genmodelfit/_version.py"
@@ -57,8 +57,8 @@ packages = ["src/genmodelfit"]
 
 # CLAUDE.md(開発の決まり)・.github は配らない。LICENSE と THIRD_PARTY_NOTICES は license-files で入る
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "README.md", "README.ja.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "THIRD_PARTY_NOTICES"]
-exclude = ["__pycache__", "*.pyc"]
+include = ["src", "tests", "docs", "README.md", "README.ja.md", "CHANGELOG.md", "CONTRIBUTING.md", "CONTRIBUTING.ja.md", "LICENSE", "THIRD_PARTY_NOTICES"]
+exclude = ["__pycache__", "*.pyc", "docs/images"]
 
 [tool.ruff]
 line-length = 110

@@ -1,474 +1,570 @@
-# ハードウェアの検出と判定(#21)
+# Hardware detection and judging (#21)
 
-この PC で何を調べ、どう判定に使うか。実装は `src/genmodelfit/hardware.py`(検出)と
-`src/genmodelfit/estimate.py`(`gpu_precision`・`ram_limit`)。出力の形は `docs/schema.md`「System」。
-一次資料は 2026-10-20 に読んだ(版・コミットは各節に書く)。llmfit の `llmfit-core/src/hardware.rs`
-(コミット bffd1b6、MIT)は考え方だけを参考にし、コードは写していない。
+**English** · [日本語](hardware.ja.md)
 
-## 何を調べるか
+What genmodelfit checks on this PC, and how each item feeds the judgment.
+For developers and contributors who want to know how GPUs, memory and drivers are detected, and which primary sources the rules rest on.
+The implementation is `src/genmodelfit/hardware.py` (detection) and `src/genmodelfit/estimate.py` (`gpu_precision`, `ram_limit`).
+The output shape is in [schema.md](schema.md), section "System".
 
-| 項目 | どこから | 判定に使うか |
+The primary sources were read on 2026-10-20 (versions and commits are given in each section).
+llmfit's `llmfit-core/src/hardware.rs` (commit bffd1b6, MIT) was used for ideas only; no code was copied.
+
+## Contents
+
+- [What it checks](#what-it-checks)
+- [nvidia-smi](#nvidia-smi)
+- [Generations, PyTorch and drivers](#generations-pytorch-and-drivers)
+- [Precision (dtype and VRAM chosen by ComfyUI)](#precision-dtype-and-vram-chosen-by-comfyui)
+- [GPUs other than NVIDIA (0.7.0, #22, #23)](#gpus-other-than-nvidia-070-22-23)
+- [Families that run on CPU (0.7.0, #39)](#families-that-run-on-cpu-070-39)
+- [Measurements that succeeded on the same GPU (0.7.0, #26)](#measurements-that-succeeded-on-the-same-gpu-070-26)
+- [Memory and virtual memory](#memory-and-virtual-memory)
+- [VRAM used by the display etc. (current free)](#vram-used-by-the-display-etc-current-free)
+- [Comparison with llmfit](#comparison-with-llmfit)
+- [Timing](#timing)
+- [Tests](#tests)
+
+## What it checks
+
+| Item | Source | Used for judging? |
 |---|---|---|
-| NVIDIA の GPU(名前・VRAM の総量・空き・使用量・ドライバ・compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | 使う(backend が `cuda` のものの最大の 1 枚) |
-| NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM・GTT は sysfs の `mem_info_vram_total`・`mem_info_gtt_total`)。macOS: `system_profiler SPDisplaysDataType -json` | NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で使う(0.7.0、下の「NVIDIA 以外の GPU」)。PCI の型番 ID(`pci_id`)も取る(0.9.0。同じ GPU の実測の照合と、bench の提出に使う) |
-| 物理メモリ | psutil(Linux はコンテナ(cgroup)の上限があればそれ) | 使う |
-| 仮想メモリ | Windows: `GlobalMemoryStatusEx`(ctypes)とレジストリ `Memory Management\PagingFiles`。Linux: `/proc/swaps`(zram を除く)。macOS: 自動で伸びる扱い | 使う(足りないときの上限) |
-| ディスクの空き | `shutil.disk_usage` | 表示だけ |
+| NVIDIA GPU (name, total VRAM, free, used, driver, compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | Yes (the one with the most VRAM among those with backend `cuda`) |
+| Display adapters, including non-NVIDIA | Windows: PowerShell `Get-CimInstance Win32_VideoController` + registry `HardwareInformation.qwMemorySize`. Linux: `lspci -Dnn` (AMD VRAM / GTT from sysfs `mem_info_vram_total` / `mem_info_gtt_total`). macOS: `system_profiler SPDisplaysDataType -json` | Only when no NVIDIA GPU is usable: AMD, Intel and Apple are judged with the support table (0.7.0; see "GPUs other than NVIDIA" below). The PCI model ID (`pci_id`) is also read (0.9.0; used to match measurements of the same GPU and for bench submissions) |
+| Physical memory | psutil (on Linux, the container (cgroup) limit if there is one) | Yes |
+| Virtual memory | Windows: `GlobalMemoryStatusEx` (ctypes) and registry `Memory Management\PagingFiles`. Linux: `/proc/swaps` (zram excluded). macOS: treated as growing automatically | Yes (the upper limit when memory is short) |
+| Free disk | `shutil.disk_usage` | Display only |
 
-調べないもの・残さないもの: PC 名・ユーザ名・GPU の UUID・PCI の差し場所(bus id)・PNPDeviceID の後半(個体・差し場所の ID)。
-WMI の PNPDeviceID は、型番を表す前半(`PCI\VEN_xxxx&DEV_xxxx&SUBSYS_…&REV_…`)をレジストリとの突き合わせに使う。
-そのうち VEN・DEV の部分だけを PCI の型番 ID(`pci_id`。`1002:744c` の形)として出力に残す(0.9.0。同じ GPU の実測の照合に使う)。
-SUBSYS・REV と後半(個体・差し場所の ID)は残さない(`tests/test_hardware.py::test_system_json_has_no_private_values`)。
-Linux も `lspci -nn` の `[1002:744c]` から同じ形で残す。
-取った情報は手元で使うだけで、どこにも送らない。
+Not read and not kept: PC name, user name, GPU UUID, PCI slot (bus id), the latter part of PNPDeviceID (instance / slot IDs).
+
+- From the WMI PNPDeviceID, the first part that names the model (`PCI\VEN_xxxx&DEV_xxxx&SUBSYS_...&REV_...`) is used to match registry entries.
+- Only its VEN and DEV parts are kept in the output as the PCI model ID (`pci_id`, in the form `1002:744c`) (0.9.0; used to match measurements of the same GPU).
+- SUBSYS, REV and the latter part (instance / slot IDs) are not kept (`tests/test_hardware.py::test_system_json_has_no_private_values`).
+- On Linux the same form is kept from `[1002:744c]` in `lspci -nn`.
+
+What is read is used locally and never sent anywhere.
 
 ## nvidia-smi
 
-- 場所: PATH → `%SystemRoot%\System32\nvidia-smi.exe`(今の Windows のドライバ)→
-  `%ProgramFiles%\NVIDIA Corporation\NVSMI\nvidia-smi.exe`(古いドライバ)→ Linux の `/usr/bin`・
-  WSL の `/usr/lib/wsl/lib`・`/usr/local/bin`。
-- 時間制限 10 秒(普段は 0.1〜0.5 秒)。Windows では窓を出さない(`CREATE_NO_WINDOW`。GUI のアプリから呼ばれるため)。
-- 出力は UTF-8 として読み、読めない字は置き換える。`, ` で区切り、項目の数が合わない行は飛ばす
-  (エラーの文言・空行・壊れた行)。`[N/A]`・`[Not Supported]`・`N/A`・空は「分からない」。
-  空きが分からず総量と使用量があれば 総量 − 使用量。単位付き(`8192 MiB`)・カンマの小数点(`8,6`)も読む。
-- VRAM の総量が返らない GPU(メモリを CPU と共有する GB10 など)は判定に使わない(backend `none`、理由付き)。
-- `compute_cap` を知らない古い nvidia-smi は「Field "compute_cap" is not a valid field to query.」で終了コード 2 になる
-  (この PC で存在しない項目を聞いて確かめた。どのドライバの版で入ったかは一次資料で確かめられなかった)。
-  そのときは `compute_cap` を除いて聞き直し、GPU 名の表(`hardware._NAME_CC`)から推す。迷う名前(ノート用の
-  GTX 960M など、同じ型番で世代が混ざるもの)は推さない。表は NVIDIA の一覧
-  (https://developer.nvidia.com/cuda-gpus 、https://developer.nvidia.com/cuda-legacy-gpus)に合わせた。
-  例: 「NVIDIA TITAN X」は Pascal(6.1)、「GeForce GTX TITAN X」は Maxwell(5.2)、Quadro K620 / K1200 / K2200 は Maxwell(5.0)、
-  ノート用の RTX 2050 は Ampere(8.6)。名前から推した値は `compute_capability_source: "name"`。
-- 終了コードが 0 でなくても、読める行は使う(1 枚だけ「Unable to determine the device handle … Unknown Error」で
-  読めないときなど)。読めなかった枚数を notes に書く(エラーの文言は PCI の差し場所を含むので写さない)。
-- 複数の GPU: ComfyUI は 1 枚で動くので、判定に使えるもの(backend `cuda`)のうち VRAM が最大の 1 枚を使う。
-  ComfyUI は既定で CUDA の 0 番(`get_torch_device` → `torch.cuda.current_device()`)を使い、CUDA の番号の付け方の既定は
-  `CUDA_DEVICE_ORDER=FASTEST_FIRST`(速い順。nvidia-smi の PCI の順とは違うことがある)。どれが 0 番かは nvidia-smi からは
-  確かに決められないので、違う型番の GPU が複数あるときは「ComfyUI を `--cuda-device` で最大の GPU に向ける」と notes に書く。
-- `--vram` で上書きしたとき: 判定に使える NVIDIA の GPU があればその世代・ドライバ・精度のまま VRAM だけを変える
-  (この PC の GPU の VRAM が違ったら、の判定)。無い・使えない世代なら、世代の分からない仮の GPU にする(精度の直しは無し)。
-  `--ram` は搭載量だけを変え、この PC のページファイル・コミットは使わない(別の PC の想定なので)。
+- Location: PATH, then `%SystemRoot%\System32\nvidia-smi.exe` (current Windows drivers), then `%ProgramFiles%\NVIDIA Corporation\NVSMI\nvidia-smi.exe` (old drivers), then `/usr/bin` on Linux, `/usr/lib/wsl/lib` on WSL, `/usr/local/bin`.
+- Time limit 10 seconds (normally 0.1 to 0.5 seconds). On Windows no window is shown (`CREATE_NO_WINDOW`, because GUI apps call it).
+- How the output is read:
+  - Read as UTF-8; unreadable characters are replaced.
+  - Split on `, `; lines with the wrong number of fields are skipped (error messages, blank lines, broken lines).
+  - `[N/A]`, `[Not Supported]`, `N/A` and empty mean "unknown".
+  - If free is unknown but total and used are known, free = total - used.
+  - Values with units (`8192 MiB`) and comma decimals (`8,6`) are also read.
+- A GPU that returns no total VRAM (such as GB10, which shares memory with the CPU) is not used for judging (backend `none`, with a reason).
+- An old nvidia-smi that does not know `compute_cap` exits with code 2 and "Field "compute_cap" is not a valid field to query." (confirmed on this PC by asking for a field that does not exist; the driver version that introduced it could not be confirmed in primary sources).
+  - It then asks again without `compute_cap` and infers it from the GPU name table (`hardware._NAME_CC`).
+  - Ambiguous names (for example the laptop GTX 960M, where one model name mixes generations) are not inferred.
+  - The table follows NVIDIA's lists (https://developer.nvidia.com/cuda-gpus, https://developer.nvidia.com/cuda-legacy-gpus).
+  - Examples: "NVIDIA TITAN X" is Pascal (6.1), "GeForce GTX TITAN X" is Maxwell (5.2), Quadro K620 / K1200 / K2200 are Maxwell (5.0), the laptop RTX 2050 is Ampere (8.6).
+  - A value inferred from the name is marked `compute_capability_source: "name"`.
+- Even if the exit code is not 0, readable lines are used (for example when one GPU cannot be read: "Unable to determine the device handle ... Unknown Error"). The number of GPUs that could not be read is written to notes (the error text contains the PCI slot, so it is not copied).
+- Multiple GPUs: ComfyUI runs on one GPU, so the one with the most VRAM among the usable ones (backend `cuda`) is used.
+  - ComfyUI uses CUDA device 0 by default (`get_torch_device` -> `torch.cuda.current_device()`).
+  - CUDA numbering defaults to `CUDA_DEVICE_ORDER=FASTEST_FIRST` (fastest first; this can differ from the PCI order of nvidia-smi).
+  - nvidia-smi cannot tell for sure which one is device 0. With GPUs of different models, notes says "point ComfyUI at the largest GPU with `--cuda-device`".
+- When `--vram` overrides:
+  - If there is a usable NVIDIA GPU, only its VRAM changes; its generation, driver and precision are kept (the judgment "if this PC's GPU had a different VRAM").
+  - If there is none, or its generation is not usable, a placeholder GPU of unknown generation is used (no precision adjustment).
+  - `--ram` changes only the installed amount and does not use this PC's page file or commit (it assumes another PC).
 
-## 世代と PyTorch・ドライバ
+## Generations, PyTorch and drivers
 
-### PyTorch の CUDA 版のビルドが対応する compute capability
+### Compute capabilities supported by PyTorch CUDA builds
 
-PyTorch の配布物は機械語(SASS)だけを入れる(`.ci/manywheel/build_env_setup.py` v2.14.1 の `_ptx_arches`:
-「Release/RC wheels ship SASS-only」)。機械語は「同じ major で minor が同じか大きい GPU」でだけ動く
-(CUDA Programming Guide 1.3.4.1 Binary Compatibility:
-https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/cuda-platform.html)。例: 8.6 向けは 8.6・8.9 で動き、
-8.0 や 9.0 では動かない。Jetson の 5.3・6.2・7.2・8.7 などは別扱い(PyTorch の `DEVICE_REQUIREMENT`)。
+PyTorch ships machine code (SASS) only (`_ptx_arches` in `.ci/manywheel/build_env_setup.py` v2.14.1: "Release/RC wheels ship SASS-only").
 
-| ビルド | PyTorch の版 | x86_64 の compute capability | 出典 |
+- Machine code runs only on GPUs with the same major and a minor equal to or larger (CUDA Programming Guide 1.3.4.1 Binary Compatibility: https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/cuda-platform.html).
+- Example: code for 8.6 runs on 8.6 and 8.9, but not on 8.0 or 9.0.
+- Jetson 5.3, 6.2, 7.2, 8.7 and similar are handled separately (`DEVICE_REQUIREMENT` in PyTorch).
+
+| Build | PyTorch versions | x86_64 compute capabilities | Source |
 |---|---|---|---|
-| cu132 | 2.12〜2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.14.1 `torch/cuda/__init__.py` `PYTORCH_RELEASES_CODE_CC`、`.ci/pytorch/windows/build_env_setup.py` |
-| cu130 | 2.9〜2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | 同上 |
-| cu129 | 2.8〜2.13 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.13.0 `PYTORCH_RELEASES_CODE_CC`、`.ci/pytorch/windows/internal/cuda_config.bat` |
-| cu128 | 2.7〜2.11 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.11.0 `.ci/manywheel/build_cuda.sh`・`cuda_config.bat` |
-| cu126 | 〜2.14 | 5.0, 6.0, 6.1(Windows), 7.0, 7.5, 8.0, 8.6, 9.0 | v2.14.1 同上 |
+| cu132 | 2.12 to 2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.14.1 `torch/cuda/__init__.py` `PYTORCH_RELEASES_CODE_CC`, `.ci/pytorch/windows/build_env_setup.py` |
+| cu130 | 2.9 to 2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | same |
+| cu129 | 2.8 to 2.13 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.13.0 `PYTORCH_RELEASES_CODE_CC`, `.ci/pytorch/windows/internal/cuda_config.bat` |
+| cu128 | 2.7 to 2.11 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.11.0 `.ci/manywheel/build_cuda.sh`, `cuda_config.bat` |
+| cu126 | 2.6 to 2.14 | 5.0, 6.0, 6.1 (Windows), 7.0, 7.5, 8.0, 8.6, 9.0 | v2.14.1, same as above |
 
-各版の CUDA 版は `.github/scripts/generate_binary_build_matrix.py` の `CUDA_ARCHES`
-(2.7: 11.8 / 12.6 / 12.8、2.8: 12.6 / 12.8 / 12.9、2.9: 12.6 / 12.8 / 13.0、2.10・2.11: 12.6 / 12.8 / 12.9 / 13.0、
-2.12: 12.6 / 13.0 / 13.2、2.13: 12.6 / 12.9 / 13.0 / 13.2、2.14.1: 12.6 / 13.0 / 13.2)。
-cu128・cu129 は今の版(2.14)には無いが、配布先に残っていて、ComfyUI の同梱版や AI生成キットのように版を固定して
-使う側があるので数える(ドライバ 580 未満の Blackwell が動く道)。
+The CUDA versions of each PyTorch version are in `CUDA_ARCHES` of `.github/scripts/generate_binary_build_matrix.py`:
 
-### CUDA の最低ドライバ
+- 2.7: 11.8 / 12.6 / 12.8
+- 2.8: 12.6 / 12.8 / 12.9
+- 2.9: 12.6 / 12.8 / 13.0
+- 2.10, 2.11: 12.6 / 12.8 / 12.9 / 13.0
+- 2.12: 12.6 / 13.0 / 13.2
+- 2.13: 12.6 / 12.9 / 13.0 / 13.2
+- 2.14.1: 12.6 / 13.0 / 13.2
 
-NVIDIA CUDA Toolkit 13.4 Update 2 のリリースノート(https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html)の
-表 3「CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility」: 13.x は 580 以上、
-12.x は 525 以上 580 未満(それより新しいドライバでも動く)。表 3 は OS で分けていないので、そのまま使う
-(表 4 の 527.41 / 525.60.13 は CUDA 12.0 GA の同梱ドライバの版で、最低の条件ではない)。
-PyTorch の配布物は機械語だけで PTX の JIT を使わないので、マイナー版の互換の範囲で動くとみなした。
+cu128 and cu129 are not in the current version (2.14).
+They are still counted, because they remain on the download site and some users pin versions, such as ComfyUI's bundled build and AI生成キット (a way for Blackwell to run with a driver older than 580).
 
-| ビルド | Windows・Linux |
+### Minimum CUDA driver
+
+This uses Table 3 "CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility" in the NVIDIA CUDA Toolkit 13.4 Update 2 release notes (https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html).
+
+- 13.x needs 580 or newer. 12.x needs 525 or newer (Table 3 gives 525 up to below 580 for 12.x; newer drivers also work).
+- Table 3 does not split by OS, so it is used as is (Table 4's 527.41 / 525.60.13 are the drivers bundled with CUDA 12.0 GA, not a minimum requirement).
+- PyTorch ships machine code only and does not use PTX JIT, so it is assumed to run within minor-version compatibility.
+
+| Build | Windows and Linux |
 |---|---|
-| cu126 / cu128 / cu129 | 525 以上 |
-| cu130 / cu132 | 580 以上 |
+| cu126 / cu128 / cu129 | 525 or newer |
+| cu130 / cu132 | 580 or newer |
 
-世代ごとの最低(`hardware.ARCH_MIN_DRIVER`): Blackwell(10.x・12.x)の機械語が入るのは CUDA 12.8 から
-(PyTorch の cu128 以降。上の表)で、表 4 の CUDA 12.8 GA は Linux 570.26 / Windows 570.65。570 未満では CPU として判定する
-(それより古いドライバは Blackwell を知らないので、nvidia-smi に出ること自体がまれ)。ほかの世代はビルドの条件と同じ。
+Minimum per generation (`hardware.ARCH_MIN_DRIVER`):
 
-WSL の nvidia-smi は Windows のドライバの版を返すので、Windows の表で見る。
+- Machine code for Blackwell (10.x, 12.x) is included from CUDA 12.8 (PyTorch cu128 and later; see the table above).
+- CUDA 12.8 GA in Table 4 is Linux 570.26 / Windows 570.65. Below 570 the PC is judged as CPU (older drivers do not know Blackwell, so it rarely even shows up in nvidia-smi).
+- Other generations follow the build requirements.
 
-### 判定
+nvidia-smi on WSL returns the Windows driver version, so read it against the Windows column.
 
-| 世代 | compute capability | 動くビルド | ドライバの条件 | 判定 |
+### Verdict
+
+| Generation | Compute capability | Builds that run | Driver requirement | Verdict |
 |---|---|---|---|---|
-| Fermi 以前・Kepler | 〜3.7 | なし | — | **CPU**(ドライバを更新しても動かない) |
+| Fermi and older, Kepler | up to 3.7 | none | — | **CPU** (a driver update does not help) |
 | Maxwell | 5.0, 5.2 | cu126 | 525 | GPU |
-| Pascal | 6.0, 6.1 | cu126 | 同上 | GPU |
-| Volta | 7.0 | cu126 | 同上 | GPU |
-| Turing | 7.5 | cu126〜cu132 | 同上(cu13x は 580) | GPU |
-| Ampere | 8.0, 8.6 | cu126〜cu132 | 同上 | GPU |
-| Ada | 8.9 | cu126〜cu132(8.6 の機械語) | 同上 | GPU |
-| Hopper | 9.0 | cu126〜cu132 | 同上 | GPU |
-| Blackwell | 10.x, 12.x | cu128〜cu132 | 570(世代の最低)/ 580(cu13x) | GPU |
-| それより新しい | 13.x〜 | なし | — | **CPU**(PyTorch の対応を待つ) |
+| Pascal | 6.0, 6.1 | cu126 | same | GPU |
+| Volta | 7.0 | cu126 | same | GPU |
+| Turing | 7.5 | cu126 to cu132 | same (580 for cu13x) | GPU |
+| Ampere | 8.0, 8.6 | cu126 to cu132 | same | GPU |
+| Ada | 8.9 | cu126 to cu132 (8.6 machine code) | same | GPU |
+| Hopper | 9.0 | cu126 to cu132 | same | GPU |
+| Blackwell | 10.x, 12.x | cu128 to cu132 | 570 (generation minimum) / 580 (cu13x) | GPU |
+| Newer than that | 13.x and up | none | — | **CPU** (wait for PyTorch support) |
 
-- 動くビルドが 1 つも無い世代、またはドライバがどのビルドにも足りないときは backend `none` にして CPU として判定する。
-  理由は `Gpu.notes` と `SystemInfo.notes`(「ドライバを更新すれば GPU で動く」かどうかも書く)。
-- 世代が分からない(nvidia-smi も名前の表も分からない)・ドライバの版が読めないときは断らない(分からないと書く)。
-- `torch_cuda` は動くビルドの一覧(新しい順)で、参考の情報。判定には使っていない。
-- AI生成キットの知見(Kepler は CPU、Maxwell・Pascal・Volta は cu126、Quadro K620/K1200/K2200 は Maxwell)と一致する。
+- If a generation has no build that runs, or the driver is too old for every build, the backend is set to `none` and the PC is judged as CPU. The reason goes to `Gpu.notes` and `SystemInfo.notes`, including whether "updating the driver makes it run on GPU".
+- If the generation is unknown (nvidia-smi and the name table both fail) or the driver version cannot be read, it does not refuse; it says it does not know.
+- `torch_cuda` is the list of builds that run (newest first). It is for reference and is not used for judging.
+- It agrees with what AI生成キット learned (Kepler is CPU; Maxwell, Pascal and Volta use cu126; Quadro K620/K1200/K2200 are Maxwell).
 
-## 精度(ComfyUI が選ぶ dtype と VRAM)
+## Precision (dtype and VRAM chosen by ComfyUI)
 
-ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `comfy/sd.py` を読んだ(GPL-3.0。import しない。
-名前の一覧だけを事実として写した: `hardware._COMFY_FP16_PASCAL`・`_COMFY_FP16_BROKEN`)。起動の引数を付けない既定の動き:
+This section is based on `comfy/model_management.py` and `comfy/sd.py` of ComfyUI (commit b1a247c, 2026-10-20).
 
-- `should_use_fp16`: major ≥ 8 は使う。major < 6(Maxwell 以前)は使わない。名前に 1080 / 1070 / 1060 / 1050 / titan x /
-  p3000 … / p6 / p4 を含む GPU(Pascal)は **Windows だけ**使う(Linux は fp32 のほうが速いとして使わない)。
-  それ以外の major < 7(GT 1030 など)は使わない。1660 / 1650 / 1630 / T500 / T550 / T600 / MX550 / MX450 / CMP 30HX /
-  T2000 / T1000 / T1200 を名前に含む GPU は「fp16 が壊れている」として使わない。それ以外(Volta・Turing の RTX)は使う。
-- `should_use_bf16`: major ≥ 8。`supports_fp8_compute`: 8.9 以上(Windows は torch 2.4 以上)。
-- 本体の重み(`unet_dtype` model_management.py:1136〜1187 / `unet_manual_cast` 1189〜1211): 系統ごとの
-  `supported_inference_dtypes`(下の表)の中から選ぶ。
-  - fp16 を持つ系統(SDXL・Flux・Wan など)は、bf16 を持たない GPU でも fp16 で載せて fp16 で計算する(bf16 の重みも同じ 2 バイト)。
-  - **fp16 を持たない系統**(`[bfloat16, float32]`: LTX・Qwen Image・Z-Image・HunyuanVideo・ACE-Step など)は、bf16 を持たない
-    GPU(Pascal・Volta・Turing)では `unet_manual_cast` が float32 を返す(計算は fp32、作業用メモリは 2 倍)。重みは
-    `should_use_bf16(manual_cast=True)` が「fp32 にすると `total × 0.88 − 最小の作業用メモリ` に収まらない」ときだけ bf16 のまま、
-    収まるなら fp32(2 倍)で載せる。
-  - 半精度を使わない GPU(Maxwell など)も、fp32 にしても収まるときだけ fp32 に広げ、収まらなければ 2 バイトのまま計算だけ fp32。
-  - fp8 の重みは、fp8 の計算を持たない GPU では、fp16 に広げても収まれば広げ、収まらなければ fp8 のまま(計算のたびに変換)。
-    fp8_scaled・int8_convrot など量子化の設定を持つ重みは量子化のまま(`quant_config`。sd.py:2268)。
-- テキストエンコーダ: 既定は fp16。ファイルの精度が 2 バイト以下ならその精度のまま載せる(`pick_weight_dtype`)。
-- VAE(`vae_dtype` model_management.py:1290): VAE ごとの `working_dtypes`(sd.py。既定は `[bfloat16, float32]`: sd.py:516)の
-  中から、fp16 は `should_use_fp16`、bf16 は `should_use_bf16` のときに選び、どちらも無ければ fp32。2D の KL VAE
-  (SD・SDXL・SD3・Flux の ae・Flux2 の VAE。sd.py:676〜705 の既定の枝)・LTX(780)・Mage(627)は fp16 を持たないので、
-  bf16 を持たない GPU では fp32。Wan(849・857・873)・HunyuanVideo(791・824)・CogVideoX(808)などは fp16 を持つ。
-  仕上げで VRAM が足りなければ ComfyUI はタイルに分けて続ける(遅い)。
-- 作業用メモリ: ComfyUI 自身の見積もり(`model_base.memory_required`、VAE の `memory_used_decode`)が
-  計算の精度の大きさ(`dtype_size`)を掛けている。fp32 で計算すると 2 倍。
+- It is GPL-3.0, so nothing is imported. Only lists of names were copied, as facts (`hardware._COMFY_FP16_PASCAL`, `_COMFY_FP16_BROKEN`).
+- Everything below is the default behavior, without launch arguments.
 
-見積もりへの効かせ方(`estimate.gpu_precision`。コードで確かなところだけ):
+**Whether fp16, bf16 and fp8 are used**:
 
-| GPU | 例 | Gpu.compute_dtype | 系統・VAE | 見積もりの直し |
+- `should_use_fp16`:
+  - Used when major >= 8.
+  - Not used when major < 6 (Maxwell and older).
+  - GPUs whose name contains 1080 / 1070 / 1060 / 1050 / titan x / p3000 ... / p6 / p4 (Pascal) use it **on Windows only** (on Linux it is not used because fp32 is faster).
+  - Other GPUs with major < 7 (such as GT 1030) do not use it.
+  - GPUs whose name contains 1660 / 1650 / 1630 / T500 / T550 / T600 / MX550 / MX450 / CMP 30HX / T2000 / T1000 / T1200 are treated as "fp16 is broken" and do not use it.
+  - Everything else (Volta, Turing RTX) uses it.
+- `should_use_bf16`: major >= 8.
+- `supports_fp8_compute`: 8.9 or newer (on Windows, torch 2.4 or newer).
+
+**Main model weights** (`unet_dtype` model_management.py:1136 to 1187 / `unet_manual_cast` 1189 to 1211): chosen from each family's `supported_inference_dtypes` (table below).
+
+- Families that have fp16 (SDXL, Flux, Wan and others) are loaded in fp16 and computed in fp16 even on GPUs without bf16 (bf16 weights are also 2 bytes).
+- **Families without fp16** (`[bfloat16, float32]`: LTX, Qwen Image, Z-Image, HunyuanVideo, ACE-Step and others): on GPUs without bf16 (Pascal, Volta, Turing), `unet_manual_cast` returns float32 (computation in fp32, working memory doubles).
+  - The weights are decided by `should_use_bf16(manual_cast=True)`.
+  - They stay in bf16 only if fp32 would not fit in `total x 0.88 - minimum working memory`.
+  - If it fits, they are loaded in fp32 (double size).
+- GPUs that use no half precision (such as Maxwell) also widen to fp32, but only if it fits. If not, the weights stay at 2 bytes and only the computation is fp32.
+- fp8 weights on a GPU without fp8 compute: widened to fp16 if that fits; if not, they stay fp8 (converted at every computation).
+- Weights with a quantization config, such as fp8_scaled and int8_convrot, stay quantized (`quant_config`, sd.py:2268).
+
+**Text encoder**: fp16 by default. If the file's precision is 2 bytes or less, it is loaded as is (`pick_weight_dtype`).
+
+**VAE** (`vae_dtype` model_management.py:1290):
+
+- Chosen from each VAE's `working_dtypes` (sd.py; default `[bfloat16, float32]`: sd.py:516). fp16 is chosen when `should_use_fp16` holds, bf16 when `should_use_bf16` holds, and fp32 if neither does.
+- The 2D KL VAEs (SD, SDXL, SD3, Flux's ae, Flux2's VAE; the default branch at sd.py:676 to 705), LTX (780) and Mage (627) have no fp16. On GPUs without bf16 they are fp32.
+- Wan (849, 857, 873), HunyuanVideo (791, 824), CogVideoX (808) and others have fp16.
+- If VRAM runs short at the final decoding, ComfyUI continues in tiles (slow).
+
+**Working memory**: ComfyUI's own estimates (`model_base.memory_required`, and the VAE's `memory_used_decode`) multiply by the size of the computation precision (`dtype_size`). Computing in fp32 doubles it.
+
+How this is applied to the estimate (`estimate.gpu_precision`; only what the code establishes):
+
+| GPU | Examples | Gpu.compute_dtype | Family / VAE | Adjustment to the estimate |
 |---|---|---|---|---|
-| 半精度を使わない | Maxwell 全部、GT 1030、Linux の GTX 1080、GTX 1660、T1000 | `fp32` | どれでも | 作業用メモリ × 2、VAE の重み × 2(VAE のファイルが fp32、または VAE がどの GPU でも fp32 なら × 1) |
-| fp16 は使うが bf16 を持たない | Windows の Pascal(1080 など)、Volta、Turing の RTX | `fp16` | fp16 を持たない系統 | 作業用メモリ × 2 |
-| 同上 | 同上 | `fp16` | fp16 を持たない VAE | VAE の重み × 2 |
-| 同上 | 同上 | `fp16` | fp16 を持つ系統 | 変えない(bf16 の重みには「fp16 で動かす(VRAM は同じ)」と書く) |
-| 同上 | 同上 | `fp16` | 系統が分からない | 変えない。「系統が分からないので入れていない」と書く |
-| fp8 の計算を持たない | Ada より前 | — | fp8 の重み | 変えない。「余裕があれば fp16 に広げる・無ければ遅い」と書く |
-| 上のどれでもない | Ampere・Ada・Hopper・Blackwell | `fp16` | どれでも | 変えない |
+| No half precision | All Maxwell, GT 1030, GTX 1080 on Linux, GTX 1660, T1000 | `fp32` | any | working memory x 2, VAE weights x 2 (x 1 if the VAE file is fp32, or the VAE is fp32 on every GPU) |
+| Uses fp16 but has no bf16 | Pascal on Windows (1080 etc.), Volta, Turing RTX | `fp16` | family without fp16 | working memory x 2 |
+| same | same | `fp16` | VAE without fp16 | VAE weights x 2 |
+| same | same | `fp16` | family with fp16 | no change (for bf16 weights, the reason says "runs in fp16 (same VRAM)") |
+| same | same | `fp16` | family unknown | no change; the reason says "not applied because the family is unknown" |
+| No fp8 compute | before Ada | — | fp8 weights | no change; the reason says "widened to fp16 if there is room, slow if not" |
+| None of the above | Ampere, Ada, Hopper, Blackwell | `fp16` | any | no change |
 
-**本体の重みは変えない**(fp32 にしても収まるときだけ fp32 で載せる、という動きは VRAM が多いほど使う量が増えるので、
-見積もりに入れると VRAM を増やして段階が下がる。重みはファイルの 2 バイトで数え、ComfyUI が広げるのは収まるときだけなので、
-動くかどうかの判定は変わらない。広げたときは作業用メモリの分が足りなくなり、ComfyUI が重みの一部を逃がして遅くなることがある。
-そう理由に書く)。作業用メモリ × 2・VAE × 2 は GPU の世代と系統だけで決まり VRAM の量によらないので、世代を固定して
-VRAM・RAM・ページファイルを増やしても段階は下がらない(`test_fit_monotonic_in_vram_per_arch`)。
-fp32 で計算する場合は、その GPU の実測でない限り `basis` は `estimated` にする(実測は半精度の GPU のもの)。
+**The main model weights are not changed.** Reasons:
 
-### 系統の表(`src/genmodelfit/families.py`、ComfyUI コミット b1a247c の行)
+- The behavior "load in fp32 only if it fits" uses more memory the more VRAM there is. Putting it in the estimate would increase VRAM and lower the level.
+- Weights are counted at the file's 2 bytes, and ComfyUI widens only when it fits, so whether the model runs does not change.
+- When it does widen, the working memory can run short, and ComfyUI may offload part of the weights and get slower. The reason says so.
 
-本体(`comfy/supported_models.py` の `supported_inference_dtypes`。書いていないクラスは `supported_models_base.py:47` の
-`[float16, bfloat16, float32]`):
+Working memory x 2 and VAE x 2 depend only on the GPU generation and family, not on the amount of VRAM.
+So with the generation fixed, adding VRAM, RAM or page file never lowers the level (`test_fit_monotonic_in_vram_per_arch`).
+When computing in fp32, `basis` is `estimated` unless the measurement is from that GPU (measurements are from half-precision GPUs).
 
-| 系統(鍵) | ComfyUI のクラス | fp16 | 行 |
+### Family table (`src/genmodelfit/families.py`, lines of ComfyUI commit b1a247c)
+
+Main model (`supported_inference_dtypes` in `comfy/supported_models.py`; classes without one use `[float16, bfloat16, float32]` from `supported_models_base.py:47`):
+
+| Family (key) | ComfyUI class | fp16 | Line |
 |---|---|---|---|
-| sd / sd3 / hunyuan3d / stable_audio | SD15・SDXL・SVD・SD3・Hunyuan3Dv2・StableAudio など | ○ | base:47 |
-| flux | Flux / FluxSchnell(Ovis も Flux として読む: model_detection.py:363) | ○ | 753 |
-| flux_fill | FluxInpaint(in_channels 96 = Fill・OneReward) | × | 783 |
-| flux2 / flux3 | Flux2 / Flux3 | ○ / × | 812 / 855 |
-| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | ○ | 1820 / 2433 / 2023 / 1171 / 1100 |
-| lens / mochi | Lens / GenmoMochi | × | 882 / 924 |
-| ltxv | LTXV / LTXAV(LTX-Video・LTX-2.x) | × | 952 |
-| minimax_h3 | MiniMaxH3(FastVideo FastH3 も) | × | 1000 |
-| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | × | 1027 / 2203 |
-| hunyuan_video15 | HunyuanVideo15 | ○ | 2241 |
-| lumina2 / zimage / ming_image / pixeldit | Lumina2(NewBie: model_detection.py:611)/ ZImage / MingImage / PixelDiTT2I | × | 1213 / 1240 / 1240 / 1298 |
-| wan | WAN21_* / WAN22_*(HuMo・VACE・S2V・Animate・SCAIL・CausalAR など) | ○ | 1366 |
-| trellis2 | Trellis2(Pixal3D も: model_detection.py:125) | × | 1541 |
-| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | 同名 | ○ | 1685 / 1853 / 2512 / 2471 / 2400 / 2576 |
-| hidream / hidream_o1 | HiDream / HiDreamO1 | × | 1710 / 1735 |
-| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | × | 1903 / 2350 / 2376 |
-| omnigen2 | Omnigen2 / Boogu(torch 2.7 以上で float16 を先頭に足す: 1938) | ○ | 1930 |
-| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | × | 1994 / 2052 / 2085 |
-| qwen_image / qwen_image21 / joyimage | QwenImage(FireRed・Marigold v2 も)/ QwenImage21 / JoyImage | × | 2114 / 2144 / 2176 |
-| kandinsky5 / ernie | Kandinsky5 / ErnieImage | × | 2294 / 2495 |
+| sd / sd3 / hunyuan3d / stable_audio | SD15, SDXL, SVD, SD3, Hunyuan3Dv2, StableAudio, etc. | yes | base:47 |
+| flux | Flux / FluxSchnell (Ovis is also read as Flux: model_detection.py:363) | yes | 753 |
+| flux_fill | FluxInpaint (in_channels 96 = Fill, OneReward) | no | 783 |
+| flux2 / flux3 | Flux2 / Flux3 | yes / no | 812 / 855 |
+| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | yes | 1820 / 2433 / 2023 / 1171 / 1100 |
+| lens / mochi | Lens / GenmoMochi | no | 882 / 924 |
+| ltxv | LTXV / LTXAV (LTX-Video, LTX-2.x) | no | 952 |
+| minimax_h3 | MiniMaxH3 (also FastVideo FastH3) | no | 1000 |
+| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | no | 1027 / 2203 |
+| hunyuan_video15 | HunyuanVideo15 | yes | 2241 |
+| lumina2 / zimage / ming_image / pixeldit | Lumina2 (NewBie: model_detection.py:611) / ZImage / MingImage / PixelDiTT2I | no | 1213 / 1240 / 1240 / 1298 |
+| wan | WAN21_* / WAN22_* (HuMo, VACE, S2V, Animate, SCAIL, CausalAR, etc.) | yes | 1366 |
+| trellis2 | Trellis2 (also Pixal3D: model_detection.py:125) | no | 1541 |
+| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | same names | yes | 1685 / 1853 / 2512 / 2471 / 2400 / 2576 |
+| hidream / hidream_o1 | HiDream / HiDreamO1 | no | 1710 / 1735 |
+| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | no | 1903 / 2350 / 2376 |
+| omnigen2 | Omnigen2 / Boogu (with torch 2.7 or newer, float16 is added at the front: 1938) | yes | 1930 |
+| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | no | 1994 / 2052 / 2085 |
+| qwen_image / qwen_image21 / joyimage | QwenImage (also FireRed, Marigold v2) / QwenImage21 / JoyImage | no | 2114 / 2144 / 2176 |
+| kandinsky5 / ernie | Kandinsky5 / ErnieImage | no | 2294 / 2495 |
 
-Z-Image は重みの値で `allow_fp16` が立つと fp16 も使う(model_detection.py:624、supported_models.py:1245)が、
-ファイルを読まないと分からないので fp16 を持たない側(安全側)で見て、理由に書く。
+Z-Image also uses fp16 when `allow_fp16` is set by the weight values (model_detection.py:624, supported_models.py:1245).
+That cannot be known without reading the file, so it is treated as having no fp16 (the safe side), and the reason says so.
 
-VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`(780)× / `ltx_diffusion`(645)× /
-`mage`(627)× / `wan`(849・857・873)○ / `hunyuan_video`(824)○ / `hunyuan_video15`(791)○ / `hunyuan3d`(902)○ /
-`trellis2`(594・599)○ / `seedvr2`(610)○ / `cogvideox`(808)○ / `minimax_h3`(1049)○ / `ace`(917)○ /
-`fp32`(540・947・999・1083。どの GPU でも fp32)。
+VAE (`working_dtypes` in `comfy/sd.py`; "yes" has fp16, "no" does not):
 
-一覧の各項目の系統は `families.family_of`(本体のファイル名 → ID・テンプレート名の順に照らす。部品の置き場所のリポジトリ名は
-別のモデルの部品が混ざるので見ない)、VAE は VAE のファイル名(無ければ系統の既定)で決め、`update` が
-`ModelEntry.comfy_family` / `comfy_vae` に入れる(`--heads-only` でも決め直す)。0.9.1 の同梱の一覧(2026-10-21、329 件)では
-278 件に系統が付き、51 件は分からない(読み上げ 22 件・ComfyUI に組み込みでない補助ツールなど 19 件・Capybara 4 件・HF の 6 件。
-ComfyUI のどのクラスで読むかを確かめられなかったもの)。分からないものは見積もりを変えず、bf16 を持たない GPU でだけ理由に書く。
+- `kl` (default, 516; 2D KL): no
+- `ltxv` (780): no
+- `ltx_diffusion` (645): no
+- `mage` (627): no
+- `wan` (849, 857, 873): yes
+- `hunyuan_video` (824): yes
+- `hunyuan_video15` (791): yes
+- `hunyuan3d` (902): yes
+- `trellis2` (594, 599): yes
+- `seedvr2` (610): yes
+- `cogvideox` (808): yes
+- `minimax_h3` (1049): yes
+- `ace` (917): yes
+- `fp32` (540, 947, 999, 1083): fp32 on every GPU
 
-## NVIDIA 以外の GPU(0.7.0、#22・#23)
+How the family and VAE of each list entry are decided:
 
-NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、画面の部品の一覧から AMD・Intel・Apple の GPU を
-下の対応表で判定に使う(`hardware.classify_adapter`)。**NVIDIA の判定は変えない**(NVIDIA の GPU が使えれば、ほかの
-GPU は `--all-gpus` で一覧に出すだけ)。実測は 0 件なので、段階は推定で、理由に「推定(<会社>・実測なし)」を書き、
-**段階は good まで**にする(同じ会社の GPU の、同じ設定で成功した実測があるときだけ外れる: 下の #26。2026-10-22 から、
-この GPU と同じ GPU のほかの利用者の実測もその根拠になる: docs/accuracy.md「ほかの利用者の実測」)。
-NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
-対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
+- The family comes from `families.family_of`. It matches the main model's file name first, then the ID and template name. The repository name of a component's location is not used, because it mixes in components of other models.
+- The VAE is decided by the VAE file name (or the family's default if there is none).
+- `update` stores them in `ModelEntry.comfy_family` / `comfy_vae` (`--heads-only` also decides them again).
 
-### 対応表(一次資料は 2026-10-21 に読んだ)
+In the bundled list of 0.9.1 (2026-10-21, 329 entries), 278 have a family and 51 are unknown.
+The 51 unknown: 22 TTS, 19 helper tools and others that are not built into ComfyUI, 4 Capybara, and 6 from HF (those for which the ComfyUI class could not be confirmed).
+Unknown entries do not change the estimate, and the reason mentions it only on GPUs without bf16.
 
-| 会社・部品 | OS | 判定 | 一次資料 |
+## GPUs other than NVIDIA (0.7.0, #22, #23)
+
+Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel and Apple GPUs from the list of display adapters are judged with the support table below (`hardware.classify_adapter`).
+
+- **The NVIDIA judgment does not change.** If an NVIDIA GPU is usable, other GPUs are only listed with `--all-gpus`.
+- There are no measurements yet, so the level is an estimate, and the reason says "estimate (<vendor>, no measurement)".
+- **The level is capped at Good.** It is lifted only when there is a measurement from a GPU of the same vendor that succeeded at the same settings (see "Measurements that succeeded on the same GPU" below).
+- Since 2026-10-22, measurements by other users of the same GPU as this one also count as that basis (see "Other users' measurements" in [accuracy.md](accuracy.md#other-users-measurements-34-2026-10-21-handling-aligned-with-llmfit-on-2026-10-22)).
+- Measurements on NVIDIA GPUs are used only to shift the working memory (`basis_detail: calibrated`); `basis` stays `estimated`.
+- Combinations that are not supported are judged as CPU, with a reason (`Adapter.reason`).
+
+### Support table (primary sources read on 2026-10-21)
+
+| Vendor / part | OS | Verdict | Primary sources |
 |---|---|---|---|
-| AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
-| AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
-| AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
-| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300・Pro W6400 / W6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh・Sephiroth(Steam Deck・OLED 版。Windows の名前は AMD Custom GPU 0405。8 CU、gfx1033。共有メモリ) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
-| AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
-| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
-| AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
-| AMD(どれでも) | Windows 10・版が分からない | CPU | ComfyUI の案内「Use Windows 11」(分からなければ使わない側) |
-| AMD | macOS | CPU | Apple の MPS 版は Apple silicon だけ(下) |
-| Intel Arc A シリーズ(Alchemist: A770 / A750 / A580 / A380 / A310、Pro A) | Windows 11・Linux | **GPU**(`xpu`) | PyTorch 2.14「Getting Started on Intel GPU」(https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html)の Client GPUs の表(「Windows 11 & Ubuntu 24.04/26.04 & WSL2」)、ComfyUI README「Intel GPUs (Windows and Linux)」 |
-| Intel Arc B シリーズ(Battlemage: B580 / B570、Pro B60 / B50) | Windows 11・Linux | **GPU**(`xpu`) | 同上 |
-| Intel Core Ultra の Arc Graphics(Meteor Lake-H、Arrow Lake-H の 140T / 130T、Lunar Lake の 140V / 130V、Panther Lake の B390 など) | Windows 11・Linux | **GPU**(`xpu`、共有メモリ) | 同上(Panther Lake は Ubuntu 26.04) |
-| Intel UHD・Iris Xe・「Intel(R) Graphics」(Arrow Lake-S など)・HD Graphics | — | CPU | 上の表に入らない |
-| Intel(どれでも) | Windows 10・版が分からない | CPU | 上の表は Windows 11 |
-| Apple silicon(M1〜M4 など) | macOS 14 以降 | **GPU**(`mps`、統合メモリ) | Apple「Accelerated PyTorch training on Mac」(https://developer.apple.com/metal/pytorch/ : 「Mac computer with Apple silicon」「macOS 14.0 or later」)、ComfyUI README「Apple Mac silicon」 |
-| Apple silicon | macOS 13 以前・版が分からない | CPU | 同上 |
+| AMD Radeon RDNA 4 (RX 9070 / 9060, gfx1200, 1201) | Windows 11, Linux | **GPU** (`rocm`) | ComfyUI README "AMD GPUs (Windows, ROCm 10.0)" (Comfy-Org/ComfyUI b1a247c: "supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4", "Use Windows 11"), ROCm/TheRock `SUPPORTED_GPUS.md`, `RELEASES.md` (4639f91, "GFX target lookup table", Release Ready) |
+| AMD RDNA 3.5 APUs (Ryzen AI Max = gfx1151, Ryzen AI 9 HX 37x = gfx1150, Ryzen AI 7 350 = gfx1152, Radeon 820M = gfx1153) | Windows 11, Linux | **GPU** (`rocm`, shared memory) | same |
+| AMD Radeon RDNA 3 (RX 7900 = gfx1100, 7800 / 7700 = gfx1101, 7600 = gfx1102), Radeon 780M / 760M / 740M, Ryzen Z1 Extreme / Z1 (gfx1103) | Windows 11, Linux | **GPU** (`rocm`) | same. On Linux, the ROCm build from pytorch.org is also installed (ComfyUI's Linux instructions use `--index-url .../rocm7.2`) |
+| AMD Radeon RDNA 2 (RX 6900 to 6800 = gfx1030, 6700 = gfx1031, 6600 = gfx1032, 6500 / 6400 / 6300, Pro W6400 / W6300 = gfx1034), Radeon 680M / 660M (gfx1035), Van Gogh, Sephiroth (Steam Deck and OLED model; Windows name AMD Custom GPU 0405; 8 CU, gfx1033; shared memory) | Windows 11, Linux | **GPU** (`rocm`; no bf16) | same. The ROCm build on pytorch.org covers gfx1030 only (`PYTORCH_ROCM_ARCH` in pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh`), so notes says to use AMD's multi-arch build (TheRock) for the others |
+| AMD Instinct (MI100 to MI355X, gfx908, 90a, 942, 950) | Linux | **GPU** (`rocm`) | `PYTORCH_ROCM_ARCH` of the pytorch.org ROCm build, TheRock's Instinct - Linux table |
+| AMD 2-CU integrated GPUs (Raphael, Granite Ridge = Ryzen 7000 / 9000 desktop; Dragon Range, Fire Range = 7x40HX / 7x45HX / 9x5xHX; Mendocino; 610M = gfx1036) | — | CPU | The generation is covered, but these are small GPUs for driving a display and are not expected to beat the CPU for generation (a judgment; no measurement) |
+| AMD RDNA 1 (RX 5700 / 5500), GCN (Vega, Polaris and older) | — | CPU | ComfyUI's instructions start at RDNA 2 (TheRock lists RDNA 1 as Release Ready too, but we follow ComfyUI) |
+| AMD (any) | Windows 10, or version unknown | CPU | ComfyUI's instructions: "Use Windows 11" (unknown goes to the not-used side) |
+| AMD | macOS | CPU | Apple's MPS build is for Apple silicon only (below) |
+| Intel Arc A series (Alchemist: A770 / A750 / A580 / A380 / A310, Pro A) | Windows 11, Linux | **GPU** (`xpu`) | PyTorch 2.14 "Getting Started on Intel GPU" (https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html), Client GPUs table ("Windows 11 & Ubuntu 24.04/26.04 & WSL2"); ComfyUI README "Intel GPUs (Windows and Linux)" |
+| Intel Arc B series (Battlemage: B580 / B570, Pro B60 / B50) | Windows 11, Linux | **GPU** (`xpu`) | same |
+| Intel Core Ultra Arc Graphics (Meteor Lake-H, Arrow Lake-H 140T / 130T, Lunar Lake 140V / 130V, Panther Lake B390, etc.) | Windows 11, Linux | **GPU** (`xpu`, shared memory) | same (Panther Lake: Ubuntu 26.04) |
+| Intel UHD, Iris Xe, "Intel(R) Graphics" (Arrow Lake-S etc.), HD Graphics | — | CPU | not in the table above |
+| Intel (any) | Windows 10, or version unknown | CPU | the table above is for Windows 11 |
+| Apple silicon (M1 to M4 etc.) | macOS 14 or newer | **GPU** (`mps`, unified memory) | Apple "Accelerated PyTorch training on Mac" (https://developer.apple.com/metal/pytorch/: "Mac computer with Apple silicon", "macOS 14.0 or later"); ComfyUI README "Apple Mac silicon" |
+| Apple silicon | macOS 13 or older, or version unknown | CPU | same |
 
-GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発名 Navi 31 など)・`_INTEL_XPU` の表。名前が
-「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前(`_AMD_CPU_IGPU`: Ryzen AI Max → gfx1151、Ryzen 7 8845HS → gfx1103 など)で
-決め、決まらなければ CPU(世代が分からない)。Dragon Range(Ryzen 7x40HX・7x45HX)・Fire Range(9x50HX・9x55HX)は 2 CU の
-gfx1036 なので CPU。ノート用の Radeon は同じ番号でも石が違う(RX 6800M・6850M XT は gfx1031、RX 6800S は gfx1032、
-RX 6550M は gfx1034、RX 7700S は gfx1102)。
+Tables that map a GPU name to a generation:
 
-0.9.0 で足した名前(#56。一次資料は 2026-10-22 に読んだ):
+- `hardware._AMD_NAMES` (product names and lspci development names such as Navi 31) and `_INTEL_XPU`.
+- An integrated GPU whose name is only "AMD Radeon(TM) Graphics" is decided by the CPU name (`_AMD_CPU_IGPU`: Ryzen AI Max -> gfx1151, Ryzen 7 8845HS -> gfx1103, and so on). If that does not decide it, it is CPU (generation unknown).
+- Dragon Range (Ryzen 7x40HX, 7x45HX) and Fire Range (9x50HX, 9x55HX) are 2-CU gfx1036, so CPU.
+- Laptop Radeons with the same number can be different chips: RX 6800M and 6850M XT are gfx1031, RX 6800S is gfx1032, RX 6550M is gfx1034, RX 7700S is gfx1102.
 
-- **Ryzen Z1 Extreme・Z1**(携帯機。WMI の名前は「AMD Radeon(TM) Graphics」なので CPU の名前で決める): AMD の製品ページ
-  (https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1-extreme.html ・
-  https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1.html)は Graphics Core Count 12 / 4。
-  Z1 Extreme は Phoenix1(780M と同じ 12 CU)、Z1 は Zen 4 2 個 + Zen 4c 4 個の Phoenix2(740M と同じ 4 CU)とみなし
-  (石の対応は推定。AMD は書いていない)、どちらも gfx1103(Linux の amdkfd `kfd_device.c` が GC 11.0.1・11.0.4 を
-  gfx_target_version 110003 にする)。740M(4 CU)を GPU にしているので Z1 も GPU。2 CU の 610M だけが CPU
-- **Dragon Range の 7940HX・7840HX**(型番の下 2 桁が 40): AMD の製品ページ(例
-  https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html)で Radeon 610M・2 CU。
-  以前は名前の表が 45HX だけで「gfx が分からない」理由になっていた。理由の文は「2 CU の小さな内蔵 GPU」にした
-- **デスクトップの RX 6300**: pci.ids の「7424 Navi 24 [Radeon RX 6300]」で Navi 24(gfx1034)。TheRock の SUPPORTED_GPUS.md は
-  gfx1034 を Release Ready にしている。2 GB の VRAM なので、動くモデルはほぼ無い(判定は VRAM の量に任せる)
-- **Linux で pci.ids が古いとき**: lspci -nn は「Advanced Micro Devices, Inc. [AMD/ATI] Device [1002:7551]」と出す
-  (pciutils `lib/names.c` の format_name_pair)。名前を「AMD Device 7551」として残し、`hardware.PCI_DEVICE_NAMES`
-  (pci.ids 2026.10.22、pciutils/pciids 86e7077e4b79 から、判定に関わる AMD・Intel の ID だけを写した表)で石・製品の名前に
-  引き直す。理由に「型番の ID から … とみなした(update-pciids で新しくすると製品名が出る)」と書く。表に無い ID は
-  `update-pciids` の案内を付けて CPU(AMD・Intel とも)。型番の ID は製品の種類だけを表し、個体・差し場所は表さないので名前に残す
-- **Linux の Intel の外付け GPU の VRAM**: xe・i915 のドライバは amdgpu の `mem_info_vram_total` に当たる sysfs を出さない
-  (torvalds/linux の `drivers/gpu/drm/xe/xe_tile_sysfs.c`・`xe_device_sysfs.c`・`i915_sysfs.c`・Documentation/ABI を読んだ。
-  量は DRM の ioctl か debugfs(root)でだけ読める)。そこで名前の表の**公称**の量を使い、理由に「名前から公称の … GB
-  (量の違う版があれば少ないほう)」と書く(`Adapter.vram_source: "name"`)。ノート用の公称は Intel の表
-  (https://www.intel.com/content/www/us/en/support/articles/000091109.html: A770M 16 GB・A730M 12 GB・A550M 8 GB・
-  A370M 4 GB・A350M 4 GB)。A770 は 8 GB 版と 16 GB 版があるので 8 GB。A570M・A530M・Pro の M は Intel の資料で
-  確かめられなかったので値を持たず、Linux では CPU のまま
+Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
 
-### 精度(ComfyUI b1a247c の `comfy/model_management.py`)
+- **Ryzen Z1 Extreme, Z1** (handhelds; the WMI name is "AMD Radeon(TM) Graphics", so they are decided by the CPU name):
+  - AMD's product pages (https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1-extreme.html and https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1.html) list Graphics Core Count 12 / 4.
+  - Z1 Extreme is taken as Phoenix1 (12 CU, same as 780M). Z1 is taken as Phoenix2 with 2 Zen 4 + 4 Zen 4c cores (4 CU, same as 740M). The chip mapping is an estimate; AMD does not state it.
+  - Both are gfx1103 (Linux amdkfd `kfd_device.c` maps GC 11.0.1 and 11.0.4 to gfx_target_version 110003).
+  - 740M (4 CU) is treated as GPU, so Z1 is GPU too. Only the 2-CU 610M is CPU.
+- **Dragon Range 7940HX, 7840HX** (last two digits of the model number are 40):
+  - AMD's product page (for example https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html) lists Radeon 610M, 2 CU.
+  - Before, the name table had only 45HX, and the reason was "gfx unknown". The reason now says "a small 2-CU integrated GPU".
+- **Desktop RX 6300**:
+  - pci.ids "7424 Navi 24 [Radeon RX 6300]" is Navi 24 (gfx1034). TheRock's SUPPORTED_GPUS.md lists gfx1034 as Release Ready.
+  - It has 2 GB of VRAM, so almost no model runs (the amount of VRAM decides the verdict).
+- **Linux with an old pci.ids**:
+  - lspci -nn prints "Advanced Micro Devices, Inc. [AMD/ATI] Device [1002:7551]" (pciutils `lib/names.c`, format_name_pair).
+  - The name is kept as "AMD Device 7551" and mapped back to a chip / product name with `hardware.PCI_DEVICE_NAMES`. This table copies only the AMD and Intel IDs that matter for judging, from pci.ids 2026.10.22 (pciutils/pciids 86e7077e4b79).
+  - The reason says "taken as ... from the model ID (update pci.ids with update-pciids to get the product name)".
+  - An ID not in the table is CPU (for both AMD and Intel), with a pointer to `update-pciids`.
+  - A model ID shows only the kind of product, not the individual unit or slot, so it is kept in the name.
+- **VRAM of Intel discrete GPUs on Linux**:
+  - The xe and i915 drivers have no sysfs file equivalent to amdgpu's `mem_info_vram_total` (read from `drivers/gpu/drm/xe/xe_tile_sysfs.c`, `xe_device_sysfs.c`, `i915_sysfs.c` and Documentation/ABI in torvalds/linux; the amount can be read only through a DRM ioctl or debugfs (root)).
+  - So the **nominal** amount in the name table is used, and the reason says "nominal ... GB from the name (the smaller one if versions differ)" (`Adapter.vram_source: "name"`).
+  - Nominal values for laptops come from Intel's table (https://www.intel.com/content/www/us/en/support/articles/000091109.html): A770M 16 GB, A730M 12 GB, A550M 8 GB, A370M 4 GB, A350M 4 GB.
+  - A770 has 8 GB and 16 GB versions, so 8 GB.
+  - A570M, A530M and the Pro M models could not be confirmed in Intel's documents, so they have no value and stay CPU on Linux.
 
-- AMD(`torch.version.hip`): `should_use_fp16` は常に True。`should_use_bf16` は RDNA 2 以前(`AMD_RDNA2_AND_OLDER_ARCH`)で
-  False だが、`manual_cast=True`(fp16 を持たない系統の計算の精度を選ぶとき)は True を返す。そこで RDNA 2 では fp16 を持たない
-  系統でも作業用メモリを 2 倍にしない(VAE は fp32 で 2 倍)。
-- Intel(XPU): `should_use_fp16` は `has_fp16`、`should_use_bf16` は `torch.xpu.is_bf16_supported()`。対象の Arc はどちらも持つ。
-- Apple(MPS): `should_use_fp16` は True、`should_use_bf16` は macOS 14 以降で True。
-- fp8 の計算(`supports_fp8_compute`)はどれも持たないとして扱う(fp8 の重みは注意だけ)。
+### Precision (`comfy/model_management.py` of ComfyUI b1a247c)
 
-### 共有メモリ(内蔵 GPU・APU・Apple silicon)
+- AMD (`torch.version.hip`):
+  - `should_use_fp16` is always True.
+  - `should_use_bf16` is False on RDNA 2 and older (`AMD_RDNA2_AND_OLDER_ARCH`). But with `manual_cast=True` (when choosing the computation precision for families without fp16) it returns True.
+  - So on RDNA 2, working memory is not doubled even for families without fp16 (the VAE is fp32 and doubles).
+- Intel (XPU): `should_use_fp16` is `has_fp16`, `should_use_bf16` is `torch.xpu.is_bf16_supported()`. The supported Arc GPUs have both.
+- Apple (MPS): `should_use_fp16` is True, `should_use_bf16` is True on macOS 14 or newer.
+- fp8 compute (`supports_fp8_compute`) is treated as absent on all of them (fp8 weights only get a note).
 
-- **Apple silicon(`memory: unified`)**: ComfyUI は MPS では搭載量の全部を GPU のメモリとして数え
-  (`get_total_memory` が CPU と MPS で `virtual_memory_total`、`vram_state` は SHARED: model_management.py)、部品をメインメモリへ
-  逃がす(lowvram)動きは使わない(SHARED では `lowvram_model_memory` を求めない)。macOS は GPU が性能を落とさずに使える量
-  (Metal の `recommendedMaxWorkingSetSize`。llmfit bffd1b6 が使う値)を搭載量より小さくするので、搭載量の **3/4**
-  (`hardware.UNIFIED_MEMORY_SHARE`。判断で決めた値で、実測していない)を GPU のメモリとみなす。GPU に載せる量 + 固定分
-  (Python・ComfyUI、3 GB)を搭載量とも比べる(超えたら仮想メモリで遅い = marginal)。
-- **内蔵 GPU・APU(`memory: shared`)**: BIOS で取り分けた VRAM(Windows はレジストリの qwMemorySize、Linux は sysfs の
-  `mem_info_vram_total`)+ メインメモリから使える分。Linux の amdgpu は sysfs の `mem_info_gtt_total`(GTT)を読む。読めなければ
-  見えているメインメモリの **1/2**(`hardware.SHARED_MEMORY_SHARE`): Linux の TTM が GPU に貸すページの上限が「total system memory の
-  約 50%」(torvalds/linux a804c57 `drivers/gpu/drm/ttm/ttm_device.c:88〜92`。amdgpu の `gttsize` の既定は「-1 = Use value specified
-  by TTM」: https://docs.kernel.org/gpu/amdgpu/module-parameters.html)、Windows の共有 GPU メモリも物理メモリの約半分
-  (タスク マネージャーの「共有 GPU メモリ」。WDDM の説明: https://learn.microsoft.com/ja-jp/archive/blogs/pigscanfly/graphics-memory-reporting-in-vista 。古い文書なので目安)。
-- どちらも、逃がす先が同じメモリなので `GPU+RAM`(逃がす)は使わない(全部載せか、部品を順に載せ替えるか)。
-- メインメモリの判定: GPU に載せる分もメインメモリから使うので、要る量 = GPU に載せないときの量(固定分 + いちばん大きい段の部品)
-  + GPU に載せる量のうち BIOS で取り分けた VRAM(`Gpu.carveout_gb`。搭載量に入らない)を超える分。全部載せと順に載せ替えの
-  それぞれで確かめ、良いほうを取る(例: Radeon 780M・メモリ 16 GB で、GPU 8.3 GB + メインメモリ 9.8 GB のモデルは足りない)。
-  専用の VRAM の GPU があれば、内蔵 GPU より先に使う。
-- メインメモリを増やすと GPU が使える量も増えるだけなので、段階は下がらない(`tests/test_vendors.py`)。
+### Shared memory (integrated GPUs, APUs, Apple silicon)
 
-### 検出
+- **Apple silicon (`memory: unified`)**:
+  - On MPS, ComfyUI counts all the installed memory as GPU memory (`get_total_memory` is `virtual_memory_total` for both CPU and MPS, and `vram_state` is SHARED: model_management.py). It does not use the behavior of moving components to main memory (lowvram); with SHARED it does not compute `lowvram_model_memory`.
+  - macOS makes the amount the GPU can use without slowing down (Metal `recommendedMaxWorkingSetSize`, the value llmfit bffd1b6 uses) smaller than the installed memory.
+  - So **3/4** of the installed memory (`hardware.UNIFIED_MEMORY_SHARE`; a value chosen by judgment, not measured) is taken as GPU memory.
+  - The amount placed on the GPU plus the fixed part (Python and ComfyUI, 3 GB) is also compared with the installed memory (above it, virtual memory makes it slow = Marginal).
+- **Integrated GPUs and APUs (`memory: shared`)**:
+  - Usable amount = VRAM carved out in the BIOS (Windows: registry qwMemorySize; Linux: sysfs `mem_info_vram_total`) + the part of main memory the GPU can use.
+  - On Linux, amdgpu reads sysfs `mem_info_gtt_total` (GTT).
+  - If that cannot be read, **1/2** of the visible main memory is used (`hardware.SHARED_MEMORY_SHARE`).
+  - Basis (Linux): the limit of pages TTM lends to the GPU is "about 50% of total system memory" (torvalds/linux a804c57 `drivers/gpu/drm/ttm/ttm_device.c:88 to 92`; the amdgpu `gttsize` default is "-1 = Use value specified by TTM": https://docs.kernel.org/gpu/amdgpu/module-parameters.html).
+  - Basis (Windows): shared GPU memory is also about half of physical memory (Task Manager's "Shared GPU memory"; WDDM explanation: https://learn.microsoft.com/ja-jp/archive/blogs/pigscanfly/graphics-memory-reporting-in-vista; an old document, so a rough guide).
+- In both cases the place to offload to is the same memory, so `GPU+RAM` (offload) is not used (either everything on the GPU, or components swapped in one after another).
+- Main memory check: the part placed on the GPU also uses main memory.
+  - Required = the amount when nothing is placed on the GPU (fixed part + the largest stage's components) + the part of the GPU amount that exceeds the BIOS-carved VRAM (`Gpu.carveout_gb`, which is not in the installed memory).
+  - It is checked for "everything on the GPU" and for "swap components in one after another", and the better one is taken.
+  - Example: Radeon 780M with 16 GB of memory: a model needing 8.3 GB on the GPU + 9.8 GB of main memory is not enough.
+  - If there is a GPU with dedicated VRAM, it is used before the integrated GPU.
+- Adding main memory only increases what the GPU can use, so the level never drops (`tests/test_vendors.py`).
 
-- 既定では、判定に使える NVIDIA の GPU が無く(見つからない・Kepler・古いドライバ)、`--vram` で上書きしていないときだけ調べる
-  (NVIDIA のドライバが入っていない NVIDIA の GPU も分かる)。NVIDIA の GPU があるときは調べない(PowerShell の起動に約 1 秒
-  かかるため)。`genmodelfit system --all-gpus` で必ず調べる(このときも NVIDIA が使えれば NVIDIA で判定する)。
-  レジストリには取り外した GPU の項目も残る(下の突き合わせで除く)。
-- Windows: `powershell.exe -NoProfile -NonInteractive -Command` で `Get-CimInstance Win32_VideoController` の
-  Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode を JSON で取る(出力は UTF-8 に指定。時間制限 8 秒)。
-  PNPDeviceID が `PCI\` で始まらないもの(仮想の画面・リモートデスクトップの画面)は捨てる。OS の版はビルド番号
-  (22000 以上が Windows 11)。
-  - `AdapterRAM` は uint32(Microsoft の Win32_VideoController の説明:
-    https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller)なので 4 GiB 以上は
-    4293918720 前後で頭打ちになる。この値以上は使わない。
-  - VRAM はレジストリ `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx` の
-    `HardwareInformation.qwMemorySize`(REG_QWORD。この PC の RTX 3070 で 8589934592)を使う。Microsoft の文書
-    (https://learn.microsoft.com/en-us/windows-hardware/drivers/display/registering-hardware-information)にあるのは
-    `HardwareInformation.MemorySize`(ULONG、MB と書いてあるが実際のドライバはバイトで書く。llmfit の場合分けと同じ)だけで、
-    qwMemorySize はドライバの慣習。64 MiB 未満は単位の違いとみなして使わない。
-  - レジストリの項目は、`MatchingDeviceId` が WMI の部品の型番の ID の先頭に当たるもの、無ければ `DriverDesc` の名前
-    (™・® を除いて比べる)が同じものに当てる。当たる項目が複数あって値が違う(取り外した同名の GPU が残っている)ときは使わない。
-  - NVIDIA の部品(VEN_10DE)が「Microsoft Basic Display Adapter」なら「NVIDIA のドライバが入っていない」と知らせる。
-    ConfigManagerErrorCode が 0 でなければ「デバイスマネージャーで問題がある状態」と知らせる。
-- Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。名前は括弧の中の製品名(`Navi 31 [Radeon RX 7900 XT/7900 XTX/…]`
-  の括弧の中)。AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total`(VRAM)と `mem_info_gtt_total`(GTT)を読む。
-  検出では rocm-smi を使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。bench の使用率の確かめでは
-  使う(docs/accuracy.md「NVIDIA 以外の GPU の bench」)。Intel の外付け GPU は
-  sysfs に VRAM の量が無いので、名前の表の公称の量を使う(上)。型番の分からない部品は「AMD Device 7551」の名前にする。
-- macOS: `system_profiler SPDisplaysDataType -json` の `sppci_model`(「Apple M2 Pro」)と `spdisplays_vendor`。
-  統合メモリの量は psutil の搭載量(macOS では `sysctl hw.memsize` と同じ値)、OS の版は `platform.mac_ver()`。
-- PowerShell・lspci・system_profiler が無い・失敗した・時間切れは、黙って飛ばす(空のまま)。
+### Detection
 
-### 表示
+- By default, detection runs only when both of these hold:
+  - there is no usable NVIDIA GPU (not found, Kepler, or an old driver);
+  - `--vram` is not overriding.
+- This also finds an NVIDIA GPU that has no NVIDIA driver installed.
+- It does not run when an NVIDIA GPU is present (starting PowerShell takes about 1 second).
+- `genmodelfit system --all-gpus` always runs it (even then, if NVIDIA is usable, NVIDIA is used for judging).
+- The registry also keeps entries of removed GPUs (they are dropped in the matching step below).
+- Windows: `powershell.exe -NoProfile -NonInteractive -Command` gets Name, AdapterRAM, PNPDeviceID and ConfigManagerErrorCode of `Get-CimInstance Win32_VideoController` as JSON (output set to UTF-8; time limit 8 seconds).
+  - Entries whose PNPDeviceID does not start with `PCI\` (virtual displays, Remote Desktop displays) are dropped.
+  - The OS version is read from the build number (22000 or higher is Windows 11).
+  - `AdapterRAM` is a uint32 (Microsoft's Win32_VideoController description: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller), so it tops out near 4293918720 for 4 GiB and more. Values at or above that are not used.
+  - VRAM comes from `HardwareInformation.qwMemorySize` (REG_QWORD; 8589934592 for the RTX 3070 in this PC) in registry `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx`.
+    - Microsoft's document (https://learn.microsoft.com/en-us/windows-hardware/drivers/display/registering-hardware-information) has only `HardwareInformation.MemorySize` (ULONG; documented as MB, but real drivers write bytes, which is the same case split as llmfit). qwMemorySize is a driver convention.
+    - Values under 64 MiB are taken as a unit mismatch and not used.
+  - Matching registry entries:
+    - An entry whose `MatchingDeviceId` matches the start of the WMI adapter's model ID.
+    - Otherwise, an entry whose `DriverDesc` name is the same (compared without the trademark symbols).
+    - If several entries match and their values differ (a removed GPU with the same name remains), none is used.
+  - If an NVIDIA adapter (VEN_10DE) is a "Microsoft Basic Display Adapter", it reports that the NVIDIA driver is not installed.
+  - If ConfigManagerErrorCode is not 0, it reports that Device Manager shows a problem.
+- Linux: reads class 03xx (VGA, 3D, Display) from `lspci -Dnn`.
+  - The name is the product name inside the brackets (inside the brackets of `Navi 31 [Radeon RX 7900 XT/7900 XTX/...]`).
+  - For AMD it reads `/sys/bus/pci/devices/<slot>/mem_info_vram_total` (VRAM) and `mem_info_gtt_total` (GTT).
+  - Detection does not use rocm-smi (its VRAM and GTT are the same sysfs values, and many PCs do not have it). The bench uses it to check utilization (see "Bench on non-NVIDIA GPUs" in [accuracy.md](accuracy.md#bench-on-non-nvidia-gpus-090)).
+  - Intel discrete GPUs have no VRAM amount in sysfs, so the nominal amount from the name table is used (above).
+  - A part with an unknown model gets the name "AMD Device 7551".
+- macOS: `sppci_model` ("Apple M2 Pro") and `spdisplays_vendor` of `system_profiler SPDisplaysDataType -json`.
+  - The unified memory amount is psutil's installed memory (the same value as `sysctl hw.memsize` on macOS).
+  - The OS version is `platform.mac_ver()`.
+- If PowerShell, lspci or system_profiler is missing, fails or times out, it is skipped silently (left empty).
 
-- 表の先頭の行: 使える GPU があれば「PC: AMD Radeon RX 7900 XTX 24.0 GiB VRAM (ROCm, estimated), RAM …」、Apple は
-  「PC: Apple M2 Pro (unified memory; 24.0 GiB for the GPU, MPS, estimated), RAM …」、内蔵 GPU は「(integrated; 16.1 GiB shared
-  with RAM, XPU, estimated)」。使える GPU が無ければ、見つけた GPU とその扱い(「PC: Intel(R) UHD Graphics 770 (integrated; not usable
-  for generation → judged as CPU), RAM 15.7 GiB …」)と、次の行に「This PC has no usable GPU: only models that run on CPU are shown
-  (N tools hidden: --include-tools)」。
-- Mode の列: 動かないもののうち、使える GPU が無いから動かないものは `GPU req`、メインメモリが足りないものは `RAM`
-  (JSON の `run_mode_label` は `-` のまま)。
+### Display
 
-### ほかのツールとの突き合わせ(2026-10-21)
+- First line of the table:
+  - With a usable GPU: "PC: AMD Radeon RX 7900 XTX 24.0 GiB VRAM (ROCm, estimated), RAM ...".
+  - Apple: "PC: Apple M2 Pro (unified memory; 24.0 GiB for the GPU, MPS, estimated), RAM ...".
+  - Integrated GPU: "(integrated; 16.1 GiB shared with RAM, XPU, estimated)".
+  - With no usable GPU, it shows the GPU it found and how it is treated ("PC: Intel(R) UHD Graphics 770 (integrated; not usable for generation → judged as CPU), RAM 15.7 GiB ..."). The next line is "This PC has no usable GPU: only models that run on CPU are shown (N tools hidden: --include-tools)".
+- Mode column: among models that do not run, those that fail because there is no usable GPU show `GPU req`, and those that fail for lack of main memory show `RAM` (the JSON `run_mode_label` stays `-`).
 
-表が厳しすぎ・緩すぎにならないかを、ほかのツールの対応表と比べた。基準は「ComfyUI + PyTorch で動くか」なので、
-ComfyUI の README に合わせている。
+### Cross-check with other tools (2026-10-21)
 
-- **Windows 10**: GPU を使えるとする資料は見つからなかった(AMD HIP SDK・ROCm on Radeon/Ryzen・PyTorch XPU は
-  Windows 11 だけ。Ollama・LM Studio・llmfit は記載なし)。Windows 10 の版と分かれば、表の先頭の行に
-  `needs Windows 11 for generation` と出す(`Adapter.needs`)
-- **DirectML・ZLUDA・Vulkan は使わない**: ComfyUI は DirectML に「barely works, is very slow, has not been updated
-  in over 1 year」と警告し(comfy/model_management.py)、README からも外した。Microsoft も DirectML を
-  maintenance mode とし(https://github.com/microsoft/DirectML)、SD.Next は DirectML を削除、ZLUDA を
-  「unofficial and currently limited」とした(https://vladmandic.github.io/sdnext-docs/ZLUDA/)。
-  Fooocus や stable-diffusion-webui-amdgpu は DirectML で古い AMD を動かすが、遅い(Fooocus の README で約 3 倍)
-- **AMD 公式の Windows 版 PyTorch の表より広い**: ROCm on Radeon/Ryzen の Windows の表は gfx1200/1201/1100/1101 と
-  gfx1150/1151 だけ(https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)。
-  ComfyUI の README は RDNA 2〜4 とし、TheRock(ComfyUI が使う ROCm)は RDNA 2・780M(gfx1103)も Windows で
-  リリースの対象にしている(https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md)。RX 6000 系と 780M は
-  ComfyUI に合わせて使うが、段階は good までの推定
-- **RDNA 1・Vega・Polaris**: llmfit は名前と VRAM が取れれば GPU 扱い、Ollama・llama.cpp は Vulkan で動かせるが、
-  ComfyUI の README の対象外なので CPU
-- **2 CU の内蔵 GPU(gfx1036)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU
-  (対応の有無ではなく性能の判断。理由の文もそう書く)
-- **Van Gogh(Steam Deck、gfx1033)**: 0.8.0 までは gfx1036 と一緒に「2 CU の小さな内蔵 GPU」として CPU にしていたが、
-  Valve の仕様(https://www.steamdeck.com/en/tech 「GPU: 8 RDNA 2 CUs, 1.6GHz (1.6 TFlops FP32)」)で 8 CU あり、
-  TheRock の SUPPORTED_GPUS.md(2026-10-22 に読んだ main)は gfx1033 を Linux・Windows とも Release Ready、
-  ComfyUI の README は「supported architectures include RDNA 2」。680M(12 CU)・660M(6 CU)と同じく GPU(共有メモリ、
-  段階は good まで)にした。pytorch.org の ROCm 版には入っていないので TheRock の版を使う、と notes に出る
+The table was compared with other tools' support tables, to see if it is too strict or too loose.
+The standard is "does it run with ComfyUI + PyTorch", so it follows ComfyUI's README.
 
-## CPU で動く系統(0.7.0、#39)
+- **Windows 10**: no source says the GPU can be used.
+  - AMD HIP SDK, ROCm on Radeon/Ryzen and PyTorch XPU are Windows 11 only. Ollama, LM Studio and llmfit say nothing.
+  - If the version is known to be Windows 10, the first line of the table shows `needs Windows 11 for generation` (`Adapter.needs`).
+- **DirectML, ZLUDA and Vulkan are not used**:
+  - ComfyUI warns that DirectML "barely works, is very slow, has not been updated in over 1 year" (comfy/model_management.py) and removed it from the README.
+  - Microsoft also put DirectML in maintenance mode (https://github.com/microsoft/DirectML).
+  - SD.Next removed DirectML and called ZLUDA "unofficial and currently limited" (https://vladmandic.github.io/sdnext-docs/ZLUDA/).
+  - Fooocus and stable-diffusion-webui-amdgpu run old AMD GPUs with DirectML, but slowly (about 3 times slower according to Fooocus's README).
+- **Wider than AMD's official Windows PyTorch table**:
+  - The Windows table of ROCm on Radeon/Ryzen has only gfx1200/1201/1100/1101 and gfx1150/1151 (https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html).
+  - ComfyUI's README says RDNA 2 to 4.
+  - TheRock (the ROCm ComfyUI uses) also covers RDNA 2 and 780M (gfx1103) for releases on Windows (https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md).
+  - RX 6000 series and 780M are used to match ComfyUI, but the level is an estimate capped at Good.
+- **RDNA 1, Vega, Polaris**: llmfit treats them as GPU if the name and VRAM can be read, and Ollama / llama.cpp can run them via Vulkan. But they are outside ComfyUI's README, so CPU.
+- **2-CU integrated GPUs (gfx1036)**: TheRock covers them, but they are not expected to beat the CPU for generation, so CPU (a performance judgment, not a support judgment; the reason text says so).
+- **Van Gogh (Steam Deck, gfx1033)**:
+  - Up to 0.8.0 it was CPU, grouped with gfx1036 as a "small 2-CU integrated GPU".
+  - Valve's specification (https://www.steamdeck.com/en/tech, "GPU: 8 RDNA 2 CUs, 1.6GHz (1.6 TFlops FP32)") says 8 CU.
+  - TheRock's SUPPORTED_GPUS.md (main, read on 2026-10-22) lists gfx1033 as Release Ready on both Linux and Windows. ComfyUI's README says "supported architectures include RDNA 2".
+  - So it is now GPU (shared memory, level capped at Good), like 680M (12 CU) and 660M (6 CU).
+  - It is not in the pytorch.org ROCm build, so notes says to use the TheRock build.
 
-GPU が無い(または GPU に載らない)とき、CPU で動くとみなすのは、これまでの「重み 2 GB 以下の画像・音声・読み上げ」に加えて、
-`families.CPU_FAMILIES` の系統:
+## Families that run on CPU (0.7.0, #39)
 
-| 系統 | 種類 | 根拠 | 除くもの |
+When there is no GPU (or the model does not fit on the GPU), these are taken as running on CPU:
+
+- The existing rule: image, audio and TTS models with weights of 2 GB or less.
+- In addition, the families in `families.CPU_FAMILIES` (table below).
+
+| Family | Type | Basis | Excluded |
 |---|---|---|---|
-| `sd`(SD 1.5・SD 2.x・SDXL・SDXL Turbo など) | 画像 | ComfyUI の組み込みの系統で CUDA 専用の部品を使わない(推定。CPU での実測なし) | SUPIR(独自のノード。確かめていない) |
-| `stable_audio`(Stable Audio Open 1.0・Stable Audio 3 Small) | 音楽・効果音 | 組み込みの StableAudio の系統(推定。CPU での実測なし。AI生成キットの記録に「効果音(GPU/CPU)」があるが、モデル・時間の記録は無い) | Stable Audio 3 Medium(確かめていない) |
+| `sd` (SD 1.5, SD 2.x, SDXL, SDXL Turbo, etc.) | image | A built-in ComfyUI family that uses no CUDA-only components (an estimate; no measurement on CPU) | SUPIR (its own nodes; not checked) |
+| `stable_audio` (Stable Audio Open 1.0, Stable Audio 3 Small) | music, sfx | The built-in StableAudio family (an estimate; no measurement on CPU. AI生成キット's notes list "sound effects (GPU/CPU)", but there is no record of the model or time) | Stable Audio 3 Medium (not checked) |
 
-ComfyUI は GPU が無ければ CPU で動き(`--cpu`「To use the CPU for everything (slow)」: comfy/cli_args.py)、CPU では本体と VAE を
-fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model_management.py:1902・1969。テキストエンコーダは fp16 のまま:
-1261)。そこで必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
-これが搭載量に収まれば marginal(CPU、遅い)、仮想メモリの範囲なら marginal(遅い)、超えたら too_tight。
-段階は CPU なので marginal まで。CPU で動くこと自体が推定なので、理由に「CPU は推定・実測なし」と書く
-(AI生成キットのカタログの `cpu_ok` は設計の印で、実測ではない)。
+How ComfyUI behaves on CPU:
 
-## 同じ GPU で成功した実測(0.7.0、#26)
+- Without a GPU, ComfyUI runs on CPU (`--cpu`, "To use the CPU for everything (slow)": comfy/cli_args.py).
+- On CPU it holds the main model and the VAE in fp32 (`should_use_fp16` and `should_use_bf16` are False on CPU: model_management.py:1902, 1969. The text encoder stays fp16: 1261).
 
-同じ設定・標準のワークフローで成功(`outcome: ok`)した実測があり、その GPU と同じ会社で、この PC の VRAM が実測の GPU の VRAM 以上
-(公称 16 と nvidia-smi の 15.9 の違いを許して 97% 以上)で、実測のピークがこの PC の VRAM に収まるなら、段階は実測で決める(`Estimate.fit_from: measurement`): 実測の VRAM ÷
-この PC の VRAM の帯(60 / 85 / 98%)で、少なくとも good。上限に張り付いた実測(動的 VRAM が空きを使い切った)と、
-同じ構成で OOM の報告もあるほかの利用者の実測は perfect の根拠にしない(good まで)。`torch_reserved` の実測(bench。CUDA / HIP の
-文脈を含まない)は文脈の分 0.5 GiB(`estimate.TORCH_RESERVED_CONTEXT_GB`)を足した値で帯を決め、perfect の根拠にもする(0.9.0。
-以前は perfect にしなかったので、bench の提出しか無い NVIDIA 以外の GPU は実測があっても good 止まりだった)。会社は実測の
-`gpu_backend` があればそれで、無いときだけ GPU 名で決める(Apple の MPS は GPU 名が "mps" になる)。ほかの利用者の
-実測(#34)は、この PC と同じ GPU(型番 ID か、そろえた名前。汎用の名前は除く。`estimate.same_gpu`)のものだけ使う
-(2026-10-22。似た GPU には広げない。0.9.0 から必要量にも同じ GPU のものだけ)。さらに、実測の GPU の VRAM とこの PC の
-総量の比(小さい ÷ 大きい)が 0.97 以上のときだけ使う(0.9.1。`estimate.same_vram`。同じ名前でも VRAM の違う版がある:
-RTX 4060 Ti の 8 / 16 GB など。内蔵 GPU・APU・Apple は比べない)。精度の直しで作業用メモリを倍にした
-GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
-(段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは
-「段階は見積もりで決めた」と書く。例: Wan 2.2 5B(RTX 5080 16 GB で 15.8 GB・成功)は、RTX 5080 では good / GPU
-(0.6.0 は marginal / offload)、RTX 3060 12 GB では marginal / offload のまま。
+Required main memory = fixed part + all components + (one more copy of the main model if it is 2 bytes) + one more copy of the VAE + working memory x 2.
 
-## メモリと仮想メモリ
+- If it fits in the installed memory: Marginal (CPU, slow).
+- If it fits within virtual memory: Marginal (slow).
+- If it exceeds that: Too tight.
+- The level is at most Marginal because it runs on CPU.
+- Running on CPU is itself an estimate, so the reason says "CPU is an estimate, no measurement" (`cpu_ok` in AI生成キット's catalog is a design marker, not a measurement).
 
-- 搭載量・空きは psutil。Linux でコンテナ(cgroup v2 の `memory.max`、v1 の `memory.limit_in_bytes`)の上限が搭載量より
-  小さければ上限を搭載量として使う。WSL の中では WSL に割り当てた分(`.wslconfig`)になる(そう書く)。
-- Windows のコミット: `GlobalMemoryStatusEx` の `ullTotalPageFile` は「今のコミットの上限(システムかこのプロセスの小さいほう)」、
-  `ullAvailPageFile` はその空き(https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex)。
-  `commit_limit_gb`・`commit_used_gb` に出し、今のページファイルの大きさは 上限 − 物理メモリ(`swap_total_gb`)。
-- ページファイルの設定: レジストリ `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management` の
-  `PagingFiles`(REG_MULTI_SZ)。この PC は `?:\pagefile.sys`(すべてのドライブで自動)。`C:\pagefile.sys 0 0`・大きさの無い行は
-  システム管理、`C:\pagefile.sys 1024 4096` は最小・最大 MB、空はページファイル無し(この書式は Microsoft の文書では確かめられず、
-  実機の値と一般に知られた書式による)。システム管理のページファイルは最大で「RAM の 3 倍か 4 GB の大きいほう(ボリュームの 1/8 まで)」
-  まで伸びる(https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/how-to-determine-the-appropriate-page-file-size-for-64-bit-versions-of-windows)。
-- Linux のスワップ: `/proc/swaps` の合計。zram(メモリを圧縮して使うもの)は ComfyUI の `get_disk_swap_total` と同じく数えない。
+## Measurements that succeeded on the same GPU (0.7.0, #26)
 
-判定(`estimate.ram_limit`): メインメモリが搭載量より多く要るとき、
+The level is decided by a measurement (`Estimate.fit_from: measurement`) when all of these hold.
 
-| 仮想メモリ | 動くとみなす上限 | 段階 |
+- There is a measurement that succeeded (`outcome: ok`) at the same settings with the standard workflow.
+- Its GPU is from the same vendor as this PC's GPU.
+- This PC's VRAM is at least that of the measured GPU (97% or more, to allow for the gap between a nominal 16 and nvidia-smi's 15.9).
+- The measured peak fits in this PC's VRAM.
+
+How the level is decided:
+
+- By the band of measured VRAM / this PC's VRAM (60 / 85 / 98%). At least Good.
+- These measurements are not a basis for Perfect (Good at most):
+  - a measurement stuck at the upper limit (dynamic VRAM used up all the free memory);
+  - a measurement by another user that also has OOM reports for the same configuration.
+- A `torch_reserved` measurement (bench; it does not include the CUDA / HIP context) sets the band with 0.5 GiB for the context added (`estimate.TORCH_RESERVED_CONTEXT_GB`), and it is also a basis for Perfect (0.9.0). Before, it was not, so a non-NVIDIA GPU with only bench submissions stopped at Good even with a measurement.
+
+How the vendor of the measured GPU is decided:
+
+- By the measurement's `gpu_backend` if there is one.
+- Only if there is none, by the GPU name (Apple's MPS has the GPU name "mps").
+
+How measurements by other users (#34) are used:
+
+- Only those of the same GPU as this PC (the model ID, or the normalized name; generic names are excluded; `estimate.same_gpu`). Decided on 2026-10-22. It is not widened to similar GPUs. From 0.9.0, the required amount also uses only the same GPU.
+- In addition, only when the ratio of the measured GPU's VRAM to this PC's total (smaller / larger) is 0.97 or more (0.9.1; `estimate.same_vram`). The same name can come with different VRAM (such as 8 / 16 GB for the RTX 4060 Ti). Integrated GPUs, APUs and Apple are not compared.
+
+Other points:
+
+- They are not used on GPUs where the precision adjustment doubled the working memory.
+- The main memory check is done as usual.
+- The reason starts with "with a measurement at the same settings of ... GB and success on ..., judged to run on ... GPU (the level was decided by the measurement; the estimate is a rough guide)", and the VRAM in the table is that measured value (m).
+- If the measured GPU is larger than this PC, the reason says "the level was decided by the estimate".
+- Example: Wan 2.2 5B (15.8 GB, success on an RTX 5080 16 GB) is Good / GPU on an RTX 5080 (0.6.0: Marginal / offload), and stays Marginal / offload on an RTX 3060 12 GB.
+
+## Memory and virtual memory
+
+- Installed and free memory come from psutil.
+  - On Linux, if the container limit (cgroup v2 `memory.max`, v1 `memory.limit_in_bytes`) is smaller than the installed memory, the limit is used as the installed memory.
+  - Inside WSL it is the amount assigned to WSL (`.wslconfig`); the output says so.
+- Windows commit:
+  - `ullTotalPageFile` of `GlobalMemoryStatusEx` is "the current commit limit (the smaller of the system's or this process's)", and `ullAvailPageFile` is its free part (https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex).
+  - They are output as `commit_limit_gb` and `commit_used_gb`.
+  - The current page file size is limit - physical memory (`swap_total_gb`).
+- Page file settings: `PagingFiles` (REG_MULTI_SZ) in registry `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`.
+  - This PC has `?:\pagefile.sys` (automatic on all drives).
+  - `C:\pagefile.sys 0 0`, or a line with no size, is system managed.
+  - `C:\pagefile.sys 1024 4096` is minimum and maximum in MB.
+  - Empty means no page file.
+  - This format could not be confirmed in Microsoft's documents; it rests on values from a real machine and the commonly known format.
+  - A system-managed page file can grow up to "3 times RAM or 4 GB, whichever is larger (up to 1/8 of the volume)" (https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/how-to-determine-the-appropriate-page-file-size-for-64-bit-versions-of-windows).
+- Linux swap: the total of `/proc/swaps`. zram (compressed memory) is not counted, the same as ComfyUI's `get_disk_swap_total`.
+
+Judging (`estimate.ram_limit`): when more main memory is needed than is installed,
+
+| Virtual memory | Upper limit regarded as running | Level |
 |---|---|---|
-| 大きさが決まっている(固定のページファイル・無し・Linux のスワップ) | 搭載量 + 最大の大きさ(ただし搭載量 × 1.5 まで) | 上限まで marginal、超えたら too_tight |
-| システム管理で伸びる・分からない・`--ram` で上書きした | 搭載量 × 1.5(これまでどおり) | 同上 |
+| Fixed size (fixed page file, none, Linux swap) | installed + maximum size (but at most installed x 1.5) | Marginal up to the limit, Too tight above it |
+| System managed and growing, unknown, or overridden with `--ram` | installed x 1.5 (as before) | same |
 
-1.5 倍は「重みをページファイルに置くと極端に遅い」ための判断の値で、実測していない(docs/accuracy.md)。
-ページファイルの大きさは搭載量に比べて増えるだけなので、搭載量を増やして段階が下がることはない(`test_fit_monotonic_in_ram_with_fixed_pagefile`)。
+- 1.5x is a judgment value because "weights placed in the page file are extremely slow". It is not measured ([accuracy.md](accuracy.md)).
+- The page file size only grows relative to the installed memory, so adding installed memory never lowers the level (`test_fit_monotonic_in_ram_with_fixed_pagefile`).
 
-## 画面などが使う VRAM(今の空き)
+## VRAM used by the display etc. (current free)
 
-- nvidia-smi の `memory.used`・`memory.free` を `vram_used_gb`・`vram_free_gb` に出す(この PC は画面・ブラウザなどで約 3.6 GB 使用中)。
-- **段階は総量で決める**(使う VRAM はほかのアプリを閉じれば空くため)。判定した動かし方で要る VRAM が今の空きより多いときは、
-  見積もりの `vram_free_short: true` と「今の空き VRAM は … ほかのアプリを閉じれば動く」の理由で知らせる。
-- 目安の予約: ComfyUI は Windows で 600 MB(VRAM が 15 GB を超える GPU は 700 MB)、それ以外で 400 MB を、ほかのアプリのために空けておく
-  (`EXTRA_RESERVED_VRAM`)。見積もりの固定分(`overhead_gb`、実測で合わせた値)がこれと CUDA の文脈などを含む(docs/accuracy.md)。
-- llmfit との違い: llmfit(bffd1b6 の `gpu_fit_pool_gb`)は空きが分かれば `min(空き, 総量)` で段階を決める。
-  こちらは画像・動画の生成は 1 回ずつ動かすもので、ほかのアプリを閉じれば済むため、段階は総量で決めて注意だけ出す。
+- `memory.used` and `memory.free` of nvidia-smi are output as `vram_used_gb` and `vram_free_gb` (this PC has about 3.6 GB in use by the display, browser and so on).
+- **The level is decided by the total** (the VRAM in use is freed by closing other apps).
+  - When the VRAM needed by the chosen way of running is more than the current free VRAM, the estimate gets `vram_free_short: true` and the reason "current free VRAM is ... it runs if you close other apps".
+- Reserved amount: ComfyUI keeps 600 MB free for other apps on Windows (700 MB for GPUs with more than 15 GB of VRAM) and 400 MB elsewhere (`EXTRA_RESERVED_VRAM`).
+  - The fixed part of the estimate (`overhead_gb`, a value fitted to measurements) includes this and the CUDA context ([accuracy.md](accuracy.md)).
+- Difference from llmfit:
+  - llmfit (`gpu_fit_pool_gb` at bffd1b6) decides the level with `min(free, total)` when free is known.
+  - Here, image and video generation runs one job at a time and closing other apps is enough, so the level is decided by the total and only a warning is shown.
 
-## llmfit との突き合わせ
+## Comparison with llmfit
 
-| llmfit の場合分け | こちら |
+| llmfit's case split | Here |
 |---|---|
-| nvidia-smi の `addressing_mode`(ATS)で CPU と共有するメモリの GPU(Grace Blackwell・Tegra)を見分け、RAM を VRAM とみなす | VRAM が返らない NVIDIA の GPU は判定に使わない。DGX Spark などは対象外と書く |
-| Apple silicon は Metal の `recommendedMaxWorkingSetSize` を GPU のメモリにする | Python から Metal を呼ばない(依存を増やさない)ので、搭載量の 3/4 とみなす(上の「共有メモリ」) |
-| nvidia-smi が VRAM を返さないとき GPU 名から推す | 推さない(VRAM を推して「載る」と言わない) |
-| 同じ型番の複数枚をまとめて VRAM を足す(llama.cpp などは分けて載せられる) | 足さない(ComfyUI は 1 枚で動く)。最大の 1 枚 |
-| Linux で nvidia-smi が無いとき sysfs・lspci で NVIDIA の GPU を見つける | 判定には使わない(CUDA が動くか分からない)。`--all-gpus` などの一覧に出すだけ |
-| AMD(rocm-smi・sysfs)・Intel(lspci)・Apple(system_profiler)を判定に使う | 0.7.0 から、ComfyUI + PyTorch が動く組み合わせ(対応表)だけ使う。llama.cpp の Vulkan のようにどの GPU でも動くわけではないので、Vulkan では数えない |
-| WMI の AdapterRAM の頭打ちをレジストリの qwMemorySize で直す(issue #830)、DriverDesc で突き合わせ、曖昧なら使わない | 同じ考え方。加えて MatchingDeviceId(型番の ID)で先に突き合わせ、PCI でない部品を捨てる |
-| 内蔵 GPU(Intel UHD など)を外付けがあれば落とす | 専用の VRAM の GPU を内蔵 GPU より先に使う。UHD・Iris Xe は対応表に無いので使わない |
-| AMD の APU の UMA の取り分を搭載量に足し戻す | 取り分けた VRAM + GTT(または見えている RAM の半分)を GPU のメモリにする |
-| `available_ram_gb` が 0 のときの代わりの読み方(macOS) | psutil の値のまま |
-| compute capability・ドライバ・PyTorch のビルドの対応 | llmfit には無い。こちらで足した(上の「世代と PyTorch・ドライバ」) |
-| ページファイル・スワップ | llmfit には無い。こちらで足した(上の「メモリと仮想メモリ」) |
+| Uses nvidia-smi `addressing_mode` (ATS) to find GPUs that share memory with the CPU (Grace Blackwell, Tegra) and treats RAM as VRAM | An NVIDIA GPU that returns no VRAM is not used for judging. DGX Spark and similar are stated as out of scope |
+| For Apple silicon, uses Metal `recommendedMaxWorkingSetSize` as GPU memory | Python does not call Metal (to avoid more dependencies), so 3/4 of the installed memory is assumed (see "Shared memory" above) |
+| Infers from the GPU name when nvidia-smi returns no VRAM | Does not infer (it does not guess VRAM and then say "it fits") |
+| Adds up the VRAM of several cards of the same model (llama.cpp and others can split a model) | Does not add (ComfyUI runs on one GPU). The one with the most VRAM |
+| On Linux without nvidia-smi, finds NVIDIA GPUs through sysfs and lspci | Not used for judging (it is unknown whether CUDA works). Only shown in lists such as `--all-gpus` |
+| Uses AMD (rocm-smi, sysfs), Intel (lspci) and Apple (system_profiler) for judging | Since 0.7.0, only combinations where ComfyUI + PyTorch runs (the support table). Unlike Vulkan in llama.cpp, it does not run on every GPU, so Vulkan is not counted |
+| Fixes WMI's AdapterRAM cap with the registry qwMemorySize (issue #830), matches by DriverDesc, and does not use it if ambiguous | Same idea. In addition, it matches first by MatchingDeviceId (the model ID) and drops non-PCI adapters |
+| Drops integrated GPUs (Intel UHD etc.) when a discrete GPU exists | Uses a GPU with dedicated VRAM before an integrated GPU. UHD and Iris Xe are not in the support table, so they are not used |
+| Adds the AMD APU's UMA carve-out back to the installed memory | Uses the carved-out VRAM + GTT (or half of the visible RAM) as GPU memory |
+| Alternative reading when `available_ram_gb` is 0 (macOS) | psutil's value as is |
+| Mapping of compute capability, driver and PyTorch build | Not in llmfit. Added here (see "Generations, PyTorch and drivers" above) |
+| Page file and swap | Not in llmfit. Added here (see "Memory and virtual memory" above) |
 
-## 時間
+## Timing
 
-この PC(Windows 11、RTX 3070、i7-13700KF、ほかの作業で負荷あり)で 2026-10-20 に測った中央値:
+Medians measured on 2026-10-20 on this PC (Windows 11, RTX 3070, i7-13700KF, with load from other work):
 
-| 調べ方 | 時間 |
+| Method | Time |
 |---|---|
-| 以前の `detect()`(nvidia-smi 1 回) | 約 0.1〜0.25 秒 |
-| 今の `detect()`(既定。NVIDIA の GPU があれば nvidia-smi 1 回 + ctypes + レジストリ) | 約 0.15〜0.4 秒(nvidia-smi のばらつきの範囲。ctypes・レジストリは 1 ms 未満) |
-| `detect(other_gpus=True)` / `system --all-gpus` | 約 1.0〜1.2 秒(PowerShell の起動が約 1 秒) |
+| Previous `detect()` (one nvidia-smi call) | about 0.1 to 0.25 s |
+| Current `detect()` (default; with an NVIDIA GPU, one nvidia-smi call + ctypes + registry) | about 0.15 to 0.4 s (within the spread of nvidia-smi; ctypes and registry take under 1 ms) |
+| `detect(other_gpus=True)` / `system --all-gpus` | about 1.0 to 1.2 s (starting PowerShell takes about 1 s) |
 
-nvidia-smi だけを 15 回ずつ交互に動かすと、項目を増やした問い合わせと以前の問い合わせの差は測れなかった(どちらも 0.1〜0.25 秒)。
+Running only nvidia-smi 15 times each, alternating, the query with more fields and the previous query showed no measurable difference (both 0.1 to 0.25 s).
 
-## 試験
+## Tests
 
-`tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)と `tests/fixtures/hardware/`。
-bench が NVIDIA 以外の GPU の使用率・使用中のメモリを読む道具(`gpustat.py`)は `tests/test_gpustat.py`(公式の文書・ソースの出力例と、この PC の typeperf の実際の出力)と `tests/test_bench_vendors.py`。既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない
-(`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files` を塞ぐ)。
-フィクスチャ: この PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)、複数の GPU、compute_cap の無い古い版、
-`[N/A]`、壊れた出力、ドライバが動いていない・GPU が無いときの出力、AMD だけ・Intel + NVIDIA・ドライバの無い NVIDIA の WMI、
-取り外した GPU が残るレジストリ、lspci。世代ごと(Kepler・Maxwell・Pascal・Volta・Turing・Ampere・Ada・Hopper・Blackwell)の判定と、
-世代を固定して VRAM・RAM を増やしても段階が下がらないことを確かめる。
+- `tests/test_hardware.py`, `tests/test_vendors.py` (AMD, Intel, Apple, APU, families that run on CPU, #26) and `tests/fixtures/hardware/`.
+- The tool with which bench reads utilization and used memory of non-NVIDIA GPUs (`gpustat.py`) is tested by `tests/test_gpustat.py` (output examples from official documents and sources, and the actual typeperf output of this PC) and `tests/test_bench_vendors.py`.
+- The default tests do not call the real nvidia-smi, PowerShell, lspci or registry (`_no_real_hardware` in `tests/conftest.py` blocks `hardware._run`, `_reg_display_entries` and `_reg_paging_files`).
+- Fixtures:
+  - Actual output of nvidia-smi, WMI and the registry of this PC (instance IDs replaced with 0).
+  - Multiple GPUs, an old version without compute_cap, `[N/A]`, broken output, output when the driver is not running or there is no GPU.
+  - AMD only, Intel + NVIDIA, WMI of an NVIDIA GPU without a driver, a registry that keeps a removed GPU, lspci.
+- What is checked:
+  - The verdict for each generation (Kepler, Maxwell, Pascal, Volta, Turing, Ampere, Ada, Hopper, Blackwell).
+  - That adding VRAM or RAM with the generation fixed never lowers the level.

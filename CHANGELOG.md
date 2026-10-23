@@ -21,6 +21,14 @@ All notable changes to this project are documented here. The format is based on
   never lowers the score"); `gmf.download` is the other Python call that uses the network; PCI model IDs are kept
   in the output; submission checks and fields; `files_changed`; strict type checks; local CI (`tools/ci_local.py`)
   and the weekly update on the maintainer's PC. Counts and dates that change every week now say where to read them.
+- README: a screenshot of `genmodelfit recommend` (8 GiB VRAM, 32 GiB RAM; model list as of 2026-10-22), and a
+  quick start that shows `uvx genmodelfit recommend` (try it without installing) before the install step.
+- Every page in docs/ and CONTRIBUTING now has an English version (`X.md`) and a Japanese version (`X.ja.md`) with
+  the same content, instead of pages that were Japanese only or mixed both languages. Each page starts with what it
+  covers and who it is for; the longer pages have a table of contents. New index: docs/README.md.
+  `tests/test_docs.py` checks that both versions exist, that links and anchors resolve, and that sections cited from
+  the code exist.
+- The project's "Documentation" link on PyPI now points to the docs index.
 
 ## [0.9.1] - 2026-10-22
 

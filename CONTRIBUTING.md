@@ -1,40 +1,36 @@
-# 実測を送る / Contributing measurements
+# Contributing measurements
 
-genmodelfit の見積もりは、実際の PC で測った値(実測)があるとそれを優先します。いろいろな GPU の実測が
-集まるほど、見積もりが正確になります。`genmodelfit bench` で測った結果を Pull Request で送ってください。
+**English** · [日本語](CONTRIBUTING.ja.md)
 
-**English summary:** Install `genmodelfit>=0.9.1` (or `pip install -e .` in your clone, so that local checks match CI), then run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
-against your own ComfyUI (in a clone of your fork). It writes a submission file
-`data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver / vendor and
-PyTorch backend / PCI model ID such as `1002:744c` (not the bus address), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
-AMD, Intel and Apple GPUs are especially welcome: they have no measurements yet, so their levels are capped at Good. Check exactly what will be shared with
-`genmodelfit contrib show <file>` (it also runs a privacy checklist), then open a pull request that adds only that file.
-**genmodelfit itself never sends anything**; sharing happens only through the pull request you open. The file never
-contains your host name, user name, paths, GPU UUID, PCI address, IP, CPU name or exact time. CI runs
-`genmodelfit contrib validate` on the pull request. Out-of-memory runs are welcome too (`outcome: "oom"`).
-Already have a saved bench result? `genmodelfit contrib make --from <file>` converts it.
+genmodelfit prefers a value measured on a real PC (a measurement) over its estimate. The more GPUs are measured, the more accurate the estimates get.
+This page is for anyone who wants to send the result of `genmodelfit bench` as a pull request. It also lists the rules for other changes.
+For terms, see [README.md](README.md).
 
-**License of contributions:** genmodelfit (code and bundled data) is under MPL-2.0. By opening a pull request you
-agree that your contribution (code, measurements or other data) is licensed under MPL-2.0 like the rest of the
-project. There is no CLA.
+## Contents
 
-## 1. 測る
+- [1. Measure](#1-measure)
+- [2. Create the submission JSON](#2-create-the-submission-json)
+- [3. Check the contents](#3-check-the-contents)
+- [4. Send a pull request](#4-send-a-pull-request)
+- [Other changes](#other-changes)
+- [License](#license)
 
-1. ComfyUI を起動します(ふだん使っているもので構いません)。**ほかの生成が動いていないとき**に測ってください。
-   bench はキューに仕事があると測りません(開始前と、送る直前の 2 回見ます)。GPU の使用率(約 2 秒の平均)が
-   30% 以上のときも止まります。使用率は NVIDIA なら `nvidia-smi`、AMD なら `amd-smi` か `rocm-smi`(Linux)、
-   Intel なら `xpu-smi`(Linux)、Windows の AMD・Intel は Windows の性能カウンタ、Apple は `ioreg` で読みます
-   - NVIDIA で `nvidia-smi` が無い・同じ名前の GPU が複数あってどれか分からない・ComfyUI が別の PC、のように
-     GPU の空きを確かめられないときは、黙って進まずに止まります(`--force` で測れます)
-   - NVIDIA 以外で使用率を読む道具が無いときは止まらずに測ります。そのときは ComfyUI のキューが空なことと、
-     ComfyUI 以外のアプリが GPU のメモリを半分より多く使っていないことだけを確かめ、注意と note に残します。
-     ほかのアプリ(ゲーム・動画の書き出しなど)は閉じてから測ってください
-   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、見積もりの段階を Good までに
-     控えています。同じ構成の実測が集まると詰められます
-2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。足りないときは bench が
-   どのファイルが無いかを表示します。`genmodelfit download <テンプレート名> --comfyui-dir <ComfyUI のフォルダ>` で、
-   一覧のファイルを ComfyUI の models に落とせます(sha256 で確かめます。ライセンスが分からないファイルと gated のファイルは落としません)
-3. 測ります
+In short: install `genmodelfit>=0.9.1` (or `pip install -e .` in your clone, so that local checks match CI), run `genmodelfit bench` against your own ComfyUI in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file.
+**genmodelfit itself never sends anything**; sharing happens only through the pull request you open.
+
+## 1. Measure
+
+1. Start ComfyUI (the one you normally use is fine). Measure **when no other generation is running**.
+   - bench does not measure while the queue has jobs (it checks twice: before starting and just before sending).
+   - It also stops when GPU utilization (averaged over about 2 seconds) is 30% or more.
+   - Utilization is read with `nvidia-smi` on NVIDIA, `amd-smi` or `rocm-smi` (Linux) on AMD, `xpu-smi` (Linux) on Intel, Windows performance counters for AMD and Intel on Windows, and `ioreg` on Apple.
+   - If the GPU's free state cannot be checked, bench stops instead of continuing silently (`--force` lets you measure anyway). Examples: no `nvidia-smi` on NVIDIA, several GPUs with the same name so it is unclear which one, or ComfyUI on another PC.
+   - If a non-NVIDIA PC has no tool to read utilization, bench does not stop. It only checks that the ComfyUI queue is empty and that no app other than ComfyUI uses more than half of the GPU memory, and leaves a warning and a `note`. Close other apps (games, video export, and so on) before measuring.
+   - **Measurements on AMD, Intel and Apple GPUs are especially welcome.** They have no measurements yet, so their levels are capped at Good. Measurements of the same configuration let us tighten the estimates.
+2. Put the model files the template uses into ComfyUI's `models` folder.
+   - If files are missing, bench shows which ones.
+   - `genmodelfit download <template name> --comfyui-dir <ComfyUI folder>` downloads the files in the list into ComfyUI's models folder (checked with sha256). It does not download files whose license is unknown, or gated files.
+3. Measure:
 
 ```powershell
 pip install -U "genmodelfit>=0.9.1"
@@ -44,163 +40,160 @@ genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --le
 genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --steps 15
 ```
 
-`--url` は必ず指定します(既定の URL は持ちません。間違えてほかの ComfyUI に送らないため)。
+Always pass `--url` (there is no default URL, so you cannot send to another ComfyUI by mistake).
 
-- `<template>` は ComfyUI 公式テンプレートの名前です(`genmodelfit info <名前>` で一覧の ID を確かめられます)。
-  ワークフローは ComfyUI が持つテンプレート、無ければ GitHub の公式テンプレートから作ります。
-  自分のワークフローで測るときは、ComfyUI の「API 形式で書き出し」で保存した JSON を `--workflow` で渡します
-- 設定は `--resolution 幅x高さ`(または `--width` `--height`)、`--frames`、`--length 秒`(音声)、`--steps` で変えます。
-  ほかの入力は `--set 入力の名前=値` で変えられます(同じ名前の入力すべてが変わります)。
-  `--set` で大きさ・長さ・ステップ数・seed 以外を変えた結果と、`--workflow` の結果は「標準でない」
-  (`standard: false`)として記録され、見積もりには使われません。`--set` の値は、数値だけを `note` に残します
-  (文字列はプロンプトのことがあるので、名前だけを残します)
-- 既存の実測(`src/genmodelfit/data/measurements.json`)と同じ設定で測ると比べやすくなります
-- 既定では `/free` を送りません(ほかの人が読み込んだモデルを外さないため)。読み込み済みのモデルがあると、
-  その分が結果に混ざることがあるので、bench は注意を出し、`note` に開始前の量を残します。
-  **自分だけが使う ComfyUI なら `--free` を付けてください**(モデルを外し、前の結果のキャッシュも消してから、
-  読み込みから測ります)
-- `--free` を付けずに前回と同じ内容を送ると、ComfyUI が前の結果を返して何も実行しないので、bench は測れなかったと
-  表示します。一部のノードだけが前の結果を使ったときは、その分のメモリを測れていないので「標準でない」になります
-- 測っている間に ComfyUI でほかの仕事が動いた、送ってから実行が始まるまで 10 秒以上かかった、というときも
-  「標準でない」になります
-- 時間切れ(`--timeout 秒`、既定 1800)や Ctrl+C のときは、自分のプロンプトだけを取り消します
-  (実行中なら prompt_id を付けて中断し、待っている間ならキューから消します。ほかの人の仕事は止めません)
-- 入力の画像が要るテンプレート(画像から 3D など)は、公式テンプレートの画像を ComfyUI にアップロードします
-  (上書きはしません。同じ名前の別の画像があれば ComfyUI が別の名前を付けます)
-- 保存ノードの出力は ComfyUI の output フォルダの `genmodelfit_bench/` に入ります。要らなければ消してください
+Template and settings:
 
-### 何を測っているか
+- `<template>` is the name of an official ComfyUI template (`genmodelfit info <name>` shows the ID in the list).
+- The workflow is built from the template ComfyUI has, or else from the official template on GitHub.
+- To measure your own workflow, save it with "Export (API)" in ComfyUI and pass the JSON with `--workflow`.
+- Change settings with `--resolution WIDTHxHEIGHT` (or `--width` and `--height`), `--frames`, `--length SECONDS` (audio) and `--steps`.
+- Change other inputs with `--set INPUT_NAME=VALUE` (every input with that name changes).
+- A result is recorded as "non-standard" (`standard: false`) and is not used for estimates in two cases: you changed anything other than size, length, steps and seed with `--set`, or you used `--workflow`.
+- For `--set`, only numeric values are kept in `note`. For strings only the name is kept, since a string may be a prompt.
+- Measuring with the same settings as an existing measurement (`src/genmodelfit/data/measurements.json`) makes comparison easier.
 
-| 項目 | 測り方 |
+Model loading and caching:
+
+- By default bench does not send `/free`, so it does not unload models other people loaded.
+- If models are already loaded, their share can end up in the result. bench then shows a warning and leaves the amount before the start in `note`.
+- **If the ComfyUI is only yours, add `--free`.** It unloads models and clears the cache of earlier results, then measures from loading.
+- If you send the same content again without `--free`, ComfyUI returns the earlier result and runs nothing, so bench reports that it could not measure.
+- If only some nodes reused earlier results, the memory for those nodes was not measured, so the result is "non-standard".
+- The result is also "non-standard" if other jobs ran in ComfyUI during the measurement, or if the run took 10 seconds or more to start after sending.
+
+Timeout and files:
+
+- On timeout (`--timeout SECONDS`, default 1800) or Ctrl+C, bench cancels only its own prompt. It interrupts it with the prompt_id if running, or removes it from the queue if waiting. It does not stop other people's jobs.
+- For templates that need an input image (such as image to 3D), bench uploads the official template's image to ComfyUI. It never overwrites: if a different image has the same name, ComfyUI gives a new name.
+- Output of save nodes goes to `genmodelfit_bench/` in ComfyUI's output folder. Delete it if you do not need it.
+
+### What is measured
+
+| Field | How it is measured |
 |---|---|
-| `peak_vram_gb` | 生成中に `/system_stats` を 0.2 秒ごとに読み、torch が確保した量(`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含みません。`torch_vram_total` が取れないときは GPU 全体の増分で代え、警告を残します |
-| `note` の「GPU 全体の増分」 | GPU 全体の使用量(`nvidia-smi`。NVIDIA 以外は上の道具、約 1 秒ごと)の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります。道具が無ければ書きません |
-| `peak_ram_gb` | ポートで待ち受けている ComfyUI のプロセス(と子プロセス)の常駐メモリの最大値。コマンドラインに `main.py` か `comfy` を含むプロセスだけを数えます。ComfyUI が別の PC のとき・プロセスを特定できないときは空です |
-| `seconds` | ワークフローを送ってから終わるまで(モデルの読み込みを含む)。ComfyUI が数えた実行時間は `note` に入ります |
-| `offload` | ComfyUI のログから読みます: `dynamic`(動的 VRAM)/ `partial`(一部だけ GPU に載せた)/ `lowvram`(`--lowvram` などの起動オプション)/ `none`(全部載った)/ `oom`(メモリ不足で失敗)。分からなければ空 |
-| `gpu_vram_gb` | `/system_stats` の VRAM の総量を GiB で、小数 2 桁まで丸めた値(公称 8 GB の GPU なら 8.0 前後)。同梱の古い行は公称の値(`16` など)です |
-| `outcome` | `ok`(最後まで動いた)/ `oom`(メモリ不足で失敗)/ `error`(ほかの理由で失敗) |
-| `standard` | 公式テンプレートのまま(大きさ・長さ・ステップ数・seed だけを変えた)で、ほかの仕事が混ざらず、全部のノードを実行したか |
+| `peak_vram_gb` | Reads `/system_stats` every 0.2 seconds during generation and takes the maximum of the amount torch allocated (`torch_vram_total`). This is the ComfyUI process's share and does not include the CUDA context (about 0.3 to 0.5 GB). If `torch_vram_total` is unavailable, the increase over the whole GPU is used instead and a warning is left. |
+| "GPU-wide increase" in `note` | The maximum total GPU usage (`nvidia-smi`; the tool above for non-NVIDIA, about every 1 second) minus the value before the start. Changes by other apps are included. Not written if there is no tool. |
+| `peak_ram_gb` | Maximum resident memory of the ComfyUI process (and its child processes) listening on the port. Only processes whose command line contains `main.py` or `comfy` are counted. Empty if ComfyUI is on another PC or the process cannot be identified. |
+| `seconds` | From sending the workflow to its end (including model loading). The run time ComfyUI counted goes into `note`. |
+| `offload` | Read from the ComfyUI log: `dynamic` (dynamic VRAM) / `partial` (only part was put on the GPU) / `lowvram` (a startup option such as `--lowvram`) / `none` (everything fit) / `oom` (failed from out of memory). Empty if unknown. |
+| `gpu_vram_gb` | Total VRAM from `/system_stats` in GiB, rounded to 2 decimals (about 8.0 for a nominal 8 GB GPU). Old bundled rows hold the nominal value (such as `16`). |
+| `outcome` | `ok` (ran to the end) / `oom` (failed from out of memory) / `error` (failed for another reason) |
+| `standard` | Whether the official template was kept as is (only size, length, steps and seed changed), no other job got mixed in, and all nodes were executed. |
 
-メモリ不足(OOM)のデータも歓迎します(「この GPU では動かない」という大事なデータです)。ただし必ず
-`outcome: "oom"` のまま送ってください。bench は失敗した結果を表示するだけで、キャッシュには保存しません
-(キャッシュの実測は、その PC の見積もりにすぐ使われるため)。保存するときは `--save-failed`(キャッシュへ)か
-`--output パス` を付けます。「標準でない」結果も同じで、`--save-nonstandard` か `--output` で保存できます。
-見積もりは `outcome` が `ok` で `standard` が `true` の実測だけを使います。
+Out-of-memory (OOM) data is welcome too: it is important data saying "this GPU cannot run it". Always send it with `outcome: "oom"` unchanged.
 
-## 2. 提出用の JSON を作る
+- bench only shows a failed result and does not save it to the cache (cached measurements are used for estimates on that PC right away).
+- To save it, add `--save-failed` (to the cache) or `--output PATH`.
+- "Non-standard" results are the same: save them with `--save-nonstandard` or `--output`.
+- Estimates use only measurements with `outcome` `ok` and `standard` `true`.
 
-自分のフォーク(GitHub の Fork)を手元に clone し、そのフォルダで bench に `--submission` を付けて測ります。
-clone したフォルダで `pip install -e .` すると、CI と同じ main の版で `contrib validate` を流せます。
+## 2. Create the submission JSON
+
+Clone your fork (GitHub Fork) and run bench with `--submission` in that folder. Running `pip install -e .` in the clone lets you run `contrib validate` with the same main version as CI.
 
 ```powershell
-git clone https://github.com/<あなたの名前>/genmodelfit
+git clone https://github.com/<your-name>/genmodelfit
 cd genmodelfit
 pip install -e .
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832x832 --submission data/contrib/
 ```
 
-- `--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます。
-  フォルダは末尾に `/` を付けて渡してください(`data/contrib/`。最初の提出ではまだフォルダが無く、`/` が無いと
-  `data/contrib` という名前のファイルになります)
-  (例 `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`。`sha8` は中身の sha256 の先頭 8 桁)。ファイル名を渡せばその名前で書きます
-- 前に測って保存した結果(`<キャッシュ>/measurements/….json` や `--output` のファイル)からも作れます:
-  `genmodelfit contrib make --from <bench の結果> --output data/contrib/`
-  (ComfyUI が別の PC だったときは `--no-pc-info` を付けると、この PC の OS・メモリ・GPU の世代を入れません)
-- 失敗(OOM)の結果も、そのまま出してください。標準でない条件の結果は記録として受け付けますが、まとめには使いません
+- The file is a submission file (`contrib_schema` 1). If you pass a folder to `--submission`, the file is written as `data/contrib/<GPU>/<date>-<sha8>.json`. Example: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`, where `sha8` is the first 8 hex digits of the content's sha256. If you pass a file name, it is written under that name.
+- Pass the folder with a trailing `/` (`data/contrib/`). On a first submission the folder does not exist yet, and without the `/` a file named `data/contrib` is created.
+- You can also create it from a result you measured and saved earlier (`<cache>/measurements/....json` or a file from `--output`): `genmodelfit contrib make --from <bench result> --output data/contrib/`
+- If ComfyUI was on another PC, add `--no-pc-info` to leave out this PC's OS, memory and GPU generation.
+- Submit failed (OOM) results as they are. Results under non-standard conditions are accepted as records but not used in aggregation.
 
-### 入るもの・入らないもの
+### What goes in and what does not
 
-| 入るもの | 例 |
+| Goes in | Example |
 |---|---|
-| GPU の名前・VRAM の総量・世代・compute capability・ドライバの版(世代と compute capability は NVIDIA だけ) | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
-| GPU の会社と PyTorch の backend(0.9.0 の bench から) | `amd` と `rocm`、`intel` と `xpu`、`apple` と `mps`、`nvidia` と `cuda` |
-| GPU の PCI の型番 ID(0.9.0。AMD・Intel で ComfyUI が同じ PC のときだけ。機種の番号で、個体・差し場所は表さない) | `1002:744c`(Radeon RX 7900 XTX。同じ機種ならどの PC でも同じ) |
-| Apple の GPU はチップ名(0.9.0。system_profiler の名前の形に合うものだけ) | `Apple M2 Pro` |
-| ComfyUI の版、OS の種類(版・ビルドは入れない)、メインメモリ(GiB の整数に丸める) | `0.40.0`, `windows`, `32` |
-| モデル ID・設定・結果・最大 VRAM / メモリ・時間・載せ方・測り方 | `image_sdxl_simple`, `832x832`, `ok`, `6.9` … |
-| 日付(UTC の日付だけ) | `2026-10-21` |
-| メモ(note。bench が書いた測り方の説明) | パス・URL・PC 名・ユーザ名・メール・UUID・IP・時刻らしい文字を含む文は、文ごと消す |
+| GPU name, total VRAM, generation, compute capability, driver version (generation and compute capability only on NVIDIA) | `NVIDIA GeForce RTX 3070`, `8.0`, `ampere`, `8.6`, `566.03` |
+| GPU vendor and PyTorch backend (from the 0.9.0 bench) | `amd` and `rocm`, `intel` and `xpu`, `apple` and `mps`, `nvidia` and `cuda` |
+| GPU PCI model ID (0.9.0; only for AMD and Intel with ComfyUI on the same PC; a model number that does not identify the unit or the slot) | `1002:744c` (Radeon RX 7900 XTX; the same on any PC with that model) |
+| Apple GPU chip name (0.9.0; only names matching the system_profiler form) | `Apple M2 Pro` |
+| ComfyUI version, OS family (no version or build), main memory (rounded to an integer GiB) | `0.40.0`, `windows`, `32` |
+| Model ID, settings, result, peak VRAM / memory, time, how it was loaded, how it was measured | `image_sdxl_simple`, `832x832`, `ok`, `6.9` ... |
+| Date (UTC date only) | `2026-10-21` |
+| Note (`note`: bench's description of how it measured) | A sentence containing something that looks like a path, URL, PC name, user name, email, UUID, IP or time is removed as a whole |
 
-**入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所(バス番号。型番 ID とは別物)、シリアル番号、IP / MAC アドレス、
-CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。決まった項目以外は CI の検査で断ります。
-ただし自動の点検は文字の形を見るだけで、note に普通の言葉で書いた名前(「山田太郎の PC で測った」など)や、base64 などで
-書き換えたパスは見分けられません(下の 3 で自分で読んでください)。
+**What does not go in**: PC name, user name, folder paths, GPU UUID, PCI slot address (bus number; different from the model ID), serial numbers, IP / MAC addresses, CPU name, time, the text given to bench's `--source`, and prompts.
+Fields other than the defined ones are rejected by the CI check.
+However, the automatic check looks only at the shape of the text. It cannot spot a name written in ordinary words in `note` (such as "measured on Taro Yamada's PC") or a path rewritten with base64 and the like. Read the file yourself in step 3.
 
-## 3. 中身を確かめる(送る前に必ず)
+## 3. Check the contents
+
+Always do this before sending.
 
 ```powershell
 genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 ```
 
-ファイルの中身をすべて読める形で出し、個人の情報の点検(パス・PC 名・ユーザ名・UUID・PCI・IP・URL・メール・時刻・
-知らない項目が無いか。この PC の名前・ユーザ名が入っていないかも見ます)の結果を `[ok]` / `[NG]` で出します。
+This prints everything in the file in readable form, and prints the result of a privacy checklist as `[ok]` / `[NG]`. The checklist looks for paths, PC name, user name, UUID, PCI, IP, URL, email, time and unknown fields, and also checks that this PC's name and user name are not in the file.
 
-- `[NG]` があれば、直してから出してください(手で書き換えたら、名前の `sha8` が変わるので `contrib validate` が
-  正しい名前を教えます)
-- **note(メモ)は自分で読んでください**。自動の点検は文の意味までは分かりません。気になる文は消して構いません
-- `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
-- 失敗(誤り)にするのは、機械的な検査(形・値の範囲・個人の情報・重複・ファイル名)だけです(llmfit と同じ考え方。2026-10-22)
-- 「確認」(notices)は、式の見積もりから 40% より外れた値・全部 GPU に載せた(`offload: none`)のに下限(重み + 固定分)より小さい値・
-  同じ GPU の PC(VRAM は提出の値と、同じ名前で VRAM の違う版。メモリ 16 / 32 / 64 GB)で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
-  PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)
+- If there is an `[NG]`, fix it before sending. If you edit the file by hand, the `sha8` in its name changes, and `contrib validate` tells you the correct name.
+- **Read the `note` yourself.** The automatic check does not understand what a sentence means. You may delete any sentence you are unsure about.
+- `genmodelfit contrib validate data/contrib` runs the same check as CI on your PC.
+- Only mechanical checks (shape, value range, personal information, duplicates, file name) make a submission fail (the same approach as llmfit; 2026-10-22).
+- Notices are shown but do not fail. They are: a value more than 40% off the estimate by the formula; a value smaller than the lower bound (weights + fixed part) although everything was put on the GPU (`offload: none`); a value that changes the level on a PC with the same GPU (checked with the submission's VRAM and with variants of the same name that have different VRAM, each with 16 / 32 / 64 GB of memory); a model not in the list; and an unknown GPU.
+- Notices are shown above the job summary, and the person who merges the PR reads them. If there is a reason, write it in the PR description (you may be asked to measure again).
 
-## 4. 送る(Pull Request)
+## 4. Send a pull request
 
-1. 足すのは `data/contrib/<GPU>/<日付>-<sha8>.json` のファイルだけにします(ほかのファイルは変えない。コードの変更は別の PR に)。
-   data/contrib の外のファイルを変えた PR は、`Contrib` のワークフローが失敗にします
-2. ブランチを作ってコミットし、自分のフォークに push します
+1. Add only `data/contrib/<GPU>/<date>-<sha8>.json`.
+   - Do not change other files (put code changes in a separate PR).
+   - The `Contrib` workflow fails a PR that changes files outside data/contrib.
+2. Create a branch, commit, and push to your fork:
 
    ```powershell
-   git switch -c contrib/<GPU>-<モデル>
-   git add data/contrib/<GPU>/<日付>-<sha8>.json
-   git commit -m "contrib: <GPU> <モデル>"
+   git switch -c contrib/<GPU>-<model>
+   git add data/contrib/<GPU>/<date>-<sha8>.json
+   git commit -m "contrib: <GPU> <model>"
    git push -u origin HEAD
    ```
 
-   GitHub で laxshmate/genmodelfit の main に向けて Pull Request を作ります。説明に、ComfyUI の起動オプション
-   (`--lowvram` など、変えたものだけ)を書いてもらえると助かります。個人名やメールアドレスは不要です。
-   初めての人の PR は、メンテナがワークフローの実行を許すまで CI が動かないことがあります
-3. CI(`Contrib` のワークフロー)が `genmodelfit contrib validate` で形・値の範囲・個人の情報・重複・ファイル名を検査し、
-   結果をジョブのまとめ(Summary)に出します。`contrib aggregate --report` の結果もまとめに出します。検査は、PR の向き先(main)の genmodelfit で動きます。
-   マージが作者の確認になります(人が提出ごとに承認する別の仕組みはありません)
+   Then create a pull request on GitHub against main of laxshmate/genmodelfit.
+   - It helps if the description lists the ComfyUI startup options (such as `--lowvram`; only those you changed).
+   - A personal name or email address is not needed.
+   - For a first-time contributor, CI may not run until a maintainer allows the workflow.
+3. CI (the `Contrib` workflow) runs `genmodelfit contrib validate` to check shape, value range, personal information, duplicates and file name, and writes the result to the job summary (Summary).
+   - It also writes the result of `contrib aggregate --report` to the summary.
+   - The check runs with genmodelfit from the PR's target (main).
+   - The merge is the maintainer's review (there is no separate mechanism where a person approves each submission).
 
-**genmodelfit は実測を送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです
-(自動で PR を作る機能はありません)。マージされると、提出は MPL-2.0 で公開されます(下の「ライセンス」)。
+**genmodelfit does not send measurements.** The only thing shared is the content of the pull request you open on your own GitHub (there is no feature that creates a PR automatically). Once merged, the submission is published under MPL-2.0 (see [License](#license) below).
 
-### 受け付けたあと
+### After it is accepted
 
-- 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。使うのは**測った GPU と同じ GPU の PC だけ**です(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)で、
-  VRAM の総量の比が 0.97 以上。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。0.9.1。llmfit と同じ考え方。
-  ほかの GPU の PC の判定は変わりません)。その PC では **1 件から**その構成の見積もりの根拠が `measured_community`
-  (ほかの利用者の実測)になり、件数(`sample_count`)も出ます。値は必要量を下げる向きにも上げる向きにも使います
-  (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ GPU の同じ設定の実測は、段階を決める
-  根拠にもなります(NVIDIA 以外の GPU も、その GPU の実測があれば good の上限が外れます)。詳しくは docs/accuracy.md
-- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表
-  (calibration.json・docs/accuracy.md)は、メンテナが実測を取り込むときに `python -m genmodelfit.calibrate` で作り直します
+- The maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD).
+- Only **PCs with the same GPU as the measured one** use the result. Judgments for PCs with other GPUs do not change (0.9.1; the same approach as llmfit). "Same GPU" means:
+  - the PCI model ID is the same (when both have it), otherwise the normalized name is the same (a generic name is not counted as a match), and
+  - the ratio of total VRAM is 0.97 or more. An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
+- On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured_community` (other users' measurements), and the count (`sample_count`) is shown.
+- The value is used in both directions, lowering or raising the required amount. A value for everything on the GPU is never lowered below weights + fixed part, and never raised above the GPU's total.
+- A measurement of the same GPU and the same settings also becomes grounds for deciding the level. For GPUs other than NVIDIA, the Good cap is lifted if that GPU has a measurement. See [docs/accuracy.md](docs/accuracy.md) for details.
+- For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements.
 
-### 作者の実測(measurements.json)
+### Maintainer measurements (measurements.json)
 
-同梱の `src/genmodelfit/data/measurements.json` は作者が測った実測です。項目は docs/schema.md の「Measurement」、
-提出の形は「contrib」にあります。利用者の実測は data/contrib に出してください(measurements.json は直接変えない)。
+The bundled `src/genmodelfit/data/measurements.json` holds the measurements the maintainer made. Its fields are in the [Measurement](docs/schema.md#measurement) section of docs/schema.md, and the submission format is in the [contrib](docs/schema.md#contrib) section. Send users' measurements to data/contrib (do not edit measurements.json directly).
 
-## そのほかの変更
+## Other changes
 
-コードの変更も歓迎します。依存を足すときは MIT / Apache-2.0 / BSD のものだけにしてください
-(このツールを組み込むアプリがソースを公開せずに配布するため)。ComfyUI のコード(GPL-3.0)は import せず、
-HTTP だけで話します。新しい `.py` ファイルの先頭には、ほかのファイルと同じ MPL-2.0 の表示(3 行)を入れてください。
+Code changes are welcome too.
 
-送る前に `python tools/ci_local.py` で、CI と同じ検査(Python 3.10〜3.13 の試験・ruff・配布物)を手元で通してください
-(要るのは [uv](https://docs.astral.sh/uv/) だけ。Windows からは `--linux` で WSL の中でも流せます)。
-フォークからの PR では GitHub の CI も動きます。
+- When adding a dependency, use only MIT / Apache-2.0 / BSD ones (apps that embed this tool distribute without publishing their source).
+- Do not import ComfyUI code (GPL-3.0); talk to it over HTTP only.
+- Put the same 3-line MPL-2.0 notice as in other files at the top of every new `.py` file.
+- Before sending, run `python tools/ci_local.py` to pass the same checks as CI on your PC (tests on Python 3.10 to 3.13, ruff, and the package). You only need [uv](https://docs.astral.sh/uv/). On Windows, `--linux` also runs it inside WSL.
+- For PRs from forks, GitHub's CI runs as well.
 
-## ライセンス / License
+## License
 
-genmodelfit のコードと同梱のデータ(db.json・実測・係数)は [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) です。
-送っていただく修正・実測・データも、**MPL-2.0 で出していただいたものとして受け入れます**
-(Pull Request を出すことで、これに同意したことになります)。CLA(著作権の譲渡や追加の許諾の書類)はありません。
-自分で書いたもの、または MPL-2.0 で出してよいものだけを送ってください。
+The code of genmodelfit and the bundled data (db.json, measurements, coefficients) are under [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE).
 
-Contributions are accepted under MPL-2.0 (inbound = outbound). No CLA is required. Only submit work you wrote
-yourself or are allowed to release under MPL-2.0.
+- Fixes, measurements and other data you send are accepted **as released under MPL-2.0**, like the rest of the project (inbound = outbound).
+- By opening a pull request you agree to this.
+- There is no CLA (a document assigning copyright or granting extra permission).
+- Only submit work you wrote yourself or are allowed to release under MPL-2.0.

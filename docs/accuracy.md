@@ -1,370 +1,570 @@
-# 見積もりの精度 / Accuracy
+# Estimate accuracy
 
-2026-10-20 時点(ほかの利用者の実測の扱いは 2026-10-22)。係数は `src/genmodelfit/data/calibration.json`、作り直しは `python -m genmodelfit.calibrate`
-(`--dry-run` で書き出さずに表だけ出す)。下の表はそのコマンドの出力をそのまま貼ったもの。
-**単位はすべて GiB(2^30 バイト)**。表や CLI の「GB」も GiB を指す。
+**English** · [日本語](accuracy.ja.md)
 
-## 結論
+This page explains how genmodelfit's VRAM and memory estimates are built, which measurements they are fitted to, and how far they can be trusted.
+It is for people who read the estimates, change the numbers, or submit measurements.
 
-- **評価できたのは 4 件(画像 2・3D 2)で、leave-one-out(1 件ずつ外して残りで合わせ、外した 1 件を当てる)の
-  最大誤差 6.4%、平均 4.6%**。目標 ±20% の範囲には入ったが、4 件・1 種類の GPU だけの結果で、
-  これで「目標を達成した」とは言えない
-- **動画と音声は、張り付いていない実測が 1 件ずつしかないため評価できない**(`calibration.json` の
-  `by_modality.video.target_met` / `music.target_met` は null)。その 1 件を外すと係数が事前値(#1 の仮の値)に
-  戻るので、Wan2.1 の -17.2% と ACE-Step の +3.5% は事前値の当たり外れを測っているだけ
-- **張り付いた実測 3 件(Z-Image bf16、Wan2.2 5B × 2)は情報を持たない**。重みだけで実測を超えるので、
-  「予測 ≥ 実測」は式の作りから必ず成り立つ(外れようがない)。精度の根拠には数えない
-- 比べる基準として「ファイルの大きさの合計だけ」で当てると、張り付いていない 6 件で平均 22.8% 外れる
-- 合わせたのは「全部載せ」の VRAM(`vram_gb`)だけ。**「順に載せ替え」(`vram_sequential_gb`)と
-  「逃がす」(`vram_offload_gb`)、メインメモリ(`ram_gb`)は実測が無く、検証していない**(8GB の GPU での実測が要る。#5 の bench)
+As of 2026-10-20 (how other users' measurements are handled: 2026-10-22).
+The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them with `python -m genmodelfit.calibrate`
+(`--dry-run` prints the tables without writing). The tables in "Results (leave-one-out)" come from that command's output.
+**All units are GiB (2^30 bytes).** "GB" in the tables and the CLI also means GiB.
 
-## 式
+## Contents
 
-ComfyUI は「文章の読み取り(テキストエンコーダ)→ 生成(本体)→ 仕上げ(VAE)」を順に動かす。そこで重みを段ごとに分け、
-3 つの量を出す(`estimate.py`)。
+- [Summary](#summary)
+- [Formulas](#formulas)
+  - [Main memory (RAM)](#main-memory-ram)
+  - [Models of unknown size](#models-of-unknown-size)
+- [How files are counted (agreement with #2)](#how-files-are-counted-agreement-with-2)
+- [How measurements are used](#how-measurements-are-used)
+- [Fitting](#fitting)
+- [Results (leave-one-out)](#results-leave-one-out)
+- [Known limits](#known-limits)
+- [Other users' measurements (#34, 2026-10-21; handling aligned with llmfit on 2026-10-22)](#other-users-measurements-34-2026-10-21-handling-aligned-with-llmfit-on-2026-10-22)
+  - [Bench on non-NVIDIA GPUs (0.9.0)](#bench-on-non-nvidia-gpus-090)
+- [Cross-check against RTX 3070 8GB measurements (bench, 2026-10-19 UTC, not used for fitting)](#cross-check-against-rtx-3070-8gb-measurements-bench-2026-10-19-utc-not-used-for-fitting)
 
-| 量 | 式 | 意味 |
+## Summary
+
+- **Only 4 models could be evaluated (2 image, 2 3D). The maximum leave-one-out error is 6.4%, the mean 4.6%.**
+  - Leave-one-out = fit on all but one measurement, then predict the one left out.
+  - This is inside the ±20% target.
+  - But it rests on 4 models and one kind of GPU, so it does not show that the target is met.
+- **Video and audio cannot be evaluated: each has only one measurement that is not pinned.**
+  (`by_modality.video.target_met` and `music.target_met` in `calibration.json` are null.)
+  - Leaving that one out sends the coefficient back to its prior value (the placeholder from #1).
+  - So Wan2.1 at -17.2% and ACE-Step at +3.5% only measure how good the prior values were.
+- **The 3 pinned measurements (Z-Image bf16, Wan2.2 5B × 2) carry no information.**
+  - The weights alone already exceed the measurement, so "prediction ≥ measurement" holds by construction and cannot fail.
+  - They do not count as evidence of accuracy.
+- As a baseline, predicting from "the sum of file sizes only" misses by 22.8% on average over the 6 unpinned measurements.
+- Only the all-on-GPU VRAM (`vram_gb`) was fitted.
+  - **The swapped-in-turn (`vram_sequential_gb`) and offload (`vram_offload_gb`) values and main memory (`ram_gb`) have no measurements and are not verified.**
+  - They need measurements on an 8 GB GPU (the bench in #5).
+
+## Formulas
+
+ComfyUI runs "read the text (text encoder) → generate (main model) → finish (VAE)" in turn.
+So the weights are split by stage and three quantities are computed (`estimate.py`).
+
+| quantity | formula | meaning |
 |---|---|---|
-| `vram_gb`(全部載せ) | 固定分 + 全部品の重み + 作業用メモリ | 動的 VRAM が空きの多い GPU で使う量。実測で合わせたのはこれだけ |
-| `vram_sequential_gb`(順に載せ替え) | 固定分 + max(エンコーダ, 本体 + 作業用, VAE + 作業用, その他) | 段の間で部品を降ろす。少し遅いが普通に使える |
-| `vram_offload_gb`(逃がす) | 固定分 + max(各段の重み × 0.4 + その段の作業用) | 重みの一部をメインメモリに置いたまま動く(lowvram / 動的 VRAM)。遅い |
-| `ram_gb`(GPU に載せて動くとき) | 3.0 + いちばん大きい段の重み | 全部載せ・順に載せ替えのとき(下の「メインメモリ」) |
-| `ram_gb`(逃がす・CPU のとき) | 3.0 + 全部品の重み | 逃がした重みがメインメモリに居続ける |
+| `vram_gb` (all on GPU) | fixed + weights of all parts + working memory | what dynamic VRAM uses on a GPU with plenty free. The only one fitted to measurements |
+| `vram_sequential_gb` (swapped in turn) | fixed + max(encoder, main + working, VAE + working, other) | parts are unloaded between stages. A bit slower but usable |
+| `vram_offload_gb` (offload) | fixed + max(weights of each stage × 0.4 + working memory of that stage) | runs with part of the weights left in main memory (lowvram / dynamic VRAM). Slow |
+| `ram_gb` (running on the GPU) | 3.0 + weights of the largest stage | for all on GPU and swapped in turn (see "Main memory (RAM)" below) |
+| `ram_gb` (offload, or CPU) | 3.0 + weights of all parts | the offloaded weights stay in main memory |
 
-- **重みの分け方**(役割): ComfyUI の置き場所(`directory`)→ 明示した `role` → HF のフォルダ名
-  (`unet` / `transformer` → 本体、`text_encoder*` / `tokenizer*` → エンコーダ、`vae*` → VAE、`image_encoder` → 画像エンコーダ、
-  `controlnet` → 本体と同じ段)→ 知っているファイル名(`umt5` / `t5xxl` / `clip_l` / `clip_g` / `qwen_2.5_vl` /
-  `qwen_3_4b` / `gemma` / `llama_3` などのテキストエンコーダ、`vae`)の順で決め、どれにも当たらなければ本体。
-  `qwen` のような短い語では引かない(`qwen_image_fp8_e4m3fn.safetensors` は本体)。
-  本体と同時に GPU に載る部品(`controlnet`・`model_patches`・`loras` など)は生成の段に入れ、
-  音声エンコーダ(`audio_encoders`)は生成の前に動くので読み取りの段に入れる
-- 1 ファイルに全部入りの `checkpoints` は、safetensors の見出しのテンソルの大きさで数えた内訳で分ける
-  (SDXL / ACE-Step 1.5 / Hunyuan3D 2.0 / 2.1。2026-10-20 に読んだ)。内訳の分からない全部入りと、ファイルごとの
-  大きさが無くテンプレートの大きさしか無いものは、本体 75%・エンコーダ 20%・VAE 5% で分ける(この割合は検証していない)
-- **作業用メモリ**: 画像 = 係数 × メガ画素 × 枚数、動画 = 係数 × メガ画素 × (コマ数 / 49)^0.5 × 枚数、音声 = 係数 × 分、3D = 一定。
-  動画の指数 0.5 は合わせていない(実測が 1 件しかない)。線形より緩くしたのは、ComfyUI の注意機構が省メモリの実装
-  (SDPA など)で、トークン数に対して作業用メモリが 2 乗では増えず、Wan の VAE はコマを少しずつ区切って復号するため
-  (コマ数がそのまま効かない)。指数の値そのものは根拠のある数字ではない
-- **精度の指定**(`Settings.precision`、CLI の `--precision`): 本体の重みだけを換算する(例: bf16 → fp8 で半分)。
-  大文字・小文字や書き方の違い(`BF16`、`float16`、`gguf-Q4_K_M`)はそろえてから比べる。
-  元の精度は `ModelEntry.precision`、無ければ本体のファイル名(`bf16` / `fp8` / `int8` など)から読む。分からなければ換算しない
-- **段階**(2026-10-20 から。llmfit の docs/how-it-works.md「Fit analysis」にならう): 動かし方で使う置き場所
-  (GPU なら VRAM、CPU ならメインメモリ)の使用率で、60% 以下 perfect / 85% 以下 good / 98% 以下 marginal /
-  それより上 too_tight。動かし方ごとの上限: 全部 GPU は無し、順に載せ替える(GPU~)は good まで、逃がす(GPU+RAM)と
-  CPU は marginal まで。一番良い段階の動かし方を取る。メインメモリの確かめ(下)はそのあと。大きさが分からなければ
-  too_tight(下)。以前は「全部載せが VRAM の 90% 以内なら perfect、VRAM 以内なら good」だった。
-  同梱の一覧での変わり方(段階を変えた時点の一覧の全 341 件。HF の下限を上げる前。0.9.1 の同梱の一覧(2026-10-21)は 329 件): 8 GB / 32 GB は perfect 44 → 23、good 22 → 32、marginal 87 → 97、
-  too_tight 188 → 189。16 GB / 32 GB は perfect 95 → 66、good 67 → 76、marginal 107 → 124、too_tight 72 → 75。
-  AI生成キットの推奨の VRAM(8 GB)で、Z-Image Turbo int8 と Wan 2.1 1.3B は使用率 96〜97% なので marginal になる
-  (GPU で動くことは変わらない。tests/test_estimate.py)。
-  逃がしても GPU に載らないときは、GPU が無いときの判定(小さく CPU で動く種類なら marginal)とも比べて良いほうを取る
-  (小さな GPU を足すと CPU で動くものまで動かない判定になり、VRAM を増やして段階が下がっていた。#17)
+**How weights are assigned to a role.** The first rule that matches decides; if none matches, the file is the main model.
 
-### メインメモリ
+1. ComfyUI folder (`directory`)
+2. An explicit `role`
+3. HF folder name
+   - `unet` / `transformer` → main model
+   - `text_encoder*` / `tokenizer*` → encoder
+   - `vae*` → VAE
+   - `image_encoder` → image encoder
+   - `controlnet` → same stage as the main model
+4. Known file names
+   - Text encoders: `umt5` / `t5xxl` / `clip_l` / `clip_g` / `qwen_2.5_vl` / `qwen_3_4b` / `gemma` / `llama_3` and similar
+   - VAE: `vae`
 
-- GPU に載せて動くとき(全部載せ・順に載せ替え)は、**固定分 3.0 + いちばん大きい段の重み**とした。
-  ComfyUI は safetensors をメモリに割り当てて(mmap)読み、部品を 1 つずつ GPU へ送るので、使い終わった部品の
-  ページは OS が捨てられる、という**仮定**による。実測は無い。逃がすとき・CPU のときは、逃がした重みがメインメモリに
-  居続けるので固定分 + 全部品(安全側)
-- 足りないときは、必要量が搭載量の **1.5 倍まで** なら marginal(足りない分は仮想メモリ=ページファイルを使うので遅い。
-  理由に出す)、超えたら too_tight。Windows の既定(システム管理)のページファイルは搭載量と同程度以上まで伸びるが、
-  重みをページファイルに置くと極端に遅くなるので半分までにとどめた。**1.5 は判断で決めた値で、実測していない**
-- ページファイルの大きさが決まっている PC(固定の大きさ・ページファイル無し・Linux のスワップ)では、上限を
-  「搭載量 + その大きさ」(ただし 1.5 倍まで)にする(#21。docs/hardware.md「メモリと仮想メモリ」)
-- 以前は「3 GB + 全重み、足りなければ too_tight」だった。これだと AI生成キットのカタログの最低メモリ 16 GB と食い違い、
-  16 GB の PC では GPU に関係なく Wan2.2 5B(重み 16.9 GiB)が too_tight になっていた。今は 8 モデルとも、
-  16 GB(と 15.3 GiB と出るノート PC)で、メモリを理由に too_tight にならない(`tests/test_estimate.py` が検査)
+Notes:
 
-### 大きさが分からないモデル
+- Short words such as `qwen` are not matched (`qwen_image_fp8_e4m3fn.safetensors` is a main model).
+- Parts that sit on the GPU together with the main model (`controlnet`, `model_patches`, `loras`, …) go into the generation stage.
+- The audio encoder (`audio_encoders`) runs before generation, so it goes into the reading stage.
 
-ファイルの大きさが無い(None・0・負)ものが 1 つでもあり、テンプレートの大きさも、パラメータ数 × 精度も無いときは、
-重みを 0 として「載る」とは言わない。`fit = "too_tight"`・`run_mode = "none"`・`basis = "estimated"`・
-`unknown_size = true`・理由の先頭に「大きさが分からないため判定できません」を出し、`recommend` からは外す
-(`fit` / `info` には出す)。VRAM・メモリの値は 0、`limits` は null。GPU が無いときも「小さいので CPU で動く」とは見ない。
+**All-in-one `checkpoints` (one file holding everything):**
 
-## ファイルの数え方(#2 との約束)
+- Split by a breakdown counted from the tensor sizes in the safetensors header (SDXL / ACE-Step 1.5 / Hunyuan3D 2.0 / 2.1, read on 2026-10-20).
+- These are split 75% main model, 20% encoder, 5% VAE (these shares are not verified):
+  - All-in-one files with no known breakdown.
+  - Files with no per-file size, only a template size.
 
-#2 の一覧には、部品ごとに 1 つの版(1 つの精度、なるべく .safetensors、単一ファイルと diffusers 形式の片方)だけを
-入れる。それでも Hugging Face のリポジトリの並びをそのまま渡されたときに大きく数えすぎないよう、見積もりの側でも
-次の決まりで数える(`estimate.select_files`):
+**Working memory:**
 
-1. 重みでないファイル(`.json` `.txt` `.md` 画像など)と、ComfyUI で使わない形式(`onnx/` `flax` `openvino`
-   `safety_checker/`、`.onnx` `.msgpack` `.h5` など)は数えない
-2. **部品ごとに 1 組だけ**数える。部品は、ComfyUI の置き場所 + 名前(精度・形式・分割番号を除いたもの。
-   `t5xxl_fp16` と `t5xxl_fp8_e4m3fn` は同じ部品、`clip_l` と `t5xxl` は別の部品)、HF の diffusers のフォルダ
-   (中の `model` / `pytorch_model` / `diffusion_pytorch_model` は 1 つの部品。VAE のフォルダは `vae` と `vae_1_0` などを 1 つ)、
-   フォルダの外の本体(名前が同じか一方が他方で始まるもの。`sd_xl_base_1.0` と `sd_xl_base_1.0_0.9vae` は同じ部品、
-   高ノイズ用と低ノイズ用のように名前の違う本体は別の部品)
-3. 1 組の選び方: `.safetensors` > `.gguf` > `.bin` / `.ckpt` / `.pt(h)`、次に fp16 / bf16 > 精度の書いていないもの >
-   fp8 / int8 / q8 > q6 > q5 > q4 / nf4 > fp32、同じなら大きいほう(安全側)。分割(`-00001-of-00003`)は全部数える
-4. フォルダの外の単一ファイルと diffusers 形式の両方があれば、単一ファイルを数える。単一ファイルが全部入りと
-   分かっている(SDXL など、内訳表にあるもの)ときは diffusers のフォルダを全部除く。分からないときは、フォルダの外に
-   同じ役割(本体・VAE)のファイルがある diffusers のフォルダだけ除く。単一ファイルが本体だけ(FLUX の `flux1-dev.safetensors`
-   など)のときにエンコーダを数え落とさないためで、全部入りなのに内訳表に無いときは多めに出る(安全側)。
-   **依頼の文面は「単一ファイルだけ数える」だったが、本体だけの単一ファイルでエンコーダ(FLUX なら T5 の約 9 GiB)を
-   数え落とすので、こうした**
-5. 除いたファイルがあれば理由(`reasons`)に出す。`disk_gb` は数えたファイルの合計
+- Image = coefficient × megapixels × batch size
+- Video = coefficient × megapixels × (frames / 49)^0.5 × batch size
+- Audio = coefficient × minutes
+- 3D = constant
+- The video exponent 0.5 is not fitted (there is only one measurement).
+- Why it is gentler than linear:
+  - ComfyUI's attention uses memory-saving implementations (SDPA and others), so working memory does not grow with the square of the token count.
+  - The Wan VAE decodes the frames in small chunks, so the frame count does not act directly.
+- The value of the exponent itself has no solid basis.
 
-## 実測の使い方
+**Precision setting** (`Settings.precision`, CLI `--precision`):
 
-RTX 5080 の実測は ComfyUI の動的 VRAM で測ったもので、**空きがあれば多めに使う**。16GB で 13.2GB(Z-Image int8)は
-必要量の下限ではない。そこで:
+- Only the main model's weights are converted (for example bf16 → fp8 halves them).
+- Differences in case and spelling (`BF16`, `float16`, `gguf-Q4_K_M`) are normalized before comparing.
+- The original precision is `ModelEntry.precision`; if missing, it is read from the main file name (`bf16` / `fp8` / `int8`, …).
+- If it cannot be told, no conversion is done.
 
-1. 実測は「全部載せ」(`vram_gb`)の値として使う。そのモデルの作業用メモリを「実測 − 式の値」だけずらし、
-   同じずらしを順に載せ替え・逃がすの値にも足す。小さい GPU では全部載せが入らなくても、**順に載せ替え・逃がすへ落ちる**
-   (例: 8GB で Z-Image int8 は全部載せ 13.2 GB だが、順に載せ替えて 7.6 GB で動く。使用率 96% なので段階は marginal)。
-   実測の値が GPU より大きいことだけで too_tight にはならない
-2. 実測が GPU の容量の 90% 以上(または offload が lowvram など)なら「上限に張り付いた」とみなし、
-   **下限としてだけ使う**(全部載せ = max(式, 実測))。該当は Z-Image bf16(15.0 / 16)と Wan2.2 5B の 2 件(15.8 / 15.0)
-3. 設定(解像度・コマ数・長さ・**枚数**・精度)が実測と同じときだけ `basis: "measured"`。精度は書き方をそろえ、
-   実測に精度の記録が無ければモデルの元の精度とみなして比べる。違う設定は実測でずらした推定で
-   `basis: "estimated"`(理由に「…の実測で補正した推定」と出す)。精度を変えたら実測は使わない
-4. 設定を指定しないときは、実測のあるモデルは実測の設定(AI生成キットの「はやい」画質)で判定する。
-   実測の無いモデルは種類ごとの既定(画像 1024px、動画 832x480・81 コマ、音楽 30 秒など)。
-   **そのため `fit` の一覧では、実測のあるモデル(768〜832px など)と無いモデル(1024px など)を違う設定で比べている**
-   (各行の `estimate.settings` と理由の「設定:」に出る)。同じ設定で比べたいときは `--width` などを指定する
-5. GPU が無い(`--vram 0` など)ときは、GPU の実測を使わず `basis: "estimated"`・`measured_on: null`
-6. `outcome` が `ok` でない実測(OOM・エラー)と、`standard: false` の実測(独自のワークフローや追加の上書き)は、
-   見積もりにも合わせ直しにも使わない(#5 の bench が書く)
-7. 実測の値は GiB とみなす(`measurements.json` の `unit`)。AI生成キットの記録に単位の明記は無く、ComfyUI と
-   nvidia-smi が MiB で数えることからの**仮定**
+**Fit levels** (since 2026-10-20, following "Fit analysis" in llmfit's docs/how-it-works.md):
 
-## 合わせ方
+- The level comes from how much of the memory the mode uses (VRAM on the GPU, main memory on CPU):
+  - ≤ 60%: Perfect
+  - ≤ 85%: Good
+  - ≤ 98%: Marginal
+  - above that: Too tight
+- Caps by mode:
+  - All on GPU: no cap.
+  - Swapped in turn (GPU~): up to Good.
+  - Offload (GPU+RAM) and CPU: up to Marginal.
+- The mode with the best level is taken. The main-memory check ("Main memory (RAM)" below) comes after that.
+- If the size is unknown, no level is given (`unknown`, shown as `?`; "Models of unknown size" below).
+- Before, it was "Perfect if all-on-GPU is within 90% of VRAM, Good if within VRAM".
+- Effect on the bundled list (all 341 entries of the list at the time the levels changed, before the HF lower bound was raised; the bundled list of 0.9.1 (2026-10-21) has 329):
+  - 8 GB / 32 GB: Perfect 44 → 23, Good 22 → 32, Marginal 87 → 97, Too tight 188 → 189.
+  - 16 GB / 32 GB: Perfect 95 → 66, Good 67 → 76, Marginal 107 → 124, Too tight 72 → 75.
+- At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 and Wan 2.1 1.3B use 96–97%, so they are Marginal
+  (they still run on the GPU; tests/test_estimate.py).
+- If offload still does not fit on the GPU, the result is compared with the no-GPU judgment (Marginal for small types that run on CPU), and the better one is taken.
+  - Before, adding a small GPU could turn a CPU-capable model into "does not run", so adding VRAM lowered the level (#17).
 
-- 合わせる係数は 5 つ: 固定分 `overhead_gb`、作業用メモリの `act_image_gb_per_mp` / `act_video_gb_per_mp` /
-  `act_audio_gb_per_min` / `act_3d_gb`。重みの係数(1.0)・逃がす割合(0.4)・動画の指数(0.5)・メインメモリの固定分(3.0)・
-  メモリの倍率(1.5)は固定
-- 予測はどの係数にも 1 次なので、**相対誤差の 2 乗和**(張り付いた実測は予測が下回ったときだけ数える片側の 2 乗)に、
-  事前値(#1 の仮の値。実測を見る前に決めたもの)からの相対的なずれへの弱い罰(重み 1e-4)を足し、
-  物理的にありえる範囲の中で座標降下により最小にする。目的関数は凸なので結果は初期値によらない
-- 9 件で 5 係数なので、罰が無いと当てはまりすぎる。罰を弱くしているのは、実測があるところでは実測を優先するため
-- 精度は leave-one-out で測る(全件で合わせた予測は当てはまりの良さで、精度の指標にしない)。目標の判定(`target_met`)は、
-  張り付いていない実測が 2 件以上ある種類だけで行う
-- **人が決めた目安との関係(正直に書く)**:
-  - AI生成キットのカタログの最低 / 推奨 VRAM は、5 係数の当てはめには使っていない
-  - ただし **逃がす割合 0.4 は、目安を見て選んだハイパーパラメータ**。実測で決められないので、
-    「SDXL が 4GB で動く」「bf16 の Z-Image が 4GB では動かない」の 2 つと矛盾しない範囲から選んだ。
-    GiB にそろえて合わせ直した係数(#2 の一覧を取り込む前)では、その範囲は 0.21〜0.51 で、0.4 は範囲の中ほどより上寄り。
-    この範囲は当時の作者の見立てで、取り込み後の係数では測り直していない
-  - 「bf16 の Z-Image は 4GB では動かない」は、カタログに書かれたことではなく**この PR の作者の判断**
-    (当時の一覧で重み 19.4 GiB のうち本体 11.5 GiB の 4 割と固定分・作業用で 6 GiB ほど要る、という式からの見立て。
-    0.9.1 の同梱の一覧では重み 19.27 GiB)
-  - 目安との突き合わせは `tests/test_estimate.py` が行う。その結果は係数の当てはめには戻していない
+### Main memory (RAM)
 
-合わせた結果(2026-10-20、n = 9、うち張り付き 3):
+- When running on the GPU (all on GPU, swapped in turn), main memory is **fixed 3.0 + the weights of the largest stage**.
+  - This rests on an **assumption**: ComfyUI reads safetensors by memory mapping (mmap) and sends the parts to the GPU one at a time.
+    So the OS can drop the pages of a part once it is used.
+  - There is no measurement.
+- For offload and CPU, the offloaded weights stay in main memory, so it is fixed + all parts (the safe side).
+- When memory is short:
+  - Up to **1.5 times** the installed memory: Marginal. The shortfall uses virtual memory (the page file), which is slow. The reason says so.
+  - Above that: Too tight.
+- How 1.5 was chosen:
+  - On Windows, the default (system-managed) page file grows to about the installed memory or more.
+  - But weights in the page file are extremely slow, so it was kept to half of that.
+  - **1.5 is a judgment call and has not been measured.**
+- On a PC with a fixed page file size (fixed size, no page file, Linux swap), the limit is "installed memory + that size" (but at most 1.5 times) (#21; see "Memory and virtual memory" in [hardware.md](hardware.md)).
+- Before, it was "3 GB + all weights, Too tight if short".
+  - That disagreed with the 16 GB minimum memory in AI生成キット's catalog.
+  - On a 16 GB PC, Wan2.2 5B (16.9 GiB of weights) was Too tight regardless of the GPU.
+  - Now none of the 8 models is Too tight because of memory on 16 GB (or a laptop that shows 15.3 GiB) (checked by `tests/test_estimate.py`).
 
-| 係数 | 値 | 事前値 | 範囲 |
+### Models of unknown size
+
+When both of these hold, the weights are not treated as 0 and the model is not said to fit:
+
+- At least one file has no size (None, 0 or negative).
+- There is also no template size and no parameter count × precision.
+
+The output is:
+
+- `fit = "unknown"`, `run_mode = "unknown"`, `basis = "estimated"`, `unknown_size = true` (`fit` was `too_tight` before 0.1.1, `run_mode` was `none` before 0.2.0)
+- The reason starts with 「大きさが分からないため判定できません」 ("size unknown, cannot judge").
+- The model is left out of `recommend` (it still shows in `fit --fit all`, `search` and `info`).
+- VRAM and memory values are null in JSON (the Python attributes stay 0.0), and `limits` is null.
+- Without a GPU it is also not treated as "small, so it runs on CPU".
+
+## How files are counted (agreement with #2)
+
+The list from #2 holds only one version per part (one precision, `.safetensors` where possible, either the single file or the diffusers layout).
+Even so, to avoid overcounting when a Hugging Face repository listing is passed as is,
+the estimator also counts by these rules (`estimate.select_files`):
+
+1. **Files that are not counted:**
+   - Files that are not weights (`.json`, `.txt`, `.md`, images, …).
+   - Formats ComfyUI does not use (`onnx/`, `flax`, `openvino`, `safety_checker/`, `.onnx`, `.msgpack`, `.h5`, …).
+2. **Count only one set per part.** A part is decided as follows:
+   - ComfyUI folder + name (without precision, format and split number)
+     - `t5xxl_fp16` and `t5xxl_fp8_e4m3fn` are the same part.
+     - `clip_l` and `t5xxl` are different parts.
+   - HF diffusers folder
+     - `model` / `pytorch_model` / `diffusion_pytorch_model` inside are one part.
+     - In a VAE folder, `vae` and `vae_1_0` and similar count as one.
+   - Main model outside folders (same name, or one name starts with the other)
+     - `sd_xl_base_1.0` and `sd_xl_base_1.0_0.9vae` are the same part.
+     - Main models with different names, such as a high-noise and a low-noise one, are different parts.
+3. **How one set is chosen:**
+   - Format: `.safetensors` > `.gguf` > `.bin` / `.ckpt` / `.pt(h)`
+   - Then precision: fp16 / bf16 > no precision written > fp8 / int8 / q8 > q6 > q5 > q4 / nf4 > fp32
+   - If still equal, the larger one (the safe side).
+   - Split files (`-00001-of-00003`) are all counted.
+4. **When both a single file and a diffusers layout exist,** the single file is counted.
+   - If the single file is known to be all-in-one (SDXL and others in the breakdown table), all diffusers folders are dropped.
+   - If not known, only the diffusers folders whose role (main model, VAE) also exists as a file outside the folders are dropped.
+     - This is so the encoder is not missed when the single file holds only the main model (for example FLUX's `flux1-dev.safetensors`).
+     - If a file is all-in-one but not in the breakdown table, the result comes out larger (the safe side).
+   - **The request said "count only the single file", but that would miss the encoder (about 9 GiB of T5 for FLUX) when the single file holds only the main model, so it was done this way.**
+5. If files were dropped, the reason is shown in `reasons`. `disk_gb` is the sum of the counted files.
+
+## How measurements are used
+
+The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses more when more is free**.
+13.2 GB on a 16 GB card (Z-Image int8) is not a lower bound of what the model needs. So:
+
+1. A measurement is used as the all-on-GPU value (`vram_gb`).
+   - The model's working memory is shifted by "measurement − formula value", and the same shift is added to the swapped-in-turn and offload values.
+   - On a small GPU, even if all-on-GPU does not fit, the result **falls to swapped in turn or offload**.
+     Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.6 GB swapped in turn. Use is 96%, so the level is Marginal.
+   - A measured value larger than the GPU does not by itself make a model Too tight.
+2. If the measurement is 90% or more of the GPU's capacity (or offload is lowvram or similar), it counts as "pinned at the limit".
+   - **It is used only as a lower bound** (all on GPU = max(formula, measurement)).
+   - This applies to Z-Image bf16 (15.0 / 16) and the 2 Wan2.2 5B measurements (15.8 / 15.0).
+3. `basis: "measured"` only when the settings (resolution, frames, length, **batch size**, precision) equal the measurement.
+   - Precision spelling is normalized. If the measurement has no precision recorded, it is compared as the model's original precision.
+   - Different settings give an estimate shifted by the measurement, with `basis: "estimated"` (the reason says 「…の実測で補正した推定」, "estimate corrected by the measurement of …").
+   - If you change the precision, the measurement is not used.
+4. When no settings are given:
+   - A model with a measurement is judged at the measured settings (AI生成キット's "fast" quality).
+   - A model without one is judged at the default for its type (image 1024px, video 832x480 and 81 frames, music 30 seconds, …).
+   - **So in the `fit` list, models with a measurement (768–832px and so on) and models without (1024px and so on) are compared at different settings**
+     (shown in each row's `estimate.settings` and in the reason's 「設定:」 ("Settings:") line).
+   - To compare at the same settings, give `--width` and the like.
+5. Without a GPU (`--vram 0` and so on), GPU measurements are not used: `basis: "estimated"`, `measured_on: null`.
+6. These measurements are used neither for estimates nor for refitting (written by the bench in #5):
+   - `outcome` is not `ok` (OOM, error).
+   - `standard: false` (custom workflows or extra overrides).
+7. Measured values are taken as GiB (`unit` in `measurements.json`).
+   - AI生成キット's records do not state the unit.
+   - It is an **assumption** from the fact that ComfyUI and nvidia-smi count in MiB.
+
+## Fitting
+
+- Five coefficients are fitted: the fixed part `overhead_gb`, and the working memory `act_image_gb_per_mp` / `act_video_gb_per_mp` / `act_audio_gb_per_min` / `act_3d_gb`.
+- These stay fixed: the weight factor (1.0), the offload share (0.4), the video exponent (0.5), the fixed main-memory part (3.0) and the memory factor (1.5).
+- The prediction is linear in every coefficient. What is minimized is the sum of:
+  - **the sum of squared relative errors** (a pinned measurement counts only when the prediction falls below it: a one-sided square)
+  - a weak penalty (weight 1e-4) on the relative distance from the prior values (the placeholders from #1, set before looking at the measurements)
+- The minimum is found by coordinate descent inside physically possible ranges. The objective is convex, so the result does not depend on the starting point.
+- With 5 coefficients for 9 points, it would overfit without the penalty. The penalty is weak because measurements should win where they exist.
+- Accuracy is measured by leave-one-out (a prediction from a fit on all the data shows goodness of fit, not accuracy).
+- The target check (`target_met`) is made only for types with 2 or more unpinned measurements.
+
+**Relation to human-set guidelines (stated honestly):**
+
+- The minimum / recommended VRAM in AI生成キット's catalog were not used to fit the 5 coefficients.
+- But **the offload share 0.4 is a hyperparameter chosen by looking at those guidelines.**
+  - It cannot be set by measurement, so it was chosen from the range consistent with two statements: "SDXL runs on 4GB" and "bf16 Z-Image does not run on 4GB".
+  - For the coefficients refitted in GiB (before the list from #2 was imported), that range was 0.21–0.51. 0.4 is in the upper half of it.
+  - That range was the author's judgment at the time and has not been re-measured with the coefficients after the import.
+- "bf16 Z-Image does not run on 4GB" is not stated in the catalog; it is **this PR's author's judgment**.
+  - In the list at the time, of 19.4 GiB of weights, 40% of the 11.5 GiB main model plus about 6 GiB of fixed and working memory is needed.
+  - In the bundled list of 0.9.1 the weights are 19.27 GiB.
+- `tests/test_estimate.py` compares the results with these guidelines. The outcome is not fed back into the fit.
+
+Fitted result (2026-10-20, n = 9, of which 3 pinned):
+
+| coefficient | value | prior | range |
 |---|---:|---:|---|
-| overhead_gb | 1.472 | 0.6 | 0.3〜1.5 |
-| act_image_gb_per_mp | 0.2284 | 0.5 | 0〜4 |
-| act_video_gb_per_mp | 9.8704 | 2.4 | 0〜30 |
-| act_audio_gb_per_min | 0.0455 | 1.0 | 0〜5 |
-| act_3d_gb | 0.784 | 2.0 | 0〜4 |
+| overhead_gb | 1.472 | 0.6 | 0.3–1.5 |
+| act_image_gb_per_mp | 0.2284 | 0.5 | 0–4 |
+| act_video_gb_per_mp | 9.8704 | 2.4 | 0–30 |
+| act_audio_gb_per_min | 0.0455 | 1.0 | 0–5 |
+| act_3d_gb | 0.784 | 2.0 | 0–4 |
 
-固定分は範囲の上限(1.5)の近くまで上がった。GiB にそろえて重みが約 7% 小さくなった分を、種類ごとの作業用メモリでなく
-固定分が吸っている。作業用メモリと固定分は 9 件では見分けにくく、**係数の一つ一つに物理的な意味を読み込まないこと**。
+- The fixed part rose close to the top of its range (1.5).
+- The fixed part absorbs the roughly 7% that the weights shrank by when everything was aligned to GiB, instead of the per-type working memory.
+- With 9 points, working memory and the fixed part are hard to tell apart. **Do not read a physical meaning into each coefficient.**
 
-## 結果(leave-one-out)
+## Results (leave-one-out)
 
-| モデル | 設定 | 実測 GB | 全件で合わせた予測 GB | LOO 予測 GB | LOO 誤差 | 重みだけの誤差 |
+The output of `python -m genmodelfit.calibrate`, which prints Japanese, translated here; the original output is in [accuracy.ja.md](accuracy.ja.md#結果leave-one-out).
+
+| model | settings | measured GB | predicted GB (fit on all) | LOO predicted GB | LOO error | error, weights only |
 |---|---|---:|---:|---:|---:|---:|
 | image_z_image_turbo_int8 | 768x768 | 13.2 | 12.94 | 12.85 | -2.7% | -14.1% |
-| image_z_image_turbo | 768x768 | 15.0 | 20.88 | 20.88 | 張り付き(重みだけで実測を超えるので情報なし) | +28.5% |
+| image_z_image_turbo | 768x768 | 15.0 | 20.88 | 20.88 | pinned (the weights alone exceed the measurement, so no information) | +28.5% |
 | image_sdxl_simple | 832x832 | 8.0 | 8.09 | 8.38 | +4.7% | -19.2% |
-| text_to_video_wan | 512x512・49 コマ | 13.3 | 13.21 | 11.02 | -17.2% | -31.2% |
-| video_wan2_2_5B_ti2v | 640x640・73 コマ | 15.8 | 23.31 | 23.31 | 張り付き(重みだけで実測を超えるので情報なし) | +7.0% |
-| video_wan2_2_5B_ti2v | 640x640・73 コマ・文章から | 15.0 | 23.31 | 23.31 | 張り付き(重みだけで実測を超えるので情報なし) | +12.7% |
-| audio_ace_step_1_5_checkpoint | 20 秒 | 10.8 | 10.83 | 11.18 | +3.5% | -13.5% |
+| text_to_video_wan | 512x512, 49 frames | 13.3 | 13.21 | 11.02 | -17.2% | -31.2% |
+| video_wan2_2_5B_ti2v | 640x640, 73 frames | 15.8 | 23.31 | 23.31 | pinned (the weights alone exceed the measurement, so no information) | +7.0% |
+| video_wan2_2_5B_ti2v | 640x640, 73 frames, from text | 15.0 | 23.31 | 23.31 | pinned (the weights alone exceed the measurement, so no information) | +12.7% |
+| audio_ace_step_1_5_checkpoint | 20 s | 10.8 | 10.83 | 11.18 | +3.5% | -13.5% |
 | 3d_hunyuan3d_image_to_model | - | 6.7 | 6.85 | 7.13 | +6.4% | -31.5% |
 | 3d_hunyuan3d-v2.1 | - | 9.4 | 9.12 | 8.97 | -4.6% | -27.0% |
 
-評価できたのは 4 件(3d 2・image 2)、LOO の最大誤差 6.4%(平均 4.6%)。目標 ±20% の範囲に入った。
-music・video は張り付いていない実測が 1 件以下のため評価できない(target_met は null)。
-張り付いた 3 件のうち 3 件は重みだけで実測を超え、情報を持たない。 参考: 張り付いていない全 6 件の LOO 平均絶対誤差 6.5%、最大 17.2%(重みだけなら平均 22.8%)
+4 measurements could be evaluated (3d 2, image 2); max LOO error 6.4% (mean 4.6%). Inside the ±20% target.
+music and video have 1 or fewer unpinned measurements, so they cannot be evaluated (target_met is null).
+Of the 3 pinned measurements, 3 are exceeded by the weights alone and carry no information. For reference: over all 6 unpinned measurements, mean absolute LOO error 6.5%, max 17.2% (weights only: mean 22.8%)
 
-照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):
+Cross-check (measured a different way, so not used for fitting; values predicted with the coefficients fitted on all data):
 
-| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |
+| model | GPU | source | settings | measured GiB | estimated GiB (all on GPU) | error |
 |---|---|---|---|---:|---:|---:|
-| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | 作者 | - | 1.25 | 2.13 | +70% |
-| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | 作者 | - | 0.72 | 2.87 | +299% |
+| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | maintainer | - | 1.25 | 2.13 | +70% |
+| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | maintainer | - | 0.72 | 2.87 | +299% |
 
-読み方:
+How to read it:
 
-- 「知らないモデルを当てる力」を測れているのは、画像の 2 件と 3D の 2 件だけ。それぞれ同じ種類のもう 1 件だけで
-  作業用メモリの係数が決まるので、件数としてはごく少ない
-- Wan2.1 の -17.2% と ACE-Step の +3.5% は、1 件しか無い種類の 1 件を外した結果なので、事前値(#1 の仮の値)で当てた誤差。
-  動画・音声の精度については何も言えない
-- 音声の係数は 0.05 GiB/分(0.0455)と小さい。ACE-Step の実測と式の差がほぼ固定分で説明できてしまい、長さの影響が見えていない。
-  **音声の「何秒まで」(`limits.max_seconds`)は、今は長さで VRAM がほとんど増えない前提の値**
-- 動画の係数(9.9 GiB/メガ画素)は Wan2.1 の 1 件だけで決まっている。この 1 件には、動的 VRAM が空きに置いた分も
-  入っている可能性が高い
+- "Predicting an unknown model" is measured by only 2 image and 2 3D measurements.
+  The working-memory coefficient of each type is set by just one other measurement of the same type, so the count is very small.
+- Wan2.1 at -17.2% and ACE-Step at +3.5% are the result of leaving out the only measurement of their type, so they are errors of the prior values (the placeholders from #1).
+  Nothing can be said about video and audio accuracy.
+- The audio coefficient is small: 0.05 GiB/min (0.0455).
+  - The gap between the ACE-Step measurement and the formula is almost fully explained by the fixed part, so the effect of length is not visible.
+  - **The audio limit "up to how many seconds" (`limits.max_seconds`) is currently a value that assumes VRAM hardly grows with length.**
+- The video coefficient (9.9 GiB per megapixel) is set by the single Wan2.1 measurement.
+  That one measurement very likely includes memory that dynamic VRAM placed in the free space.
 
-## 分かっている限界
+## Known limits
 
-- **GPU が 1 種類だけ**: 9 件とも RTX 5080 16GB・動的 VRAM。小さい GPU での「順に載せ替え」「逃がす」の値は検証していない。
-  RTX 3070 8GB の bench の実測は 2 件入ったが、小さなモデルで測り方も違う(torch_reserved)ので照合だけに使う(下の節)。
-  大きいモデルの 8GB の実測(#5 の bench)が入ったら、順に載せ替え・逃がすの値を合わせる
-- **動的 VRAM**: 空きがあれば多めに使うので、実測は「必要量」ではなく「その GPU で使った量」。全部載せの値も、
-  空きの少ない GPU では実際より大きく出ている可能性がある
-- **張り付いた実測**: Z-Image bf16 と Wan2.2 5B の全部載せの値は式だけで決まっていて、実測では上から押さえられていない
-- **Wan の縦横比**: 動画の実測は長辺(512px / 640px)しか記録が無く、正方形と仮定した。実際が 16:9 なら画素数は
-  約 56% で、動画の係数は 1.8 倍ほど小さく見積もり直すことになる
-- **日付が不明**: 実測の日付・ComfyUI の版の記録が無い(measurements.json の date が空)
-- **単位**: 実測は GiB と仮定した(上の「実測の使い方」7)。GB(10 進)だったなら実測は 7% 小さく、係数も変わる
-- **メインメモリ**: 式も 1.5 倍も実測で確かめていない(上の「メインメモリ」)
-- **NVIDIA 以外の GPU**(0.7.0、#22): AMD・Intel・Apple の実測は 0 件。NVIDIA の係数をそのまま使い、段階は good までにした
-  (この GPU のほかの利用者の実測が来れば外れる。2026-10-22)。
-  Apple silicon の統合メモリの 3/4、内蔵 GPU・APU のメインメモリの 1/2(Linux の TTM の既定)を GPU のメモリとみなす割合は、
-  一次資料の挙動から決めた目安で、実測していない(docs/hardware.md「共有メモリ」)
-- **CPU で動く系統**(#39): SD 系・Stable Audio の CPU のメインメモリ(本体・VAE を fp32 に広げ、作業用メモリ × 2)は
-  ComfyUI のコードから決めた式で、実測していない。CPU で動くこと自体も推定で、CPU での実測は 0 件(遅さも分からない)
-- **分かっている外れ**(人が決めた目安との突き合わせ、`tests/test_estimate.py` が strict な xfail で記録):
-  - Wan2.2 5B は 8GB で too_tight、12GB で marginal と出る(目安は最低 8GB・推奨 12GB)。
-    動画の作業用メモリを Wan2.1 の 1 件から伸ばしている(Wan2.2 は VAE の圧縮が強く、画素あたりのトークンが少ないのに
-    同じ係数を使っている)ため厳しめに出る。8GB の実測で合わせ直すまで直さない(係数を目安に合わせて動かすと、
-    この表の数字の意味がなくなる)
-  - ほかの 7 モデルは、目安の最低 VRAM で too_tight にならず、推奨 VRAM で good 以上になる
-- **全部入りの内訳を知らないモデル**(#2 で増える HF のものなど)は一般的な割合で分けており、順に載せ替え・逃がすの値の誤差は大きい
-- **役割の推定**: 置き場所もフォルダも無いファイルは、知っている名前の一覧で役割を決める。一覧に無いテキストエンコーダは
-  本体として数える(全部載せの値は変わらないが、順に載せ替え・逃がすの値は大きめに出る)
+- **Only one kind of GPU**: all 9 measurements are RTX 5080 16GB with dynamic VRAM.
+  - The swapped-in-turn and offload values on small GPUs are not verified.
+  - Two bench measurements on an RTX 3070 8GB exist, but they are small models measured a different way (torch_reserved), so they are used only for the cross-check
+    (see "Cross-check against RTX 3070 8GB measurements" below).
+  - Once bench measurements of large models on 8GB (the bench in #5) arrive, the swapped-in-turn and offload values will be fitted.
+- **Dynamic VRAM**: it uses more when more is free, so a measurement is "what that GPU used", not "what is needed".
+  The all-on-GPU value may also come out larger than the real need on a GPU with little free memory.
+- **Pinned measurements**: the all-on-GPU values of Z-Image bf16 and Wan2.2 5B are decided by the formula alone; the measurements do not cap them from above.
+- **Wan aspect ratio**: video measurements record only the long side (512px / 640px), so a square was assumed.
+  If the real shape was 16:9, the pixel count is about 56% and the video coefficient would be re-estimated about 1.8 times smaller.
+- **Date unknown**: the measurement date and ComfyUI version were not recorded (the date in measurements.json is empty).
+- **Unit**: measurements were assumed to be GiB (7 under "How measurements are used" above). If they were GB (decimal), the measurements are 7% smaller and the coefficients change.
+- **Main memory**: neither the formula nor the factor 1.5 has been checked by measurement (see "Main memory (RAM)" above).
+- **Non-NVIDIA GPUs** (0.7.0, #22): there are 0 measurements on AMD, Intel and Apple.
+  - NVIDIA's coefficients are used as they are, and the level is capped at Good (lifted when other users' measurements of that GPU arrive; 2026-10-22).
+  - The shares counted as GPU memory are guidelines taken from the behavior described in primary sources, and are not measured (see "Shared memory" in [hardware.md](hardware.md)).
+    - 3/4 of unified memory on Apple silicon
+    - 1/2 of main memory for integrated GPUs and APUs (the Linux TTM default)
+- **CPU-capable families** (#39): the CPU main memory for SD-family and Stable Audio is a formula taken from ComfyUI's code, not measured.
+  - The formula expands the main model and VAE to fp32 and uses working memory × 2.
+  - That these run on CPU is itself an estimate; there are 0 CPU measurements (the slowness is also unknown).
+- **Known misses** (cross-check with the human-set guidelines, recorded by `tests/test_estimate.py` as a strict xfail):
+  - Wan2.2 5B comes out Too tight on 8GB and Marginal on 12GB (the guideline is minimum 8GB, recommended 12GB).
+    - It comes out strict because the video working memory is extended from the single Wan2.1 measurement.
+    - Wan2.2 compresses more in its VAE and has fewer tokens per pixel, but the same coefficient is used.
+    - It will not be fixed until refitted with an 8GB measurement (moving the coefficients to match the guideline would make the numbers in these tables meaningless).
+  - The other 7 models are not Too tight at the guideline's minimum VRAM and are Good or better at the recommended VRAM.
+- **Models with an unknown all-in-one breakdown** (such as the HF models that #2 adds) are split by general shares, so the swapped-in-turn and offload values can be far off.
+- **Role guessing**: a file with neither a folder nor a location gets its role from the list of known names.
+  A text encoder not in the list is counted as the main model (the all-on-GPU value does not change, but the swapped-in-turn and offload values come out larger).
 
-## ほかの利用者の実測(#34、2026-10-21。扱いは 2026-10-22 に llmfit に合わせた)
+## Other users' measurements (#34, 2026-10-21; handling aligned with llmfit on 2026-10-22)
 
-利用者が `genmodelfit bench --submission` で作った提出用の JSON を、Pull Request で `data/contrib/<GPU>/<日付>-<sha8>.json`
-に足してもらう(手順は CONTRIBUTING.md、形は docs/schema.md「contrib」)。**2026-10-22 時点で受け付けた提出は 0 件**で、
-同梱の `src/genmodelfit/data/measurements_community.json` は空。下の決まりは、提出が来たときの扱い。
+Users add the submission JSON made by `genmodelfit bench --submission` through a Pull Request to `data/contrib/<GPU>/<date>-<sha8>.json`
+(steps: [CONTRIBUTING.md](../CONTRIBUTING.md); format: "contrib" in [schema.md](schema.md)).
+**As of 2026-10-22, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
+The rules below describe how submissions will be handled once they arrive.
 
-**2026-10-22 のオーナーの決定**: llmfit(main、2026-10-22 に読んだ)と同じ考え方にする。llmfit は、提出(`llmfit bench --share`
-の PR)を CI で機械的に検査するだけで(schema・パスと名前・大きさ・時刻・値の上限・min ≤ avg ≤ max。署名も人の確認の仕組みも無く、
-マージがメンテナの確認になる)、同じ CPU 名・GPU 名の実測だけを中央値でまとめ、件数(sample_count)を持ち、1 件でも使い、
-推定を両方の向きに上書きする(優先は 自分の実測 > 同じハードのほかの利用者の実測 > 推定。ほかのモデルへの補正は
-実測 ÷ 推定 の中央値を [0.05, 3.0] に収める)。2026-10-21 の決まり(必要量を上げる向きにだけ使う・+15% まで・2 件以上で
-ばらつき 15% 以内・人が sha8 ごとに確かめた提出だけ)は、オーナーに分かりにくく、実測が来ても NVIDIA 以外の GPU の
-「good まで」の上限を外せなかったので外した。
+**Maintainer's decision of 2026-10-22:** follow the same approach as llmfit (main, read on 2026-10-22).
 
-- **まとめ方**(`genmodelfit contrib aggregate`): 同じモデル・GPU(PCI の型番 ID があれば ID、無ければ `gpu_slug` でそろえた名前)・
-  GPU の VRAM(1 GB に丸める)・測り方(`vram_metric`)・
-  設定(解像度・コマ数・長さ・ステップ数・精度・枚数)ごとにまとめる。標準でない提出(`standard: false`)は使わない。
-  最後まで動いた(ok)ものの最大 VRAM で、3 件以上あれば |x − 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き
-  (MAD の下限は中央値の 2%)、残りの中央値を値にする。件数(`n_used`)と、同じ構成で OOM だった件数(`n_oom`)を持つ。
-  ok と OOM が混ざる組は ok の中央値を使い、OOM の件数を理由に出す。OOM だけの組は `outcome: oom` の 1 行(見積もりには使わない)
-- **使う条件**: **この PC と同じ GPU** の実測だけを、この PC の必要量・段階に使う(llmfit と同じ。0.9.0。別の GPU・GPU の無い PC の判定は、
-  ほかの利用者の実測があっても無くても同じ)。同じ GPU かは `estimate.same_gpu`: 両方に PCI の型番 ID(`1002:744c`)があれば ID、
-  無ければ `estimate.gpu_key` でそろえた名前((R)・(TM)・™・®・大小・空白・NVIDIA / GeForce の語を除く)。
-  **加えて VRAM が近いこと**(0.9.1。`estimate.same_vram`): 実測の GPU の VRAM と この PC の総量の比(小さい ÷ 大きい)が 0.97 以上。
-  同じ名前・同じ型番 ID でも VRAM の違う GPU があるため(RTX 4060 Ti の 8 / 16 GB、RTX 3060 の 8 / 12 GB、PCI ID `744c` の
-  RX 7900 XT・XTX・GRE)。0.97 は公称 16 GB と nvidia-smi の 15.9 GB のような数え方の違い(`MEASURED_VRAM_TOLERANCE` と同じ)を許す幅で、
-  VRAM の違う版の比は 0.83 以下(RTX 3080 の 10 / 12 GB など)なので間に余裕がある。内蔵 GPU・APU・Apple(共有・統合メモリ。総量が
-  PC のメインメモリで決まる)は比べない。ほかの利用者の実測の点検(`contrib` の fit_change)は、名前の表で公称の VRAM が分かる
-  GPU(Intel Arc と、NVIDIA の `estimate.NVIDIA_VRAM_VARIANTS`: RTX 2060・3050・3060・3080・4060 Ti・5060 Ti。NVIDIA の公式の
-  製品ページで確認、出典は定数のコメント)ではその VRAM の PC でも行う。ノート用 GPU・GTX 16 系は VRAM 違いが無い・名前が別なので表に無い。
-  「AMD Radeon(TM) Graphics」
-  「Intel(R) Arc(TM) Graphics」のような汎用の名前は、世代の違う GPU が同じ名前になるので名前では一致させない。
-  作者の同梱の実測はどの PC にも使う(今までどおり)。ok の行は **1 件から**使う(`consistent` は係数の合わせ直しに入れる条件として
-  残す: 2 件以上・幅 15% 以内・OOM なし)
-- **向き**: 必要量を**下げる向きにも上げる向きにも**使う。点数も作者の実測と同じに数える。抑えるのは物理的な範囲だけ
-  (`estimate._prepare`):
-  - 下限: 全部載せの値は**重み + 固定分**(作業用メモリ 0)より下げない。それより小さい実測は、一部の重みをメインメモリに
-    置いていた(動的 VRAM・partial)か、測り違い。見積もりは下限の値にし、`basis` は estimated(`basis_detail` は
-    measured_community)、理由に「下限の値にした」と書く。以前 validate が要確認にしていた条件(`offload: none` で重み + 固定分
-    より小さい)を、見積もりでの切り詰めにした
-  - 上限: 測った GPU の総量 × 1.02 + 0.25 GiB(validate の「ありえない値」と同じ)。超えた値はこの上限(総量 × 1.02 + 0.25 GiB)までにする(`estimate._prepare`)。理由には「GPU の総量を超えるので、上限(総量 × 1.02 + 0.25 GB)までにした」と出る
-  - メインメモリの最大(`peak_ram_gb`)は、提出のメインメモリ × 1.05 + 1 GiB までにする(読むときに切り詰める)
-  - GPU の上限に張り付いた実測(総量の 90% 以上・lowvram)は、作者の実測と同じく「これ以上」としてだけ使う
-  - 設定の違う推定へ広げる(calibrated)ときは、実測 ÷ 式 を **[0.6, 1.4]** に収める(llmfit の [0.05, 3.0] に当たる)。
-    範囲は、validate が「式から外れている」と知らせる幅(±40%)と同じにした。作者の実測の 実測 ÷ 式 は 0.64〜1.03
-    (張り付いた Z-Image bf16・Wan2.2 5B が 0.64〜0.72、ほかは 0.98〜1.03)で、VRAM は速さ(llmfit が補正する量)より式に
-    近い。下側は重み + 固定分の下限のほうが先に効くことが多い(作者の実測で下限 ÷ 式 は 0.73〜1.0)
-  - 判定する既定の設定は、ほかの利用者の実測の設定に変えない(小さな設定の提出で既定の設定そのものを小さくしない)
-  - 作者・この PC の `torch_reserved` の実測(CUDA の文脈を含まない。RTX 3070 の 2 件)は、これまでどおり「これ以上」としてだけ使う。
-    ほかの利用者の `torch_reserved` の実測は下限(重み + 固定分)まで下げてよい(bench の提出はすべて torch_reserved なので、
-    下げる向きに使えなくなるため)
-- **実測の選び方**(`estimate.pick_measurement`): (ほかの利用者の実測は同じ GPU のものだけが候補)設定が同じもの → **この PC と同じ GPU の実測** → 作者・この PC の実測 →
-  ほかの利用者の実測 → 張り付いていないもの → 大きい GPU → 大きい値。GPU 名は `NVIDIA` / `GeForce` の有無・大文字小文字・
-  記号をそろえて比べる(`estimate.gpu_key` = `contrib.gpu_slug`)
-- **段階**(#26 の「実測で段階を決める」、`estimate._measured_band`): この PC と**同じ GPU** の、同じ設定で成功した
-  ほかの利用者の実測は、作者の実測と同じく段階の根拠にする(似た GPU には広げない)。条件は作者の実測と同じ: この PC の VRAM が
-  実測の GPU の 97% 以上、ピークが収まる、perfect は 60% 以内で、張り付いた実測・OOM の報告のある組は
-  perfect の根拠にしない(good まで)。`torch_reserved` は文脈の分 0.5 GiB を足した値で帯を決め、perfect の根拠にもする(0.9.0)。**NVIDIA 以外の GPU の「good まで」の上限は、段階を実測で決めたとき(同じ会社の作者・この PC の実測、または同じ GPU のほかの利用者の実測)に外す**
-  (その実測で決まる段階まで。perfect になりうる)。実測が無ければこれまでどおり good まで
-- **根拠の段階**(`Estimate.basis_detail`。`basis` は後方互換のため measured / estimated の 2 値のまま)と件数
-  (`Estimate.sample_count`。JSON に足しただけ。info は `measured_community n=3`、表の VRAM の印は `c`、理由は
-  「ほかの利用者の実測 3 件(中央値 7.02 GB)」):
+- How llmfit does it:
+  - It only checks submissions (the `llmfit bench --share` PR) mechanically in CI.
+    - Checked: schema, path and name, size, time, value limits, min ≤ avg ≤ max.
+    - There is no signature and no human-review mechanism; merging is the maintainer's review.
+  - It groups only measurements with the same CPU name and GPU name, takes the median, and keeps a count (sample_count).
+  - It uses even one measurement, and overrides the estimate in both directions.
+  - Priority: your own measurement > other users' measurements on the same hardware > estimate.
+  - For correcting other models, it clamps the median of measurement ÷ estimate to [0.05, 3.0].
+- The rules of 2026-10-21 were dropped.
+  - Content: use only to raise the need, at most +15%, only with 2 or more submissions within 15% spread, only submissions a person checked per sha8.
+  - Reason: they were hard for the maintainer to follow, and even with measurements they could not lift the "up to Good" cap for non-NVIDIA GPUs.
 
-  | 段階 | basis | 意味 |
-  |---|---|---|
-  | `measured` | measured | 同梱の作者の実測か、この PC で bench が保存した実測で、設定が同じ |
-  | `measured_community` | measured(下限・上限で切り詰めたときは estimated) | ほかの利用者の実測(1 件から)で、設定が同じ |
-  | `calibrated` | estimated | 設定の違う実測(作者・ほかの利用者)でずらした推定 |
-  | `estimated` | estimated | 式だけの推定(実測が無い・精度を変えた・GPU が無い) |
+**How they are grouped** (`genmodelfit contrib aggregate`):
 
-- **検査**(`contrib validate`、CI の contrib.yml): **機械的な検査だけを失敗にする**(形・値の範囲・個人の情報・重複・ファイル名・
-  大きさ)。値の範囲は、GPU の VRAM 256 GiB 以下、最大メモリはメインメモリ × 1.05 + 1 GiB 以下、NaN・無限大・負の数は不可(0.9.0)。
-  GPU 名と `system.gpu.vendor` の会社が違うもの、`pci_id` の形・会社が違うもの、`hardware.PCI_DEVICE_NAMES` の GPU と名前が
-  合わないものも失敗(表に無い ID は確認)。式から 40% より外れる(`deviation`)・全部載せ(`offload: none`)なのに重み + 固定分より小さい(`below_weights`)・提出と同じ GPU(名前・型番 ID・会社、VRAM は提出の
-  `vram_gb`)× メモリ 16 / 32 / 64 GB の PC で段階を変える(`fit_change`。同じ GPU で段階が上がる・good の上限が外れるのも出す)・一覧に無いモデル・表に無い GPU は「確認」(notices)として、ジョブのまとめの上に出すだけにする。
-  人が sha8 ごとに確かめる仕組み(`--allow-review`・`data/contrib/REVIEWED`)は外した。contrib.yml の安全の仕組み
-  (pull_request・検査は PR の向き先のコードで・data/contrib の外を変えた PR は失敗・提出の文字をログに出さない)は残す
-- **残る危険**: 書き換えた提出は、マージされればそのまま見積もりと段階を動かす(2026-10-21 のレビューで見つけた、小さな値の提出で
-  必要量を最大 76% 下げる・+39% の提出で段階を下げる、の類いは、下限・上限の内側では防がない)。防ぐのは**マージする人の確認**で、
-  そのために確認(notices)と `contrib aggregate --report` の「ほかの利用者の実測で変わる段階」の表を出す。
-  1 件の提出が、その構成の値を決める(外れ値は 3 件以上でしか除けない)
-- **校正への取り込み**(`python -m genmodelfit.calibrate`): そろった(`consistent`)ほかの利用者の実測だけ、測り方が係数の合わせと同じ
-  (`calibrate.CALIBRATION_METRIC`。今は記録の無い RTX 5080 の 9 件の測り方)なら、係数の合わせと leave-one-out に入る
-  (係数は全モデルに効くので、1 件では入れない)。bench の提出は `torch_reserved` なので、今は**照合**(上の表。全件で合わせた係数で
-  当てた誤差)にだけ入る。`torch_reserved` の実測が種類ごとに数件そろったら、測り方ごとに固定分を分けて合わせ直す(それまで混ぜない)
-- **毎週の点検**(`genmodelfit contrib aggregate --report`。#19 の毎週の自動 PR が呼ぶ): その時点の data/contrib をまとめ直し、
-  校正をやり直して種類ごとの LOO 誤差と照合の誤差を表にする。閾値(既定 25%、`--threshold`)を超えたら警告を出す
-  (`--fail-on-breach` で終了コード 3)。判定に入れるのは、評価できる種類(張り付いていない実測が 2 件以上)の LOO 誤差と、
-  ほかの利用者の実測の照合の誤差。作者の照合の行(下の RTX 3070 の 2 件)は既知の外れなので、表には出すが判定には入れない
-- 同じ人が同じ構成で何度も出すと、件数が水増しされる(提出に個人を見分ける情報を入れないので見分けられない)。
-  同じ内容(hash)は重複として断るが、測り直した別の値は断れない。PR を見る人が、同じ PR に同じ構成が並んでいないかを見る
+- Submissions are grouped by what is the same in:
+  - model
+  - GPU (the PCI model ID if there is one, else the name normalized with `gpu_slug`)
+  - GPU VRAM (rounded to 1 GB)
+  - how it was measured (`vram_metric`)
+  - settings (resolution, frames, length, steps, precision, batch size)
+- Non-standard submissions (`standard: false`) are not used.
+- The maximum VRAM of runs that finished (ok) is used.
+  - With 3 or more, values with |x − median| / (1.4826 × MAD) > 3.5 are dropped as outliers (the floor of MAD is 2% of the median).
+  - The median of the rest is the value.
+- The count (`n_used`) and the number of OOM runs in the same setup (`n_oom`) are kept.
+- A group mixing ok and OOM uses the median of the ok runs, and the OOM count is shown in the reason.
+- A group with only OOM becomes one row with `outcome: oom` (not used for estimates).
 
-### NVIDIA 以外の GPU の bench(0.9.0)
+**When they are used:** only measurements on **the same GPU as this PC** are used for this PC's need and level.
 
-NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、段階を good までにしている(docs/hardware.md)。実測を集めやすく
-するため、bench の「GPU が空いているか」の確かめを各社の道具でも行う(`gpustat.py`。Linux の AMD は amd-smi → rocm-smi、
-Linux の Intel は xpu-smi、Windows の AMD・Intel は性能カウンタ、Apple は ioreg)。読めれば NVIDIA と同じく使用率 30% で断る。
+- Same as llmfit (0.9.0). The judgment for a different GPU or a PC without a GPU is the same with or without other users' measurements.
+- `estimate.same_gpu` decides whether it is the same GPU.
+  - If both have a PCI model ID (`1002:744c`), the ID is used.
+  - Otherwise the name normalized by `estimate.gpu_key` is used (dropping (R), (TM), ™, ®, case, whitespace and the words NVIDIA / GeForce).
+- **In addition, the VRAM must be close** (0.9.1; `estimate.same_vram`):
+  - The ratio of the measured GPU's VRAM to this PC's total (smaller ÷ larger) is 0.97 or more.
+  - Because GPUs with the same name and the same model ID can have different VRAM (RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RX 7900 XT / XTX / GRE with PCI ID `744c`).
+  - 0.97 allows for differences in counting, such as nominal 16 GB vs 15.9 GB in nvidia-smi (the same as `MEASURED_VRAM_TOLERANCE`).
+  - The ratio of versions with different VRAM is 0.83 or less (RTX 3080 10 / 12 GB, for example), so there is room between them.
+  - Integrated GPUs, APUs and Apple (shared / unified memory, whose total is set by the PC's main memory) are not compared.
+- The check of other users' measurements (`fit_change` in `contrib`) is also done for a PC with that VRAM, for GPUs whose nominal VRAM the name table knows.
+  - Covered: Intel Arc, and NVIDIA's `estimate.NVIDIA_VRAM_VARIANTS` (RTX 2060, 3050, 3060, 3080, 4060 Ti, 5060 Ti).
+  - Confirmed on NVIDIA's official product pages; the source is in the constant's comment.
+  - Laptop GPUs and the GTX 16 series are not in the table: they have no VRAM variants, or the names differ.
+- Generic names such as "AMD Radeon(TM) Graphics" and "Intel(R) Arc(TM) Graphics" are not matched by name, because GPUs of different generations share them.
+- The maintainer's bundled measurements are used for every PC (as before).
+- An ok row is used **from one measurement**. `consistent` (2 or more, within 15% spread, no OOM) remains as the condition for entering a refit of the coefficients.
 
-道具が無い・読めないとき(rocm-smi の入っていない Linux など)は、`--force` を求めずに測る。確かめるのは ComfyUI の
-キューが空なことと、ComfyUI 以外が使う GPU のメモリが全体の半分以下なこと(Apple の統合メモリでは見ない)だけで、
-warnings と note に「使用率は確かめていない」と残す。ComfyUI 以外が GPU のメモリを半分より多く使っていれば、`--force` が無い限り止める。
-**`standard` は true のまま**にした。理由:
+**Direction:** a measurement is used to **lower or raise** the need. It counts the same as the maintainer's measurements. Only the physical range limits it (`estimate._prepare`).
 
-- `standard` は「公式テンプレートのままで、ComfyUI でほかの仕事が混ざらず、全部のノードを実行したか」で、ComfyUI の
-  キューの中のことだけを見る。キューは開始前・送る直前・測っている間に確かめている
-- 見積もりに使う値(`peak_vram_gb`)は ComfyUI のプロセスの torch の確保量で、ほかのアプリが GPU を使っていても
-  ほぼ変わらない(変わるのは時間と、GPU 全体の増分の note)。
-- NVIDIA で `--force` を付けて確かめずに測った結果も、これまで `standard` を変えていない(同じ扱いにそろえる)
+- Lower bound: the all-on-GPU value is not lowered below **weights + fixed part** (working memory 0).
+  - A smaller measurement means some weights were held in main memory (dynamic VRAM, partial) or the measurement was wrong.
+  - The estimate is set to the lower bound. `basis` is estimated (`basis_detail` is measured_community). The reason says 「下限の値にした」 ("set to the lower bound").
+  - The condition that validate used to flag for review (`offload: none` and smaller than weights + fixed part) is now clamped in the estimate.
+- Upper bound: the measured GPU's total × 1.02 + 0.25 GiB (the same as validate's "impossible value").
+  - A larger value is clamped to this bound (total × 1.02 + 0.25 GiB) (`estimate._prepare`).
+  - The reason reads 「GPU の総量を超えるので、上限(総量 × 1.02 + 0.25 GB)までにした」 ("it exceeds the GPU total, so it was limited to the bound (total × 1.02 + 0.25 GB)").
+- The peak main memory (`peak_ram_gb`) is limited to the submission's main memory × 1.05 + 1 GiB (clamped when read).
+- A measurement pinned at the GPU limit (90% or more of the total, lowvram) is used only as "at least", like the maintainer's measurements.
+- When extending to an estimate with different settings (calibrated), measurement ÷ formula is clamped to **[0.6, 1.4]** (the counterpart of llmfit's [0.05, 3.0]).
+  - The range is the same as the width at which validate reports "off the formula" (±40%).
+  - The maintainer's measurement ÷ formula is 0.64–1.03 (pinned Z-Image bf16 and Wan2.2 5B: 0.64–0.72; the others: 0.98–1.03).
+    VRAM is closer to the formula than speed (the quantity llmfit corrects).
+  - On the low side, the lower bound of weights + fixed part usually acts first (the maintainer's lower bound ÷ formula is 0.73–1.0).
+- The default settings used for judging are not changed to the settings of other users' measurements (a submission with small settings does not shrink the default settings themselves).
+- The maintainer's and this PC's `torch_reserved` measurements (no CUDA context included; the 2 RTX 3070 ones) are used only as "at least", as before.
+- Other users' `torch_reserved` measurements may be lowered down to the lower bound (weights + fixed part), because every bench submission is torch_reserved and could otherwise never be used to lower the need.
 
-ほかのアプリと取り合ってメモリ不足で逃がした・失敗した結果は `offload`・`outcome` に出るので、そこで分かる。
-ComfyUI が別の PC のときは、NVIDIA と同じく `--force` が要る(この PC の道具では何も確かめられないため)。
+**How a measurement is picked** (`estimate.pick_measurement`): only measurements on the same GPU are candidates for other users' measurements. The order is:
 
-実測には `gpu_backend`(cuda / rocm / xpu / mps)を残し、提出には `system.gpu.vendor`・`backend` と、AMD・Intel では
-PCI の型番 ID(`pci_id`)を入れる。xpu-smi で Intel の GPU が 2 枚以上あるときは、どれが ComfyUI の GPU か決められないので、
-読めないものとして扱う。
+1. Same settings
+2. **A measurement on the same GPU as this PC**
+3. The maintainer's or this PC's measurement
+4. Other users' measurement
+5. Not pinned
+6. Larger GPU
+7. Larger value
 
-Apple の MPS では ComfyUI の GPU 名が `mps` になる。ComfyUI が同じ PC なら、bench は system_profiler で読んだこの PC の
-チップ名(`Apple M2 Pro` など。`hardware.APPLE_CHIP_NAME` の形に合うものだけで、シリアルなどは入れない)を実測と提出の
-`gpu_name` にする。判定はこの PC の GPU 名(同じ system_profiler のチップ名)と比べるので、同じチップの実測が段階の根拠になる。
-別の PC の ComfyUI・チップ名が読めないときは `mps` のまま(警告を出す)。`mps` の実測は会社 apple としてだけ使い、
-同じ GPU の実測にはならない。`contrib validate` は vendor が apple の GPU 名をチップ名か `mps` だけに限る。
+GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, case and symbols (`estimate.gpu_key` = `contrib.gpu_slug`).
 
-## RTX 3070 8GB の実測との照合(bench、2026-10-19 UTC、係数の合わせには使っていない)
+**Level** (#26, "decide the level by measurement", `estimate._measured_band`):
 
-`genmodelfit bench` で、この PC(RTX 3070 8GB、AI生成キットのエンジン ComfyUI 0.40.0)で 2 件を測りました。
-測り方が RTX 5080 の 9 件と違う(`vram_metric: torch_reserved` = ComfyUI のプロセスの torch の確保量の最大で、CUDA の文脈などは含まない。
-RTX 5080 の 9 件は何を記録したかが残っていない)ので、係数の合わせには使わず、照合だけに使います(`calibrate.CALIBRATION_METRIC`)。
-この照合は `python -m genmodelfit.calibrate` が上の「結果」の表の下に作る(calibration.json の `check`。#34 から)。
+- Another user's successful measurement on **the same GPU** with the same settings is a basis for the level, like the maintainer's (it is not extended to similar GPUs).
+- The conditions are the same as for the maintainer's measurement:
+  - This PC's VRAM is 97% or more of the measured GPU's.
+  - The peak fits.
+  - Perfect needs 60% or less.
+  - A pinned measurement, or a group with a reported OOM, is not a basis for Perfect (up to Good).
+- A `torch_reserved` value gets 0.5 GiB added for the context before the band is decided, and it can also be a basis for Perfect (0.9.0).
+- **The "up to Good" cap for non-NVIDIA GPUs is lifted when the level is decided by a measurement.**
+  - A measurement means the maintainer's or this PC's measurement on a same-vendor GPU, or another user's measurement on the same GPU.
+  - The level rises as far as that measurement decides (it can become Perfect).
+  - Without a measurement, it stays capped at Good as before.
 
-| モデル | GPU | 実測 GiB(torch_reserved) | 推定 GiB(全部載せ) | 誤差 | 推定での段階(8 GiB) |
+**Basis levels** (`Estimate.basis_detail`) and the count (`Estimate.sample_count`):
+
+- `basis` stays two-valued (measured / estimated) for backward compatibility.
+- `sample_count` was only added to the JSON.
+- How they show:
+  - `info`: `measured_community n=3`
+  - the mark on the table's VRAM: `c`
+  - the reason: 「ほかの利用者の実測 3 件(中央値 7.02 GB)」 ("3 measurements by other users (median 7.02 GB)")
+
+| level | basis | meaning |
+|---|---|---|
+| `measured` | measured | the maintainer's bundled measurement, or a measurement the bench saved on this PC, with the same settings |
+| `measured_community` | measured (estimated when clamped by the lower or upper bound) | other users' measurement (from one), with the same settings |
+| `calibrated` | estimated | an estimate shifted by a measurement with different settings (the maintainer's or other users') |
+| `estimated` | estimated | a formula-only estimate (no measurement, precision changed, or no GPU) |
+
+**Validation** (`contrib validate`, contrib.yml in CI): **only mechanical checks fail.**
+
+- Failing checks:
+  - Format, value ranges, personal information, duplicates, file name, size.
+  - Value ranges: GPU VRAM at most 256 GiB, peak memory at most main memory × 1.05 + 1 GiB, no NaN, infinity or negative numbers (0.9.0).
+  - A GPU name and `system.gpu.vendor` that name different vendors.
+  - A `pci_id` with the wrong format or vendor.
+  - A name that does not match the GPU in `hardware.PCI_DEVICE_NAMES` (an ID not in the table is a notice).
+- Shown only as a "notice" above the job summary:
+  - More than 40% off the formula (`deviation`).
+  - All on GPU (`offload: none`) but smaller than weights + fixed part (`below_weights`).
+  - The level changes on a PC with the same GPU as the submission (name, model ID, vendor; VRAM from the submission's `vram_gb`) × 16 / 32 / 64 GB of memory (`fit_change`; it also reports a level going up on the same GPU, or the "up to Good" cap being lifted).
+  - A model not in the list.
+  - A GPU not in the table.
+- The mechanism where a person checks each sha8 (`--allow-review`, `data/contrib/REVIEWED`) was removed.
+- The safety mechanisms of contrib.yml remain:
+  - It runs on pull_request.
+  - Validation uses the code of the PR's target branch.
+  - A PR that changes anything outside data/contrib fails.
+  - Characters from a submission are not written to the log.
+
+**Remaining risk:**
+
+- A tampered submission, once merged, moves the estimates and levels as it is.
+  - Examples found in the review of 2026-10-21: a submission with small values lowers the need by up to 76%; a +39% submission lowers a level.
+  - Inside the lower and upper bounds, these are not prevented.
+- What prevents them is **the merger's review.** For that, notices and the table 「ほかの利用者の実測で変わる段階」 ("levels that change with other users' measurements") of `contrib aggregate --report` are shown.
+- One submission decides the value of its setup (outliers can be dropped only with 3 or more).
+
+**Feeding calibration** (`python -m genmodelfit.calibrate`):
+
+- Only consistent (`consistent`) measurements of other users are used. A single measurement is not enough, because the coefficients affect every model.
+- If the way of measuring is the same as the coefficient fit (`calibrate.CALIBRATION_METRIC`; currently the unrecorded way of the 9 RTX 5080 measurements), they enter the fit and leave-one-out.
+- Bench submissions are `torch_reserved`, so for now they enter only the **cross-check** (the table above: the error when predicted with the coefficients fitted on all data).
+- Once a few `torch_reserved` measurements per type exist, the fixed part will be split by way of measuring and refitted (until then they are not mixed).
+
+**Weekly check** (`genmodelfit contrib aggregate --report`, called by the weekly automatic PR of #19):
+
+- It re-aggregates data/contrib as of that moment, redoes the calibration, and tabulates the LOO error per type and the cross-check error.
+- It warns when a threshold is exceeded (default 25%, `--threshold`; `--fail-on-breach` gives exit code 3).
+- What enters the judgment:
+  - The LOO error of types that can be evaluated (2 or more unpinned measurements).
+  - The cross-check error of other users' measurements.
+- The maintainer's cross-check rows (the 2 RTX 3070 rows below) are known misses, so they are shown in the table but not counted in the judgment.
+
+**Inflation:** if the same person submits the same setup many times, the count is inflated.
+
+- It cannot be detected, because submissions carry no information that identifies a person.
+- The same content (hash) is rejected as a duplicate, but a re-measured different value cannot be rejected.
+- The person reviewing the PR checks whether the same setup appears several times in the same PR.
+
+### Bench on non-NVIDIA GPUs (0.9.0)
+
+Non-NVIDIA GPUs (AMD, Intel, Apple) have 0 measurements, and their level is capped at Good (see [hardware.md](hardware.md)).
+To make measurements easier to collect, the bench's "is the GPU idle?" check also uses each vendor's tools (`gpustat.py`).
+
+- AMD on Linux: amd-smi → rocm-smi
+- Intel on Linux: xpu-smi
+- AMD and Intel on Windows: performance counters
+- Apple: ioreg
+
+If the usage can be read, it refuses at 30% usage, as on NVIDIA.
+
+When no tool exists or the usage cannot be read (for example Linux without rocm-smi), it measures without asking for `--force`.
+
+- It checks only these two things:
+  - The ComfyUI queue is empty.
+  - GPU memory used by anything other than ComfyUI is at most half of the total (not checked for Apple's unified memory).
+- It leaves 「使用率は確かめていない」 ("usage was not checked") in warnings and note.
+- If anything other than ComfyUI uses more than half of GPU memory, it stops unless `--force` is given.
+
+**`standard` stays true.** The reasons:
+
+- `standard` means "the official template as is, no other work mixed in ComfyUI, and every node ran", and looks only at what happens in ComfyUI's queue.
+  The queue is checked before the start, just before sending, and during the measurement.
+- The value used for estimates (`peak_vram_gb`) is what the ComfyUI process's torch allocated, and it hardly changes even if other apps use the GPU
+  (what changes is the time, and the note about the GPU-wide increase).
+- A measurement on NVIDIA taken with `--force` and no check has not changed `standard` either (kept the same).
+
+Other points:
+
+- A run where contention with other apps caused a memory shortage and offloading or failure shows in `offload` and `outcome`, so it can be told apart there.
+- When ComfyUI runs on another PC, `--force` is needed, as on NVIDIA (this PC's tools can check nothing).
+- The measurement keeps `gpu_backend` (cuda / rocm / xpu / mps).
+- The submission holds `system.gpu.vendor`, `backend`, and, for AMD and Intel, the PCI model ID (`pci_id`).
+- If xpu-smi shows 2 or more Intel GPUs, it cannot tell which one is ComfyUI's, so the usage is treated as unreadable.
+
+With Apple's MPS, ComfyUI's GPU name is `mps`.
+
+- If ComfyUI runs on the same PC, the bench uses this PC's chip name read with system_profiler as `gpu_name` of the measurement and the submission.
+  - Example: `Apple M2 Pro`. Only names matching the form of `hardware.APPLE_CHIP_NAME`; serial numbers and the like are not included.
+- The judgment compares with this PC's GPU name (the same system_profiler chip name), so a measurement of the same chip is a basis for the level.
+- With ComfyUI on another PC, or if the chip name cannot be read, it stays `mps` (with a warning).
+- An `mps` measurement is used only as vendor apple, and never counts as a measurement of the same GPU.
+- `contrib validate` limits GPU names of vendor apple to a chip name or `mps`.
+
+## Cross-check against RTX 3070 8GB measurements (bench, 2026-10-19 UTC, not used for fitting)
+
+`genmodelfit bench` measured 2 models on this PC (RTX 3070 8GB, AI生成キット's engine ComfyUI 0.40.0).
+
+- The way of measuring differs from the 9 RTX 5080 measurements.
+  - `vram_metric: torch_reserved` = the maximum of what the ComfyUI process's torch reserved; it does not include the CUDA context and the like.
+  - What the 9 RTX 5080 measurements recorded was not kept.
+- So they are not used for fitting, only for the cross-check (`calibrate.CALIBRATION_METRIC`).
+- `python -m genmodelfit.calibrate` makes this cross-check under the table in "Results (leave-one-out)" above (`check` in calibration.json; since #34).
+
+| model | GPU | measured GiB (torch_reserved) | estimated GiB (all on GPU) | error | level in the estimate (8 GiB) |
 |---|---|---:|---:|---:|---|
-| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | 1.25 | 2.13 | +70% | perfect |
-| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | 0.72 | 2.87 | +299% | perfect |
+| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | 1.25 | 2.13 | +70% | Perfect |
+| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | 0.72 | 2.87 | +299% | Perfect |
 
-- **小さなモデルでは推定が大きく出る**(+70%、+299%)。固定分(overhead、約 1.47 GiB)が RTX 5080 の 9 件(5〜20 GiB のモデル)から合わせた値で、
-  1 GiB 未満のモデルでは推定のほとんどを占めるため。ただし測り方の違い(CUDA の文脈など、プロセス外の分を含まない)も差の一部で、どちらがどれだけかは分けられていない
-- 外れる向きは安全側(必要量を大きく見る)で、8 GiB での段階はどちらも perfect のまま
-- 大きいモデル(本体 5 GiB 以上)を RTX 3070 で測るのは、この PC のメモリ(コミット)の空きが足りず見送った(genmodelfit#5)
-- 同じ測り方の実測が増えたら、測り方ごとに固定分を分けて合わせ直すのがよい
+- **For small models the estimate comes out large** (+70%, +299%).
+  - The fixed part (overhead, about 1.47 GiB) was fitted on the 9 RTX 5080 measurements (models of 5–20 GiB), and it makes up most of the estimate for a model under 1 GiB.
+  - But the difference in the way of measuring (no CUDA context or other memory outside the process) is also part of the gap, and how much comes from each has not been separated.
+- The error is in the safe direction (the need is overestimated), and the level at 8 GiB stays Perfect for both.
+- Measuring a large model (main model 5 GiB or more) on the RTX 3070 was put off because this PC's free memory (commit) was not enough (genmodelfit#5).
+- Once more measurements taken the same way exist, it is better to split the fixed part by way of measuring and refit.
