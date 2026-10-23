@@ -5,7 +5,8 @@
 
 - **まだどこにも出していない。出すのはオーナー(laxshmate)の確認の後**(他人のリポジトリに書き込むため)。
   出すときは、Hugging Face のリポジトリなら Community の Discussion、GitHub なら Issue に、下の英文をそのまま使う
-- 一覧は同梱の一覧(`src/genmodelfit/data/db.json`、2026-10-20)のライセンス不明のファイルから作り、本家ごとにまとめた。
+- 一覧は同梱の一覧(`src/genmodelfit/data/db.json`)のライセンス不明のファイルから作り、本家ごとにまとめた(2026-10-20 に作り、
+  2026-10-21 の同梱の一覧で、どれもまだ不明なことを確かめた。今の状態は `genmodelfit info <id> --json` の `model.license`(null なら不明)と、ファイルごとの `license`(null なら不明。`license_from` は読んだ出どころ)で分かる)。
   決め方は docs/sources.md「ライセンス」。記載が入ったら `license_sources.py` の表か本家の表記で一覧を作り直す
 - 利用者への影響(共通): genmodelfit はライセンス不明を「許されていない」と同じに扱う(docs/schema.md「License
   contract」)。`recommend` / `fit` / `search` には既定で出さず(`--include-unknown-license` で出る)、自動のおすすめ
@@ -197,7 +198,7 @@
 ## D. 下書きを作らないもの
 
 - **Civitai のファイル**(realismByStableYogi v4 LCM、zimage-grainscape、ltx23-obscura_remova、SDXL の肌・そばかすの LoRA):
-  Civitai は v0.1 では読まない(docs/sources.md「Civitai」)ので、一覧の側で決められない。依頼の前に扱いを決める
+  genmodelfit は Civitai を読まない(docs/sources.md「Civitai: 使わない」)ので、一覧の側で決められない。依頼の前に扱いを決める
 - **無検閲のモデルだけに効くもの**(既定の sfw では出ないので後回し): ChrisColeTech/LTX-2.3-uncensored-v1.4-FP8・
   LTX-2.5-uncensored-v1.1-FP8・qwen-image-edit-uncensored-GGUF、Heartsync/NSFW-Uncensored、Meina/MeinaHentai、
   SulphurAI/Sulphur-2-base、TenStrip/LTX2.3-10Eros、andro-flock/LUSTIFY-SDXL-NSFW-checkpoint-v2-0-INPAINTING(2026-10-21 から同じ重みの写しのこちらを載せる)、

@@ -12,16 +12,17 @@
 |---|---|---|---|
 | ComfyUI 公式テンプレートの一覧 | `https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/index.json` | MIT | 分類・名前・タグ・`openSource`・`size`・`usage`・`date`・`minComfyUIVersion`・`requiresCustomNodes`・`io.outputs` |
 | テンプレートごとの JSON | `…/templates/<name>.json` | MIT | 全ノード(サブグラフ `definitions.subgraphs[].nodes` の中も)の `properties.models`(`name`・`url`・`hash`・`hash_type`・`directory`) |
-| Hugging Face Hub API | `https://huggingface.co/api/models/{repo_id}?blobs=true`(版が main 以外なら `/revision/{rev}`) | HF の利用規約(公開 API を匿名で) | `cardData.license` / `license_name` / `license_link`(無ければ `license:` タグ)、`gated`、`siblings[].size` と `lfs.sha256`、`cardData.base_model`、`downloads`、`likes`、`lastModified`、`tags` |
+| Hugging Face Hub API | `https://huggingface.co/api/models/{repo_id}?blobs=true`(版が main 以外なら `/revision/{rev}`) | HF の利用規約(公開 API を匿名で) | `cardData.license` / `license_name` / `license_link`(無ければ `license:` タグ)、`gated`、`siblings[].size` と `lfs.sha256`、`cardData.base_model`、`cardData.language`(`card_languages`。下の「言語」)、`downloads`、`likes`、`lastModified`、`tags` |
+| 重みの見出し・`config.json`・`/api/models/<repo>` の `safetensors` | 本体のファイル(Range 要求)・同じフォルダの `config.json`・Hub API | 同上 | 精度(下の「ファイル」の精度の決め方。重み本体は落とさない) |
 | Hugging Face の検索 | `https://huggingface.co/api/models?filter=…&pipeline_tag=…&search=…&sort=downloads&direction=-1&limit=100` | 同上 | 無検閲のモデル、テンプレートに無い読み上げ・効果音のモデルの候補 |
 | モデルカード | `https://huggingface.co/{repo_id}/raw/main/README.md` | 同上 | 除外の判定にだけ使う(保存しない) |
-| ファイルの URL(HEAD) | テンプレートなどに書かれた `https://huggingface.co/…/resolve/…` | 同上 | 匿名の HEAD(転送を追わない)の応答コードだけ(`files[].head_status`。docs/gate.md) |
+| ファイルの URL(HEAD) | テンプレートなどに書かれた `https://huggingface.co/…/resolve/…` | 同上 | 匿名の HEAD(転送は基本的に追わない。名前が変わったリポジトリの 307 だけ 1 回追う。docs/gate.md)の応答コードだけ(`files[].head_status`。docs/gate.md) |
 | ComfyUI の最新のリリース | `https://api.github.com/repos/Comfy-Org/ComfyUI/releases/latest` | GitHub の公開 API(認証なし、1 回) | `tag_name`(`sources.comfyui.latest_release`。gate の版の比較に使う) |
 
 使わないもの: willitrunai.com などのサイトのデータ(CLAUDE.md)、Civitai(下)。
 
 取得は `User-Agent: genmodelfit/<版> (+https://github.com/laxshmate/genmodelfit)` を名乗り、同時に 8 本まで、
-時間切れ(接続 10 秒・読み込み 60 秒)とやり直し(接続の失敗・5xx は 4 回まで)を付ける。
+時間切れ(接続 10 秒・読み込み 60 秒)とやり直し(接続の失敗・HTTP 500・502・503・504 は合わせて 4 回まで試す)を付ける。
 HF の匿名の API は **5 分あたり 500 回まで**(応答の `ratelimit-policy: "fixed window";"api";q=500;w=300`)。
 1 回の update で HF に 500〜600 回問い合わせるので、429 を受けたら `Retry-After` の秒数だけ全スレッドで待つ
 (`sources.huggingface.rate_limited` に回数、`rate_limit_waited_s` に待った秒数)。このため update は数分かかることがある。
@@ -118,7 +119,7 @@ HF のものは index の size が無いので `size_floor_bytes` は null(自�
    (GIMM-VFI の `fp32`、WanVideo の `base_precision` など)。`default`・`auto` は何も言わない。LoRA・CLIP・VAE の
    読み込みノードは見ない。カスタムノードが自分で重みを取るテンプレート(ファイルの一覧が無いもの)にも使える
 
-2026-10-20 の同梱の一覧では、無検閲を除く精度の不明は 25 → 10 件(見出し 3・Hub API 4・ワークフロー 8)。残る 10 件:
+2026-10-20 に作った一覧(当時の同梱)では、無検閲を除く精度の不明は 25 → 10 件(見出し 3・Hub API 4・ワークフロー 8)。残る 10 件:
 Civitai のチェックポイント(realismByStableYogi。名前に精度が無く、HF ではないので見出しも読まない)の 2 件、
 読み込みノードが精度を言わないテンプレート 4 件(LivePortrait は `auto`、AnimateDiff の Purz は本体の一覧が無く
 チェックポイントの名前に精度が無い、Lineart・OpenPose は前処理のノードが重みを自分で取る)、
@@ -178,7 +179,7 @@ Hub API の safetensors の集計は .safetensors だけ)、csm-1b(Hub API は F
 
 3 と 4 の間で、さらに次の 2 つを見る(#14 のレビュー):
 
-- **元のライセンスを読めない系統**(`hf.LINEAGES`): 名前(4 と同じ)が SDPose・Lotus・Stable Diffusion 2 なら不明
+- **元のライセンスを読めない系統**(`hf.LINEAGES`): 名前(4 と同じ)が SDPose・Lotus・Stable Diffusion 2・VOID なら不明
   (下の「元のライセンスを読めない系統」)
 - **別の系統の部品**(`hf.FOREIGN_MARKERS`): ファイル名に別のモデルの印(dino・sam・siglip・clip・t5・qwen・llama・
   gemma・mistral・glm・birefnet・depth-anything・moge・detr・flux・wan・trellis・hunyuan・stable-diffusion・lumina・
@@ -227,7 +228,7 @@ cardData の寛容な表記だけを見て本文の規約を見落とすもの(C
 | `qwen_image_vae` | [Qwen/Qwen-Image](https://huggingface.co/Qwen/Qwen-Image) | apache-2.0 | 5 か所で同じ |
 | `RealESRGAN_x4plus*` | xinntao/Real-ESRGAN([GitHub の LICENSE](https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE)) | bsd-3-clause | |
 | `dino_v3*`・`dinov3*`(どこでも。申請が要る) | [facebook/dinov3-vitl16-pretrain-lvd1689m](https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m)(gated: manual。[原文](https://ai.meta.com/resources/models-and-libraries/dinov3-license)) | other(dinov3-license) | (本家のカード) |
-| `sam3*`(どこでも。申請が要る) | [facebook/sam3](https://huggingface.co/facebook/sam3)(gated: manual) | other | (本家のカード) |
+| `sam3*`(どこでも。申請が要る) | [facebook/sam3](https://huggingface.co/facebook/sam3)(gated: manual) | other(sam-license) | (本家のカード) |
 | `depth_anything_v2_vit{b,l,g}`(どこでも) | [depth-anything/Depth-Anything-V2-Large](https://huggingface.co/depth-anything/Depth-Anything-V2-Large) | cc-by-nc-4.0 | (本家のカード) |
 | `depth_anything_v2_vits` | [depth-anything/Depth-Anything-V2-Small](https://huggingface.co/depth-anything/Depth-Anything-V2-Small) | apache-2.0 | (本家のカード) |
 | Lumina 2 系の一式(`lumina_2.safetensors`・`…all_in_one`)(どこでも) | Gemma 2 2B を含む([neta-art/Neta-Lumina](https://huggingface.co/neta-art/Neta-Lumina)・[NetaYume のカード](https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0)) | gemma | (カード) |
@@ -245,10 +246,12 @@ cardData の寛容な表記だけを見て本文の規約を見落とすもの(C
 |---|---|
 | `rt_detr_v4*` | RT-DETRv4(https://github.com/RT-DETRs/RT-DETRv4)。コードは Apache-2.0 だが、重みは DINOv3 を教師にした蒸留で作られ、重みのライセンスの記載が無い。Comfy-Org/SDPose の中にあるが SDPose の一部ではない(Comfy-Org/SDPose の README が本家を別に挙げる) |
 
-表に入れなかったもの(確かめきれず、置き場所の表記のまま。どれも置き場所の表記のほうが厳しい): Qwen-Image-2.1 の
+部品の表に入れなかったもの(確かめきれなかったもの。どれも置き場所の表記のほうが厳しい): Qwen-Image-2.1 の
 `qwen3vl_8b_int8_convrot`(写しが 1 か所だけ)、FLUX.2 dev の `mistral_3_small_flux2_*`、Stable Audio 3 の `t5gemma_b_b_ul2`、
 NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Mage-Flow の `qwen3vl_4b_*`、HunyuanImage 2.1 の
-`qwen_2.5_vl_7b`(bf16)、HunyuanVideo の `llava_llama3`。
+`qwen_2.5_vl_7b`(bf16)、HunyuanVideo の `llava_llama3`。このうち `mistral_3_small_flux2_*`・`t5gemma_b_b_ul2`・
+`gemma_3_4b_it_*`・`qwen_3_8b*`・Krea-2 の `qwen3vl_4b_*`・HunyuanImage 2.1 の `qwen_2.5_vl_7b` は、下の「出どころの表」で決める
+(置き場所とファイル名の組で当てる)。
 
 ### 系統の表(名前で当てる。表記がこれより寛容なら不明)
 
@@ -293,7 +296,7 @@ NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Ma
 ### 出どころの表(`license_sources.SOURCES`。#28、2026-10-20 に確認)
 
 再配布のリポジトリ(Comfy-Org・Kijai など)は base_model を書いていない・ファイルと合わない base_model を書いている
-ことが多く、上の決め方では不明になる(2026-10-20 の同梱の一覧で、無検閲を除く 299 項目のうち 113 項目)。そこで、
+ことが多く、上の決め方では不明になる(2026-10-20 に作った一覧(当時の同梱)で、無検閲を除く 299 項目のうち 113 項目)。そこで、
 不明になったファイルについて、人が**一次資料**で出どころをたどり、確かめられたものだけを表にした。
 
 たどり方の決まり(寛容の側に間違えない):
@@ -337,7 +340,9 @@ NewBie の `gemma_3_4b_it_bf16`、FLUX.2 klein 9B の `qwen_3_8b*`、Krea-2・Ma
 | Comfy-Org/ltx-2 | `gemma-3-12b-it-abliterated_lora_rank*` | gemma | [mlabonne/gemma-3-12b-it-abliterated](https://huggingface.co/mlabonne/gemma-3-12b-it-abliterated) | 再配布の cardData の base_model |
 | Comfy-Org/HunyuanImage_2.1_ComfyUI | `qwen_2.5_vl_7b` | apache-2.0 | [Qwen/Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | 公式 https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/blob/master/ckpts/checkpoints-download.md が `hf download Qwen/Qwen2.5-VL-7B-Instruct` |
 | circlestone-labs/Anima | `qwen_3_06b_base` | apache-2.0 | [Qwen/Qwen3-0.6B-Base](https://huggingface.co/Qwen/Qwen3-0.6B-Base) | sha256 が同じ |
-| Comfy-Org/Wan_2.2_ComfyUI_Repackaged | `chrono_edit_14B_*` | other(nvidia-open-model-license) | [nvidia/ChronoEdit-14B-Diffusers](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers)(本文「Governing Terms: … NVIDIA Open Model License Agreement」) | 再配布の README の元 |
+| Comfy-Org/Wan_2.2_ComfyUI_Repackaged | `chrono_edit_14B_*`・`chronoedit_distill_lora` | other(nvidia-open-model-license)(上書きの行) | [nvidia/ChronoEdit-14B-Diffusers](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers)(本文「Governing Terms: … NVIDIA Open Model License Agreement」) | 本体は再配布の README の元。LoRA は sha256 が元の lora/chronoedit_distill_lora.safetensors と同じ |
+| Comfy-Org/Wan_2.1_ComfyUI_repackaged | `wan2.1_infiniteTalk_{multi,single}_fp16` | apache-2.0(上書きの行) | [MeiGen-AI/InfiniteTalk](https://huggingface.co/MeiGen-AI/InfiniteTalk)(「The models in this repository are licensed under the Apache 2.0 License」) | 再配布の README の元(自動の決め方は別の元をたどっていた) |
+| Comfy-Org/Wan_2.1_ComfyUI_repackaged・Kijai/WanVideo_comfy_fp8_scaled | `wan2.1_i2v_480p_14B_*`・`Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ` | apache-2.0(上書きの行) | [Wan-AI/Wan2.1-I2V-14B-480P](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P)(LICENSE.txt。「licensed under the Apache 2.0 License」) | 再配布の README の元。Kijai のものはヘッダに img_emb があり VACE の層が無い(自動の決め方は 720P・VACE をたどっていた) |
 | Comfy-Org/ERNIE-Image | `ministral-3-3b` | apache-2.0 | [baidu/ERNIE-Image](https://huggingface.co/baidu/ERNIE-Image) の text_encoder(Ministral 3 3B。mistralai の Ministral-3-3B は全部 apache-2.0) | 再配布の README の元・text_encoder/config.json |
 | ByteZSzn/Flux.2-Turbo-ComfyUI・Comfy-Org/flux2-dev | `Flux_2-Turbo-LoRA_comfyui` | other(flux-dev-non-commercial-license) | [fal/FLUX.2-dev-Turbo](https://huggingface.co/fal/FLUX.2-dev-Turbo) | sha256 が fal の comfy/ のファイルと同じ |
 | Comfy-Org/flux2-dev | `mistral_3_small_flux2_*` | apache-2.0 | [mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506) | 公式のコード black-forest-labs/flux2 の text_encoder.py(コミット 50fe516)がこれをそのまま読む |
@@ -367,8 +372,9 @@ RT-DETRv4(上の系統・部品)、Civitai のファイル。
 
 **匿名で読めない(401)リポジトリの確かめ直し**(#30): `update` は Hub API が 401 を返したリポジトリ(非公開・消えた)を
 `sources.huggingface.unauthorized` に並べる。`update --inspect-only` はそのリポジトリにもう一度 API を送り、
-`sources.huggingface.unauthorized_recheck`(`unauthorized` / `readable` / `failed`)に書く。毎週の更新(#19)の PR の
-差分で、Mage-Flow・Lens などが公開されたら分かる(読めるようになったものは、次の作り直しでライセンスが入る)。
+`sources.huggingface.unauthorized_recheck`(`unauthorized`・`private_or_missing`・`missing`・`readable`・`failed`・`checked_at`)に書く。
+毎週の更新(#19・#42。オーナーの PC の起動スクリプト(タスク スケジューラ)が作り直し・試験・PR を行い、確認待ちの判断だけ
+Claude Code のスキル genmodelfit-weekly に任せる。weekly-data.yml は手動の予備。docs/release.md)の PR の差分で、Mage-Flow・Lens などが公開されたら分かる(読めるようになったものは、次の作り直しでライセンスが入る)。
 匿名の API は、非公開のリポジトリにも無いリポジトリにも 401 を返す(無い名前 this-org-zzz/does-not-exist-123 でも 401)
 ので匿名では見分けられない。無いと確かめた名前だけを `repo_precision.KNOWN_MISSING` に書き、
 `unauthorized_missing`(確かめ直しでは `missing`)に分ける。
@@ -376,7 +382,7 @@ RT-DETRv4(上の系統・部品)、Civitai のファイル。
 (Google の公開の一覧は gemma-3-12b-it・-pt と QAT 版だけ。-it / -pt の付け忘れの名前。どのカードの base_model から来たかは
 記録が無い)。
 
-表を同梱の一覧(2026-10-20)に当てると、無検閲を除く 299 項目のライセンス不明は 113 → 46(ファイルは 75 → 29)、
+表を 2026-10-20 に作った一覧(当時の同梱)に当てると、無検閲を除く 299 項目のライセンス不明は 113 → 46(ファイルは 75 → 29)、
 auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 16 項目は、すべてのファイルのライセンスを人が確かめた
 (tests/test_license_sources.py の `JUSTIFIED_AUTO`。ここに無い項目が auto になったら試験が落ちる)。
 
@@ -399,8 +405,8 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 当てるたびに材料から作り直す(前の値を引き継がない。表を狭めたり手の表から行を消したりすると、次の当て直しで直る)。
 材料と優先順:
 
-1. **手の表** `data/overrides.json`(人が実機か一次資料で確かめたもの)。書いた種類(`prompt` / `speech`)はこれ。
-   手のモデルは `data/manual.json` に書いた値
+1. **手の表** `src/genmodelfit/data/overrides.json`(人が実機か一次資料で確かめたもの)。書いた種類(`prompt` / `speech`)はこれ。
+   手のモデルは `src/genmodelfit/data/manual.json` に書いた値
 2. **HF のカードの `language`**(本体のファイルの置き場所と、その元 `license_from` のカード。言語のあった最初のもの)。
    読めたものは項目 `card_languages` に保存して持つ(`[]` = 読んだが言語が無い、null = まだ読んでいない)。
    **カードが言語を書いていれば、それが上限**: 読み上げは `speech` = カードの値。指示の文は、文字を読む部品が
@@ -435,7 +441,7 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 部品が複数あるとき: 多言語が 1 つでもあれば多言語、すべて英語の部品なら英語だけ、表に無い部品(Gemma・Mistral・Llama・
 Qwen3-VL・gpt-oss など。カードに言語の記述が無い、または確かめていない)が混じれば決めない(カードがあればカードのまま)。
 
-手の表 `data/overrides.json` は 12 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
+手の表 `src/genmodelfit/data/overrides.json` は 12 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
 Z-Image Turbo 2 件・Wan 2.1/2.2 は `prompt` が `en` `ja` `zh`(「日本語の指示もある程度理解しますが、英語で書くとより正確」
 「日本語・英語・中国語の指示を理解します」。Z-Image のカードは `en` だけだが、部品の Qwen3 で日本語の指示も通ることを実機で確かめた)、
 SDXL は `en` のみ(「日本語はほとんど理解しません」)、ACE-Step 1.5 は `prompt` が `en`(「曲の雰囲気は英語で書くとより正確」)・
@@ -451,7 +457,7 @@ https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードに合わせて `en` `
 including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean」)。指示は音楽の規則で
 `en`。歌の入らない `audio_ace_step_1_t2a_instrumentals` には付けない。
 
-手のモデル `data/manual.json` の 3 件: つくよみちゃんの `speech` は `ja` `en`: カード(https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan)の
+手のモデル `src/genmodelfit/data/manual.json` の 3 件: つくよみちゃんの `speech` は `ja` `en`: カード(https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan)の
 `language` は 6 言語(ja en zh es fr pt)だが、アプリが実機で確かめたのは日本語と英語だけなのでそれだけにした。
 Irodori-TTS は `ja`(カードの `language: ja`)。Stable Audio 3 Small の音楽は `prompt` が `en`・`speech` が `[]`。
 
@@ -464,12 +470,12 @@ Irodori-TTS は `ja`(カードの `language: ja`)。Stable Audio 3 Small の音�
 
 ### 説明(`description`)
 
-`data/overrides.json` と `data/manual.json` の手で書いたものだけ(日本語は AI生成キットの catalog.json の `summary`、
+`src/genmodelfit/data/overrides.json` と `src/genmodelfit/data/manual.json` の手で書いたものだけ(日本語は AI生成キットの catalog.json の `summary`、
 英語はそれを訳したもの)。手の表から行を消すと、次の当て直しで説明も消える。
 GPU なしの PC で動くかは書かない(判定と食い違わないように。genmodelfit は今、SDXL・Stable Audio 3 Small を
 `--vram 0` で Too tight と判定する。CPU での判定は https://github.com/laxshmate/genmodelfit/issues/39)。
 
-### 手で足すモデル(`source: "manual"`、`data/manual.json`)
+### 手で足すモデル(`source: "manual"`、`src/genmodelfit/data/manual.json`)
 
 人気順の収集で拾えないモデル。ID は `manual:<名前>`。`files` は `url` `sha256` `size_bytes` `directory` `role` と、
 ファイルごとの `license` `license_name` `license_from` `license_url` `license_evidence` を書く(`appinfo.manual_entries`)。
@@ -497,7 +503,7 @@ LFS でない小さいファイルは実際に落として sha256 を計算し�
 
 手のモデルは、`recommend` の人気の点(`popularity`)に使う `downloads` を持たないので、同じ点数なら HF 由来より下に並びやすい。
 
-### 手で足す部品(`data/manual.json` の `components`、0.6.0、#40)
+### 手で足す部品(`src/genmodelfit/data/manual.json` の `components`、0.6.0、#40)
 
 HF の収集はリポジトリの本体(と同じリポジトリの部品)だけを拾うので、別のリポジトリにある部品が抜けることがある。
 `components` は「モデルの ID → 足すファイル」の表で、update(作り直し・`--heads-only`・`--fields-only`)が
@@ -517,12 +523,12 @@ HF の収集はリポジトリの本体(と同じリポジトリの部品)だけ
 
 CLAUDE.md の決まり: 無検閲のモデルも一覧から外さず、`content: "uncensored"` と根拠(`content_evidence`)を付ける。
 
-**テンプレート**: ID・題・タグに `uncensored` / `nsfw` / `abliterated` があれば `name:<語>`、使うファイルの HF
+**テンプレート**: ID・題・タグに `uncensored` / `nsfw` / `abliterated` / `heretic` / `unfiltered` があれば `name:<語>`、使うファイルの HF
 リポジトリに `not-for-all-audiences` タグがあれば `hf-tag:not-for-all-audiences (<repo>)`。
 (2026-10-20 時点で当てはまるテンプレートは 0 件)
 
 **Hugging Face の検索**: pipeline_tag(text-to-image・image-to-image・text-to-video・image-to-video・text-to-speech・
-text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audiences` と `search=uncensored|nsfw|abliterated`
+text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audiences` と `search=uncensored|nsfw|abliterated|heretic|unfiltered`
 で、ダウンロード数の多い順に 100 件ずつ取る。新しく伸びているものを拾うため、`filter=not-for-all-audiences` と
 テンプレートで足りない種類の検索は `sort=trendingScore` と `sort=likes30d` でも取る。どの検索も
 `expand[]=downloadsAllTime` で全期間のダウンロード数を受け取る(返らなければ直近 30 日の数で代え、その候補の数を
@@ -558,7 +564,8 @@ text-to-audio・image-to-3d・text-to-3d)ごとに、`filter=not-for-all-audienc
 ID は `hf:<owner>/<repo>`、`source: "huggingface"`、`discovered_from` に見つけた検索の URL、`downloads`(直近 30 日)/
 `downloads_all_time`(全期間)/ `likes` を入れる。
 同梱の一覧も 2026-10-20 にこの規則へそろえた(HF の 64 件から、全期間 10,000 未満の 16 件と merge のタグの 2 件を外して 46 件。
-無検閲は 39 → 24 件)。2026-10-21 に #19 の規則で作り直した(HF 50 件、無検閲 28 件。docs/release.md)。
+無検閲は 39 → 24 件)。2026-10-21 に #19 の規則で作り直した(docs/release.md)。件数は一覧の `sources.counts`・
+`sources.huggingface-search` を見る(2026-10-21T06:20Z の同梱の一覧では HF 48 件、無検閲 26 件)。
 
 **利用者のテンプレート**: index.json の `username` が `ComfyUI` でないテンプレート(2026-10-20 時点で 32 件。hellorob・
 PurzBeats など)は `Template.username` に持ち、`community: true` とする。同じ重みの公式のワークフローがあれば表の代表にしない
@@ -624,7 +631,7 @@ MMAudio・AudioLDM・Stable Audio Open の系統で music の語が無いもの)
 2026-10-20 の実行で外れた件数は `sources.excluded` を見る(名前は残さない)。作例のプロンプトに child を含むもの・
 注意書きに minors を含む正しい成人向けのモデルが外れないことは、テスト(`tests/test_review_fixes.py`)で確かめている。
 
-## Civitai: v0.1 では使わない
+## Civitai: 使わない
 
 Civitai の利用規約(https://civitai.com/content/tos 、lastmod 2026-10-06)を読んで、使わないと決めた。
 
@@ -637,6 +644,15 @@ genmodelfit の一覧はソース非公開の商用アプリ(AI生成キット)�
 入れることは「はっきり許されている」とは言えない。テンプレートにある Civitai の URL(5 つ、のべ 6 か所)は URL だけを
 そのまま持ち、大きさ・ライセンスは不明のまま(HEAD も送らない)。
 
+## 確認の印(review)
+
+update(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)は前の一覧と比べ、次の項目を確認待ち(`pending`)にする:
+新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・**ファイルの変化**(`files_changed`、0.9.0。ファイルの増減、
+URL(クエリも比べる。`#` から後だけ除く)・`repo_id` の変化、大きさの変化(大きくなった・小さくなった・分かった・分からなくなった)、
+値のあった sha256 の変化・消失。前が空で今入った sha256 だけは付けない)。`review reject` で外した項目(`src/genmodelfit/data/review_rejected.txt`)は
+作り直しても入れない。確認待ちは gate の `reviewed` で保留になり、配る一覧(data-latest)には入らない。詳しくは docs/schema.md「review」・
+docs/release.md「毎週のスキル(genmodelfit-weekly、#42)」。
+
 ## 上流の形が変わったとき・ネットに繋がらないとき・一部を取得できなかったとき
 
 - index.json が一覧でない・分類に `templates` が無い・テンプレートに `name` が無い → `UpstreamFormatError`
@@ -646,7 +662,7 @@ genmodelfit の一覧はソース非公開の商用アプリ(AI生成キット)�
 - ネットに繋がらない(index.json が取れない、テンプレートの JSON が全部取れない、HF の 30% を超えて繋がらない)
   → 前のキャッシュを残して終了コード 1。`recommend` などはキャッシュ(無ければ同梱の一覧)で動き続ける
 - 実測(`measurements.json`)のあるモデルが上流から消えたときは、前の一覧(キャッシュ、無ければ同梱)から引き継いで
-  警告を出す
+  警告を出す(読めない・型の合わない項目を含むキャッシュは使わず同梱へ戻る。0.9.1、#63)
 - **一部を取得できなかったとき**(テンプレートの JSON が 1 件でも読めない、HF の一時的な失敗(つながらない・429・5xx。
   401 / 403 / 404 は「不明」として扱い数えない)、429 の待ち時間の上限を超えた、HF の検索が失敗した):
   `sources.partial: true` と `sources.partial_counts`(`templates_failed`・`hf_repos_failed_transient`・`entries_affected`・
@@ -660,7 +676,8 @@ genmodelfit の一覧はソース非公開の商用アプリ(AI生成キット)�
 ## テンプレートの `size` は一式の合計か(確かめた結果)
 
 2026-10-20 の `update` の結果で、ファイルの大きさがすべて分かるテンプレート **263 件**について、index.json の
-`size` と、テンプレートが使うファイル(HF の `siblings[].size`)の合計を比べた(`sources.size_check` にも同じ数)。
+`size` と、テンプレートが使うファイル(HF の `siblings[].size`)の合計を比べた(当時の `sources.size_check`。今の値は
+同梱の一覧の `sources.size_check` を見る)。
 
 | 比べた結果 | 件数 |
 |---|---:|

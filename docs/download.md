@@ -1,6 +1,6 @@
 # モデルを落とす / Download (`genmodelfit download`)
 
-README の「手順 5」の詳しい決まりです。JSON の形は [schema.md](schema.md)「download」、
+README の「2. Procedure」の 5(Download it.)の詳しい決まりです。JSON の形は [schema.md](schema.md)「download」、
 実装は `src/genmodelfit/downloader.py`(約束は tests/test_download.py が検査する)。
 
 ## English
@@ -19,10 +19,12 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
   `--output-dir` (default: genmodelfit's user data folder, `models`) uses the same layout, so it can be added to
   ComfyUI's `extra_model_paths.yaml`.
 - **Consent first**: before anything is downloaded you see every file with its license and the license URL, licenses
-  that are not on the allowlist (commercial use without use restrictions; [gate.md](gate.md)) are marked, then the
+  that are not on the allowlist (commercial use without use restrictions; [gate.md](gate.md); change it with
+  `--license-allowlist`) are marked, then the
   total size and the free disk, and you are asked `[y/N]`. `--yes` skips the question (required with `--json`).
   Read the terms of each file before you use the model.
-- **Not downloaded**: gated files (genmodelfit never handles logins or tokens; request access on the model page and
+- **Refused** (if any file matches, nothing of that workflow is downloaded; it never downloads only part of it):
+  gated files (genmodelfit never handles logins or tokens; request access on the model page and
   download them yourself), uncensored models unless you pass `--content all` (or `uncensored`), files whose license is
   unknown unless you pass `--include-unknown-license`, files without a sha256 or size in the list, hosts other than
   Hugging Face / GitHub.
@@ -34,12 +36,14 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
   cleaned up). It does not start unless the free disk is the download + 1 GB. Nothing is written outside the
   destination: names with `..`, absolute paths, drive letters, `\`, reserved Windows names (also as folder names),
   control / bidi characters, and symbolic links / junctions that lead outside are refused.
-- **Network**: only the URLs in the list (checked anonymously with HEAD), https only. Every redirect must stay on
-  the hosts below; a URL that could be read as two different hosts (`\`, spaces, control characters, `%` or `@`
+- **Network**: only the URLs in the list (checked anonymously with HEAD by `update`; `download` itself does not
+  require a HEAD result), https only. Every redirect must stay on the hosts below; a URL that could be read as two different hosts (`\`, spaces, control characters, `%` or `@`
   in the host, non-ASCII hosts) is refused before any connection, and the host is read the way requests / urllib3
-  read it. Allowed: `huggingface.co` / `*.hf.co` (CDN, Xet) / `github.com` / `objects.githubusercontent.com` /
-  `release-assets.githubusercontent.com`. No `~/.netrc` credentials, no tokens, nothing about this PC (User-Agent and
-  Range only). Waits for `Retry-After` on 429 / 503.
+  read it. The first URL must be on `huggingface.co` or `github.com`; redirects may go to `huggingface.co` /
+  `*.huggingface.co` / `hf.co` / `*.hf.co` (CDN, Xet) / `github.com` / `objects.githubusercontent.com` /
+  `release-assets.githubusercontent.com` (https, port 443 only). No `~/.netrc` credentials, no tokens, nothing about
+  this PC (User-Agent and Range only). On HTTP 429 / 500 / 502 / 503 / 504 it waits for `Retry-After` (or backs off) and retries; it stops
+  after 4 failures in a row without progress.
 
 Python:
 
@@ -76,9 +80,9 @@ The library prints nothing. `gmf.download` raises `gmf.DownloadRefused` (blocked
   `checkpoints` など。ファイル名の中のサブフォルダは保つ)に置きます。`--output-dir`(既定は genmodelfit のデータのフォルダの
   `models`)も同じ並びなので、ComfyUI の `extra_model_paths.yaml` に足せます。
 - **先に同意**: 落とす前に、ファイルごとのライセンスと原文の URL を出し(利用制限の無い商用利用ができる許可リスト
-  ([gate.md](gate.md))に無いものは印付き)、合計の大きさと空きを見せて `[y/N]` で尋ねます。`--yes` で省けます
+  ([gate.md](gate.md)。`--license-allowlist` で変えられる)に無いものは印付き)、合計の大きさと空きを見せて `[y/N]` で尋ねます。`--yes` で省けます
   (`--json` で落とすときは必須)。使う前に各ファイルの条件を読んでください。
-- **落とさないもの**: gated(ログインや利用申請が要る。genmodelfit はログイン情報やトークンを扱いません。モデルのページで申請して
+- **落とさないもの**(1 つでも当てはまるファイルがあれば、そのワークフローは何も落としません。一部だけ落とすことはしません): gated(ログインや利用申請が要る。genmodelfit はログイン情報やトークンを扱いません。モデルのページで申請して
   自分で落とす)、無検閲のモデル(`--content all` か `uncensored` を明示したときだけ)、ライセンス不明
   (`--include-unknown-license` のときだけ)、一覧に sha256・大きさの無いもの、Hugging Face・GitHub 以外の取得先。
 - **安全**: 書きながら sha256 を計り、合わなければ消して失敗にします。途中は `<名前>.part` に書き、Ctrl-C や通信の失敗の
@@ -87,9 +91,11 @@ The library prints nothing. `gmf.download` raises `gmf.DownloadRefused` (blocked
   2 つの download が同時に書かないよう `<名前>.lock` を置きます(止まったプロセスの残りは片付けます)。空きが
   「落とす量 + 1 GB」に足りなければ始めません。置き場所の外には書きません(`..`・絶対パス・ドライブ名・`\`・
   Windows の予約名(フォルダ名も)・制御文字・双方向文字・外へ出るシンボリックリンクやジャンクションを拒みます)。
-- **通信**: 一覧の URL(匿名の HEAD で確かめたもの)だけを https で使います。転送先は上の英語の節のホストだけです。
+- **通信**: 一覧の URL(update が匿名の HEAD で確かめたもの。download 自体は HEAD の結果を条件にしません)だけを https で使います。
+  最初の URL は `huggingface.co`・`github.com` だけ、転送先は `huggingface.co`・`*.huggingface.co`・`hf.co`・`*.hf.co`・
+  `github.com`・`objects.githubusercontent.com`・`release-assets.githubusercontent.com` だけです(https・443 だけ)。
   2 通りのホストに読める URL(`\`・空白・制御文字・ホストの中の `%` や `@`・ASCII でないホスト)は、つなぐ前に拒みます
   (ホストは requests / urllib3 と同じ読み方で取ります)。`~/.netrc` もトークンも使わず、PC の情報も送りません
-  (User-Agent と Range だけ)。429・503 では `Retry-After` を待ちます。
+  (User-Agent と Range だけ)。HTTP 429・500・502・503・504 では `Retry-After`(無ければ間を空けて)待ってやり直し、進まない失敗が 4 回続いたら止めます。
 - **Python**: 上の例と同じです。ライブラリは何も表示しません。`gmf.download` は `gmf.DownloadRefused`(ブロック・同意なし)と
   `gmf.DownloadError`(通信・sha256 の不一致・空き)を投げ、`KeyboardInterrupt` はそのまま通して、`.part` を次の呼び出しのために残します。

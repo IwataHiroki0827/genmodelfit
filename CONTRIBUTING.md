@@ -3,7 +3,7 @@
 genmodelfit の見積もりは、実際の PC で測った値(実測)があるとそれを優先します。いろいろな GPU の実測が
 集まるほど、見積もりが正確になります。`genmodelfit bench` で測った結果を Pull Request で送ってください。
 
-**English summary:** Run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
+**English summary:** Install `genmodelfit>=0.9.1` (or `pip install -e .` in your clone, so that local checks match CI), then run `genmodelfit bench <template> --url http://127.0.0.1:<port> --submission data/contrib/`
 against your own ComfyUI (in a clone of your fork). It writes a submission file
 `data/contrib/<gpu>/<date>-<sha8>.json` (`contrib_schema` 1: GPU name / VRAM / generation / driver / vendor and
 PyTorch backend / PCI model ID such as `1002:744c` (not the bus address), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results).
@@ -32,11 +32,12 @@ project. There is no CLA.
    - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、見積もりの段階を Good までに
      控えています。同じ構成の実測が集まると詰められます
 2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。足りないときは bench が
-   どのファイルが無いかを表示します
+   どのファイルが無いかを表示します。`genmodelfit download <テンプレート名> --comfyui-dir <ComfyUI のフォルダ>` で、
+   一覧のファイルを ComfyUI の models に落とせます(sha256 で確かめます。ライセンスが分からないファイルと gated のファイルは落としません)
 3. 測ります
 
 ```powershell
-pip install genmodelfit
+pip install -U "genmodelfit>=0.9.1"
 genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 768x768 --steps 6
 genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 512x512 --frames 49 --steps 20
 genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 20 --steps 8
@@ -72,7 +73,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 
 | 項目 | 測り方 |
 |---|---|
-| `peak_vram_gb` | 生成中に `/system_stats` を 0.2 秒ごとに読み、torch が確保した量(`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含みません |
+| `peak_vram_gb` | 生成中に `/system_stats` を 0.2 秒ごとに読み、torch が確保した量(`torch_vram_total`)の最大値。ComfyUI のプロセスの分で、CUDA の文脈(約 0.3〜0.5 GB)は含みません。`torch_vram_total` が取れないときは GPU 全体の増分で代え、警告を残します |
 | `note` の「GPU 全体の増分」 | GPU 全体の使用量(`nvidia-smi`。NVIDIA 以外は上の道具、約 1 秒ごと)の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります。道具が無ければ書きません |
 | `peak_ram_gb` | ポートで待ち受けている ComfyUI のプロセス(と子プロセス)の常駐メモリの最大値。コマンドラインに `main.py` か `comfy` を含むプロセスだけを数えます。ComfyUI が別の PC のとき・プロセスを特定できないときは空です |
 | `seconds` | ワークフローを送ってから終わるまで(モデルの読み込みを含む)。ComfyUI が数えた実行時間は `note` に入ります |
@@ -90,14 +91,18 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 ## 2. 提出用の JSON を作る
 
 自分のフォーク(GitHub の Fork)を手元に clone し、そのフォルダで bench に `--submission` を付けて測ります。
+clone したフォルダで `pip install -e .` すると、CI と同じ main の版で `contrib validate` を流せます。
 
 ```powershell
 git clone https://github.com/<あなたの名前>/genmodelfit
 cd genmodelfit
+pip install -e .
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832x832 --submission data/contrib/
 ```
 
-- `--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます
+- `--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます。
+  フォルダは末尾に `/` を付けて渡してください(`data/contrib/`。最初の提出ではまだフォルダが無く、`/` が無いと
+  `data/contrib` という名前のファイルになります)
   (例 `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`。`sha8` は中身の sha256 の先頭 8 桁)。ファイル名を渡せばその名前で書きます
 - 前に測って保存した結果(`<キャッシュ>/measurements/….json` や `--output` のファイル)からも作れます:
   `genmodelfit contrib make --from <bench の結果> --output data/contrib/`
@@ -137,30 +142,43 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - `genmodelfit contrib validate data/contrib` で、CI と同じ検査を手元で動かせます
 - 失敗(誤り)にするのは、機械的な検査(形・値の範囲・個人の情報・重複・ファイル名)だけです(llmfit と同じ考え方。2026-10-22)
 - 「確認」(notices)は、式の見積もりから 40% より外れた値・全部 GPU に載せた(`offload: none`)のに下限(重み + 固定分)より小さい値・
-  同じ GPU の PC(VRAM は提出の値、メモリ 16 / 32 / 64 GB)で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
+  同じ GPU の PC(VRAM は提出の値と、同じ名前で VRAM の違う版。メモリ 16 / 32 / 64 GB)で段階を変える値・一覧に無いモデル・知らない GPU です。失敗にはしませんが、ジョブのまとめの上に出し、
   PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)
 
 ## 4. 送る(Pull Request)
 
-1. 足すのは `data/contrib/<GPU>/<日付>-<sha8>.json` のファイルだけにします(ほかのファイルは変えない。コードの変更は別の PR に)
-2. コミットして自分のフォークに push し、Pull Request を作ります。説明に、ComfyUI の起動オプション
-   (`--lowvram` など、変えたものだけ)を書いてもらえると助かります。個人名やメールアドレスは不要です
+1. 足すのは `data/contrib/<GPU>/<日付>-<sha8>.json` のファイルだけにします(ほかのファイルは変えない。コードの変更は別の PR に)。
+   data/contrib の外のファイルを変えた PR は、`Contrib` のワークフローが失敗にします
+2. ブランチを作ってコミットし、自分のフォークに push します
+
+   ```powershell
+   git switch -c contrib/<GPU>-<モデル>
+   git add data/contrib/<GPU>/<日付>-<sha8>.json
+   git commit -m "contrib: <GPU> <モデル>"
+   git push -u origin HEAD
+   ```
+
+   GitHub で laxshmate/genmodelfit の main に向けて Pull Request を作ります。説明に、ComfyUI の起動オプション
+   (`--lowvram` など、変えたものだけ)を書いてもらえると助かります。個人名やメールアドレスは不要です。
+   初めての人の PR は、メンテナがワークフローの実行を許すまで CI が動かないことがあります
 3. CI(`Contrib` のワークフロー)が `genmodelfit contrib validate` で形・値の範囲・個人の情報・重複・ファイル名を検査し、
-   結果をジョブのまとめ(Summary)に出します。検査は、PR の向き先(main)の genmodelfit で動きます。
+   結果をジョブのまとめ(Summary)に出します。`contrib aggregate --report` の結果もまとめに出します。検査は、PR の向き先(main)の genmodelfit で動きます。
    マージが作者の確認になります(人が提出ごとに承認する別の仕組みはありません)
 
-**genmodelfit は何も送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです
+**genmodelfit は実測を送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです
 (自動で PR を作る機能はありません)。マージされると、提出は MPL-2.0 で公開されます(下の「ライセンス」)。
 
 ### 受け付けたあと
 
 - 作者が `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の
-  提出をまとめます(中央値と MAD で外れ値を除く)。使うのは**測った GPU と同じ GPU の PC だけ**です(llmfit と同じ。
+  提出をまとめます(中央値と MAD で外れ値を除く)。使うのは**測った GPU と同じ GPU の PC だけ**です(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)で、
+  VRAM の総量の比が 0.97 以上。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。0.9.1。llmfit と同じ考え方。
   ほかの GPU の PC の判定は変わりません)。その PC では **1 件から**その構成の見積もりの根拠が `measured_community`
   (ほかの利用者の実測)になり、件数(`sample_count`)も出ます。値は必要量を下げる向きにも上げる向きにも使います
   (全部載せの値は重み + 固定分より下げず、GPU の総量より上げません)。同じ GPU の同じ設定の実測は、段階を決める
   根拠にもなります(NVIDIA 以外の GPU も、その GPU の実測があれば good の上限が外れます)。詳しくは docs/accuracy.md
-- 毎週の点検(`contrib aggregate --report`)が、校正の誤差の表を作り直します(docs/accuracy.md)
+- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表
+  (calibration.json・docs/accuracy.md)は、メンテナが実測を取り込むときに `python -m genmodelfit.calibrate` で作り直します
 
 ### 作者の実測(measurements.json)
 

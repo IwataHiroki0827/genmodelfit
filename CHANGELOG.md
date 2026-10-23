@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- The `--help` of `system` / `recommend` / `fit` / `search` / `info` no longer says the GPU is detected only through nvidia-smi
+  (AMD / Intel / Apple are detected since 0.7.0).
+- The reason shown when another user's measurement is above the GPU's total now gives the real cap
+  (total × 1.02 + 0.25 GB) instead of "the total".
+
+### Documentation
+
+- README, CONTRIBUTING and docs/ brought up to date with 0.9.0 / 0.9.1: other users' measurements apply only to
+  the same GPU with VRAM within 3% (so adding VRAM can drop a measured value; noted as the exception to "more VRAM
+  never lowers the score"); `gmf.download` is the other Python call that uses the network; PCI model IDs are kept
+  in the output; submission checks and fields; `files_changed`; strict type checks; local CI (`tools/ci_local.py`)
+  and the weekly update on the maintainer's PC. Counts and dates that change every week now say where to read them.
+
 ## [0.9.1] - 2026-10-22
 
 ### Fixed

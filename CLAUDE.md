@@ -34,7 +34,7 @@
 - `download`(#31、`downloader.py`)は一覧の URL だけを https で落とし、転送先は `HOST_POLICY` のホストだけ。
   同意(confirm / yes)・sha256・`.part` の続き・置き場所の外に書かない・gated / 無検閲 / ライセンス不明を落とさない、
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
-- REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)
+- REST の serve は(未定)(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
 - **全試験は手元で通してから push する**(2026-10-22 オーナー決定)。`tools/ci_local.py --linux` が ci.yml と同じ検査を
   Windows と WSL で順に流す(約 1 時間。メモリを食わないよう 1 つずつ)。GitHub の ci.yml は確認用で、このリポジトリの
@@ -48,14 +48,16 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
 .venv\Scripts\python tools\ci_local.py --linux    # push の前に必ず: ci.yml と同じ検査(3.10〜3.13・ruff・配布物)を Windows と WSL で
-.venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | bench <template> | gate
+.venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | download <id> | gate | diff | review list | bench <template> | contrib {make|show|validate|aggregate}
 .venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
 .venv\Scripts\genmodelfit diff [<old.json>] [<new.json>] [--all]  # 一覧の違い(引数なし = 同梱 ↔ 取ってきた一覧。--all は毎週の PR と同じ中身)
 .venv\Scripts\python -m genmodelfit.weekly --dry-run --out <dir>   # 毎週の作り直し・確かめ・PR の本文を手元で(#19)
 ```
 
-毎週の一覧の更新(weekly-data.yml、#19)は PR を作るだけで、自動でマージ・公開しない。配るのはマージした
+毎週の一覧の更新は、オーナーの PC の起動スクリプト(タスク スケジューラ `genmodelfit-weekly`、月曜 9:00 JST。
+docs/release.md「毎週のスキル」)が作り直し・試験・PR を行う。安全な週(変わったファイルが db.json だけ・merge-check が safe・status の変化なし・手元の
+ruff と pytest が通った)だけ自動でマージし、ほかはオーナーが見る。weekly-data.yml は手動の予備。配るのはマージした
 main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付を決め打ちしない(毎週変わる。一覧から数える)。
 
 ネットワークに触るテストは `GENMODELFIT_NETWORK_TESTS=1` のときだけ動く(既定では飛ばす)。
@@ -74,10 +76,11 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - データの形は `src/genmodelfit/models.py` が正本。変えたら `docs/schema.md` と `SCHEMA_VERSION` も直す
 - 一覧のモデル ID: 公式テンプレート由来はテンプレート名そのまま(例 `image_z_image_turbo_int8`)、
   Hugging Face 由来は `hf:<owner>/<repo>`
-- 同梱のデータ: `src/genmodelfit/data/db.json`(一覧)、`measurements.json`(実測)、`calibration.json`(係数)
+- 同梱のデータ: `src/genmodelfit/data/db.json`(一覧)、`measurements.json`(実測)、`measurements_community.json`(ほかの利用者の実測のまとめ)、
+  `calibration.json`(係数)、`review_rejected.txt`(外した項目)、`overrides.json`・`manual.json`(手の表・手で足すモデル)
 - アプリ向けの項目(`languages` / `runtime` / `description`。#36、docs/sources.md「言語・動かし方・説明」)は任意で、
   `schema_version` は上げない(古い版は知らないキーを捨てるので読める。tests/test_appinfo.py が確かめる)。
-  手の表は `data/overrides.json`、手で足すモデル(`source: manual`)は `data/manual.json`、決める処理は `appinfo.py`。
+  手の表は `src/genmodelfit/data/overrides.json`、手で足すモデル(`source: manual`)は `src/genmodelfit/data/manual.json`、決める処理は `appinfo.py`。
   言語は当て推量で `ja` を付けない(HF のカードか手の表に根拠があるものだけ。多言語の部品の表だけでは付けない。
   カードの言語が上限)。当てるたびに材料(保存した `card_languages`・表・手の表)から作り直し、前の値は引き継がない。手のモデルのライセンスは HF のカードの原文で確かめて書く
 - **実測や、実測のあるモデルのファイル情報を変えたら `python -m genmodelfit.calibrate` で合わせ直し、
@@ -86,11 +89,11 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 
 ## ハードウェアの検出(2026-10-20、#21。docs/hardware.md が正本)
 
-- 判定に使う GPU は nvidia-smi で確かめた NVIDIA の GPU だけ(backend `cuda` の最大の 1 枚)。PyTorch の CUDA 版のビルドが
+- NVIDIA の GPU があれば、nvidia-smi で確かめたもの(backend `cuda` の最大の 1 枚)を使う。PyTorch の CUDA 版のビルドが
   どれも対応しない世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
   世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
-- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(この GPU と同じ名前の GPU の同じ設定の実測があれば外す。2026-10-22)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す
-  (PowerShell の起動に約 1 秒)。`system --all-gpus` で調べる
+- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(同じ設定の実測で段階が決まれば外す: 同じ会社の GPU での作者・この PC の実測か、同じ GPU(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)で、VRAM の比 0.97 以上。`estimate.same_gpu`)のほかの利用者の実測。2026-10-22・0.9.1)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
+  見つけた GPU は `system --all-gpus` で調べる
 - 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
   系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す
   (`families.assign`。tests/test_hardware.py が一致を検査)。VRAM の量で変わる動き(fp32・fp16 に広げる)は

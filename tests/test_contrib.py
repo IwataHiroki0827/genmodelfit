@@ -643,7 +643,7 @@ def test_basis_ordering(db):
 
 
 def test_community_value_is_capped_at_the_gpu_size(db):
-    """GPU の総量 × 1.02 + 0.25 GiB を超える値(validate の「ありえない値」)は、見積もりでも総量までにする。"""
+    """GPU の総量 × 1.02 + 0.25 GiB を超える値(validate の「ありえない値」)は、見積もりでも上限までにする。"""
     entry = db.get("image_sdxl_simple")
     m = next(x for x in db.measurements if x.model_id == entry.id)
     big = _community(m, gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24.0, peak_vram_gb=40.0)
