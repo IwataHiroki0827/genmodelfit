@@ -1301,7 +1301,8 @@ def _estimate(
                 )
             elif prep.clamp == "cap":
                 reasons.append(
-                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の総量を超えるので、総量までにした"
+                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の総量を超えるので、"
+                    "上限(総量 × 1.02 + 0.25 GB)までにした"
                 )
             else:
                 reasons.append(

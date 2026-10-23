@@ -33,13 +33,16 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 ### Requirements
 
 - Windows, Linux or macOS, Python 3.10 or newer.
-- GPU: NVIDIA (CUDA) as measured. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or newer, Windows 11 / Linux),
-  Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon (MPS, macOS 14 or newer) are
-  judged as estimates (at most Good, unless someone measured that GPU at the same settings). Other GPUs (Intel UHD /
-  Iris Xe, older AMD) and PCs without a GPU are judged as CPU-only; SD-family image models and Stable Audio count as running on CPU (slow)
+- GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
+  newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
+  (MPS, macOS 14 or newer) are judged as estimates (at most Good, unless a measurement at the same settings sets the
+  level: by the maintainer or on this PC on a same-vendor GPU, or by other users on the same GPU). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
+  (Intel UHD / Iris Xe, the 2-CU Radeon 610M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
+  SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests
+  `update-pciids` when lspci does not know the GPU's name
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
-  Non-NVIDIA GPUs have no measurements yet, so their levels are kept low; your `genmodelfit bench` results let us
-  tighten them ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
+  Non-NVIDIA GPUs have no measurements yet, so their levels are kept low. `genmodelfit bench` works on these GPUs
+  too; your results let us tighten them ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
 ### Install
 
@@ -95,7 +98,7 @@ data or the ComfyUI you name. No telemetry. Details: [Privacy](https://github.co
    genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI   # your ComfyUI folder
    ```
 
-6. **Keep the list fresh.** The list is rebuilt weekly. Its link checks expire after 30 days, and then nothing is
+6. **Keep the list fresh.** The list is rebuilt weekly. A model whose link check is older than 30 days stops being
    Verified. This fetches the latest signed list from this project.
    ```
    genmodelfit update --from-release
@@ -110,29 +113,37 @@ The same in Python:
 import genmodelfit as gmf
 
 for f in gmf.recommend(modality="image", task="edit", limit=5):
-    print(f.model.id, f.model.precision, f.score, f.auto, f.estimate.fit, f.estimate.vram_gb)
     row = f.to_dict()  # the same dict as one item of `recommend --json`
+    # memory_required_gb: what the chosen mode needs (the table's VRAM; RAM on CPU).
+    # f.estimate.vram_gb is the all-on-GPU need, which can be larger than the GPU (GPU~ / GPU+RAM rows).
+    print(f.model.id, f.model.precision, f.score, f.auto, f.estimate.fit, row["memory_required_gb"])
 
 st = gmf.data_status()  # is the list fresh enough for Verified (auto) models?
 if st.expired:
     print("run: genmodelfit update --from-release", st.expires_at)
 
-# reading the list yourself: skip entries still waiting for review
-ok = [e for e in gmf.load_db().models if e.review is None or e.review.status == "ok"]
+# reading the list yourself: skip entries still waiting for review.
+# on a malformed or wrongly typed list, load_db raises a RuntimeError (catch RuntimeError; the subclass
+# genmodelfit.db.DatabaseError is not in gmf.__all__).
+ok = [e for e in gmf.load_db().models if e.reviewed]
 
 # one model, with the GPU your app detected (generation and precision are decided here)
 fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
 print(fit.to_dict()["fit_level"])  # only names in gmf.__all__ are stable API
 
-# fetch the signed list (the only Python call that uses the network) with your own session, e.g. the app's CA bundle
+# fetch the signed list with your own session, e.g. the app's CA bundle (network: only this and gmf.download)
 db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```
+
+Only names in `gmf.__all__` are stable API ([docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#python-api-stable--python-の公開の範囲)).
 
 ### Judge another PC
 
 `--vram` and `--ram` (GiB) replace the detected sizes, e.g. `genmodelfit recommend --vram 12 --ram 32`.
-The GPU generation of this PC is kept. `--width`, `--height`, `--frames`, `--length` and `--precision` judge a
-specific setting.
+With a usable NVIDIA GPU, its generation is kept and only the VRAM changes. On a non-NVIDIA GPU (or without a usable
+GPU), `--vram` judges a hypothetical NVIDIA GPU of unknown generation. Other users' measurements apply only when
+`--vram` is within 3% of the measured card's VRAM. `--width`, `--height`, `--frames`, `--length` and `--precision` judge a specific
+setting.
 
 ## 3. Results
 
@@ -159,7 +170,7 @@ music ● Good         65 ACE-Step 1.5 Turbo       gen+2   bf16  6.0m  76% GPU~ 
 music ● Marginal     40 ACE-Step 1.5XL Turbo     gen     bf16   5.2  65% GPU+RAM mit        yes
 == sfx (効果音): top 2 of 2  (-m sfx for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-sfx   ● Perfect      68 stable-audio-3-small-sfx gen     fp32   3.6  45% GPU     other      license
+sfx   ● Perfect      66 stable-audio-3-small-sfx gen     fp32   4.7  59% GPU     other      license
 sfx   ● Good         54 stable-audio-open-1.0    gen+1   fp32   4.9  61% GPU~    other      license
 == tts (読み上げ): top 2 of 20  (-m tts for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
@@ -205,12 +216,12 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 |---|---|
 | Type | image, video, music, sfx, tts, 3d |
 | Status | fit level (below) |
-| Score | 0–100: fit level, VRAM headroom, Verified, measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md)) |
+| Score | 0–100: fit level, VRAM headroom, Verified, measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score--点数)) |
 | Censored | `Y` censored / `N` uncensored; only with `--content all` or `uncensored` |
 | Model | one row per model (same weights); long names are cut in the middle with `…` |
 | Use | `gen`, `edit`, `i2v`, … (`genmodelfit types`); `+N` = N more workflows of the same model (`--all-workflows`) |
 | Prec | the best precision that fits (fp16, bf16, fp8, int8, …) |
-| VRAM | GiB needed in that mode; `m` = measured on a real run |
+| VRAM | GiB needed in that mode; `m` = measured by the maintainer or on this PC, `c` = median of other users' measurements of the same GPU (count: `info`, JSON `sample_count`) |
 | Mem% | share of VRAM used (of RAM on CPU); `RAM` = system RAM is short |
 | Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
 | Disk | download size (GiB); dropped first when the width is short, so at 100 columns see `info` or `--json` |
@@ -224,20 +235,24 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 | level | use of memory | cap by mode |
 |---|---|---|
 | **Perfect** | ≤ 60% | only when all on the GPU (`GPU`) |
-| **Good** | ≤ 85% | highest level for `GPU~` |
+| **Good** | ≤ 85% | highest level for `GPU~`, and for AMD / Intel / Apple GPUs unless a measurement at the same settings sets the level (by the maintainer or on this PC on a same-vendor GPU, or by other users on the same GPU) |
 | **Marginal** | ≤ 98% | highest level for `GPU+RAM`, `CPU` or slightly short RAM (Mem% can be low) |
 | **Too tight** | > 98% | does not run |
 | **?** | — | not judged: the download size is unknown |
 
-Marks: `m` after VRAM = measured on a real run (measured values win; without `m` it is a formula estimate).
+Marks: `m` after VRAM = measured by the maintainer or on this PC, `c` = median of other users' measurements; without
+a mark it is a formula estimate. Measurements win over the formula. Other users' measurements apply only to the same
+GPU (same PCI model ID, else the same normalized name, and VRAM within 3%) and can move the needs either way. `bench`
+values (`torch_reserved`) get +0.5 GiB when they set the level.
 `?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
 `recommend` orders rows by: runs, Verified, Perfect/Good, Marginal, Score. `fit` orders by type, level, Score.
 
 ### Accuracy
 
-Estimates are calibrated on few real runs on one GPU (RTX 5080 16 GB); treat values without `m` as rough.
+As of 0.9.1, the estimates are calibrated on a few runs on one GPU (RTX 5080 16 GB) and checked against a few more
+(RTX 3070 8 GB); no measurements from other users are bundled yet. Treat values without `m` / `c` as rough.
 ComfyUI uses more VRAM when more is free, so a peak measured on a large GPU is not the minimum.
-Details and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md).
+Current counts and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md).
 
 ## 4. Reference
 
@@ -264,7 +279,7 @@ Each command's `--help` lists options, exit codes and examples. Common options: 
 
 The list is built from the [ComfyUI workflow templates](https://github.com/Comfy-Org/workflow_templates) (MIT) and the
 [Hugging Face Hub API](https://huggingface.co/docs/hub/api) (licenses traced to the upstream, sizes, sha256), plus a few
-hand-added models. Like llmfit, Hugging Face models need 10,000+ all-time downloads. Civitai is not used (its terms
+hand-added models. Like llmfit, Hugging Face models need 10,000+ all-time downloads (1,000+ for models that are clearly trending). Civitai is not used (its terms
 limit automated access). Details: [docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md).
 
 ### Content marks
@@ -289,8 +304,8 @@ allowed. Details and Python API: [docs/download.md](https://github.com/laxshmate
 
 ### Maintenance
 
-The list is rebuilt every week. New models and riskier changes are marked `pending` and are not Verified until a
-person approves them with primary-source evidence (`genmodelfit review`). Only reviewed data is signed and published
+The list is rebuilt every week. New models, models whose files changed (URL, size, sha256) and riskier changes are
+marked `pending` and are not Verified until a person approves them with primary-source evidence (`genmodelfit review`). Only reviewed data is signed and published
 for `update --from-release`. Details: [docs/release.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/release.md).
 
 ### What changed in the list
@@ -307,17 +322,23 @@ are only counted; `--all` lists them (the content of the weekly pull request). `
 
 ### Contributing measurements
 
-Measured runs on more GPUs make the estimates better: `genmodelfit bench` on a running ComfyUI writes a submission
-file, `genmodelfit contrib show` shows exactly what it holds (no host or user names, paths or GPU UUID), and you open
-a pull request yourself. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
+Measured runs on more GPUs make the estimates better. On your running ComfyUI (NVIDIA, AMD, Intel or Apple GPU),
+`genmodelfit bench <id> --url http://127.0.0.1:8188 --submission data/contrib/` measures and writes a submission file
+(a saved result can be converted with `genmodelfit contrib make --from <file>`). `genmodelfit contrib show <file>`
+shows exactly what it holds: the GPU name, VRAM, driver, vendor / backend, for AMD / Intel GPUs the PCI model ID
+(such as `1002:744c`), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results. `bench` does
+not write host or user names, paths, GPU UUID, PCI address, IP, CPU name or exact time. genmodelfit does not send
+measurements; you open the pull request yourself. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
 
 ### Privacy
 
-- Judging commands and the Python API (except `update_from_release`, which you call on purpose) make **no network access** (tested with every socket blocked).
+- Judging commands and the Python API (except `update_from_release` and `download`, which you call on purpose) make **no network access** (tested with every socket blocked).
 - `update` reads public data only (GitHub, Hugging Face API, HEAD on model URLs); `--from-release` only fetches
   `db.json` and its signature. `download` only fetches model files. `bench` talks only to your `--url`.
-- Hardware details, measurements and prompts are never sent. No `~/.netrc` credentials, no telemetry.
-- Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md) ("Side effects").
+- genmodelfit never sends hardware details, measurements or prompts. A measurement is shared only if you open a
+  pull request yourself ([Contributing measurements](https://github.com/laxshmate/genmodelfit#contributing-measurements)).
+  No `~/.netrc` credentials, no telemetry.
+- Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects--通信と書き込み) ("Side effects").
 
 ### License
 

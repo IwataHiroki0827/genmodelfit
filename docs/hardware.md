@@ -10,14 +10,16 @@
 | 項目 | どこから | 判定に使うか |
 |---|---|---|
 | NVIDIA の GPU(名前・VRAM の総量・空き・使用量・ドライバ・compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | 使う(backend が `cuda` のものの最大の 1 枚) |
-| NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM・GTT は sysfs の `mem_info_vram_total`・`mem_info_gtt_total`)。macOS: `system_profiler SPDisplaysDataType -json` | NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で使う(0.7.0、下の「NVIDIA 以外の GPU」) |
+| NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM・GTT は sysfs の `mem_info_vram_total`・`mem_info_gtt_total`)。macOS: `system_profiler SPDisplaysDataType -json` | NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で使う(0.7.0、下の「NVIDIA 以外の GPU」)。PCI の型番 ID(`pci_id`)も取る(0.9.0。同じ GPU の実測の照合と、bench の提出に使う) |
 | 物理メモリ | psutil(Linux はコンテナ(cgroup)の上限があればそれ) | 使う |
 | 仮想メモリ | Windows: `GlobalMemoryStatusEx`(ctypes)とレジストリ `Memory Management\PagingFiles`。Linux: `/proc/swaps`(zram を除く)。macOS: 自動で伸びる扱い | 使う(足りないときの上限) |
 | ディスクの空き | `shutil.disk_usage` | 表示だけ |
 
 調べないもの・残さないもの: PC 名・ユーザ名・GPU の UUID・PCI の差し場所(bus id)・PNPDeviceID の後半(個体・差し場所の ID)。
-WMI の PNPDeviceID は、型番を表す前半(`PCI\VEN_xxxx&DEV_xxxx&SUBSYS_…&REV_…`)をレジストリとの突き合わせにだけ使い、
-出力にも SystemInfo にも残さない(`tests/test_hardware.py::test_system_json_has_no_private_values`)。
+WMI の PNPDeviceID は、型番を表す前半(`PCI\VEN_xxxx&DEV_xxxx&SUBSYS_…&REV_…`)をレジストリとの突き合わせに使う。
+そのうち VEN・DEV の部分だけを PCI の型番 ID(`pci_id`。`1002:744c` の形)として出力に残す(0.9.0。同じ GPU の実測の照合に使う)。
+SUBSYS・REV と後半(個体・差し場所の ID)は残さない(`tests/test_hardware.py::test_system_json_has_no_private_values`)。
+Linux も `lspci -nn` の `[1002:744c]` から同じ形で残す。
 取った情報は手元で使うだけで、どこにも送らない。
 
 ## nvidia-smi
@@ -197,9 +199,9 @@ VAE(`comfy/sd.py` の `working_dtypes`): `kl`(既定 516。2D の KL)× / `ltxv`
 
 一覧の各項目の系統は `families.family_of`(本体のファイル名 → ID・テンプレート名の順に照らす。部品の置き場所のリポジトリ名は
 別のモデルの部品が混ざるので見ない)、VAE は VAE のファイル名(無ければ系統の既定)で決め、`update` が
-`ModelEntry.comfy_family` / `comfy_vae` に入れる(`--heads-only` でも決め直す)。同梱の一覧(323 件)では 279 件に系統が付き、
-44 件は分からない(読み上げ 20 件・ComfyUI に組み込みでない補助ツール 18 件・Capybara 4 件・HF の 3 件。ComfyUI のどのクラスで
-読むかを確かめられなかったもの)。分からないものは見積もりを変えず、bf16 を持たない GPU でだけ理由に書く。
+`ModelEntry.comfy_family` / `comfy_vae` に入れる(`--heads-only` でも決め直す)。0.9.1 の同梱の一覧(2026-10-21、329 件)では
+278 件に系統が付き、51 件は分からない(読み上げ 22 件・ComfyUI に組み込みでない補助ツールなど 19 件・Capybara 4 件・HF の 6 件。
+ComfyUI のどのクラスで読むかを確かめられなかったもの)。分からないものは見積もりを変えず、bf16 を持たない GPU でだけ理由に書く。
 
 ## NVIDIA 以外の GPU(0.7.0、#22・#23)
 
@@ -218,7 +220,7 @@ NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ�
 | AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
 | AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
 | AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
-| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh(Steam Deck、8 CU、gfx1033) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
+| AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300・Pro W6400 / W6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh・Sephiroth(Steam Deck・OLED 版。Windows の名前は AMD Custom GPU 0405。8 CU、gfx1033。共有メモリ) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
 | AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
 | AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
 | AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
@@ -234,7 +236,7 @@ NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ�
 
 GPU の名前 → 世代は `hardware._AMD_NAMES`(製品名と lspci の開発名 Navi 31 など)・`_INTEL_XPU` の表。名前が
 「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前(`_AMD_CPU_IGPU`: Ryzen AI Max → gfx1151、Ryzen 7 8845HS → gfx1103 など)で
-決め、決まらなければ CPU(世代が分からない)。Dragon Range(Ryzen 7x45HX)・Fire Range(9x55HX)は 2 CU の
+決め、決まらなければ CPU(世代が分からない)。Dragon Range(Ryzen 7x40HX・7x45HX)・Fire Range(9x50HX・9x55HX)は 2 CU の
 gfx1036 なので CPU。ノート用の Radeon は同じ番号でも石が違う(RX 6800M・6850M XT は gfx1031、RX 6800S は gfx1032、
 RX 6550M は gfx1034、RX 7700S は gfx1102)。
 
@@ -318,7 +320,8 @@ RX 6550M は gfx1034、RX 7700S は gfx1102)。
     ConfigManagerErrorCode が 0 でなければ「デバイスマネージャーで問題がある状態」と知らせる。
 - Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。名前は括弧の中の製品名(`Navi 31 [Radeon RX 7900 XT/7900 XTX/…]`
   の括弧の中)。AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total`(VRAM)と `mem_info_gtt_total`(GTT)を読む。
-  rocm-smi は使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。Intel の外付け GPU は
+  検出では rocm-smi を使わない(rocm-smi の VRAM・GTT は同じ sysfs の値で、入っていない PC も多い)。bench の使用率の確かめでは
+  使う(docs/accuracy.md「NVIDIA 以外の GPU の bench」)。Intel の外付け GPU は
   sysfs に VRAM の量が無いので、名前の表の公称の量を使う(上)。型番の分からない部品は「AMD Device 7551」の名前にする。
 - macOS: `system_profiler SPDisplaysDataType -json` の `sppci_model`(「Apple M2 Pro」)と `spdisplays_vendor`。
   統合メモリの量は psutil の搭載量(macOS では `sysctl hw.memsize` と同じ値)、OS の版は `platform.mac_ver()`。
@@ -389,7 +392,9 @@ fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model
 以前は perfect にしなかったので、bench の提出しか無い NVIDIA 以外の GPU は実測があっても good 止まりだった)。会社は実測の
 `gpu_backend` があればそれで、無いときだけ GPU 名で決める(Apple の MPS は GPU 名が "mps" になる)。ほかの利用者の
 実測(#34)は、この PC と同じ GPU(型番 ID か、そろえた名前。汎用の名前は除く。`estimate.same_gpu`)のものだけ使う
-(2026-10-22。似た GPU には広げない。0.9.0 から必要量にも同じ GPU のものだけ)。精度の直しで作業用メモリを倍にした
+(2026-10-22。似た GPU には広げない。0.9.0 から必要量にも同じ GPU のものだけ)。さらに、実測の GPU の VRAM とこの PC の
+総量の比(小さい ÷ 大きい)が 0.97 以上のときだけ使う(0.9.1。`estimate.same_vram`。同じ名前でも VRAM の違う版がある:
+RTX 4060 Ti の 8 / 16 GB など。内蔵 GPU・APU・Apple は比べない)。精度の直しで作業用メモリを倍にした
 GPU では使わない。メインメモリの判定はそのまま行う。理由の先頭に「…で同じ設定の実測 … GB・成功があり … GPU で動くと判定した
 (段階は実測で決めた。見積もりは目安)」と書き、表の VRAM はその実測の値(m)。実測の GPU がこの PC より大きいときは
 「段階は見積もりで決めた」と書く。例: Wan 2.2 5B(RTX 5080 16 GB で 15.8 GB・成功)は、RTX 5080 では good / GPU

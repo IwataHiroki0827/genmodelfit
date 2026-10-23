@@ -2081,9 +2081,16 @@ _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, databa
   One item per model (same weights family + size); --all-workflows gives one per workflow.
   Details: docs/schema.md"""
 
-_COMMON_HELP = """PRECONDITIONS:
-  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.
-  The bundled model list is used unless `genmodelfit update` stored a newer one (--no-cache).
+_DETECT_HELP = (
+    "  None. The GPU and RAM are detected; --vram / --ram override them. GPU: NVIDIA via nvidia-smi;\n"
+    "  otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).\n"
+)
+
+_COMMON_HELP = (
+    """PRECONDITIONS:
+"""
+    + _DETECT_HELP
+    + """  The bundled model list is used unless `genmodelfit update` stored a newer one (--no-cache).
 
 SIDE EFFECTS:
   None - read-only. No network access.
@@ -2093,6 +2100,7 @@ EXIT CODES:
   1  Error{one} (e.g. a broken --db file; with --json the error is in "error")
   2  Usage error (unknown option or value)
 """
+)
 
 HELP = {
     "recommend": """Recommend generation models for this PC, best first.
@@ -2152,7 +2160,7 @@ with counts. The use names are what --task accepts.
 
 """
     + _COMMON_HELP.format(zero="", one="").replace(
-        "  None. The GPU (NVIDIA, via nvidia-smi) and RAM are detected; --vram / --ram override them.\n",
+        _DETECT_HELP,
         "  None. The PC is not judged.\n",
     )
     + """

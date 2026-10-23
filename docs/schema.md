@@ -14,9 +14,9 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `contrib` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `gate` / `update` / `bench` / `diff` / `contrib` |
-| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `update --from-release` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `types` / `gate` / `update` / `bench` / `diff` / `review` / `contrib` |
+| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `diff` / `contrib` / `review approve` / `review reject` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
 
@@ -74,7 +74,7 @@ Gpu:
 | `vram_total_gb` | float | 0 when nvidia-smi does not report it (then `backend` is `none`). For `memory` `shared` / `unified`, the memory the GPU is taken to use (`docs/hardware.md`「共有メモリ」) |
 | `vram_free_gb`, `vram_used_gb` | float \| null | free now / used now by other apps (screen, browser, …). null when overridden or not reported |
 | `driver` | str \| null | driver version as nvidia-smi prints it |
-| `backend` | str | `cuda` / `rocm` (AMD) / `xpu` (Intel) / `mps` (Apple silicon): used for judging. `none`: not used (generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`). `rocm` / `xpu` / `mps` are new in 0.7.0 (#22) and always estimates (levels capped at Good) |
+| `backend` | str | `cuda` / `rocm` (AMD) / `xpu` (Intel) / `mps` (Apple silicon): used for judging. `none`: not used (generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`). `rocm` / `xpu` / `mps` are new in 0.7.0 (#22) and estimates (levels capped at Good unless a measurement sets the level: `fit_from`) |
 | `compute_capability` | str \| null | e.g. `"8.6"` |
 | `compute_capability_source` | str \| null | `nvidia-smi` / `name` (guessed from the GPU name when nvidia-smi is too old) |
 | `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell` (`fermi` / `unknown`) |
@@ -94,6 +94,8 @@ smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` 
 null for NVIDIA, which `nvidia-smi` decides), `reason` (Japanese sentence: why it is or is not used), `shared_gb`
 (Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
 `"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
+Added in 0.9.0: `pci_id` (str | null: PCI model ID `vendor:device` from Windows WMI `PNPDeviceID` or Linux
+`lspci -nn`, any vendor; never the bus address).
 
 ## Data status / 一覧の新しさ
 
@@ -120,8 +122,10 @@ Network is never touched.
 | `checked_at` | str | the time used for the judgement (UTC) |
 
 The gate's `url_reachable` check itself decides both counts (`gate.evaluate_offline`, run once with the policy and once
-with `max_head_age_days=None`), so `expired` and the gate never disagree. The bundled list's HEADs were checked on
-2026-10-20T10:33:07Z (0.1.1), so with no update it expires after 2026-11-19T10:33:07Z and `auto_count` becomes 0.
+with `max_head_age_days=None`), so `expired` and the gate never disagree. The dates of the list in use are in
+`genmodelfit system --json` `database.status` (`heads_checked_oldest`, `expires_at`); for the 0.9.1 bundled list the
+oldest HEAD check is 2026-10-21T06:20:06Z, so with no update it expires after 2026-11-20T06:20:06Z and `auto_count`
+becomes 0.
 判定は gate と同じ関数で行う。`expired` が true なら、HEAD の確認が古いせいで自動のおすすめから落ちたものがある。
 
 ## recommend / fit / search
@@ -130,7 +134,7 @@ The three commands print the same shape (Issue #17, modeled on llmfit's `recomme
 
 | key | type | meaning |
 |---|---|---|
-| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `include_unknown_license` (bool), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `search` adds `query` |
+| `filters` | object | values actually used: `modality` (str[] \| null), `content`, `min_fit`, `license` (str[] \| null), `include_unknown_license` (bool), `fit` (str \| null: `--fit`), `task` (str[] \| null: the names given), `all_workflows`, `limit`; `recommend` adds `per_type`, `auto_only`, `include_tools`; `fit` adds `sort`, `all`, `include_tools`; `search` adds `query`, `sort`, `all` |
 | `matched` | int | rows that passed every filter, before `limit` / `per_type` (models; workflows with `--all-workflows`) |
 | `hidden` | object | why the other entries are not shown: `{reason: count}`, only reasons with a count (below) |
 | `groups` | object[] | per type, in the order image, video, music, sfx, tts, 3d (only the `-m` types when given): `{modality, matched, shown}` |
@@ -155,7 +159,7 @@ that level (other runnable levels are counted as `hidden.other_fit`); `--fit` an
 
 The fit level always comes before the score (the score weights the level most, but the other components could invert
 two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Verified column shows it). JSON `models`
-follows the same order; `filters` of `fit` adds `fit`, `sort`, `all`, `include_tools`, of `search` `fit`, `sort`, `all`.
+follows the same order; `filters` of `fit` adds `sort`, `all`, `include_tools`, of `search` `query`, `sort`, `all`.
 Table columns (all commands): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Verified`;
 when the terminal is narrow, the Model column shrinks first (down to 24 characters), then Disk, Mem%, License, Verified,
 Prec, Use are dropped in that order (Type, Status, Score, Censored and Model never). **Verified** (named Auto up to 0.5.0) is the JSON `auto`:
@@ -323,7 +327,7 @@ filters and have the same use and the same tier as the shown entry**, where the 
 entries that run without offload (perfect / good on `GPU` / `GPU~`) are one tier (`recommend.row_tier`); everything else
 on the row is the shown entry's. The order uses that score and the shown entry's `auto`.
 Adding VRAM never lowers a row's score and never moves a row out of the "runs without offload" tier, and the shown
-precision only goes up within it; but the row's `fit_level` can go from `perfect` to `good` when a higher precision
+precision only goes up within it (exception: other users' measurements, see "Score"); but the row's `fit_level` can go from `perfect` to `good` when a higher precision
 becomes runnable (on the bundled list only LTX 2.3 10Eros: nvfp4 `perfect` at 48 GB → bf16 `good` at 64 GB).
 Tested in `tests/test_groups.py`.
 逃がさずに載るものがあれば、その中で一番精度の高いものを出す。無ければ段階を優先する。
@@ -412,12 +416,18 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit` | perfect 100, good 70, marginal 35, too_tight 0, unknown 0 |
 | `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`, 0 without a GPU, when the size is unknown or when the all-in VRAM (`estimate.vram_gb`) does not fit. Half of the VRAM free → 100 |
 | `readiness` | 100 when `auto`; otherwise the sum of the passed checks' points: license 25, gated 15, official_workflow 15, custom_nodes 15, comfyui_version 10, url_reachable 5, sha256 5, content 5, size_known 5 (app_runtime 40 in place of the three ComfyUI checks; it never passes; reviewed 0) |
-| `basis` | 100 when `measured`, 0 when `estimated` and for other users' submissions (`basis_detail: measured_community`; they never raise the score) |
+| `basis` | 100 when `basis` is `measured` (also `basis_detail: measured_community`, since 0.9.0), 0 when `estimated` (including a community value cut to a physical bound) |
 | `popularity` | `min(100, 20 × log10(1 + usage))`; usage = template uses, or Hugging Face downloads / 100 (100 at 100k) |
 
 The score never goes down when VRAM or RAM increases (the level never drops, `headroom` compares against the all-in
 VRAM which does not depend on the PC, and `basis` only turns `measured` when a GPU is present). Tested in
-`tests/test_invariants.py`. VRAM・メモリを増やしても点数は下がらない(試験あり)。
+`tests/test_invariants.py` (without community rows). VRAM・メモリを増やしても点数は下がらない(試験あり)。
+
+**Exception: other users' measurements** (0.9.1). They apply only to the same GPU, including a VRAM within 3%
+(`estimate.same_vram`; a card with another VRAM is another GPU). So raising VRAM past that drops the measurement:
+`basis` can go from `measured` to `estimated`, and a level set by it (`fit_from: measurement`) can fall
+(e.g. RTX 3060 12 GB row: Perfect at 12 GB, Good at 12.5 GB). Intended; the bundled community file is empty today (0.9.1).
+例外: ほかの利用者の実測は VRAM が 3% 以内の同じ GPU にだけ使うので、VRAM を増やすと外れて点数・段階が下がりうる。
 
 ## Estimate
 
@@ -429,10 +439,10 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see `docs/accuracy.md`) |
 | `basis` | str | **`measured`** (from a real run) or **`estimated`** (formula). Always present. Stays two-valued for compatibility; the finer level is `basis_detail` |
-| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions aggregated by `contrib aggregate`, from **one** submission, same settings; the count is `sample_count`) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Since 2026-10-22 (like llmfit) community measurements are used in **both directions** (they can lower or raise the needs, and `measured_community` scores like `measured`), bounded only physically: the all-in value is never below weights + fixed overhead (zero working memory), never above the measuring GPU's VRAM × 1.02 + 0.25 GiB, and a value pinned at the GPU limit is a lower bound. Spread to other settings, the ratio measured ÷ formula is clamped to [0.6, 1.4] (`estimate.COMMUNITY_CALIBRATION_RANGE`; llmfit uses [0.05, 3.0] for speed). Among measurements at the same settings, one on a GPU with this PC's name comes first, then the maintainer's / this PC's, then other users'. The maintainer's `torch_reserved` rows stay lower bounds (only raise). When a bound was applied the value is not the measurement: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
-| `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`: a successful standard measurement at the same settings on a GPU of the same vendor whose VRAM is at most this PC's (within 3%: nominal 16 vs reported 15.9) sets the level to at least Good — Perfect only when its peak is within 60% of this VRAM and it was neither pinned at the GPU limit nor a community group with an OOM report; a `torch_reserved` peak gets `estimate.TORCH_RESERVED_CONTEXT_GB` (0.5 GiB, the CUDA / HIP context it leaves out) added before the bands and the fit check (0.9.0; before, it never allowed Perfect). The vendor of a measurement is its `gpu_backend` when recorded, else guessed from the GPU name. The measured peak must also fit this PC's VRAM. Other users' measurements count only when the GPU name is this PC's (since 2026-10-22; never similar GPUs), and a measurement from another vendor's GPU only calibrates (`basis: estimated`). AMD / Intel / Apple GPUs are capped at Good unless such a measurement of this GPU (same name, same settings) allows Perfect. The run mode is then `gpu` and the reasons say which decided |
+| `basis_detail` | str | (#34) `measured` (maintainer / this PC's bench measurement at the same settings) > `measured_community` (other users' submissions aggregated by `contrib aggregate`, from **one** submission, same settings; the count is `sample_count`) > `calibrated` (shifted by a measurement at other settings) > `estimated` (formula only). `models.BASIS_DETAILS`. Since 2026-10-22 (like llmfit) community measurements are used in **both directions** (they can lower or raise the needs, and `measured_community` scores like `measured`), bounded only physically: the all-in value is never below weights + fixed overhead (zero working memory), never above the measuring GPU's VRAM × 1.02 + 0.25 GiB, and a value pinned at the GPU limit is a lower bound. Spread to other settings, the ratio measured ÷ formula is clamped to [0.6, 1.4] (`estimate.COMMUNITY_CALIBRATION_RANGE`; llmfit uses [0.05, 3.0] for speed). Other users' measurements are used only on the same GPU (`estimate.same_gpu`: the PCI model ID when both sides have one, else the normalized name; and, since 0.9.1, a VRAM within 3%); PCs with another GPU are judged as without them. At the same settings such a row comes before the maintainer's / this PC's. The maintainer's `torch_reserved` rows stay lower bounds (only raise). When a bound was applied the value is not the measurement: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`). When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value. docs/accuracy.md「ほかの利用者の実測」 |
+| `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`: a successful standard measurement at the same settings on a GPU of the same vendor whose VRAM is at most this PC's (within 3%: nominal 16 vs reported 15.9) sets the level to at least Good — Perfect only when its peak is within 60% of this VRAM and it was neither pinned at the GPU limit nor a community group with an OOM report; a `torch_reserved` peak gets `estimate.TORCH_RESERVED_CONTEXT_GB` (0.5 GiB, the CUDA / HIP context it leaves out) added before the bands and the fit check (0.9.0; before, it never allowed Perfect). The vendor of a measurement is its `gpu_backend` when recorded, else guessed from the GPU name. The measured peak must also fit this PC's VRAM. Other users' measurements count only when the GPU is this PC's (`estimate.same_gpu`: same PCI model ID, else the same normalized name, and VRAM within 3%; generic names never match; never similar GPUs), and a measurement from another vendor's GPU only calibrates (`basis: estimated`). AMD / Intel / Apple GPUs are capped at Good unless the level comes from a measurement (`fit_from: measurement`: a same-vendor maintainer or this-PC measurement as above, or other users' measurement of the same GPU), then up to the level that measurement sets. The run mode is then `gpu` and the reasons say which decided |
 | `measured_peak_vram_gb` | float \| null | (0.7.0) that measurement's peak VRAM when `fit_from` is `measurement` (the table's VRAM column shows it with `m`) |
-| `sample_count` | int \| null | (2026-10-22, optional; like llmfit) number of measurements behind the value: for other users' measurements the submissions used for the median (`n_used`), 1 for the maintainer's / this PC's. null when no measurement was used (`basis_detail` `estimated`). `info` prints it as `n=3`; the table's VRAM column marks other users' measurements with `c` (the maintainer's with `m`) |
+| `sample_count` | int \| null | (2026-10-22, optional; like llmfit) number of measurements behind the value: for other users' measurements the submissions used for the median (`n_used`; for older rows without it `n_submissions` − `n_oom`, at least 1), 1 for the maintainer's / this PC's. null when no measurement was used (`basis_detail` `estimated`). `info` prints it as `n=3` for other users' measurements; the table's VRAM column marks other users' measurements with `c` (the maintainer's with `m`) |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
@@ -443,7 +453,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」. `recommend` drops these; `fit` / `search` list them last |
 
 When no settings are given, a model with a measurement is judged at the measured settings (so the measured value is
-used as is); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
+used as is; the maintainer's / this PC's measurement only: other users' rows never change the default settings); others use per-modality defaults (image 1024², video 832×480 × 81 frames, music 30 s, sfx / tts 10 s).
 A measurement is used as `basis: "measured"` only when width / height / frames / seconds / batch / precision match
 (precision compared case-insensitively; a measurement without precision means the model's own precision) and a GPU is
 present; other settings are shifted by it and stay `estimated`. Measurements with `outcome` other than `ok` or with
@@ -462,7 +472,7 @@ smallest tried value does not reach `good`):
 | `at_cap` | str[] | keys that reached the end of the searched range (the real limit is higher) |
 
 Fit levels / 段階 — by the **utilization of the memory pool of the run mode** (required / available; VRAM on the
-GPU, RAM on the CPU), as in llmfit (`docs/how-it-works.md`, "Fit analysis"; adopted 2026-10-20):
+GPU, RAM on the CPU), as in llmfit (llmfit's `docs/how-it-works.md`, "Fit analysis"; adopted 2026-10-20):
 
 | utilization | level |
 |---|---|
@@ -477,7 +487,8 @@ The RAM check is applied afterwards (short but within the page file limit above 
 `too_tight`). On GPUs where ComfyUI computes in fp32 (`compute_dtype: "fp32"`: Maxwell, some Pascal, GTX 16xx …) the
 working memory and the VAE weights are doubled before judging (`docs/hardware.md`, "精度"). A model
 that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
-`marginal`), and the better result is used, so adding VRAM never lowers the level. Models whose size is unknown
+`marginal`), and the better result is used, so adding VRAM never lowers the level (exception: a level set by
+other users' measurement, which applies only within 3% of the measured VRAM; see "Score"). Models whose size is unknown
 (`unknown_size: true`) get `unknown` instead of a level. Constants: `estimate.FIT_BANDS`.
 
 **Several diffusion models in one workflow / 本体が複数のワークフロー** (0.1.1, Issue #28): ComfyUI runs the samplers one
@@ -560,7 +571,7 @@ know, is judgement-needed.
 | `safe_changes` | counts of changes seen in the safe direction: `removed`, `license_stricter`, `size_changed`, `precision_changed` (as in the diff; entries among them can still be judgement-needed), `head_failures_new`, `unauthorized_added`, `unauthorized_removed`, `stats` (changed `sources` values), `auto_gained_head_only`, `auto_lost`, `pending_carried` (the same pending `review` in both lists) |
 
 Safe (the allowlist; never in `judgement_needed` by itself): entry `downloads`, `downloads_all_time`, `likes`,
-`updated`; template `usage`; file `head_status`, `head_checked_at`; a
+`updated`, `discovered_from` (where it was found; changes with the search order); template `usage`; file `head_status`, `head_checked_at`; a
 license moving to a stricter tier (entry or file); removed entries; models dropping out of auto-recommendation;
 auto-recommendation regained only because HEAD recovered with the same files; `sources` statistics; a pending `review`
 carried over unchanged. Everything else is judgement-needed.
@@ -582,7 +593,7 @@ carried over unchanged. Everything else is judgement-needed.
 `python -m genmodelfit.weekly --out DIR` writes `DIR/db.json`, `DIR/diff.json` (the dict above), `DIR/pr_body.md`,
 `DIR/review_queue.json` (0.6.0: `{genmodelfit, generated_at, pending: [review list items], classification}`) and
 `DIR/result.json`: `genmodelfit`, `ok`, `problems` (str[], why it failed), `base`, `offline`, `run_url`, `partial`,
-`status` (DataStatus of the new list), `summary` (as above), `classification` (`{safe, judgement_needed: count}`),
+`status` (DataStatus of the new list), `status_old` (of the base list), `warnings` (str[]), `summary` (as above), `classification` (`{safe, judgement_needed: count}`),
 `review_pending` (the review list items), `files` (`db`, `diff`, `pr_body`, `review_queue`), and `applied_to` with
 `--apply`. The pull request body has a 「分類」 section and a 「確認待ち」 table (names escaped like every upstream
 text). Exit codes are unchanged: a judgement-needed week is still `ok` (exit 0).
@@ -622,8 +633,8 @@ list, or the base list in the weekly run):
   (`need_decreased`: at one of the reference PCs `review.REFERENCE_PCS` = (0 GB VRAM, 16 GB RAM), (6, 16), (8, 16),
   (12, 32), (16, 32), (24, 64) the fit level went up, the size became known, or the full-load VRAM or the RAM went down
   by more than 1 %; estimated only when a need-related field changed), or it newly became `uncensored`
-  (`uncensored_new`), or its files changed (`files_changed`: a file added / removed, a file's `url` (query string and
-  fragment ignored) or `size_bytes` changed in either direction or became known / unknown (since 0.9.0 growth counts too: the same URL now serves different content), or a `sha256` that had a value differs or went empty; a `sha256` that was
+  (`uncensored_new`), or its files changed (`files_changed`: a file added / removed, a file's `url` (only a `#fragment`
+  is ignored; the query string counts), `repo_id` or `size_bytes` changed in either direction or became known / unknown (since 0.9.0 growth counts too: the same URL now serves different content), or a `sha256` that had a value differs or went empty; a `sha256` that was
   empty and is now filled in, the first check, does not count. Files are paired as `diff` does). Reasons are added to an entry that was already pending
 - otherwise the previous mark is carried over (`ok` with a note when the previous list had none)
 
@@ -635,7 +646,7 @@ The signed list published to `data-latest` (data.yml) leaves out pending entries
 unknown `review` key and would auto-recommend them. The bundled `db.json` on main keeps them (0.6.0 holds them by the
 `reviewed` check).
 
-Rejected entries stay out: `data/review_rejected.txt` (bundled), one line per entry
+Rejected entries stay out: `src/genmodelfit/data/review_rejected.txt` (bundled), one line per entry
 `<id or sha256:<hex of the id>><TAB><YYYY-MM-DD><TAB><reason>`, `#` comments. `update` drops matching ids
 (`rejected_skipped`). With `--hide-name` only the hash is stored (like the safety exclusions, the name is not kept).
 
@@ -650,6 +661,10 @@ genmodelfit review reject <id> --note TEXT --db PATH [--rejected FILE] [--hide-n
 `approve` refuses (exit 1) without at least one evidence URL that is `https` with a host (`https://` alone is refused), for an unknown id, or when the entry is not
 pending; it keeps `reasons` and sets `status: ok`, `decided_by`, `decided_at` (today, UTC), `evidence` and `note`.
 `reject` requires `--note`, removes the entry, updates `sources.counts` / `sources.review` and appends the line.
+`--json` (no `system` / `database`): `approve` prints `{genmodelfit, command: "review", action: "approve", id, db,
+review: {status, reasons, decided_by, decided_at, evidence, note}}`; `reject` prints `{genmodelfit, command: "review",
+action: "reject", id, key (the id or `sha256:<hex>`), date, note, rejected_file, db}`; a refusal prints
+`{genmodelfit, command: "review", error}` and exits 1.
 Python: `gmf.review_list(db=None, include_ok=False)`, `gmf.review_approve(db_path, id, evidence, note=, by=)`,
 `gmf.review_reject(db_path, id, note, rejected_path=, hide_name=)`; they raise `review.ReviewError` (a `ValueError`)
 and print nothing.
@@ -687,7 +702,8 @@ of two entries).
     {"id": "hf:org/new-model", "name": "New Model", "modality": "image", "content": "sfw",
      "source": "huggingface", "license": "apache-2.0", "license_url": "https://huggingface.co/org/new-model",
      "homepage": "https://huggingface.co/org/new-model", "status": "pending", "reasons": ["new"],
-     "decided_by": null, "decided_at": null, "evidence": [], "note": null}
+     "decided_by": null, "decided_at": null, "evidence": [], "note": null,
+     "card_url": "https://huggingface.co/org/new-model", "files": []}
   ]
 }
 ```
@@ -695,7 +711,8 @@ of two entries).
 ## info
 
 `model` (ModelEntry), `estimate`, `gate`, `measurements` (Measurement[]), `group_key`, `same_model` (the other
-entries of the same model, each like a `workflows` item, judged for this PC, best first), `model_name`.
+entries of the same model, each like a `workflows` item, judged for this PC, best first), `model_name`, `community`
+(bool, as in Fit).
 `info <query>` also accepts a model's display name (exact, case-insensitive): then the model's best workflow for
 this PC is shown.
 
@@ -730,7 +747,7 @@ readers drop unknown keys, see "Database file"):
   `speech` = languages spoken or sung in the output (TTS voice, lyrics). A key that is missing means unknown; `[]` means
   the model has none (image-to-3D takes no prompt text, a sound model without vocals has no speech). Rebuilt from its inputs on every
   apply (nothing carries over from the previous list; docs/sources.md「言語・動かし方・説明」): the hand table
-  `data/overrides.json` (or the entry's own `languages` in `data/manual.json`) wins for the keys it sets; otherwise
+  `src/genmodelfit/data/overrides.json` (or the entry's own `languages` in `src/genmodelfit/data/manual.json`) wins for the keys it sets; otherwise
   the `language` of the Hugging Face card (saved as `card_languages`) is the upper bound — `speech` is the card's
   list, `prompt` is the card's list, narrowed to `en` when every text encoder is English-only (CLIP / T5) and for
   music (a music card's `language` usually lists lyric languages, so a music entry gets at most `["en"]` from the card
@@ -744,10 +761,10 @@ readers drop unknown keys, see "Database file"):
   whose files match a ComfyUI family; `piper`, `irodori-tts` for the hand-added speech models; null = not decided. A
   runtime other than `comfyui` (and null) makes the estimator count `.onnx` and other non-ComfyUI weight files.
 - `description` (`{"ja": str, "en": str}`): a short hand-written description, only for the models that have one.
-- `source: "manual"` (id `manual:<slug>`): models added by hand in `data/manual.json` (`template` is null). Their license
+- `source: "manual"` (id `manual:<slug>`): models added by hand in `src/genmodelfit/data/manual.json` (`template` is null). Their license
   per file was read from the upstream card by the person who added them (`license_evidence` starts with `manual:`); `update`
   compares it with the card of `license_from` and takes the stricter one on a mismatch (with a warning).
-- Hand-added components (0.6.0, #40): `components` in `data/manual.json` adds files that the Hugging Face collection
+- Hand-added components (0.6.0, #40): `components` in `src/genmodelfit/data/manual.json` adds files that the Hugging Face collection
   does not pick up to an entry of another source (first: the T5Gemma text encoder of
   `hf:stabilityai/stable-audio-3-small-sfx`, Gemma Terms of Use). Their license is never written by hand: it comes from
   the per-file source table (`license_sources.py`; no row → unknown), and `license_evidence` ends with
@@ -824,7 +841,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `n_oom` | int \| null | community rows: submissions of the same group that ran out of memory. A group with `ok` and `oom` uses the `ok` median and keeps this count (shown in the reasons; such a row never makes Perfect) |
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
-| `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match) |
+| `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match); since 0.9.1 the VRAM must also be within 3% (`estimate.same_vram`, `MEASURED_VRAM_TOLERANCE` 0.97; not for shared / unified memory) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -873,8 +890,8 @@ their fork and open a pull request themselves (CONTRIBUTING.md). Code: `src/genm
 ### Submission file (`contrib_schema` 1)
 
 Written by `genmodelfit bench … --submission PATH` or `genmodelfit contrib make --from <bench result>`. Stored in the
-repository as `data/contrib/<gpu-slug>/<date>-<sha8>.json`: `gpu-slug` is the GPU name in lower case without
-`NVIDIA` / `GeForce` (`rtx-3070`), `sha8` the first 8 hex digits of the sha256 of the canonical JSON (keys sorted,
+repository as `data/contrib/<gpu-slug>/<date>-<sha8>.json`: `gpu-slug` is `estimate.gpu_key` of the GPU name
+(lower case; `NVIDIA`, `GeForce`, `(R)`, `(TM)`, `™`, `®` removed; other symbols → `-`; `rtx-3070`), `sha8` the first 8 hex digits of the sha256 of the canonical JSON (keys sorted,
 no spaces, UTF-8), so the name does not depend on indentation and two identical files collide.
 
 ```json
@@ -916,10 +933,18 @@ understanding. **Not detected**: personal names or other identifying words in pl
 `on Taro's desktop`, `github KoyoYeager`), paths written in base64 or another encoding (URL-encoded `%2F` / `%5C` /
 `%3A` is detected), and paths without separators described in words. That is why `contrib show` asks the user to
 read the note and a person reviews each pull request.
-Free-text fields are kept small: `gpu.name` only letters, digits, space, `.` and `-` (64 chars), `comfyui_version`
+Free-text fields are kept small: `gpu.name` only letters, digits, space, `.`, `-`, `(R)`, `(TM)`, `™`, `®` and a
+size such as `(16GB)` (64 chars), `comfyui_version`
 strictly `x.y.z`, `precision` one of the known precisions, `model_id` up to 200 chars of `[A-Za-z0-9_.:/+-]`, other
 strings 100 chars, `note` 2000 chars; no control characters, newlines or invisible characters anywhere; unknown keys,
 arrays and nesting deeper than 8 are rejected; files over 64 KB and symbolic links are not read.
+
+### `contrib make --from FILE [--output PATH] [--no-pc-info] [--json]`
+
+Builds one submission per measurement in the bench result FILE. `--output` is a folder (default
+`data/contrib`; files go to `<gpu-slug>/<date>-<sha8>.json` under it) or, for a single measurement, a `.json` file.
+`--json`: envelope + `action: "make"`, `submissions` [{saved_to, path_in_repo, submission}] (`submission` is the
+file's content). Exit 1 when the bench result cannot be read.
 
 ### `contrib show FILE`
 
@@ -945,9 +970,9 @@ Like llmfit's `validate_community_benchmarks.py`, **only mechanical checks fail*
 | `unknown_field` | a key outside the schema (anywhere, including `settings`) |
 | `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains: a drive path (`C:\`, `C:/`), any backslash, two or more path separators between words (`a/b/c`, `Users\name\`), `/home/`-like roots, `//server`, `~/`, `%VAR%`, `$HOME`, URL-encoded separators (`%2F` `%5C` `%3A`), `@` followed by a letter (e-mail, @handle), a UUID / GPU UUID, a PCI address (`0000:01:00.0`, `01:00.0`), an IPv4 / IPv6 / MAC address, a URL (`scheme://`, `www.`), a host-like name (`DESKTOP-XXXX`, `*-PC`, `*.local`, the words "host name" / "PC 名" …), a time (`14:05`, `2pm`, `14時05分`, ISO date-time) or a serial number (`SN:`). Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`) |
 | `date` | not `YYYY-MM-DD`, or in the future |
-| `value` | out of range: `peak_vram_gb` > GPU VRAM × 1.02 + 0.25, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0 or missing for `ok`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch` / `vendor` / `backend`, malformed `driver` / `comfyui_version` / `compute_capability` |
+| `value` | out of range: any NaN / infinity / negative number, `vram_gb` ≤ 0 or > 256, `peak_vram_gb` > GPU VRAM × 1.02 + 0.25 or 0 for `ok`, `peak_ram_gb` > RAM × 1.05 + 1, `seconds` ≤ 0, > 86400 or missing for `ok`, malformed `pci_id`, unknown `outcome` / `offload` / `vram_metric` / `os_family` / `arch` / `vendor` / `backend`, malformed `driver` / `comfyui_version` / `compute_capability` |
 | `settings` | width / height 64–8192, frames 1–2000, seconds 0.1–3600, steps 1–1000, batch 1–64 (integers except seconds) |
-| `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's; `vendor` and `backend` do not pair up (or only one is given); `compute_capability` / `arch` on a non-NVIDIA `vendor`; a GPU name of another vendor (AMD / Intel / Apple) than `vendor` |
+| `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's; `vendor` and `backend` do not pair up (or only one is given); `compute_capability` / `arch` on a non-NVIDIA `vendor`; a GPU name of another vendor (AMD / Intel / Apple) than `vendor`; a `pci_id` whose vendor ID differs from `vendor` (`10de` when `vendor` is absent) or whose GPU in `hardware.PCI_DEVICE_NAMES` differs from the name; for `apple`, a name other than a chip name or `mps` |
 | `filename` | name not `<date>-<sha8>.json`, date or sha8 not matching the content, folder not the GPU slug |
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |
@@ -958,8 +983,10 @@ Apple), `deviation` (peak VRAM more than 40% away from the formula's all-in esti
 `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead; estimates use that floor for
 every submission below it — with dynamic VRAM / partial loading a smaller peak is normal), `fit_change` (this
 submission alone would change the level on a PC with the submitted GPU — same name, PCI model ID and vendor, VRAM =
-the submission's `vram_gb` — × RAM 16 / 32 / 64 GB, at the default and the submitted settings; this includes a level
-going up and the AMD / Intel / Apple Good cap being lifted. Other GPUs are never affected since 0.9.0). Until 2026-10-21 these were "review required" and needed a
+the submission's `vram_gb`, plus the other nominal VRAMs of the same name when known (Intel Arc
+`hardware._INTEL_XPU`; NVIDIA `estimate.NVIDIA_VRAM_VARIANTS`, 0.9.1: RTX 2060 / 3050 / 3060 / 3080 / 4060 Ti /
+5060 Ti) — × RAM 16 / 32 / 64 GB, at the default and the submitted settings; this includes a level
+going up and the AMD / Intel / Apple Good cap being lifted. Other GPUs are never affected since 0.9.0). Up to 0.8.0 these were "review required" and needed a
 per-sha8 approval (`--allow-review`, `data/contrib/REVIEWED`); both were removed.
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
@@ -976,8 +1003,8 @@ Exit codes: 0 every file passed (warnings and notices allowed) / 1 a file failed
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
 Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (notices
-allowed), and groups standard submissions by model id, GPU name (normalized: case,
-`NVIDIA` / `GeForce`, spaces), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
+allowed), and groups standard submissions by model id, the GPU (PCI model ID when present, else
+the name normalized by `estimate.gpu_key`: case, spaces / symbols, `(R)` `(TM)` `™` `®`, `NVIDIA` / `GeForce`), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
 `vram_metric` and settings (precision normalized: `BF16` = `bfloat16` = `bf16`). Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
 are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value, with
 `n_used` and `n_oom` (a group of only OOM runs becomes one `outcome: oom` row, never used). A group is `consistent`
@@ -988,12 +1015,14 @@ with `origin: "community"` (see Measurement) in a fixed order, so the same input
 the bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
 
 `--report` re-runs the calibration (`calibrate.calibrate`) on the bundled maintainer rows plus the new community rows
-(never the local cache) and returns per modality `loo_n`, `loo_mean_abs_pct`, `loo_max_abs_pct`, `evaluable`, `check_n`,
-`check_mean_abs_pct`, `check_max_abs_pct`, plus `breaches` [{kind (`loo` / `community_check`), model_id, gpu_name,
-origin, error_pct}] and `breach`. Counted against the threshold (default 25%): LOO errors of evaluable modalities and
+(never the local cache) and returns `report`: `{threshold_pct, n_fit, coefficients, summary, by_modality, loo, check,
+breaches, breach, fit_changes}`. `by_modality` is `{<modality>: {loo_n, loo_mean_abs_pct, loo_max_abs_pct, evaluable,
+check_n, check_mean_abs_pct, check_max_abs_pct}}`; `breaches` is [{kind (`loo` / `community_check`), model_id,
+gpu_name, origin, error_pct}]; `loo` / `check` are the per-row results of `calibrate.calibrate`. Counted against the threshold (default 25%): LOO errors of evaluable modalities and
 the check errors of community rows; the maintainer's own check rows (RTX 3070) are shown but not counted.
 `fit_changes` [{model_id, gpu_name, vram_gb, ram_gb, before, after}] lists the level changes the community rows cause
-on PCs with the measured GPU (name, PCI model ID, vendor, the measured GPU's VRAM) × RAM 16 / 32 / 64 GB; other GPUs
+on PCs with the measured GPU (name, PCI model ID, vendor, the measured GPU's VRAM and the other nominal VRAMs of
+that name, as for the `fit_change` notice) × RAM 16 / 32 / 64 GB; other GPUs
 are never affected since 0.9.0 (section "Fit-level changes caused by community data" in the text report).
 Text output is Markdown (for the weekly pull request of #19).
 
@@ -1150,16 +1179,23 @@ readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks t
 string there. `tests/test_appinfo.py` reads the bundled list with a copy of the old reader).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
 
+**Types are checked when a list is read** (0.9.1, #63; `db.check_entry`): every known key of an entry, a file, a
+template and a review must have its documented type (null where the tables say `| null`), and the top-level
+`generated_at` / `sources` too; otherwise `DatabaseError` and nothing is loaded. Null lists (`content_evidence`,
+`discovered_from`, `license_evidence`) and null `languages` / `description` are read as empty. A cache list that
+fails this is skipped and the bundled list is used (also as `update`'s previous list). Unknown keys are still ignored.
+型の違う項目がある一覧は読まない(壊れたキャッシュは使わず同梱の一覧に戻る)。
+
 `sources` (written by `genmodelfit update`, see docs/sources.md):
 
 | key | meaning |
 |---|---|
-| `comfyui-templates` | `templates_total`, `local`, `skipped` (by reason: `api` / `not_open_source` / `no_size` / `category`), `loaded`, `failed` |
-| `huggingface` | `repos` (API calls), `failed`, `rate_limited` (429 waits), `rate_limit_waited_s`, `failures` (first 20), `unauthorized` (repo ids whose Hub API answered 401 — the anonymous API answers 401 both for private and for missing repos; their licenses stay unknown; 0.2.0), `unauthorized_missing` (the subset confirmed not to exist, `repo_precision.KNOWN_MISSING`). After `update --inspect-only`: `unauthorized_recheck` = `{unauthorized, private_or_missing, missing, readable, failed, checked_at}` (those repos asked again; `readable` ones get their license on the next full `update`) |
-| `huggingface-search` | `queries`, `candidates`, `added`, `skipped` (by reason, incl. `duplicate_weights`), `excluded`, `failed_queries` |
+| `comfyui-templates` | `url` (the templates' `index.json`), `license` (of the template repository, `MIT`), `templates_total`, `local`, `skipped` (by reason: `api` / `not_open_source` / `no_size` / `category`), `loaded`, `failed` |
+| `huggingface` | `api` (the Hub API URL pattern), `repos` (API calls), `failed`, `rate_limited` (429 waits), `rate_limit_waited_s`, `failures` (first 20), `unauthorized` (repo ids whose Hub API answered 401 — the anonymous API answers 401 both for private and for missing repos; their licenses stay unknown; 0.2.0), `unauthorized_missing` (the subset confirmed not to exist, `repo_precision.KNOWN_MISSING`). After `update --inspect-only`: `unauthorized_recheck` = `{unauthorized, private_or_missing, missing, readable, failed, checked_at}` (those repos asked again; `readable` ones get their license on the next full `update`) |
+| `huggingface-search` | `queries`, `candidates`, `added`, `skipped` (by reason, incl. `duplicate_weights`), `excluded`, `failed_queries`, `all_time_missing` (candidates without an all-time download count) |
 | `partial` | bool: some upstream data could not be fetched (then `update` exits 1 unless `--allow-partial`) |
 | `partial_counts` | `templates_failed`, `hf_repos_failed_transient`, `entries_affected`, `hf_search_failed`, `rate_limit_budget_exhausted`, `carried_over` |
-| `license_policy` | version of the license rules (2). Values are carried over from a previous list only when it has the same version |
+| `license_policy` | version of the license rules (`update.LICENSE_POLICY`, now 5). Values are carried over from a previous list only when it has the same version |
 | `civitai` | why it is not used |
 | `size_check` | `templates`, `equal`, `within_10pct` (index `size` vs the sum of the files) |
 | `counts` | `models`, `modality`, `content`, `source`, `license` (null = unknown), `license_tier`, `files_complete_false` |
@@ -1167,11 +1203,13 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
 | `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
-| `manual` | `models` (number of hand-added models from `data/manual.json`), `ids` (0.5.0) |
-| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries with a saved Hugging Face card language, `card_languages`) (0.5.0) |
+| `manual` | `models` (number of hand-added models from `src/genmodelfit/data/manual.json`), `ids` (0.5.0) |
+| `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries with a saved Hugging Face card language, `card_languages`) (0.5.0), `card_languages_carried` (entries whose card languages were carried over from the previous list; full `update` only) |
 | `comfyui` | `latest_release` (tag of the latest ComfyUI release, e.g. `v0.42.1`; null if it could not be read), `url`, `checked_at` |
 | `excluded` | number of models dropped by the exclusion rule (names are not kept) |
+| `review` | `{ok, pending, marked: {reason: count}, rejected_skipped}`; the published list adds `withheld_pending` (see "review") |
 | `warnings` | str[] |
+| `generator` | `genmodelfit <version>` that wrote the list |
 
 ## update
 
@@ -1179,16 +1217,16 @@ Task `tool` was added for Image Tools / Video Tools templates without a known ta
 On failure it prints `error` and exits 1; the previous cache is left untouched.
 `update --from-release --json` prints a smaller object: `genmodelfit`, `command` (`update`), `models` (**int**: number of
 models taken in), `generated_at`, `output`, `status` (DataStatus with `source: release`).
-`update --json` (rebuild / `--heads-only`) also has `status` (DataStatus of the list written; `source` is `cache` for the
+`update --json` (rebuild / `--heads-only` / `--fields-only` / `--inspect-only`) also has `status` (DataStatus of the list written; `source` is `cache` for the
 cache, `path` for `--output` elsewhere).
 `update --heads-only` reads the current database (`--db`, cache or bundled), redoes only the HEADs and the ComfyUI
 version, and writes it back (`--output`, default the cache).
 `update --fields-only` reads the current database the same way and rebuilds only the app fields (`languages` /
-`runtime` / `description`, from `data/overrides.json`, the tables and the Hugging Face cards) and the hand-added
-models (`data/manual.json`): it reads the cards again (Hub API) and, for the hand-added models only, sends HEADs,
+`runtime` / `description`, from `src/genmodelfit/data/overrides.json`, the tables and the Hugging Face cards) and the hand-added
+models (`src/genmodelfit/data/manual.json`): it reads the cards again (Hub API) and, for the hand-added models only, sends HEADs,
 reads the file headers and compares the licenses with the upstream cards; with `--offline` it sends nothing and
 uses the saved `card_languages`. The other entries' files, licenses, precision and HEAD results are not touched,
-except that the hand-added components (`components` in `data/manual.json`, below) are added to their entries (with a
+except that the hand-added components (`components` in `src/genmodelfit/data/manual.json`, below) are added to their entries (with a
 HEAD of the new files only, none with `--offline`).
 `update --inspect-only` reads the current database the same way and redoes only what is read from the files
 themselves: the main weight files' headers (`header_precision` / `header_params`, then `precision`), the official
@@ -1199,4 +1237,5 @@ sha256) are not read again; requests are sent one at a time with a short pause a
 `--offline` it uses only that cache and sends nothing (the templates are then not re-read).
 
 Measurements live in `measurements.json` (`{"unit": "GiB", "unit_note": "…", "measurements": [Measurement, …]}`), bundled plus
-`<cache>/measurements/*.json`.
+`measurements_community.json` (community rows, see contrib) plus `<cache>/measurements/*.json`. NaN / Infinity and
+negative values are refused when read (0.9.0).

@@ -6,7 +6,7 @@
 **auto を間違えて出すことが一番悪い**。迷うものは保留にする。
 
 実装は `src/genmodelfit/gate.py`。結果は一覧(db.json)に持たず、毎回計算する。一覧に持つのは `update` が
-記録した HEAD の結果と ComfyUI の最新の版だけ。
+記録した HEAD の結果・ComfyUI の最新の版・確認の印(`review`)だけ。
 
 ## 使い方
 
@@ -21,7 +21,7 @@ genmodelfit info image_z_image_turbo --comfyui-version 0.40.0               # �
 --allow-uncensored-auto                 # 無検閲のモデルも自動で出してよい
 ```
 
-`--limit` / `-n` は 1 以上(0 や負の数はエラーで終了コード 2)。
+`recommend` / `fit` / `info` / `search` / `diff` の `--limit` / `-n` は 1 以上(0 や負の数はエラーで終了コード 2)。
 
 ```python
 from genmodelfit.db import load
@@ -34,7 +34,7 @@ r.auto, r.held_by, r.to_dict()
 ```
 
 `to_dict()` の形: `{"auto": bool, "held_by": [落ちた条件の id], "comfyui_version": 比べた版,
-"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順に 10 個(`runtime` が `comfyui` でも null でもないモデルは、ComfyUI の 3 条件の代わりに `app_runtime` の 8 個)。`held_by[0]` が表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)(`workflow` などの短い名前)と `gate --only-held` の `held:<id>`。
+"checks": [{"id", "passed", "detail"}]}`。`checks` は下の表の順に 10 個(`runtime` が `comfyui` でも null でもないモデルは、`official_workflow`・`custom_nodes`・`comfyui_version` の位置に `app_runtime` が 1 つ入って 8 個)。`held_by[0]`(最初に落ちた条件)は、表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)に短い名前(`workflow` など)で、`gate --only-held` に `held:<id>` で出る。
 `detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件
@@ -50,12 +50,12 @@ r.auto, r.held_by, r.to_dict()
 | `sha256` | すべてのファイルに 64 桁の 16 進の sha256 がある | Civitai のファイルなど |
 | `content` | 無検閲(`content: uncensored`)でない | 無検閲(`--allow-uncensored-auto` で外せる) |
 | `size_known` | すべてのファイルの大きさが分かり、ファイルの一覧が完全(`files_complete` が false でない) | 大きさ不明、ファイルの記載なし |
-| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。表の Verified の列では `review`。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。docs/schema.md「review」) | `update` が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲(`genmodelfit review approve` で根拠を付けて確かめるまで) |
+| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。表の Verified の列では `review`。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。docs/schema.md「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。docs/sources.md「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
 | `app_runtime` | (`runtime` が `comfyui` でも null でもないモデルだけ。`official_workflow`・`custom_nodes`・`comfyui_version` の代わり)通らない。動かす仕組み(piper・irodori-tts)はこの一覧では確かめられないので、使う側が確かめる。点数(readiness)の重みは 3 条件の和の 40(0.5.0、#36) | 手のモデルのつくよみちゃん・Irodori-TTS |
 
 ファイルが 1 つも書かれていない項目は、ファイルについての条件がすべて保留になる(空なら通る、にはしない)。
 
-`openSource` の記載が無いテンプレート(SDXL・FLUX.1 schnell・Wan 2.1 などの古いもの、2026-10-20 で 53 件)は
+`openSource` の記載が無いテンプレート(SDXL・FLUX.1 schnell・Wan 2.1 などの古いもの、2026-10-21T06:20Z の同梱の一覧で 51 件)は
 ローカルで動くテンプレートとして通す(`update` も同じ扱い。`api_` で始まる API のテンプレートと
 `openSource: false` は `update` が一覧に入れていない)。
 
@@ -99,7 +99,7 @@ gate は一覧を書き換えずに、判定の中で次の順に読む(どれ�
    | `llama` / `llava` | llama3.1 | https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct |
    | `gemma` 1〜3・`t5gemma` | gemma | https://ai.google.dev/gemma/terms。Gemma 4 は Apache-2.0(https://ai.google.dev/gemma/docs/gemma_4_license)なので当てない |
    | `dino_v3`・`dinov3` | other(dinov3-license)、本家が申請を求める | https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m(gated: manual)。原文 https://ai.meta.com/resources/models-and-libraries/dinov3-license は配るときに規約の写しと「Built with DINOv3」の表示を求め、用途を制限する |
-   | `sam3`・`sam3.1` | other、本家が申請を求める | https://huggingface.co/facebook/sam3(gated: manual) |
+   | `sam3`・`sam3.1` | other(sam-license)、本家が申請を求める | https://huggingface.co/facebook/sam3(gated: manual) |
    | `depth_anything_v2_vit{b,l,g}` | cc-by-nc-4.0 | https://huggingface.co/depth-anything/Depth-Anything-V2-Large |
    | Lumina 2 系の一式(`lumina_2.safetensors`・`…lumina…all_in_one`・`NetaYume…all_in_one`) | gemma | テキストエンコーダ Gemma 2 2B を含む(https://huggingface.co/neta-art/Neta-Lumina・https://huggingface.co/duongve/NetaYume-Lumina-Image-2.0 のカード) |
 
@@ -165,8 +165,9 @@ gate は一覧を書き換えずに、判定の中で次の順に読む(どれ�
 転送は基本的に追わない。ただし **307 で転送先が `/api/resolve-cache/…` でないもの**(リポジトリの名前が変わったもの)は、
 無いファイルでも 307 が返るので、転送先に 1 回だけ HEAD を送ってその応答を記録する(`fetch.follow_rename`)。
 その先がまた別の転送なら未確認(`null`)。このため一覧に残る 307 は `/api/resolve-cache` への転送だけで、
-gate は 200・302・307 を「取れる」とみなす。同梱の一覧の 520 URL(2026-10-20)は 302 が 497・401 が 23
-(前の版で 307 だった 6 件は、名前の変わったリポジトリで、転送先はどれも 302)。
+gate は 200・302・307 を「取れる」とみなす。応答の内訳は一覧の `sources.head_check` で分かる(2026-10-21T06:20Z の
+同梱の一覧では、HEAD を送った 487 URL のうち 302 が 461・307 が 3・401 が 23。Civitai の 6 か所には送らない)。
+2026-10-20 の一覧で 307 だった 6 件は、名前の変わったリポジトリで、転送先はどれも 302 だった。
 
 2026-10-20 に実際に送って確かめた応答:
 
@@ -187,12 +188,16 @@ API の 500 回 / 5 分とは別)で数えられるので、1 回の update で�
 それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 「確認が古い」)。
 `GatePolicy(max_head_age_days=…)` / `--max-head-age-days N`(`none` で期限なし)で変えられる。
 
-**同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD は 2026-10-20T10:33Z(日本時間 2026-10-20 19:33。0.1.1)の確認**なので、
-2026-11-19T10:33Z(日本時間 11-19 の夜)を過ぎると、同梱の一覧だけでは auto が 0 件になる。使う側のアプリは、定期的に(30 日以内に)次を実行して記録をやり直す:
+**同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD の確認の日時**は `genmodelfit system --json` の `database.status`
+(`heads_checked_oldest`・`expires_at`。docs/schema.md「Data status」)で分かる。`expires_at` を過ぎると、同梱の一覧だけでは
+auto が 0 件になる(2026-10-21T06:20Z の同梱の一覧なら 2026-11-20T06:20Z)。使う側のアプリは、定期的に(30 日以内に)
+`genmodelfit update --from-release`(署名つきの配布。勧める)か、次の HEAD のやり直しを実行する:
 
 ```powershell
 genmodelfit update --heads-only [--db PATH] [--output PATH]   # 既定はキャッシュの一覧を読んでキャッシュに書く
 ```
+
+キャッシュが読めない・型が合わないときは、同梱の一覧を読んで書く(0.9.1、#63)。
 
 ## ComfyUI の版(`comfyui_version`)
 
@@ -219,11 +224,13 @@ genmodelfit update --heads-only [--db PATH] [--output PATH]   # 既定はキャ�
 自動のおすすめは初心者向けなので、無検閲のモデルは既定で保留にする。一覧から外すわけではなく、
 `recommend --content uncensored`・`fit`・`info` などの一覧・絞り込みには今までどおり出る。
 
-## 自動で出せるもの(同梱の一覧、2026-10-20)
+## 自動で出せるもの
 
-83 件(画像 54・動画 20・音楽 9。3D・読み上げ・効果音は 0)。一覧は `genmodelfit gate --only-auto` で出る。
-レビューの指摘を直したあと、83 件のすべてのファイルについて、ライセンスと根拠(部品の表・系統の表の行、
-または本家のカード)を人が確かめた(PR #14 の説明に一覧)。確かめた中で注意が要るもの:
+件数は `genmodelfit gate --only-auto --comfyui-version <版>` で確かめる(2026-10-21T06:20Z の同梱の一覧で、0.40.0 なら
+95 件(画像 57・動画 29・音楽 9)、記録の v0.42.1 なら 99 件。3D・読み上げ・効果音は 0)。2026-10-20 の時点では 83 件で、
+レビューの指摘を直したあと、そのすべてのファイルについて、ライセンスと根拠(部品の表・系統の表の行、
+または本家のカード)を人が確かめた(PR #14 の説明に一覧)。その後に増えた分は、tests/test_license_sources.py の `JUSTIFIED_AUTO`
+(docs/sources.md「出どころの表」)。確かめた中で注意が要るもの:
 
 - `black-forest-labs/FLUX.1-schnell` は HF で gated(auto: 同意を押せばすぐ取れる)。ライセンスは apache-2.0 で、
   一覧のファイルは gated でない置き場所(Comfy-Org など)から取るので通している。部品の本家の gated を

@@ -5,7 +5,7 @@ description: genmodelfit の毎週の更新で、確認待ちのモデルを一�
 
 # genmodelfit の毎週の更新: 確認待ちの調べ(Claude の担当分)
 
-オーナーの決定(2026-10-21): 週 1 回、オーナーの PC のタスク スケジューラが起動スクリプト
+オーナーの決定(2026-10-21): 週 1 回(月曜 9:00 JST)、オーナーの PC のタスク スケジューラが起動スクリプト
 `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1` を動かす。
 
 ## 役割の分け方(仕組みで分けてある)

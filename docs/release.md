@@ -1,14 +1,16 @@
 # リリースとデータの配り方
 
-2 つの流れがあります。
+3 つの流れがあります。
 
 | 流れ | 何を配る | きっかけ | 配り先 |
 |---|---|---|---|
 | 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push(タグは管理者だけが作れる) | PyPI と GitHub Release |
 | データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
-| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | 毎週月曜 03:00 UTC・手動実行 | PR `automated/weekly-data` |
+| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | オーナーの PC のタスク スケジューラ(毎週月曜 9:00 JST)。weekly-data.yml は手動の予備 | PR(安全な週だけ自動でマージ。下の「毎週のスキル」) |
 
 データの配布は `v*` のタグではないので、PyPI には出ません。
+
+main はブランチの保護で PR を必須にし、force push と削除を禁じている。
 
 ## GitHub の environment(2026-10-20 に設定)
 
@@ -26,8 +28,8 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
 ## 最初の公開(v0.1.0)の手順
 
 **公開はユーザの承認を得てから。** 2026-10-20 にユーザが v0.1.0 のマージ(Claude が行う)と公開を承認した。
-環境 `pypi` の承認(Review deployments)はユーザが押す。
-2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`)と `data-signing`(`main` だけ・
+環境 `pypi` の承認(Review deployments)はユーザが押す(v0.1.0 のとき。2026-10-21 に承認者を外した)。
+2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`。2026-10-21 に外した)と `data-signing`(`main` だけ・
 シークレット `GENMODELFIT_SIGNING_KEY` あり)はそろっている。リポジトリ全体のシークレットは空。PyPI の
 `genmodelfit` はまだ無い(404)。
 
@@ -36,7 +38,8 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
    - 積み重ねた PR は、土台が前の PR のブランチになっている。そのままマージすると main ではなく前のブランチに入るので、
      **マージする前に土台を main に付け替える**(`gh pr edit <番号> --base main`)。付け替えると差分はその PR の分だけになる。
    - **squash や rebase でマージしない**(普通のマージコミット)。squash すると後ろの PR の履歴と合わなくなる。
-   - 付け替えたあと CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする。
+   - 付け替えたあと CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする
+     (v0.1.0 のとき。今はブランチの PR で ci.yml が動かないので、`tools/ci_local.py --linux` を手元で通し、結果を PR に書く)。
 2. **一覧を配る**: #18 のマージで main の `src/genmodelfit/data/db.json` が変わっていれば、push で
    `.github/workflows/data.yml` が動く。動いていなければ Actions の「Data」→「Run workflow」(ブランチ main)で動かす。
    緑になったら、Release `data-latest` に `db.json` と `db.json.sig` があることを確かめる。
@@ -54,8 +57,8 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
 4. `.github/workflows/release.yml` が次の順に進む。
    - test: ruff と pytest(3.12)
    - build: `uv build` → タグと `_version.py`・wheel / sdist の名前の版が一致するか確認 → `twine check --strict`
-   - publish: environment `pypi` で**ユーザの承認を待つ**。Actions の画面の「Review deployments」で `pypi` を承認すると、
-     PyPI に公開する(Trusted Publishing。API トークンは使わない)
+   - publish: environment `pypi`(承認者なし。`v*` のタグはルールセットで管理者だけが作れる)で PyPI に公開する
+     (Trusted Publishing。API トークンは使わない)
    - github-release: 同じ dist を付けた GitHub Release `v0.1.0` を作る
 5. **確かめる**(まっさらな venv で。キャッシュも別の場所にする):
 
@@ -74,8 +77,10 @@ PR のワークフローからは読めない。data.yml でも、署名する 1
 ## 次からの版を出す手順
 
 1. `src/genmodelfit/_version.py` の `__version__` を上げ(pyproject.toml は hatch がここから読む)、
-   `CHANGELOG.md` に書いて PR で main に入れる。
-2. 承認後、main の先頭にタグ `v<版>` を付けて push する(上の 3〜5 と同じ)。
+   `CHANGELOG.md` に書いて PR で main に入れる。PR では ci.yml が動かないので、PR の説明に
+   `tools/ci_local.py --linux` の結果を書く。
+2. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめてから、main の先頭にタグ `v<版>` を付けて push する
+   (上の 3〜5 と同じ)。
 
 手動実行(workflow_dispatch)はビルドまでで、公開しない。タグを選んで手動実行しても、publish と github-release は
 `github.event_name == 'push'` の条件で飛ばす。タグを打つ前の試し用。
@@ -96,6 +101,8 @@ push と手動実行。
    確かめる(`contents: read`。秘密鍵はこのジョブの「署名する」ステップだけ)。main 以外のブランチを選んだ手動実行は
    `if: github.ref == 'refs/heads/main'` で動かない
 2. upload: Release `data-latest`(prerelease)の `db.json` と `db.json.sig` を置き換える(ここだけ `contents: write`)
+3. verify: 置いた直後に、まっさらな venv(main のコードと、`genmodelfit==0.5.0`(`review` を知らない、いちばん古い対応の版))で
+   `update --from-release` を流し、source が release・期限切れでない・100 件超・自動のおすすめが 1 件以上なのを確かめる
 
 checkout は `persist-credentials: false`。
 
@@ -147,7 +154,7 @@ llmfit の weekly-model-update.yml にならい、上流から作り直した一
 マージした一覧だけ**(作り直しと公開を分ける)。
 
 ```text
-weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC のスキル)→ PR automated/weekly-data → 作者が見てマージ
+weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC の起動スクリプト)→ PR automated/weekly-data → 作者が見てマージ
   → data.yml が main の db.json に署名して data-latest に置く → 使う側は genmodelfit update --from-release
 ```
 
@@ -168,8 +175,8 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
      選び方の規則が緩んだ疑い。手動実行で `allow_many_uncensored` を選んだときだけ、失敗にせず本文の先頭に警告)
    - キャッシュを保存する(`if: always()`。失敗・時間切れでも残す。GitHub は 7 日使わないキャッシュを消す)
    - 新しい一覧を入れた状態で `ruff check`・`ruff format --check`・`pytest -q`(CI の代わり。下の注意)
-   - `genmodelfit contrib aggregate --report` があれば(#34 の実測の受け付けが入ったら)PR の本文に足す。無ければ飛ばす。
-     data/contrib がまだ無ければ「提出 0 件」と書く。報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む。
+   - `genmodelfit contrib aggregate --report` の結果を PR の本文に足す(この手動の予備だけ。オーナーの PC の起動スクリプトは
+     流さない)。data/contrib がまだ無ければ「提出 0 件」と書く。報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む。
      2026-10-22 から両方の向きに使うので、上がる・下がるの両方が出る)が入る
    - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)
 2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
@@ -187,7 +194,8 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 - **自動ではマージしない**(auto-merge も使わない)。ここでは署名も公開もしない
 - **GITHUB_TOKEN で作った PR では CI(ci.yml)が自動で動かない**(GitHub の仕様。ループを防ぐため)。代わりに同じ
   ワークフローの build で、新しい一覧を入れた状態の ruff と pytest を通してから PR を作る(PR の本文にもそう書く)。
-  CI も見たいときは PR を閉じて開き直すか、手元で `pytest -q` を回す
+  同じリポジトリのブランチの PR では ci.yml は動かない(#68)。確かめるなら手元で `python tools/ci_local.py --linux` を回すか、
+  マージの後に main で動く ci.yml を見る
 - **一部を取得できなかったとき**(`sources.partial`): 既定は失敗(PR を作らない)。手動実行で `allow_partial` を
   選んだときだけ、欠けたのが HF のリポジトリの一時的な失敗だけで前の一覧から引き継げたとき(429 の待ち時間の
   上限に達していない・HF の検索が失敗していない・読めないテンプレートが無い・前の一覧と `license_policy` が同じ)に
@@ -213,8 +221,8 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 
 ### 毎週のスキル(genmodelfit-weekly、#42)
 
-2026-10-21 のオーナーの決定: 毎週の更新は、オーナーの PC で Claude Code のスキル `genmodelfit-weekly` が行う
-(Windows のタスク スケジューラで週 1 回)。**weekly-data.yml の定期の実行(schedule)はやめた**。手動の予備
+2026-10-21 のオーナーの決定: 毎週の更新は、オーナーの PC の起動スクリプトが行い(Windows のタスク スケジューラで
+週 1 回)、確認待ちの判断だけを Claude Code のスキル `genmodelfit-weekly` に任せる。**weekly-data.yml の定期の実行(schedule)はやめた**。手動の予備
 (workflow_dispatch)としてだけ残す。
 
 動かし方(オーナーの PC。起動スクリプトと設定はリポジトリの外に置く):
@@ -239,7 +247,7 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
   ```json
   {"decisions": [
     {"id": "hf:org/model", "action": "approve", "evidence": ["https://huggingface.co/org/model/blob/main/LICENSE"], "note": "Apache-2.0 の原文を確かめた"},
-    {"id": "hf:org/other", "action": "reject", "note": "非商用だけ", "safety": false},
+    {"id": "hf:org/other", "action": "reject", "evidence": ["https://huggingface.co/org/other/blob/main/LICENSE"], "note": "非商用だけ", "safety": false},
     {"id": "hf:org/unclear", "action": "hold", "note": "カードにライセンスの記載なし"}
   ]}
   ```
@@ -256,16 +264,16 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
      approve は `decided_by: claude-weekly`。出る要約(件数と項目ごとの結果)の文字は `weekly.md` で無害にしてあり、
      PR の本文にそのまま置ける
   4. ブランチにコミットして push し、PR を作る。**機械の確かめがすべて通ったときだけ**マージする:
-  - 変わったファイルが `src/genmodelfit/data/db.json` だけ(approve・reject を当てた週は status が変わるので、
-    下の条件で必ずオーナーが見る)
-  - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
-    終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
-  - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)
-  - 手元の試験(ruff と pytest。新しい一覧を入れた状態)が通った。PR では ci.yml が動かないので(手元で通してから
-    push する決まり。2026-10-22)、CI は待たない。マージの後に main で ci.yml が動く
-  
-  どれかが通らなければマージせず、**オーナーが PR を見てマージする**(本文の「分類」「確認待ち」の節と、
-  `review approve` が残した `evidence`)
+     - 変わったファイルが `src/genmodelfit/data/db.json` だけ(approve・reject を当てた週は status が変わるので、
+       下の条件で必ずオーナーが見る)
+     - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が
+       終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)
+     - 確認の印の status が変わっていない(承認・確認待ちへの変化は分類でも判断が要るになる)
+     - 手元の試験(ruff と pytest。新しい一覧を入れた状態)が通った。PR では ci.yml が動かないので(手元で通してから
+       push する決まり。2026-10-22)、CI は待たない。マージの後に main で ci.yml が動く
+
+     どれかが通らなければマージせず、**オーナーが PR を見てマージする**(本文の「分類」「確認待ち」の節と、
+     `review approve` が残した `evidence`)
 - マージの後の署名と公開は data.yml が行う(いままでどおり)。**配る一覧からは確認待ちの項目を除く**
   (`python -m genmodelfit.review publish`。0.5.x は `review` を知らず、確認待ちを自動のおすすめに出してしまうため)
 
@@ -283,7 +291,7 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
 - pending の項目も main の一覧には入る(0.6.0 以降の `recommend` / `fit` / `info` には出る)。自動のおすすめ(gate)は
   `reviewed` で保留にする。アプリは `entry.review is None or entry.review.status == "ok"` で絞る
 - 承認には https でホストのある根拠の URL が 1 つ以上要る(無ければ断る)
-- `review reject` した項目は `data/review_rejected.txt` に残り、`update` は作り直しても入れない
+- `review reject` した項目は `src/genmodelfit/data/review_rejected.txt` に残り、`update` は作り直しても入れない
 - 同梱の一覧は 0.6.0 で全部 `ok`(`decided_by: baseline-2026-10-21`)から始めた
 
 ### 手元で同じ流れを試す
@@ -312,8 +320,8 @@ weekly-data.yml(手動の予備。#42 から定期の実行はオーナーの PC
   Actions の「Weekly data」で「Enable workflow」を押すか、手動実行(workflow_dispatch)すると戻る
 - ラベル `automated`・`data-update` を作る(ワークフローも作ろうとするが、`pull-requests: write` だけでは
   作れないことがある): `gh label create automated -R laxshmate/genmodelfit`、`gh label create data-update -R laxshmate/genmodelfit`
-- main のブランチ保護で必須のチェックを決めているなら、GITHUB_TOKEN の PR では ci.yml が動かないので、
-  PR を閉じて開き直して CI を動かしてからマージする
+- 同じリポジトリの PR では ci.yml のジョブは飛ばされる(#68)。ブランチの保護の必須のチェックに ci.yml を入れない。
+  手元の `tools/ci_local.py` の結果を PR の説明に書く
 
 ## 鍵
 
