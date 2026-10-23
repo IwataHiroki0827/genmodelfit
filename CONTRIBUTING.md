@@ -173,6 +173,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 (このツールを組み込むアプリがソースを公開せずに配布するため)。ComfyUI のコード(GPL-3.0)は import せず、
 HTTP だけで話します。新しい `.py` ファイルの先頭には、ほかのファイルと同じ MPL-2.0 の表示(3 行)を入れてください。
 
+送る前に `python tools/ci_local.py` で、CI と同じ検査(Python 3.10〜3.13 の試験・ruff・配布物)を手元で通してください
+(要るのは [uv](https://docs.astral.sh/uv/) だけ。Windows からは `--linux` で WSL の中でも流せます)。
+フォークからの PR では GitHub の CI も動きます。
+
 ## ライセンス / License
 
 genmodelfit のコードと同梱のデータ(db.json・実測・係数)は [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) です。

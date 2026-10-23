@@ -36,6 +36,10 @@
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
 - REST の serve は v0.2(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
+- **全試験は手元で通してから push する**(2026-10-22 オーナー決定)。`tools/ci_local.py --linux` が ci.yml と同じ検査を
+  Windows と WSL で順に流す(約 1 時間。メモリを食わないよう 1 つずつ)。GitHub の ci.yml は確認用で、このリポジトリの
+  ブランチの PR では動かない(main へのマージ後・手動・フォークからの PR だけ)。PR の説明に手元の結果を書く。
+  ci.yml の検査を変えたら ci_local.py も合わせる(tests/test_release.py が対応を見る)
 
 ## コマンド
 
@@ -43,6 +47,7 @@
 uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\ruff check . ; .venv\Scripts\ruff format --check .
+.venv\Scripts\python tools\ci_local.py --linux    # push の前に必ず: ci.yml と同じ検査(3.10〜3.13・ruff・配布物)を Windows と WSL で
 .venv\Scripts\genmodelfit system | recommend --json | fit | search <語> | types | info <id> | update | bench <template> | gate
 .venv\Scripts\python -m genmodelfit.calibrate      # 実測から係数を合わせ直す(calibration.json と精度の表)
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す

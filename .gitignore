@@ -10,3 +10,6 @@ __pycache__/
 
 # 毎週の更新の作業の出力(スキル genmodelfit-weekly)
 weekly-out/
+
+# 手元の CI(tools/ci_local.py)の venv
+/.ci/
