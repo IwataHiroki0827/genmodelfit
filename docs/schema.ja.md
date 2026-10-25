@@ -1181,7 +1181,7 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` をバイトで |
 | `blocked` | str[] | 落とさない理由(表示の言語 `en` / `ja`)。空なら落とせる |
-| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは利用者の同意で外せる: `--uncensored`・`--any-license`。CLI は端末ならその代わりに y/N で尋ね、外した計画を作る)、`gated`・`no_files`・`unavailable`(このワークフローは genmodelfit では落とせない)、`conflict`・`budget`・`disk`(同意の指定では外れない。ファイルを移す・`--output-dir`、`--budget` を上げる、ディスクを空ける) |
+| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは利用者の同意で外せる: Python は `content="all"`・`include_unknown_license=True`、CLI は `--uncensored`・`--any-license` か端末の y/N の質問。ライブラリの `blocked` の文は Python の引数を書き、CLI は自分の指定を書く)、`gated`・`no_files`・`unavailable`(このワークフローは genmodelfit では落とせない)、`conflict`・`budget`・`disk`(同意の指定では外れない。ファイルを移す・`--output-dir`、`--budget` を上げる、ディスクを空ける) |
 | `warnings` | str[] | 知っておくべきこと(許可リストに無いライセンス、この PC では動かない、配置のヒント) |
 | `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto`、`ok`(任意。#75 から。gated・取得できない・同じ名前の別のファイルが無ければ true。無検閲・ライセンス不明・空き・上限は数えない) |
 | `license_url` | str \| null | モデルのライセンスのページ |

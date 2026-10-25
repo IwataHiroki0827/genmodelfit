@@ -2240,6 +2240,45 @@ def _asks_phrase(asks: list[str]) -> str:
     )
 
 
+def _consent_line(plan, asks: list[str]) -> str:
+    """端末で尋ねる同意を 1 行にまとめる(#75。無検閲・ライセンスの記載が無いファイル)。"""
+    parts_ja, parts_en = [], []
+    if "uncensored" in asks:
+        parts_ja.append("無検閲(成人向けを含みうる)")
+        parts_en.append("uncensored (may include adult content)")
+    if "unknown_license" in asks:
+        names = ", ".join(f.name for f in plan.files if f.license is None)
+        parts_ja.append(f"ライセンスの記載が無い: {names}(上の確かめる場所で確かめる)")
+        parts_en.append(f"no stated license: {names} (check the pages above)")
+    return tr(
+        "  同意:      " + "・".join(parts_ja) + "— 落とす前に y/N で尋ねます",
+        "  consent:   " + "; ".join(parts_en) + " — asked y/N before downloading",
+    )
+
+
+def blocked_texts(plan) -> list[str]:
+    """止める理由を CLI の言い方で(同意の 2 つは CLI の指定を書く。ほかはライブラリの文のまま。#75)。"""
+    out = []
+    codes = list(plan.blocked_codes) + [""] * (len(plan.blocked) - len(plan.blocked_codes))
+    for text, code in zip(plan.blocked, codes, strict=False):
+        if code == "uncensored":
+            text = tr(
+                "無検閲のモデルです。落とすなら --uncensored(端末なら y/N の質問で尋ねます)",
+                "This is an uncensored model. To download it, pass --uncensored (in a terminal you are asked"
+                " y/N instead)",
+            )
+        elif code == "unknown_license":
+            names = ", ".join(f.name for f in plan.files if f.license is None)
+            text = tr(
+                f"ライセンスが分からないファイルがあります: {names}。"
+                "中身の条件を自分で確かめたうえで落とすなら --any-license(端末なら y/N の質問で尋ねます)",
+                f"Some files have an unknown license: {names}. To download them after checking the terms"
+                " yourself, pass --any-license (in a terminal you are asked y/N instead)",
+            )
+        out.append(text)
+    return out
+
+
 def format_plan(
     plan, *, consent: bool = False, comfyui_from: str | None = None, asks: list[str] | None = None
 ) -> list[str]:
@@ -2247,7 +2286,13 @@ def format_plan(
 
     comfyui_from: ComfyUI のフォルダをどこで決めたか("flag" / "env" / "default" = どちらも無く既定の場所。
     None = 知らせない)。asks: 端末の質問で尋ねる同意の種類(uncensored / unknown_license。#75)。"""
-    from .downloader import LAYOUT_WARNING_EN, LAYOUT_WARNING_JA, license_label
+    from .downloader import (
+        LAYOUT_WARNING_EN,
+        LAYOUT_WARNING_JA,
+        UNKNOWN_WARNING_EN,
+        UNKNOWN_WARNING_JA,
+        license_label,
+    )
 
     out = [f"{plan.model_name}  [{plan.model_id}]"]
     out.append(
@@ -2327,33 +2372,34 @@ def format_plan(
     for w in plan.warnings:
         if comfyui_from == "default" and w in (LAYOUT_WARNING_JA, LAYOUT_WARNING_EN):
             continue  # 上の「ComfyUI:」の案内にまとめた
+        if asks and w.startswith((UNKNOWN_WARNING_JA, UNKNOWN_WARNING_EN)):
+            continue  # 下の「同意」の行にまとめた(ライブラリの warnings はアプリ向けにそのまま)
         out.append(tr(f"  注意: {w}", f"  warning: {w}"))
-    if asks and "uncensored" in asks:
-        out.append(
-            tr(
-                "  注意: 無検閲のモデルです(成人向けを含みうる)",
-                "  warning: this is an uncensored model (may include adult content)",
-            )
-        )
-    for b in plan.blocked:
-        out.append(tr(f"  落とせません: {b}", f"  cannot download: {b}"))
-    if asks and not consent:
-        out.append(
-            tr(
-                f"  尋ねること: このモデルは{_asks_phrase(asks)}。落とす前に y/N で尋ねます",
-                f"  will ask:  this model {_asks_phrase(asks)}; you are asked y/N before downloading",
-            )
-        )
+    if asks:
+        out.append(_consent_line(plan, asks))
+    out += [tr(f"  落とせません: {b}", f"  cannot download: {b}") for b in blocked_texts(plan)]
     if consent and asks and not plan.blocked:
         out.append("")
-        out.append(
-            tr(
-                f"このモデルは{_asks_phrase(asks)}。上のファイルをそれぞれのライセンス・利用条件に従って"
-                "使うことにして、それでも落としますか?",
-                f"This model {_asks_phrase(asks)}. Download anyway, using the files above under their"
-                " licenses and terms?",
+        if any(not f.license_url for f in plan.files):
+            out.append(
+                tr(
+                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、それぞれのライセンス・利用条件に従って"
+                    "使うこと(ライセンスの原文の URL が無いファイルは、上の確かめる場所で条件を自分で確かめた"
+                    "うえで)に同意して、それでも落としますか?",
+                    f"This model {_asks_phrase(asks)}. Do you agree to use the files above under their"
+                    " licenses and terms (for files without a license URL, after checking the pages shown"
+                    " above yourself), and download anyway?",
+                )
             )
-        )
+        else:
+            out.append(
+                tr(
+                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、それぞれのライセンス・利用条件(URL)に"
+                    "従って使うことに同意して、それでも落としますか?",
+                    f"This model {_asks_phrase(asks)}. Do you agree to use the files above under their"
+                    " licenses and terms (URLs), and download anyway?",
+                )
+            )
     elif consent and not plan.blocked and not plan.download_bytes:
         out.append("")
         out.append(
@@ -2479,6 +2525,8 @@ def _download_command(args: argparse.Namespace, model_id: str, add: list[str]) -
         parts += ["--content", args.content]
     if args.include_unknown_license or "--any-license" in add:
         parts.append("--any-license")
+    if "--yes" in add:
+        parts.append("--yes")
     for flag, value in (
         ("--db", args.db),
         ("--vram", None if args.vram is None else _num(args.vram)),
@@ -2544,11 +2592,8 @@ def download_next_steps(
     (--yes・スクリプト)ときのコマンドを出す。"""
     if asks:
         add, agree = _consent_flags(asks)
-        cmd = "  " + _download_command(args, plan.model_id, add)
-        head = tr(
-            "尋ねずに落とすなら(--yes・スクリプト・端末でないとき):",
-            "To download without the question (--yes, scripts, no terminal):",
-        )
+        cmd = "  " + _download_command(args, plan.model_id, [*add, "--yes"])
+        head = tr("尋ねずに落とすなら(スクリプトなど):", "To download without the question (scripts):")
         return [head], cmd, agree
     codes = list(dict.fromkeys(plan.blocked_codes))
     add, agree = _consent_flags(codes)
@@ -2558,10 +2603,16 @@ def download_next_steps(
         if not add:
             return [], None, []
         cmd = "  " + _download_command(args, plan.model_id, add)
-        head = tr(
-            "落とすなら(端末で実行すれば、指定の代わりに y/N で尋ねます):",
-            "To download anyway (run it in a terminal to be asked y/N instead of adding flags):",
-        )
+        if args.yes:
+            head = tr(
+                "落とすなら(--yes を外せば y/N で尋ねます。または下の指定を足す):",
+                "To download anyway (drop --yes to be asked y/N instead, or add the flags below):",
+            )
+        else:
+            head = tr(
+                "落とすなら(端末で実行すれば、指定の代わりに y/N で尋ねます):",
+                "To download anyway (run it in a terminal to be asked y/N instead of adding flags):",
+            )
         return [head], cmd, agree
     if fatal:
         # gated(ログインしない)・取得できないファイル・ファイル無しは、どの指定でも落とせない。指定を足せば
@@ -2697,7 +2748,10 @@ class _ProgressLine:
 
 
 def _interactive() -> bool:
-    """端末で y/N を尋ねられるか(標準入力と標準出力がどちらも端末)。試験で差し替える(#75)。"""
+    """端末で y/N を尋ねられるか(標準入力と標準出力がどちらも端末)。試験で差し替える(#75)。
+
+    Windows で入力を NUL から読ませると isatty が True になる。そのときも _ask が EOF を受けて「同意しない」に
+    なるので、勝手に落とすことはない(tests/test_download.py の EOF の試験)。"""
     try:
         return sys.stdin.isatty() and sys.stdout.isatty()
     except (AttributeError, ValueError, OSError):
@@ -2744,7 +2798,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             policy=_policy(args),
         )
     except ModelNotFound as e:
-        err = CliError(str(e))
+        err = CliError(str(e).replace('content="all"', "--uncensored"))  # ライブラリの言い方を CLI の指定に
         err.candidates = e.candidates or None  # type: ignore[attr-defined]
         raise err from e
     except DownloadError as e:
@@ -2767,7 +2821,8 @@ def cmd_download(args: argparse.Namespace) -> int:
     from .downloader import CONSENT_CODES
 
     asks = [c for c in dict.fromkeys(plan.blocked_codes) if c in CONSENT_CODES]
-    can_ask = not args.json and (args.list or (not args.yes and _interactive()))
+    # 本当に実行したら尋ねるとき(端末で --yes・--json が無い)だけ。--list も同じ条件で、尋ねることを見せる
+    can_ask = not args.json and not args.yes and _interactive()
     if asks and can_ask and set(plan.blocked_codes) <= set(CONSENT_CODES):
         strict = plan
         try:
@@ -2778,12 +2833,16 @@ def cmd_download(args: argparse.Namespace) -> int:
                 comfyui_dir=comfyui_dir,
                 content="all" if "uncensored" in asks else args.content,
                 include_unknown_license=True,
+                verify_existing=False,  # sha256 は 1 回目で計った。ファイルの状態は 1 回目のものを使う
                 system_info=s,
                 db=db,
                 policy=_policy(args),
             )
         except DownloadError as e:  # 1 回目と同じ条件なので起きないはず
             raise CliError(str(e)) from e
+        if [f.name for f in plan.files] != [f.name for f in strict.files]:  # 念のため(同じ ID なので同じはず)
+            raise CliError(tr("計画を作り直せませんでした", "could not re-plan the download"))
+        plan.files = strict.files
         plan.chosen, plan.alternatives = strict.chosen, strict.alternatives  # 選んだ理由は 1 回目のもの
     else:
         asks = []
@@ -2797,7 +2856,9 @@ def cmd_download(args: argparse.Namespace) -> int:
         return 0
     if plan.blocked:
         if args.json:
-            return fail(DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(plan.blocked)))
+            return fail(
+                DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(blocked_texts(plan)))
+            )
         # 理由は計画の中に 1 回だけ出し、最後に次の一手を出す(同じ文を error: で繰り返さない。#75)
         _emit(format_plan(plan, comfyui_from=comfyui_from))
         _emit_next_steps(plan, args)
@@ -2806,7 +2867,15 @@ def cmd_download(args: argparse.Namespace) -> int:
         )
         return 1
     if not args.yes:
-        if not _ask(format_plan(plan, consent=True, comfyui_from=comfyui_from, asks=asks)):
+        try:
+            agreed = _ask(format_plan(plan, consent=True, comfyui_from=comfyui_from, asks=asks))
+        except KeyboardInterrupt:  # 質問の途中の Ctrl-C: 何も落とさず 130
+            print(file=sys.stderr)
+            print(
+                tr("中断しました(何も落としていません)", "Interrupted (nothing downloaded)"), file=sys.stderr
+            )
+            return 130
+        if not agreed:
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
     elif not args.json:
@@ -3131,11 +3200,12 @@ is stated), the total size and the free disk are shown and you are asked to agre
 the question).
 Uncensored models and files with an unknown license need your consent: in a terminal the
 question names them (y/N); with --yes, --json or without a terminal pass --uncensored and/or
---any-license (old forms: --content all, --include-unknown-license).
-Refused: gated files (no login is used), too little disk (needs the
+--any-license (old forms: --content all, --include-unknown-license; consent flags must be
+written in full). When only these are missing, the plan ends with one command that adds them
+(it never adds them by itself).
+Refused (no option lifts these): gated files (no login is used), too little disk (needs the
 download + 1 GB), names that would land outside the folder, hosts other than Hugging Face /
-GitHub. When only the consent flags are missing, the plan ends with one command that adds
-them (it never adds them by itself).
+GitHub.
 
 PRECONDITIONS:
   Network access to huggingface.co (or github.com) for the download. --list needs none.
@@ -3421,7 +3491,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-uncensored-auto",
         action="store_true",
         help=tr(
-            "無検閲のモデルも自動のおすすめに出してよい", "allow uncensored models in auto-recommendation"
+            "無検閲のモデルも自動のおすすめ(Verified)に出してよい(表示の絞り込み・download の同意とは別)",
+            "allow uncensored models in automatic recommendations (Verified); not a display filter and"
+            " not download consent",
         ),
     )
 
@@ -3506,21 +3578,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sel.add_argument(
-        "--include-unknown-license",
-        action="store_true",
-        help=tr(
-            "ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る)",
-            "also show models with files of unknown license (hidden by default; info <ID> always shows them)",
-        ),
-    )
-
-    sel.add_argument(
         "--any-license",
+        "--include-unknown-license",
         dest="include_unknown_license",
         action="store_true",
         help=tr(
-            "ライセンスの分からないものも含める(--include-unknown-license と同じ)",
-            "include unknown licenses (same as --include-unknown-license)",
+            "ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る。"
+            "前からの書き方 --include-unknown-license も同じ)",
+            "also show models with files of unknown license (hidden by default; info <ID> always shows them;"
+            " old form --include-unknown-license)",
         ),
     )
 
@@ -3807,27 +3873,34 @@ def build_parser() -> argparse.ArgumentParser:
             "skip the consent question (required to download with --json)",
         ),
     )
-    sp.add_argument(
+    consent = sp.add_argument_group(
+        tr(
+            "同意(端末では y/N で尋ねる。--yes・--json・端末でないときに指定する。略さずに書く)",
+            "consent (asked y/N in a terminal; pass these with --yes, --json or no terminal;"
+            " write them in full)",
+        )
+    )
+    consent.add_argument(
         "--uncensored",
         action="store_true",
         help=tr(
-            "無検閲のモデルも落とす(端末で尋ねないとき・--yes・--json で要る。--content all と同じ)",
-            "also download uncensored models (needed without the question: --yes, --json, no terminal;"
-            " same as --content all)",
+            "無検閲のモデルも落とす(前からの書き方 --content all と同じ)",
+            "also download uncensored models (old form --content all)",
         ),
     )
-    sp.add_argument(
+    consent.add_argument(
         "--any-license",
         "--include-unknown-license",
         dest="include_unknown_license",
         action="store_true",
         help=tr(
-            "ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる。端末で尋ねないときに要る)",
-            "also download models with files of unknown license (check the terms yourself; needed without"
-            " the question)",
+            "ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる。"
+            "前からの書き方 --include-unknown-license も同じ)",
+            "also download models with files of unknown license (check the terms yourself;"
+            " old form --include-unknown-license)",
         ),
     )
-    sp.add_argument(
+    consent.add_argument(
         "--content",
         choices=CONTENT_FILTERS,
         default=None,
@@ -4434,11 +4507,34 @@ def _lang_in(argv: list[str]) -> str | None:
     return found if found in LANGUAGES else None
 
 
+# 同意の指定(年齢・ライセンスの同意)は略して書けない(1〜3 文字の打ち間違いで同意したことにならないように。
+# #75)。argparse の略し方(--u → --uncensored など)を、解釈する前に止める
+CONSENT_FLAGS = ("--uncensored", "--any-license", "--include-unknown-license", "--content")
+
+
+def _check_consent_spelling(parser: argparse.ArgumentParser, argv: list[str]) -> None:
+    for a in argv:
+        if a == "--":
+            break
+        name = a.split("=", 1)[0]
+        if not name.startswith("--") or len(name) <= 2 or name in CONSENT_FLAGS:
+            continue
+        full = [f for f in CONSENT_FLAGS if f.startswith(name)]
+        if full:
+            parser.error(
+                tr(
+                    f"{name}: 同意の指定は略さずに書いてください({' / '.join(full)})",
+                    f"{name}: write consent flags in full ({' / '.join(full)})",
+                )
+            )
+
+
 def _main(argv: list[str]) -> int:
     parser = build_parser()
     if not argv:  # 引数なしは使い方の全文を出して正常に終わる(初めて試す人向け)
         parser.print_help()
         return 0
+    _check_consent_spelling(parser, argv)
     args = parser.parse_args(argv)
     chosen = getattr(args, "lang", None)
     # 先に読めなかった形の --lang(念のため)。説明の文から作り直す
@@ -4448,14 +4544,15 @@ def _main(argv: list[str]) -> int:
     # --uncensored は --content all と同じ(#75)。--content sfw とは同時に使えない
     if hasattr(args, "content"):
         if getattr(args, "uncensored", False):
-            if args.content == "sfw":
+            if args.content not in (None, "all"):
                 parser.error(
                     tr(
-                        "--uncensored と --content sfw は同時に指定できません",
-                        "--uncensored and --content sfw cannot be used together",
+                        f"--uncensored(= --content all)と --content {args.content} は同時に指定できません",
+                        f"--uncensored (= --content all) and --content {args.content}"
+                        " cannot be used together",
                     )
                 )
-            args.content = args.content or "all"
+            args.content = "all"
         elif args.content is None:
             args.content = DEFAULT_CONTENT
     # 使い方の誤り(argparse と同じく終了コード 2)

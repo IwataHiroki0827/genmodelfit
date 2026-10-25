@@ -33,7 +33,8 @@
   読むだけのコマンドと Python の関数はネットに触らない(README「Privacy」、tests/test_privacy.py・test_embedding.py)
 - `download`(#31、`downloader.py`)は一覧の URL だけを https で落とし、転送先は `HOST_POLICY` のホストだけ。
   同意(confirm / yes)・sha256・`.part` の続き・置き場所の外に書かない・gated は落とさない・無検閲 / ライセンス不明は
-  はっきりした同意があるときだけ(端末なら名指しした y/N の質問、端末でないときは --uncensored / --any-license。
+  はっきりした同意があるときだけ(端末なら名指しした y/N の質問(--yes / --json を除く)、それ以外(--yes・--json・端末でない)は
+  --uncensored / --any-license。
   ライブラリは content / include_unknown_license を渡したときだけ)、
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
 - REST の serve は(未定)(作るならポートは ~/.claude/PORTS.md で選んで登録する)

@@ -66,8 +66,11 @@ All notable changes to this project are documented here. The format is based on
 - Shorter flags (#75): `--uncensored` (= `--content all`) on `recommend`, `fit`, `search`, `info`, `types` and
   `download`, and `--any-license` (= `--include-unknown-license`) on `recommend`, `fit`, `search` and `download`.
   The old forms still work; `--content uncensored` still means "only uncensored"; `--uncensored` with
-  `--content sfw` is a usage error. Hints, notes and `--help` examples now suggest the short forms. JSON is
-  unchanged.
+  `--content sfw|uncensored` is a usage error. Consent flags (`--uncensored`, `--any-license`,
+  `--include-unknown-license`, `--content`) must be written in full: abbreviations such as `--u` are a usage
+  error. Hints, notes and `--help` examples now suggest the short forms. JSON is unchanged. The library's
+  `blocked` / not-found texts name the Python arguments (`content="all"`, `include_unknown_license=True`); the CLI
+  shows its own flags.
 
 ### Fixed
 

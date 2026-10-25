@@ -62,7 +62,8 @@ OTHER_DIR = "other"  # ComfyUI の置き場所(directory)が一覧に無いフ�
 # 計画のファイルの状態
 STATUSES = ("download", "resume", "present", "conflict", "unavailable")
 # 止める理由の種類(DownloadPlan.blocked_codes。#75)。uncensored と unknown_license だけは、利用者が同意の指定
-# (CLI の端末の質問か --uncensored・--any-license)で外せる。ほかは指定では外れない
+# (content・include_unknown_license。CLI は端末の質問か --uncensored・--any-license)で外せる。
+# ほかは指定では外れない
 BLOCK_CODES = (
     "uncensored",
     "unknown_license",
@@ -484,9 +485,9 @@ def resolve_candidates(db: Database, query: str, content: str = "sfw") -> tuple[
             tr(
                 f"モデルが見つかりません: {q}(content {content} で外れた {kinds} のモデルが "
                 f"{len(hits)} 件あります。"
-                "--uncensored を付けるか ID で指定してください)",
+                'content="all" にするか ID で指定してください)',
                 f"No such model: {q} ({len(hits)} {'/'.join(kind_set)} models are hidden by "
-                f"content {content}; add --uncensored or give the id)",
+                f'content {content}; use content="all" or give the id)',
             )
         )
     raise ModelNotFound(tr(f"モデルが見つかりません: {q}", f"No such model: {q}"))
@@ -713,10 +714,9 @@ def _model_blocks(
             (
                 "uncensored",
                 tr(
-                    "無検閲のモデルです。落とすなら同意が要ります"
-                    "(端末の質問で y、尋ねないときは --uncensored)",
-                    "This is an uncensored model. Downloading it needs your consent (y to the question in a"
-                    " terminal; --uncensored without the question)",
+                    '無検閲のモデルです。落とすなら同意が要ります(content="all" か "uncensored")',
+                    "This is an uncensored model. Downloading it needs consent"
+                    ' (content="all" or "uncensored")',
                 ),
             )
         )
@@ -746,11 +746,11 @@ def _model_blocks(
                     "ライセンスが分からないファイルがあります: "
                     + ", ".join(unknown[:3])
                     + "。中身の条件を自分で確かめたうえで落とすなら同意が要ります"
-                    "(端末の質問で y、尋ねないときは --any-license)",
+                    "(include_unknown_license=True)",
                     "Some files have an unknown license: "
                     + ", ".join(unknown[:3])
-                    + ". Downloading them after checking the terms yourself needs your consent (y to the"
-                    " question in a terminal; --any-license without the question)",
+                    + ". Downloading them after checking the terms yourself needs consent"
+                    " (include_unknown_license=True)",
                 ),
             )
         )
@@ -947,13 +947,7 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
         )
     unknown = [f.name for f in plan.files if f.license is None]
     if unknown and not plan.blocked:
-        plan.warnings.append(
-            tr(
-                "ライセンスが分からないファイルを含みます(条件は自分で確かめる): ",
-                "Includes files with an unknown license (check their terms yourself): ",
-            )
-            + ", ".join(unknown[:4])
-        )
+        plan.warnings.append(tr(UNKNOWN_WARNING_JA, UNKNOWN_WARNING_EN) + ", ".join(unknown[:4]))
     if fit.estimate.fit in ("too_tight",):
         plan.warnings.append(
             tr(
@@ -999,6 +993,10 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
             + ", ".join(gguf[:4])
         )
 
+
+# ライセンス不明を含めて落とすときの知らせの頭(CLI は端末で尋ねるとき、自分の「同意」の行に置き換える)
+UNKNOWN_WARNING_JA = "ライセンスが分からないファイルを含みます(条件は自分で確かめる): "
+UNKNOWN_WARNING_EN = "Includes files with an unknown license (check their terms yourself): "
 
 # --output-dir か既定の場所に置くときの知らせ(CLI は既定の場所のとき、自分の案内に置き換える)
 LAYOUT_WARNING_JA = (
