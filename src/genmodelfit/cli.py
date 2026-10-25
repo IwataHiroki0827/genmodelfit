@@ -2213,9 +2213,13 @@ def _gb(n: int | None) -> str:
     return f"{n / GIB:.2f} GB" if n is not None else "?"
 
 
-COMFYUI_DIR_ENV = (
-    "GENMODELFIT_COMFYUI_DIR"  # --comfyui-dir の既定(#75。docs/download.ja.md「コマンドライン」)
-)
+# --comfyui-dir の既定(#75。docs/download.ja.md「コマンドライン」)
+COMFYUI_DIR_ENV = "GENMODELFIT_COMFYUI_DIR"
+
+
+def _is_windows() -> bool:
+    """案内に出すシェルの形を決める OS(試験で差し替える)。Windows は PowerShell、ほかは POSIX sh。"""
+    return os.name == "nt"
 
 
 def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None) -> list[str]:
@@ -2223,7 +2227,7 @@ def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None)
 
     comfyui_from: ComfyUI のフォルダをどこで決めたか("flag" / "env" / "default" = どちらも無く既定の場所。
     None = 知らせない)。"""
-    from .downloader import OTHER_DIR, license_label
+    from .downloader import LAYOUT_WARNING_EN, LAYOUT_WARNING_JA, license_label
 
     out = [f"{plan.model_name}  [{plan.model_id}]"]
     out.append(
@@ -2241,18 +2245,9 @@ def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None)
         state = {"download": "", "resume": f"  resume from {_gb(f.part_bytes)}", "present": "  already there"}
         mark = state.get(f.status, f"  {f.status.upper()}")
         out.append(f"    - {f.relpath or f.name}  {_gb(f.size_bytes)}{mark}")
-        if f.relpath and not f.directory:
-            # 詳しくは warnings(models/other は ComfyUI が読まない・移す)。ここは印だけ
-            out.append(
-                tr(f"        置き場所: 分からない({OTHER_DIR}/)", f"        folder:  unknown ({OTHER_DIR}/)")
-            )
-        elif f.directory_basis:
-            out.append(
-                tr(
-                    f"        置き場所: {f.directory}(一覧に無いので推定: {f.directory_basis})",
-                    f"        folder:  {f.directory} (not in the list; inferred: {f.directory_basis})",
-                )
-            )
+        # 置き場所が分からない(other/)ことは、パスと warnings で知らせる
+        if f.directory_basis:
+            out.append(_basis_text(f))
         lic = license_label(f)
         if f.license is None:
             lic += " (UNKNOWN)"
@@ -2267,7 +2262,21 @@ def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None)
                 else tr("一覧にライセンスの原文の URL がありません", "no license URL in the list")
             )
             out.append(f"        license: {lic}; {missing}")
-            if f.check_url:
+            if (
+                f.check_url
+                and not plan.model_id.startswith("hf:")
+                and (f.url or "").startswith(f.check_url + "/")
+            ):
+                # ファイルを置いているリポジトリ(公式テンプレートの Comfy-Org など)。作者とは限らない
+                out.append(
+                    tr(
+                        "        確かめる場所(ファイルの置き場所のリポジトリ。作者とは限らない): "
+                        + f.check_url,
+                        "        check (the file's repository; may not be the original publisher): "
+                        + f.check_url,
+                    )
+                )
+            elif f.check_url:
                 out.append(tr(f"        確かめる場所: {f.check_url}", f"        check:   {f.check_url}"))
         if f.license_note:
             out.append(f"        note: {f.license_note}")
@@ -2296,6 +2305,8 @@ def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None)
         more = f" (+{len(plan.alternatives) - 3} more)" if len(plan.alternatives) > 3 else ""
         out.append(f"  others:    {alts}{more}")
     for w in plan.warnings:
+        if comfyui_from == "default" and w in (LAYOUT_WARNING_JA, LAYOUT_WARNING_EN):
+            continue  # 上の「ComfyUI:」の案内にまとめた
         out.append(tr(f"  注意: {w}", f"  warning: {w}"))
     for b in plan.blocked:
         out.append(tr(f"  落とせません: {b}", f"  cannot download: {b}"))
@@ -2329,42 +2340,91 @@ def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None)
     return out
 
 
+def _basis_text(f) -> str:
+    """推定した置き場所の行(根拠 directory_basis を人が読む文に。#75)。"""
+    b = f.directory_basis
+    params, ref, tpl = f"{b.get('params', 0):,}", b.get("file", "?"), b.get("template", "?")
+    needs = b.get("needs")
+    return tr(
+        f"        置き場所: {f.directory}(一覧に無いので推定: ヘッダのパラメータ数 {params} が"
+        f"公式テンプレート {tpl} の {ref} と同じ"
+        + (f"。読むには ComfyUI にカスタムノード {needs} が要る" if needs else "")
+        + ")",
+        f"        folder:  {f.directory} (not in the list; inferred: header parameter count {params} matches"
+        f" {ref} in the official template {tpl}"
+        + (f"; ComfyUI needs the {needs} custom nodes to load it" if needs else "")
+        + ")",
+    )
+
+
 def _comfyui_hint() -> list[str]:
-    """ComfyUI のフォルダを指定していないときの、指定のしかた(フラグと環境変数。#75)。"""
+    """ComfyUI のフォルダを指定していないときの案内(#75)。ライブラリの「同じ並びで置く」知らせも
+    ここにまとめる。
+    環境変数の決め方は、この OS のシェルの形だけ出す。"""
+    if _is_windows():
+        example = f"               $env:{COMFYUI_DIR_ENV} = 'C:\\ComfyUI'"
+    else:
+        example = f'               export {COMFYUI_DIR_ENV}="$HOME/ComfyUI"'
     return [
         tr(
-            "  ComfyUI:   指定なし。--comfyui-dir で ComfyUI のフォルダを渡すか、この端末で環境変数を決める:",
-            "  ComfyUI:   not set. Give the ComfyUI folder with --comfyui-dir, or set it for this terminal:",
+            "  ComfyUI:   指定なし。ここは genmodelfit のフォルダで、ComfyUI は読みません。--comfyui-dir で"
+            " ComfyUI のフォルダを渡すか、この端末で環境変数を決めるか、"
+            "extra_model_paths.yaml にこのフォルダを足す:",
+            "  ComfyUI:   not set. This is genmodelfit's folder, which ComfyUI does not read: pass"
+            " --comfyui-dir, set the folder for this terminal, or add this folder to extra_model_paths.yaml:",
         ),
-        f'               PowerShell: $env:{COMFYUI_DIR_ENV} = "C:\\ComfyUI"',
-        f'               bash / zsh: export {COMFYUI_DIR_ENV}="$HOME/ComfyUI"',
+        example,
     ]
 
 
-# 引用符なしで両方のシェル(PowerShell・POSIX sh)にそのまま渡る文字。ほかを含めば " で囲む
+# 引用符なしで両方のシェル(PowerShell・POSIX sh)にそのまま渡る文字
 _SHELL_SAFE = re.compile(r"[A-Za-z0-9_./:=+%-]+")
 
 
-def shell_quote(arg: str) -> str:
-    """コマンドの 1 つの引数を、PowerShell と POSIX sh の両方に貼れる形にする(#75)。
+def shell_quote(arg: str, windows: bool | None = None) -> str:
+    """コマンドの 1 つの引数を、貼り付けて使える形にする(#75)。
 
-    簡単な決まり: 安全な文字だけならそのまま、ほかは " で囲む(中の " は \\" にする)。$ や ` は
-    両方のシェルで " の中でも展開されるが、モデル名・パスにはまず無いので扱わない。"""
+    安全な文字だけならそのまま。ほかは ' で囲む(PowerShell も POSIX sh も ' の中は $・`・\\ を展開しない)。
+    中に ' があるときだけシェルで形が分かれるので、この OS のシェルの形にする
+    (PowerShell は '' と重ねる、POSIX sh は '\\'' で閉じて足して開き直す)。windows=None は _is_windows()。"""
     if arg and _SHELL_SAFE.fullmatch(arg):
         return arg
-    return '"' + arg.replace('"', '\\"') + '"'
+    if "'" not in arg:
+        return f"'{arg}'"
+    if _is_windows() if windows is None else windows:
+        return "'" + arg.replace("'", "''") + "'"
+    return "'" + arg.replace("'", "'\\''") + "'"
 
 
-def _download_command(args: argparse.Namespace, add: list[str]) -> str:
+def _num(v: float | int) -> str:
+    """数の引数を、解釈した値のまま文字にする(丸めない。8.0 は 8)。"""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return repr(v)
+
+
+def _prog() -> str:
+    """利用者が使った起動のしかた(python -m genmodelfit か genmodelfit)。"""
+    argv0 = sys.argv[0] if sys.argv else ""
+    spec = getattr(sys.modules.get("__main__"), "__spec__", None)
+    by_path = (
+        os.path.basename(argv0) == "__main__.py" and os.path.basename(os.path.dirname(argv0)) == "genmodelfit"
+    )
+    if by_path or getattr(spec, "name", "") == "genmodelfit.__main__":
+        return "python -m genmodelfit"
+    return "genmodelfit"
+
+
+def _download_command(args: argparse.Namespace, model_id: str, add: list[str]) -> str:
     """利用者の指定(解釈した引数から。argv の字面ではない)に add の指定を足した download のコマンド(#75)。
 
+    モデルは計画のワークフローの ID で書く(同じワークフローになる。精度も ID で決まるので
+    --precision は付けない)。
     --list・--json・--yes は付けない(落とすためのコマンドなので)。環境変数で決めた ComfyUI のフォルダは
     付けない(同じ環境変数で同じ場所になる)。"""
-    parts = ["genmodelfit", "download", args.model]
-    if args.precision:
-        parts += ["--precision", args.precision]
+    parts = ["download", model_id]
     if args.budget is not None:
-        parts += ["--budget", f"{args.budget:g}"]
+        parts += ["--budget", _num(args.budget)]
     if args.comfyui_dir:
         parts += ["--comfyui-dir", args.comfyui_dir]
     elif args.output_dir:
@@ -2376,8 +2436,8 @@ def _download_command(args: argparse.Namespace, add: list[str]) -> str:
         parts.append("--include-unknown-license")
     for flag, value in (
         ("--db", args.db),
-        ("--vram", None if args.vram is None else f"{args.vram:g}"),
-        ("--ram", None if args.ram is None else f"{args.ram:g}"),
+        ("--vram", None if args.vram is None else _num(args.vram)),
+        ("--ram", None if args.ram is None else _num(args.ram)),
         ("--license-allowlist", args.license_allowlist),
         ("--comfyui-version", args.comfyui_version),
     ):
@@ -2385,14 +2445,21 @@ def _download_command(args: argparse.Namespace, add: list[str]) -> str:
             parts += [flag, value]
     if args.max_head_age_days != 30:
         days = args.max_head_age_days
-        parts += ["--max-head-age-days", "none" if days is None else f"{days:g}"]
+        parts += ["--max-head-age-days", "none" if days is None else _num(days)]
     if args.no_cache:
         parts.append("--no-cache")
     if args.allow_uncensored_auto:
         parts.append("--allow-uncensored-auto")
     if getattr(args, "lang", None):
         parts += ["--lang", args.lang]
-    return " ".join(shell_quote(p) for p in parts)
+    return " ".join([_prog(), *(shell_quote(p) for p in parts)])
+
+
+def _repo_page(url: str | None) -> str | None:
+    """Hugging Face のファイルの URL → そのリポジトリのページ(…/resolve/… の前)。ほかは None。"""
+    if url and url.startswith("https://huggingface.co/") and "/resolve/" in url:
+        return url.split("/resolve/", 1)[0]
+    return None
 
 
 def download_next_steps(plan, args: argparse.Namespace) -> tuple[list[str], str | None, list[str]]:
@@ -2402,8 +2469,6 @@ def download_next_steps(plan, args: argparse.Namespace) -> tuple[list[str], str 
     コマンドを 1 つ出し、
     指定ごとに何に同意するかを 1 行ずつ添える。指定では外せない理由(gated・空き・取得先・置き場所の外など)が
     あれば、コマンドは出さずにすることを書く。勝手に指定を足して落とすことはしない。"""
-    from .downloader import CONSENT_CODES
-
     codes = list(dict.fromkeys(plan.blocked_codes))
     add: list[str] = []
     agree: list[str] = []
@@ -2425,18 +2490,65 @@ def download_next_steps(plan, args: argparse.Namespace) -> tuple[list[str], str 
                 " yourself (pages above) and take responsibility for using them",
             )
         )
-    hard = [c for c in codes if c not in CONSENT_CODES]
-    if not hard:
+    fatal = [c for c in codes if c in ("gated", "unavailable", "no_files")]
+    lever = [c for c in codes if c in ("disk", "budget", "conflict")]
+    if not fatal and not lever:
         if not add:
             return [], None, []
-        return [tr("落とすなら:", "To download anyway:")], "  " + _download_command(args, add), agree
-    page = next((f.check_url for f in plan.files if f.check_url), None) or plan.license_url
+        cmd = "  " + _download_command(args, plan.model_id, add)
+        return [tr("落とすなら:", "To download anyway:")], cmd, agree
+    if fatal:
+        # gated(ログインしない)・取得できないファイル・ファイル無しは、どの指定でも落とせない。指定を足せば
+        # 落とせるような言い方はしない
+        head = [
+            tr(
+                "このワークフローは genmodelfit では落とせません(どの指定でも変わりません):",
+                "genmodelfit cannot download this workflow (no option changes this):",
+            )
+        ]
+        if "gated" in fatal:
+            pages = sorted({_repo_page(f.url) or f.check_url or "" for f in plan.files if f.gated} - {""})
+            head.append(
+                tr(
+                    "  - gated: モデルのページで利用申請し、そのファイルは自分で落とす"
+                    "(genmodelfit はログインしない)",
+                    "  - gated: request access on the model page and download those files yourself"
+                    " (genmodelfit never logs in)",
+                )
+                + (": " + ", ".join(pages) if pages else "")
+            )
+        if "unavailable" in fatal:
+            head.append(
+                tr(
+                    "  - genmodelfit では落とせないファイル(理由は上)。自分で落とすなら:",
+                    "  - files genmodelfit cannot download (reasons above). To get them yourself:",
+                )
+            )
+            for f in plan.files:
+                if f.status == "unavailable":
+                    where = f.url or tr("一覧に URL がありません", "no URL in the list")
+                    check = (
+                        tr(f"(確かめる場所: {f.check_url})", f" (check: {f.check_url})")
+                        if f.check_url
+                        else ""
+                    )
+                    head.append(f"      {f.name}: {where}{check}")
+        if "no_files" in fatal:
+            head.append(tr("  - 一覧に落とすファイルがありません", "  - the list has no files to download"))
+        alt = next((a for a in plan.alternatives if a.get("ok")), None)
+        if alt:
+            head.append(
+                tr(
+                    f"  - 同じモデルの別のワークフローにはこの問題がありません: {alt['id']}"
+                    f"({alt['precision'] or '?'}、{alt['fit_level']})。見るなら:"
+                    f" {_prog()} download {shell_quote(alt['id'])} --list",
+                    f"  - another workflow of the same model has no such problem: {alt['id']}"
+                    f" ({alt['precision'] or '?'}, {alt['fit_level']}). To look at it:"
+                    f" {_prog()} download {shell_quote(alt['id'])} --list",
+                )
+            )
+        return head, None, []
     todo = {
-        "gated": tr(
-            "  - gated: モデルのページで利用申請し、自分で落とす(genmodelfit はログインしない)",
-            "  - gated: request access on the model page and download those files yourself"
-            " (genmodelfit does not log in)",
-        ),
         "disk": tr(
             f"  - 空き: ディスクを {_gb(plan.disk_needed_bytes)} 空けるか、--comfyui-dir / --output-dir で"
             "別のドライブを選ぶ",
@@ -2451,24 +2563,17 @@ def download_next_steps(plan, args: argparse.Namespace) -> tuple[list[str], str 
             "  - 同じ名前の別のファイル: 移すか、--output-dir で別の置き場所を選ぶ",
             "  - a different file with the same name: move it, or choose another place with --output-dir",
         ),
-        "unavailable": tr(
-            "  - genmodelfit では落とせないファイル(理由は上): モデルのページから自分で落とす"
-            + (f"({page})" if page else ""),
-            "  - files genmodelfit cannot download (reasons above): get them from the model page yourself"
-            + (f" ({page})" if page else ""),
-        ),
-        "no_files": tr("  - 一覧に落とすファイルがありません", "  - the list has no files to download"),
     }
-    head = [tr("どの指定でも落とせません。先に:", "No flag lifts this. First:")]
-    head += [todo[c] for c in hard if c in todo]
+    head = [tr("同意の指定では外れません。先に:", "The consent flags do not lift these. First:")]
+    head += [todo[c] for c in lever]
     if add:
         head.append(
             tr(
-                f"  - そのうえで、次の同意の指定も要ります: {' '.join(add)}",
-                f"  - then these consent flags are also needed: {' '.join(add)}",
+                f"  - そのうえで、同意の指定 {' '.join(add)} も足す(下の意味に同意するなら)",
+                f"  - then also add the consent flags {' '.join(add)} (if you agree to what they mean below)",
             )
         )
-    return head, None, []
+    return head, None, agree
 
 
 def _emit_next_steps(plan, args: argparse.Namespace) -> None:
@@ -2596,6 +2701,9 @@ def cmd_download(args: argparse.Namespace) -> int:
         # 理由は計画の中に 1 回だけ出し、最後に次の一手を出す(同じ文を error: で繰り返さない。#75)
         _emit(format_plan(plan, comfyui_from=comfyui_from))
         _emit_next_steps(plan, args)
+        print(
+            tr("error: 落とせません(上を見てください)", "error: cannot download (see above)"), file=sys.stderr
+        )
         return 1
     if not args.yes:
         if not _ask(format_plan(plan, consent=True, comfyui_from=comfyui_from)):

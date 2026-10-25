@@ -1181,9 +1181,9 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` をバイトで |
 | `blocked` | str[] | 落とさない理由(表示の言語 `en` / `ja`)。空なら落とせる |
-| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは `--content all`・`--include-unknown-license`、つまり利用者の同意で外せる)、`gated`・`no_files`・`unavailable`・`conflict`・`budget`・`disk`(どの指定でも外れない) |
+| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは `--content all`・`--include-unknown-license`、つまり利用者の同意で外せる)、`gated`・`no_files`・`unavailable`(このワークフローは genmodelfit では落とせない)、`conflict`・`budget`・`disk`(同意の指定では外れない。ファイルを移す・`--output-dir`、`--budget` を上げる、ディスクを空ける) |
 | `warnings` | str[] | 知っておくべきこと(許可リストに無いライセンス、この PC では動かない、配置のヒント) |
-| `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto` |
+| `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto`、`ok`(任意。#75 から。gated・取得できない・同じ名前の別のファイルが無ければ true。無検閲・ライセンス不明・空き・上限は数えない) |
 | `license_url` | str \| null | モデルのライセンスのページ |
 | `ok` | bool | `blocked` が空 |
 
@@ -1196,10 +1196,10 @@ PlannedFile:
 | `dest` | str | 保存先の絶対パス。断ったときは "" |
 | `url`、`sha256`、`size_bytes`、`role` | | ModelFile から |
 | `directory` | str \| null | ComfyUI のフォルダ。ModelFile から。一覧に無ければ決めたもの(`directory_basis` を参照)。null は分からない(`other/`) |
-| `directory_basis` | str \| null | `directory` を決めた根拠(任意。#75 から。表示の言語): 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけ(例 SDXL の全部入り = `sd_xl_base_1.0.safetensors` → `checkpoints`)。null は一覧の値か、分からない |
+| `directory_basis` | object \| null | 一覧に置き場所の無いファイル(出どころによらない)の `directory` を決めた根拠(任意。#75 から): 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけ(`unet` は `diffusion_models`、`clip` は `text_encoders` と同じとみなす。例 SDXL の全部入り = `sd_xl_base_1.0.safetensors` → `checkpoints`)。キー: `kind`(`header_params`)、`template`(テンプレートの ID)、`file`(そのファイル)、`params`、`reference_params`、`needs`(GGUF を `diffusion_models`・`text_encoders` に置くときの `ComfyUI-GGUF`)。null は一覧の値か、分からない |
 | `license`、`license_name` | str \| null | 確認に使ったライセンス(ゲートの保守的な読み。null は不明) |
 | `license_url` | str \| null | ライセンスの本文がある場所 |
-| `check_url` | str \| null | `license_url` が null のとき、条件を確かめるページ(任意。#75 から): `hf:` の ID なら `https://huggingface.co/<owner>/<repo>`、無ければエントリの `homepage`、それも無ければファイルの Hugging Face のリポジトリ。`license_url` があれば null |
+| `check_url` | str \| null | `license_url` が null のとき、条件を確かめるページ(任意。#75 から): `hf:` の ID なら `https://huggingface.co/<owner>/<repo>`、無ければエントリの `homepage`(https のものだけ)、それも無ければファイルの Hugging Face のリポジトリ(公式テンプレートでは Comfy-Org などの置き場所で、作者とは限らない。CLI はそう書く)。`license_url` があれば null |
 | `license_note` | str \| null | 一覧の値とライセンスが違う理由、または確かめられなかった理由 |
 | `license_allowed` | bool | ライセンスの許可リストにある(ゲートの既定、または `--license-allowlist`) |
 | `gated` | bool \| null | アクセスの申請が要る(部品の上流が求める場合も) |

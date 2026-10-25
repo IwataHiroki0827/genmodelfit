@@ -357,8 +357,10 @@ class PlannedFile:
     part_bytes: int = 0  # 途中まで落とした .part の大きさ
     reason: str | None = None  # unavailable / conflict の理由
     verified: bool = False  # present のとき、計画で sha256 まで計ったか(download は必ず計り直す)
-    # 一覧に置き場所が無く、同梱の一覧の根拠から置き場所を決めたときの根拠(表示の言語。#75)。一覧の値なら None
-    directory_basis: str | None = None
+    # 一覧に置き場所が無く、同梱の一覧の根拠から置き場所を決めたときの根拠
+    # (機械が読む形。#75。infer_directory)。
+    # 一覧の値・分からないときは None
+    directory_basis: dict[str, Any] | None = None
     # license_url が無いとき、条件を確かめる場所(モデルのページ。#75)。license_url があれば None
     check_url: str | None = None
 
@@ -508,6 +510,13 @@ def _hash_file(path: Path, progress: Callable[[int], None] | None = None) -> str
 PARAMS_MATCH = 1e-5
 
 
+# ComfyUI の folder_paths で同じフォルダとして読まれる古い名前
+# (unet は diffusion_models、clip は text_encoders。
+# estimate.DIRECTORY_ROLE も同じ組で同じ役割にしている)。一致の数え方ではこの組を 1 つの置き場所とみなす
+DIRECTORY_ALIASES = {"unet": "diffusion_models", "clip": "text_encoders"}
+GGUF_NODE = "ComfyUI-GGUF"  # GGUF を diffusion_models / text_encoders から読むのに要るカスタムノード
+
+
 @dataclass(frozen=True)
 class _DirRef:
     """公式テンプレートのファイル(置き場所が一覧にあり、ヘッダのパラメータ数が分かるもの)。"""
@@ -515,6 +524,7 @@ class _DirRef:
     params: int
     directory: str
     name: str
+    template: str = ""
 
 
 def directory_refs(db: Database) -> list[_DirRef]:
@@ -526,16 +536,20 @@ def directory_refs(db: Database) -> list[_DirRef]:
             continue
         for f in m.files:
             if f.directory and f.header_params:
-                out.append(_DirRef(f.header_params, f.directory, f.name.rsplit("/", 1)[-1]))
+                folder = DIRECTORY_ALIASES.get(f.directory, f.directory)
+                out.append(_DirRef(f.header_params, folder, f.name.rsplit("/", 1)[-1], m.id))
     return out
 
 
-def infer_directory(f: ModelFile, refs: Iterable[_DirRef]) -> tuple[str | None, str | None]:
-    """一覧に置き場所が無いファイルの置き場所を、同梱の一覧の根拠から決める(#75)。(置き場所, 根拠の文)。
+def infer_directory(f: ModelFile, refs: Iterable[_DirRef]) -> tuple[str | None, dict[str, Any] | None]:
+    """一覧に置き場所が無いファイル(出どころによらない)の置き場所を、同梱の一覧の根拠から決める(#75)。
+    (置き場所, 根拠)。
 
     根拠は 1 つだけ: 本体のファイルのヘッダのパラメータ数が、公式テンプレートのファイルと PARAMS_MATCH の幅で
-    一致し、一致したファイルの置き場所が 1 通り(例 SDXL の全部入り = sd_xl_base_1.0 と同じ数 → checkpoints)。
-    名前・タグからの推測はしない。決められなければ (None, None)(other に置く)。"""
+    一致し、一致したファイルの置き場所が 1 通り(DIRECTORY_ALIASES は同じ置き場所。例 SDXL の全部入り =
+    sd_xl_base_1.0 と同じ数 → checkpoints)。名前・タグからの推測はしない。決められなければ (None, None)
+    (other に置く)。根拠は {kind, template, file, params, reference_params[, needs]}(needs は GGUF を
+    diffusion_models / text_encoders に置くとき要るカスタムノード)。"""
     if f.directory or not f.header_params or f.role not in (None, "main"):
         return None, None
     n = f.header_params
@@ -544,18 +558,25 @@ def infer_directory(f: ModelFile, refs: Iterable[_DirRef]) -> tuple[str | None, 
     if len(dirs) != 1:
         return None, None
     ref = min(hits, key=lambda r: (abs(r.params - n), r.name))
-    return ref.directory, tr(
-        f"ヘッダのパラメータ数 {n:,} が公式テンプレートの {ref.name}({ref.directory})と同じ",
-        f"header parameter count {n:,} matches {ref.name} ({ref.directory}) in an official template",
-    )
+    basis: dict[str, Any] = {
+        "kind": "header_params",
+        "template": ref.template,
+        "file": ref.name,
+        "params": n,
+        "reference_params": ref.params,
+    }
+    if f.name.lower().endswith(".gguf") and ref.directory in ("diffusion_models", "text_encoders"):
+        basis["needs"] = GGUF_NODE
+    return ref.directory, basis
 
 
 def check_url(m: ModelEntry, f: ModelFile) -> str | None:
     """license_url が無いファイルの条件を確かめる場所(モデルのページ)。HF の ID ならそのページ、
-    無ければ一覧のモデルのページ(homepage)、それも無ければファイルの HF のリポジトリ。"""
+    無ければ一覧のモデルのページ(homepage。https のものだけ)、それも無ければファイルの HF のリポジトリ
+    (公式テンプレートでは Comfy-Org などの置き場所で、作者とは限らない)。"""
     if m.id.startswith("hf:") and "/" in m.id:
         return f"https://huggingface.co/{m.id[3:]}"
-    if m.homepage:
+    if m.homepage and m.homepage.lower().startswith("https://"):
         return m.homepage
     if f.repo_id:
         return f"https://huggingface.co/{f.repo_id}"
@@ -655,7 +676,7 @@ def _plan_file(
     return pf
 
 
-def _alt_dict(fit: Fit) -> dict[str, Any]:
+def _alt_dict(fit: Fit, p: DownloadPlan | None = None) -> dict[str, Any]:
     from .recommend import memory_use
 
     _, need, _ = memory_use(fit.estimate, fit.system)
@@ -667,6 +688,12 @@ def _alt_dict(fit: Fit) -> dict[str, Any]:
         "memory_required_gb": round(need, 2) if need is not None else None,
         "size_bytes": fit.model.total_size_bytes,
         "auto": fit.auto,
+        # 指定では外せない理由(gated・ファイル無し・取得できないファイル・同じ名前の別のファイル)
+        # が無いか(#75)。
+        # 無検閲・ライセンス不明・空き・上限は数えない
+        "ok": p is not None
+        and not any(c in ("gated", "no_files") for c in p.blocked_codes)
+        and all(f.status not in ("unavailable", "conflict") for f in p.files),
     }
 
 
@@ -850,7 +877,7 @@ def plan_download(
     if len(plans) > 1 and verify_existing:
         # 選んだものだけ計り直す
         plan.files = [_plan_file(f, root, allow, True, fit.model, refs) for f in fit.model.files]
-    plan.alternatives = [_alt_dict(x[2]) for x in plans[1:]]
+    plan.alternatives = [_alt_dict(x[2], x[1]) for x in plans[1:]]
     plan.chosen = (
         tr("ID で指定", "Given by id")
         if exact and not precision
@@ -954,14 +981,30 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
     if plan.layout == "output":
         plan.warnings.append(
             tr(
-                "ComfyUI の models と同じ並びで置きます(ComfyUI のフォルダではありません)。ComfyUI で使うなら"
-                " --comfyui-dir(CLI は環境変数 GENMODELFIT_COMFYUI_DIR でも)を指定するか、"
-                "extra_model_paths.yaml にこのフォルダを足してください",
-                "Files are laid out like ComfyUI's models folder (this is not the ComfyUI folder). To use"
-                " them in ComfyUI, pass --comfyui-dir (in the CLI also GENMODELFIT_COMFYUI_DIR) or add"
-                " this folder to extra_model_paths.yaml",
+                LAYOUT_WARNING_JA,
+                LAYOUT_WARNING_EN,
             )
         )
+    gguf = [f.name for f in plan.files if (f.directory_basis or {}).get("needs") == GGUF_NODE]
+    if gguf:
+        plan.warnings.append(
+            tr(
+                f"GGUF のファイルを読むには ComfyUI にカスタムノード {GGUF_NODE} が要ります: ",
+                f"ComfyUI needs the {GGUF_NODE} custom nodes to load the GGUF files: ",
+            )
+            + ", ".join(gguf[:4])
+        )
+
+
+# --output-dir か既定の場所に置くときの知らせ(CLI は既定の場所のとき、自分の案内に置き換える)
+LAYOUT_WARNING_JA = (
+    "ComfyUI の models と同じ並びで置きます(ComfyUI のフォルダではありません)。ComfyUI で使うなら"
+    " --comfyui-dir を指定するか、extra_model_paths.yaml にこのフォルダを足してください"
+)
+LAYOUT_WARNING_EN = (
+    "Files are laid out like ComfyUI's models folder (this is not the ComfyUI folder). To use them in"
+    " ComfyUI, pass --comfyui-dir or add this folder to extra_model_paths.yaml"
+)
 
 
 def _lic(f: PlannedFile) -> str:

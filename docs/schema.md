@@ -1194,9 +1194,9 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` in bytes |
 | `blocked` | str[] | why it will not download (in the display language, `en` / `ja`). Empty = can download |
-| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by `--content all` / `--include-unknown-license`, i.e. by the user's consent), `gated`, `no_files`, `unavailable`, `conflict`, `budget`, `disk` (no flag lifts these) |
+| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by `--content all` / `--include-unknown-license`, i.e. by the user's consent), `gated`, `no_files`, `unavailable` (genmodelfit cannot download the workflow at all), `conflict`, `budget`, `disk` (the consent flags do not lift these; move the file / `--output-dir`, raise `--budget`, free disk space) |
 | `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
-| `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto` |
+| `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto`, `ok` (optional, since #75: true when it has no gated, unavailable or conflicting file; uncensored, unknown license, disk and budget are not counted) |
 | `license_url` | str \| null | the model's license page |
 | `ok` | bool | `blocked` is empty |
 
@@ -1209,10 +1209,10 @@ PlannedFile:
 | `dest` | str | absolute destination path; "" when refused |
 | `url`, `sha256`, `size_bytes`, `role` | | from ModelFile |
 | `directory` | str \| null | the ComfyUI folder: from ModelFile, or inferred when the list has none (see `directory_basis`); null = unknown (`other/`) |
-| `directory_basis` | str \| null | why `directory` was inferred (optional, since #75; in the display language): the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all such files are in one folder (e.g. an SDXL all-in-one file = `sd_xl_base_1.0.safetensors` → `checkpoints`). null = from the list, or unknown |
+| `directory_basis` | object \| null | why `directory` was inferred for a file the list gives no folder (any source; optional, since #75): the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all such files are in one folder (`unet` counts as `diffusion_models`, `clip` as `text_encoders`; e.g. an SDXL all-in-one file = `sd_xl_base_1.0.safetensors` → `checkpoints`). Keys: `kind` (`header_params`), `template` (the template id), `file` (its file), `params`, `reference_params`, and `needs` (`ComfyUI-GGUF` for a GGUF file in `diffusion_models` / `text_encoders`). null = from the list, or unknown |
 | `license`, `license_name` | str \| null | the license used for the check (gate's conservative reading; null = unknown) |
 | `license_url` | str \| null | where the license text is |
-| `check_url` | str \| null | when `license_url` is null: the page to check the terms on (optional, since #75): `https://huggingface.co/<owner>/<repo>` for `hf:` ids, else the entry's `homepage`, else the file's Hugging Face repository. null when `license_url` is set |
+| `check_url` | str \| null | when `license_url` is null: the page to check the terms on (optional, since #75): `https://huggingface.co/<owner>/<repo>` for `hf:` ids, else the entry's `homepage` (https only), else the file's Hugging Face repository (for official templates often a Comfy-Org repository, not the original publisher; the CLI labels it so). null when `license_url` is set |
 | `license_note` | str \| null | why the license differs from the list's value, or why it could not be confirmed |
 | `license_allowed` | bool | on the license allowlist (gate default or `--license-allowlist`) |
 | `gated` | bool \| null | access request needed (also when the upstream of a component asks for it) |

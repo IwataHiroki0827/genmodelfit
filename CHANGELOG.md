@@ -37,20 +37,28 @@ All notable changes to this project are documented here. The format is based on
   - When it stops, each reason is shown once (the final `error:` line that repeated them is gone; the exit code stays
     1 and `--json` keeps `error`). When only `--content all` / `--include-unknown-license` are missing, it ends with
     "To download anyway:" and one ready-to-run command with all of them added (your other options kept), plus one
-    line per flag on what you agree to. It never adds them by itself. For gated files, disk space, hosts and the
-    like no command is shown; it says what to do instead. `--list` shows the same guidance.
+    line per flag on what you agree to. It never adds them by itself. For gated files, files it cannot fetch
+    (their URLs are listed) and workflows without files it says genmodelfit cannot download the workflow and names a
+    clean alternative workflow if there is one; for disk space, `--budget` and same-name files it names the lever.
+    No command is shown in those cases. `--list` shows the same guidance; a blocked run writes one short `error:`
+    line to stderr. The command uses the plan's workflow id and the program form you ran (`genmodelfit` or
+    `python -m genmodelfit`), with single-quoted arguments where needed.
   - Files whose ComfyUI folder is unknown go to `other/` as before, and the plan now says clearly (in every layout)
-    that ComfyUI does not read `models/other` and that they must be moved before use. For Hugging Face models, the
-    folder of the main file is inferred when its header parameter count matches a file of an official template in
-    exactly one folder (e.g. SDXL all-in-one files → `checkpoints`); the plan shows the basis. In the bundled list
-    this places the main file of 12 of the 48 Hugging Face models.
+    that ComfyUI does not read `models/other` and that they must be moved before use. For a main file without a
+    folder in the list, the folder is inferred when its header parameter count matches a file of an official template
+    in exactly one folder (e.g. SDXL all-in-one files → `checkpoints`); the plan shows the basis, and says when a GGUF
+    file needs the ComfyUI-GGUF custom nodes. In the bundled list this places the main file of 12 of the 48 Hugging
+    Face models in `checkpoints/` or `diffusion_models/` instead of `other/`: a copy downloaded with 0.9.2 into
+    `other/` is downloaded again (move it to the new folder first to avoid that).
   - A file with no license URL says "no license stated" and shows the page to check (the model's Hugging Face page or
     the page in the list), and the consent question no longer refers to URLs that are not shown.
   - The environment variable `GENMODELFIT_COMFYUI_DIR` sets the default for `--comfyui-dir` (`--comfyui-dir` and
-    `--output-dir` win over it; checked like the flag). Without either, the plan shows how to set it.
+    `--output-dir` win over it; checked like the flag). Without either, the plan says the default folder is not
+    ComfyUI's and shows how to set it (one hint for this OS, merged with the extra_model_paths.yaml note).
   - `download --help`: examples for `--list` first, then downloading into ComfyUI, and
     `--content all --include-unknown-license`.
-  - JSON (optional keys): `plan.blocked_codes`, and per file `directory_basis` and `check_url`.
+  - JSON (optional keys): `plan.blocked_codes`, `alternatives[].ok`, and per file `directory_basis` (an
+    object) and `check_url` (https pages only).
 
 ## [0.9.2] - 2026-10-24
 

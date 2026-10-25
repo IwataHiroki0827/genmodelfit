@@ -24,9 +24,10 @@ genmodelfit download MODEL --content all --include-unknown-license   # uncensore
 - **置き場所**:
   - `--comfyui-dir` なら、テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・`checkpoints` など)に置く。ファイル名の中のサブフォルダは保つ。
   - `--output-dir`(既定は genmodelfit のデータのフォルダの `models`)も同じ並びなので、ComfyUI の `extra_model_paths.yaml` に足せる。
-  - 環境変数 `GENMODELFIT_COMFYUI_DIR` が `--comfyui-dir` の既定になる(CLI だけ。Python は `comfyui_dir` を渡す)。順は `--comfyui-dir` → `--output-dir` → `GENMODELFIT_COMFYUI_DIR` → 既定のフォルダ。値はフラグと同じく確かめる(ComfyUI のフォルダに見えること)。どれも無いときは、計画の中で決め方を示す(例 PowerShell `$env:GENMODELFIT_COMFYUI_DIR = "C:\ComfyUI"`、bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"`)。
+  - 環境変数 `GENMODELFIT_COMFYUI_DIR` が `--comfyui-dir` の既定になる(CLI だけ。Python は `comfyui_dir` を渡す)。順は `--comfyui-dir` → `--output-dir` → `GENMODELFIT_COMFYUI_DIR` → 既定のフォルダ。値はフラグと同じく確かめる(ComfyUI のフォルダに見えること)。どれも無いときは、計画の中で genmodelfit のフォルダであること(ComfyUI は読まない)と決め方を、この OS の形だけで示す(Windows は PowerShell `$env:GENMODELFIT_COMFYUI_DIR = 'C:\ComfyUI'`、ほかは bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"`)。
   - ComfyUI のどのフォルダか分からないファイル(Hugging Face のモデルに多い)は `other/` に置く。ComfyUI は `models/other` を読まないので、計画の中でそう知らせる。使う前に(モデルのページの説明に従って `checkpoints`・`diffusion_models`・`loras` などへ)移すこと。
-  - そのようなファイルの置き場所は、同梱の一覧の 1 つの根拠だけで決める: 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけのとき(例 SDXL の全部入りのファイルは `sd_xl_base_1.0.safetensors` と同じ数なので `checkpoints`)。計画に根拠を出す(JSON は `directory_basis`)。名前やタグからの推測はしない。
+  - 一覧に置き場所の無いファイル(出どころによらない)の置き場所は、同梱の一覧の 1 つの根拠だけで決める: 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけのとき(`unet` と `diffusion_models`、`clip` と `text_encoders` は同じとみなす。例 SDXL の全部入りのファイルは `sd_xl_base_1.0.safetensors` と同じ数なので `checkpoints`)。計画に根拠を出す(JSON は `directory_basis`)。名前やタグからの推測はしない。こうして `diffusion_models`・`text_encoders` に置く GGUF のファイルは、読むのにカスタムノード ComfyUI-GGUF が要る(計画にそう出す)。
+  - #75 から、Hugging Face の 12 モデルの本体は `other/` ではなく `checkpoints/`・`diffusion_models/` に置く。0.9.2 でそれを `other/` に落とした人は、新しいフォルダへもう一度落とすことになる。先にファイルを自分で移せば落とし直さない(sha256 は計り直す)。
 - **先に同意**: 落とす前に、次を見せる。
   - ファイルごとのライセンスと原文の URL。原文の URL が無いファイルは「ライセンスの記載がありません」と書き、確かめる場所(モデルの Hugging Face のページか、一覧にあるページ)を出す。そのときの同意の質問は、そのページで自分で確かめることを求める文になる。
   - 許可リストに無いライセンスの印(利用制限の無い商用利用ができるもの。[gate.ja.md](gate.ja.md)。`--license-allowlist` で変えられる)。
@@ -34,7 +35,7 @@ genmodelfit download MODEL --content all --include-unknown-license   # uncensore
   - そのあと `[y/N]` で尋ねる。`--yes` で省ける(`--json` で落とすときは必須)。
   - 使う前に各ファイルの条件を読むこと。
 - **落とさないもの**: 1 つでも当てはまるファイルがあれば、そのワークフローは何も落とさない。一部だけ落とすことはしない。
-  - 理由は 1 回ずつ出す。足りないのが `--content all`・`--include-unknown-license` だけなら、計画の最後に「落とすなら:」として、それを全部足したコマンドを 1 行で出し(ほかの指定はそのまま)、指定ごとに何に同意するかを 1 行ずつ添える。勝手に足して落とすことはしない。ほかの理由ではコマンドを出さず、代わりにすること(利用申請・ディスクを空けるなど)を書く。
+  - 理由は 1 回ずつ出す。足りないのが `--content all`・`--include-unknown-license` だけなら、計画の最後に「落とすなら:」として、それを全部足したコマンドを 1 行で出し(ほかの指定はそのまま)、指定ごとに何に同意するかを 1 行ずつ添える。勝手に足して落とすことはしない。gated・genmodelfit では落とせないファイル(自分で落とせるよう URL を出す)・ファイルの無いワークフローでは、このワークフローは genmodelfit では落とせないと書き、同じモデルの別のワークフローにその問題が無ければそれを示す。空き・`--budget`・同じ名前の別のファイルでは、外し方(空ける・`--output-dir`、`--budget`、ファイルを移す)と、足りなければそのあとに要る同意の指定を書く。どちらもコマンドは出さない。コマンドは計画のワークフローの ID と、実行したときの形(`genmodelfit` か `python -m genmodelfit`)で書き、要る引数は ' で囲む。stderr には短い `error:` の 1 行を出す(終了コード 1)。
   - gated(ログインや利用申請が要る)。genmodelfit はログイン情報やトークンを扱わない。モデルのページで申請して自分で落とす。
   - 無検閲のモデル(`--content all` か `uncensored` を明示したときだけ)。
   - ライセンス不明(`--include-unknown-license` のときだけ)。
