@@ -34,6 +34,13 @@ All notable changes to this project are documented here. The format is based on
 - An EXAMPLES section in `genmodelfit --help` and in the `--help` of `recommend`, `fit`, `info`, `search` and
   `download`, in the display language.
 
+### Fixed
+
+- Read-only commands (`system` / `recommend` / `fit` / `info` / `search` / `types`) and `import genmodelfit` no longer
+  import `requests`. It is now imported only by the functions that use the network, so a mismatched urllib3 / chardet
+  in the user's environment no longer prints `RequestsDependencyWarning` on every run, and start-up is about 60 ms faster
+  (#74).
+
 ## [0.9.2] - 2026-10-24
 
 ### Fixed
