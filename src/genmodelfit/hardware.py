@@ -450,7 +450,7 @@ def torch_support(
                 f"({_fmt_ver(floor[0])} 以上。"
                 f"{floor[1]})ので、CPU として判定した(ドライバを更新すれば GPU で動く)",
                 f"Driver {driver} does not support this generation ({arch_of(cc).capitalize()})"
-                f" ({_fmt_ver(floor[0])} or later; {floor[1].replace('(', ' (').replace(')', ')')}),"
+                f" ({_fmt_ver(floor[0])} or later; {floor[1].replace('(', ' (')}),"
                 " so it is judged as CPU (it runs on the GPU after a driver update)",
             )
         )

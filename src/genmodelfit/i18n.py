@@ -5,25 +5,27 @@
 """表示の言語(en / ja)を決め、人に見せる文を 1 つの言語で出す(#73)。
 
 決め方(上が優先):
-    CLI の --lang → 環境変数 GENMODELFIT_LANG → gmf.set_language() → OS の言語(日本語なら ja)→ en
+    CLI の --lang → 環境変数 GENMODELFIT_LANG → gmf.set_language() → en
+既定はいつも英語(OS の言語は見ない。2026-10-25 にオーナーが決めた)。
 
 文は呼んだときに選ぶ: `tr("日本語の文", "English text")`。モジュールの定数に置かず、使うところで呼ぶ
 (言語は後から変わるため)。機械が読む値(ID・fit・basis・コード)は訳さない。
-OS の言語を調べるのは環境変数と(Windows では)GetUserDefaultUILanguage だけ。外のコマンドは呼ばず、
-失敗しても例外を出さない(en にする)。
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
-import sys
+from collections.abc import Iterator
+from contextvars import ContextVar
 
 LANGUAGES = ("en", "ja")
 ENV_VAR = "GENMODELFIT_LANG"
 
-_cli_language: str | None = None  # CLI の --lang(main の間だけ)
+# CLI の --lang(main の間だけ)・weekly などの固定。ContextVar なので、
+# ほかのスレッドのライブラリの呼び出しには効かない
+_cli_language: ContextVar[str | None] = ContextVar("genmodelfit_cli_language", default=None)
 _api_language: str | None = None  # gmf.set_language()
-_os_cache: str | None = None
 
 
 def normalize(lang: object) -> str | None:
@@ -35,7 +37,7 @@ def normalize(lang: object) -> str | None:
 
 
 def set_language(lang: str | None) -> None:
-    """Python から表示の言語を決める(`en` / `ja`。None で決めたのを取り消し、OS の言語に戻す)。
+    """Python から表示の言語を決める(`en` / `ja`。None で決めたのを取り消し、既定の en に戻す)。
 
     CLI の --lang と環境変数 GENMODELFIT_LANG のほうが優先する。"""
     global _api_language
@@ -50,25 +52,59 @@ def set_language(lang: str | None) -> None:
 
 def get_language() -> str:
     """今の表示の言語(`en` か `ja`)。"""
-    if _cli_language is not None:
-        return _cli_language
+    forced_lang = _cli_language.get()
+    if forced_lang is not None:
+        return forced_lang
     env = normalize(os.environ.get(ENV_VAR))
     if env is not None:
         return env
     if _api_language is not None:
         return _api_language
-    return _os_language()
+    return "en"
 
 
 def _set_cli_language(lang: str | None) -> None:
-    """CLI の --lang(cli.main が使う。終わったら None に戻す)。"""
-    global _cli_language
-    _cli_language = normalize(lang) if lang is not None else None
+    """今の文脈の言語を固定する(None で外す)。戻すときは forced() を使う。"""
+    _cli_language.set(normalize(lang) if lang is not None else None)
+
+
+@contextlib.contextmanager
+def forced(lang: str | None) -> Iterator[None]:
+    """この中だけ言語を固定する(CLI の --lang、日本語で書く PR の本文など)。None なら固定しない。"""
+    token = _cli_language.set(normalize(lang) if lang is not None else None)
+    try:
+        yield
+    finally:
+        _cli_language.reset(token)
+
+
+class Text(str):
+    """tr の返す文。今の言語の文で、日本語の文も .ja に持つ(一覧に保存する文を日本語にするため)。"""
+
+    ja: str
+
+    def __new__(cls, value: str, ja: str | None = None) -> Text:
+        obj = super().__new__(cls, value)
+        obj.ja = value if ja is None else ja
+        return obj
+
+    def __reduce__(self) -> tuple[type[Text], tuple[str, str]]:  # copy・pickle でも .ja を残す
+        return (Text, (str(self), self.ja))
 
 
 def tr(ja: str, en: str) -> str:
-    """今の言語の文を返す。"""
-    return ja if get_language() == "ja" else en
+    """今の言語の文を返す(日本語の文は .ja でも読める。Text)。"""
+    return Text(ja if get_language() == "ja" else en, ja)
+
+
+def ja_of(text: object) -> str:
+    """日本語の文(tr で作った文なら .ja、そうでなければそのまま)。"""
+    return getattr(text, "ja", None) or str(text)
+
+
+def stored_message(e: BaseException) -> str:
+    """一覧などに保存する例外の文。言語によらず日本語(FetchError などが ja_message を持つ)。"""
+    return getattr(e, "ja_message", None) or str(e)
 
 
 def pick(text: dict | str | None) -> str | None:
@@ -78,29 +114,3 @@ def pick(text: dict | str | None) -> str | None:
     lang = get_language()
     other = "en" if lang == "ja" else "ja"
     return text.get(lang) or text.get(other) or None
-
-
-def _os_language() -> str:
-    global _os_cache
-    if _os_cache is None:
-        _os_cache = _detect_os_language()
-    return _os_cache
-
-
-def _detect_os_language() -> str:
-    try:
-        for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
-            value = os.environ.get(name)
-            if value:  # 最初に値のあるものだけを見る(POSIX の優先順)
-                if value.lower().startswith("ja"):
-                    return "ja"
-                break
-        if sys.platform == "win32":  # Windows は表示の言語(Git Bash などが LANG=en_US を置いても)
-            import ctypes
-
-            langid = ctypes.windll.kernel32.GetUserDefaultUILanguage()  # type: ignore[attr-defined]
-            if int(langid) & 0x3FF == 0x11:  # 主言語が日本語(LANG_JAPANESE)
-                return "ja"
-    except Exception:  # 調べられなければ en
-        pass
-    return "en"

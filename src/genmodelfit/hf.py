@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import re
 import threading
 from collections.abc import Callable, Iterable
@@ -992,8 +993,10 @@ class HfClient:
         items = list(items)
         if not items:
             return []
+        # 呼んだ側の文脈(表示の言語の固定など。ContextVar)を、それぞれの仕事に写して渡す
+        runs = [contextvars.copy_context().run for _ in items]
         with ThreadPoolExecutor(self.workers) as ex:
-            return list(ex.map(func, items))
+            return list(ex.map(lambda run, item: run(func, item), runs, items))
 
     def prefetch(self, keys: Iterable[tuple[str, str]]) -> None:
         with self._lock:

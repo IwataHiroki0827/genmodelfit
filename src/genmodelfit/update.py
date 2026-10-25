@@ -51,7 +51,7 @@ from .hf import (
     select_weight_files,
     upstream_candidates,
 )
-from .i18n import tr
+from .i18n import ja_of, stored_message, tr
 from .license_sources import enforce_lineage, source_for
 from .models import ModelEntry, ModelFile, Template
 from .tasks import tool_task_from_title
@@ -176,6 +176,10 @@ class UpdateError(RuntimeError):
 
 class UpstreamFormatError(UpdateError):
     """上流の形が想定と違う(黙って空の一覧を作らないため)。"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.ja_message = ja_of(message)  # 一覧(sources.warnings)に残す文は日本語(#73)
 
 
 def validate_index(data: Any) -> list[dict[str, Any]]:
@@ -490,7 +494,7 @@ def latest_comfyui(fetch: Fetcher) -> tuple[dict[str, Any], str | None]:
     try:
         data = fetch.get_json(COMFYUI_RELEASE_URL)
     except FetchError as e:
-        return info, f"ComfyUI の最新の版を取得できません: {e}"
+        return info, f"ComfyUI の最新の版を取得できません: {stored_message(e)}"  # 一覧に残す文は日本語
     tag = data.get("tag_name") if isinstance(data, dict) else None
     if not isinstance(tag, str) or not tag:
         return info, "ComfyUI の最新の版を読めません(tag_name がありません)"
@@ -814,7 +818,7 @@ def discover_hf(
     network_fail = 0
     for url, hint, res in client.map(_run, queries):
         if isinstance(res, FetchError):
-            warnings.append(f"HF の検索に失敗: {res}")  # 一覧(sources)に残す文は日本語のまま
+            warnings.append(f"HF の検索に失敗: {stored_message(res)}")  # 一覧(sources)に残す文は日本語のまま
             network_fail += isinstance(res, NetworkError)
             continue
         for item in res:
@@ -1141,22 +1145,25 @@ def build_database(
     )
     client = HfClient(fetch, workers=workers)
 
-    def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, tuple[str, bool] | None]:
+    def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, tuple[str, bool, str] | None]:
         try:
             wf = fetch.get_json(f"{RAW}/{item[1]['name']}.json")
             return (workflow_models(wf), _stages_of(wf), wf), None
         except (FetchError, UpstreamFormatError) as e:
-            return None, (f"{item[1]['name']}: {e}", isinstance(e, NetworkError))
+            name = item[1]["name"]
+            return None, (f"{name}: {e}", isinstance(e, NetworkError), f"{name}: {stored_message(e)}")
 
     entries: list[ModelEntry] = []
     tmpl_by_id: dict[str, dict[str, Any]] = {}
     failed: list[str] = []
+    failed_ja: list[str] = []  # 一覧(sources.warnings)に残す文(日本語)
     failed_net: list[bool] = []
     failed_names: list[str] = []
     for item, (loaded, err) in zip(chosen, client.map(_load, chosen), strict=False):
         if err:
             failed.append(err[0])
             failed_net.append(err[1])
+            failed_ja.append(err[2])
             failed_names.append(item[1]["name"])
             continue
         models, stages, wf = loaded
@@ -1180,7 +1187,7 @@ def build_database(
                 f" Example: {failed[0]}",
             )
         )
-    warnings += [f"テンプレートを読めません: {f}" for f in failed]
+    warnings += [f"テンプレートを読めません: {f}" for f in failed_ja]
 
     excluded = 0
     kept: list[ModelEntry] = []
@@ -1429,14 +1436,17 @@ def update_database(
         detail = ", ".join(f"{k}={v}" for k, v in pc.items() if v)
         exhausted = bool(pc["rate_limit_budget_exhausted"])
         hint = "時間をおいてやり直すか、" if exhausted else ""
-        hint_en = "try again later, or " if exhausted else ""
+        hint_en = (
+            "Try again later, or add --allow-partial if the missing parts are acceptable."
+            if exhausted
+            else "Add --allow-partial if the missing parts are acceptable."
+        )
         raise UpdateFailed(
             tr(
                 f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
                 f"{hint}欠けたままでよければ --allow-partial を付けてください",
-                f"not written because some parts could not be fetched ({detail});"
-                " the previous list still works."
-                f" {hint_en.capitalize()}add --allow-partial if the missing parts are acceptable",
+                f"Not written because some parts could not be fetched ({detail});"
+                f" the previous list still works. {hint_en}",
             )
         )
     db.save(out_path)

@@ -389,12 +389,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--date", help="記録する日付(既定は今日)")
     args = p.parse_args(argv)
     # 出す表は docs/accuracy.ja.md にそのまま貼るので、表示の言語によらず日本語にする(#73)
-    prev = i18n._cli_language
-    i18n._set_cli_language("ja")
-    try:
+    with i18n.forced("ja"):
         return _main(args)
-    finally:
-        i18n._set_cli_language(prev)
 
 
 def _main(args: argparse.Namespace) -> int:

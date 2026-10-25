@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 import requests
 
 from ._version import __version__
-from .i18n import tr
+from .i18n import ja_of, tr
 
 USER_AGENT = f"genmodelfit/{__version__} (+https://github.com/laxshmate/genmodelfit)"
 TIMEOUT = (10, 60)  # (接続, 読み込み) 秒
@@ -72,6 +72,7 @@ class FetchError(RuntimeError):
 
     def __init__(self, url: str, message: str, status: int | None = None):
         super().__init__(f"{message}: {url}")
+        self.ja_message = f"{ja_of(message)}: {url}"  # 一覧(sources.warnings)に残す文は日本語(#73)
         self.url = url
         self.status = status
 

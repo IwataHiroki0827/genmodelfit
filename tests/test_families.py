@@ -28,9 +28,6 @@ def test_shown_texts_have_english():
     missing = [t for t in texts if t and ja.search(t) and t not in _EN]
     assert missing == []
     assert not any(ja.search(v) for v in _EN.values())
-    i18n._set_cli_language("en")
-    try:
+    with i18n.forced("en"):
         assert shown("supported_models_base.py:47(既定)") == "supported_models_base.py:47 (default)"
-    finally:
-        i18n._set_cli_language(None)
     assert shown("supported_models_base.py:47(既定)") == "supported_models_base.py:47(既定)"

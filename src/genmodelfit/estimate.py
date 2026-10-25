@@ -1925,7 +1925,7 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
                 f"(全部載せは {n.full:.1f} GB。段階は good まで)",
                 f"VRAM {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are loaded in "
                 "turn"
-                f" (all at once needs {n.full:.1f} GB; level up to good)",
+                f" (all at once needs {n.full:.1f} GB; level capped at good)",
             )
         ]
     else:
@@ -1936,7 +1936,7 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
                 f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)",
                 f"VRAM {n.full:.1f} GB needed > {vram:.1f} GB: runs by offloading part of the weights to "
                 "main memory"
-                f" (slow; {n.offload:.1f} GB offloaded, {pct['offload']}%; level up to marginal)",
+                f" (slow; {n.offload:.1f} GB offloaded, {pct['offload']}%; level capped at marginal)",
             )
         ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
@@ -1973,7 +1973,7 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
                 f"(全部載せは {n.full:.1f} GB。段階は good まで)",
                 f"GPU memory {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are "
                 "loaded"
-                f" in turn (all at once needs {n.full:.1f} GB; level up to good)",
+                f" in turn (all at once needs {n.full:.1f} GB; level capped at good)",
             ),
         ),
     ):

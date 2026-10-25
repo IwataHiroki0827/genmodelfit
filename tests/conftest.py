@@ -27,9 +27,9 @@ def _pin_language(monkeypatch):
     from genmodelfit import i18n
 
     monkeypatch.setenv(i18n.ENV_VAR, "ja")
-    monkeypatch.setattr(i18n, "_os_language", lambda: "ja")
     monkeypatch.setattr(i18n, "_api_language", None)
-    monkeypatch.setattr(i18n, "_cli_language", None)
+    with i18n.forced(None):  # --lang・weekly の固定(ContextVar)も毎回外して始め、終われば戻す
+        yield
 
 
 @pytest.fixture(autouse=True)

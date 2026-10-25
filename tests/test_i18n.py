@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""表示の言語(#73): 決め方の順と、en で日本語の文字が 1 つも出ないこと、ja で今の文が出ること。
+"""表示の言語(#73): 決め方の順(既定は en)と、en で日本語の文字が 1 つも出ないこと、ja で今の文が出ること。
 
 一覧に保存された自由記述(review.note・license_evidence・description.ja・実測の source / note)は訳さないので、
 JSON ではその項目を外してから、表では一覧にある文そのものを外してから調べる。
@@ -20,7 +20,8 @@ from clihelp import run_cli
 import genmodelfit as gmf
 from genmodelfit import cli, i18n
 
-JA = re.compile(r"[぀-ヿ一-鿿＀-￯]")
+# 日本語の文字(かな・漢字・全角)と和文の約物(U+3000–303F)
+JA = re.compile(r"[　-〿぀-ヿ一-鿿＀-￯]")
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 FIXTURES = Path(__file__).parent / "fixtures"
 DIFF_PAIR = [str(FIXTURES / "diff" / "0.6.0-0.7.0" / name) for name in ("old.json", "new.json")]
@@ -28,26 +29,26 @@ DIFF_PAIR = [str(FIXTURES / "diff" / "0.6.0-0.7.0" / name) for name in ("old.jso
 
 @pytest.fixture
 def no_pin(monkeypatch):
-    """conftest の ja の固定を外す(環境変数を消し、OS の言語は試験ごとに決める)。"""
+    """conftest の ja の固定(環境変数)を外す。"""
     monkeypatch.delenv(i18n.ENV_VAR, raising=False)
 
 
 # --- 決め方の順 -----------------------------------------------------------------
 
 
-def test_default_is_os_language_then_en(no_pin, monkeypatch):
-    monkeypatch.setattr(i18n, "_os_language", lambda: "ja")
-    assert gmf.get_language() == "ja"
-    monkeypatch.setattr(i18n, "_os_language", lambda: "en")
+def test_default_is_en_even_on_a_japanese_os(no_pin, monkeypatch):
+    """既定はいつも英語。OS の言語(LANG・LC_ALL など)は見ない(2026-10-25 にオーナーが決めた)。"""
+    monkeypatch.setenv("LANG", "ja_JP.UTF-8")
+    monkeypatch.setenv("LC_ALL", "ja_JP.UTF-8")
+    monkeypatch.setenv("LC_MESSAGES", "ja_JP.UTF-8")
     assert gmf.get_language() == "en"
 
 
-def test_set_language_beats_os(no_pin, monkeypatch):
-    monkeypatch.setattr(i18n, "_os_language", lambda: "ja")
-    gmf.set_language("en")
-    assert gmf.get_language() == "en"
-    gmf.set_language(None)  # 取り消すと OS の言語に戻る
+def test_set_language_beats_default(no_pin):
+    gmf.set_language("ja")
     assert gmf.get_language() == "ja"
+    gmf.set_language(None)  # 取り消すと既定の en に戻る
+    assert gmf.get_language() == "en"
 
 
 def test_env_beats_set_language(no_pin, monkeypatch):
@@ -66,6 +67,19 @@ def test_cli_flag_beats_env(monkeypatch, capsys):
     assert gmf.get_language() == "ja"  # main が終われば --lang は残らない
 
 
+def test_cli_flag_does_not_leak_to_other_threads(no_pin):
+    """--lang の固定は ContextVar。ほかのスレッドのライブラリの呼び出しには効かない。"""
+    import threading
+
+    seen: list[str] = []
+    with i18n.forced("ja"):
+        th = threading.Thread(target=lambda: seen.append(gmf.get_language()))
+        th.start()
+        th.join()
+        assert gmf.get_language() == "ja"
+    assert seen == ["en"]
+
+
 def test_set_language_rejects_unknown():
     with pytest.raises(ValueError):
         gmf.set_language("fr")
@@ -79,65 +93,76 @@ def test_tr_and_pick(no_pin):
     assert i18n.pick({"en": "E", "ja": "J"}) == "J"
     gmf.set_language("en")
     assert i18n.tr("日本語", "English") == "English"
+    assert i18n.tr("日本語", "English").ja == "日本語"  # 保存する文のために日本語も持つ
     assert i18n.pick({"en": "E", "ja": "J"}) == "E"
     assert i18n.pick({"ja": "J"}) == "J"  # 無ければもう片方
 
 
-@pytest.mark.parametrize(
-    ("env", "ui", "expected"),
-    [
-        ({"LANG": "ja_JP.UTF-8"}, None, "ja"),
-        ({"LC_ALL": "ja_JP.UTF-8", "LANG": "en_US.UTF-8"}, None, "ja"),
-        ({"LC_ALL": "C", "LANG": "ja_JP.UTF-8"}, None, "en"),  # LC_ALL が先(POSIX の順)
-        ({"LANG": "en_US.UTF-8"}, None, "en"),
-        ({}, None, "en"),
-        ({}, 0x0411, "ja"),  # Windows: ja-JP
-        ({"LANG": "en_US.UTF-8"}, 0x0411, "ja"),  # Git Bash などの LANG より Windows の表示の言語
-        ({}, 0x0409, "en"),  # Windows: en-US
-    ],
-)
-def test_os_detection(monkeypatch, env, ui, expected):
-    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
-        monkeypatch.delenv(name, raising=False)
-    for k, v in env.items():
-        monkeypatch.setenv(k, v)
-    if ui is None:
-        monkeypatch.setattr(i18n.sys, "platform", "linux")
-    else:
-        import ctypes
+def test_text_survives_copy_and_pickle(no_pin):
+    import copy
+    import pickle
 
-        class _K32:
-            @staticmethod
-            def GetUserDefaultUILanguage():
-                return ui
-
-        class _Windll:
-            kernel32 = _K32()
-
-        monkeypatch.setattr(i18n.sys, "platform", "win32")
-        monkeypatch.setattr(ctypes, "windll", _Windll(), raising=False)
-    assert i18n._detect_os_language() == expected
-
-
-def test_os_detection_never_raises(monkeypatch):
-    import ctypes
-
-    class _Broken:
-        @property
-        def kernel32(self):
-            raise OSError("no")
-
-    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(i18n.sys, "platform", "win32")
-    monkeypatch.setattr(ctypes, "windll", _Broken(), raising=False)
-    assert i18n._detect_os_language() == "en"
+    gmf.set_language("en")
+    t = i18n.tr("日本語", "English")
+    for c in (copy.deepcopy(t), pickle.loads(pickle.dumps(t))):
+        assert c == "English" and c.ja == "日本語"
 
 
 def test_env_reaches_child_process(tmp_path):
     r = run_cli(["types", "--no-cache"], tmp_path, GENMODELFIT_LANG="en")
     assert r.returncode == 0
     assert not JA.search(r.stdout.decode("utf-8"))
+
+
+def test_child_process_defaults_to_en(tmp_path):
+    """環境変数も --lang も無ければ、日本語の OS(LANG=ja_JP)でも英語。"""
+    import subprocess
+    import sys
+
+    from clihelp import child_env
+
+    env = child_env(tmp_path)
+    env.pop(i18n.ENV_VAR, None)
+    env["LANG"] = "ja_JP.UTF-8"
+    r = subprocess.run(
+        [sys.executable, "-m", "genmodelfit", "types", "--no-cache"],
+        capture_output=True,
+        env=env,
+        timeout=120,
+        check=False,
+    )
+    assert r.returncode == 0
+    assert not JA.search(r.stdout.decode("utf-8"))
+
+
+# --- 一覧に保存する文は言語によらず日本語 ---------------------------------------------
+
+
+def test_stored_fetch_errors_are_japanese_in_en(no_pin):
+    """update が一覧(sources.warnings)に残す取得の失敗の文は、表示の言語が en でも日本語(#73)。"""
+    from genmodelfit import update
+    from genmodelfit.fetch import FetchError
+
+    gmf.set_language("en")
+
+    class _Broken:
+        def get_json(self, url):
+            raise FetchError(url, i18n.tr("JSON ではありません", "not JSON"))
+
+    _info, warn = update.latest_comfyui(_Broken())
+    assert warn is not None and "JSON ではありません" in warn and not re.search("not JSON", warn)
+    e = FetchError("https://example.invalid/x", i18n.tr("JSON ではありません", "not JSON"))
+    assert str(e).startswith("not JSON") and i18n.stored_message(e).startswith("JSON ではありません")
+
+
+def test_worker_threads_follow_the_caller_language(no_pin):
+    """HfClient.map の仕事は、呼んだ側の言語の固定(weekly の ja など)を引き継ぐ。"""
+    from genmodelfit.hf import HfClient
+
+    client = HfClient(object(), workers=4)
+    with i18n.forced("ja"):
+        got = client.map(lambda _: gmf.get_language(), range(8))
+    assert got == ["ja"] * 8
 
 
 # --- en: 日本語の文字が出ない -----------------------------------------------------
@@ -300,9 +325,8 @@ def test_en_help_has_no_japanese(capsys, args):
     _assert_no_japanese(text, " ".join([*args, "--help"]))
 
 
-def test_en_library_texts(no_pin, monkeypatch):
+def test_en_library_texts(no_pin):
     """Python から: set_language("en") で理由・注意・gate の detail が英語になる。"""
-    monkeypatch.setattr(i18n, "_os_language", lambda: "ja")
     gmf.set_language("en")
     s = gmf.system(vram_gb=8, ram_gb=32)
     for f in gmf.recommend(system_info=s, content="all", min_fit="too_tight", limit=None, all_workflows=True):
@@ -339,3 +363,29 @@ def test_ja_and_en_json_differ_only_in_text(capsys):
     ]
     assert set(ja) == set(en)
     assert [sorted(m) for m in ja["models"]] == [sorted(m) for m in en["models"]]
+
+
+# --- 説明は両方の言語で持つ -------------------------------------------------------
+
+
+def _descriptions():
+    data = Path(gmf.__file__).parent / "data"
+    for m in json.loads((data / "db.json").read_text(encoding="utf-8"))["models"]:
+        yield "db.json", m["id"], m.get("description")
+    for m in json.loads((data / "manual.json").read_text(encoding="utf-8"))["models"]:
+        yield "manual.json", m["id"], m.get("description")
+    for mid, m in json.loads((data / "overrides.json").read_text(encoding="utf-8"))["models"].items():
+        yield "overrides.json", mid, m.get("description")
+
+
+def test_every_description_has_both_languages():
+    """description を持つ項目は ja と en の両方が空でない(片方の言語の利用者だけ欠けないように。#73)。"""
+    checked = 0
+    for where, mid, d in _descriptions():
+        if not d:  # 説明なし(None・空の {})
+            continue
+        checked += 1
+        assert isinstance(d, dict), (where, mid)
+        assert (d.get("ja") or "").strip() and (d.get("en") or "").strip(), (where, mid, d)
+        assert JA.search(d["ja"]) and not JA.search(d["en"]), (where, mid)
+    assert checked > 0

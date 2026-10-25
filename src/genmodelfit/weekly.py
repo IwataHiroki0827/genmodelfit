@@ -106,12 +106,8 @@ class WeeklyRecorder(RecordingFetcher):
 def _japanese():
     """表示の言語を ja に固定する(#73)。毎週の PR の本文・結果はオーナー(日本語)向けなので、
     diff・review・update が返す文も今までどおり日本語にする。終わったら前の状態に戻す。"""
-    prev = i18n._cli_language
-    i18n._set_cli_language("ja")
-    try:
+    with i18n.forced("ja"):
         yield
-    finally:
-        i18n._set_cli_language(prev)
 
 
 def replay_fetcher(root: str | Path) -> DirFetcher:

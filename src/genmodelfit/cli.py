@@ -161,7 +161,7 @@ def format_limits(lim: dict) -> str:
             "この PC では、解像度や長さを下げても good にならない",
             "not good on this PC even at a lower resolution or length",
         )
-    ja = tr("ja", "en") == "ja"
+    ja = i18n.get_language() == "ja"
     parts = []
     for key, label, unit, label_en, unit_en in (
         ("max_side_px", "長辺 ", "px", "long side ", " px"),
@@ -1155,7 +1155,7 @@ def _diff_item(
         path = f"{it['directory']}/{it['name']}" if it.get("directory") else str(it["name"])
         sign = "+" if kind == "file_added" else "-"
         size = _gib(it["size_bytes"])
-        if tr("ja", "en") == "en":
+        if i18n.get_language() == "en":
             src = f", {it['source']}" if it.get("source") else ""
             return rank, f"file {sign} {path} ({size} GiB, license {it['license']}{src})"
         src = f"、{it['source']}" if it.get("source") else ""
@@ -1544,7 +1544,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
     for w in result.warnings:
         print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
     s = m.settings
-    if tr("ja", "en") == "en":
+    if i18n.get_language() == "en":
         unknown = "unknown"
         parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} frames" if s.frames else None]
         parts += [f"{s.seconds:g} s of audio" if s.seconds else None, f"{s.steps} steps" if s.steps else None]
@@ -1629,7 +1629,7 @@ def format_submission(data: dict[str, Any]) -> list[str]:
     mm = data.get("measurement") or {}
     tool = data.get("tool") or {}
     s = mm.get("settings") or {}
-    if tr("ja", "en") == "en":
+    if i18n.get_language() == "en":
         return _format_submission_en(data)
     gpu_bits = [
         f"{_shown(gpu.get('vram_gb'), ' GiB')}",
@@ -2753,7 +2753,7 @@ _HELP_EN_FRAGMENTS = (("「no match」", '"no match"'), ('("その他の変化")
 def _help(name: str) -> str:
     """サブコマンドの説明。日本語は今までの文のまま、英語は日本語の行を除いたもの(#73)。"""
     text = _HELP_JA[name]
-    if tr("ja", "en") == "ja":
+    if i18n.get_language() == "ja":
         return text
     for ja, en in _HELP_EN_FRAGMENTS:
         text = text.replace(ja, en)
@@ -2854,7 +2854,7 @@ EXAMPLES: dict[str, list[tuple[str, str, str]]] = {
 
 def _examples(name: str) -> str:
     """EXAMPLES の節(無ければ空)。説明は今の言語。"""
-    rows = EXAMPLES.get(name)
+    rows = EXAMPLES.get(name, [])
     if not rows:
         return ""
     width = max(len(cmd) for cmd, _, _ in rows)
@@ -2871,8 +2871,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=LANGUAGES,
         default=argparse.SUPPRESS,
         help=tr(
-            "表示の言語(既定は環境変数 GENMODELFIT_LANG、無ければ OS の言語、それも無ければ en)",
-            "display language (default: $GENMODELFIT_LANG, else the OS language, else en)",
+            "表示の言語(既定は環境変数 GENMODELFIT_LANG、無ければ en)",
+            "display language (default: $GENMODELFIT_LANG, else en)",
         ),
     )
     json_help = tr("JSON で出す", "output JSON")
@@ -3932,23 +3932,27 @@ def main(argv: list[str] | None = None) -> int:
             with contextlib.suppress(AttributeError, ValueError, OSError):
                 stream.reconfigure(encoding="utf-8")
     argv = sys.argv[1:] if argv is None else argv
-    before = i18n._cli_language
-    i18n._set_cli_language(_lang_in(argv))  # 説明の文を作る前に言語を決める(#73)
-    try:
+    lang = _lang_in(argv)  # 説明の文を作る前に言語を決める(#73)
+    # ContextVar で固定するので、ほかのスレッドのライブラリの呼び出しには効かず、main を出れば元に戻る
+    with i18n.forced(lang) if lang else contextlib.nullcontext():
         return _main(argv)
-    finally:
-        i18n._set_cli_language(before)
+
+
+def _is_lang_flag(a: str) -> bool:
+    """--lang と、argparse が受ける略し方(--la・--lan。--l は --limit などと紛れるので数えない)。"""
+    return len(a) >= 4 and "--lang".startswith(a)
 
 
 def _lang_in(argv: list[str]) -> str | None:
-    """--lang X / --lang=X を先に読む(-- より後は見ない)。正しくない値は None(argparse が誤りにする)。"""
+    """--lang X / --lang=X(略した --lan X も)を先に読む(-- より後は見ない)。
+    正しくない値は None(argparse が誤りにする)。"""
     found = None
     for k, a in enumerate(argv):
         if a == "--":
             break
-        if a == "--lang" and k + 1 < len(argv):
+        if _is_lang_flag(a) and k + 1 < len(argv):
             found = argv[k + 1]
-        elif a.startswith("--lang="):
+        elif "=" in a and _is_lang_flag(a.split("=", 1)[0]):
             found = a.split("=", 1)[1]
     return found if found in LANGUAGES else None
 
@@ -3959,6 +3963,11 @@ def _main(argv: list[str]) -> int:
         parser.print_help()
         return 0
     args = parser.parse_args(argv)
+    chosen = getattr(args, "lang", None)
+    # 先に読めなかった形の --lang(念のため)。説明の文から作り直す
+    if chosen and chosen != i18n.get_language():
+        with i18n.forced(chosen):
+            return _main(argv)
     # 使い方の誤り(argparse と同じく終了コード 2)
     if getattr(args, "min_fit", None) is not None and (
         getattr(args, "fit", None) is not None or getattr(args, "perfect", False)
