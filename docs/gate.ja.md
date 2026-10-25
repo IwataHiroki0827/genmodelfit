@@ -65,7 +65,7 @@ r.auto, r.held_by, r.to_dict()
 - `checks` は下の表の順に並ぶ。ComfyUI のモデル(`runtime` が `comfyui` か null)は `app_runtime` を除く 10 個。
 - `runtime` が `comfyui` でも null でもないモデルは、`official_workflow`・`custom_nodes`・`comfyui_version` の位置に `app_runtime` が 1 つ入って 8 個。
 - `held_by[0]`(最初に落ちた条件)は、表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)に短い名前(`workflow` など)で出る。`gate --only-held` には `held:<id>` で出る。
-- `detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
+- `detail` は人が読む文で、表示の言語(`en` / `ja`。`--lang`・`GENMODELFIT_LANG`)で出る(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件
 

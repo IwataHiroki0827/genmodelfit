@@ -65,7 +65,7 @@ The shape of `to_dict()`:
 - `checks` follows the order of the table below. A ComfyUI model (`runtime` is `comfyui` or null) has 10: every row except `app_runtime`.
 - For a model whose `runtime` is neither `comfyui` nor null, one `app_runtime` takes the place of `official_workflow`, `custom_nodes` and `comfyui_version`, so there are 8.
 - `held_by[0]` (the first failed check) is shown in the Verified column of the tables (called Auto up to 0.5.0; it shows JSON `auto`) as a short name such as `workflow`. In `gate --only-held` it appears as `held:<id>`.
-- `detail` is Japanese text for people. The wording may change; machines should read `id` and `passed`.
+- `detail` is text for people, in the display language (`en` / `ja`; `--lang`, `GENMODELFIT_LANG`). The wording may change; machines should read `id` and `passed`.
 
 ## Checks
 

@@ -87,7 +87,7 @@ credentials never attached (tests/test_privacy.py).
 | `commit_limit_gb`, `commit_used_gb` | float \| null | Windows commit limit (RAM + page file) and current commit (`GlobalMemoryStatusEx`) |
 | `other_gpus` | Adapter[] | display adapters of any vendor. AMD / Intel / Apple ones are classified (`usable`, `reason`); usable ones also appear in `gpus` when no NVIDIA GPU is usable. Empty unless checked |
 | `other_gpus_checked` | bool | whether `other_gpus` was looked up: by default only when `nvidia-smi` found no NVIDIA GPU and `--vram` is not given; always with `system --all-gpus` |
-| `notes` | str[] | what detection found or could not find (Japanese): why a GPU is judged as CPU, old driver, non-NVIDIA GPUs, page file, WSL / container limits |
+| `notes` | str[] | what detection found or could not find (in the display language, `en` / `ja`): why a GPU is judged as CPU, old driver, non-NVIDIA GPUs, page file, WSL / container limits |
 
 With `--ram`, the swap / commit values are null (another PC is assumed). Detection never fails: unknown values are
 null and the reason is in `notes`. Host name, user name, GPU UUID, PCI bus id and device instance ids are never
@@ -118,7 +118,7 @@ Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` /
 `HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; Intel Arc on Linux: the
 smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` / `wmi` / `sysfs` / `name` / null),
 `source` (`wmi` / `lspci` / `system_profiler`). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
-null for NVIDIA, which `nvidia-smi` decides), `reason` (Japanese sentence: why it is or is not used), `shared_gb`
+null for NVIDIA, which `nvidia-smi` decides), `reason` (a sentence in the display language: why it is or is not used), `shared_gb`
 (Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
 `"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
 Added in 0.9.0: `pci_id` (str | null: PCI model ID `vendor:device` from Windows WMI `PNPDeviceID` or Linux
@@ -412,7 +412,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `held_reasons` | str[] | failed gate checks (= `gate.held_by`) |
 | `community` | bool | a community template (the index's `username` is not ComfyUI; [sources.md](sources.md)) |
 | `estimate_confidence` | str | `measured` / `estimated` (= `estimate.basis`; the finer level is `estimate.basis_detail`) |
-| `notes` | str[] | reasons in Japanese (= `estimate.reasons`) |
+| `notes` | str[] | reasons in the display language (`en` / `ja`; = `estimate.reasons`) |
 | `files_count` | int | download files listed |
 | `use` | str | the use shown (Uses above) |
 | `precision` | str \| null | the chosen entry's precision (`ModelEntry.precision`: `bf16`, `fp8`, `int8`, `gguf-q8_0`, …; null = unknown, shown as `?`, ranked like full precision). Where it came from: `precision_source` (next row) |
@@ -463,7 +463,7 @@ VRAM which does not depend on the PC, and `basis` only turns `measured` when a G
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
-| `reasons` | str[] | human-readable reasons (Japanese) |
+| `reasons` | str[] | human-readable reasons, in the display language (`en` / `ja`) |
 | `settings` | object \| null | settings actually judged (unset items filled from the measurement, else per-modality defaults) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
@@ -571,7 +571,7 @@ Computed every time (never stored in `db.json`). Details and the default license
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
 | `checks` | Check[] | the 10 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known`, `reviewed` (0.6.0, #42: passes unless `review.status` is not `ok`; always last, so `held_by[0]` of the older checks is unchanged). For a model whose `runtime` is neither `comfyui` nor null (0.5.0), the three ComfyUI checks are replaced by one `app_runtime` check that never passes (8 checks) |
 
-Check: `id` (stable, machine-readable), `passed` (bool), `detail` (Japanese, for people; wording may change).
+Check: `id` (stable, machine-readable), `passed` (bool), `detail` (for people, in the display language `en` / `ja`; wording may change).
 
 ## gate
 
@@ -941,7 +941,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `saved_to` | str \| null | where the JSON was written (`--output`, default `<cache>/measurements/<model>_<gpu>_<UTC>.json`); null when not saved |
 | `not_saved` | str | only when not saved: why (failed or non-standard results are not cached unless `--save-failed` / `--save-nonstandard` / `--output`) |
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
-| `warnings` | str[] | settings that could not be applied, uploaded inputs, … (Japanese) |
+| `warnings` | str[] | settings that could not be applied, uploaded inputs, … (in the display language, `en` / `ja`) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
 | `submission` | object | only with `--submission`: `{saved_to, path_in_repo}` (the submission JSON, see contrib) |
 
@@ -1182,7 +1182,7 @@ DownloadPlan:
 | `model_name` | str | the model name shown in the tables |
 | `modality`, `content`, `precision` | str / str / str \| null | as in ModelEntry |
 | `fit_level`, `run_mode_label`, `auto` | str / str / bool | the judgement on this PC (as in `recommend`) |
-| `chosen` | str | why this workflow was chosen (Japanese) |
+| `chosen` | str | why this workflow was chosen (in the display language, `en` / `ja`) |
 | `layout` | str | `comfyui` (`--comfyui-dir`: `root` is `<dir>/models`) / `output` (`--output-dir` or the default; same layout) |
 | `root` | str | absolute path of the folder files go into (`<root>/<directory>/<name>`) |
 | `files` | PlannedFile[] | one per file of the workflow |
@@ -1193,7 +1193,7 @@ DownloadPlan:
 | `disk_needed_bytes` | int | `download_bytes` + `margin_bytes` (0 when nothing to download) |
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` in bytes |
-| `blocked` | str[] | why it will not download (Japanese). Empty = can download |
+| `blocked` | str[] | why it will not download (in the display language, `en` / `ja`). Empty = can download |
 | `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
 | `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto` |
 | `license_url` | str \| null | the model's license page |
@@ -1215,7 +1215,7 @@ PlannedFile:
 | `status` | str | `download` / `resume` (a `.part` exists) / `present` (already there, sha256 matches) / `conflict` (a different file has the name; never overwritten) / `unavailable` (see `reason`) |
 | `part_bytes` | int | size of the existing `.part` |
 | `remaining_bytes` | int | bytes still to download for this file |
-| `reason` | str \| null | why `conflict` / `unavailable` (Japanese) |
+| `reason` | str \| null | why `conflict` / `unavailable` (in the display language, `en` / `ja`) |
 | `verified` | bool | for `present`: the sha256 was measured while planning (false with `verify_existing=False`: size only). `download` always measures existing files again before skipping them |
 
 DownloadResult:
@@ -1260,6 +1260,7 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia)}` or `Gpu`. The largest usable NVIDIA GPU is judged; non-NVIDIA ones never are. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, [hardware.md](hardware.md)); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU. `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
+| `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | the display language of the texts that genmodelfit returns (`estimate.reasons`, `notes`, gate `detail`, error messages, …): `"en"` or `"ja"`; `None` clears it. Order (first wins): the CLI `--lang`, the environment variable `GENMODELFIT_LANG`, `set_language()`, the OS language (`ja` when it is Japanese), `en`. Only the language of those texts changes; keys, ids, codes, scores and judgments do not. Free text stored in the list (`review.note`, `license_evidence`, measurement `source` / `note`) is not translated. Other values raise `ValueError` (#73) |
 
 Fetching the distributed list from Python (0.7.1, #58). Also in `__all__`: `gmf.RemoteError` (a `DatabaseError`):
 

@@ -7,6 +7,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Human-facing text now comes out in exactly one language, English (`en`) or Japanese (`ja`) (#73): table section
+  headers (`== image` instead of `== image (画像)` in English), `types`, `info` labels and descriptions
+  (`description[lang]`, falling back to the other language), estimate reasons and `notes`, limits, gate `detail`,
+  errors and warnings, `--help` of every command, and the messages of `download` / `update` / `bench` / `contrib` /
+  `review` / `diff`. JSON keys, ids, codes (`fit_level`, `basis`, check ids, `vram_free_short`, …), scores, judgments
+  and ordering do not change; only the language of the texts does. Free text stored in the list (`review.note`,
+  `license_evidence`, measurement `source` / `note`) is not translated. The Japanese output is unchanged.
+
+### Added
+
+- `--lang en|ja` on every command, the environment variable `GENMODELFIT_LANG`, and `gmf.set_language()` /
+  `gmf.get_language()` (#73). Order: `--lang`, `GENMODELFIT_LANG`, `set_language()`, the OS language (`ja` when it
+  is Japanese), then `en`. The weekly PR body stays Japanese.
+- An EXAMPLES section in `genmodelfit --help` and in the `--help` of `recommend`, `fit`, `info`, `search` and
+  `download`, in the display language.
+
 ## [0.9.2] - 2026-10-24
 
 ### Fixed

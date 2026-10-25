@@ -163,6 +163,13 @@ db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", stat
 ほかの利用者の実測は、`--vram` が実測した GPU の VRAM と 3% 以内のときだけ使います。
 `--width`・`--height`・`--frames`・`--length`・`--precision` で設定を決めて判定できます。
 
+### 表示の言語
+
+出力は英語か日本語のどちらか 1 つで出る(混ぜない)。既定は OS の言語に従う(日本語なら日本語、それ以外は英語)。
+どのコマンドでも `--lang en|ja`(例 `genmodelfit recommend --lang en`)、環境変数 `GENMODELFIT_LANG=en|ja`、
+Python の `gmf.set_language("ja")` で選べる(優先は `--lang`、環境変数、`set_language` の順)。変わるのは文
+(理由・注意・エラー・`--help`)だけで、JSON のキー・ID・コード・判定はどちらの言語でも同じ。
+
 ## 3. 結果
 
 ### 例
