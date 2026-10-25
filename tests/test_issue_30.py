@@ -80,7 +80,7 @@ def test_fit_table_uses_question_mark_for_unknown_precision(capsys):
     code = cli.main(["fit", "--vram", "24", "--ram", "128", "--all", "--all-workflows", "--sort", "name"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "? = unknown (precision, license, size: not judged), - = not applicable" in out
+    assert "? = 分からない(精度・ライセンス・大きさ。判定していない)、- = 当てはまらない" in out
     ids = {m.id for m in unknown}
     rows = [line for line in out.splitlines() if any(i[:18] in line for i in ids)]
     assert rows and all(" ? " in r for r in rows)  # Prec が ?(前は -)

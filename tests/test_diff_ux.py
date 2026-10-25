@@ -60,8 +60,10 @@ def _has(out: str, text: str) -> bool:
 
 
 def _width_ok(text: str) -> None:
+    """幅 100 に収まる。ただし 1 つで幅より長い英数字の並び(パス・ID)だけの行ははみ出してよい
+    (英数字の並びの途中では折り返さない。#76)。"""
     for line in text.splitlines():
-        assert cell_len(line) <= MAX_COLS, line
+        assert cell_len(line) <= MAX_COLS or len(line.split()) == 1, line
 
 
 # ---- 本物の一覧(0.6.0 → 0.7.0) ----
@@ -380,7 +382,8 @@ def test_no_args_uses_cache(capsys, tmp_path):
     _width_ok(out)
     lines = out.splitlines()
     assert lines[0].startswith("前: 同梱の一覧(genmodelfit ")
-    assert lines[1].startswith("後: 取ってきた一覧(") and str(cache / "db.json") in out.replace("\n    ", "")
+    # 長いパスは「(」ごと次の行に送る(行の終わりに「(」を置かない。#76)
+    assert lines[1].startswith("後: 取ってきた一覧") and str(cache / "db.json") in out.replace("\n    ", "")
     assert f"{bundled.generated_at}  {len(bundled.models)} 件" in lines[0]
     assert _block(out, m.id) and "言語(指示)" in _block(out, m.id)
     d = json.loads(_run(capsys, "--json")[1])
@@ -400,7 +403,7 @@ def test_one_arg_compares_with_bundled(capsys):
 def test_two_args_header(capsys):
     _, out = _run(capsys, str(OLD), str(NEW))
     head, _ = out.split("\n増えた ", 1)
-    old_part, new_part = head.split("\n後: ", 1)  # 長いパスは折り返されるので、空白を除いて比べる
+    old_part, new_part = head.split("\n後:", 1)  # 長いパスは次の行に送られるので、空白を除いて比べる
 
     def flat(t: str) -> str:
         return "".join(t.split())
@@ -762,7 +765,7 @@ def test_old_cache_warns(capsys, tmp_path):
     bundled["generated_at"] = "2000-01-01T00:00:00Z"
     (cache / "db.json").write_text(json.dumps(bundled, ensure_ascii=False), encoding="utf-8")
     code, out = _run(capsys)
-    assert code == 0 and "注意:" in out and "古いです" in out and _has(out, "update --from-release")
+    assert code == 0 and "注意:" in out and _has(out, "古いです") and _has(out, "update --from-release")
     _width_ok(out)
     d = json.loads(_run(capsys, "--json")[1])
     assert d["warnings"] and "古いです" in d["warnings"][0]
@@ -981,9 +984,9 @@ def test_older_new_list_warns_for_one_and_two_args(capsys, tmp_path):
     older["generated_at"] = "2000-01-01T00:00:00Z"
     p = _write_raw(tmp_path, "older.json", older)
     _, out = _run(capsys, str(p))  # 同梱 → 古いファイル
-    assert "注意:" in out and "古いです" in out
+    assert "注意:" in out and _has(out, "古いです")
     _, out = _run(capsys, str(NEW), str(p))
-    assert "注意:" in out and "向きが逆" in out
+    assert "注意:" in out and _has(out, "向きが逆")
     _, out = _run(capsys, str(p), str(NEW))
     assert "注意:" not in out
 

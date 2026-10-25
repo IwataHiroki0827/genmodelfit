@@ -707,13 +707,21 @@ def test_system_text(monkeypatch, capsys):
         commit_used=60 * GB,
     )
     monkeypatch.setattr(hardware, "read_memory", lambda: mem)
-    assert cli.main(["system"]) == 0
+    assert cli.main(["system", "--lang", "en"]) == 0
     out = capsys.readouterr().out
     assert "compute capability 8.6 (ampere), driver 566.03, cuda: used for judging" in out
     assert "PyTorch CUDA builds that run here: cu129, cu128, cu126" in out
     assert "Pagefile: 35.0 GB now, system managed (grows); commit 60.0 / 67.0 GB in use" in out
     assert "3.6 GB used by other apps" in out and "Notes:" in out
     assert "Display adapters" not in out  # NVIDIA があれば既定では調べない
+    _patch_nvidia(monkeypatch, fx("nvsmi_rtx3070_win.csv"))  # nvidia-smi の答えは 1 回分
+    assert cli.main(["system"]) == 0  # 日本語(#76)
+    out = capsys.readouterr().out
+    assert "compute capability 8.6(ampere)、ドライバ 566.03、cuda: 判定に使う" in out
+    assert "この PC で動く PyTorch の CUDA 版: cu129, cu128, cu126" in out
+    assert "ページファイル: 今 35.0 GB、OS が管理(増える)。コミット 60.0 / 67.0 GB 使用中" in out
+    assert "ほかのアプリが 3.6 GB 使用中" in out and "\n注意:\n" in out
+    assert "画面の部品" not in out
 
 
 def test_linux_nvidia_without_nvidia_smi_is_noted(monkeypatch):

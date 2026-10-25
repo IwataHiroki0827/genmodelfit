@@ -3,7 +3,7 @@ import io
 import pytest
 from rich.cells import cell_len
 
-from genmodelfit import cli
+from genmodelfit import cli, i18n
 from genmodelfit.db import load
 from genmodelfit.groups import build_index
 from genmodelfit.models import Estimate, Gpu, ModelEntry, SystemInfo
@@ -88,6 +88,10 @@ def test_held_reason_and_uncensored_marker():
     assert row_of(out, "x").split()[4:6] == ["N", "x"]
     assert row_of(out, "y").split()[4:6] == ["Y", "y"]  # 空にしない
     assert header_of(out)[:5] == ["Type", "Status", "Score", "Censored", "Model"]
+    # 列の名前は英語のまま、説明は今の言語(#76)
+    assert "Censored: N = 安全のための絞り込みを外したモデル・成人向けのモデル" in out
+    with i18n.forced("en"):
+        out = render([fit("x", gate=gate, content="uncensored")])
     assert "Censored: N = safety filter removed / adult model" in out
 
 
@@ -147,7 +151,7 @@ def test_cli_table_real_db(capsys):
     assert cli.main(["fit", "--vram", "8", "--ram", "32", "--no-cache", *every_license]) == 0
     out = capsys.readouterr().out
     lines = out.splitlines()
-    assert lines[0].startswith("PC: ") and lines[1].startswith("All models: ")
+    assert lines[0].startswith("PC: ") and lines[1].startswith("全モデル: ")
     assert "SDXL" in out and "image_sdxl_simple" not in out  # まとめた表はモデルの表示名
     db = load(use_cache=False)  # 長い ID は省略記号で詰めるので、行数で確かめる
     rows = [x for x in lines if "● " in x]
@@ -189,7 +193,9 @@ def test_no_gpu_too_tight_shows_the_minimum_vram():
     f = fit("needgpu", "too_tight", mode="none")
     nogpu = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[])
     out = render([f], system=nogpu)
-    assert out.startswith("PC: no GPU (CPU only), RAM 32.0 GiB")
+    assert out.startswith("PC: GPU なし(CPU だけ)、メモリ 32.0 GiB")
+    with i18n.forced("en"):
+        assert render([f], system=nogpu).startswith("PC: no GPU (CPU only), RAM 32.0 GiB")
     row = row_of(out, "needgpu")
     assert " 4.0 " in row and "%" not in row
 
@@ -210,15 +216,33 @@ def test_measured_mark_and_status_mark():
     assert row.split()[1:3] == ["●", "Perfect"] and " 3.0m " in row
 
 
-def test_header_hidden_and_count():
+@pytest.mark.parametrize(
+    "lang,title,pc_line,head",
+    [
+        (
+            "en",
+            "Recommended",
+            "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB (32.0 available)",
+            "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)",
+        ),
+        (
+            "ja",
+            "おすすめ",
+            "PC: Test GPU VRAM 8.0 GiB、メモリ 32.0 GiB(空き 32.0)",
+            "おすすめ: 5 件中 1 件(隠した 5 件: 無検閲 3・補助ツール 2)",
+        ),
+    ],
+)
+def test_header_hidden_and_count(lang, title, pc_line, head):
     buf = io.StringIO()
     hidden = {"uncensored": 3, "tools": 2}
-    print_fit_table(
-        [fit("a")], title="Recommended", system=pc(), console=make_console(buf), matched=5, hidden=hidden
-    )
+    with i18n.forced(lang):
+        print_fit_table(
+            [fit("a")], title=title, system=pc(), console=make_console(buf), matched=5, hidden=hidden
+        )
     lines = buf.getvalue().splitlines()
-    assert lines[0] == "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB (32.0 available)"
-    assert lines[1] == "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)"
+    assert lines[0] == pc_line
+    assert lines[1] == head
     assert any("--uncensored" in x for x in lines)
 
 

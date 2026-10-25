@@ -446,6 +446,9 @@ def test_cli_gate_policy_options(small_db, tmp_path, capsys):
     assert s["failing"]["comfyui_version"] == 3 and s["first_failing"]["comfyui_version"] == 2
     assert cli.main(["gate", "--db", small_db, "--only-auto"]) == 0
     text = capsys.readouterr().out
+    assert "出せる 1 / 保留 2" in text and "  ok  出せる" in text
+    assert cli.main(["gate", "--db", small_db, "--only-auto", "--lang", "en"]) == 0
+    text = capsys.readouterr().out
     assert "auto 1 / held 2" in text and "  ok  auto" in text
 
 

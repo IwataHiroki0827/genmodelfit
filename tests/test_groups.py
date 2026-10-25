@@ -244,7 +244,7 @@ def test_broken_db_is_a_clean_error(tmp_path, capsys, content):
     assert set(out) == {"genmodelfit", "command", "error"} and out["error"]
     assert cli.main(["recommend", "--db", str(p)]) == 1
     captured = capsys.readouterr()
-    assert captured.out == "" and captured.err.startswith("error: ")
+    assert captured.out == "" and captured.err.startswith("エラー: ")
 
 
 def test_broken_db_in_subprocess_has_no_traceback(tmp_path):

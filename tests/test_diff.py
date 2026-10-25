@@ -210,7 +210,9 @@ def test_cli_json_and_text(pair, tmp_path, capsys):
     text = capsys.readouterr().out
     flat = "".join(text.split())  # 長い行は折り返されるので、空白を除いて見る
     assert gone.id in flat and "--allで全部" in flat and "-n" in text
-    assert all(cell_len(line) <= 100 for line in text.splitlines()), max(text.splitlines(), key=cell_len)
+    # 1 つで幅より長い並び(長いライセンス名)は途中で切らず、その行だけはみ出す(#76)
+    wide = [line for line in text.splitlines() if cell_len(line) > 100]
+    assert all(len(line.split()) == 1 for line in wide), wide
 
 
 def test_cli_bad_file(tmp_path, capsys):

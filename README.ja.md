@@ -167,11 +167,18 @@ db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", stat
 
 出力の既定は英語。日本語にするには、どのコマンドでも `--lang ja` を付ける(例 `genmodelfit recommend --lang ja`)か、
 環境変数 `GENMODELFIT_LANG=ja` を置くか、Python で `gmf.set_language("ja")` を呼ぶ(優先は `--lang`、環境変数、
-`set_language` の順。OS の言語は見ない)。英語の出力には日本語が出ない。変わるのは文(理由・注意・エラー・`--help`)
-だけで、JSON のキー・ID・コード・判定はどちらの言語でも同じ。
-日本語の出力は 0.9.2 と同じ(表の最後の説明や `--help` の一部などに英語が混ざる)。違うのは、`info` が日本語の説明だけを
-出すことと、`--help` に `--lang` と例が増えたこと。日本語の出力を日本語だけにするのは
-[#76](https://github.com/laxshmate/genmodelfit/issues/76) で予定している。
+`set_language` の順。OS の言語は見ない)。変わるのは文(理由・注意・エラー・表の見出しと説明・`--help`)だけで、
+JSON のキー・ID・コード・判定はどちらの言語でも同じ。英語の出力には日本語が出ず、日本語の出力には英語だけの文が出ない
+(1 行に 2 つの言語の文を並べない)。
+
+どちらの言語でも英語のまま出すもの: 表の列の名前(`Type`・`Status`・`Score`・`Model`・`Use`・`Prec`・`VRAM`・`Mem%`・
+`Mode`・`License`・`Verified`・`Censored`)、段階の名前(`Perfect`・`Good`・`Marginal`・`Too tight`)、動かし方の印
+(`GPU`・`GPU~`・`GPU+RAM`・`CPU`)、単位、ID・ライセンスの ID・オプションの名前など機械が読む値。表の幅をそろえ、
+`--fit`・`--sort` などに書く名前と同じにするためです。日本語の出力では、表の下の説明がこれらを日本語で説明します。
+種類の見出しは `== 画像 (image): …` のように、`-m` に書く名前も出します。
+
+長い行は全角を 2 桁で数えて折り返します。ファイル名・URL・オプション・単位つきの数の途中では切らず(1 つで幅より
+長ければ、その行だけはみ出す)、行の頭に「、。)」を、行の終わりに「(「」を置きません。
 
 ## 3. 結果
 
@@ -181,52 +188,52 @@ VRAM 8 GiB・メモリ 32 GiB の PC での `genmodelfit recommend --lang ja`(�
 
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2 --lang ja
-PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, too tight 136; 25
-    more workflows merged into their models)
-== image (画像): top 2 of 37  (-m image for more)
+PC: VRAM 8.0 GiB と仮定(--vram)、メモリ 32.0 GiB(--ram)
+おすすめ: 80 件中 12 件(隠した 224 件: 無検閲 26・補助ツール 34・ライセンス不明 28・動かない 136。ほ
+    かに 25 件のワークフローをモデルにまとめた)
+== 画像 (image): 37 件中 上位 2 件(続きは -m image)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 image ● Marginal     54 Z-Image-Turbo            gen+5   int8  7.6m  96% GPU~    apache-2.0 yes
 image ● Marginal     42 MOSS-Image SFT           gen+1   int8   4.2  53% GPU+RAM apache-2.0 yes
-== video (動画): top 2 of 4  (-m video for more)
+== 動画 (video): 4 件中 上位 2 件(続きは -m video)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 video ● Marginal     50 Wan 2.1 1.3B T2V         gen     fp16  7.8m  97% GPU~    apache-2.0 yes
 video ● Marginal     39 Wan 2.1 ControlNet 1.3B  edit    bf16   7.7  96% GPU+RAM apache-2.0 yes
-== music (音楽): top 2 of 10  (-m music for more)
+== 音楽 (music): 10 件中 上位 2 件(続きは -m music)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 music ● Good         65 ACE-Step 1.5 Turbo       gen+2   bf16  6.0m  76% GPU~    mit        yes
 music ● Marginal     40 ACE-Step 1.5XL Turbo     gen     bf16   5.2  65% GPU+RAM mit        yes
-== sfx (効果音): top 2 of 2  (-m sfx for more)
+== 効果音 (sfx): 2 件中 上位 2 件(続きは -m sfx)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 sfx   ● Perfect      66 stable-audio-3-small-sfx gen     fp32   4.7  59% GPU     other      license
 sfx   ● Good         54 stable-audio-open-1.0    gen+1   fp32   4.9  61% GPU~    other      license
-== tts (読み上げ): top 2 of 20  (-m tts for more)
+== 読み上げ (tts): 20 件中 上位 2 件(続きは -m tts)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 tts   ● Perfect      80 Chatterbox               gen     fp32   3.5  44% GPU     mit        workflow
 tts   ● Perfect      80 VieNeu-TTS-v3-Turbo      gen     q8     1.6  21% GPU     apache-2.0 workflow
-== 3d (3D): top 2 of 7  (-m 3d for more)
+== 3D (3d): 7 件中 上位 2 件(続きは -m 3d)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 3d    ● Good         64 HY 3D 2.0                gen     fp16  6.7m  84% GPU     other      license
 3d    ● Good         57 TripoSplat               gen     fp16   5.8  72% GPU     other      license
-Order: runs, Verified, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
-Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
-Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
-Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.
-One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
-Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
-Note: 26 uncensored model(s) hidden; add --uncensored to show them.
-Note: 28 model(s) with an unknown license hidden; add --any-license to show them.
-? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).
+並び: 動く → Verified → Perfect/Good → Marginal → Score。Score 0〜100。VRAM = 要る GiB(m = 実測)。
+Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。
+段階の上限: GPU~ は Good まで、GPU+RAM と CPU は Marginal まで(Mem% が低くても)。
+Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。Verified = yes か最初に落ちた条件。
+1 行に 1 モデル: Prec = 載る中で一番高い精度、+N = ほかのワークフローの数(--all-workflows)。
+m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。
+注意: 無検閲のモデル 26 件を隠しました。出すなら --uncensored。
+注意: ライセンスの分からないモデル 28 件を隠しました。出すなら --any-license。
+? = 分からない(精度・ライセンス・大きさ。判定していない)、- = 当てはまらない(動かないなど)。
 ```
 
 最初の行は PC と、隠したモデルの数と理由です。最後の行は印の説明です。
-`fit` は 1 つの表で出します(VRAM 24 GiB・メモリ 128 GiB、画像だけ、先頭の 6 行):
+`fit` は 1 つの表で出します(VRAM 24 GiB・メモリ 128 GiB、画像だけ、先頭の 6 行。`--lang ja`):
 
 ```
-$ genmodelfit fit --vram 24 --ram 128 -m image -n 6
-PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
-All models: 6 of 60 (218 hidden: other types 166, uncensored 21, tools 19, license unknown 12; 51
-    more workflows merged into their models)
+$ genmodelfit fit --vram 24 --ram 128 -m image -n 6 --lang ja
+PC: VRAM 24.0 GiB と仮定(--vram)、メモリ 128.0 GiB(--ram)
+全モデル: 60 件中 6 件(隠した 218 件: ほかの種類 166・無検閲 21・補助ツール 19・ライセンス不明 12。
+    ほかに 51 件のワークフローをモデルにまとめた)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 image ● Perfect      90 SDXL1.0 Base             gen+3   fp16  8.0m  33% GPU     openrail++ license
 image ● Perfect      84 MOSS-Image SFT           gen+1   int8  13.8  58% GPU     apache-2.0 yes
@@ -234,7 +241,7 @@ image ● Perfect      83 FLUX.2 [Klein] 4B Base   edit    fp8   13.2  55% GPU  
 image ● Perfect      82 MOSS-Image Base          gen+1   int8  13.8  58% GPU     apache-2.0 yes
 image ● Perfect      81 Anima Base 1.0           gen+3   bf16   7.1  30% GPU     other      license
 image ● Perfect      80 Anima Preview 3 Base     gen     bf16   7.0  29% GPU     other      license
-Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured.
+並び: Type → Status → Score(--sort)。Score 0〜100。VRAM = 要る GiB(m = 実測)。
 …
 ```
 

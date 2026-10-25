@@ -7,6 +7,7 @@ CLI の表示と JSON を確かめる。時刻はすべて固定する。
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -176,6 +177,11 @@ def test_cli_system_text_shows_expired(cache, capsys, monkeypatch):
 
     monkeypatch.setattr(gate, "_now", lambda: CHECKED + timedelta(days=42))
     assert cli.main(["system", "--no-cache", "--vram", "8", "--ram", "32"]) == 0
+    out = capsys.readouterr().out
+    assert "=== 一覧 ===" in out
+    assert "期限切れ" in out and "update --from-release" in out
+    assert re.search(r"自動のおすすめ: \d+ 件中 0 件", out)
+    assert cli.main(["system", "--no-cache", "--vram", "8", "--ram", "32", "--lang", "en"]) == 0
     out = capsys.readouterr().out
     assert "=== Data ===" in out
     assert "EXPIRED" in out and "update --from-release" in out
