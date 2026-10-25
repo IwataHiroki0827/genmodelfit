@@ -13,15 +13,19 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 
+from . import i18n
 from ._version import __version__
 from .db import Database, DatabaseError
 from .db import load as load_db
 from .estimate import GIB, estimate, load_coefficients
 from .hardware import detect
+from .i18n import LANGUAGES, pick, tr
 from .models import FIT_LEVELS, MODALITIES, Settings, SystemInfo
 from .recommend import CONTENT_FILTERS, DEFAULT_CONTENT, FIT_FILTERS, SORTS, select
 
@@ -34,9 +38,13 @@ def _positive_int(text: str) -> int:
     try:
         v = int(text)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"整数を指定してください: {text}") from None
+        raise argparse.ArgumentTypeError(
+            tr(f"整数を指定してください: {text}", f"must be an integer: {text}")
+        ) from None
     if v <= 0:
-        raise argparse.ArgumentTypeError(f"1 以上を指定してください: {text}")
+        raise argparse.ArgumentTypeError(
+            tr(f"1 以上を指定してください: {text}", f"must be 1 or more: {text}")
+        )
     return v
 
 
@@ -44,9 +52,13 @@ def _positive_float(text: str) -> float:
     try:
         v = float(text)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"数を指定してください: {text}") from None
+        raise argparse.ArgumentTypeError(
+            tr(f"数を指定してください: {text}", f"must be a number: {text}")
+        ) from None
     if not v > 0 or v == float("inf"):
-        raise argparse.ArgumentTypeError(f"0 より大きい値を指定してください: {text}")
+        raise argparse.ArgumentTypeError(
+            tr(f"0 より大きい値を指定してください: {text}", f"must be greater than 0: {text}")
+        )
     return v
 
 
@@ -54,9 +66,13 @@ def _non_negative_float(text: str) -> float:
     try:
         v = float(text)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"数を指定してください: {text}") from None
+        raise argparse.ArgumentTypeError(
+            tr(f"数を指定してください: {text}", f"must be a number: {text}")
+        ) from None
     if not v >= 0 or v == float("inf"):
-        raise argparse.ArgumentTypeError(f"0 以上を指定してください: {text}")
+        raise argparse.ArgumentTypeError(
+            tr(f"0 以上を指定してください: {text}", f"must be 0 or more: {text}")
+        )
     return v
 
 
@@ -141,20 +157,32 @@ def format_limits(lim: dict) -> str:
     caps = set(lim.get("at_cap") or [])
     keys = [k for k in ("max_side_px", "max_frames", "max_seconds") if k in lim]
     if keys and all(lim[k] is None for k in keys):
-        return "この PC では、解像度や長さを下げても good にならない"
+        return tr(
+            "この PC では、解像度や長さを下げても good にならない",
+            "not good on this PC even at a lower resolution or length",
+        )
+    ja = tr("ja", "en") == "ja"
     parts = []
-    for key, label, unit in (
-        ("max_side_px", "長辺 ", "px"),
-        ("max_frames", "", " コマ"),
-        ("max_seconds", "", " 秒"),
+    for key, label, unit, label_en, unit_en in (
+        ("max_side_px", "長辺 ", "px", "long side ", " px"),
+        ("max_frames", "", " コマ", "", " frames"),
+        ("max_seconds", "", " 秒", "", " s"),
     ):
         if key not in lim:
             continue
         v = lim[key]
-        if v is None:
+        if not ja:
+            name = (label_en or unit_en).strip()
+            if v is None:
+                parts.append(f"{name}: not good even when lowered")
+            else:
+                parts.append(f"{label_en}{v}{unit_en}{' (the highest checked)' if key in caps else ''}")
+        elif v is None:
             parts.append(f"{label or unit.strip() + ' '}は下げても good にならない")
         else:
             parts.append(f"{label}{v}{unit}{'(調べた上限)' if key in caps else ''}")
+    if not ja:
+        return "good on this PC up to " + ", ".join(parts) + " (other settings unchanged)"
     return "この PC なら " + "・".join(parts) + "まで good(ほかの設定はそのまま)"
 
 
@@ -272,7 +300,10 @@ def _license_list(text: str) -> list[str]:
     items = [x.strip().lower() for x in text.split(",") if x.strip()]
     if not items:
         raise argparse.ArgumentTypeError(
-            "ライセンスを 1 つ以上、カンマ区切りで指定してください(例: apache-2.0,mit)"
+            tr(
+                "ライセンスを 1 つ以上、カンマ区切りで指定してください(例: apache-2.0,mit)",
+                "give one or more licenses, comma-separated (e.g. apache-2.0,mit)",
+            )
         )
     return items
 
@@ -368,7 +399,9 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     per_type = (args.limit or 3) if sections else None
     limit = None if sections else (args.limit if args.limit is not None else 10)
     if args.fit is not None and args.min_fit is not None:
-        raise CliError("--fit と --min-fit は同時に指定できません")
+        raise CliError(
+            tr("--fit と --min-fit は同時に指定できません", "--fit and --min-fit cannot be used together")
+        )
     min_fit = None if args.fit is not None else (args.min_fit or "marginal")
     sel = _select(
         args,
@@ -397,7 +430,9 @@ def _fit_choice(args: argparse.Namespace, default: str | None) -> tuple[str | No
     if getattr(args, "all", False) and args.fit is None and args.min_fit is None:
         args.fit = "all"
     if args.fit is not None and args.min_fit is not None:
-        raise CliError("--fit と --min-fit は同時に指定できません")
+        raise CliError(
+            tr("--fit と --min-fit は同時に指定できません", "--fit and --min-fit cannot be used together")
+        )
     if args.fit is None and args.min_fit is None:
         args.fit = default
     return args.min_fit, args.fit
@@ -433,7 +468,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
     query = args.query.strip()
     if not query:
-        raise CliError("探す語が空です")
+        raise CliError(tr("探す語が空です", "the search word is empty"))
     min_fit, fit = _fit_choice(args, None)
     sel = _select(
         args, s, db, query=query, min_fit=min_fit, fit=fit, limit=args.limit, sort=args.sort, auto_first=False
@@ -494,7 +529,8 @@ def cmd_types(args: argparse.Namespace) -> int:
     lines.append("")
     lines.append("Uses for --task (a name below, or a task code such as t2i / i2i / inpaint):")
     for u in uses:
-        lines.append(f"  {u['use']:<8}{u['label']} / {u['label_ja']}  [{', '.join(u['tasks'])}]")
+        label = tr(f"{u['label']} / {u['label_ja']}", u["label"])
+        lines.append(f"  {u['use']:<8}{label}  [{', '.join(u['tasks'])}]")
     lines.append("Examples: genmodelfit recommend -m image --task edit / -m video --task i2v,lipsync")
     _emit(lines)
     return 0
@@ -502,7 +538,12 @@ def cmd_types(args: argparse.Namespace) -> int:
 
 class AmbiguousModel(CliError):
     def __init__(self, query: str, candidates: list) -> None:
-        super().__init__(f"「{query}」に合うモデルが {len(candidates)} 件あります。ID で指定してください")
+        super().__init__(
+            tr(
+                f"「{query}」に合うモデルが {len(candidates)} 件あります。ID で指定してください",
+                f'{len(candidates)} models match "{query}". Specify one by its id',
+            )
+        )
         self.candidates = candidates
 
 
@@ -525,11 +566,16 @@ def resolve_model(db: Database, query: str, content: str = DEFAULT_CONTENT):
         raise AmbiguousModel(query, shown)
     if hits:
         kinds = "・".join(sorted({m.content for m in hits}))
+        kinds_en = ", ".join(sorted({m.content for m in hits}))
         raise CliError(
-            f"モデルが見つかりません: {query}(--content {content} で外れた {kinds} のモデルが "
-            f"{len(hits)} 件あります。--content all を付けるか ID で指定してください)"
+            tr(
+                f"モデルが見つかりません: {query}(--content {content} で外れた {kinds} のモデルが "
+                f"{len(hits)} 件あります。--content all を付けるか ID で指定してください)",
+                f"no such model: {query} ({len(hits)} {kinds_en} model(s) are hidden by --content {content};"
+                " add --content all or specify the id)",
+            )
         )
-    raise CliError(f"モデルが見つかりません: {query}")
+    raise CliError(tr(f"モデルが見つかりません: {query}", f"no such model: {query}"))
 
 
 def _emit(lines: list[str]) -> None:
@@ -605,10 +651,9 @@ def cmd_info(args: argparse.Namespace) -> int:
         out.append(
             "  languages: " + "; ".join(f"{k} {', '.join(v) or '(none)'}" for k, v in m.languages.items())
         )
-    if m.description:
-        out.append("  about:    " + (m.description.get("en") or next(iter(m.description.values()))))
-        if m.description.get("ja"):
-            out.append("            " + m.description["ja"])
+    about = pick(m.description) if m.description else None
+    if about:
+        out.append("  about:    " + about)
     prec_from = f" (from {m.precision_source})" if m.precision and m.precision_source else ""
     out.append(f"  precision: {m.precision or '? (unknown)'}{prec_from}")
     counted = f"{e.disk_gb:.2f} GB counted" if e.disk_gb else "? (size unknown)"
@@ -735,7 +780,7 @@ def cmd_update(args: argparse.Namespace) -> int:
         if args.json:
             _out({"genmodelfit": __version__, "command": "update", "error": str(e)})
         else:
-            print(f"エラー: {e}", file=sys.stderr)
+            print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
         return 1
     st = _data_status(args, db, source="cache" if out_path == cached_db_path() else "path")
     if args.json:
@@ -745,55 +790,115 @@ def cmd_update(args: argparse.Namespace) -> int:
     _print_status_after_update(st)
     if getattr(args, "inspect_only", False):
         fh = db.sources["file_headers"]
-        print(f"ファイルの見出しの結果を書き出しました: {out_path}")
         print(
-            f"  本体のファイル {fh['urls']} 件: キャッシュ {fh['from_cache']}、読んだ {fh['fetched']}、"
-            f"読めない {fh['failed']}、未確認(オフライン) {fh['skipped_offline']}"
+            tr(
+                f"ファイルの見出しの結果を書き出しました: {out_path}",
+                f"Wrote the file header results: {out_path}",
+            )
+        )
+        print(
+            tr(
+                f"  本体のファイル {fh['urls']} 件: キャッシュ {fh['from_cache']}、読んだ {fh['fetched']}、"
+                f"読めない {fh['failed']}、未確認(オフライン) {fh['skipped_offline']}",
+                f"  {fh['urls']} weight files: cached {fh['from_cache']}, read {fh['fetched']},"
+                f" unreadable {fh['failed']}, unchecked (offline) {fh['skipped_offline']}",
+            )
         )
         rp = db.sources.get("repo_precision") or {}
         if rp:
             print(
-                f"  リポジトリから読んだ精度: Hub API {rp.get('hf_api', 0)}、"
-                f"config.json {rp.get('config', 0)}、分からない {rp.get('unknown', 0)}"
-                f"(調べた本体 {rp.get('files', 0)} 件)"
+                tr(
+                    f"  リポジトリから読んだ精度: Hub API {rp.get('hf_api', 0)}、"
+                    f"config.json {rp.get('config', 0)}、分からない {rp.get('unknown', 0)}"
+                    f"(調べた本体 {rp.get('files', 0)} 件)",
+                    f"  Precision read from repositories: Hub API {rp.get('hf_api', 0)},"
+                    f" config.json {rp.get('config', 0)}, unknown {rp.get('unknown', 0)}"
+                    f" ({rp.get('files', 0)} weight files checked)",
+                )
             )
-        print(f"  精度が分からない項目: {rp.get('precision_unknown', fh['precision_unknown'])} 件")
+        unknown = rp.get("precision_unknown", fh["precision_unknown"])
+        print(tr(f"  精度が分からない項目: {unknown} 件", f"  Entries with unknown precision: {unknown}"))
         hf = db.sources.get("huggingface") or {}
         missing = set(hf.get("unauthorized_missing") or [])
         unauth = [r for r in hf.get("unauthorized") or [] if r not in missing]
         if unauth:
-            print(f"  匿名で読めない(401。非公開か無い)リポジトリ: {', '.join(unauth)}")
+            print(
+                tr(
+                    f"  匿名で読めない(401。非公開か無い)リポジトリ: {', '.join(unauth)}",
+                    f"  Repositories not readable anonymously (401: private or missing): {', '.join(unauth)}",
+                )
+            )
         if missing:
-            print(f"  401 のうち無いと確かめたもの: {', '.join(sorted(missing))}")
+            print(
+                tr(
+                    f"  401 のうち無いと確かめたもの: {', '.join(sorted(missing))}",
+                    f"  Of those 401s, confirmed missing: {', '.join(sorted(missing))}",
+                )
+            )
         return 0
     if getattr(args, "fields_only", False):
         af = db.sources["app_fields"]
-        print(f"アプリ向けの項目を書き出しました: {out_path}")
+        print(tr(f"アプリ向けの項目を書き出しました: {out_path}", f"Wrote the app fields: {out_path}"))
         print(
-            f"  手のモデル {db.sources['manual']['models']} 件 / 言語(指示) {af['languages_prompt']} 件・"
-            f"言語(読み上げ) {af['languages_speech']} 件 / 動かし方 {af['runtime']} 件 / "
-            f"説明 {af['description']} 件"
+            tr(
+                f"  手のモデル {db.sources['manual']['models']} 件 / 言語(指示) {af['languages_prompt']} 件・"
+                f"言語(読み上げ) {af['languages_speech']} 件 / 動かし方 {af['runtime']} 件 / "
+                f"説明 {af['description']} 件",
+                f"  hand-added models {db.sources['manual']['models']} / languages (prompt)"
+                f" {af['languages_prompt']}, languages (speech) {af['languages_speech']} / runtime"
+                f" {af['runtime']} / description {af['description']}",
+            )
         )
         return 0
     if getattr(args, "heads_only", False):
         stats = db.sources["head_check"]
-        print(f"HEAD の結果を書き出しました: {out_path}")
-        print(f"  URL {stats['urls']} 件: " + ", ".join(f"{k} {v}" for k, v in stats["status"].items()))
+        print(tr(f"HEAD の結果を書き出しました: {out_path}", f"Wrote the HEAD results: {out_path}"))
+        status = ", ".join(f"{k} {v}" for k, v in stats["status"].items())
+        print(tr(f"  URL {stats['urls']} 件: ", f"  {stats['urls']} URLs: ") + status)
         latest = db.sources["comfyui"]["latest_release"]
-        print(f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {latest}")
+        print(
+            tr(
+                f"  未確認 {stats['unchecked']} 件 / ComfyUI の最新の版: {latest}",
+                f"  unchecked {stats['unchecked']} / latest ComfyUI release: {latest}",
+            )
+        )
         return 0
     counts = db.sources["counts"]
     mods = ", ".join(f"{k} {v}" for k, v in counts["modality"].items())
-    print(f"{counts['models']} 件を書き出しました: {out_path}")
-    print(f"  種類: {mods}")
-    print("  内容: " + ", ".join(f"{k} {v}" for k, v in counts["content"].items()))
-    print("  出どころ: " + ", ".join(f"{k} {v}" for k, v in counts["source"].items()))
-    print("  ライセンス: " + ", ".join(f"{k} {v}" for k, v in counts["license_tier"].items()))
-    print(f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件")
-    print(f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件")
+
+    def joined(key: str) -> str:
+        return ", ".join(f"{k} {v}" for k, v in counts[key].items())
+
+    print(
+        tr(
+            f"{counts['models']} 件を書き出しました: {out_path}",
+            f"Wrote {counts['models']} entries: {out_path}",
+        )
+    )
+    print(tr(f"  種類: {mods}", f"  types: {mods}"))
+    print(tr("  内容: ", "  content: ") + joined("content"))
+    print(tr("  出どころ: ", "  source: ") + joined("source"))
+    print(tr("  ライセンス: ", "  license: ") + joined("license_tier"))
+    print(
+        tr(
+            f"  一式がそろっていない(files_complete=false): {counts['files_complete_false']} 件",
+            f"  incomplete file sets (files_complete=false): {counts['files_complete_false']}",
+        )
+    )
+    print(
+        tr(
+            f"  除外: {db.sources['excluded']} 件 / 警告: {len(db.sources['warnings'])} 件",
+            f"  excluded: {db.sources['excluded']} / warnings: {len(db.sources['warnings'])}",
+        )
+    )
     if db.sources.get("partial"):
         pc = json.dumps(db.sources["partial_counts"], ensure_ascii=False)
-        print(f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}")
+        print(
+            tr(
+                f"  注意: 一部を取得できないまま書き出しました(--allow-partial): {pc}",
+                f"  warning: written with some sources missing (--allow-partial): {pc}",
+            )
+        )
     return 0
 
 
@@ -815,22 +920,34 @@ def _update_from_release(args: argparse.Namespace) -> int:
         }
         sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
     else:
-        print(f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}")
+        print(
+            tr(
+                f"一覧を更新しました: {len(db.models)} 件(生成日時 {db.generated_at}) -> {dest}",
+                f"Updated the model list: {len(db.models)} entries (generated {db.generated_at}) -> {dest}",
+            )
+        )
         _print_status_after_update(st)
     return 0
 
 
-# diff の表示の言葉(#59)
+# diff の表示の言葉(#59)。言語は呼んだときに選ぶ(#73)
 _DIFF_FIELD_LABELS = {
-    "name": "名前",
-    "modality": "種類",
-    "tasks": "用途",
-    "runtime": "動かし方",
-    "comfy_family": "ComfyUI の系統",
-    "content": "内容",
-    "precision": "精度",
+    "name": ("名前", "name"),
+    "modality": ("種類", "type"),
+    "tasks": ("用途", "tasks"),
+    "runtime": ("動かし方", "runtime"),
+    "comfy_family": ("ComfyUI の系統", "ComfyUI family"),
+    "content": ("内容", "content"),
+    "precision": ("精度", "precision"),
 }
-_DIFF_LANG_LABELS = {"prompt": "指示", "speech": "読み上げ"}
+_DIFF_LANG_LABELS = {"prompt": ("指示", "prompt"), "speech": ("読み上げ", "speech")}
+
+
+def _diff_label(table: dict[str, tuple[str, str]], key: str) -> str:
+    pair = table.get(key)
+    return tr(*pair) if pair else key
+
+
 # 変わったモデルの並びの大事さ(小さいほど先)。--limit で切るときも、大事な変化を先に出す
 _DIFF_RANK = {
     "file_added": 0,
@@ -848,7 +965,12 @@ _DIFF_RANK = {
 }
 _DIFF_VALUE_RANK = {"content": 2, "precision": 5}  # ほかの値(名前・種類・用途・動かし方・系統)は 3
 _DIFF_OTHER_RANK = 6
-_DIFF_OTHER_HEAD = "その他の変化: "
+
+
+def _diff_other_head() -> str:
+    return tr("その他の変化: ", "other changes: ")
+
+
 # この大事さ以下(数が大きい)の同じ行が、この件数以上のモデルにあれば 1 行にまとめる。部品・ライセンス・
 # 内容(無検閲)はまとめない(モデルごとに確かめるもの)
 _DIFF_COLLAPSE_RANK = 3
@@ -860,33 +982,51 @@ _DIFF_NEVER_COLLAPSE = frozenset({"license_source"})
 # まとめても ID を必ず出す種類(分類で判断が要る変化: 自動のおすすめ)。数は -n で切る
 _DIFF_COLLAPSE_KEEP_IDS = frozenset({"auto"})
 DIFF_DEFAULT_LIMIT = 20
-# 変わったモデルの節: (見出し, 大事さの範囲)
-_DIFF_SECTIONS = (
-    ("変わったモデル(部品・ライセンス・内容・動かし方など。大事な変化の順):", (0, 4)),
-    ("自動のおすすめの変化:", (4, 4.5)),
-    ("そのほかの変化(ライセンスの出どころ・言語・大きさ・確認の印など):", (4.5, 99)),
-)
+
+
+def _diff_sections() -> tuple[tuple[str, tuple[float, float]], ...]:
+    """変わったモデルの節: (見出し, 大事さの範囲)"""
+    return (
+        (
+            tr(
+                "変わったモデル(部品・ライセンス・内容・動かし方など。大事な変化の順):",
+                "Changed models (files, license, content, runtime, ...; most important first):",
+            ),
+            (0, 4),
+        ),
+        (tr("自動のおすすめの変化:", "Auto-recommendation changes:"), (4, 4.5)),
+        (
+            tr(
+                "そのほかの変化(ライセンスの出どころ・言語・大きさ・確認の印など):",
+                "Other changes (license provenance, languages, size, review marks, ...):",
+            ),
+            (4.5, 99),
+        ),
+    )
+
+
 _DIFF_LIST_MAX = 20  # 既定の表示で並べる数の上限(言語など。--all では全部)
 
 
 def _diff_val(v: Any, full: bool = True) -> str:
     if v is None or v == []:
-        return "なし"
+        return tr("なし", "none")
     if isinstance(v, list):
         if not full and len(v) > _DIFF_LIST_MAX:
             head = ", ".join(str(x) for x in v[: _DIFF_LIST_MAX - 4])
-            return f"{head} …ほか {len(v) - _DIFF_LIST_MAX + 4}(全 {len(v)})"
+            rest = len(v) - _DIFF_LIST_MAX + 4
+            return tr(f"{head} …ほか {rest}(全 {len(v)})", f"{head} … {rest} more ({len(v)} in all)")
         return ", ".join(str(x) for x in v)
     return str(v)
 
 
 def _diff_auto(v: Any) -> str:
-    return "出す" if v else ("なし" if v is None else "保留")
+    return tr("出す", "yes") if v else (tr("なし", "none") if v is None else tr("保留", "held"))
 
 
 def _diff_text(field: str, v: Any) -> str:
     if v is None:
-        return "なし"
+        return tr("なし", "none")
     if isinstance(v, list):
         return " > ".join(str(x) for x in v)
     text = str(v)
@@ -972,10 +1112,9 @@ def _diff_ids(ids: list[str], indent: str, width: int) -> list[str]:
 
 def _diff_side(tag: str, side: dict[str, Any], label: str | None) -> str:
     head = f"{tag}: {label}  " if label else f"{tag}: "
-    tail = "  (一部欠け: sources.partial)" if side["partial"] else ""
-    return (
-        f"{head}{side['generated_at']}  {side['models']} 件  ComfyUI {side['comfyui_latest_release']}{tail}"
-    )
+    tail = tr("  (一部欠け: sources.partial)", "  (partial: sources.partial)") if side["partial"] else ""
+    n = tr(f"{side['models']} 件", f"{side['models']} entries")
+    return f"{head}{side['generated_at']}  {n}  ComfyUI {side['comfyui_latest_release']}{tail}"
 
 
 def _diff_item(
@@ -986,52 +1125,81 @@ def _diff_item(
     rank = _DIFF_RANK.get(kind, 0)
     if kind == "value":
         rank = _DIFF_VALUE_RANK.get(it["field"], 3)
-        label = _DIFF_FIELD_LABELS.get(it["field"], it["field"])
+        label = _diff_label(_DIFF_FIELD_LABELS, it["field"])
         line = f"{label} {_diff_val(it['old'], full)} → {_diff_val(it['new'], full)}"
         if it["field"] == "content" and it["new"] == "uncensored":
             ev = (unc.get(c["id"]) or {}).get("evidence") or []
-            line += "  ! 新しく無検閲" + (f"({ev[0]})" if ev else "")
+            line += tr("  ! 新しく無検閲", "  ! newly uncensored") + (
+                tr(f"({ev[0]})", f" ({ev[0]})") if ev else ""
+            )
         return rank, line
     if kind == "license":
-        mark = "  ! 寛容な側(原文で確かめる)" if (lic.get(c["id"]) or {}).get("permissive_side") else ""
-        return rank, f"ライセンス {it['old']} → {it['new']}{mark}"
+        permissive = (lic.get(c["id"]) or {}).get("permissive_side")
+        mark = (
+            tr("  ! 寛容な側(原文で確かめる)", "  ! more permissive (check the original text)")
+            if permissive
+            else ""
+        )
+        return rank, tr(
+            f"ライセンス {it['old']} → {it['new']}{mark}", f"license {it['old']} → {it['new']}{mark}"
+        )
     if kind == "license_source":
-        where = f"部品 {it['name']} の " if it.get("name") else ""
+        where = tr(f"部品 {it['name']} の ", f"file {it['name']} ") if it.get("name") else ""
         a, b = _diff_pair(it["field"], it["old"], it["new"])
-        return rank, f"ライセンスの出どころ {where}{it['field']} {a} → {b}"
+        return rank, tr("ライセンスの出どころ ", "license provenance ") + f"{where}{it['field']} {a} → {b}"
     if kind == "languages":
-        what = _DIFF_LANG_LABELS.get(it["key"], it["key"])
-        return rank, f"言語({what}) {_diff_val(it['old'], full)} → {_diff_val(it['new'], full)}"
+        what = _diff_label(_DIFF_LANG_LABELS, it["key"])
+        vals = f"{_diff_val(it['old'], full)} → {_diff_val(it['new'], full)}"
+        return rank, tr(f"言語({what}) {vals}", f"languages ({what}) {vals}")
     if kind in ("file_added", "file_removed"):
         path = f"{it['directory']}/{it['name']}" if it.get("directory") else str(it["name"])
         sign = "+" if kind == "file_added" else "-"
+        size = _gib(it["size_bytes"])
+        if tr("ja", "en") == "en":
+            src = f", {it['source']}" if it.get("source") else ""
+            return rank, f"file {sign} {path} ({size} GiB, license {it['license']}{src})"
         src = f"、{it['source']}" if it.get("source") else ""
-        return rank, f"部品 {sign} {path}({_gib(it['size_bytes'])} GiB、ライセンス {it['license']}{src})"
+        return rank, f"部品 {sign} {path}({size} GiB、ライセンス {it['license']}{src})"
     if kind == "files_order":
-        return rank, "部品の並び・形が変わった"
+        return rank, tr("部品の並び・形が変わった", "file order / shape changed")
     if kind == "file_changed":
         a, b = _diff_pair(it["field"], it["old"], it["new"])
-        return rank, f"部品 {it['name']} の {it['field']} {a} → {b}"
+        return rank, tr(
+            f"部品 {it['name']} の {it['field']} {a} → {b}", f"file {it['name']} {it['field']} {a} → {b}"
+        )
     if kind == "file_license":
-        return rank, f"部品 {it['name']} のライセンス {it['old']} → {it['new']}"
+        return rank, tr(
+            f"部品 {it['name']} のライセンス {it['old']} → {it['new']}",
+            f"file {it['name']} license {it['old']} → {it['new']}",
+        )
     if kind == "size":
         a, b = it["old"], it["new"]
         if a and b and _gib(a) == _gib(b):
-            return rank, f"大きさ {_gib(b)} GiB(わずかな変化 {b - a:+,} バイト)"
-        return rank, f"大きさ {_gib(a)} → {_gib(b)} GiB"
+            return rank, tr(
+                f"大きさ {_gib(b)} GiB(わずかな変化 {b - a:+,} バイト)",
+                f"size {_gib(b)} GiB (small change {b - a:+,} bytes)",
+            )
+        return rank, tr(f"大きさ {_gib(a)} → {_gib(b)} GiB", f"size {_gib(a)} → {_gib(b)} GiB")
     if kind == "review":
         old, new = it["old"], it["new"]
-        why = f"(理由: {', '.join(it['reasons'])})" if it["reasons"] and new != "ok" else ""
+        reasons = ", ".join(it["reasons"])
+        why = tr(f"(理由: {reasons})", f" (reasons: {reasons})") if it["reasons"] and new != "ok" else ""
         if old is None and new is not None:
-            return rank, f"確認の印が付いた({new}){why}"
+            return rank, tr(f"確認の印が付いた({new}){why}", f"review mark added ({new}){why}")
         if old is not None and new is None:
-            return rank, f"確認の印が外れた(前は {old})"
+            return rank, tr(f"確認の印が外れた(前は {old})", f"review mark removed (was {old})")
         if old != new:
-            return rank, f"確認の印 {old} → {new}{why}"
-        return rank, f"確認の印({new})の中身が変わった: {', '.join(it.get('fields') or []) or '?'}"
+            return rank, tr(f"確認の印 {old} → {new}{why}", f"review mark {old} → {new}{why}")
+        fields = ", ".join(it.get("fields") or []) or "?"
+        return rank, tr(
+            f"確認の印({new})の中身が変わった: {fields}", f"review mark ({new}) details changed: {fields}"
+        )
     if kind == "auto":
-        why = f"(保留: {', '.join(it['held_by'])})" if it.get("held_by") else ""
-        return rank, f"自動のおすすめ {_diff_auto(it['old'])} → {_diff_auto(it['new'])}{why}"
+        held = ", ".join(it.get("held_by") or [])
+        why = tr(f"(保留: {held})", f" (held: {held})") if held else ""
+        return rank, tr(
+            "自動のおすすめ ", "auto-recommend "
+        ) + f"{_diff_auto(it['old'])} → {_diff_auto(it['new'])}{why}"
     return rank, f"{kind}: {json.dumps(it, ensure_ascii=False)}"
 
 
@@ -1053,7 +1221,7 @@ def _diff_changed_entries(
     per: list[tuple[dict[str, Any], list[tuple[int, str, str]]]] = []
     for c in d.get("model_changes") or []:
         rows = [(*_diff_item(c, it, lic, unc, show_all), it["kind"]) for it in c["items"]]
-        rows += [(_DIFF_OTHER_RANK, _DIFF_OTHER_HEAD + f, "other") for f in c["other"]]
+        rows += [(_DIFF_OTHER_RANK, _diff_other_head() + f, "other") for f in c["other"]]
         if ranks is not None:
             rows = [r for r in rows if ranks[0] <= r[0] < ranks[1]]
         per.append((c, rows))
@@ -1069,21 +1237,27 @@ def _diff_changed_entries(
         if not keep:
             continue
         texts = [t for _, t, k in keep if k != "other"]
-        others = [t[len(_DIFF_OTHER_HEAD) :] for _, t, k in keep if k == "other"]
+        others = [t[len(_diff_other_head()) :] for _, t, k in keep if k == "other"]
         if others:
-            texts.append(_DIFF_OTHER_HEAD + ", ".join(others))
+            texts.append(_diff_other_head() + ", ".join(others))
         out.append(((keep[0][0], 0, c["id"]), [*_diff_head(c, "  ", width), *(f"    {t}" for t in texts)]))
     for (rank, text, kind), ids in groups.items():
-        lines = [f"  {text}: {len(ids)} 件"]
+        lines = [tr(f"  {text}: {len(ids)} 件", f"  {text}: {len(ids)} models")]
         if kind in _DIFF_COLLAPSE_KEEP_IDS:  # 判断が要る変化は ID を隠さない
             shown = ids if limit is None else ids[:limit]
             lines += _diff_ids(shown, "    ", width)
             if len(shown) < len(ids):
-                lines.append(f"    …ほか {len(ids) - len(shown)} 件(-n {len(ids)} で増やす)")
+                rest = len(ids) - len(shown)
+                lines.append(
+                    tr(
+                        f"    …ほか {rest} 件(-n {len(ids)} で増やす)",
+                        f"    … {rest} more (-n {len(ids)} for more)",
+                    )
+                )
         elif show_all or len(ids) <= _DIFF_COLLAPSE_SHOW_IDS:
             lines += _diff_ids(ids, "    ", width)
         else:
-            lines[0] += "(ID は --all)"
+            lines[0] += tr("(ID は --all)", " (ids: --all)")
         out.append(((rank, 1, text), lines))
     out.sort(key=lambda e: e[0])
     return out
@@ -1104,41 +1278,67 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False, wi
     def more(items: list[Any]) -> list[str]:
         if limit is None or len(items) <= limit:
             return []
-        return [f"    …ほか {len(items) - limit} 件(-n {len(items)} か --all で全部。--json でも出ます)"]
+        rest = len(items) - limit
+        return [
+            tr(
+                f"    …ほか {rest} 件(-n {len(items)} か --all で全部。--json でも出ます)",
+                f"    … {rest} more (-n {len(items)} or --all for all; also in --json)",
+            )
+        ]
 
     changed = d.get("model_changes") or []
     head_new = [h for h in d["head_failures"] if h["new"]]
     lines = [
-        _diff_side("前", d["old"], d.get("old_label")),
-        _diff_side("後", d["new"], d.get("new_label")),
-        f"増えた {s['added']} / 消えた {s['removed']} / 変わった {len(changed)} / 自動のおすすめ"
-        f" {s['auto_old']} → {s['auto_new']}(+{s['auto_gained']} -{s['auto_lost']})"
-        f" / HEAD の新しい失敗 {s['head_failures_new']}",
+        _diff_side(tr("前", "old"), d["old"], d.get("old_label")),
+        _diff_side(tr("後", "new"), d["new"], d.get("new_label")),
+        tr(
+            f"増えた {s['added']} / 消えた {s['removed']} / 変わった {len(changed)} / 自動のおすすめ"
+            f" {s['auto_old']} → {s['auto_new']}(+{s['auto_gained']} -{s['auto_lost']})"
+            f" / HEAD の新しい失敗 {s['head_failures_new']}",
+            f"added {s['added']} / removed {s['removed']} / changed {len(changed)} / auto-recommended"
+            f" {s['auto_old']} → {s['auto_new']} (+{s['auto_gained']} -{s['auto_lost']})"
+            f" / new HEAD failures {s['head_failures_new']}",
+        ),
     ]
-    lines += [f"注意: {w}" for w in d.get("warnings") or []]
+    lines += [tr(f"注意: {w}", f"warning: {w}") for w in d.get("warnings") or []]
     if show_all:
         lines += [
-            f"ライセンスの変化 {s['license_changed']}(寛容な側 {s['license_permissive_side']})"
-            f" / 大きさ {s['size_changed']} / 精度 {s['precision_changed']}"
-            f" / 新しく無検閲 {s['newly_uncensored']}",
-            f"HEAD の失敗 {s['head_failures']}(新 {s['head_failures_new']})"
-            f" / 401 +{s['unauthorized_added']} -{s['unauthorized_removed']}",
+            tr(
+                f"ライセンスの変化 {s['license_changed']}(寛容な側 {s['license_permissive_side']})"
+                f" / 大きさ {s['size_changed']} / 精度 {s['precision_changed']}"
+                f" / 新しく無検閲 {s['newly_uncensored']}",
+                f"license changes {s['license_changed']} (more permissive {s['license_permissive_side']})"
+                f" / size {s['size_changed']} / precision {s['precision_changed']}"
+                f" / newly uncensored {s['newly_uncensored']}",
+            ),
+            tr(
+                f"HEAD の失敗 {s['head_failures']}(新 {s['head_failures_new']})",
+                f"HEAD failures {s['head_failures']} (new {s['head_failures_new']})",
+            )
+            + f" / 401 +{s['unauthorized_added']} -{s['unauthorized_removed']}",
         ]
     if d.get("top_changes"):
-        lines += ["", "一覧の上の段で変わった鍵: " + ", ".join(d["top_changes"])]
+        lines += [
+            "",
+            tr("一覧の上の段で変わった鍵: ", "Changed top-level keys: ") + ", ".join(d["top_changes"]),
+        ]
     auto_new = {c["id"] for c in d["auto_changes"] if c["new"]}
-    for key, title in (("added", "増えた"), ("removed", "消えた")):
+    for key, title in (("added", tr("増えた", "Added")), ("removed", tr("消えた", "Removed"))):
         if d[key]:
             lines += ["", f"{title}:"]
             for m in cut(d[key]):
-                auto = "  自動のおすすめに出す" if key == "added" and m["id"] in auto_new else ""
+                auto = (
+                    tr("  自動のおすすめに出す", "  auto-recommended")
+                    if key == "added" and m["id"] in auto_new
+                    else ""
+                )
                 lines += _diff_head(m, "  ", width, f"  [{m['content']}/{m['license']}]{auto}")
             lines += more(d[key])
     # 変わったモデルは 3 つの節に分け、節ごとに -n で切る(どの節も先頭の大事なものは隠れない)。
     # 並び(オーナーの決定、#59): 部品・ライセンス・内容・動かし方など → 自動のおすすめ →
     # ライセンスの出どころ・言語・大きさ・確認の印など
     entries: list[tuple[tuple[Any, ...], list[str]]] = []
-    for title, ranks in _DIFF_SECTIONS:
+    for title, ranks in _diff_sections():
         part = _diff_changed_entries(d, show_all, limit, width, ranks)
         if part:
             entries += part
@@ -1148,7 +1348,12 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False, wi
             lines += more(part)
     hf_ = sorted(d["head_failures"], key=lambda h: (not h["new"], h["url"])) if show_all else head_new
     if hf_:
-        lines += ["", "HEAD が失敗した URL(! = 新しく):" if show_all else "HEAD が新しく失敗した URL:"]
+        lines += [
+            "",
+            tr("HEAD が失敗した URL(! = 新しく):", "URLs whose HEAD check failed (! = new):")
+            if show_all
+            else tr("HEAD が新しく失敗した URL:", "URLs whose HEAD check newly failed:"),
+        ]
         mark = (lambda h: "! " if h["new"] else "  ") if show_all else (lambda h: "")
         lines += [f"  {mark(h)}{h['status']} {h['url']}" for h in cut(hf_)]
         lines += more(hf_)
@@ -1159,31 +1364,39 @@ def _diff_lines(d: dict[str, Any], limit: int | None, show_all: bool = False, wi
         if ua["added"] or ua["removed"]:
             lines += [
                 "",
-                f"401 のリポジトリ: +{', '.join(ua['added']) or '-'} / -{', '.join(ua['removed']) or '-'}",
+                tr("401 のリポジトリ: ", "401 repositories: ")
+                + f"+{', '.join(ua['added']) or '-'} / -{', '.join(ua['removed']) or '-'}",
             ]
         if quiet:
             q = sorted(quiet.items())
-            lines += ["", "人気の数・更新日・HEAD の結果などだけの変化:"]
+            lines += [
+                "",
+                tr(
+                    "人気の数・更新日・HEAD の結果などだけの変化:",
+                    "Changes only in popularity, dates, HEAD results, ...:",
+                ),
+            ]
             lines += [f"  {i}: {', '.join(p)}" for i, p in cut(q)]
             lines += more(q)
         if d["stats"]:
-            lines += ["", "sources の数の変化:"]
+            lines += ["", tr("sources の数の変化:", "Changed numbers in sources:")]
             lines += [f"  {x['key']}: {x['old']} -> {x['new']}" for x in cut(d["stats"])]
             lines += more(d["stats"])
         return lines
     if not (d["added"] or d["removed"] or entries or head_new or d.get("top_changes")):
-        lines += ["", "変化なし(利用者に関係のある変化はありません)"]
+        lines += ["", tr("変化なし(利用者に関係のある変化はありません)", "No changes that matter to users")]
     hidden = []
+    old_fail = s["head_failures"] - len(head_new)
     if quiet:
-        hidden.append(f"人気の数などだけの変化 {len(quiet)} 件")
-    if s["head_failures"] - len(head_new):
-        hidden.append(f"前からの HEAD の失敗 {s['head_failures'] - len(head_new)} 件")
+        hidden.append(tr(f"人気の数などだけの変化 {len(quiet)} 件", f"{len(quiet)} popularity-only changes"))
+    if old_fail:
+        hidden.append(tr(f"前からの HEAD の失敗 {old_fail} 件", f"{old_fail} older HEAD failures"))
     if d["stats"]:
-        hidden.append(f"sources の数 {len(d['stats'])} 件")
+        hidden.append(tr(f"sources の数 {len(d['stats'])} 件", f"{len(d['stats'])} sources numbers"))
     if d["unauthorized"]["added"] or d["unauthorized"]["removed"]:
-        hidden.append("401 のリポジトリの増減")
+        hidden.append(tr("401 のリポジトリの増減", "401 repository changes"))
     if hidden:
-        lines += ["", f"(--all で: {'、'.join(hidden)})"]
+        lines += ["", tr(f"(--all で: {'、'.join(hidden)})", f"(with --all: {', '.join(hidden)})")]
     return lines
 
 
@@ -1203,16 +1416,31 @@ def _gib(b: int | None) -> str:
     return "?" if not b else f"{b / GIB:.2f}"
 
 
-_DIFF_HOWTO = (
-    "取ってきた一覧がまだありません({path})。"
-    "先に `genmodelfit update --from-release` で最新の一覧を取ってきてから、もう一度 `genmodelfit diff` を"
-    "実行してください(2 つのファイルを比べるときは `genmodelfit diff old.json new.json`)。"
-)
-_DIFF_OLDER = (
-    "後の一覧({new_label}、{new})が前の一覧({old_label}、{old})より古いです。比べる向きが逆かもしれません"
-    "(新しいモデルが「消えた」に見えます)。"
-)
-_DIFF_OLDER_CACHE = "`genmodelfit update --from-release` で取り直してください。"
+def _diff_howto() -> str:
+    return tr(
+        "取ってきた一覧がまだありません({path})。"
+        "先に `genmodelfit update --from-release`"
+        " で最新の一覧を取ってきてから、もう一度 `genmodelfit diff` を"
+        "実行してください(2 つのファイルを比べるときは `genmodelfit diff old.json new.json`)。",
+        "No fetched list yet ({path}). Run `genmodelfit update --from-release` to fetch the latest list, then"
+        " run `genmodelfit diff` again (to compare two files: `genmodelfit diff old.json new.json`).",
+    )
+
+
+def _diff_older() -> str:
+    return tr(
+        "後の一覧({new_label}、{new})が前の一覧({old_label}、{old})より古いです。比べる向きが逆かもしれません"
+        "(新しいモデルが「消えた」に見えます)。",
+        "The new list ({new_label}, {new}) is older than the old list ({old_label}, {old}). The order may be"
+        ' reversed (new models would look "removed").',
+    )
+
+
+def _diff_older_cache() -> str:
+    return tr(
+        "`genmodelfit update --from-release` で取り直してください。",
+        " Fetch it again with `genmodelfit update --from-release`.",
+    )
 
 
 def _diff_raw(path: str | Path | None) -> dict[str, Any]:
@@ -1239,7 +1467,7 @@ def _diff_inputs(
         db = load_db(None, use_cache=False) if path is None else load_db(path)
         return db, _diff_raw(path), label
 
-    bundled = f"同梱の一覧(genmodelfit {__version__})"
+    bundled = tr(f"同梱の一覧(genmodelfit {__version__})", f"bundled list (genmodelfit {__version__})")
     from_cache = False
     if args.old and args.new:
         old, new = side(args.old, str(args.old)), side(args.new, str(args.new))
@@ -1248,14 +1476,14 @@ def _diff_inputs(
     else:
         cp = cached_db_path()
         if not cp.exists():
-            return _DIFF_HOWTO.format(path=cp)
-        old, new = side(None, bundled), side(cp, f"取ってきた一覧({cp})")
+            return _diff_howto().format(path=cp)
+        old, new = side(None, bundled), side(cp, tr(f"取ってきた一覧({cp})", f"fetched list ({cp})"))
         from_cache = True
     warn = []
     ga, gb = old[0].generated_at, new[0].generated_at
     if ga and gb and gb < ga:
-        text = _DIFF_OLDER.format(old_label=old[2], old=ga, new_label=new[2], new=gb)
-        warn.append(text + (_DIFF_OLDER_CACHE if from_cache else ""))
+        text = _diff_older().format(old_label=old[2], old=ga, new_label=new[2], new=gb)
+        warn.append(text + (_diff_older_cache() if from_cache else ""))
     return old, new, warn
 
 
@@ -1314,8 +1542,33 @@ def cmd_bench(args: argparse.Namespace) -> int:
         _out(_envelope("bench", None, None, **extra, **result.to_dict()))
         return code
     for w in result.warnings:
-        print(f"注意: {w}", file=sys.stderr)
+        print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
     s = m.settings
+    if tr("ja", "en") == "en":
+        unknown = "unknown"
+        parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} frames" if s.frames else None]
+        parts += [f"{s.seconds:g} s of audio" if s.seconds else None, f"{s.steps} steps" if s.steps else None]
+        print(f"=== bench: {m.model_id} ===")
+        print(f"GPU:       {m.gpu_name} ({m.gpu_vram_gb:g} GiB, driver {m.driver or unknown})")
+        print(f"ComfyUI:   {m.comfyui_version or unknown}")
+        print(f"Settings:  {', '.join(p for p in parts if p) or '(as in the template)'}")
+        print(f"Result:    {m.outcome}{'' if m.standard else ' (non-standard conditions)'}")
+        print(f"Peak VRAM: {m.peak_vram_gb:.2f} GB (the ComfyUI process)")
+        if m.peak_ram_gb is not None:
+            print(f"Peak RAM:  {m.peak_ram_gb:.2f} GB")
+        print(f"Time:      {m.seconds:g} s (from sending to the end, including model loading)")
+        print(f"Offload:   {m.offload or unknown}")
+        print(f"Note:      {m.note}")
+        if result.failed:
+            print(f"Failed:    {result.failed}")
+        print(f"Saved to:  {out_path}" if out_path else f"Not saved: {not_saved}")
+        if sub_path is not None:
+            print(f"Submission: {sub_path}")
+            print(
+                "           check it with genmodelfit contrib"
+                f" show {sub_path}; in the PR it goes to {sub_repo}"
+            )
+        return code
     parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} フレーム" if s.frames else None]
     parts += [f"{s.seconds:g} 秒の音声" if s.seconds else None, f"{s.steps} ステップ" if s.steps else None]
     print(f"=== bench: {m.model_id} ===")
@@ -1364,7 +1617,7 @@ def _contrib_db(args: argparse.Namespace) -> Database:
 
 
 def _shown(v: Any, unit: str = "") -> str:
-    return "不明" if v is None else f"{v}{unit}"
+    return tr("不明", "unknown") if v is None else f"{v}{unit}"
 
 
 def format_submission(data: dict[str, Any]) -> list[str]:
@@ -1376,6 +1629,8 @@ def format_submission(data: dict[str, Any]) -> list[str]:
     mm = data.get("measurement") or {}
     tool = data.get("tool") or {}
     s = mm.get("settings") or {}
+    if tr("ja", "en") == "en":
+        return _format_submission_en(data)
     gpu_bits = [
         f"{_shown(gpu.get('vram_gb'), ' GiB')}",
         f"世代 {_shown(gpu.get('arch'))}",
@@ -1415,13 +1670,65 @@ def format_submission(data: dict[str, Any]) -> list[str]:
     ]
 
 
+def _format_submission_en(data: dict[str, Any]) -> list[str]:
+    """format_submission の英語(#73)。項目は日本語と同じ。"""
+    from .contrib import suggested_path
+
+    system = data.get("system") or {}
+    gpu = system.get("gpu") or {}
+    mm = data.get("measurement") or {}
+    tool = data.get("tool") or {}
+    s = mm.get("settings") or {}
+    gpu_bits = [
+        f"{_shown(gpu.get('vram_gb'), ' GiB')}",
+        f"arch {_shown(gpu.get('arch'))}",
+        f"compute {_shown(gpu.get('compute_capability'))}",
+        f"driver {_shown(gpu.get('driver'))}",
+        *(
+            [f"vendor {_shown(gpu.get('vendor'))}", f"backend {_shown(gpu.get('backend'))}"]
+            if {"vendor", "backend"} & set(gpu)
+            else []
+        ),
+        *([f"PCI model ID {_shown(gpu.get('pci_id'))}"] if "pci_id" in gpu else []),
+    ]
+    peak = mm.get("peak_vram_gb")
+    return [
+        "=== What will be shared ===",
+        f"Path:       {suggested_path(data)} (add it under this name in the PR)",
+        f"Format:     contrib_schema {data.get('contrib_schema')}"
+        f" ({tool.get('name')} {tool.get('version')}, {data.get('kind')})",
+        f"Date:       {data.get('date')} (UTC date only, no time)",
+        f"OS:         {_shown(system.get('os_family'))} (family only, no version or build)",
+        f"RAM:        {_shown(system.get('ram_total_gb'), ' GiB')} (rounded to an integer)",
+        f"GPU:        {_shown(gpu.get('name'))} ({', '.join(gpu_bits)})",
+        f"ComfyUI:    {_shown(data.get('comfyui_version'))}",
+        f"Model:      {_shown(mm.get('model_id'))}",
+        f"Settings:   {', '.join(f'{k}={v}' for k, v in s.items()) or '(as in the template)'}",
+        "Result:    "
+        f" {_shown(mm.get('outcome'))}{'' if mm.get('standard', True) else ' (non-standard conditions)'}",
+        f"Peak VRAM:  {_shown(peak, ' GiB')} (metric {_shown(mm.get('vram_metric'))})",
+        f"Peak RAM:   {_shown(mm.get('peak_ram_gb'), ' GiB')}",
+        f"Time:       {_shown(mm.get('seconds'), ' s')}",
+        f"Offload:    {_shown(mm.get('offload'))}",
+        f"Note:       {mm.get('note') or '(none)'}",
+        "",
+        "This is everything in the file. genmodelfit does not send this file anywhere.",
+        "It is shared only when you open a Pull Request from your own GitHub account (CONTRIBUTING.md).",
+    ]
+
+
 def cmd_contrib_make(args: argparse.Namespace) -> int:
     from .contrib import build_submission, measurements_from_file, suggested_path, write_submission
 
     try:
         ms = measurements_from_file(args.source)
     except (OSError, ValueError) as e:
-        raise CliError(f"bench の結果を読めません: {args.source}: {e}") from e
+        raise CliError(
+            tr(
+                f"bench の結果を読めません: {args.source}: {e}",
+                f"cannot read the bench result: {args.source}: {e}",
+            )
+        ) from e
     system = None if args.no_pc_info else detect()
     out = []
     target = args.output
@@ -1435,10 +1742,16 @@ def cmd_contrib_make(args: argparse.Namespace) -> int:
         _out(_envelope("contrib", None, None, action="make", submissions=out))
         return 0
     for o in out:
-        print(f"提出用の JSON を書きました: {o['saved_to']}")
         print(
-            f"  PR では {o['path_in_repo']} に置きます。"
-            f"送る前に genmodelfit contrib show {o['saved_to']} で確かめてください"
+            tr(f"提出用の JSON を書きました: {o['saved_to']}", f"Wrote the submission JSON: {o['saved_to']}")
+        )
+        print(
+            tr(
+                f"  PR では {o['path_in_repo']} に置きます。"
+                f"送る前に genmodelfit contrib show {o['saved_to']} で確かめてください",
+                f"  In the PR it goes to {o['path_in_repo']}."
+                f" Check it with genmodelfit contrib show {o['saved_to']} before sharing",
+            )
         )
     return 0
 
@@ -1449,7 +1762,12 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
     try:
         data, raw = read_submission(args.file)
     except (OSError, ValueError) as e:
-        raise CliError(f"提出用の JSON を読めません: {args.file}: {type(e).__name__}") from e
+        raise CliError(
+            tr(
+                f"提出用の JSON を読めません: {args.file}: {type(e).__name__}",
+                f"cannot read the submission JSON: {args.file}: {type(e).__name__}",
+            )
+        ) from e
     checks = privacy_checklist(data, raw)
     report = validate_submission(data, _contrib_db(args), path=args.file, raw=raw, check_filename=False)
     good = report.ok and all(c["ok"] is not False for c in checks)
@@ -1472,21 +1790,29 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
         for line in format_submission(data):
             print(line)
     print()
-    print("=== 個人の情報の点検 / Privacy checklist ===")
+    print(tr("=== 個人の情報の点検 / Privacy checklist ===", "=== Privacy checklist ==="))
     for c in checks:
         mark = "[  ]" if c["ok"] is None else ("[ok]" if c["ok"] else "[NG]")
         print(f"  {mark} {c['label']}" + (f": {c['detail']}" if c["detail"] else ""))
     print()
     for e in report.errors:
-        print(f"誤り {e['code']}: {e['message']}")
+        print(tr("誤り", "error") + f" {e['code']}: {e['message']}")
     for w in report.warnings:
-        print(f"注意 {w['code']}: {w['message']}")
+        print(tr("注意", "warning") + f" {w['code']}: {w['message']}")
     for v in report.notices:
-        print(f"確認 {v['code']}: {v['message']}(失敗にはしません。PR をマージする人が見ます)")
+        print(
+            tr("確認", "notice")
+            + f" {v['code']}: {v['message']}"
+            + tr(
+                "(失敗にはしません。PR をマージする人が見ます)",
+                " (not a failure; the maintainer who merges checks it)",
+            )
+        )
+    nw = len(report.warnings)
     print(
-        "検査: "
-        + ("ok" if good else "NG(直してから出してください)")
-        + (f"(注意 {len(report.warnings)} 件)" if report.warnings else "")
+        tr("検査: ", "check: ")
+        + ("ok" if good else tr("NG(直してから出してください)", "NG (fix it before submitting)"))
+        + (tr(f"(注意 {nw} 件)", f" ({nw} warnings)") if report.warnings else "")
     )
     return 0 if good else 1
 
@@ -1512,21 +1838,31 @@ def _validate_markdown(reports: list) -> list[str]:
     ]
     if words.count("notice"):
         lines += [
-            f"**マージする人へ: 確認の項目のある提出が {words.count('notice')} 件あります**"
-            "(式から大きく外れる・よくある PC で段階を変える・一覧に無いモデルなど。失敗にはしていません。"
-            "マージすると見積もりに使われます)",
+            tr(
+                f"**マージする人へ: 確認の項目のある提出が {words.count('notice')} 件あります**"
+                "(式から大きく外れる・よくある PC"
+                " で段階を変える・一覧に無いモデルなど。失敗にはしていません。"
+                "マージすると見積もりに使われます)",
+                f"**For the maintainer: {words.count('notice')} submissions have notices**"
+                " (far from the formula, changing the fit level on common PCs, a model not in the list, ...;"
+                " not failures. Once merged they are used for estimates)",
+            ),
             "",
         ]
     lines += [
-        "| 結果 | ファイル | モデル | GPU | 誤り・確認・注意 |",
+        tr(
+            "| 結果 | ファイル | モデル | GPU | 誤り・確認・注意 |",
+            "| Result | File | Model | GPU | Errors / notices / warnings |",
+        ),
         "|---|---|---|---|---|",
     ]
+    err_w, notice_w, warn_w = tr("誤り", "error"), tr("確認", "notice"), tr("注意", "warning")
     for r, word in zip(reports, words, strict=True):
-        msgs = [f"誤り {e['code']}: {e['message']}" for e in r.errors]
-        msgs += [f"確認 {v['code']}: {v['message']}" for v in r.notices]
-        msgs += [f"注意 {w['code']}: {w['message']}" for w in r.warnings]
+        msgs = [f"{err_w} {e['code']}: {e['message']}" for e in r.errors]
+        msgs += [f"{notice_w} {v['code']}: {v['message']}" for v in r.notices]
+        msgs += [f"{warn_w} {w['code']}: {w['message']}" for w in r.warnings]
         text = "<br>".join(md_cell(m) for m in msgs) or "-"
-        mark = {"ok": "ok", "notice": "ok(**確認**)", "NG": "**NG**"}[word]
+        mark = {"ok": "ok", "notice": tr("ok(**確認**)", "ok (**notice**)"), "NG": "**NG**"}[word]
         lines.append(
             f"| {mark} | {md_cell(r.path)} | {md_cell(r.model_id or '-')} |"
             f" {md_cell(r.gpu_name or '-')} | {text} |"
@@ -1566,20 +1902,22 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
             print(line)
         return code
     if not reports:
-        print("検査するファイルがありません")
+        print(tr("検査するファイルがありません", "no files to check"))
+    err_w, notice_w, warn_w = tr("誤り", "error"), tr("確認", "notice"), tr("注意", "warning")
     for r in reports:
         what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
         print(f"{_result_word(r):<6}  {r.path}" + (f"  ({what})" if what else ""))
         for e in r.errors:
-            print(f"      誤り {e['code']}: {e['message']}")
+            print(f"      {err_w} {e['code']}: {e['message']}")
         for v in r.notices:
-            print(f"      確認 {v['code']}: {v['message']}")
+            print(f"      {notice_w} {v['code']}: {v['message']}")
         for w in r.warnings:
-            print(f"      注意 {w['code']}: {w['message']}")
+            print(f"      {warn_w} {w['code']}: {w['message']}")
     words = [_result_word(r) for r in reports]
     print(
         f"{len(reports)} files: {words.count('ok')} ok, {words.count('notice')} ok with notices"
-        f"(失敗にはしない。マージする人が見る), {words.count('NG')} NG"
+        + tr("(失敗にはしない。マージする人が見る)", " (not failures; the maintainer checks them)")
+        + f", {words.count('NG')} NG"
     )
     return code
 
@@ -1591,12 +1929,19 @@ def format_report(rep: dict[str, Any]) -> list[str]:
 
     thr = rep["threshold_pct"]
     lines = [
-        "## 見積もりの精度の点検 / Accuracy check",
+        tr("## 見積もりの精度の点検 / Accuracy check", "## Accuracy check"),
         "",
-        f"係数を合わせた実測 {rep['n_fit']} 件。閾値: 誤差の絶対値 {thr:g}%"
-        "(評価できる種類の leave-one-out と、ほかの利用者の実測の照合で見る)。",
+        tr(
+            f"係数を合わせた実測 {rep['n_fit']} 件。閾値: 誤差の絶対値 {thr:g}%"
+            "(評価できる種類の leave-one-out と、ほかの利用者の実測の照合で見る)。",
+            f"{rep['n_fit']} measurements fitted. Threshold: absolute error {thr:g}%"
+            " (leave-one-out for the evaluable types, and the check against community measurements).",
+        ),
         "",
-        "| 種類 | LOO 件数 | LOO 平均 | LOO 最大 | 評価できる | 照合 件数 | 照合 最大 |",
+        tr(
+            "| 種類 | LOO 件数 | LOO 平均 | LOO 最大 | 評価できる | 照合 件数 | 照合 最大 |",
+            "| Type | LOO n | LOO mean | LOO max | Evaluable | Check n | Check max |",
+        ),
         "|---|---:|---:|---:|---|---:|---:|",
     ]
 
@@ -1610,19 +1955,39 @@ def format_report(rep: dict[str, Any]) -> list[str]:
         )
     lines.append("")
     if rep["breach"]:
-        lines.append(f"**警告: 誤差が閾値 {thr:g}% を超えたものがあります**")
+        lines.append(
+            tr(
+                f"**警告: 誤差が閾値 {thr:g}% を超えたものがあります**",
+                f"**Warning: some errors exceed the {thr:g}% threshold**",
+            )
+        )
         lines.append("")
         for b in rep["breaches"]:
+            gpu_name = md_cell(b.get("gpu_name") or "?")
             lines.append(
-                f"- {md_cell(b['model_id'])}({md_cell(b.get('gpu_name') or '?')}、"
-                f"{b['kind']}、{b.get('origin')}):"
-                f" {b['error_pct']:+g}%"
+                tr(
+                    f"- {md_cell(b['model_id'])}({gpu_name}、{b['kind']}、{b.get('origin')}):",
+                    f"- {md_cell(b['model_id'])} ({gpu_name}, {b['kind']}, {b.get('origin')}):",
+                )
+                + f" {b['error_pct']:+g}%"
             )
     else:
-        lines.append(f"閾値 {thr:g}% を超えたものはありません。")
-    lines += ["", "### ほかの利用者の実測で変わる段階 / Fit-level changes caused by community data", ""]
+        lines.append(
+            tr(f"閾値 {thr:g}% を超えたものはありません。", f"Nothing exceeds the {thr:g}% threshold.")
+        )
+    lines += [
+        "",
+        tr(
+            "### ほかの利用者の実測で変わる段階 / Fit-level changes caused by community data",
+            "### Fit-level changes caused by community data",
+        ),
+        "",
+    ]
     if rep.get("fit_changes"):
-        lines += ["| モデル | GPU | VRAM | メモリ | 前 | 後 |", "|---|---|---:|---:|---|---|"]
+        lines += [
+            tr("| モデル | GPU | VRAM | メモリ | 前 | 後 |", "| Model | GPU | VRAM | RAM | Before | After |"),
+            "|---|---|---:|---:|---|---|",
+        ]
         for c in rep["fit_changes"]:
             lines.append(
                 f"| {md_cell(c['model_id'])} | {md_cell(c.get('gpu_name') or '?')} | {c['vram_gb']:g} GB |"
@@ -1631,7 +1996,12 @@ def format_report(rep: dict[str, Any]) -> list[str]:
     else:
         ram = ", ".join(f"{v:g}" for v in CHECK_RAM_GB)
         lines.append(
-            f"ありません(実測と同じ GPU の PC × メモリ {ram} GB で確かめた。ほかの GPU の PC には使わない)。"
+            tr(
+                f"ありません(実測と同じ GPU の PC × メモリ {ram}"
+                " GB で確かめた。ほかの GPU の PC には使わない)。",
+                "None (checked on PCs with the measured GPU ×"
+                f" {ram} GB RAM; not used for PCs with other GPUs).",
+            )
         )
     if rep.get("check"):
         lines += ["", *check_table(rep["check"])]
@@ -1650,13 +2020,20 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     )
 
     if not Path(args.dir).is_dir():
-        raise CliError(f"提出のフォルダがありません: {args.dir}")
+        raise CliError(
+            tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
+        )
     db = _contrib_db(args)
     subs, reports = load_dir(args.dir, db)
     rows = aggregate(subs)
     if args.output and not rows and not args.allow_empty:
         raise CliError(
-            "まとめが空なので書き出しません(同梱のまとめを空で上書きしないため。空にするなら --allow-empty)"
+            tr(
+                "まとめが空なので書き出しません(同梱のまとめを空で上書きしないため。空にするなら"
+                " --allow-empty)",
+                "the result is empty, so nothing is written (so as not to overwrite the bundled data with an"
+                " empty one; use --allow-empty to write it anyway)",
+            )
         )
     written = str(write_community(rows, args.output)) if args.output else None
     rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
@@ -1679,8 +2056,16 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         _out(_envelope("contrib", None, None, **payload))
         return code
     print(
-        f"提出 {stats['files']} 件(検査を通った {stats['valid']} 件、通らなかった {stats['invalid']} 件)→ "
-        f"{stats['groups']} 組にまとめた(そろった組 {stats['consistent']}。ok の組は 1 件から見積もりに使う)"
+        tr(
+            f"提出 {stats['files']} 件(検査を通った {stats['valid']}"
+            f" 件、通らなかった {stats['invalid']} 件)→ "
+            f"{stats['groups']} 組にまとめた(そろった組"
+            f" {stats['consistent']}。ok の組は 1 件から見積もりに使う)",
+            f"{stats['files']} submissions ({stats['valid']}"
+            f" passed the checks, {stats['invalid']} failed) -> "
+            f"{stats['groups']} groups ({stats['consistent']} consistent; ok groups are used for estimates"
+            " from one submission)",
+        )
     )
     for r in rows:
         mark = "oom only" if r["outcome"] != "ok" else ("consistent" if r["consistent"] else "used")
@@ -1690,7 +2075,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
             f"spread {r['spread_rel_pct']:g}%, {mark})"
         )
     if written:
-        print(f"書き出し: {written}")
+        print(tr(f"書き出し: {written}", f"written: {written}"))
     if rep is not None:
         print()
         for line in format_report(rep):
@@ -1759,7 +2144,12 @@ def cmd_review_list(args: argparse.Namespace) -> int:
         )
         return 0
     pending = [i for i in items if i["status"] != "ok"]
-    print(f"確認待ち {len(pending)} 件 / 一覧 {len(db.models)} 件({db.origin})")
+    print(
+        tr(
+            f"確認待ち {len(pending)} 件 / 一覧 {len(db.models)} 件({db.origin})",
+            f"pending {len(pending)} / {len(db.models)} entries in the list ({db.origin})",
+        )
+    )
     for i in items:
         why = ", ".join(i["reasons"]) or "-"
         print(f"  [{i['status']}] {i['id']}  ({i['modality']}/{i['content']}/{i['license']})  {why}")
@@ -1788,7 +2178,10 @@ def cmd_review_approve(args: argparse.Namespace) -> int:
             }
         )
         return 0
-    print(f"確認済みにしました: {m.id}({', '.join(r.reasons) or '-'})→ {args.db}")
+    reasons = ", ".join(r.reasons) or "-"
+    print(
+        tr(f"確認済みにしました: {m.id}({reasons})→ {args.db}", f"Approved: {m.id} ({reasons}) -> {args.db}")
+    )
     return 0
 
 
@@ -1802,7 +2195,14 @@ def cmd_review_reject(args: argparse.Namespace) -> int:
     if args.json:
         _out({"genmodelfit": __version__, "command": "review", "action": "reject", "id": args.id, **res})
         return 0
-    print(f"一覧から外しました: {args.id} → {res['db']}(外した記録: {res['rejected_file']}、鍵 {res['key']})")
+    print(
+        tr(
+            f"一覧から外しました: {args.id} → {res['db']}(外した記録:"
+            f" {res['rejected_file']}、鍵 {res['key']})",
+            f"Removed from the list: {args.id} -> {res['db']}"
+            f" (record: {res['rejected_file']}, key {res['key']})",
+        )
+    )
     return 0
 
 
@@ -1862,16 +2262,25 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
         more = f" (+{len(plan.alternatives) - 3} more)" if len(plan.alternatives) > 3 else ""
         out.append(f"  others:    {alts}{more}")
     for w in plan.warnings:
-        out.append(f"  注意: {w}")
+        out.append(tr(f"  注意: {w}", f"  warning: {w}"))
     for b in plan.blocked:
-        out.append(f"  落とせません: {b}")
+        out.append(tr(f"  落とせません: {b}", f"  cannot download: {b}"))
     if consent and not plan.blocked and not plan.download_bytes:
         out.append("")
-        out.append("落とすものはありません(置いてあるファイルの sha256 だけ確かめます)。続けますか?")
+        out.append(
+            tr(
+                "落とすものはありません(置いてあるファイルの sha256 だけ確かめます)。続けますか?",
+                "Nothing to download (only the sha256 of the files there is checked). Continue?",
+            )
+        )
     elif consent and not plan.blocked:
         out.append("")
         out.append(
-            "上のファイルを、それぞれのライセンス・利用条件(URL)に従って使うことに同意して落としますか?"
+            tr(
+                "上のファイルを、それぞれのライセンス・利用条件(URL)に従って使うことに同意して落としますか?",
+                "Do you agree to use the files above under their"
+                " licenses and terms (URLs), and download them?",
+            )
         )
     return out
 
@@ -1934,7 +2343,10 @@ def cmd_download(args: argparse.Namespace) -> int:
 
     if args.json and not args.list and not args.yes:
         raise CliError(
-            "--json で落とすときは --yes が要ります(同意を尋ねられないため。先に --list で確かめる)"
+            tr(
+                "--json で落とすときは --yes が要ります(同意を尋ねられないため。先に --list で確かめる)",
+                "--json needs --yes to download (consent cannot be asked; check with --list first)",
+            )
         )
     s, db = _system(args), _db(args)
     try:
@@ -1973,10 +2385,10 @@ def cmd_download(args: argparse.Namespace) -> int:
     if plan.blocked:
         if not args.json:
             _emit(format_plan(plan))
-        return fail(DownloadError("落とせません: " + " / ".join(plan.blocked)))
+        return fail(DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(plan.blocked)))
     if not args.yes:
         if not _ask(format_plan(plan, consent=True)):
-            print("落としませんでした(同意がありません)", file=sys.stderr)
+            print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
     elif not args.json:
         _emit(format_plan(plan))
@@ -1988,8 +2400,11 @@ def cmd_download(args: argparse.Namespace) -> int:
             show.close()
         return fail(
             DownloadError(
-                "中断しました。途中までのファイル(.part)は残してあり、"
-                "同じコマンドでもう一度実行すると続きから落とします"
+                tr(
+                    "中断しました。途中までのファイル(.part)は残してあり、"
+                    "同じコマンドでもう一度実行すると続きから落とします",
+                    "Interrupted. The partial files (.part) are kept; run the same command again to resume",
+                )
             ),
             130,
         )
@@ -2003,12 +2418,17 @@ def cmd_download(args: argparse.Namespace) -> int:
         _out(_envelope("download", s, db, listed=False, plan=plan.to_dict(), result=result.to_dict()))
         return 0
     print(
-        f"落としました: {len(result.downloaded)} 件(続きから {len(result.resumed)} 件)、"
-        f"既にあった {len(result.skipped)} 件、{result.bytes_downloaded / GIB:.2f} GB、"
-        f"{result.seconds:.0f} 秒。"
-        "sha256 はすべて一覧と一致"
+        tr(
+            f"落としました: {len(result.downloaded)} 件(続きから {len(result.resumed)} 件)、"
+            f"既にあった {len(result.skipped)} 件、{result.bytes_downloaded / GIB:.2f} GB、"
+            f"{result.seconds:.0f} 秒。"
+            "sha256 はすべて一覧と一致",
+            f"Downloaded: {len(result.downloaded)} files ({len(result.resumed)} resumed),"
+            f" {len(result.skipped)} already there, {result.bytes_downloaded / GIB:.2f} GB,"
+            f" {result.seconds:.0f} s. Every sha256 matches the list",
+        )
     )
-    print(f"置き場所: {plan.root}")
+    print(tr(f"置き場所: {plan.root}", f"Location: {plan.root}"))
     return 0
 
 
@@ -2025,7 +2445,7 @@ def _policy(args: argparse.Namespace):
     if getattr(args, "license_allowlist", None):
         allow = load_allowlist(args.license_allowlist)
         if not allow:
-            raise CliError("--license-allowlist が空です")
+            raise CliError(tr("--license-allowlist が空です", "--license-allowlist is empty"))
     policy = GatePolicy(
         license_allowlist=allow,
         comfyui_version=getattr(args, "comfyui_version", None),
@@ -2049,9 +2469,9 @@ def _positive_int(v: str) -> int:
     try:
         n = int(v)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"整数ではありません: {v}") from None
+        raise argparse.ArgumentTypeError(tr(f"整数ではありません: {v}", f"not an integer: {v}")) from None
     if n < 1:
-        raise argparse.ArgumentTypeError(f"1 以上を指定してください: {v}")
+        raise argparse.ArgumentTypeError(tr(f"1 以上を指定してください: {v}", f"must be 1 or more: {v}"))
     return n
 
 
@@ -2061,9 +2481,11 @@ def _head_age(v: str) -> int | None:
     try:
         n = int(v)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"日数(整数)か none を指定してください: {v}") from None
+        raise argparse.ArgumentTypeError(
+            tr(f"日数(整数)か none を指定してください: {v}", f"give a number of days (integer) or none: {v}")
+        ) from None
     if n < 0:
-        raise argparse.ArgumentTypeError(f"0 以上を指定してください: {v}")
+        raise argparse.ArgumentTypeError(tr(f"0 以上を指定してください: {v}", f"must be 0 or more: {v}"))
     return n
 
 
@@ -2102,7 +2524,7 @@ EXIT CODES:
 """
 )
 
-HELP = {
+_HELP_JA = {
     "recommend": """Recommend generation models for this PC, best first.
 この PC に合う生成モデルを、おすすめ順に出す。
 
@@ -2323,16 +2745,159 @@ AGENT USAGE:
 }
 
 
+_JA_CHARS = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]")
+# 英語の説明で日本語の行を落とす前に、英語の行の中の日本語だけを英語にする
+_HELP_EN_FRAGMENTS = (("「no match」", '"no match"'), ('("その他の変化")', '("other changes")'))
+
+
+def _help(name: str) -> str:
+    """サブコマンドの説明。日本語は今までの文のまま、英語は日本語の行を除いたもの(#73)。"""
+    text = _HELP_JA[name]
+    if tr("ja", "en") == "ja":
+        return text
+    for ja, en in _HELP_EN_FRAGMENTS:
+        text = text.replace(ja, en)
+    return "\n".join(line for line in text.split("\n") if not _JA_CHARS.search(line))
+
+
+def _help_width() -> int:
+    """argparse と同じ幅(COLUMNS - 2、最大 78 ではなく argparse の既定どおり)。"""
+    import shutil
+
+    return max(shutil.get_terminal_size().columns - 2, 11)
+
+
+# --help の最後に出す使い方の例(#73。オーナーの依頼)。(コマンド, 日本語の説明, 英語の説明)。
+# コマンドは両方の言語で同じ。tests/test_help_examples.py が本物の引数の解釈で通るかを確かめる
+EXAMPLES: dict[str, list[tuple[str, str, str]]] = {
+    "": [
+        (
+            "genmodelfit system",
+            "この PC の GPU・メモリと一覧の新しさ",
+            "this PC's GPU and RAM, and how fresh the list is",
+        ),
+        ("genmodelfit recommend", "種類ごとのおすすめ(各 3 件)", "top 3 per type for this PC"),
+        ("genmodelfit recommend -m image --task edit", "画像の編集のおすすめ", "image editing models"),
+        (
+            "genmodelfit recommend --content all",
+            "無検閲のモデルも含める(既定は sfw)",
+            "include uncensored models (default is sfw)",
+        ),
+        ("genmodelfit recommend --vram 12 --ram 32", "別の PC として判定する", "judge for another PC"),
+        ('genmodelfit info "Z-Image-Turbo"', "1 つのモデルの詳細", "details of one model"),
+        ("genmodelfit recommend --lang ja", "日本語で出す", "output in Japanese"),
+    ],
+    "recommend": [
+        ("genmodelfit recommend", "種類ごとのおすすめ(各 3 件)", "top 3 per type"),
+        (
+            "genmodelfit recommend -m image --task edit -n 5",
+            "画像の編集の上位 5 件",
+            "top 5 image editing models",
+        ),
+        (
+            "genmodelfit recommend --content all",
+            "無検閲のモデルも含める(既定は sfw)",
+            "include uncensored models (default is sfw)",
+        ),
+        ("genmodelfit recommend --vram 12 --ram 32", "別の PC として判定する", "judge for another PC"),
+        ("genmodelfit recommend -m video --json", "アプリ向けの JSON", "JSON for apps"),
+    ],
+    "fit": [
+        ("genmodelfit fit", "この PC で動くモデルの全部", "every model that runs on this PC"),
+        (
+            "genmodelfit fit --sort score --fit good",
+            "good だけを種類をまたいだ順位で",
+            "good only, ranked across types",
+        ),
+        (
+            "genmodelfit fit --all",
+            "動かないもの・補助ツールなども全部",
+            "everything, including too tight models and utility tools",
+        ),
+        (
+            "genmodelfit fit -m video --task i2v --vram 12 --ram 32",
+            "別の PC で画像から動画",
+            "image to video on another PC",
+        ),
+        (
+            "genmodelfit fit --content all --json",
+            "無検閲も含めて JSON で(既定は sfw)",
+            "JSON, uncensored included (default is sfw)",
+        ),
+    ],
+    "info": [
+        ('genmodelfit info "Z-Image-Turbo"', "モデルの名前で", "by model name"),
+        (
+            "genmodelfit info image_z_image_turbo_int8 --json",
+            "ワークフローの ID で、JSON",
+            "by workflow id, as JSON",
+        ),
+    ],
+    "search": [
+        ("genmodelfit search flux", "名前に flux を含むモデル", "models whose name contains flux"),
+        (
+            "genmodelfit search wan -m video --min-fit good",
+            "good 以上の動画だけ",
+            "video models that are good or better",
+        ),
+    ],
+    "download": [
+        ('genmodelfit download "Z-Image-Turbo" --list', "落とすファイルを見るだけ", "only list the files"),
+        (
+            'genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI',
+            "ComfyUI のフォルダへ落とす",
+            "download into a ComfyUI folder",
+        ),
+    ],
+}
+
+
+def _examples(name: str) -> str:
+    """EXAMPLES の節(無ければ空)。説明は今の言語。"""
+    rows = EXAMPLES.get(name)
+    if not rows:
+        return ""
+    width = max(len(cmd) for cmd, _, _ in rows)
+    lines = [tr("例:", "EXAMPLES:")]
+    lines += [f"  {cmd:<{width}}  # {tr(ja, en)}" for cmd, ja, en in rows]
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--json", action="store_true", help="JSON で出す")
-    common.add_argument(
-        "--vram", type=_non_negative_float, metavar="GB", help="GPU の VRAM を上書きする(例: 8)"
+    """引数の解釈。説明の文は今の言語で作る(main は --lang を先に読んでから呼ぶ。#73)。"""
+    lang = argparse.ArgumentParser(add_help=False)
+    lang.add_argument(
+        "--lang",
+        choices=LANGUAGES,
+        default=argparse.SUPPRESS,
+        help=tr(
+            "表示の言語(既定は環境変数 GENMODELFIT_LANG、無ければ OS の言語、それも無ければ en)",
+            "display language (default: $GENMODELFIT_LANG, else the OS language, else en)",
+        ),
     )
-    common.add_argument("--ram", type=_positive_float, metavar="GB", help="メインメモリを上書きする(例: 32)")
-    common.add_argument("--db", metavar="PATH", help="一覧のファイルを指定する")
+    json_help = tr("JSON で出す", "output JSON")
+    common = argparse.ArgumentParser(add_help=False, parents=[lang])
+    common.add_argument("--json", action="store_true", help=json_help)
     common.add_argument(
-        "--no-cache", action="store_true", help="update で取った一覧を使わず、同梱のデータを使う"
+        "--vram",
+        type=_non_negative_float,
+        metavar="GB",
+        help=tr("GPU の VRAM を上書きする(例: 8)", "override the GPU VRAM (e.g. 8)"),
+    )
+    common.add_argument(
+        "--ram",
+        type=_positive_float,
+        metavar="GB",
+        help=tr("メインメモリを上書きする(例: 32)", "override the system RAM (e.g. 32)"),
+    )
+    common.add_argument("--db", metavar="PATH", help=tr("一覧のファイルを指定する", "model list file to use"))
+    common.add_argument(
+        "--no-cache",
+        action="store_true",
+        help=tr(
+            "update で取った一覧を使わず、同梱のデータを使う",
+            "use the bundled list, not the one fetched by update",
+        ),
     )
 
     filt = argparse.ArgumentParser(add_help=False)
@@ -2341,56 +2906,96 @@ def build_parser() -> argparse.ArgumentParser:
         "-m",
         type=_modality_list,
         metavar="TYPE[,TYPE]",
-        help=f"種類で絞る(カンマ区切り可): {', '.join(MODALITIES)}",
+        help=tr("種類で絞る(カンマ区切り可): ", "filter by type (comma-separated): ") + ", ".join(MODALITIES),
     )
     filt.add_argument(
         "--content",
         choices=CONTENT_FILTERS,
         default=DEFAULT_CONTENT,
-        help="sfw / uncensored(無検閲)/ all で絞る。既定は sfw(無検閲は all か uncensored のときだけ出す)",
+        help=tr(
+            "sfw / uncensored(無検閲)/ all で絞る。既定は sfw(無検閲は all か uncensored のときだけ出す)",
+            "sfw / uncensored / all. Default sfw (uncensored models are shown only with all or uncensored)",
+        ),
     )
     filt.add_argument("--width", type=_positive_int)
     filt.add_argument("--height", type=_positive_int)
-    filt.add_argument("--frames", type=_positive_int, help="動画のコマ数")
-    filt.add_argument("--length", type=_positive_float, metavar="SEC", help="音声の長さ(秒)")
-    filt.add_argument("--precision", help="本体の精度を換算する(例: fp8。元の精度が分かるときだけ)")
-    filt.add_argument("--limit", "-n", type=_positive_int, help="出す件数(1 以上)")
+    filt.add_argument("--frames", type=_positive_int, help=tr("動画のコマ数", "video frames"))
     filt.add_argument(
-        "--limits", action="store_true", help="この PC で good になる最大の解像度・長さも出す(JSON の limits)"
+        "--length", type=_positive_float, metavar="SEC", help=tr("音声の長さ(秒)", "audio length (seconds)")
+    )
+    filt.add_argument(
+        "--precision",
+        help=tr(
+            "本体の精度を換算する(例: fp8。元の精度が分かるときだけ)",
+            "convert the weights to this precision (e.g. fp8; only when the original precision is known)",
+        ),
+    )
+    filt.add_argument(
+        "--limit", "-n", type=_positive_int, help=tr("出す件数(1 以上)", "number of rows to show (1 or more)")
+    )
+    filt.add_argument(
+        "--limits",
+        action="store_true",
+        help=tr(
+            "この PC で good になる最大の解像度・長さも出す(JSON の limits)",
+            "also show the largest resolution / length that is good on this PC (limits in JSON)",
+        ),
     )
 
     gate = argparse.ArgumentParser(add_help=False)
     gate.add_argument(
         "--license-allowlist",
         metavar="LIST|FILE",
-        help="自動のおすすめに許すライセンス(「mit,apache-2.0」か、1 行に 1 つ書いたファイル)。"
-        "既定は docs/gate.md",
+        help=tr(
+            "自動のおすすめに許すライセンス(「mit,apache-2.0」か、1"
+            " 行に 1 つ書いたファイル)。既定は docs/gate.md",
+            'licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line).'
+            " Default: docs/gate.md",
+        ),
     )
     gate.add_argument(
         "--comfyui-version",
         metavar="VER",
-        help="使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース)",
+        help=tr(
+            "使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース)",
+            "the ComfyUI version in use; apps should always pass theirs"
+            " (default: the latest release recorded by update)",
+        ),
     )
     gate.add_argument(
         "--max-head-age-days",
         type=_head_age,
         default=30,
         metavar="DAYS",
-        help="HEAD の確認をこの日数まで信じる(既定 30。none で期限なし)",
+        help=tr(
+            "HEAD の確認をこの日数まで信じる(既定 30。none で期限なし)",
+            "trust HEAD checks for this many days (default 30; none for no limit)",
+        ),
     )
     gate.add_argument(
-        "--allow-uncensored-auto", action="store_true", help="無検閲のモデルも自動のおすすめに出してよい"
+        "--allow-uncensored-auto",
+        action="store_true",
+        help=tr(
+            "無検閲のモデルも自動のおすすめに出してよい", "allow uncensored models in auto-recommendation"
+        ),
     )
 
-    p = argparse.ArgumentParser(
-        prog="genmodelfit",
-        description="Right-size generation models to your PC.",
-        epilog="If the genmodelfit command is not found (not on PATH), "
+    epilog = tr(
+        "If the genmodelfit command is not found (not on PATH), "
         "`python -m genmodelfit ...` always works. "
         "genmodelfit コマンドが見つからないときは `python -m genmodelfit ...` で動きます"
         "(README「Install」)。",
+        "If the genmodelfit command is not found (not on PATH), "
+        '`python -m genmodelfit ...` always works (README "Install").',
+    )
+    p = argparse.ArgumentParser(
+        prog="genmodelfit",
+        description="Right-size generation models to your PC.",
+        epilog=textwrap.fill(epilog, _help_width()) + "\n\n" + _examples(""),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", action="version", version=f"genmodelfit {__version__}")
+    p.add_argument("--lang", choices=LANGUAGES, default=argparse.SUPPRESS, help=lang._actions[0].help)
     sub = p.add_subparsers(dest="command", required=True)
 
     def sub_parser(name: str, help_text: str, parents: list) -> argparse.ArgumentParser:
@@ -2398,16 +3003,30 @@ def build_parser() -> argparse.ArgumentParser:
             name,
             parents=parents,
             help=help_text,
-            description=HELP[name],
+            description=_help(name),
+            epilog=_examples(name) or None,
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
 
-    sp = sub_parser("system", "この PC の GPU・メモリ・空きと、一覧の新しさを出す", [common, gate])
-    sp.add_argument("--disk-path", help="空きを調べる場所(既定はホーム)")
+    sp = sub_parser(
+        "system",
+        tr(
+            "この PC の GPU・メモリ・空きと、一覧の新しさを出す",
+            "show this PC's GPU, memory and free disk, and how fresh the model list is",
+        ),
+        [common, gate],
+    )
+    sp.add_argument(
+        "--disk-path", help=tr("空きを調べる場所(既定はホーム)", "where to check free disk (default: home)")
+    )
     sp.add_argument(
         "--all-gpus",
         action="store_true",
-        help="NVIDIA 以外も含めて画面の部品(GPU)をすべて出す(Windows は約 1 秒かかる。判定には使わない)",
+        help=tr(
+            "NVIDIA 以外も含めて画面の部品(GPU)をすべて出す(Windows は約 1 秒かかる。判定には使わない)",
+            "list all display adapters (GPUs), not only NVIDIA"
+            " (takes about 1 s on Windows; not used for judging)",
+        ),
     )
     sp.set_defaults(func=cmd_system)
 
@@ -2415,46 +3034,75 @@ def build_parser() -> argparse.ArgumentParser:
     sel.add_argument(
         "--min-fit",
         choices=FIT_LEVELS,
-        help="この段階以上だけ出す(recommend の既定は marginal、fit / search は全部)",
+        help=tr(
+            "この段階以上だけ出す(recommend の既定は marginal、fit / search は全部)",
+            "show only this fit level or better (recommend default: marginal; fit / search: all)",
+        ),
     )
     sel.add_argument(
         "--license",
         type=_license_list,
         metavar="LIST",
-        help="すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
+        help=tr(
+            "すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない)",
+            "only models whose files all have one of these"
+            " licenses (e.g. apache-2.0,mit; unknown never matches)",
+        ),
     )
     sel.add_argument(
         "--fit",
         choices=list(FIT_FILTERS),
-        help="出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、"
-        "all(too_tight・判定できないものも)。--min-fit とは同時に使えない",
+        help=tr(
+            "出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、"
+            "all(too_tight・判定できないものも)。--min-fit とは同時に使えない",
+            "fit levels to show: perfect / good / marginal (that"
+            " level only), runnable (all that run; fit default),"
+            " all (too_tight and unknown too). Not with --min-fit",
+        ),
     )
     sel.add_argument(
         "--include-unknown-license",
         action="store_true",
-        help="ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る)",
+        help=tr(
+            "ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info <ID> では常に出る)",
+            "also show models with files of unknown license (hidden by default; info <ID> always shows them)",
+        ),
     )
 
     sel.add_argument(
         "--task",
         type=_task_list,
         metavar="USE[,USE]",
-        help="用途で絞る(gen / edit / i2v / lipsync / motion / voice / upscale / tool、"
-        "または t2i・i2i・inpaint などの tasks。一覧は genmodelfit types)",
+        help=tr(
+            "用途で絞る(gen / edit / i2v / lipsync / motion / voice / upscale / tool、"
+            "または t2i・i2i・inpaint などの tasks。一覧は genmodelfit types)",
+            "filter by use (gen / edit / i2v / lipsync / motion / voice / upscale / tool,"
+            " or task codes such as t2i, i2i, inpaint; see genmodelfit types)",
+        ),
     )
     sel.add_argument(
         "--all-workflows",
         action="store_true",
-        help="同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す",
+        help=tr(
+            "同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す",
+            "one row per workflow instead of grouping the same model (differing only in precision or use)",
+        ),
+    )
+    tools_help = tr(
+        "深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
+        "include utility tools such as depth, pose, background removal and upscaling"
+        " (default: generation models only)",
     )
 
-    sp = sub_parser("recommend", "おすすめ順に出す", [common, filt, sel, gate])
-    sp.add_argument("--auto-only", action="store_true", help="自動でおすすめに出せるものだけ")
-    sp.add_argument(
-        "--include-tools",
-        action="store_true",
-        help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
+    sp = sub_parser(
+        "recommend", tr("おすすめ順に出す", "recommend models, best first"), [common, filt, sel, gate]
     )
+    sp.add_argument(
+        "--auto-only",
+        action="store_true",
+        help=tr("自動でおすすめに出せるものだけ", "only auto-recommendable models"),
+    )
+    sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
 
     listing = argparse.ArgumentParser(add_help=False)
@@ -2462,337 +3110,691 @@ def build_parser() -> argparse.ArgumentParser:
         "--sort",
         choices=SORTS,
         default="type",
-        help="並べ方: type(既定。種類 → 段階 → 点数)、score(種類をまたいだ順位)、vram / disk(少ない順)、name",
+        help=tr(
+            "並べ方: type(既定。種類 → 段階 → 点数)、score(種類をまたいだ順位)、vram / disk(少ない順)、name",
+            "order: type (default; type -> fit level -> score), score (ranked across types),"
+            " vram / disk (smallest first), name",
+        ),
     )
     listing.add_argument(
         "--all",
         action="store_true",
-        help="全部出す(動かないもの・判定できないもの・補助ツール・ライセンス不明も。無検閲は --content all)",
+        help=tr(
+            "全部出す(動かないもの・判定できないもの・補助ツール・ライセンス不明も。無検閲は --content all)",
+            "show everything (too tight, unknown, utility tools,"
+            " unknown license; uncensored needs --content all)",
+        ),
     )
-    listing.add_argument("--perfect", "-p", action="store_true", help="perfect だけ(--fit perfect と同じ)")
-
-    sp = sub_parser("fit", "動くモデルの判定を表で出す(--all で全部)", [common, filt, sel, gate, listing])
-    sp.add_argument(
-        "--include-tools",
+    listing.add_argument(
+        "--perfect",
+        "-p",
         action="store_true",
-        help="深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ)",
+        help=tr("perfect だけ(--fit perfect と同じ)", "perfect only (same as --fit perfect)"),
     )
+
+    sp = sub_parser(
+        "fit",
+        tr(
+            "動くモデルの判定を表で出す(--all で全部)",
+            "judge the models that run, as a table (--all for all)",
+        ),
+        [common, filt, sel, gate, listing],
+    )
+    sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_fit)
 
     sp = sub_parser(
-        "search", "ID・名前の一部で探して、この PC での判定を出す", [common, filt, sel, gate, listing]
+        "search",
+        tr(
+            "ID・名前の一部で探して、この PC での判定を出す",
+            "search by a part of the id or name and judge the matches for this PC",
+        ),
+        [common, filt, sel, gate, listing],
     )
-    sp.add_argument("query", help="探す語(ID・名前の一部。大文字小文字は区別しない)")
+    sp.add_argument(
+        "query",
+        help=tr(
+            "探す語(ID・名前の一部。大文字小文字は区別しない)",
+            "search word (part of the id or name; case-insensitive)",
+        ),
+    )
     sp.set_defaults(func=cmd_search)
 
     sp = sub.add_parser(
         "types",
         parents=[common],
-        help="大きな種類と、その中の用途(--task の名前)と数",
-        description=HELP["types"],
+        help=tr(
+            "大きな種類と、その中の用途(--task の名前)と数",
+            "the big types, the uses inside each (names for --task), and counts",
+        ),
+        description=_help("types"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sp.add_argument("--content", choices=CONTENT_FILTERS, default=DEFAULT_CONTENT)
     sp.set_defaults(func=cmd_types)
 
-    sp = sub_parser("info", "1 つのモデルの詳細", [common, filt, gate])
-    sp.add_argument("model", help="モデルの ID または名前の一部")
+    sp = sub_parser("info", tr("1 つのモデルの詳細", "details of one model"), [common, filt, gate])
+    sp.add_argument("model", help=tr("モデルの ID または名前の一部", "model id, or a part of the id or name"))
     sp.set_defaults(func=cmd_info)
 
-    sp = sub_parser("update", "一覧を上流から作り直す", [common, gate])
-    sp.add_argument("--offline-sources", metavar="DIR", help="(試験用)上流の代わりに使うファイル")
-    sp.add_argument("--skip-hf", action="store_true", help="Hugging Face を見ない")
-    sp.add_argument("--skip-head", action="store_true", help="URL の HEAD 確認を飛ばす")
+    sp = sub_parser(
+        "update", tr("一覧を上流から作り直す", "rebuild the model list from upstream"), [common, gate]
+    )
+    sp.add_argument(
+        "--offline-sources",
+        metavar="DIR",
+        help=tr("(試験用)上流の代わりに使うファイル", "(for tests) files to use instead of upstream"),
+    )
+    sp.add_argument("--skip-hf", action="store_true", help=tr("Hugging Face を見ない", "skip Hugging Face"))
+    sp.add_argument(
+        "--skip-head",
+        action="store_true",
+        help=tr("URL の HEAD 確認を飛ばす", "skip the HEAD checks of URLs"),
+    )
     sp.add_argument(
         "--heads-only",
         action="store_true",
-        help="今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
+        help=tr(
+            "今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す",
+            "keep the current list; redo only the URL HEAD checks and the latest ComfyUI release check",
+        ),
     )
     sp.add_argument(
         "--fields-only",
         action="store_true",
-        help="今の一覧はそのままで、アプリ向けの項目(言語・動かし方・説明)と手のモデル(data/manual.json)だけを"
-        "当て直す。通信するのは、言語を読むカードと手のモデルのファイルだけ(--offline で通信せず、"
-        "保存済みのカードの言語を使う)",
+        help=tr(
+            "今の一覧はそのままで、アプリ向けの項目(言語・動かし方・説明)と手のモデル(data/manual.json)だけを"
+            "当て直す。通信するのは、言語を読むカードと手のモデルのファイルだけ(--offline で通信せず、"
+            "保存済みのカードの言語を使う)",
+            "keep the current list; re-apply only the app fields (languages, runtime, description) and the"
+            " hand-added models (data/manual.json). Only the model cards (for languages) and the hand-added"
+            " models' files are fetched (--offline: no network, use the stored card languages)",
+        ),
     )
     sp.add_argument(
         "--inspect-only",
         action="store_true",
-        help="今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
-        "リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す"
-        "(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る)",
+        help=tr(
+            "今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
+            "リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す"
+            "(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る)",
+            "keep the current list; re-read only the weight file headers (precision), the templates' sampler"
+            " settings and loader precision, and the repository precision (Hub API, config.json), and recheck"
+            " repositories that returned 401 (Range requests;"
+            " weights are not downloaded; results are cached)",
+        ),
     )
     sp.add_argument(
         "--offline",
         action="store_true",
-        help="--inspect-only / --fields-only で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う",
+        help=tr(
+            "--inspect-only / --fields-only で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う",
+            "with --inspect-only / --fields-only: no network;"
+            " use only the cached headers and repository precision",
+        ),
     )
-    sp.add_argument("--output", metavar="PATH", help="書き出し先(既定はキャッシュ)")
+    sp.add_argument(
+        "--output",
+        metavar="PATH",
+        help=tr("書き出し先(既定はキャッシュ)", "where to write (default: the cache)"),
+    )
     sp.add_argument(
         "--from-release",
         action="store_true",
-        help="配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)。"
-        "--output があればそこへ書く",
+        help=tr(
+            "配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)。--output があればそこへ書く",
+            "take in the signed list published by this project (nothing changes if the signature does not"
+            " match). Writes to --output if given",
+        ),
     )
     sp.add_argument(
         "--force",
         action="store_true",
-        help="(--from-release)前に取り込んだ一覧より古くても取り込む",
+        help=tr(
+            "(--from-release)前に取り込んだ一覧より古くても取り込む",
+            "(--from-release) take it in even if it is older than the list taken in before",
+        ),
     )
     sp.add_argument(
         "--allow-partial",
         action="store_true",
-        help="一部(テンプレート・Hugging Face)を取得できなくても書き出す(sources.partial が true になる)",
+        help=tr(
+            "一部(テンプレート・Hugging Face)を取得できなくても書き出す(sources.partial が true になる)",
+            "write the list even if some sources (templates,"
+            " Hugging Face) failed (sources.partial becomes true)",
+        ),
     )
     sp.add_argument(
         "--rate-limit-budget",
         type=float,
         metavar="SEC",
-        help="Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める",
+        help=tr(
+            "Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める",
+            "the most time to wait in total for Hugging Face rate limits (429), in seconds (default 900);"
+            " stops when exceeded",
+        ),
     )
     sp.set_defaults(func=cmd_update)
 
     sp = sub_parser(
-        "download", "モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)", [common, gate]
+        "download",
+        tr(
+            "モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)",
+            "download the files of a model (consent, sha256, resume, ComfyUI folders)",
+        ),
+        [common, gate],
     )
-    sp.add_argument("model", help="モデルの名前(表の Model)・ワークフローの ID・その一部")
-    sp.add_argument("--precision", metavar="PREC", help="精度を指定する(例: fp8 / bf16 / int8 / gguf-q8_0)")
     sp.add_argument(
-        "--budget", type=_positive_float, metavar="GB", help="落とす量の上限(GB。既にあるファイルは数えない)"
+        "model",
+        help=tr(
+            "モデルの名前(表の Model)・ワークフローの ID・その一部",
+            "model name (the Model column), workflow id, or a part of either",
+        ),
     )
     sp.add_argument(
-        "--list", action="store_true", help="落とすファイルと合計を出すだけ(落とさない・通信しない)"
+        "--precision",
+        metavar="PREC",
+        help=tr(
+            "精度を指定する(例: fp8 / bf16 / int8 / gguf-q8_0)",
+            "precision to use (e.g. fp8 / bf16 / int8 / gguf-q8_0)",
+        ),
+    )
+    sp.add_argument(
+        "--budget",
+        type=_positive_float,
+        metavar="GB",
+        help=tr(
+            "落とす量の上限(GB。既にあるファイルは数えない)",
+            "the most to download in GB (files already there are not counted)",
+        ),
+    )
+    sp.add_argument(
+        "--list",
+        action="store_true",
+        help=tr(
+            "落とすファイルと合計を出すだけ(落とさない・通信しない)",
+            "only list the files and the total (no download, no network)",
+        ),
     )
     where = sp.add_mutually_exclusive_group()
-    where.add_argument("--output-dir", metavar="DIR", help="置き場所(ComfyUI の models と同じ並びで置く)")
     where.add_argument(
-        "--comfyui-dir", metavar="DIR", help="ComfyUI のフォルダ。models/<diffusion_models など>/ に置く"
+        "--output-dir",
+        metavar="DIR",
+        help=tr(
+            "置き場所(ComfyUI の models と同じ並びで置く)",
+            "destination folder (same layout as ComfyUI's models)",
+        ),
     )
-    sp.add_argument("--yes", "-y", action="store_true", help="同意の確認を省く(--json で落とすときは必須)")
+    where.add_argument(
+        "--comfyui-dir",
+        metavar="DIR",
+        help=tr(
+            "ComfyUI のフォルダ。models/<diffusion_models など>/ に置く",
+            "the ComfyUI folder; files go to models/<diffusion_models etc.>/",
+        ),
+    )
+    sp.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help=tr(
+            "同意の確認を省く(--json で落とすときは必須)",
+            "skip the consent question (required to download with --json)",
+        ),
+    )
     sp.add_argument(
         "--content",
         choices=CONTENT_FILTERS,
         default=DEFAULT_CONTENT,
-        help="無検閲のモデルは all か uncensored を明示したときだけ落とす(既定 sfw)",
+        help=tr(
+            "無検閲のモデルは all か uncensored を明示したときだけ落とす(既定 sfw)",
+            "uncensored models are downloaded only with all or uncensored (default sfw)",
+        ),
     )
     sp.add_argument(
         "--include-unknown-license",
         action="store_true",
-        help="ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる)",
+        help=tr(
+            "ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる)",
+            "also download models with files of unknown license (check the terms yourself)",
+        ),
     )
     sp.set_defaults(func=cmd_download)
 
-    sp = sub.add_parser("gate", parents=[common, gate], help="自動でおすすめに出せるかの集計")
+    sp = sub.add_parser(
+        "gate",
+        parents=[common, gate],
+        help=tr("自動でおすすめに出せるかの集計", "summary of which models can be auto-recommended"),
+    )
     sp.add_argument("--modality", "-m", choices=MODALITIES)
     only = sp.add_mutually_exclusive_group()
-    only.add_argument("--only-auto", action="store_true", help="自動で出せるものの ID も並べる")
-    only.add_argument("--only-held", action="store_true", help="保留のものの ID と理由も並べる")
+    only.add_argument(
+        "--only-auto",
+        action="store_true",
+        help=tr("自動で出せるものの ID も並べる", "also list the ids of auto-recommendable models"),
+    )
+    only.add_argument(
+        "--only-held",
+        action="store_true",
+        help=tr("保留のものの ID と理由も並べる", "also list the ids of held models and why"),
+    )
     sp.set_defaults(func=cmd_gate)
 
     sp = sub.add_parser(
         "diff",
-        help="2 つの一覧(db.json)の違い(増減・ライセンス・自動のおすすめ・HEAD の失敗)",
-        description=HELP["diff"],
+        parents=[lang],
+        help=tr(
+            "2 つの一覧(db.json)の違い(増減・ライセンス・自動のおすすめ・HEAD の失敗)",
+            "differences between two model lists (db.json): added / removed, licenses, auto-recommendation,"
+            " HEAD failures",
+        ),
+        description=_help("diff"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sp.add_argument(
         "old",
         nargs="?",
-        help="前の一覧。省くと同梱の一覧と取ってきた一覧(update のキャッシュ)を比べる。"
-        "1 つだけなら同梱の一覧とそのファイルを比べる",
+        help=tr(
+            "前の一覧。省くと同梱の一覧と取ってきた一覧(update のキャッシュ)を比べる。"
+            "1 つだけなら同梱の一覧とそのファイルを比べる",
+            "the old list. Omitted: compare the bundled list with the fetched list (the update cache)."
+            " With one file: compare the bundled list with that file",
+        ),
     )
-    sp.add_argument("new", nargs="?", help="新しい一覧")
-    sp.add_argument("--json", action="store_true", help="JSON で出す")
+    sp.add_argument("new", nargs="?", help=tr("新しい一覧", "the new list"))
+    sp.add_argument("--json", action="store_true", help=json_help)
     sp.add_argument(
         "--all",
         action="store_true",
-        help="保守用の内容も出す(前からの HEAD の失敗・401 のリポジトリ・sources の数・"
-        "人気の数などだけの変化)",
+        help=tr(
+            "保守用の内容も出す(前からの HEAD の失敗・401"
+            " のリポジトリ・sources の数・人気の数などだけの変化)",
+            "also show the maintenance view (older HEAD failures, 401 repositories, sources numbers,"
+            " popularity-only changes)",
+        ),
     )
     sp.add_argument(
         "--comfyui-version",
         metavar="VER",
-        help="自動のおすすめを比べるときの ComfyUI の版(既定は新しい一覧の記録)",
+        help=tr(
+            "自動のおすすめを比べるときの ComfyUI の版(既定は新しい一覧の記録)",
+            "ComfyUI version used to compare auto-recommendation (default: recorded in the new list)",
+        ),
     )
     sp.add_argument(
         "--limit",
         "-n",
         type=_positive_int,
         default=None,
-        help="1 つの節に出す行の上限(既定 20。--all では全部)",
+        help=tr(
+            "1 つの節に出す行の上限(既定 20。--all では全部)",
+            "max lines per section (default 20; all with --all)",
+        ),
     )
     sp.set_defaults(func=cmd_diff)
 
+    db_cache_help = tr(
+        "update で取った一覧を使わず、同梱のデータを使う",
+        "use the bundled list, not the one fetched by update",
+    )
+    write_db_help = tr(
+        "書き換える一覧(例 src/genmodelfit/data/db.json)",
+        "the list file to rewrite (e.g. src/genmodelfit/data/db.json)",
+    )
     sp = sub.add_parser(
         "review",
-        help="確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(#42)",
-        description=REVIEW_HELP,
+        parents=[lang],
+        help=tr(
+            "確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(#42)",
+            "list, approve or reject models waiting for review (new entries, license changes, ...) (#42)",
+        ),
+        description=_review_help(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     rsub = sp.add_subparsers(dest="review_command", required=True)
-    r = rsub.add_parser("list", help="確認待ちの項目と理由")
-    r.add_argument("--json", action="store_true", help="JSON で出す")
-    r.add_argument("--db", metavar="PATH", help="一覧のファイル(既定はキャッシュ、無ければ同梱)")
-    r.add_argument("--no-cache", action="store_true", help="update で取った一覧を使わず、同梱のデータを使う")
-    r.add_argument("--all", action="store_true", help="確認済みの項目も出す")
+    r = rsub.add_parser(
+        "list", parents=[lang], help=tr("確認待ちの項目と理由", "models waiting for review and why")
+    )
+    r.add_argument("--json", action="store_true", help=json_help)
+    r.add_argument(
+        "--db",
+        metavar="PATH",
+        help=tr(
+            "一覧のファイル(既定はキャッシュ、無ければ同梱)",
+            "the list file (default: the cache, else the bundled list)",
+        ),
+    )
+    r.add_argument("--no-cache", action="store_true", help=db_cache_help)
+    r.add_argument("--all", action="store_true", help=tr("確認済みの項目も出す", "also show approved models"))
     r.set_defaults(func=cmd_review_list)
     r = rsub.add_parser(
-        "approve", help="根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)"
+        "approve",
+        parents=[lang],
+        help=tr(
+            "根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)",
+            "approve with evidence (primary-source URLs); rewrites the list file",
+        ),
     )
-    r.add_argument("id", help="モデルの ID")
+    r.add_argument("id", help=tr("モデルの ID", "model id"))
     r.add_argument(
-        "--evidence", action="append", metavar="URL", help="根拠の URL(https。1 つ以上。繰り返して足す)"
+        "--evidence",
+        action="append",
+        metavar="URL",
+        help=tr(
+            "根拠の URL(https。1 つ以上。繰り返して足す)", "evidence URL (https; one or more; repeat to add)"
+        ),
     )
-    r.add_argument("--note", help="確かめた内容のメモ")
-    r.add_argument("--by", default="review", help="確かめた人・仕組み(decided_by。既定 review)")
+    r.add_argument("--note", help=tr("確かめた内容のメモ", "a note on what was checked"))
     r.add_argument(
-        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+        "--by",
+        default="review",
+        help=tr(
+            "確かめた人・仕組み(decided_by。既定 review)",
+            "who or what checked it (decided_by; default review)",
+        ),
     )
-    r.add_argument("--json", action="store_true", help="JSON で出す")
+    r.add_argument("--db", required=True, metavar="PATH", help=write_db_help)
+    r.add_argument("--json", action="store_true", help=json_help)
     r.set_defaults(func=cmd_review_approve)
-    r = rsub.add_parser("reject", help="一覧から外し、update でも入れないように記録する")
-    r.add_argument("id", help="モデルの ID")
-    r.add_argument("--note", required=True, help="外す理由")
-    r.add_argument(
-        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+    r = rsub.add_parser(
+        "reject",
+        parents=[lang],
+        help=tr(
+            "一覧から外し、update でも入れないように記録する",
+            "remove from the list and record it so that update does not add it again",
+        ),
     )
+    r.add_argument("id", help=tr("モデルの ID", "model id"))
+    r.add_argument("--note", required=True, help=tr("外す理由", "why it is removed"))
+    r.add_argument("--db", required=True, metavar="PATH", help=write_db_help)
     r.add_argument(
         "--rejected",
         metavar="PATH",
-        help="外した記録のファイル(既定は --db と同じフォルダの review_rejected.txt)",
+        help=tr(
+            "外した記録のファイル(既定は --db と同じフォルダの review_rejected.txt)",
+            "the record file (default: review_rejected.txt in the same folder as --db)",
+        ),
     )
     r.add_argument(
         "--hide-name",
         action="store_true",
-        help="記録に ID を残さず sha256 だけ残す(安全上の理由で外すとき。既存の除外と同じく名前を残さない)",
+        help=tr(
+            "記録に ID を残さず sha256 だけ残す(安全上の理由で外すとき。既存の除外と同じく名前を残さない)",
+            "record only the sha256, not the id (when removing"
+            " for safety reasons; like the existing exclusions)",
+        ),
     )
-    r.add_argument("--json", action="store_true", help="JSON で出す")
+    r.add_argument("--json", action="store_true", help=json_help)
     r.set_defaults(func=cmd_review_reject)
 
-    sp = sub.add_parser("bench", parents=[common], help="動いている ComfyUI で実測する")
-    sp.add_argument("template", help="テンプレート名(モデルの ID)")
-    sp.add_argument(
-        "--url", required=True, help="測りに使う ComfyUI の URL(例 http://127.0.0.1:8188。既定は持たない)"
+    sp = sub.add_parser(
+        "bench",
+        parents=[common],
+        help=tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"),
     )
-    sp.add_argument("--workflow", metavar="PATH", help="API 形式のワークフロー(省略時はテンプレートから作る)")
+    sp.add_argument("template", help=tr("テンプレート名(モデルの ID)", "template name (model id)"))
+    sp.add_argument(
+        "--url",
+        required=True,
+        help=tr(
+            "測りに使う ComfyUI の URL(例 http://127.0.0.1:8188。既定は持たない)",
+            "URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188; no default)",
+        ),
+    )
+    sp.add_argument(
+        "--workflow",
+        metavar="PATH",
+        help=tr(
+            "API 形式のワークフロー(省略時はテンプレートから作る)",
+            "workflow in API format (default: built from the template)",
+        ),
+    )
     sp.add_argument("--width", type=_positive_int)
     sp.add_argument("--height", type=_positive_int)
     sp.add_argument("--frames", type=_positive_int)
     sp.add_argument("--length", type=_positive_float, metavar="SEC")
     sp.add_argument("--steps", type=_positive_int)
     sp.add_argument(
-        "--output", metavar="PATH", help="結果の JSON の書き出し先(失敗・標準でない結果もここへ書く)"
+        "--output",
+        metavar="PATH",
+        help=tr(
+            "結果の JSON の書き出し先(失敗・標準でない結果もここへ書く)",
+            "where to write the result JSON (failed and non-standard results are written here too)",
+        ),
     )
     sp.add_argument(
         "--save-failed",
         action="store_true",
-        help="失敗(OOM など)の結果もキャッシュに保存する(既定は表示だけ)",
+        help=tr(
+            "失敗(OOM など)の結果もキャッシュに保存する(既定は表示だけ)",
+            "also save failed results (OOM etc.) to the cache (default: show only)",
+        ),
     )
     sp.add_argument(
         "--save-nonstandard",
         action="store_true",
-        help="標準でない条件(--workflow・--set・一部だけ実行など)の結果もキャッシュに保存する",
+        help=tr(
+            "標準でない条件(--workflow・--set・一部だけ実行など)の結果もキャッシュに保存する",
+            "also save results under non-standard conditions"
+            " (--workflow, --set, partial runs, ...) to the cache",
+        ),
     )
-    sp.add_argument("--resolution", metavar="WxH", help="幅と高さ(例: 768x768)。--width/--height と同じ")
     sp.add_argument(
-        "--set", action="append", metavar="NAME=VALUE", help="入力を名前で変える(例: octree_resolution=192)"
+        "--resolution",
+        metavar="WxH",
+        help=tr(
+            "幅と高さ(例: 768x768)。--width/--height と同じ",
+            "width and height (e.g. 768x768); same as --width/--height",
+        ),
+    )
+    sp.add_argument(
+        "--set",
+        action="append",
+        metavar="NAME=VALUE",
+        help=tr(
+            "入力を名前で変える(例: octree_resolution=192)",
+            "change an input by name (e.g. octree_resolution=192)",
+        ),
     )
     sp.add_argument(
         "--free",
         action="store_true",
-        help="開始前に /free でその ComfyUI のモデルを解放する(自分だけが使う ComfyUI のときに)",
+        help=tr(
+            "開始前に /free でその ComfyUI のモデルを解放する(自分だけが使う ComfyUI のときに)",
+            "free that ComfyUI's models with /free before starting (for a ComfyUI only you use)",
+        ),
     )
     sp.add_argument(
-        "--timeout", type=float, metavar="SEC", help="待つ時間の上限(0 より大きい秒数。既定 1800)"
+        "--timeout",
+        type=float,
+        metavar="SEC",
+        help=tr(
+            "待つ時間の上限(0 より大きい秒数。既定 1800)", "the most time to wait (seconds > 0; default 1800)"
+        ),
     )
     sp.add_argument(
-        "--force", action="store_true", help="GPU が使われている・GPU の空きを確かめられないときも測る"
+        "--force",
+        action="store_true",
+        help=tr(
+            "GPU が使われている・GPU の空きを確かめられないときも測る",
+            "measure even when the GPU is in use or its free memory cannot be checked",
+        ),
     )
-    sp.add_argument("--source", help="誰がどこで測ったか(結果の source に入る)")
-    sp.add_argument("--note", help="結果の note に足す文")
+    sp.add_argument(
+        "--source",
+        help=tr("誰がどこで測ったか(結果の source に入る)", "who measured it where (goes into source)"),
+    )
+    sp.add_argument("--note", help=tr("結果の note に足す文", "text to add to the result's note"))
     sp.add_argument(
         "--submission",
         metavar="PATH",
-        help="提出用の JSON(contrib_schema 1)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
-        "(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない(CONTRIBUTING.md)",
+        help=tr(
+            "提出用の JSON(contrib_schema 1)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
+            "(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない(CONTRIBUTING.md)",
+            "also write a submission JSON (contrib_schema 1). For a folder: <folder>/<GPU>/<date>-<sha8>.json"
+            " (pass your fork's data/contrib to open a PR as is). Nothing is sent (CONTRIBUTING.md)",
+        ),
     )
     sp.set_defaults(func=cmd_bench)
 
-    cj = argparse.ArgumentParser(add_help=False)
-    cj.add_argument("--json", action="store_true", help="JSON で出す")
+    cj = argparse.ArgumentParser(add_help=False, parents=[lang])
+    cj.add_argument("--json", action="store_true", help=json_help)
     cj.add_argument(
-        "--db", metavar="PATH", help="モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない)"
+        "--db",
+        metavar="PATH",
+        help=tr(
+            "モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない)",
+            "the list used to check model ids (default: the bundled list; the cache is not used)",
+        ),
     )
     sp = sub.add_parser(
         "contrib",
-        help="実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)",
-        description=CONTRIB_HELP,
+        parents=[lang],
+        help=tr(
+            "実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)",
+            "make, preview, validate and aggregate measurement submissions (nothing is sent)",
+        ),
+        description=_contrib_help(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     csub = sp.add_subparsers(dest="contrib_command", required=True)
-    c = csub.add_parser("make", parents=[cj], help="bench が保存した結果から提出用の JSON を作る")
-    c.add_argument("--from", dest="source", required=True, metavar="FILE", help="bench の結果の JSON")
+    c = csub.add_parser(
+        "make",
+        parents=[cj],
+        help=tr(
+            "bench が保存した結果から提出用の JSON を作る",
+            "make a submission JSON from a result saved by bench",
+        ),
+    )
+    c.add_argument(
+        "--from",
+        dest="source",
+        required=True,
+        metavar="FILE",
+        help=tr("bench の結果の JSON", "the bench result JSON"),
+    )
     c.add_argument(
         "--output",
         default=CONTRIB_DIR_DEFAULT,
         metavar="PATH",
-        help=f"書き出す場所(フォルダなら <GPU>/<日付>-<sha8>.json。既定 {CONTRIB_DIR_DEFAULT})",
+        help=tr(
+            f"書き出す場所(フォルダなら <GPU>/<日付>-<sha8>.json。既定 {CONTRIB_DIR_DEFAULT})",
+            f"where to write (for a folder: <GPU>/<date>-<sha8>.json; default {CONTRIB_DIR_DEFAULT})",
+        ),
     )
     c.add_argument(
         "--no-pc-info",
         action="store_true",
-        help="この PC の OS の種類・メモリ・GPU の世代を入れない(ComfyUI が別の PC だったとき)",
+        help=tr(
+            "この PC の OS の種類・メモリ・GPU の世代を入れない(ComfyUI が別の PC だったとき)",
+            "do not include this PC's OS family, RAM and GPU generation (when ComfyUI ran on another PC)",
+        ),
     )
     c.set_defaults(func=cmd_contrib_make)
-    c = csub.add_parser("show", parents=[cj], help="送る中身と個人の情報の点検を見せる")
-    c.add_argument("file", help="提出用の JSON")
-    c.set_defaults(func=cmd_contrib_show)
-    c = csub.add_parser("validate", parents=[cj], help="形・値・個人の情報・重複を検査する(CI でも使う)")
-    c.add_argument(
-        "files", nargs="+", metavar="FILE|DIR", help="提出用の JSON(フォルダなら下の *.json すべて)"
+    c = csub.add_parser(
+        "show",
+        parents=[cj],
+        help=tr("送る中身と個人の情報の点検を見せる", "show what will be shared and the privacy checklist"),
     )
-    c.add_argument("--strict", action="store_true", help="注意(warnings)も失敗にする")
+    c.add_argument("file", help=tr("提出用の JSON", "the submission JSON"))
+    c.set_defaults(func=cmd_contrib_show)
+    c = csub.add_parser(
+        "validate",
+        parents=[cj],
+        help=tr(
+            "形・値・個人の情報・重複を検査する(CI でも使う)",
+            "check shape, values, personal information and duplicates (also used in CI)",
+        ),
+    )
+    c.add_argument(
+        "files",
+        nargs="+",
+        metavar="FILE|DIR",
+        help=tr(
+            "提出用の JSON(フォルダなら下の *.json すべて)",
+            "submission JSON files (for a folder: every *.json under it)",
+        ),
+    )
+    c.add_argument(
+        "--strict",
+        action="store_true",
+        help=tr("注意(warnings)も失敗にする", "treat warnings as failures too"),
+    )
     c.add_argument(
         "--no-filename-check",
         action="store_true",
-        help="ファイル名(<GPU>/<日付>-<sha8>.json)を確かめない",
+        help=tr(
+            "ファイル名(<GPU>/<日付>-<sha8>.json)を確かめない",
+            "do not check the file name (<GPU>/<date>-<sha8>.json)",
+        ),
     )
-    c.add_argument("--markdown", action="store_true", help="Markdown の表で出す(CI のまとめ用)")
-    c.set_defaults(func=cmd_contrib_validate)
-    c = csub.add_parser("aggregate", parents=[cj], help="同じモデル・設定・GPU ごとにまとめ、精度を点検する")
     c.add_argument(
-        "dir", nargs="?", default=CONTRIB_DIR_DEFAULT, help=f"提出のフォルダ(既定 {CONTRIB_DIR_DEFAULT})"
+        "--markdown",
+        action="store_true",
+        help=tr("Markdown の表で出す(CI のまとめ用)", "output a Markdown table (for the CI summary)"),
+    )
+    c.set_defaults(func=cmd_contrib_validate)
+    c = csub.add_parser(
+        "aggregate",
+        parents=[cj],
+        help=tr(
+            "同じモデル・設定・GPU ごとにまとめ、精度を点検する",
+            "aggregate by model, settings and GPU, and check the accuracy",
+        ),
+    )
+    c.add_argument(
+        "dir",
+        nargs="?",
+        default=CONTRIB_DIR_DEFAULT,
+        help=tr(
+            f"提出のフォルダ(既定 {CONTRIB_DIR_DEFAULT})",
+            f"the submissions folder (default {CONTRIB_DIR_DEFAULT})",
+        ),
     )
     c.add_argument(
         "--output",
         metavar="FILE",
-        help="まとめを書き出す(同梱するなら src/genmodelfit/data/measurements_community.json)",
+        help=tr(
+            "まとめを書き出す(同梱するなら src/genmodelfit/data/measurements_community.json)",
+            "write the result (to bundle it: src/genmodelfit/data/measurements_community.json)",
+        ),
     )
     c.add_argument(
-        "--report", action="store_true", help="校正をやり直し、種類ごとの誤差の表と閾値の判定を出す"
+        "--report",
+        action="store_true",
+        help=tr(
+            "校正をやり直し、種類ごとの誤差の表と閾値の判定を出す",
+            "redo the calibration and show the error table per type and the threshold check",
+        ),
     )
     c.add_argument(
         "--threshold",
         type=_positive_float,
         default=25.0,
         metavar="PCT",
-        help="誤差の閾値(%%、既定 25)",
+        help=tr("誤差の閾値(%%、既定 25)", "error threshold (%%, default 25)"),
     )
     c.add_argument(
         "--fail-on-breach",
         action="store_true",
-        help=f"--report で閾値を超えたら終了コード {EXIT_BREACH} にする",
+        help=tr(
+            f"--report で閾値を超えたら終了コード {EXIT_BREACH} にする",
+            f"with --report, exit with code {EXIT_BREACH} when the threshold is exceeded",
+        ),
     )
     c.add_argument(
         "--allow-empty",
         action="store_true",
-        help="まとめが空でも --output に書き出す(既定は、空のまとめで上書きしない)",
+        help=tr(
+            "まとめが空でも --output に書き出す(既定は、空のまとめで上書きしない)",
+            "write to --output even if the result is empty (by default an empty result does not overwrite)",
+        ),
     )
     c.set_defaults(func=cmd_contrib_aggregate)
     return p
 
 
-REVIEW_HELP = """List, approve or reject models waiting for review (#42).
+_REVIEW_HELP_JA = """List, approve or reject models waiting for review (#42).
 確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す。
 pending は update が前の一覧と比べて付ける
 (new / license_permissive / need_decreased / uncensored_new / files_changed)。
@@ -2820,9 +3822,40 @@ AGENT USAGE:
   genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "non-commercial only"
 Details: docs/schema.md「review」、docs/release.md「毎週のスキル」"""
 
+_REVIEW_HELP_EN = """List, approve or reject models waiting for review (#42).
+update marks an entry pending (review.status = pending) when it differs from the previous list
+(new / license_permissive / need_decreased / uncensored_new / files_changed).
+Pending entries are not auto-recommended until approved (gate check: reviewed).
+
+  list     [--json] [--all] [--db PATH]          entries waiting for review and why
+  approve  <id> --evidence URL [--evidence URL…] [--note TEXT] [--by NAME] --db PATH
+           refused without evidence; rewrites the list file in place
+  reject   <id> --note TEXT --db PATH [--rejected FILE] [--hide-name]
+           removes the entry and records it in review_rejected.txt (update does not add it again)
+
+SIDE EFFECTS:
+  No network access. list is read-only; approve / reject rewrite the --db file (reject also appends to the
+  rejected file).
+
+EXIT CODES:
+  0  Success
+  1  Error (no such id, no evidence, not pending, unreadable --db; with --json the error is in "error")
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit review list --json --db src/genmodelfit/data/db.json
+  genmodelfit review approve hf:org/model --db src/genmodelfit/data/db.json \\
+      --evidence https://huggingface.co/org/model/blob/main/LICENSE
+  genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "non-commercial only"
+Details: docs/schema.md ("review"), docs/release.md (weekly skill)"""
+
+
+def _review_help() -> str:
+    return tr(_REVIEW_HELP_JA, _REVIEW_HELP_EN)
+
 
 CONTRIB_DIR_DEFAULT = "data/contrib"
-CONTRIB_HELP = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1).
+_CONTRIB_HELP_JA = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1).
 実測の提出用 JSON を作る・送る前に見る・検査する・まとめる。genmodelfit は何も送らない
 (共有は利用者が自分の GitHub で Pull Request を出すときだけ。CONTRIBUTING.md)。
 
@@ -2851,6 +3884,39 @@ AGENT USAGE:
   genmodelfit contrib aggregate --report --json --fail-on-breach
 Details: docs/schema.md「contrib」"""
 
+_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1).
+genmodelfit sends nothing (data is shared only when you open a Pull Request from your own GitHub
+account; CONTRIBUTING.md).
+
+  make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
+  show      <file>                 what will be shared, and the privacy checklist (for consent)
+  validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
+  aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
+            group by model, settings and GPU, drop outliers by median and MAD, check the calibration error
+
+SIDE EFFECTS:
+  No network access. make writes the submission files; aggregate writes only with --output.
+
+EXIT CODES:
+  0  Success (validate: every file passed; show: nothing to fix)
+  1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
+     maintainer who merges never fail) /
+     show: something to fix / aggregate: no such folder, or an empty result with --output
+     (unless --allow-empty)
+  2  Usage error
+  3  aggregate --report --fail-on-breach: an error exceeded the threshold
+
+AGENT USAGE:
+  genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
+  genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
+  genmodelfit contrib validate data/contrib --json
+  genmodelfit contrib aggregate --report --json --fail-on-breach
+Details: docs/schema.md ("contrib")"""
+
+
+def _contrib_help() -> str:
+    return tr(_CONTRIB_HELP_JA, _CONTRIB_HELP_EN)
+
 
 def _quiet_stdout() -> None:
     # 終了時の flush で再び落ちないように、出力先(fd)ごと捨て先に向ける(Python の文書の推奨手順)
@@ -2865,8 +3931,30 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             with contextlib.suppress(AttributeError, ValueError, OSError):
                 stream.reconfigure(encoding="utf-8")
-    parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
+    before = i18n._cli_language
+    i18n._set_cli_language(_lang_in(argv))  # 説明の文を作る前に言語を決める(#73)
+    try:
+        return _main(argv)
+    finally:
+        i18n._set_cli_language(before)
+
+
+def _lang_in(argv: list[str]) -> str | None:
+    """--lang X / --lang=X を先に読む(-- より後は見ない)。正しくない値は None(argparse が誤りにする)。"""
+    found = None
+    for k, a in enumerate(argv):
+        if a == "--":
+            break
+        if a == "--lang" and k + 1 < len(argv):
+            found = argv[k + 1]
+        elif a.startswith("--lang="):
+            found = a.split("=", 1)[1]
+    return found if found in LANGUAGES else None
+
+
+def _main(argv: list[str]) -> int:
+    parser = build_parser()
     if not argv:  # 引数なしは使い方の全文を出して正常に終わる(初めて試す人向け)
         parser.print_help()
         return 0
@@ -2875,7 +3963,12 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "min_fit", None) is not None and (
         getattr(args, "fit", None) is not None or getattr(args, "perfect", False)
     ):
-        parser.error("--fit(--perfect)と --min-fit は同時に指定できません")
+        parser.error(
+            tr(
+                "--fit(--perfect)と --min-fit は同時に指定できません",
+                "--fit (--perfect) and --min-fit cannot be used together",
+            )
+        )
     try:
         return args.func(args)
     except BrokenPipeError:  # | head などで出力を途中で閉じられた
@@ -2898,7 +3991,11 @@ def main(argv: list[str] | None = None) -> int:
             for m in (cands or [])[:30]:
                 print(f"  {m.id}  ({m.name})", file=sys.stderr)
             if cands and len(cands) > 30:
-                print(f"  …ほか {len(cands) - 30} 件(--json で全部)", file=sys.stderr)
+                rest = len(cands) - 30
+                print(
+                    tr(f"  …ほか {rest} 件(--json で全部)", f"  … {rest} more (--json for all)"),
+                    file=sys.stderr,
+                )
         return 1
 
 
