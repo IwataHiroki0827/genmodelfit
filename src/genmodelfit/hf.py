@@ -25,6 +25,7 @@ from typing import Any
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from .fetch import Fetcher, FetchError, NetworkError
+from .i18n import tr
 
 HF = "https://huggingface.co"
 
@@ -638,6 +639,24 @@ LINEAGES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
 )
 
+# 上の 2 つの表の理由の英語(表示の言語が en のときの gate の detail・download の note。#73)。
+# 一覧(license_evidence)に書く理由は日本語のまま(データは言語で変えない)
+UNVERIFIED_WHY_EN: dict[str, str] = {
+    "rt-detr-v4": "RT-DETRv4 weights (https://github.com/RT-DETRs/RT-DETRv4; the code is Apache-2.0,"
+    " but the weights"
+    " are distilled with DINOv3 as the teacher and no weight license is stated)",
+}
+LINEAGE_WHY_EN: dict[str, str] = {
+    "sdpose": "SDPose is built from the Stable Diffusion 2 U-Net (the card's label may be more"
+    " permissive than"
+    " the original license)",
+    "lotus": "Lotus is trained from Stable Diffusion 2 base (the card's label may be more permissive than the"
+    " original license)",
+    "void-model": "VOID is fine-tuned from CogVideoX-Fun-V1.5-5b-InP (the Transformer is under the CogVideoX"
+    " License; the card's apache-2.0 may be more permissive than the original license)",
+    "sd2": "Stable Diffusion 2 lineage (the original license text cannot be checked)",
+}
+
 # 系統の表: 名前(リポジトリ名・ファイル名・たどった base_model)で分かる元のモデル。派生(微調整・量子化・
 # 無検閲化)のライセンスは元より寛容にならないので、表記がこれより寛容なら不明にする。
 _F = r"(?<![a-z0-9])"
@@ -941,7 +960,7 @@ class HfClient:
                 data = self.fetch.get_json(api_url(*key))
                 info = RepoInfo.from_api(data) if isinstance(data, dict) else None
                 if info is None:
-                    raise FetchError(api_url(*key), "形が違います")
+                    raise FetchError(api_url(*key), tr("形が違います", "unexpected shape"))
                 info.repo_id = info.repo_id or repo_id
                 return info
             except FetchError as e:
@@ -1001,7 +1020,7 @@ class HfClient:
     def search(self, url: str) -> list[dict[str, Any]]:
         data = self.fetch.get_json(url)
         if not isinstance(data, list):
-            raise FetchError(url, "検索の結果が一覧ではありません")
+            raise FetchError(url, tr("検索の結果が一覧ではありません", "the search result is not a list"))
         return [d for d in data if isinstance(d, dict) and d.get("id")]
 
     # --- ライセンス -------------------------------------------------------------------------

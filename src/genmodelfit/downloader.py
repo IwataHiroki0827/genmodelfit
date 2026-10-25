@@ -40,6 +40,7 @@ import requests
 
 from .estimate import GIB
 from .fetch import TIMEOUT, make_session
+from .i18n import tr
 
 if TYPE_CHECKING:
     from .db import Database
@@ -133,9 +134,19 @@ def url_refusal(url: str, *, start: bool = False) -> str:
     """URL を使わない理由(形が不正 か 許していない取得先・転送先)。"""
     hp = url_host(url)
     if hp is None:
-        return f"URL の形が不正です(ホストを 1 通りに読めません): {url[:200]!r}"
-    what = "取得先" if start else "転送先"
-    return f"許していない{what}です(https の Hugging Face・GitHub だけ): {hp[1]}"
+        return tr(
+            f"URL の形が不正です(ホストを 1 通りに読めません): {url[:200]!r}",
+            f"Malformed URL (the host cannot be read one way): {url[:200]!r}",
+        )
+    if start:
+        return tr(
+            f"許していない取得先です(https の Hugging Face・GitHub だけ): {hp[1]}",
+            f"Source host not allowed (https Hugging Face / GitHub only): {hp[1]}",
+        )
+    return tr(
+        f"許していない転送先です(https の Hugging Face・GitHub だけ): {hp[1]}",
+        f"Redirect target not allowed (https Hugging Face / GitHub only): {hp[1]}",
+    )
 
 
 # URL のどこにあっても拒む文字(\ は urlsplit と urllib3 でホストの読み方が分かれる。制御文字も同じ)
@@ -286,8 +297,12 @@ def comfyui_models_dir(comfyui_dir: str | os.PathLike[str]) -> Path:
     base = Path(comfyui_dir).expanduser()
     if not (base / "models").is_dir() and not (base / "main.py").is_file():
         raise DownloadRefused(
-            f"ComfyUI のフォルダに見えません(models も main.py もありません): {base}"
-            "(ComfyUI を入れたフォルダを指定してください。別の場所なら --output-dir)"
+            tr(
+                f"ComfyUI のフォルダに見えません(models も main.py もありません): {base}"
+                "(ComfyUI を入れたフォルダを指定してください。別の場所なら --output-dir)",
+                f"This does not look like a ComfyUI folder (no models or main.py): {base} "
+                "(give the folder where ComfyUI is installed; for another place use --output-dir)",
+            )
         )
     return base / "models"
 
@@ -418,7 +433,7 @@ def resolve_candidates(db: Database, query: str, content: str = "sfw") -> tuple[
 
     q = query.strip()
     if not q:
-        raise ModelNotFound("モデルの名前か ID が空です")
+        raise ModelNotFound(tr("モデルの名前か ID が空です", "The model name or id is empty"))
     exact = db.get(q)
     if exact is not None:
         return [exact], True
@@ -436,16 +451,25 @@ def resolve_candidates(db: Database, query: str, content: str = "sfw") -> tuple[
         if len(shown) == 1:
             return shown, False
         raise ModelNotFound(
-            f"「{q}」に合うモデルが {len(shown)} 件あります。ID かモデル名で指定してください", shown
+            tr(
+                f"「{q}」に合うモデルが {len(shown)} 件あります。ID かモデル名で指定してください",
+                f'{len(shown)} models match "{q}". Give an id or a model name',
+            ),
+            shown,
         )
     if hits:
-        kinds = "・".join(sorted({m.content for m in hits}))
+        kind_set = sorted({m.content for m in hits})
+        kinds = "・".join(kind_set)
         raise ModelNotFound(
-            f"モデルが見つかりません: {q}(content {content} で外れた {kinds} のモデルが "
-            f"{len(hits)} 件あります。"
-            "--content all を付けるか ID で指定してください)"
+            tr(
+                f"モデルが見つかりません: {q}(content {content} で外れた {kinds} のモデルが "
+                f"{len(hits)} 件あります。"
+                "--content all を付けるか ID で指定してください)",
+                f"No such model: {q} ({len(hits)} {'/'.join(kind_set)} models are hidden by "
+                f"content {content}; add --content all or give the id)",
+            )
         )
-    raise ModelNotFound(f"モデルが見つかりません: {q}")
+    raise ModelNotFound(tr(f"モデルが見つかりません: {q}", f"No such model: {q}"))
 
 
 def _hash_file(path: Path, progress: Callable[[int], None] | None = None) -> str:
@@ -485,15 +509,24 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
     )
     reason = None
     if rel is None or dest is None or not _inside(dest, root):
-        reason = f"置き場所の外を指す名前です({f.directory or '-'}/{f.name})"
+        reason = tr(
+            f"置き場所の外を指す名前です({f.directory or '-'}/{f.name})",
+            f"The name points outside the destination ({f.directory or '-'}/{f.name})",
+        )
     elif not f.url:
-        reason = "一覧に URL がありません"
+        reason = tr("一覧に URL がありません", "The list has no URL")
     elif not HOST_POLICY.allowed(f.url, start=True):
         reason = url_refusal(f.url, start=True)
     elif not pf.sha256 or not re.fullmatch(r"[0-9a-f]{64}", pf.sha256):
-        reason = "一覧に sha256 が無く、中身を確かめられません"
+        reason = tr(
+            "一覧に sha256 が無く、中身を確かめられません",
+            "The list has no sha256, so the content cannot be verified",
+        )
     elif not f.size_bytes or f.size_bytes <= 0:
-        reason = "一覧に大きさが無く、空きを確かめられません"
+        reason = tr(
+            "一覧に大きさが無く、空きを確かめられません",
+            "The list has no size, so the free space cannot be checked",
+        )
     if reason:
         pf.status, pf.reason = "unavailable", reason
         return pf
@@ -501,17 +534,32 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
     part = dest.with_name(dest.name + ".part")
     for p in (dest, part):
         if p.is_symlink():
-            pf.status, pf.reason = "conflict", f"シンボリックリンクには書きません: {p}"
+            pf.status, pf.reason = (
+                "conflict",
+                tr(f"シンボリックリンクには書きません: {p}", f"Will not write to a symbolic link: {p}"),
+            )
             return pf
     if dest.exists():
         if not dest.is_file() or dest.stat().st_size != f.size_bytes:
-            pf.status, pf.reason = "conflict", "同じ名前の別のファイルがあります(上書きしません)"
+            pf.status, pf.reason = (
+                "conflict",
+                tr(
+                    "同じ名前の別のファイルがあります(上書きしません)",
+                    "A different file with the same name exists (not overwritten)",
+                ),
+            )
         elif not verify_existing:
             pf.status = "present"  # 大きさだけ(download がその場で sha256 を計る)
         elif _hash_file(dest) == pf.sha256:
             pf.status, pf.verified = "present", True
         else:
-            pf.status, pf.reason = "conflict", "同じ名前のファイルの sha256 が違います(上書きしません)"
+            pf.status, pf.reason = (
+                "conflict",
+                tr(
+                    "同じ名前のファイルの sha256 が違います(上書きしません)",
+                    "A file with the same name has a different sha256 (not overwritten)",
+                ),
+            )
         return pf
     if part.is_file():
         size = part.stat().st_size
@@ -540,24 +588,40 @@ def _model_blocks(
 ) -> list[str]:
     out = []
     if m.content == "uncensored" and content not in ("all", "uncensored"):
-        out.append("無検閲のモデルです。落とすなら --content all か --content uncensored を明示してください")
+        out.append(
+            tr(
+                "無検閲のモデルです。落とすなら --content all か --content uncensored を明示してください",
+                "This is an uncensored model. To download it, pass --content all or --content uncensored",
+            )
+        )
     gated = [f.name for f in files if f.gated]
     if gated:
         out.append(
-            "利用申請(gated)が要るファイルがあります: "
-            + ", ".join(gated[:3])
-            + "。genmodelfit はログイン情報を扱わないので落としません"
-            "(配布元のページで申請して自分で落としてください)"
+            tr(
+                "利用申請(gated)が要るファイルがあります: "
+                + ", ".join(gated[:3])
+                + "。genmodelfit はログイン情報を扱わないので落としません"
+                "(配布元のページで申請して自分で落としてください)",
+                "Some files need an access request (gated): "
+                + ", ".join(gated[:3])
+                + ". genmodelfit does not handle login credentials, so it will not download them"
+                " (request access on the publisher's page and download them yourself)",
+            )
         )
     unknown = [f.name for f in files if f.license is None]
     if unknown and not include_unknown_license:
         out.append(
-            "ライセンスが分からないファイルがあります: "
-            + ", ".join(unknown[:3])
-            + "。中身の条件を自分で確かめたうえで落とすなら --include-unknown-license"
+            tr(
+                "ライセンスが分からないファイルがあります: "
+                + ", ".join(unknown[:3])
+                + "。中身の条件を自分で確かめたうえで落とすなら --include-unknown-license",
+                "Some files have an unknown license: "
+                + ", ".join(unknown[:3])
+                + ". To download them after checking the terms yourself, use --include-unknown-license",
+            )
         )
     if not m.files:
-        out.append("一覧にファイルの記載がありません")
+        out.append(tr("一覧にファイルの記載がありません", "The list has no files for this model"))
     return out
 
 
@@ -599,11 +663,26 @@ def plan_download(
     from .recommend import CONTENT_FILTERS, judge, variant_key
 
     if content not in CONTENT_FILTERS:
-        raise ValueError(f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})")
+        raise ValueError(
+            tr(
+                f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})",
+                f"Invalid content: {content!r} (choose from {', '.join(CONTENT_FILTERS)})",
+            )
+        )
     if output_dir is not None and comfyui_dir is not None:
-        raise ValueError("output_dir と comfyui_dir は同時に指定できません")
+        raise ValueError(
+            tr(
+                "output_dir と comfyui_dir は同時に指定できません",
+                "output_dir and comfyui_dir cannot be used together",
+            )
+        )
     if budget_gb is not None and (isinstance(budget_gb, bool) or not budget_gb > 0):
-        raise ValueError(f"budget_gb は 0 より大きい数です: {budget_gb!r}")
+        raise ValueError(
+            tr(
+                f"budget_gb は 0 より大きい数です: {budget_gb!r}",
+                f"budget_gb must be a number above 0: {budget_gb!r}",
+            )
+        )
     db = db or load_db()
     system = system_info or detect()
     pol = policy or GatePolicy(comfyui_version=comfyui_version)
@@ -625,7 +704,12 @@ def plan_download(
         cands = [m for m in pool if (m.precision or "").lower() == want]
         if not cands:
             have = sorted({precision_label(m.precision) for m in pool})
-            raise ModelNotFound(f"精度 {precision} のワークフローがありません(あるのは {', '.join(have)})")
+            raise ModelNotFound(
+                tr(
+                    f"精度 {precision} のワークフローがありません(あるのは {', '.join(have)})",
+                    f"No workflow with precision {precision} (available: {', '.join(have)})",
+                )
+            )
     c = load_coefficients()
     fits = [judge(m, system, db, settings=settings, coefficients=c, policy=pol) for m in cands]
     budget = int(budget_gb * GIB) if budget_gb is not None else None
@@ -660,9 +744,13 @@ def plan_download(
         plan.files = [_plan_file(f, root, allow, True) for f in fit.model.files]  # 選んだものだけ計り直す
     plan.alternatives = [_alt_dict(x[2]) for x in plans[1:]]
     plan.chosen = (
-        "ID で指定"
+        tr("ID で指定", "Given by id")
         if exact and not precision
-        else f"この PC で逃がさずに載る中で一番精度の高いもの({len(plans)} 件から。recommend と同じ選び方)"
+        else tr(
+            f"この PC で逃がさずに載る中で一番精度の高いもの({len(plans)} 件から。recommend と同じ選び方)",
+            f"The highest precision that fits this PC without offloading (from {len(plans)}; "
+            "chosen like recommend)",
+        )
     )
     _finish(plan, fit, allow)
     return plan
@@ -675,50 +763,92 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
         if f.status == "unavailable":
             plan.blocked.append(f"{f.name}: {f.reason}")
         elif f.status == "conflict":
-            plan.blocked.append(f"{f.relpath}: {f.reason}(別の場所へ移すか、--output-dir で別の置き場所を)")
+            plan.blocked.append(
+                tr(
+                    f"{f.relpath}: {f.reason}(別の場所へ移すか、--output-dir で別の置き場所を)",
+                    f"{f.relpath}: {f.reason} (move it elsewhere, or choose another place with --output-dir)",
+                )
+            )
     if plan.budget_bytes is not None and plan.download_bytes > plan.budget_bytes:
         plan.blocked.append(
-            f"落とす量 {plan.download_bytes / GIB:.2f} GB が上限 "
-            f"{plan.budget_bytes / GIB:.2f} GB を超えます(--budget)"
+            tr(
+                f"落とす量 {plan.download_bytes / GIB:.2f} GB が上限 "
+                f"{plan.budget_bytes / GIB:.2f} GB を超えます(--budget)",
+                f"The download of {plan.download_bytes / GIB:.2f} GB exceeds the limit of "
+                f"{plan.budget_bytes / GIB:.2f} GB (--budget)",
+            )
         )
     plan.disk_free_bytes = _free_bytes(root)
     if plan.disk_free_bytes is not None and plan.disk_needed_bytes > plan.disk_free_bytes:
         plan.blocked.append(
-            f"空きが足りません: 要る {plan.disk_needed_bytes / GIB:.2f} GB(落とす残り + 1 GB)、"
-            f"空き {plan.disk_free_bytes / GIB:.2f} GB"
+            tr(
+                f"空きが足りません: 要る {plan.disk_needed_bytes / GIB:.2f} GB(落とす残り + 1 GB)、"
+                f"空き {plan.disk_free_bytes / GIB:.2f} GB",
+                f"Not enough free disk: needs {plan.disk_needed_bytes / GIB:.2f} GB (the rest to download "
+                f"+ 1 GB), free {plan.disk_free_bytes / GIB:.2f} GB",
+            )
         )
     names = [f"{f.name}({_lic(f)})" for f in plan.files if f.license is not None and not f.license_allowed]
     if names:
         plan.warnings.append(
-            "許可リスト(商用で使えて使い方の制限が無いライセンス)に無いライセンスのファイルがあります: "
-            + ", ".join(names[:4])
-            + "。それぞれの条件を読んでから使ってください"
+            tr(
+                "許可リスト(商用で使えて使い方の制限が無いライセンス)に無いライセンスのファイルがあります: "
+                + ", ".join(names[:4])
+                + "。それぞれの条件を読んでから使ってください",
+                "Some files have a license outside the allowlist (commercial use with no use restrictions): "
+                + ", ".join(names[:4])
+                + ". Read each license before use",
+            )
         )
     unknown = [f.name for f in plan.files if f.license is None]
     if unknown and not plan.blocked:
         plan.warnings.append(
-            "ライセンスが分からないファイルを含みます(--include-unknown-license): " + ", ".join(unknown[:4])
+            tr(
+                "ライセンスが分からないファイルを含みます(--include-unknown-license): ",
+                "Includes files with an unknown license (--include-unknown-license): ",
+            )
+            + ", ".join(unknown[:4])
         )
     if fit.estimate.fit in ("too_tight",):
-        plan.warnings.append("この PC では動かない見込みです(fit too_tight)")
+        plan.warnings.append(
+            tr(
+                "この PC では動かない見込みです(fit too_tight)",
+                "Not expected to run on this PC (fit too_tight)",
+            )
+        )
     elif fit.estimate.unknown_size:
-        plan.warnings.append("大きさが分からず、この PC で動くか判定できていません")
+        plan.warnings.append(
+            tr(
+                "大きさが分からず、この PC で動くか判定できていません",
+                "The size is unknown, so whether it runs on this PC is not judged",
+            )
+        )
     other = [f.name for f in plan.files if not f.directory and f.status != "unavailable"]
     if other and plan.layout == "comfyui":
         plan.warnings.append(
-            f"ComfyUI の置き場所が一覧に無いファイルは models/{OTHER_DIR} に置きます(ComfyUI はこのフォルダを"
-            "読みません。使うノードの説明に従って移してください): " + ", ".join(other[:4])
+            tr(
+                f"ComfyUI の置き場所が一覧に無いファイルは models/{OTHER_DIR} に置きます"
+                "(ComfyUI はこのフォルダを"
+                "読みません。使うノードの説明に従って移してください): ",
+                f"Files with no ComfyUI folder in the list go to models/{OTHER_DIR} (ComfyUI does not read "
+                "this folder; move them as the node that uses them says): ",
+            )
+            + ", ".join(other[:4])
         )
     if plan.layout == "output":
         plan.warnings.append(
-            "ComfyUI の models と同じ並びで置きます。ComfyUI で使うなら --comfyui-dir を指定するか、"
-            "extra_model_paths.yaml にこのフォルダを足してください"
+            tr(
+                "ComfyUI の models と同じ並びで置きます。ComfyUI で使うなら --comfyui-dir を指定するか、"
+                "extra_model_paths.yaml にこのフォルダを足してください",
+                "Files are laid out like ComfyUI's models folder. To use them in ComfyUI, pass --comfyui-dir "
+                "or add this folder to extra_model_paths.yaml",
+            )
         )
 
 
 def _lic(f: PlannedFile) -> str:
     if f.license is None:
-        return "不明"
+        return tr("不明", "unknown")
     return f"other: {f.license_name}" if f.license == "other" and f.license_name else f.license
 
 
@@ -782,10 +912,17 @@ def _check_hop(hosts: HostPolicy, url: str, *, start: bool) -> None:
     try:
         prepared = requests.Request("GET", url).prepare().url or ""
     except requests.RequestException as e:
-        raise HostNotAllowed(f"URL を読めません: {url[:200]!r}") from e
+        raise HostNotAllowed(
+            tr(f"URL を読めません: {url[:200]!r}", f"Cannot parse the URL: {url[:200]!r}")
+        ) from e
     hosts.check(prepared, start=start)
     if url_host(prepared) != url_host(url):
-        raise HostNotAllowed(f"URL の読み方が分かれます: {url[:200]!r}")
+        raise HostNotAllowed(
+            tr(
+                f"URL の読み方が分かれます: {url[:200]!r}",
+                f"The URL can be read in more than one way: {url[:200]!r}",
+            )
+        )
 
 
 def _open(
@@ -799,15 +936,20 @@ def _open(
             loc = resp.headers.get("location")
             resp.close()
             if not loc:
-                raise DownloadError(f"転送先がありません: {url}")
+                raise DownloadError(tr(f"転送先がありません: {url}", f"Redirect without a target: {url}"))
             if _URL_BAD.search(loc):
-                raise HostNotAllowed(f"転送先の URL に使えない文字があります: {loc[:200]!r}")
+                raise HostNotAllowed(
+                    tr(
+                        f"転送先の URL に使えない文字があります: {loc[:200]!r}",
+                        f"The redirect URL has characters that are not allowed: {loc[:200]!r}",
+                    )
+                )
             url = urljoin(url, loc)
             _check_hop(hosts, url, start=False)
-            log.debug("download: 転送 -> %s", url_host(url))
+            log.debug("download: redirect -> %s", url_host(url))
             continue
         return resp
-    raise DownloadError(f"転送が多すぎます: {url}")
+    raise DownloadError(tr(f"転送が多すぎます: {url}", f"Too many redirects: {url}"))
 
 
 def _content_range_start(resp: requests.Response) -> int | None:
@@ -862,13 +1004,27 @@ def _file_lock(path: Path, name: str):
             if attempt == 0 and _stale_lock(path) and _retire_stale_lock(path):
                 continue
             raise DownloadError(
-                f"{name}: 別の download が同じファイルを落としています(終わってからもう一度。"
-                f"止まったまま残っているなら {path} を消してください)"
+                tr(
+                    f"{name}: 別の download が同じファイルを落としています(終わってからもう一度。"
+                    f"止まったまま残っているなら {path} を消してください)",
+                    f"{name}: another download is fetching the same file (try again when it ends; "
+                    f"if it is stuck, delete {path})",
+                )
             ) from None
         except OSError as e:
-            raise DownloadError(f"{name}: 書けません({e.strerror or e}): {path}") from e
+            raise DownloadError(
+                tr(
+                    f"{name}: 書けません({e.strerror or e}): {path}",
+                    f"{name}: cannot write ({e.strerror or e}): {path}",
+                )
+            ) from e
     else:  # pragma: no cover - 2 回とも残骸を消した直後に別のプロセスが作った
-        raise DownloadError(f"{name}: 別の download が同じファイルを落としています")
+        raise DownloadError(
+            tr(
+                f"{name}: 別の download が同じファイルを落としています",
+                f"{name}: another download is fetching the same file",
+            )
+        )
     try:
         with os.fdopen(fd, "w", encoding="ascii") as fh:
             fh.write(f"{os.getpid()} {int(time.time())}\n")
@@ -895,13 +1051,25 @@ def _fetch_one(
     # 置き場所の中かを、フォルダを作る前に確かめる(作ったあとにもう一度。間でリンクに替えられたとき)
     for p in (dest, part, lock):
         if not _inside(p, root) or p.is_symlink():
-            raise DownloadRefused(f"置き場所の外には書きません: {p}")
+            raise DownloadRefused(
+                tr(f"置き場所の外には書きません: {p}", f"Will not write outside the destination: {p}")
+            )
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        raise DownloadError(f"{pf.relpath}: フォルダを作れません({e.strerror or e}): {dest.parent}") from e
+        raise DownloadError(
+            tr(
+                f"{pf.relpath}: フォルダを作れません({e.strerror or e}): {dest.parent}",
+                f"{pf.relpath}: cannot create the folder ({e.strerror or e}): {dest.parent}",
+            )
+        ) from e
     if not _inside(dest.parent, root):
-        raise DownloadRefused(f"置き場所の外には書きません: {dest.parent}")
+        raise DownloadRefused(
+            tr(
+                f"置き場所の外には書きません: {dest.parent}",
+                f"Will not write outside the destination: {dest.parent}",
+            )
+        )
     with _file_lock(lock, pf.relpath):
         try:
             _transfer(
@@ -919,10 +1087,18 @@ def _fetch_one(
             raise
         except requests.RequestException as e:
             raise DownloadError(
-                f"{pf.relpath}: 通信の失敗({type(e).__name__})。もう一度実行すると続きから落とします"
+                tr(
+                    f"{pf.relpath}: 通信の失敗({type(e).__name__})。もう一度実行すると続きから落とします",
+                    f"{pf.relpath}: network error ({type(e).__name__}). Run again to resume",
+                )
             ) from e
         except OSError as e:  # 空き不足・権限・別のプロセスとの取り合いなど
-            raise DownloadError(f"{pf.relpath}: 書けません({e.strerror or e})") from e
+            raise DownloadError(
+                tr(
+                    f"{pf.relpath}: 書けません({e.strerror or e})",
+                    f"{pf.relpath}: cannot write ({e.strerror or e})",
+                )
+            ) from e
 
 
 def _transfer(
@@ -971,20 +1147,38 @@ def _transfer(
                     hashed = -1
                     stalled += 1
                     if stalled >= MAX_STALLED:
-                        raise DownloadError(f"{pf.name}: 範囲の要求が通りません(HTTP 416)")
+                        raise DownloadError(
+                            tr(
+                                f"{pf.name}: 範囲の要求が通りません(HTTP 416)",
+                                f"{pf.name}: the range request is refused (HTTP 416)",
+                            )
+                        )
                     continue
                 if code in (429, 500, 502, 503, 504):
                     stalled += 1
                     if stalled >= MAX_STALLED:
-                        raise DownloadError(f"{pf.name}: HTTP {code} が続きました")
+                        raise DownloadError(
+                            tr(f"{pf.name}: HTTP {code} が続きました", f"{pf.name}: HTTP {code} repeatedly")
+                        )
                     wait = _retry_after(resp, stalled)
-                    report("retry", have, f"HTTP {code}。{wait:.0f} 秒待ってやり直します")
+                    report(
+                        "retry",
+                        have,
+                        tr(
+                            f"HTTP {code}。{wait:.0f} 秒待ってやり直します",
+                            f"HTTP {code}. Retrying in {wait:.0f} s",
+                        ),
+                    )
                     sleep(wait)
                     continue
                 if code in (401, 403):
                     raise DownloadRefused(
-                        f"{pf.name}: HTTP {code}(ログインか利用申請が要るファイルです。"
-                        "genmodelfit はログイン情報を扱わないので落としません)"
+                        tr(
+                            f"{pf.name}: HTTP {code}(ログインか利用申請が要るファイルです。"
+                            "genmodelfit はログイン情報を扱わないので落としません)",
+                            f"{pf.name}: HTTP {code} (the file needs a login or an access request; "
+                            "genmodelfit does not handle login credentials, so it will not download it)",
+                        )
                     )
                 if code >= 400:
                     raise DownloadError(f"{pf.name}: HTTP {code}")
@@ -996,34 +1190,63 @@ def _transfer(
                     hashed = -1
                     stalled += 1
                     if stalled >= MAX_STALLED:
-                        raise DownloadError(f"{pf.name}: 続きの位置が合いません(HTTP 206)")
+                        raise DownloadError(
+                            tr(
+                                f"{pf.name}: 続きの位置が合いません(HTTP 206)",
+                                f"{pf.name}: the resumed position does not match (HTTP 206)",
+                            )
+                        )
                     continue
                 elif code == 200:
                     if have:  # 相手が Range に応じない: 最初から(回数に上限)
                         restarts += 1
                         if restarts > MAX_RESTARTS:
                             raise DownloadError(
-                                f"{pf.name}: 相手が続きからの取得(Range)に応じず、最後まで受け取れません"
-                                f"(最初からを {MAX_RESTARTS} 回やり直しました)"
+                                tr(
+                                    f"{pf.name}: 相手が続きからの取得(Range)に応じず、最後まで受け取れません"
+                                    f"(最初からを {MAX_RESTARTS} 回やり直しました)",
+                                    f"{pf.name}: the server does not support resuming (Range) and the file "
+                                    f"could not be received in full (restarted {MAX_RESTARTS} times)",
+                                )
                             )
                         restarted = True
-                        report("restart", 0, "相手が続きからの取得(Range)に応じないので最初から落とします")
+                        report(
+                            "restart",
+                            0,
+                            tr(
+                                "相手が続きからの取得(Range)に応じないので最初から落とします",
+                                "The server does not support resuming (Range); downloading from the start",
+                            ),
+                        )
                     have, hasher, hashed, mode = 0, hashlib.sha256(), 0, "wb"
                 else:
-                    raise DownloadError(f"{pf.name}: 思わない応答です(HTTP {code})")
+                    raise DownloadError(
+                        tr(
+                            f"{pf.name}: 思わない応答です(HTTP {code})",
+                            f"{pf.name}: unexpected response (HTTP {code})",
+                        )
+                    )
                 with part.open(mode) as fh:
                     for chunk in resp.iter_content(chunk_size=CHUNK):
                         if not chunk:
                             continue
                         if have + got + len(chunk) > size:
                             raise DownloadError(
-                                f"{pf.name}: 一覧の大きさ({size} バイト)より大きいので止めました"
+                                tr(
+                                    f"{pf.name}: 一覧の大きさ({size} バイト)より大きいので止めました",
+                                    f"{pf.name}: stopped because it is larger than the listed size "
+                                    f"({size} bytes)",
+                                )
                             )
                         received += len(chunk)
                         if received > MAX_RECEIVE_FACTOR * size + CHUNK:
                             raise DownloadError(
-                                f"{pf.name}: 大きさの {MAX_RECEIVE_FACTOR} 倍を受け取っても終わらないので"
-                                "止めました"
+                                tr(
+                                    f"{pf.name}: 大きさの {MAX_RECEIVE_FACTOR} 倍を受け取っても終わらないので"
+                                    "止めました",
+                                    f"{pf.name}: stopped because it did not finish after receiving "
+                                    f"{MAX_RECEIVE_FACTOR} times its size",
+                                )
                             )
                         fh.write(chunk)
                         hasher.update(chunk)
@@ -1037,10 +1260,21 @@ def _transfer(
             stalled = 0 if got else stalled + 1
             if stalled >= MAX_STALLED:
                 raise DownloadError(
-                    f"{pf.name}: つながりません({type(e).__name__})。もう一度実行すると続きから落とします"
+                    tr(
+                        f"{pf.name}: つながりません({type(e).__name__})。"
+                        "もう一度実行すると続きから落とします",
+                        f"{pf.name}: cannot connect ({type(e).__name__}). Run again to resume",
+                    )
                 ) from e
             wait = float(min(60, 2**stalled))
-            report("retry", have + got, f"つながりません({type(e).__name__})。{wait:.0f} 秒待って続きから")
+            report(
+                "retry",
+                have + got,
+                tr(
+                    f"つながりません({type(e).__name__})。{wait:.0f} 秒待って続きから",
+                    f"Cannot connect ({type(e).__name__}). Resuming in {wait:.0f} s",
+                ),
+            )
             sleep(wait)
             continue
         if got:
@@ -1048,17 +1282,29 @@ def _transfer(
         elif have + got < size:
             stalled += 1
             if stalled >= MAX_STALLED:
-                raise DownloadError(f"{pf.name}: 途中で切れ、続きを受け取れません")
+                raise DownloadError(
+                    tr(
+                        f"{pf.name}: 途中で切れ、続きを受け取れません",
+                        f"{pf.name}: the transfer was cut and cannot be resumed",
+                    )
+                )
     report("verify", size, None)
     if hasher.hexdigest() != pf.sha256:
         part.unlink(missing_ok=True)
         raise ChecksumMismatch(
-            f"{pf.name}: sha256 が一覧と合いません(消しました)。一覧 {pf.sha256}、"
-            f"落としたもの {hasher.hexdigest()}"
+            tr(
+                f"{pf.name}: sha256 が一覧と合いません(消しました)。一覧 {pf.sha256}、"
+                f"落としたもの {hasher.hexdigest()}",
+                f"{pf.name}: sha256 does not match the list (deleted). List {pf.sha256}, "
+                f"downloaded {hasher.hexdigest()}",
+            )
         )
     if dest.exists() or dest.is_symlink():  # 落としている間に別のものが置かれた: 上書きしない
         raise DownloadRefused(
-            f"{pf.relpath}: 落としている間に同じ名前のファイルが置かれました(上書きしません)"
+            tr(
+                f"{pf.relpath}: 落としている間に同じ名前のファイルが置かれました(上書きしません)",
+                f"{pf.relpath}: a file with the same name appeared during the download (not overwritten)",
+            )
         )
     os.replace(part, dest)
     result.downloaded.append(pf.relpath)
@@ -1072,9 +1318,19 @@ def _existing_ok(dest: Path, f: PlannedFile, emit: Callable[[str, int, str | Non
     """置き場所に既にあるファイルを、計画によらずその場で sha256 まで計る。
     合えば True、違えば DownloadRefused。"""
     if dest.is_symlink() or not dest.is_file():
-        raise DownloadRefused(f"{f.relpath}: 同じ名前のファイルでないものがあります(上書きしません)")
+        raise DownloadRefused(
+            tr(
+                f"{f.relpath}: 同じ名前のファイルでないものがあります(上書きしません)",
+                f"{f.relpath}: something that is not a file has the same name (not overwritten)",
+            )
+        )
     if dest.stat().st_size != f.size_bytes:
-        raise DownloadRefused(f"{f.relpath}: 同じ名前の別のファイルがあります(大きさが違う。上書きしません)")
+        raise DownloadRefused(
+            tr(
+                f"{f.relpath}: 同じ名前の別のファイルがあります(大きさが違う。上書きしません)",
+                f"{f.relpath}: a different file with the same name exists (size differs; not overwritten)",
+            )
+        )
     done = [0]
 
     def tick(n: int) -> None:
@@ -1082,7 +1338,13 @@ def _existing_ok(dest: Path, f: PlannedFile, emit: Callable[[str, int, str | Non
         emit("check", done[0], None)
 
     if _hash_file(dest, tick) != f.sha256:
-        raise DownloadRefused(f"{f.relpath}: 同じ名前のファイルの sha256 が一覧と違います(上書きしません)")
+        raise DownloadRefused(
+            tr(
+                f"{f.relpath}: 同じ名前のファイルの sha256 が一覧と違います(上書きしません)",
+                f"{f.relpath}: a file with the same name has a sha256 that differs from the list "
+                "(not overwritten)",
+            )
+        )
     return True
 
 
@@ -1109,17 +1371,27 @@ def download(
     """
     if isinstance(plan_or_model, DownloadPlan):
         if plan_kwargs:
-            raise TypeError("計画を渡すときは plan_download の引数を渡せません: " + ", ".join(plan_kwargs))
+            raise TypeError(
+                tr(
+                    "計画を渡すときは plan_download の引数を渡せません: ",
+                    "plan_download arguments cannot be given together with a plan: ",
+                )
+                + ", ".join(plan_kwargs)
+            )
         plan = plan_or_model
     else:
         plan = plan_download(plan_or_model, **plan_kwargs)
     if plan.blocked:
-        raise DownloadRefused("落とせません: " + " / ".join(plan.blocked), plan)
+        raise DownloadRefused(tr("落とせません: ", "Cannot download: ") + " / ".join(plan.blocked), plan)
     if confirm is not None:
         if not confirm(plan):
-            raise DownloadDeclined("同意が得られなかったので落としません", plan)
+            raise DownloadDeclined(
+                tr("同意が得られなかったので落としません", "Not downloading: not agreed"), plan
+            )
     elif not yes:
-        raise DownloadRefused("同意がありません(confirm を渡すか yes=True)", plan)
+        raise DownloadRefused(
+            tr("同意がありません(confirm を渡すか yes=True)", "No consent (pass confirm or yes=True)"), plan
+        )
     root = Path(plan.root)
     hosts = HOST_POLICY
     # 空き(計画のあとで変わっていることがあるので、始める前に今のファイルの状態で見直す)
@@ -1128,8 +1400,13 @@ def download(
     free = _free_bytes(root)
     if todo and free is not None and need + MARGIN_BYTES > free:
         raise DiskFull(
-            f"空きが足りません: 要る {(need + MARGIN_BYTES) / GIB:.2f} GB(落とす残り + 1 GB)、"
-            f"空き {free / GIB:.2f} GB",
+            tr(
+                f"空きが足りません: 要る {(need + MARGIN_BYTES) / GIB:.2f} GB(落とす残り + 1 GB)、"
+                f"空き {free / GIB:.2f} GB",
+                f"Not enough free disk: needs {(need + MARGIN_BYTES) / GIB:.2f} GB "
+                "(the rest to download + 1 GB), "
+                f"free {free / GIB:.2f} GB",
+            ),
             plan,
         )
     result = DownloadResult(plan)
@@ -1148,7 +1425,13 @@ def download(
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        raise DownloadError(f"置き場所を作れません({e.strerror or e}): {root}", plan) from e
+        raise DownloadError(
+            tr(
+                f"置き場所を作れません({e.strerror or e}): {root}",
+                f"Cannot create the destination ({e.strerror or e}): {root}",
+            ),
+            plan,
+        ) from e
     session = make_session()
     try:
         for i, f in enumerate(plan.files, 1):
@@ -1157,7 +1440,16 @@ def download(
             if os.path.lexists(dest):
                 _existing_ok(dest, f, report)  # 計画の present を信じず、その場で計る
                 result.skipped.append(f.relpath)
-                emit(i, f, "skip", f.size_bytes or 0, "既にあり sha256 が合うので飛ばします")
+                emit(
+                    i,
+                    f,
+                    "skip",
+                    f.size_bytes or 0,
+                    tr(
+                        "既にあり sha256 が合うので飛ばします",
+                        "Already present with a matching sha256; skipped",
+                    ),
+                )
             else:
                 _fetch_one(
                     f,
@@ -1176,7 +1468,9 @@ def download(
             e.plan = plan
         raise
     except OSError as e:  # 既にあるファイルを読めないなど
-        raise DownloadError(f"読み書きできません({e.strerror or e})", plan) from e
+        raise DownloadError(
+            tr(f"読み書きできません({e.strerror or e})", f"Cannot read or write ({e.strerror or e})"), plan
+        ) from e
     finally:
         session.close()
         result.seconds = time.monotonic() - start

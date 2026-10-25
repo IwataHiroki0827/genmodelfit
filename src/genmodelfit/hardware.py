@@ -33,6 +33,7 @@ from pathlib import Path
 
 import psutil
 
+from .i18n import tr
 from .models import USABLE_BACKENDS, Adapter, Gpu, SystemInfo
 
 GIB = 1024**3
@@ -404,7 +405,12 @@ def torch_support(
     notes: list[str] = []
     if cc is None:
         arch_builds = [b for b in TORCH_CUDA_BUILDS if b.ccs.get(machine)]
-        notes.append("GPU の世代(compute capability)が分からないので、世代では断っていない")
+        notes.append(
+            tr(
+                "GPU の世代(compute capability)が分からないので、世代では断っていない",
+                "The GPU generation (compute capability) is unknown, so it is not refused by generation",
+            )
+        )
     else:
         arch_builds = [b for b in TORCH_CUDA_BUILDS if any(_code_runs(c, cc) for c in b.ccs.get(machine, ()))]
         if not arch_builds:
@@ -412,22 +418,41 @@ def torch_support(
             label = {"fermi": "Fermi 以前の", "kepler": "Kepler ", "unknown": "この"}.get(
                 arch, arch.capitalize() + " "
             )
+            label_en = {"fermi": "Fermi or older", "kepler": "Kepler", "unknown": "This"}.get(
+                arch, arch.capitalize()
+            )
             notes.append(
-                f"{label}世代(compute capability {cc[0]}.{cc[1]})は PyTorch の CUDA 版のビルドが"
-                "どれも対応しないので、CPU として判定した(ドライバを更新しても GPU では動かない)"
+                tr(
+                    f"{label}世代(compute capability {cc[0]}.{cc[1]})は PyTorch の CUDA 版のビルドが"
+                    "どれも対応しないので、CPU として判定した(ドライバを更新しても GPU では動かない)",
+                    f"{label_en} generation (compute capability {cc[0]}.{cc[1]}) is supported by no CUDA "
+                    "build"
+                    " of PyTorch, so it is judged as CPU (updating the driver does not make it run on the "
+                    "GPU)",
+                )
             )
             return Support([], [], False, notes)
     ver = parse_version(driver)
     if ver is None:
-        notes.append("ドライバの版が読めないので、ドライバでは断っていない")
+        notes.append(
+            tr(
+                "ドライバの版が読めないので、ドライバでは断っていない",
+                "The driver version cannot be read, so it is not refused by driver",
+            )
+        )
         return Support([b.tag for b in arch_builds], [b.tag for b in arch_builds], True, notes)
 
     floor = ARCH_MIN_DRIVER.get(arch_of(cc)) if cc else None
     if floor and ver < floor[0]:
         notes.append(
-            f"ドライバ {driver} はこの世代({arch_of(cc).capitalize()})に対応しない"
-            f"({_fmt_ver(floor[0])} 以上。"
-            f"{floor[1]})ので、CPU として判定した(ドライバを更新すれば GPU で動く)"
+            tr(
+                f"ドライバ {driver} はこの世代({arch_of(cc).capitalize()})に対応しない"
+                f"({_fmt_ver(floor[0])} 以上。"
+                f"{floor[1]})ので、CPU として判定した(ドライバを更新すれば GPU で動く)",
+                f"Driver {driver} does not support this generation ({arch_of(cc).capitalize()})"
+                f" ({_fmt_ver(floor[0])} or later; {floor[1].replace('(', ' (').replace(')', ')')}),"
+                " so it is judged as CPU (it runs on the GPU after a driver update)",
+            )
         )
         return Support([], [b.tag for b in arch_builds], False, notes)
 
@@ -438,16 +463,28 @@ def torch_support(
     if not ok:
         easiest = min(arch_builds, key=need)
         notes.append(
-            f"ドライバ {driver} は古く、この GPU で動く PyTorch(CUDA {easiest.cuda} 版など)には "
-            f"{_fmt_ver(need(easiest))} 以上が要るので、CPU として判定した(ドライバを更新すれば GPU で動く)"
+            tr(
+                f"ドライバ {driver} は古く、この GPU で動く PyTorch(CUDA {easiest.cuda} 版など)には "
+                f"{_fmt_ver(need(easiest))} 以上が要るので、CPU として判定した(ドライバを更新すれば GPU "
+                "で動く)",
+                f"Driver {driver} is too old: PyTorch for this GPU (CUDA {easiest.cuda} build etc.) needs "
+                f"{_fmt_ver(need(easiest))} or later, so it is judged as CPU (it runs on the GPU after a "
+                "driver update)",
+            )
         )
         return Support([], [b.tag for b in arch_builds], False, notes)
     if len(ok) < len(arch_builds):
         bad = [b for b in arch_builds if b not in ok]
-        tags = "・".join(b.tag for b in reversed(bad))
+        tags = tr("・", ", ").join(b.tag for b in reversed(bad))
         notes.append(
-            f"ドライバ {driver} では CUDA {bad[-1].cuda} 版以降の PyTorch({tags})は動かない"
-            f"({_fmt_ver(min(need(b) for b in bad))} 以上が要る)。CUDA {ok[0].cuda} 版({ok[0].tag})なら動く"
+            tr(
+                f"ドライバ {driver} では CUDA {bad[-1].cuda} 版以降の PyTorch({tags})は動かない"
+                f"({_fmt_ver(min(need(b) for b in bad))} 以上が要る)。CUDA {ok[0].cuda} 版({ok[0].tag})"
+                "なら動く",
+                f"With driver {driver}, PyTorch builds for CUDA {bad[-1].cuda} and later ({tags}) do not run"
+                f" ({_fmt_ver(min(need(b) for b in bad))} or later needed). The CUDA {ok[0].cuda} build "
+                f"({ok[0].tag}) runs",
+            )
         )
     return Support([b.tag for b in ok], [b.tag for b in arch_builds], True, notes)
 
@@ -576,7 +613,11 @@ def parse_nvidia_smi(text: str, fields: tuple[str, ...] = QUERY) -> list[Gpu]:
         notes: list[str] = []
         if total is None or total <= 0:
             notes.append(
-                "nvidia-smi が VRAM の量を返さない(メモリを CPU と共有する GPU など)ので、判定に使わない"
+                tr(
+                    "nvidia-smi が VRAM の量を返さない(メモリを CPU と共有する GPU など)ので、判定に使わない",
+                    "nvidia-smi returns no VRAM amount (e.g. a GPU sharing memory with the CPU), so it is "
+                    "not used",
+                )
             )
         cc = parse_compute_cap(get("compute_cap")) if "compute_cap" in idx else None
         gpus.append(
@@ -607,7 +648,12 @@ def classify_gpu(g: Gpu, *, windows_driver: bool, comfy_windows: bool, machine: 
             g.compute_capability = f"{cc[0]}.{cc[1]}"
             g.compute_capability_source = "name"
             g.notes.append(
-                f"nvidia-smi が世代を返さないので、GPU 名から compute capability {cc[0]}.{cc[1]} と推した"
+                tr(
+                    f"nvidia-smi が世代を返さないので、GPU 名から compute capability {cc[0]}.{cc[1]} "
+                    "と推した",
+                    f"nvidia-smi returns no generation, so compute capability {cc[0]}.{cc[1]} was inferred "
+                    "from the GPU name",
+                )
             )
     g.arch = arch_of(cc) if cc else None
     sup = torch_support(cc, g.driver, windows_driver=windows_driver, machine=machine)
@@ -619,8 +665,12 @@ def classify_gpu(g: Gpu, *, windows_driver: bool, comfy_windows: bool, machine: 
         g.compute_dtype, g.bf16, g.fp8 = comfy_precision(cc, g.name, windows=comfy_windows)
     if g.compute_dtype == "fp32":
         g.notes.append(
-            "ComfyUI はこの GPU では半精度(fp16)を使わず fp32 で計算するので、"
-            "作業用メモリを 2 倍で見積もる(遅い)"
+            tr(
+                "ComfyUI はこの GPU では半精度(fp16)を使わず fp32 で計算するので、"
+                "作業用メモリを 2 倍で見積もる(遅い)",
+                "ComfyUI computes in fp32 on this GPU (no half precision, fp16),"
+                " so the working memory is doubled in the estimate (slow)",
+            )
         )
     return g
 
@@ -636,11 +686,20 @@ def _partial_notes(result: tuple[int, str]) -> list[str]:
     bad = sum(1 for line in out.splitlines() if "Unable to determine" in line or "Unknown Error" in line)
     if bad:
         return [
-            f"nvidia-smi が {bad} 枚の GPU の情報を読めなかった(ドライバ・GPU の不調)。"
-            "読めた GPU だけで判定した"
+            tr(
+                f"nvidia-smi が {bad} 枚の GPU の情報を読めなかった(ドライバ・GPU の不調)。"
+                "読めた GPU だけで判定した",
+                f"nvidia-smi could not read {bad} GPU(s) (driver or GPU trouble)."
+                " Judged with the GPUs that could be read",
+            )
         ]
     if code != 0:
-        return [f"nvidia-smi が終了コード {code} を返した。読めた GPU だけで判定した"]
+        return [
+            tr(
+                f"nvidia-smi が終了コード {code} を返した。読めた GPU だけで判定した",
+                f"nvidia-smi returned exit code {code}. Judged with the GPUs that could be read",
+            )
+        ]
     return []
 
 
@@ -649,7 +708,12 @@ def query_nvidia_smi(exe: str) -> tuple[list[Gpu], list[str]]:
     (compute_cap を知らない古い nvidia-smi は「not a valid field」で失敗する)。(GPU, 分かったこと)。"""
     first = _ask(exe, QUERY)
     if first is None:
-        return [], ["nvidia-smi が動かない・時間内に終わらないので、GPU は無いものとして判定した"]
+        return [], [
+            tr(
+                "nvidia-smi が動かない・時間内に終わらないので、GPU は無いものとして判定した",
+                "nvidia-smi does not run or did not finish in time, so judged as having no GPU",
+            )
+        ]
     gpus = parse_nvidia_smi(first[1], QUERY)
     if gpus:  # 1 枚だけ読めない(「Unable to determine the device handle」)ときも、読めた行は使う
         return gpus, _partial_notes(first)
@@ -658,18 +722,33 @@ def query_nvidia_smi(exe: str) -> tuple[list[Gpu], list[str]]:
         gpus = parse_nvidia_smi(second[1], QUERY_OLD)
         if gpus:
             return gpus, [
-                "古い nvidia-smi で compute_cap を聞けなかったので、GPU 名から世代を推した",
+                tr(
+                    "古い nvidia-smi で compute_cap を聞けなかったので、GPU 名から世代を推した",
+                    "An old nvidia-smi could not report compute_cap, so the generation was inferred from the "
+                    "GPU name",
+                ),
                 *_partial_notes(second),
             ]
     text = first[1] + (second[1] if second else "")
     if "No devices were found" in text:
-        return [], ["nvidia-smi は動いたが NVIDIA の GPU が見つからない"]
+        return [], [
+            tr("nvidia-smi は動いたが NVIDIA の GPU が見つからない", "nvidia-smi ran but found no NVIDIA GPU")
+        ]
     if first[0] != 0:
         return [], [
-            f"nvidia-smi が失敗した(終了コード {first[0]})。ドライバが動いていない可能性があるので、"
-            "GPU は無いものとして判定した"
+            tr(
+                f"nvidia-smi が失敗した(終了コード {first[0]})。ドライバが動いていない可能性があるので、"
+                "GPU は無いものとして判定した",
+                f"nvidia-smi failed (exit code {first[0]}). The driver may not be running,"
+                " so judged as having no GPU",
+            )
         ]
-    return [], ["nvidia-smi の出力が読めないので、GPU は無いものとして判定した"]
+    return [], [
+        tr(
+            "nvidia-smi の出力が読めないので、GPU は無いものとして判定した",
+            "The nvidia-smi output cannot be read, so judged as having no GPU",
+        )
+    ]
 
 
 def detect_gpus(
@@ -679,7 +758,11 @@ def detect_gpus(
     exe = find_nvidia_smi()
     if not exe:
         return [], [
-            "nvidia-smi が見つからない(NVIDIA のドライバが入っていない)ので、GPU は無いものとして判定した"
+            tr(
+                "nvidia-smi が見つからない(NVIDIA のドライバが入っていない)ので、GPU は無いものとして判定し"
+                "た",
+                "nvidia-smi not found (no NVIDIA driver installed), so judged as having no GPU",
+            )
         ]
     gpus, notes = query_nvidia_smi(exe)
     wd = (os.name == "nt" or is_wsl()) if windows_driver is None else windows_driver
@@ -780,11 +863,21 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
         err = d.get("ConfigManagerErrorCode")
         if vendor == "nvidia" and "microsoft basic" in name.lower():
             notes.append(
-                "NVIDIA の GPU があるが、NVIDIA のドライバが入っていない(標準の画面ドライバで動いている)。"
-                "ドライバを入れると GPU で判定できる"
+                tr(
+                    "NVIDIA の GPU があるが、NVIDIA のドライバが入っていない(標準の画面ドライバで動いている)"
+                    "。"
+                    "ドライバを入れると GPU で判定できる",
+                    "There is an NVIDIA GPU but no NVIDIA driver (it runs on the basic display driver)."
+                    " Install the driver to judge with the GPU",
+                )
             )
         elif isinstance(err, int) and err != 0:
-            notes.append(f"{name} は Windows のデバイスマネージャーで問題がある状態(コード {err})")
+            notes.append(
+                tr(
+                    f"{name} は Windows のデバイスマネージャーで問題がある状態(コード {err})",
+                    f"{name} has a problem in Windows Device Manager (code {err})",
+                )
+            )
         ids = re.search(r"ven_([0-9a-f]{4})&dev_([0-9a-f]{4})", hwid)
         out.append(
             Adapter(
@@ -1267,10 +1360,14 @@ def _shared_pool(a: Adapter, ram_gb: float) -> tuple[float, str]:
     """内蔵 GPU・APU が使えるメモリ(GiB)と、その説明。取り分けた VRAM(BIOS の UMA)+ 共有の分。"""
     dedicated = a.vram_gb or 0.0
     if a.shared_gb:
-        return dedicated + a.shared_gb, f"取り分けた VRAM {dedicated:g} GB + GTT {a.shared_gb:g} GB(sysfs)"
+        return dedicated + a.shared_gb, tr(
+            f"取り分けた VRAM {dedicated:g} GB + GTT {a.shared_gb:g} GB(sysfs)",
+            f"reserved VRAM {dedicated:g} GB + GTT {a.shared_gb:g} GB (sysfs)",
+        )
     share = ram_gb * SHARED_MEMORY_SHARE
-    return dedicated + share, (
-        f"取り分けた VRAM {dedicated:g} GB + メインメモリの {SHARED_MEMORY_SHARE:.0%}({share:.1f} GB)"
+    return dedicated + share, tr(
+        f"取り分けた VRAM {dedicated:g} GB + メインメモリの {SHARED_MEMORY_SHARE:.0%}({share:.1f} GB)",
+        f"reserved VRAM {dedicated:g} GB + {SHARED_MEMORY_SHARE:.0%} of main memory ({share:.1f} GB)",
     )
 
 
@@ -1282,11 +1379,14 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         return None  # NVIDIA は nvidia-smi で決める
     a.needs = None  # 判定し直すたびに消す(同じ部品を別の PC の条件で判定し直すことがある)
     label = VENDOR_LABEL.get(a.vendor, "")
-    tag = f"推定({label}・実測なし)" if label else "推定(実測なし)"
+    if label:
+        tag = tr(f"推定({label}・実測なし)", f"Estimated ({label}, no measurement)")
+    else:
+        tag = tr("推定(実測なし)", "Estimated (no measurement)")
 
-    def refuse(why: str) -> None:
+    def refuse(why: str, why_en: str) -> None:
         a.usable = False
-        a.reason = why + "ので、CPU として判定した"
+        a.reason = tr(why + "ので、CPU として判定した", why_en + ", so it is judged as CPU")
 
     gfx = None
     arch = None
@@ -1299,38 +1399,55 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         dev, known = pci
         if not known:
             refuse(
-                f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)"
+                f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)",
+                f"The product name of {a.name} is unknown (the pci.ids of lspci is old; update-pciids fixes "
+                "it)",
             )
             return None
         name = known
-        pci_note = (
+        pci_note = tr(
             f"lspci の pci.ids が古く製品名が出ないので、型番の ID({dev})から {known} とみなした"
-            "(update-pciids で新しくすると製品名が出る)"
+            "(update-pciids で新しくすると製品名が出る)",
+            f"The pci.ids of lspci is old and shows no product name, so it was taken as {known}"
+            f" from the device ID ({dev}) (update-pciids shows the product name)",
         )
     if a.vendor == "amd":
         found = amd_gfx(name, host.cpu)
         if found is None:
             if re.fullmatch(r"(amd )?radeon graphics", _low(a.name)):
                 a.integrated = True  # CPU の名前でも世代が決まらない内蔵 GPU
-            refuse(f"{a.name} は世代(gfx)が名前から分からない")
+            refuse(
+                f"{a.name} は世代(gfx)が名前から分からない",
+                f"The generation (gfx) of {a.name} is unknown from its name",
+            )
             return None
         gfx, a.integrated = found
         arch = AMD_ARCH.get(gfx, "?")
         if host.system == "Darwin":
-            refuse("macOS の AMD の GPU は PyTorch の MPS 版の対象ではない(Apple silicon だけ)")
+            refuse(
+                "macOS の AMD の GPU は PyTorch の MPS 版の対象ではない(Apple silicon だけ)",
+                "AMD GPUs on macOS are not covered by the MPS build of PyTorch (Apple silicon only)",
+            )
             return None
         if host.system not in ("Windows", "Linux"):
-            refuse(f"{host.system} の ROCm 版 PyTorch は無い")
+            refuse(
+                f"{host.system} の ROCm 版 PyTorch は無い",
+                f"There is no ROCm build of PyTorch for {host.system}",
+            )
             return None
         if not (arch in AMD_SUPPORTED_ARCH or (host.system == "Linux" and arch in AMD_LINUX_ONLY_ARCH)):
             refuse(
-                f"{a.name}({arch}・{gfx})は ComfyUI が案内する ROCm 版 PyTorch の対象(RDNA 2 以降)に入らない"
+                f"{a.name}({arch}・{gfx})は ComfyUI が案内する ROCm 版 PyTorch の対象(RDNA 2 以降)に入らない",
+                f"{a.name} ({arch}, {gfx}) is not covered by the ROCm build of PyTorch that ComfyUI "
+                "recommends (RDNA 2 and later)",
             )
             return None
         if gfx in AMD_DISPLAY_ONLY_GFX:
             refuse(  # Radeon 610M(Dragon Range・Raphael など)
                 f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、"
-                "生成では CPU より速い見込みが無い"
+                "生成では CPU より速い見込みが無い",
+                f"{a.name} ({gfx}) is a small 2-CU integrated GPU for the display"
+                " and is not expected to generate faster than the CPU",
             )
             return None
         if host.system == "Windows" and not _windows_ok(host):
@@ -1338,18 +1455,34 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 a.needs = "Windows 11"
             refuse(
                 "AMD の GPU の Windows 版 PyTorch(ROCm)は Windows 11 が要る"
-                "(ComfyUI の案内。版が分からなくても使わない)"
+                "(ComfyUI の案内。版が分からなくても使わない)",
+                "PyTorch for AMD GPUs on Windows (ROCm) needs Windows 11"
+                " (per ComfyUI; not used when the version is unknown either)",
             )
             return None
-        notes = [f"{tag}: ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで"]
+        notes = [
+            tr(
+                f"{tag}: ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで",
+                f"{tag}: judged as a combination that runs with the ROCm build of PyTorch ({gfx}, {arch})."
+                " Level up to good",
+            )
+        ]
         if host.system == "Linux" and gfx not in PYTORCH_ROCM_LINUX_GFX:
             notes.append(
-                f"{gfx} は pytorch.org の ROCm 版には入っていないので、"
-                "AMD の multi-arch 版(TheRock)の PyTorch を使う"
+                tr(
+                    f"{gfx} は pytorch.org の ROCm 版には入っていないので、"
+                    "AMD の multi-arch 版(TheRock)の PyTorch を使う",
+                    f"{gfx} is not in the ROCm build on pytorch.org,"
+                    " so use the AMD multi-arch (TheRock) build of PyTorch",
+                )
             )
         if host.system == "Windows":
             notes.append(
-                "Windows では AMD の multi-arch 版 PyTorch(ROCm 10)か ComfyUI の AMD 版 portable を使う"
+                tr(
+                    "Windows では AMD の multi-arch 版 PyTorch(ROCm 10)か ComfyUI の AMD 版 portable を使う",
+                    "On Windows, use the AMD multi-arch build of PyTorch (ROCm 10) or the AMD portable of "
+                    "ComfyUI",
+                )
             )
         backend, bf16 = "rocm", arch not in AMD_NO_BF16_ARCH
     elif a.vendor == "intel":
@@ -1359,43 +1492,66 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 a.integrated = True
             refuse(
                 f"{a.name} は PyTorch の XPU 版が対象にする Intel の GPU"
-                "(Arc A / B シリーズ、Core Ultra の Arc Graphics)に入らない"
+                "(Arc A / B シリーズ、Core Ultra の Arc Graphics)に入らない",
+                f"{a.name} is not one of the Intel GPUs covered by the XPU build of PyTorch"
+                " (Arc A / B series, Arc Graphics of Core Ultra)",
             )
             return None
         series, a.integrated, floor = found_i
         if host.system not in ("Windows", "Linux"):
-            refuse(f"{host.system} の XPU 版 PyTorch は無い")
+            refuse(
+                f"{host.system} の XPU 版 PyTorch は無い",
+                f"There is no XPU build of PyTorch for {host.system}",
+            )
             return None
         if host.system == "Windows" and not _windows_ok(host):
             if host.windows_build is not None:  # 版が分からないときは条件を言わない
                 a.needs = "Windows 11"
             refuse(
                 "Intel の GPU の XPU 版 PyTorch は Windows 11 で確かめられている"
-                "(Windows 10・版が分からないときは対象外)"
+                "(Windows 10・版が分からないときは対象外)",
+                "The XPU build of PyTorch for Intel GPUs is verified on Windows 11"
+                " (not covered on Windows 10 or an unknown version)",
             )
             return None
-        notes = [f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで"]
+        notes = [
+            tr(
+                f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで",
+                f"{tag}: judged as a combination that runs with the XPU build of PyTorch ({series})."
+                " Level up to good",
+            )
+        ]
         if not a.integrated and not a.vram_gb and floor:
             a.vram_gb, a.vram_source = floor, "name"
             notes.append(
-                f"VRAM の量が読めないので、名前から公称の {floor:g} GB"
-                "(量の違う版があれば少ないほう)とみなした"
+                tr(
+                    f"VRAM の量が読めないので、名前から公称の {floor:g} GB"
+                    "(量の違う版があれば少ないほう)とみなした",
+                    f"The VRAM amount cannot be read, so the nominal {floor:g} GB was taken from the name"
+                    " (the smaller one if versions differ)",
+                )
             )
         backend, bf16 = "xpu", True
     elif a.vendor == "apple":
         a.integrated = True
         if host.system != "Darwin":
-            refuse("Apple の GPU は macOS でだけ使える")
+            refuse("Apple の GPU は macOS でだけ使える", "Apple GPUs can be used only on macOS")
             return None
         if host.mac_version is None or host.mac_version < MACOS_MIN_FOR_MPS:
             refuse(
-                "PyTorch の MPS 版は macOS 14.0 以降が要る(この PC の macOS は 14 より前か、版が分からない)"
+                "PyTorch の MPS 版は macOS 14.0 以降が要る(この PC の macOS は 14 より前か、版が分からない)",
+                "The MPS build of PyTorch needs macOS 14.0 or later (this macOS is older than 14 or unknown)",
             )
             return None
-        notes = [f"{tag}: MPS 版 PyTorch で動く組み合わせとして判定した。段階は good まで"]
+        notes = [
+            tr(
+                f"{tag}: MPS 版 PyTorch で動く組み合わせとして判定した。段階は good まで",
+                f"{tag}: judged as a combination that runs with the MPS build of PyTorch. Level up to good",
+            )
+        ]
         backend, bf16 = "mps", True
     else:
-        refuse(f"{a.name} は会社が分からない")
+        refuse(f"{a.name} は会社が分からない", f"The vendor of {a.name} is unknown")
         return None
     if pci_note:
         notes.insert(1, pci_note)
@@ -1403,24 +1559,33 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     if a.vendor == "apple":
         pool, memory = ram_gb * UNIFIED_MEMORY_SHARE, "unified"
         notes.append(
-            f"統合メモリ {ram_gb:.1f} GB のうち {UNIFIED_MEMORY_SHARE:.0%}({pool:.1f} GB)を"
-            "GPU が使えるとみなした"
-            "(残りは OS・ComfyUI 自身の分。逃がす先も同じメモリなので、逃がす動かし方は無い)"
+            tr(
+                f"統合メモリ {ram_gb:.1f} GB のうち {UNIFIED_MEMORY_SHARE:.0%}({pool:.1f} GB)を"
+                "GPU が使えるとみなした"
+                "(残りは OS・ComfyUI 自身の分。逃がす先も同じメモリなので、逃がす動かし方は無い)",
+                f"The GPU is taken to use {UNIFIED_MEMORY_SHARE:.0%} ({pool:.1f} GB) of the {ram_gb:.1f} GB"
+                " unified memory (the rest is for the OS and ComfyUI itself; offloading would go to the same"
+                " memory, so there is no offload mode)",
+            )
         )
     elif a.integrated:
         pool, how = _shared_pool(a, ram_gb)
         memory = "shared"
         notes.append(
-            f"内蔵 GPU・APU なので、GPU が使えるメモリを {pool:.1f} GB とみなした({how})。"
-            "逃がす先も同じメモリなので、逃がす動かし方は無い"
+            tr(
+                f"内蔵 GPU・APU なので、GPU が使えるメモリを {pool:.1f} GB とみなした({how})。"
+                "逃がす先も同じメモリなので、逃がす動かし方は無い",
+                f"Integrated GPU / APU, so the GPU is taken to use {pool:.1f} GB ({how})."
+                " Offloading would go to the same memory, so there is no offload mode",
+            )
         )
     else:
         if not a.vram_gb:
-            refuse(f"{a.name} の VRAM の量が読めない")
+            refuse(f"{a.name} の VRAM の量が読めない", f"The VRAM amount of {a.name} cannot be read")
             return None
         pool, memory = a.vram_gb, "dedicated"
     if pool <= 0:
-        refuse(f"{a.name} が使えるメモリの量が分からない")
+        refuse(f"{a.name} が使えるメモリの量が分からない", f"The memory {a.name} can use is unknown")
         return None
     a.usable = True
     a.reason = notes[0]
@@ -1450,13 +1615,25 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
                 not judged_gpu and a.source == "lspci"
             ):  # Windows はドライバの無いときの注意を WMI の読みで出す
                 notes.append(
-                    f"{a.name} があるが、nvidia-smi で確かめられないので CPU として判定した"
-                    "(NVIDIA のドライバを入れると GPU で判定できる)"
+                    tr(
+                        f"{a.name} があるが、nvidia-smi で確かめられないので CPU として判定した"
+                        "(NVIDIA のドライバを入れると GPU で判定できる)",
+                        f"{a.name} is present but cannot be checked with nvidia-smi, so judged as CPU"
+                        " (install the NVIDIA driver to judge with the GPU)",
+                    )
                 )
             continue
-        vram = f"(VRAM {a.vram_gb:g} GB)" if a.vram_gb and a.vram_source != "name" else ""
+        if a.vram_gb and a.vram_source != "name":
+            vram = tr(f"(VRAM {a.vram_gb:g} GB)", f" (VRAM {a.vram_gb:g} GB)")
+        else:
+            vram = ""
         if judged_gpu:
-            notes.append(f"{a.name}{vram} を見つけた。NVIDIA の GPU があるので判定に使わない")
+            notes.append(
+                tr(
+                    f"{a.name}{vram} を見つけた。NVIDIA の GPU があるので判定に使わない",
+                    f"Found {a.name}{vram}. Not used because there is an NVIDIA GPU",
+                )
+            )
         elif a.usable is False:
             notes.append(f"{a.name}{vram}: {a.reason}")
     return notes
@@ -1537,14 +1714,23 @@ def read_memory() -> Memory:
             mem.commit_used = max(0, st["commit_limit"] - st["commit_avail"])
             mem.swap_total = max(0, st["commit_limit"] - st["total_phys"])
         paging = _reg_paging_files()
+        unread = tr(
+            "ページファイルの設定が読めないので、仮想メモリは目安の倍率で見た",
+            "The page file settings cannot be read, so virtual memory uses a rough factor",
+        )
         if paging is None:
-            mem.notes.append("ページファイルの設定が読めないので、仮想メモリは目安の倍率で見た")
+            mem.notes.append(unread)
         else:
             mem.swap_max, mem.swap_auto = parse_paging_files(paging)
             if mem.swap_max is None and mem.swap_auto is None:
-                mem.notes.append("ページファイルの設定が読めないので、仮想メモリは目安の倍率で見た")
+                mem.notes.append(unread)
             elif mem.swap_max == 0:
-                mem.notes.append("ページファイルが無いので、メモリが足りないモデルは動かないと判定する")
+                mem.notes.append(
+                    tr(
+                        "ページファイルが無いので、メモリが足りないモデルは動かないと判定する",
+                        "No page file, so models that need more memory are judged not to run",
+                    )
+                )
     elif platform.system() == "Linux":
         text = _read_text("/proc/swaps")
         if text is not None:
@@ -1552,12 +1738,20 @@ def read_memory() -> Memory:
             mem.swap_auto = False
         limit = _cgroup_limit()
         if limit and limit < mem.total:
-            mem.notes.append(f"コンテナのメモリ上限 {limit / GIB:.1f} GB を、搭載量の代わりに使った")
+            mem.notes.append(
+                tr(
+                    f"コンテナのメモリ上限 {limit / GIB:.1f} GB を、搭載量の代わりに使った",
+                    f"Used the container memory limit {limit / GIB:.1f} GB instead of the installed amount",
+                )
+            )
             mem.total = limit
             mem.available = min(mem.available, limit)
         if is_wsl():
             mem.notes.append(
-                "WSL の中で動いている: メモリは WSL に割り当てた分(.wslconfig の memory)で判定した"
+                tr(
+                    "WSL の中で動いている: メモリは WSL に割り当てた分(.wslconfig の memory)で判定した",
+                    "Running inside WSL: memory is judged by the amount given to WSL (memory in .wslconfig)",
+                )
             )
     else:  # macOS はスワップが自動で伸びる
         with contextlib.suppress(Exception):
@@ -1637,10 +1831,18 @@ def detect(
     usable_names = {g.name for g in found if g.backend == "cuda"}
     if len(usable_names) > 1:
         notes.append(
-            "GPU が複数ある。判定は VRAM が最大の 1 枚で行った。ComfyUI は既定で CUDA の 0 番"
-            "(CUDA_DEVICE_ORDER の"
-            "既定 FASTEST_FIRST で速い順の先頭)を使うので、違う GPU で動くときは ComfyUI を --cuda-device で"
-            "その GPU に向ける"
+            tr(
+                "GPU が複数ある。判定は VRAM が最大の 1 枚で行った。ComfyUI は既定で CUDA の 0 番"
+                "(CUDA_DEVICE_ORDER の"
+                "既定 FASTEST_FIRST で速い順の先頭)を使うので、違う GPU で動くときは ComfyUI を "
+                "--cuda-device "
+                "で"
+                "その GPU に向ける",
+                "There are several GPUs. Judged with the one with the most VRAM. ComfyUI uses CUDA device 0"
+                " by default (the fastest, with the default CUDA_DEVICE_ORDER FASTEST_FIRST), so if it runs "
+                "on"
+                " a different GPU, point ComfyUI at that GPU with --cuda-device",
+            )
         )
     mem = memory or read_memory()
     notes += mem.notes
@@ -1670,7 +1872,12 @@ def detect(
             ]
         elif vram_gb > 0:  # GPU が無い・動かない世代: 世代の分からない仮の GPU で判定する
             found = [
-                Gpu(name=f"(仮定) {vram_gb:g} GB GPU", vendor="nvidia", vram_total_gb=vram_gb, backend="cuda")
+                Gpu(
+                    name=tr(f"(仮定) {vram_gb:g} GB GPU", f"(assumed) {vram_gb:g} GB GPU"),
+                    vendor="nvidia",
+                    vram_total_gb=vram_gb,
+                    backend="cuda",
+                )
             ]
         else:
             found = []
@@ -1704,8 +1911,12 @@ def detect(
                 notes += [f"{best.name}: {n}" for n in best.notes]
                 if len(usable) > 1:
                     notes.append(
-                        f"使える GPU が複数ある。判定は {best.name} で行った"
-                        "(専用の VRAM の GPU を先に、その中で最大)"
+                        tr(
+                            f"使える GPU が複数ある。判定は {best.name} で行った"
+                            "(専用の VRAM の GPU を先に、その中で最大)",
+                            f"There are several usable GPUs. Judged with {best.name}"
+                            " (GPUs with dedicated VRAM first, then the largest)",
+                        )
                     )
         notes += _other_gpu_notes(adapters, judged)
 

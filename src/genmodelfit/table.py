@@ -30,6 +30,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .groups import precision_label
+from .i18n import tr
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
 from .tasks import MODALITY_LABEL
 
@@ -541,14 +542,15 @@ def print_fit_table(
         for g in groups:
             mod = g["modality"]
             _en, ja = MODALITY_LABEL.get(mod, (mod, mod))
+            head = tr(f"{mod} ({ja})", mod)  # 英語は種類の名前だけ(1 行に 2 つの言語を並べない。#73)
             rows = [f for f in fits if f.model.modality == mod]
             if not g["matched"]:
-                say(f"== {mod} ({ja}): no model runs on this PC with these filters", "bold")
+                say(f"== {head}: no model runs on this PC with these filters", "bold")
                 continue
-            say(f"== {mod} ({ja}): top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
+            say(f"== {head}: top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
             con.print(build_table(rows, width=con.width, system=system, **kw))
     elif not fits:
-        say("(no match / 該当なし)")
+        say(tr("(no match / 該当なし)", "(no match)"))
     else:
         con.print(build_table(fits, width=con.width, system=system, **kw))
     for n in [*(legend(fits, hidden, grouped, order, kw["with_content"], system) if fits else []), *notes]:

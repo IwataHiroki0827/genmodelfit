@@ -28,6 +28,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
+from .i18n import tr
+
 
 class SigningError(ValueError):
     pass
@@ -52,9 +54,9 @@ def load_public_key(key: KeyLike) -> Ed25519PublicKey:
             return Ed25519PublicKey.from_public_bytes(raw)
         pub = serialization.load_pem_public_key(raw)
     except ValueError as e:
-        raise SigningError(f"公開鍵を読めません: {e}") from e
+        raise SigningError(tr(f"公開鍵を読めません: {e}", f"cannot read the public key: {e}")) from e
     if not isinstance(pub, Ed25519PublicKey):
-        raise SigningError("Ed25519 の公開鍵ではありません")
+        raise SigningError(tr("Ed25519 の公開鍵ではありません", "not an Ed25519 public key"))
     return pub
 
 
@@ -63,9 +65,14 @@ def load_private_key(pem: bytes | str) -> Ed25519PrivateKey:
     try:
         key = serialization.load_pem_private_key(raw.strip(), password=None)
     except (ValueError, TypeError) as e:
-        raise SigningError("秘密鍵を読めません(PEM 形式の Ed25519 鍵が要ります)") from e
+        raise SigningError(
+            tr(
+                "秘密鍵を読めません(PEM 形式の Ed25519 鍵が要ります)",
+                "cannot read the private key (a PEM Ed25519 key is needed)",
+            )
+        ) from e
     if not isinstance(key, Ed25519PrivateKey):
-        raise SigningError("Ed25519 の秘密鍵ではありません")
+        raise SigningError(tr("Ed25519 の秘密鍵ではありません", "not an Ed25519 private key"))
     return key
 
 
@@ -78,7 +85,7 @@ def trusted_public_keys() -> list[Ed25519PublicKey]:
     """同梱の信じる公開鍵をすべて読む。1 つも無い・読めないときは SigningError。"""
     keys = [load_public_key(k) for k in embedded_public_keys_pem()]
     if not keys:
-        raise SigningError("同梱の公開鍵がありません")
+        raise SigningError(tr("同梱の公開鍵がありません", "the bundled public key is missing"))
     return keys
 
 
@@ -113,17 +120,26 @@ def decode_sig(text: bytes | str) -> bytes:
     try:
         return base64.b64decode(text.strip(), validate=True)
     except (binascii.Error, ValueError) as e:
-        raise SigningError("署名ファイルの形が正しくありません") from e
+        raise SigningError(tr("署名ファイルの形が正しくありません", "the signature file is malformed")) from e
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m genmodelfit.signing")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sp = sub.add_parser("sign", help="<ファイル>.sig を書く")
+    sp = sub.add_parser("sign", help=tr("<ファイル>.sig を書く", "write <file>.sig"))
     sp.add_argument("file")
-    sp.add_argument("--key-env", default="GENMODELFIT_SIGNING_KEY", help="秘密鍵(PEM)を入れた環境変数")
-    sp.add_argument("--key-file", help="環境変数の代わりに鍵のファイルを使う")
-    vp = sub.add_parser("verify", help="同梱の信じる公開鍵で確かめる")
+    sp.add_argument(
+        "--key-env",
+        default="GENMODELFIT_SIGNING_KEY",
+        help=tr("秘密鍵(PEM)を入れた環境変数", "environment variable holding the private key (PEM)"),
+    )
+    sp.add_argument(
+        "--key-file",
+        help=tr("環境変数の代わりに鍵のファイルを使う", "use a key file instead of the environment variable"),
+    )
+    vp = sub.add_parser(
+        "verify", help=tr("同梱の信じる公開鍵で確かめる", "verify with the bundled trusted public key")
+    )
     vp.add_argument("file")
     vp.add_argument("sig", nargs="?")
     args = p.parse_args(argv)
@@ -132,18 +148,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "sign":
             pem = Path(args.key_file).read_bytes() if args.key_file else os.environ.get(args.key_env, "")
             if not pem:
-                print(f"error: 秘密鍵がありません(環境変数 {args.key_env})", file=sys.stderr)
+                print(
+                    tr(
+                        f"error: 秘密鍵がありません(環境変数 {args.key_env})",
+                        f"error: no private key (environment variable {args.key_env})",
+                    ),
+                    file=sys.stderr,
+                )
                 return 1
             out = path.with_name(path.name + ".sig")
             out.write_text(encode_sig(sign(path.read_bytes(), pem)), encoding="ascii", newline="\n")
-            print(f"署名しました: {out}")
+            print(tr(f"署名しました: {out}", f"signed: {out}"))
             return 0
         sig_path = Path(args.sig) if args.sig else path.with_name(path.name + ".sig")
         ok = verify(path.read_bytes(), decode_sig(sig_path.read_text(encoding="ascii")))
     except (OSError, SigningError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    print("署名は正しいです" if ok else "署名が合いません")
+    print(
+        tr("署名は正しいです", "the signature is valid")
+        if ok
+        else tr("署名が合いません", "the signature does not match")
+    )
     return 0 if ok else 1
 
 

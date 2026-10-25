@@ -127,6 +127,12 @@ class CpuRun:
     speed: str | None = None  # 遅さの目安(実測があれば理由に出す)。今はどれも実測が無いので None
     exclude: str | None = None  # ID・名前がこれに当たるものは除く(CPU で確かめていない大きな版)
 
+    def evidence_text(self) -> str:
+        return shown(self.evidence) or ""
+
+    def speed_text(self) -> str | None:
+        return shown(self.speed)
+
 
 # CPU で動く系統。重みの大きさの一律の上限(estimate.CPU_MAX_WEIGHTS_GB)より大きくても、メインメモリが足りれば
 # marginal(CPU、遅い)にする。ComfyUI は CPU では本体と VAE を fp32 で持つ(model_management.py の
@@ -176,6 +182,73 @@ VAES: dict[str, Vae] = {
         Vae("fp32", True, "sd.py:540・947・999・1083(どの GPU でも float32 なので GPU による違いが無い)"),
     )
 }
+
+# 理由・注意に出す上の表の文の英語(#73)。(日本語の文, 英語)。無い文はそのまま出す
+# (tests/test_families.py が、日本語を含む文がすべてここにあるかを確かめる)
+_EN: dict[str, str] = dict(
+    [
+        ("SD15 / SD20 / SDXL / SVD など", "SD15 / SD20 / SDXL / SVD etc."),
+        ("supported_models_base.py:47(既定)", "supported_models_base.py:47 (default)"),
+        ("Lumina2(NewBie も)", "Lumina2 (also NewBie)"),
+        (
+            "重みの値によっては ComfyUI が fp16 も許す"
+            "(allow_fp16: model_detection.py:624、supported_models.py:1245)",
+            "Depending on the weight values, ComfyUI also allows fp16"
+            " (allow_fp16: model_detection.py:624, supported_models.py:1245)",
+        ),
+        ("supported_models.py:1240(ZImage を継ぐ)", "supported_models.py:1240 (inherits ZImage)"),
+        (
+            "WAN21_* / WAN22_*(HuMo・Vace・S2V・Animate・SCAIL など)",
+            "WAN21_* / WAN22_* (HuMo, Vace, S2V, Animate, SCAIL etc.)",
+        ),
+        ("Trellis2(Pixal3D も)", "Trellis2 (also Pixal3D)"),
+        (
+            "supported_models.py:1930・1938(torch 2.7 以上で float16 を先頭に足す)",
+            "supported_models.py:1930, 1938 (float16 is put first with torch 2.7 or later)",
+        ),
+        ("CogVideoX(VOID も)", "CogVideoX (also VOID)"),
+        (
+            "ComfyUI は GPU が無ければ CPU で動く(README の Windows Portable「running on your CPU only」、"
+            "comfy/cli_args.py の --cpu)。SD 1.5 / 2.x / SDXL は ComfyUI の組み込みの系統で、"
+            "CUDA 専用の部品を使わない(推定。CPU での実測なし)",
+            "ComfyUI runs on the CPU when there is no GPU (README, Windows Portable:"
+            ' "running on your CPU only"; --cpu in comfy/cli_args.py). SD 1.5 / 2.x / SDXL are built-in'
+            " ComfyUI families and use no CUDA-only parts (estimated; not measured on CPU)",
+        ),
+        (
+            "ComfyUI は GPU が無ければ CPU で動き、Stable Audio は組み込みの StableAudio の系統"
+            "(推定。CPU での実測なし。"
+            "AI生成キットの記録に「効果音(GPU/CPU)」があるが、モデル・時間の記録は無い)",
+            "ComfyUI runs on the CPU when there is no GPU, and Stable Audio is the built-in StableAudio"
+            " family (estimated; not measured on CPU. The records of the local_model_ai_gen_kit app list"
+            ' "sound effects (GPU/CPU)" but not the model or time)',
+        ),
+        (
+            "sd.py:516(既定。SD・SDXL・SD3・Flux の ae・Flux2 の VAE などの 2D の KL)",
+            "sd.py:516 (default; 2D KL VAEs such as SD, SDXL, SD3, the Flux ae and the Flux2 VAE)",
+        ),
+        ("sd.py:645(LTX 2.4 以降の拡散の VAE)", "sd.py:645 (the diffusion VAE of LTX 2.4 and later)"),
+        (
+            "sd.py:849・852・862・878 付近(Wan 2.1 / 2.2 / Qwen Image 2.1)",
+            "around sd.py:849, 852, 862, 878 (Wan 2.1 / 2.2 / Qwen Image 2.1)",
+        ),
+        ("sd.py:594・599", "sd.py:594, 599"),
+        (
+            "sd.py:540・947・999・1083(どの GPU でも float32 なので GPU による違いが無い)",
+            "sd.py:540, 947, 999, 1083 (float32 on every GPU, so no difference between GPUs)",
+        ),
+    ]
+)
+
+
+def shown(text: str | None) -> str | None:
+    """上の表の文を表示の言語で返す(英語が無ければそのまま)。"""
+    from .i18n import tr
+
+    if text is None:
+        return None
+    return tr(text, _EN.get(text, text))
+
 
 # 本体のファイル名・テンプレート名・リポジトリ名 → 系統(上から順に試す)
 _RULES: tuple[tuple[str, str], ...] = (

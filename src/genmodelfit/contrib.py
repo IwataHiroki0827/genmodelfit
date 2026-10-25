@@ -52,6 +52,7 @@ from .estimate import (
     norm_precision,
 )
 from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, intel_xpu, parse_compute_cap, pci_name_conflict
+from .i18n import tr
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
 CONTRIB_SCHEMA = 1
@@ -130,34 +131,67 @@ _ZERO_WIDTH = re.compile(r"[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
 _HOST_WORDS = r"host ?name|computer ?name|PC ?name|user ?name|ホスト名|コンピューター?名|PC ?名|ユーザー?名"
 _POSIX_ROOTS = r"home|Users|root|mnt|media|tmp|var|opt|srv|private|Volumes|etc|usr|data|workspace|run"
 
-# (種類, 正規表現, 説明)。値を NFKC でそろえ(全角の Ｃ：＼ → C:\)、見えない文字を除き、
+# (種類, 正規表現, (説明の日本語, 英語))。値を NFKC でそろえ(全角の Ｃ：＼ → C:\)、見えない文字を除き、
 # ¥ を \ とみなしてから当てる。
 # どれも入れ子の繰り返しの無い形にした(長い値でも時間が線形に近い。値の長さは MAX_STR / MAX_NOTE_CHARS まで)。
 # 当てはまらなければ安全、ではない(人の名前・自由な文の意味は分からない)。docs/schema.md「contrib」
-PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
-    ("path", re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"), "Windows のパス(C:\\… など)"),
-    ("path", re.compile(r"\\"), "バックスラッシュ(Windows のパスの区切り・\\\\server\\…)"),
-    ("path", re.compile(r"\w[\\/]\w+[\\/]"), "区切りが 2 つ以上あるパス(a/b/c、Users\\name\\…)"),
+PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], tuple[str, str]], ...] = (
+    (
+        "path",
+        re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"),
+        ("Windows のパス(C:\\… など)", "a Windows path (C:\\… etc.)"),
+    ),
+    (
+        "path",
+        re.compile(r"\\"),
+        (
+            "バックスラッシュ(Windows のパスの区切り・\\\\server\\…)",
+            "a backslash (Windows path separator, \\\\server\\…)",
+        ),
+    ),
+    (
+        "path",
+        re.compile(r"\w[\\/]\w+[\\/]"),
+        (
+            "区切りが 2 つ以上あるパス(a/b/c、Users\\name\\…)",
+            "a path with two or more separators (a/b/c, Users\\name\\…)",
+        ),
+    ),
     (
         "path",
         re.compile(r"(?<![\w.])//?(" + _POSIX_ROOTS + r")\b", re.I),
-        "Linux / macOS のパス(/home/… など)",
+        ("Linux / macOS のパス(/home/… など)", "a Linux / macOS path (/home/… etc.)"),
     ),
-    ("path", re.compile(r"(?<![\w.:])//\w"), "ネットワークのパス(//server/…)"),
+    (
+        "path",
+        re.compile(r"(?<![\w.:])//\w"),
+        ("ネットワークのパス(//server/…)", "a network path (//server/…)"),
+    ),
     (
         "path",
         re.compile(r"(?<!\w)~[\\/]|%[A-Za-z_]\w*%|\$\{?[A-Za-z_]\w*\}?[\\/]|\$HOME\b|\$env:", re.I),
-        "ホーム・環境変数のパス(~/、%USERPROFILE%、$HOME)",
+        (
+            "ホーム・環境変数のパス(~/、%USERPROFILE%、$HOME)",
+            "a home or environment-variable path (~/, %USERPROFILE%, $HOME)",
+        ),
     ),
-    ("path", re.compile(r"%(2F|5C|3A)", re.I), "URL エンコードしたパス(%2F %5C %3A)"),
-    ("users_dir", re.compile(r"(?<![A-Za-z])Users[\\/]|Documents and Settings", re.I), "ユーザーのフォルダ"),
-    ("at_sign", re.compile(r"@\w"), "メールアドレス・@ の名前"),
+    (
+        "path",
+        re.compile(r"%(2F|5C|3A)", re.I),
+        ("URL エンコードしたパス(%2F %5C %3A)", "a URL-encoded path (%2F %5C %3A)"),
+    ),
+    (
+        "users_dir",
+        re.compile(r"(?<![A-Za-z])Users[\\/]|Documents and Settings", re.I),
+        ("ユーザーのフォルダ", "a user folder"),
+    ),
+    ("at_sign", re.compile(r"@\w"), ("メールアドレス・@ の名前", "an email address or @name")),
     (
         "uuid",
         re.compile(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"),
-        "UUID(GPU の UUID など)",
+        ("UUID(GPU の UUID など)", "a UUID (GPU UUID etc.)"),
     ),
-    ("gpu_uuid", re.compile(r"\b(GPU|MIG)-[0-9A-Za-z]{4}", re.I), "GPU の UUID"),
+    ("gpu_uuid", re.compile(r"\b(GPU|MIG)-[0-9A-Za-z]{4}", re.I), ("GPU の UUID", "a GPU UUID")),
     (
         "pci",
         re.compile(
@@ -165,12 +199,24 @@ PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
             r"|PCI\\VEN_|\bbus[ _-]?id\b",
             re.I,
         ),
-        "PCI の位置",
+        ("PCI の位置", "a PCI location"),
     ),
-    ("ip", re.compile(r"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d.])"), "IP アドレス"),
-    ("ip", re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])"), "IPv6 アドレス"),
-    ("mac", re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), "MAC アドレス"),
-    ("url", re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]{1,15}://|\bwww\.", re.I), "URL(ComfyUI の場所など)"),
+    (
+        "ip",
+        re.compile(r"(?<![\d.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\d.])"),
+        ("IP アドレス", "an IP address"),
+    ),
+    (
+        "ip",
+        re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])"),
+        ("IPv6 アドレス", "an IPv6 address"),
+    ),
+    ("mac", re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), ("MAC アドレス", "a MAC address")),
+    (
+        "url",
+        re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]{1,15}://|\bwww\.", re.I),
+        ("URL(ComfyUI の場所など)", "a URL (where ComfyUI runs etc.)"),
+    ),
     (
         "hostname",
         re.compile(
@@ -178,16 +224,19 @@ PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
             r"|\b[A-Za-z0-9-]{1,63}\.(local|lan|localdomain|internal|corp|home\.arpa)\b|" + _HOST_WORDS,
             re.I,
         ),
-        "PC 名・ユーザ名らしい文字(DESKTOP-XXXXXXX、*-PC、*.local、「PC 名」など)",
+        (
+            "PC 名・ユーザ名らしい文字(DESKTOP-XXXXXXX、*-PC、*.local、「PC 名」など)",
+            'what looks like a PC or user name (DESKTOP-XXXXXXX, *-PC, *.local, "PC name" etc.)',
+        ),
     ),
     (
         "time",
         re.compile(
             r"\b\d{1,2}:\d{2}\b|\b\d{1,2} ?(am|pm)\b|\d{1,2}時\d{1,2}分|\d{4}-\d{2}-\d{2}[T ]\d", re.I
         ),
-        "時刻(hh:mm、2pm など。日付より細かい)",
+        ("時刻(hh:mm、2pm など。日付より細かい)", "a time of day (hh:mm, 2pm etc.; finer than a date)"),
     ),
-    ("serial", re.compile(r"\b(S/?N|serial)\b|シリアル|製造番号", re.I), "シリアル番号"),
+    ("serial", re.compile(r"\b(S/?N|serial)\b|シリアル|製造番号", re.I), ("シリアル番号", "a serial number")),
 )
 
 
@@ -201,7 +250,7 @@ def normalize_for_scan(text: str) -> str:
 
 def _hits(text: str) -> list[tuple[str, str]]:
     t = normalize_for_scan(text)
-    return [(kind, what) for kind, pat, what in PRIVACY_PATTERNS if pat.search(t)]
+    return [(kind, tr(*what)) for kind, pat, what in PRIVACY_PATTERNS if pat.search(t)]
 
 
 def _identity_words() -> list[str]:
@@ -287,23 +336,35 @@ def string_problems(data: Any) -> list[str]:
 
     def walk(x: Any, where: str, depth: int = 0) -> None:
         if depth > MAX_DEPTH:
-            out.append(f"{where}: 入れ子が深すぎます")
+            out.append(tr(f"{where}: 入れ子が深すぎます", f"{where}: nested too deeply"))
             return
         if isinstance(x, dict):
             for k, v in x.items():
                 ks = str(k)
                 if len(ks) > MAX_KEY or CONTROL_CHARS.search(ks):
-                    out.append(f"{where}: キーが長すぎるか、制御文字を含みます")
+                    out.append(
+                        tr(
+                            f"{where}: キーが長すぎるか、制御文字を含みます",
+                            f"{where}: a key is too long or has control characters",
+                        )
+                    )
                     continue
                 walk(v, f"{where}.{ks}", depth + 1)
         elif isinstance(x, list):
-            out.append(f"{where}: 配列は使えません")
+            out.append(tr(f"{where}: 配列は使えません", f"{where}: arrays are not allowed"))
         elif isinstance(x, str):
             limit = MAX_NOTE_CHARS if where == "$.measurement.note" else MAX_STR
             if len(x) > limit:
-                out.append(f"{where}: {limit} 字を超えています")
+                out.append(
+                    tr(f"{where}: {limit} 字を超えています", f"{where}: longer than {limit} characters")
+                )
             elif CONTROL_CHARS.search(x):
-                out.append(f"{where}: 改行・制御文字・見えない文字を含みます")
+                out.append(
+                    tr(
+                        f"{where}: 改行・制御文字・見えない文字を含みます",
+                        f"{where}: has line breaks, control or invisible characters",
+                    )
+                )
 
     walk(data, "$")
     return out
@@ -328,17 +389,38 @@ def md_cell(value: Any) -> str:
     return re.sub(r"(?i)www\.", "www&#46;", s)
 
 
-# 個人の情報の点検の一覧(contrib show)。(id, 見出し, 当てはまる PRIVACY_PATTERNS の種類)
-CHECKLIST: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("paths", "フォルダのパス(C:\\Users\\…、/home/… など)が入っていない", ("path", "users_dir")),
-    ("host_user", "PC の名前・ユーザ名らしい文字が入っていない", ("hostname",)),
+# 個人の情報の点検の一覧(contrib show)。(id, (見出しの日本語, 英語), 当てはまる PRIVACY_PATTERNS の種類)
+CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
+    (
+        "paths",
+        (
+            "フォルダのパス(C:\\Users\\…、/home/… など)が入っていない",
+            "No folder paths (C:\\Users\\…, /home/… etc.)",
+        ),
+        ("path", "users_dir"),
+    ),
+    (
+        "host_user",
+        ("PC の名前・ユーザ名らしい文字が入っていない", "Nothing that looks like a PC or user name"),
+        ("hostname",),
+    ),
     (
         "device_ids",
-        "GPU の UUID・PCI の位置・MAC・シリアルが入っていない",
+        (
+            "GPU の UUID・PCI の位置・MAC・シリアルが入っていない",
+            "No GPU UUID, PCI location, MAC or serial number",
+        ),
         ("uuid", "gpu_uuid", "pci", "mac", "serial"),
     ),
-    ("network", "IP アドレス・URL・メールアドレス・@ の名前が入っていない", ("ip", "url", "at_sign")),
-    ("date_only", "日時は日付だけ(時刻が入っていない)", ("time",)),
+    (
+        "network",
+        (
+            "IP アドレス・URL・メールアドレス・@ の名前が入っていない",
+            "No IP address, URL, email address or @name",
+        ),
+        ("ip", "url", "at_sign"),
+    ),
+    ("date_only", ("日時は日付だけ(時刻が入っていない)", "Dates only (no time of day)"), ("time",)),
 )
 
 
@@ -361,7 +443,7 @@ def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]
     out.append(
         {
             "id": "known_fields",
-            "label": "決まった項目だけ(知らない項目が無い)",
+            "label": tr("決まった項目だけ(知らない項目が無い)", "Known fields only (no unknown fields)"),
             "ok": not unknown,
             "detail": ", ".join(unknown) or None,
         }
@@ -370,12 +452,17 @@ def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]
         hits = [f"{f['where']}({f['what']})" for f in found if f["kind"] in kinds]
         if cid == "host_user":
             own = [w for w in _identity_words() if w.lower() in text.lower()]
-            hits += ["この PC の名前・ユーザ名・ホーム" for _ in own[:1]]
-        out.append({"id": cid, "label": label, "ok": not hits, "detail": "; ".join(hits) or None})
+            hits += [
+                tr("この PC の名前・ユーザ名・ホーム", "this PC's name, user name or home") for _ in own[:1]
+            ]
+        out.append({"id": cid, "label": tr(*label), "ok": not hits, "detail": "; ".join(hits) or None})
     out.append(
         {
             "id": "note_reviewed",
-            "label": "note(メモ)を自分で読んだ(自動の点検は文の意味までは分からない)",
+            "label": tr(
+                "note(メモ)を自分で読んだ(自動の点検は文の意味までは分からない)",
+                "I read the note myself (the automatic check cannot understand what it says)",
+            ),
             "ok": None,
             "detail": None,
         }
@@ -528,11 +615,21 @@ def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
     elif isinstance(data, list):
         items = data
     else:
-        raise ValueError("bench の結果の形ではありません(measurements / measurement がない)")
+        raise ValueError(
+            tr(
+                "bench の結果の形ではありません(measurements / measurement がない)",
+                "Not a bench result (no measurements / measurement)",
+            )
+        )
     out = []
     for d in items:
         if not isinstance(d, dict) or "model_id" not in d or "gpu_name" not in d:
-            raise ValueError("bench の結果の形ではありません(model_id / gpu_name がない)")
+            raise ValueError(
+                tr(
+                    "bench の結果の形ではありません(model_id / gpu_name がない)",
+                    "Not a bench result (no model_id / gpu_name)",
+                )
+            )
         out.append(Measurement.from_dict(d))
     return out
 
@@ -619,16 +716,26 @@ def number_problems(data: Any) -> list[str]:
                 walk(v, f"{where}.{k}")
         elif isinstance(x, (int, float)) and not isinstance(x, bool):
             if not math.isfinite(x):
-                out.append(f"{where} が有限の数ではありません(NaN・inf)")
+                out.append(
+                    tr(
+                        f"{where} が有限の数ではありません(NaN・inf)",
+                        f"{where} is not a finite number (NaN or inf)",
+                    )
+                )
             elif x < 0:
-                out.append(f"{where} が負の数です: {x!r}")
+                out.append(tr(f"{where} が負の数です: {x!r}", f"{where} is negative: {x!r}"))
 
     walk(data, "$")
     return out
 
 
 def _no_constants(name: str) -> Any:
-    raise ValueError(f"JSON に {name} があります(NaN・Infinity は受け付けません)")
+    raise ValueError(
+        tr(
+            f"JSON に {name} があります(NaN・Infinity は受け付けません)",
+            f"The JSON has {name} (NaN and Infinity are not accepted)",
+        )
+    )
 
 
 def loads_strict(text: str) -> Any:
@@ -652,15 +759,18 @@ def name_vendor(name: str) -> str | None:
 
 def _check_keys(r: Report, d: Any, allowed: set[str], where: str, required: set[str]) -> bool:
     if not isinstance(d, dict):
-        r.error("schema", f"{where} はオブジェクトにしてください")
+        r.error("schema", tr(f"{where} はオブジェクトにしてください", f"{where} must be an object"))
         return False
     for k in sorted(set(d) - allowed):
         r.error(
             "unknown_field",
-            f"{where}.{k} は知らない項目です(PC の情報が紛れないよう、決まった項目だけ受け付けます)",
+            tr(
+                f"{where}.{k} は知らない項目です(PC の情報が紛れないよう、決まった項目だけ受け付けます)",
+                f"{where}.{k} is an unknown field (only known fields are accepted, so no PC details slip in)",
+            ),
         )
     for k in sorted(required - set(d)):
-        r.error("schema", f"{where}.{k} がありません")
+        r.error("schema", tr(f"{where}.{k} がありません", f"{where}.{k} is missing"))
     return True
 
 
@@ -694,7 +804,7 @@ def validate_submission(
     r = Report(path=Path(path).as_posix() if path is not None else "-")
     today = today or datetime.now(timezone.utc).date()
     if not isinstance(data, dict):
-        r.error("schema", "JSON のオブジェクトではありません")
+        r.error("schema", tr("JSON のオブジェクトではありません", "Not a JSON object"))
         return r
     for msg in string_problems(data):
         r.error("string", msg)
@@ -704,41 +814,75 @@ def validate_submission(
     if any("NaN" in msg for msg in numbers):
         return r  # NaN・inf は JSON に書けない(中身の hash も作れない)ので、ここで止める
     for f in privacy_findings(data, raw):
-        r.error("privacy", f"{f['where']}: {f['what']}らしい文字があります。消してから出してください")
+        r.error(
+            "privacy",
+            tr(
+                f"{f['where']}: {f['what']}らしい文字があります。消してから出してください",
+                f"{f['where']}: has what looks like {f['what']}. Remove it before submitting",
+            ),
+        )
     _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
     if data.get("contrib_schema") != CONTRIB_SCHEMA:
         r.error(
-            "schema", f"contrib_schema が {CONTRIB_SCHEMA} ではありません: {data.get('contrib_schema')!r}"
+            "schema",
+            tr(
+                f"contrib_schema が {CONTRIB_SCHEMA} ではありません: {data.get('contrib_schema')!r}",
+                f"contrib_schema is not {CONTRIB_SCHEMA}: {data.get('contrib_schema')!r}",
+            ),
         )
         return r
     if data.get("kind") != KIND:
-        r.error("schema", f"kind は {KIND!r} にしてください")
+        r.error("schema", tr(f"kind は {KIND!r} にしてください", f"kind must be {KIND!r}"))
     tool = data.get("tool")
     if _check_keys(r, tool, TOOL_KEYS, "$.tool", TOOL_KEYS) and (
         tool.get("name") != "genmodelfit"
         or not isinstance(tool.get("version"), str)
         or not _TOOL_VERSION.fullmatch(tool["version"])
     ):
-        r.error("schema", "tool は {name: genmodelfit, version: 版} にしてください")
+        r.error(
+            "schema",
+            tr(
+                "tool は {name: genmodelfit, version: 版} にしてください",
+                "tool must be {name: genmodelfit, version: <version>}",
+            ),
+        )
     # 日付(日付だけ。未来の日付は誤り)
     d = data.get("date")
     day = None
     if not isinstance(d, str) or not _DATE.fullmatch(d):
-        r.error("date", f"date は YYYY-MM-DD(日付だけ)にしてください: {d!r}")
+        r.error(
+            "date",
+            tr(
+                f"date は YYYY-MM-DD(日付だけ)にしてください: {d!r}",
+                f"date must be YYYY-MM-DD (date only): {d!r}",
+            ),
+        )
     else:
         try:
             day = _date.fromisoformat(d)
         except ValueError:
-            r.error("date", f"date が日付として読めません: {d}")
+            r.error("date", tr(f"date が日付として読めません: {d}", f"date is not a valid date: {d}"))
         if day and day > today + timedelta(days=1):
-            r.error("date", f"date が未来です: {d}")
+            r.error("date", tr(f"date が未来です: {d}", f"date is in the future: {d}"))
         if day and day.year < 2026:
-            r.warn("date_old", f"date が古すぎます(genmodelfit より前): {d}")
+            r.warn(
+                "date_old",
+                tr(
+                    f"date が古すぎます(genmodelfit より前): {d}",
+                    f"date is too old (before genmodelfit existed): {d}",
+                ),
+            )
     cv = data.get("comfyui_version")
     if cv is not None and (not isinstance(cv, str) or not _VERSION.fullmatch(cv)):
-        r.error("value", f"comfyui_version は x.y.z の版の番号だけにしてください: {cv!r}")
+        r.error(
+            "value",
+            tr(
+                f"comfyui_version は x.y.z の版の番号だけにしてください: {cv!r}",
+                f"comfyui_version must be a plain x.y.z version: {cv!r}",
+            ),
+        )
     if cv is None:
-        r.warn("comfyui_version_missing", "comfyui_version がありません")
+        r.warn("comfyui_version_missing", tr("comfyui_version がありません", "comfyui_version is missing"))
 
     system = data.get("system")
     gpu: dict[str, Any] = {}
@@ -747,16 +891,30 @@ def validate_submission(
         osf = system.get("os_family")
         if osf is not None and osf not in OS_FAMILIES:
             r.error(
-                "value", f"system.os_family は {' / '.join(OS_FAMILIES)} か null です(版は入れない): {osf!r}"
+                "value",
+                tr(
+                    f"system.os_family は {' / '.join(OS_FAMILIES)} か null です(版は入れない): {osf!r}",
+                    f"system.os_family must be {' / '.join(OS_FAMILIES)} or null (no version): {osf!r}",
+                ),
             )
         ram = system.get("ram_total_gb")
         if ram is not None:
             if not _num(ram) or not 0 < ram <= MAX_RAM_GB:
-                r.error("value", f"system.ram_total_gb がありえない値です: {ram!r}")
+                r.error(
+                    "value",
+                    tr(
+                        f"system.ram_total_gb がありえない値です: {ram!r}",
+                        f"system.ram_total_gb is implausible: {ram!r}",
+                    ),
+                )
                 ram = None
             elif ram != round(ram):
                 r.warn(
-                    "ram_not_rounded", "system.ram_total_gb は GiB の整数に丸めてください(機種を絞らないため)"
+                    "ram_not_rounded",
+                    tr(
+                        "system.ram_total_gb は GiB の整数に丸めてください(機種を絞らないため)",
+                        "Round system.ram_total_gb to whole GiB (so it does not narrow down the machine)",
+                    ),
                 )
         g = system.get("gpu")
         if _check_keys(r, g, GPU_KEYS, "$.system.gpu", {"name", "vram_gb"}):
@@ -767,34 +925,77 @@ def validate_submission(
         if not isinstance(name, str) or not _GPU_NAME.fullmatch(name):
             r.error(
                 "value",
-                "system.gpu.name は GPU の名前(英数字・空白・. -・(R)・(TM)・™・®、64 字まで)"
-                "だけにしてください",
+                tr(
+                    "system.gpu.name は GPU の名前(英数字・空白・. -・(R)・(TM)・™・®、64 字まで)"
+                    "だけにしてください",
+                    "system.gpu.name must be just the GPU name "
+                    "(letters, digits, spaces, . -, (R), (TM), ™, ®; "
+                    "up to 64 characters)",
+                ),
             )
             name = None
         if not _num(vram) or not 0 < vram <= MAX_GPU_VRAM_GB:
-            r.error("value", f"system.gpu.vram_gb がありえない値です: {vram!r}")
+            r.error(
+                "value",
+                tr(
+                    f"system.gpu.vram_gb がありえない値です: {vram!r}",
+                    f"system.gpu.vram_gb is implausible: {vram!r}",
+                ),
+            )
             vram = None
         drv = gpu.get("driver")
         if drv is not None and (not isinstance(drv, str) or not _DRIVER.fullmatch(drv)):
-            r.error("value", f"system.gpu.driver はドライバの版にしてください: {drv!r}")
+            r.error(
+                "value",
+                tr(
+                    f"system.gpu.driver はドライバの版にしてください: {drv!r}",
+                    f"system.gpu.driver must be a driver version: {drv!r}",
+                ),
+            )
         if drv is None:
-            r.warn("driver_missing", "system.gpu.driver がありません")
+            r.warn("driver_missing", tr("system.gpu.driver がありません", "system.gpu.driver is missing"))
         vendor, backend = gpu.get("vendor"), gpu.get("backend")
         if vendor is not None and vendor not in VENDOR_BACKEND:
-            r.error("value", f"system.gpu.vendor は {' / '.join(VENDOR_BACKEND)} か無しです: {vendor!r}")
+            r.error(
+                "value",
+                tr(
+                    f"system.gpu.vendor は {' / '.join(VENDOR_BACKEND)} か無しです: {vendor!r}",
+                    f"system.gpu.vendor must be {' / '.join(VENDOR_BACKEND)} or absent: {vendor!r}",
+                ),
+            )
         elif backend is not None and backend not in VENDOR_BACKEND.values():
             r.error(
                 "value",
-                f"system.gpu.backend は {' / '.join(VENDOR_BACKEND.values())} か無しです: {backend!r}",
+                tr(
+                    f"system.gpu.backend は {' / '.join(VENDOR_BACKEND.values())} か無しです: {backend!r}",
+                    f"system.gpu.backend must be {' / '.join(VENDOR_BACKEND.values())} "
+                    f"or absent: {backend!r}",
+                ),
             )
         elif (vendor is None) != (backend is None) or (vendor and VENDOR_BACKEND[vendor] != backend):
             r.error(
-                "gpu_inconsistent", f"system.gpu の vendor({vendor!r})と backend({backend!r})が合いません"
+                "gpu_inconsistent",
+                tr(
+                    f"system.gpu の vendor({vendor!r})と backend({backend!r})が合いません",
+                    f"system.gpu vendor ({vendor!r}) and backend ({backend!r}) do not match",
+                ),
             )
         elif vendor not in (None, "nvidia") and (gpu.get("compute_capability") or gpu.get("arch")):
-            r.error("gpu_inconsistent", "compute capability・arch は NVIDIA の GPU だけに入れます")
+            r.error(
+                "gpu_inconsistent",
+                tr(
+                    "compute capability・arch は NVIDIA の GPU だけに入れます",
+                    "compute capability and arch are for NVIDIA GPUs only",
+                ),
+            )
         elif vendor and isinstance(name, str) and name_vendor(name) not in (None, vendor):
-            r.error("gpu_inconsistent", f"GPU 名({name})の会社と vendor({vendor})が合いません")
+            r.error(
+                "gpu_inconsistent",
+                tr(
+                    f"GPU 名({name})の会社と vendor({vendor})が合いません",
+                    f"The GPU name ({name}) does not match vendor ({vendor})",
+                ),
+            )
         elif (
             vendor == "apple"
             and isinstance(name, str)
@@ -803,51 +1004,105 @@ def validate_submission(
         ):
             # Apple の GPU 名は bench が system_profiler で読んだチップ名(Apple M2 Pro など)か mps だけ
             r.error(
-                "gpu_inconsistent", f"Apple の GPU 名はチップ名(Apple M2 Pro など)か mps だけです: {name}"
+                "gpu_inconsistent",
+                tr(
+                    f"Apple の GPU 名はチップ名(Apple M2 Pro など)か mps だけです: {name}",
+                    f"An Apple GPU name must be a chip name (Apple M2 Pro etc.) or mps: {name}",
+                ),
             )
         pci = gpu.get("pci_id")
         if pci is not None:
             if not isinstance(pci, str) or not _PCI_ID.fullmatch(pci):
-                r.error("value", f"system.gpu.pci_id は PCI の型番 ID(1002:744c の形、小文字)です: {pci!r}")
+                r.error(
+                    "value",
+                    tr(
+                        f"system.gpu.pci_id は PCI の型番 ID(1002:744c の形、小文字)です: {pci!r}",
+                        f"system.gpu.pci_id must be a PCI device ID (like 1002:744c, lowercase): {pci!r}",
+                    ),
+                )
             elif (vendor or "nvidia") != PCI_VENDORS.get(pci[:4]):
                 r.error(
                     "gpu_inconsistent",
-                    f"system.gpu.pci_id の会社({PCI_VENDORS.get(pci[:4], pci[:4])})と"
-                    f" vendor({vendor})が合いません",
+                    tr(
+                        f"system.gpu.pci_id の会社({PCI_VENDORS.get(pci[:4], pci[:4])})と"
+                        f" vendor({vendor})が合いません",
+                        f"The system.gpu.pci_id vendor ({PCI_VENDORS.get(pci[:4], pci[:4])}) does not match"
+                        f" vendor ({vendor})",
+                    ),
                 )
             elif isinstance(name, str):
                 conflict = pci_name_conflict(vendor or "nvidia", pci, name)
                 if conflict is None:
                     r.notice(
                         "unknown_gpu",
-                        f"system.gpu.pci_id {pci} が型番 ID の表(hardware.PCI_DEVICE_NAMES)にありません",
+                        tr(
+                            f"system.gpu.pci_id {pci} が型番 ID の表(hardware.PCI_DEVICE_NAMES)にありません",
+                            f"system.gpu.pci_id {pci} is not in the device ID table "
+                            "(hardware.PCI_DEVICE_NAMES)",
+                        ),
                     )
                 elif conflict:
                     r.error(
-                        "gpu_inconsistent", f"system.gpu.pci_id {pci} の GPU と GPU 名({name})が合いません"
+                        "gpu_inconsistent",
+                        tr(
+                            f"system.gpu.pci_id {pci} の GPU と GPU 名({name})が合いません",
+                            f"The GPU of system.gpu.pci_id {pci} does not match the GPU name ({name})",
+                        ),
                     )
         arch, cc = gpu.get("arch"), gpu.get("compute_capability")
         if arch is not None and arch not in ARCHES:
-            r.error("value", f"system.gpu.arch が知らない世代です: {arch!r}")
+            r.error(
+                "value",
+                tr(
+                    f"system.gpu.arch が知らない世代です: {arch!r}",
+                    f"system.gpu.arch is an unknown architecture: {arch!r}",
+                ),
+            )
         if cc is not None and (not isinstance(cc, str) or not _CC.fullmatch(cc)):
-            r.error("value", f"system.gpu.compute_capability は 8.6 の形にしてください: {cc!r}")
+            r.error(
+                "value",
+                tr(
+                    f"system.gpu.compute_capability は 8.6 の形にしてください: {cc!r}",
+                    f"system.gpu.compute_capability must look like 8.6: {cc!r}",
+                ),
+            )
             cc = None
         if name:
             r.gpu_name = name
             known = cc_from_name(name)
             if known is None:
-                r.notice("unknown_gpu", f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}")
+                r.notice(
+                    "unknown_gpu",
+                    tr(
+                        f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}",
+                        f"The GPU name is not in the known table (non-NVIDIA or a new GPU?): {name}",
+                    ),
+                )
             elif cc and parse_compute_cap(cc) != known:
                 r.error(
                     "gpu_inconsistent",
-                    f"GPU 名({name})の compute capability は {known[0]}.{known[1]} ですが、{cc} とあります",
+                    tr(
+                        f"GPU 名({name})の compute capability は {known[0]}.{known[1]} ですが、"
+                        f"{cc} とあります",
+                        f"The compute capability of {name} is {known[0]}.{known[1]}, but {cc} is given",
+                    ),
                 )
             pcc = parse_compute_cap(cc) if cc else None
             if pcc and arch and arch_of(pcc) != arch:
-                r.error("gpu_inconsistent", f"compute capability {cc} と世代 {arch} が合いません")
+                r.error(
+                    "gpu_inconsistent",
+                    tr(
+                        f"compute capability {cc} と世代 {arch} が合いません",
+                        f"compute capability {cc} does not match arch {arch}",
+                    ),
+                )
             elif known and arch and arch_of(known) != arch and not cc:
                 r.error(
-                    "gpu_inconsistent", f"GPU 名({name})の世代は {arch_of(known)} ですが、{arch} とあります"
+                    "gpu_inconsistent",
+                    tr(
+                        f"GPU 名({name})の世代は {arch_of(known)} ですが、{arch} とあります",
+                        f"The architecture of {name} is {arch_of(known)}, but {arch} is given",
+                    ),
                 )
 
     mm = data.get("measurement")
@@ -869,68 +1124,179 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
     mid = mm.get("model_id")
     entry = None
     if not isinstance(mid, str) or not _MODEL_ID.fullmatch(mid):
-        r.error("value", "measurement.model_id は一覧の ID(英数字と _ . : / + -、200 字まで)にしてください")
+        r.error(
+            "value",
+            tr(
+                "measurement.model_id は一覧の ID(英数字と _ . : / + -、200 字まで)にしてください",
+                "measurement.model_id must be a list id "
+                "(letters, digits and _ . : / + -; up to 200 characters)",
+            ),
+        )
     else:
         r.model_id = mid
         entry = db.get(mid) if db is not None else None
         if db is not None and entry is None:
-            r.notice("unknown_model", f"モデル ID が同梱の一覧にありません: {mid}")
+            r.notice(
+                "unknown_model",
+                tr(
+                    f"モデル ID が同梱の一覧にありません: {mid}",
+                    f"The model id is not in the bundled list: {mid}",
+                ),
+            )
     outcome = mm.get("outcome")
     if outcome not in OUTCOMES:
-        r.error("value", f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}")
+        r.error(
+            "value",
+            tr(
+                f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}",
+                f"measurement.outcome must be {' / '.join(OUTCOMES)}: {outcome!r}",
+            ),
+        )
     std = mm.get("standard", True)
     if not isinstance(std, bool):
-        r.error("value", "measurement.standard は true / false です")
+        r.error(
+            "value",
+            tr("measurement.standard は true / false です", "measurement.standard must be true / false"),
+        )
     elif not std:
         r.warn(
             "nonstandard",
-            "標準でない条件の実測なので、まとめにも見積もりにも使いません(記録としては受け付けます)",
+            tr(
+                "標準でない条件の実測なので、まとめにも見積もりにも使いません(記録としては受け付けます)",
+                "A measurement under non-standard conditions is used neither in the aggregate "
+                "nor in estimates "
+                "(accepted as a record)",
+            ),
         )
     off = mm.get("offload")
     if off is not None and off not in OFFLOADS:
-        r.error("value", f"measurement.offload は {' / '.join(OFFLOADS)} か null です: {off!r}")
+        r.error(
+            "value",
+            tr(
+                f"measurement.offload は {' / '.join(OFFLOADS)} か null です: {off!r}",
+                f"measurement.offload must be {' / '.join(OFFLOADS)} or null: {off!r}",
+            ),
+        )
     if outcome == "oom" and off not in (None, "oom"):
-        r.warn("offload_outcome", f"outcome が oom なのに offload が {off} です")
+        r.warn(
+            "offload_outcome",
+            tr(f"outcome が oom なのに offload が {off} です", f"outcome is oom but offload is {off}"),
+        )
     metric = mm.get("vram_metric")
     if metric is not None and metric not in VRAM_METRICS:
-        r.error("value", f"measurement.vram_metric は {' / '.join(VRAM_METRICS)} か null です: {metric!r}")
+        r.error(
+            "value",
+            tr(
+                f"measurement.vram_metric は {' / '.join(VRAM_METRICS)} か null です: {metric!r}",
+                f"measurement.vram_metric must be {' / '.join(VRAM_METRICS)} or null: {metric!r}",
+            ),
+        )
     if metric is None:
-        r.warn("metric_missing", "vram_metric がありません(測り方が分からないので比べにくい)")
+        r.warn(
+            "metric_missing",
+            tr(
+                "vram_metric がありません(測り方が分からないので比べにくい)",
+                "vram_metric is missing (hard to compare without knowing how it was measured)",
+            ),
+        )
     peak = mm.get("peak_vram_gb")
     if not _num(peak) or peak < 0:
-        r.error("value", f"measurement.peak_vram_gb は 0 以上の数です: {peak!r}")
+        r.error(
+            "value",
+            tr(
+                f"measurement.peak_vram_gb は 0 以上の数です: {peak!r}",
+                f"measurement.peak_vram_gb must be 0 or more: {peak!r}",
+            ),
+        )
     else:
         if outcome == "ok" and peak <= 0:
-            r.error("value", "最後まで動いた(ok)のに peak_vram_gb が 0 です")
+            r.error(
+                "value",
+                tr(
+                    "最後まで動いた(ok)のに peak_vram_gb が 0 です",
+                    "peak_vram_gb is 0 although the run finished (ok)",
+                ),
+            )
         if _num(vram) and peak > vram * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB:
-            r.error("value", f"最大 VRAM {peak} GB が GPU の総量 {vram} GB を超えています")
+            r.error(
+                "value",
+                tr(
+                    f"最大 VRAM {peak} GB が GPU の総量 {vram} GB を超えています",
+                    f"Peak VRAM {peak} GB exceeds the GPU total of {vram} GB",
+                ),
+            )
     pram = mm.get("peak_ram_gb")
     if pram is not None:
         if not _num(pram) or pram <= 0:
-            r.error("value", f"measurement.peak_ram_gb は 0 より大きい数か null です: {pram!r}")
+            r.error(
+                "value",
+                tr(
+                    f"measurement.peak_ram_gb は 0 より大きい数か null です: {pram!r}",
+                    f"measurement.peak_ram_gb must be above 0 or null: {pram!r}",
+                ),
+            )
         elif _num(ram) and pram > ram * 1.05 + RAM_TOLERANCE_GB:
-            r.error("value", f"最大メモリ {pram} GB がメインメモリ {ram} GB を超えています")
+            r.error(
+                "value",
+                tr(
+                    f"最大メモリ {pram} GB がメインメモリ {ram} GB を超えています",
+                    f"Peak RAM {pram} GB exceeds the RAM of {ram} GB",
+                ),
+            )
     secs = mm.get("seconds")
     if secs is None:
         if outcome == "ok":
-            r.error("value", "最後まで動いた(ok)のに seconds がありません")
+            r.error(
+                "value",
+                tr(
+                    "最後まで動いた(ok)のに seconds がありません",
+                    "seconds is missing although the run finished (ok)",
+                ),
+            )
     elif not _num(secs) or secs <= 0 or secs > 86400:
-        r.error("value", f"measurement.seconds は 0 より大きい秒数です: {secs!r}")
+        r.error(
+            "value",
+            tr(
+                f"measurement.seconds は 0 より大きい秒数です: {secs!r}",
+                f"measurement.seconds must be seconds above 0: {secs!r}",
+            ),
+        )
     note = mm.get("note")
     if note is not None and (not isinstance(note, str) or len(note) > MAX_NOTE_CHARS):
-        r.error("value", f"measurement.note は {MAX_NOTE_CHARS} 字までの文です")
+        r.error(
+            "value",
+            tr(
+                f"measurement.note は {MAX_NOTE_CHARS} 字までの文です",
+                f"measurement.note must be text of up to {MAX_NOTE_CHARS} characters",
+            ),
+        )
     s = mm.get("settings")
     if not isinstance(s, dict):
-        r.error("schema", "measurement.settings はオブジェクトにしてください")
+        r.error(
+            "schema",
+            tr("measurement.settings はオブジェクトにしてください", "measurement.settings must be an object"),
+        )
         return
     for k in sorted(set(s) - SETTINGS_KEYS):
-        r.error("unknown_field", f"measurement.settings.{k} は知らない項目です")
+        r.error(
+            "unknown_field",
+            tr(
+                f"measurement.settings.{k} は知らない項目です",
+                f"measurement.settings.{k} is an unknown field",
+            ),
+        )
     for k, (lo, hi) in SETTING_RANGES.items():
         v = s.get(k)
         if v is None:
             continue
         if not _num(v) or not lo <= v <= hi or (k != "seconds" and v != int(v)):
-            r.error("settings", f"settings.{k} が範囲({lo:g}〜{hi:g})の外です: {v!r}")
+            r.error(
+                "settings",
+                tr(
+                    f"settings.{k} が範囲({lo:g}〜{hi:g})の外です: {v!r}",
+                    f"settings.{k} is out of range ({lo:g} to {hi:g}): {v!r}",
+                ),
+            )
     prec = s.get("precision")
     if prec is not None and (
         not isinstance(prec, str)
@@ -938,7 +1304,11 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         or norm_precision(prec) not in PRECISION_BYTES
     ):
         r.error(
-            "settings", f"settings.precision は知っている精度({', '.join(PRECISION_BYTES)})にしてください"
+            "settings",
+            tr(
+                f"settings.precision は知っている精度({', '.join(PRECISION_BYTES)})にしてください",
+                f"settings.precision must be a known precision ({', '.join(PRECISION_BYTES)})",
+            ),
         )
     if entry is not None and outcome == "ok" and _num(peak) and peak > 0:
         _check_against_estimate(r, entry, mm, s, peak)
@@ -947,11 +1317,25 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         if mod not in MODALITIES:
             return
         if mod in ("image", "video") and (s.get("width") is None or s.get("height") is None):
-            r.warn("settings_missing", f"{mod} のモデルなのに width / height がありません")
+            r.warn(
+                "settings_missing",
+                tr(
+                    f"{mod} のモデルなのに width / height がありません",
+                    f"width / height are missing for a {mod} model",
+                ),
+            )
         if mod != "video" and s.get("frames") is not None:
-            r.warn("settings_modality", f"{mod} のモデルに frames があります")
+            r.warn(
+                "settings_modality", tr(f"{mod} のモデルに frames があります", f"A {mod} model has frames")
+            )
         if mod in ("music", "sfx", "tts") and s.get("seconds") is None:
-            r.warn("settings_missing", f"{mod} のモデルなのに seconds(長さ)がありません")
+            r.warn(
+                "settings_missing",
+                tr(
+                    f"{mod} のモデルなのに seconds(長さ)がありません",
+                    f"seconds (length) is missing for a {mod} model",
+                ),
+            )
 
 
 def _check_against_estimate(
@@ -973,9 +1357,15 @@ def _check_against_estimate(
     if full > 0 and abs(peak - full) / full > NOTICE_DEVIATION:
         r.notice(
             "deviation",
-            f"最大 VRAM {peak} GB が式の見積もり {full:.2f} GB から"
-            f" {abs(peak - full) / full:.0%} 外れています(±{NOTICE_DEVIATION:.0%} を超えた。"
-            f"設定の違う推定へは ±{NOTICE_DEVIATION:.0%} までしか広げない)",
+            tr(
+                f"最大 VRAM {peak} GB が式の見積もり {full:.2f} GB から"
+                f" {abs(peak - full) / full:.0%} 外れています(±{NOTICE_DEVIATION:.0%} を超えた。"
+                f"設定の違う推定へは ±{NOTICE_DEVIATION:.0%} までしか広げない)",
+                f"Peak VRAM {peak} GB is {abs(peak - full) / full:.0%} off the formula estimate "
+                f"of {full:.2f} GB"
+                f" (beyond ±{NOTICE_DEVIATION:.0%}; estimates for other settings are only stretched up to"
+                f" ±{NOTICE_DEVIATION:.0%})",
+            ),
         )
     # 動的 VRAM・partial で下限より小さいのは普通(一部の重みをメインメモリに置く)。全部載せ(none)と言うのに
     # 小さいものだけ知らせる。見積もりはどちらも下限(重み + 固定分)で切り詰める(estimate._prepare)
@@ -983,8 +1373,12 @@ def _check_against_estimate(
     if mm.get("offload") == "none" and peak < floor:
         r.notice(
             "below_weights",
-            f"全部 GPU に載せた(offload: none)のに、最大 VRAM {peak} GB が全部載せの下限"
-            f"(重み + 固定分 {floor:.2f} GB)より小さい。見積もりでは下限の値にする",
+            tr(
+                f"全部 GPU に載せた(offload: none)のに、最大 VRAM {peak} GB が全部載せの下限"
+                f"(重み + 固定分 {floor:.2f} GB)より小さい。見積もりでは下限の値にする",
+                f"Everything was on the GPU (offload: none), yet peak VRAM {peak} GB is below the full-load"
+                f" floor (weights + fixed part {floor:.2f} GB). Estimates use the floor",
+            ),
         )
 
 
@@ -1089,27 +1483,60 @@ def _check_effect(r: Report, data: dict[str, Any], db: Database) -> None:
     except (TypeError, ValueError, ZeroDivisionError):
         return
     if changes:
-        where = "、".join(
-            f"{c['gpu_name']} {c['vram_gb']:g} GB・メモリ {c['ram_gb']:g} GB: {c['before']} → {c['after']}"
+        where = tr("、", "; ").join(
+            tr(
+                f"{c['gpu_name']} {c['vram_gb']:g} GB・メモリ {c['ram_gb']:g} GB: "
+                f"{c['before']} → {c['after']}",
+                f"{c['gpu_name']} {c['vram_gb']:g} GB, RAM {c['ram_gb']:g} GB: {c['before']} → {c['after']}",
+            )
             for c in changes[:6]
         )
-        r.notice("fit_change", f"同じ GPU の PC で段階が変わります({where})")
+        r.notice(
+            "fit_change",
+            tr(
+                f"同じ GPU の PC で段階が変わります({where})",
+                f"The fit changes on PCs with the same GPU ({where})",
+            ),
+        )
 
 
 def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
     m = _FILENAME.fullmatch(p.name)
     if not m:
-        r.error("filename", f"ファイル名は <日付>-<sha8>.json にしてください(例 {r.suggested_path})")
+        r.error(
+            "filename",
+            tr(
+                f"ファイル名は <日付>-<sha8>.json にしてください(例 {r.suggested_path})",
+                f"The file name must be <date>-<sha8>.json (e.g. {r.suggested_path})",
+            ),
+        )
         return
     if m.group(1) != data.get("date"):
-        r.error("filename", f"ファイル名の日付 {m.group(1)} と date {data.get('date')} が違います")
+        r.error(
+            "filename",
+            tr(
+                f"ファイル名の日付 {m.group(1)} と date {data.get('date')} が違います",
+                f"The file name date {m.group(1)} differs from date {data.get('date')}",
+            ),
+        )
     if r.sha256 and m.group(2) != r.sha256[:8]:
         r.error(
-            "filename", f"ファイル名の hash {m.group(2)} が内容の sha256 の先頭 {r.sha256[:8]} と違います"
+            "filename",
+            tr(
+                f"ファイル名の hash {m.group(2)} が内容の sha256 の先頭 {r.sha256[:8]} と違います",
+                f"The file name hash {m.group(2)} differs from the start of the content sha256 "
+                f"{r.sha256[:8]}",
+            ),
         )
     gpu = ((data.get("system") or {}).get("gpu") or {}).get("name")
     if isinstance(gpu, str) and p.parent.name != gpu_slug(gpu):
-        r.error("filename", f"フォルダ名 {p.parent.name} が GPU 名から決まる {gpu_slug(gpu)} と違います")
+        r.error(
+            "filename",
+            tr(
+                f"フォルダ名 {p.parent.name} が GPU 名から決まる {gpu_slug(gpu)} と違います",
+                f"The folder name {p.parent.name} differs from {gpu_slug(gpu)} given by the GPU name",
+            ),
+        )
 
 
 class SubmissionReadError(ValueError):
@@ -1119,19 +1546,26 @@ class SubmissionReadError(ValueError):
 def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
     p = Path(path)
     if p.is_symlink():
-        raise SubmissionReadError("シンボリックリンクは受け付けません")
+        raise SubmissionReadError(tr("シンボリックリンクは受け付けません", "Symbolic links are not accepted"))
     if not p.is_file():
-        raise SubmissionReadError("ファイルではありません")
+        raise SubmissionReadError(tr("ファイルではありません", "Not a file"))
     size = p.stat().st_size
     if size > MAX_FILE_BYTES:
-        raise SubmissionReadError(f"大きすぎます({size} バイト。{MAX_FILE_BYTES} まで)")
+        raise SubmissionReadError(
+            tr(
+                f"大きすぎます({size} バイト。{MAX_FILE_BYTES} まで)",
+                f"Too large ({size} bytes; up to {MAX_FILE_BYTES})",
+            )
+        )
     try:
         raw = p.read_bytes().decode("utf-8")
         return loads_strict(raw), raw
     except RecursionError as e:
-        raise SubmissionReadError("入れ子が深すぎます") from e
+        raise SubmissionReadError(tr("入れ子が深すぎます", "Nested too deeply")) from e
     except (UnicodeDecodeError, ValueError) as e:
-        raise SubmissionReadError(f"JSON ではありません({type(e).__name__})") from e
+        raise SubmissionReadError(
+            tr(f"JSON ではありません({type(e).__name__})", f"Not JSON ({type(e).__name__})")
+        ) from e
 
 
 def validate_files(
@@ -1150,18 +1584,20 @@ def validate_files(
             data, raw = read_submission(p)
         except SubmissionReadError as e:
             r = Report(path=Path(p).as_posix())
-            r.error("read", f"読めません: {e}")
+            r.error("read", tr(f"読めません: {e}", f"Cannot read: {e}"))
             reports.append(r)
             continue
         except OSError as e:
             r = Report(path=Path(p).as_posix())
-            r.error("read", f"読めません: {type(e).__name__}")
+            r.error("read", tr(f"読めません: {type(e).__name__}", f"Cannot read: {type(e).__name__}"))
             reports.append(r)
             continue
         r = validate_submission(data, db, path=p, raw=raw, today=today, check_filename=check_filename)
         if r.sha256:
             if r.sha256 in first:
-                r.error("duplicate", f"{first[r.sha256]} と同じ内容です")
+                r.error(
+                    "duplicate", tr(f"{first[r.sha256]} と同じ内容です", f"Same content as {first[r.sha256]}")
+                )
             else:
                 first[r.sha256] = str(p)
         reports.append(r)

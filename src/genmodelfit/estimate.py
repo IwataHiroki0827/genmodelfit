@@ -38,6 +38,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .db import bundled_text
+from .i18n import tr
 from .models import (
     FIT_UNKNOWN,
     ORIGIN_COMMUNITY,
@@ -78,7 +79,12 @@ RAM_PAGEFILE_FACTOR = 1.5
 CPU_MAX_WEIGHTS_GB = 2.0
 CPU_MODALITIES = ("tts", "sfx", "music", "image")
 
-UNKNOWN_SIZE_REASON = "大きさが分からないため判定できません"
+UNKNOWN_SIZE_REASON = "大きさが分からないため判定できません"  # ja の文(表示は unknown_size_reason())
+
+
+def unknown_size_reason() -> str:
+    return tr(UNKNOWN_SIZE_REASON, "Cannot judge: the size is unknown")
+
 
 # サンプラーごとに別の本体を使うとき、ComfyUI が前の本体を降ろしてから次を載せる根拠
 # (Comfy-Org/ComfyUI のコミット b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c。v0.42.1 の後の master、
@@ -154,22 +160,39 @@ NAME_ROLE: list[tuple[str, str]] = [
 
 # 全部入りチェックポイントの内訳(本体, テキスト/画像エンコーダ, VAE の割合)。
 # 2026-10-20 に各ファイルの safetensors の見出し(テンソルの大きさ)を読んで数えた。
-CHECKPOINT_SPLITS: list[tuple[str, tuple[float, float, float], str]] = [
-    (r"sd_xl|sdxl", (0.740, 0.236, 0.024), "SDXL(UNet 4.79 GB / CLIP-L+bigG 1.53 GB / VAE 0.16 GB)"),
+# 内訳の説明は (日本語, 英語)
+CHECKPOINT_SPLITS: list[tuple[str, tuple[float, float, float], tuple[str, str]]] = [
+    (
+        r"sd_xl|sdxl",
+        (0.740, 0.236, 0.024),
+        (
+            "SDXL(UNet 4.79 GB / CLIP-L+bigG 1.53 GB / VAE 0.16 GB)",
+            "SDXL (UNet 4.79 GB / CLIP-L+bigG 1.53 GB / VAE 0.16 GB)",
+        ),
+    ),
     (
         r"ace_step_1\.5",
         (0.478, 0.489, 0.034),
-        "ACE-Step 1.5(DiT 4.46 GB / 言語モデル等 4.56 GB / VAE 0.32 GB)",
+        (
+            "ACE-Step 1.5(DiT 4.46 GB / 言語モデル等 4.56 GB / VAE 0.32 GB)",
+            "ACE-Step 1.5 (DiT 4.46 GB / language model etc. 4.56 GB / VAE 0.32 GB)",
+        ),
     ),
     (
         r"hunyuan3d-dit-v2",
         (0.452, 0.461, 0.087),
-        "Hunyuan3D 2.0(DiT 2.08 GB / 画像エンコーダ 2.11 GB / VAE 0.40 GB)",
+        (
+            "Hunyuan3D 2.0(DiT 2.08 GB / 画像エンコーダ 2.11 GB / VAE 0.40 GB)",
+            "Hunyuan3D 2.0 (DiT 2.08 GB / image encoder 2.11 GB / VAE 0.40 GB)",
+        ),
     ),
     (
         r"hunyuan_3d_v2\.1",
         (0.828, 0.083, 0.089),
-        "Hunyuan3D 2.1(DiT 5.68 GB / 画像エンコーダ 0.57 GB / VAE 0.61 GB)",
+        (
+            "Hunyuan3D 2.1(DiT 5.68 GB / 画像エンコーダ 0.57 GB / VAE 0.61 GB)",
+            "Hunyuan3D 2.1 (DiT 5.68 GB / image encoder 0.57 GB / VAE 0.61 GB)",
+        ),
     ),
 ]
 # 内訳が分からない全部入り・ファイル情報の無いもの(テンプレートの大きさだけ)に使う割合
@@ -402,21 +425,36 @@ def select_files(entry: ModelEntry) -> tuple[list[ModelFile], list[str]]:
             continue
         cands.append(f)
     if skipped_alt:
-        notes.append(f"ComfyUI で使わない形式のファイル {skipped_alt} 個(onnx など)は数えていない")
+        notes.append(
+            tr(
+                f"ComfyUI で使わない形式のファイル {skipped_alt} 個(onnx など)は数えていない",
+                f"Not counted: {skipped_alt} file(s) in formats ComfyUI does not use (onnx etc.)",
+            )
+        )
 
     root_main = [f for f in cands if not f.directory and _path(f)[0] is None and _role_of(f) == "main"]
     in_folder = [f for f in cands if not f.directory and _path(f)[0] is not None]
     if root_main and in_folder:
         if any(_known_all_in_one(f) for f in root_main):
             drop = set(map(id, in_folder))
-            notes.append("全部入りの単一ファイルと diffusers 形式の両方があるので、単一ファイルだけ数えた")
+            notes.append(
+                tr(
+                    "全部入りの単一ファイルと diffusers 形式の両方があるので、単一ファイルだけ数えた",
+                    "Both an all-in-one single file and the diffusers format exist; counted the single file "
+                    "only",
+                )
+            )
         else:
             at_root = {_role_of(f) for f in cands if not f.directory and _path(f)[0] is None}
             same = at_root & {"main", "vae"}
             drop = {id(f) for f in in_folder if _role_of(f) in same}
             if drop:
                 notes.append(
-                    "単一ファイルと diffusers 形式の両方がある部品(本体・VAE)は、単一ファイルを数えた"
+                    tr(
+                        "単一ファイルと diffusers 形式の両方がある部品(本体・VAE)は、単一ファイルを数えた",
+                        "Parts with both a single file and the diffusers format (model, VAE): counted the "
+                        "single file",
+                    )
                 )
         cands = [f for f in cands if id(f) not in drop]
 
@@ -465,8 +503,12 @@ def select_files(entry: ModelEntry) -> tuple[list[ModelFile], list[str]]:
         chosen.extend(best)
     if dropped:
         notes.append(
-            f"同じ部品の別の形式・精度のファイル {dropped} 個は数えていない"
-            "(.safetensors・fp16 / bf16 を優先して 1 組だけ数えた)"
+            tr(
+                f"同じ部品の別の形式・精度のファイル {dropped} 個は数えていない"
+                "(.safetensors・fp16 / bf16 を優先して 1 組だけ数えた)",
+                f"Not counted: {dropped} file(s) of the same part in another format or precision"
+                " (counted one set, preferring .safetensors and fp16 / bf16)",
+            )
         )
     order = {id(f): i for i, f in enumerate(entry.files)}
     chosen.sort(key=lambda f: order[id(f)])
@@ -512,7 +554,7 @@ def _split_of(name: str) -> tuple[tuple[float, float, float], str | None]:
     n = name.lower()
     for pat, split, label in CHECKPOINT_SPLITS:
         if re.search(pat, n):
-            return split, label
+            return split, tr(*label)
     return GENERIC_SPLIT, None
 
 
@@ -521,11 +563,21 @@ def _fallback_size(entry: ModelEntry, p: Parts) -> int:
     テンプレートの大きさ → パラメータ数 × 精度。無ければ 0。"""
     t = entry.template.size_bytes if entry.template else None
     if isinstance(t, int) and t > 0:
-        p.notes.append("ファイルごとの大きさが分からないので、テンプレートの大きさを使った")
+        p.notes.append(
+            tr(
+                "ファイルごとの大きさが分からないので、テンプレートの大きさを使った",
+                "File sizes are unknown; used the template size",
+            )
+        )
         return t
     prec = norm_precision(entry.precision)
     if entry.params_b and entry.params_b > 0 and prec in PRECISION_BYTES:
-        p.notes.append("ファイルの大きさが無いので、パラメータ数と精度から重みを求めた")
+        p.notes.append(
+            tr(
+                "ファイルの大きさが無いので、パラメータ数と精度から重みを求めた",
+                "No file sizes; computed the weights from the parameter count and precision",
+            )
+        )
         return int(entry.params_b * 1e9 * PRECISION_BYTES[prec])
     return 0
 
@@ -548,23 +600,45 @@ def components(entry: ModelEntry) -> Parts:
         size = max(listed, floor)
         if floor <= 0:
             p.unknown = True
-            p.notes.append(UNKNOWN_SIZE_REASON + "(本体のファイルが一覧に無く、全体の大きさも無い)")
+            p.notes.append(
+                tr(
+                    UNKNOWN_SIZE_REASON + "(本体のファイルが一覧に無く、全体の大きさも無い)",
+                    "Cannot judge: the size is unknown (the main model file is not listed and there is no "
+                    "total size)",
+                )
+            )
             return p
         main, enc, vae = GENERIC_SPLIT
         p.denoise, p.encode, p.decode = size * main / GIB, size * enc / GIB, size * vae / GIB
         p.files_gb = size / GIB
-        p.notes.append("本体のファイルが一覧に無いので、テンプレートの大きさを下限にして一般的な割合で分けた")
+        p.notes.append(
+            tr(
+                "本体のファイルが一覧に無いので、テンプレートの大きさを下限にして一般的な割合で分けた",
+                "The main model file is not listed; split the template size (as a lower bound) by typical "
+                "ratios",
+            )
+        )
         return p
     if not files or not all(_size_ok(f) for f in files):
         size = _fallback_size(entry, p)
         if size <= 0:
             p.unknown = True
-            p.notes.append(UNKNOWN_SIZE_REASON + "(ファイルの大きさもテンプレートの大きさも無い)")
+            p.notes.append(
+                tr(
+                    UNKNOWN_SIZE_REASON + "(ファイルの大きさもテンプレートの大きさも無い)",
+                    "Cannot judge: the size is unknown (no file sizes and no template size)",
+                )
+            )
             return p
         main, enc, vae = GENERIC_SPLIT
         p.denoise, p.encode, p.decode = size * main / GIB, size * enc / GIB, size * vae / GIB
         p.files_gb = size / GIB
-        p.notes.append("部品の内訳が無いので、一般的な割合(本体 75%・エンコーダ 20%・VAE 5%)で分けた")
+        p.notes.append(
+            tr(
+                "部品の内訳が無いので、一般的な割合(本体 75%・エンコーダ 20%・VAE 5%)で分けた",
+                "No breakdown of the parts; split by typical ratios (model 75%, encoders 20%, VAE 5%)",
+            )
+        )
         return p
     denoise_files: dict[str, float] = {}  # 生成の段の単独のファイル(名前 → GiB)。本体の組に分けるのに使う
     for f in files:
@@ -583,9 +657,12 @@ def components(entry: ModelEntry) -> Parts:
             p.encode += gb * enc
             p.decode += gb * vae
             p.notes.append(
-                f"全部入りの {f.name} を分けた: {label}"
+                tr(f"全部入りの {f.name} を分けた: {label}", f"Split the all-in-one {f.name}: {label}")
                 if label
-                else f"全部入りの {f.name} を一般的な割合(本体 75%・エンコーダ 20%・VAE 5%)で分けた"
+                else tr(
+                    f"全部入りの {f.name} を一般的な割合(本体 75%・エンコーダ 20%・VAE 5%)で分けた",
+                    f"Split the all-in-one {f.name} by typical ratios (model 75%, encoders 20%, VAE 5%)",
+                )
             )
             continue
         stage = ROLE_STAGE[role]
@@ -655,11 +732,23 @@ def _split_experts(
         return
     shared = sum(gb for n, gb in denoise_files.items() if not any(n in st for st in sets))
     p.experts = [shared + sum(denoise_files[n] for n in st) for st in sets]
-    src = "ワークフローのつながり" if how == "workflow" else "ファイル名の high_noise / low_noise"
+    if how == "workflow":
+        src = tr("ワークフローのつながり", "the workflow links")
+    else:
+        src = tr("ファイル名の high_noise / low_noise", "high_noise / low_noise in the file names")
     p.notes.append(
-        f"本体はサンプラーごとに {len(sets)} 組を順に使う({src})。ComfyUI は次の組を載せるとき前の組を降ろす"
-        f"({EXPERT_SOURCE})ので、順に載せ替え・逃がすときは 1 組ずつ数えた"
-        f"(一番大きい組 {max(p.experts):.1f} GB、生成の段の全部は {p.denoise:.1f} GB)"
+        tr(
+            f"本体はサンプラーごとに {len(sets)} 組を順に使う({src})。ComfyUI は次の組を載せるとき前の組を降"
+            "ろ"
+            "す"
+            f"({EXPERT_SOURCE})ので、順に載せ替え・逃がすときは 1 組ずつ数えた"
+            f"(一番大きい組 {max(p.experts):.1f} GB、生成の段の全部は {p.denoise:.1f} GB)",
+            f"The model uses {len(sets)} sets in turn, one per sampler ({src}). ComfyUI unloads the previous "
+            "set"
+            f" before loading the next ({EXPERT_SOURCE}), so one set at a time was counted for sequential"
+            f" loading and offloading (largest set {max(p.experts):.1f} GB, whole denoising stage"
+            f" {p.denoise:.1f} GB)",
+        )
     )
 
 
@@ -681,16 +770,28 @@ def apply_precision(parts: Parts, entry: ModelEntry, s: Settings) -> Parts:
         return parts
     have = source_precision(entry)
     if want not in PRECISION_BYTES:
-        parts.notes.append(f"精度 {want} は知らない値なので換算していない")
+        parts.notes.append(
+            tr(f"精度 {want} は知らない値なので換算していない", f"Unknown precision {want}; not converted")
+        )
         return parts
     if have not in PRECISION_BYTES:
-        parts.notes.append(f"元の精度が分からないので、精度 {want} の換算をしていない")
+        parts.notes.append(
+            tr(
+                f"元の精度が分からないので、精度 {want} の換算をしていない",
+                f"The original precision is unknown; not converted to {want}",
+            )
+        )
         return parts
     if have != want:
         ratio = PRECISION_BYTES[want] / PRECISION_BYTES[have]
         parts.denoise *= ratio
         parts.experts = [x * ratio for x in parts.experts]
-        parts.notes.append(f"本体を {have} → {want} に換算した(×{ratio:.2f})")
+        parts.notes.append(
+            tr(
+                f"本体を {have} → {want} に換算した(×{ratio:.2f})",
+                f"Converted the model {have} → {want} (×{ratio:.2f})",
+            )
+        )
     return parts
 
 
@@ -1011,14 +1112,14 @@ def _describe(entry: ModelEntry, s: Settings) -> str:
     if entry.modality in ("image", "video") and s.width and s.height:
         bits.append(f"{s.width}x{s.height}")
     if entry.modality == "video" and s.frames:
-        bits.append(f"{s.frames} コマ")
+        bits.append(tr(f"{s.frames} コマ", f"{s.frames} frames"))
     if entry.modality in ("music", "sfx", "tts") and s.seconds:
-        bits.append(f"{s.seconds:g} 秒")
+        bits.append(tr(f"{s.seconds:g} 秒", f"{s.seconds:g} s"))
     if s.batch and s.batch > 1:
-        bits.append(f"{s.batch} 枚")
+        bits.append(tr(f"{s.batch} 枚", f"batch {s.batch}"))
     if s.precision:
         bits.append(s.precision)
-    return "・".join(bits)
+    return tr("・", ", ").join(bits)
 
 
 @dataclass
@@ -1125,7 +1226,7 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
     - fp8 の計算を持たない GPU(Ada より前)の fp8 の重み: 同じ理由で変えない(注意だけ)
     系統が分からないときは (2) を見積もりに入れず、bf16 を持たない GPU ではそう書く。
     GPU が無い・世代が分からないときは何も変えない。"""
-    from .families import FAMILIES, VAES, family_of, vae_of
+    from .families import FAMILIES, VAES, family_of, shown, vae_of
 
     g = system.best_gpu
     if g is None or system.vram_gb <= 0 or g.compute_dtype is None:
@@ -1151,44 +1252,83 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
     vae = 2.0 if vae_fp32 and not file_fp32 else 1.0
     if gpu_fp32:
         notes.append(
-            f"{g.name} では ComfyUI が半精度を使わず fp32 で計算するので、作業用メモリと VAE を 2 倍で"
-            "見積もった(本体は VRAM に余裕があれば fp32 に広げて載せる。遅い)"
+            tr(
+                f"{g.name} では ComfyUI が半精度を使わず fp32 で計算するので、作業用メモリと VAE を 2 倍で"
+                "見積もった(本体は VRAM に余裕があれば fp32 に広げて載せる。遅い)",
+                f"ComfyUI computes in fp32 on {g.name} (no half precision), so the working memory and VAE"
+                " were doubled (the model is widened to fp32 if VRAM allows; slow)",
+            )
         )
     elif family_fp32:
         notes.append(
-            f"このモデルの系統({fam.comfy_class})は ComfyUI が fp16 で動かさない(supported_models の "
-            f"{fam.source})ので、bf16 を持たない {g.name} では fp32 で計算する。"
-            "作業用メモリを 2 倍で見積もった"
-            "(本体は VRAM に余裕があれば fp32 で載せる。遅い)"
+            tr(
+                f"このモデルの系統({shown(fam.comfy_class)})は ComfyUI が fp16 で動かさない(supported_models "
+                "の "
+                f"{shown(fam.source)})ので、bf16 を持たない {g.name} では fp32 で計算する。"
+                "作業用メモリを 2 倍で見積もった"
+                "(本体は VRAM に余裕があれば fp32 で載せる。遅い)",
+                f"ComfyUI does not run this model family ({shown(fam.comfy_class)}) in fp16 "
+                "(supported_models:"
+                f" {shown(fam.source)}), so {g.name}, which lacks bf16, computes in fp32."
+                " The working memory was doubled (the model is loaded in fp32 if VRAM allows; slow)",
+            )
         )
         if fam.note:
-            notes.append(fam.note)
+            notes.append(shown(fam.note))
     elif no_bf16 and fam is not None and not fam.fp16 and manual_bf16:
         notes.append(
-            f"{g.name} は bf16 の計算に対応しないが、ComfyUI はこの系統({fam.comfy_class})を bf16 で動かす"
-            "(AMD の RDNA 2 以前の扱い。作業用メモリは変えていない)"
+            tr(
+                f"{g.name} は bf16 の計算に対応しないが、ComfyUI はこの系統({shown(fam.comfy_class)})を bf16 "
+                "で動かす"
+                "(AMD の RDNA 2 以前の扱い。作業用メモリは変えていない)",
+                f"{g.name} does not support bf16 compute, but ComfyUI runs this family "
+                f"({shown(fam.comfy_class)})"
+                " in bf16 (the handling for AMD RDNA 2 and older; working memory unchanged)",
+            )
         )
     elif no_bf16 and fam is None:
         notes.append(
-            "このモデルの系統(ComfyUI のどのモデルか)が分からないので、bf16 を持たない "
-            f"{g.name} で fp32 で計算するかは見積もりに入れていない"
+            tr(
+                "このモデルの系統(ComfyUI のどのモデルか)が分からないので、bf16 を持たない "
+                f"{g.name} で fp32 で計算するかは見積もりに入れていない",
+                "The model family (which ComfyUI model it is) is unknown, so whether "
+                f"{g.name} (no bf16) computes in fp32 is not included in the estimate",
+            )
         )
     elif prec == "bf16" and no_bf16:
         notes.append(
-            f"{g.name} は bf16 の計算に対応しないので、ComfyUI は bf16 の重みを fp16 で動かす(VRAM は同じ)"
+            tr(
+                f"{g.name} は bf16 の計算に対応しないので、ComfyUI は bf16 の重みを fp16 で動かす(VRAM "
+                "は同じ)",
+                f"{g.name} does not support bf16 compute, so ComfyUI runs the bf16 weights in fp16 (same "
+                "VRAM)",
+            )
         )
     if vae_fp32 and not gpu_fp32 and vae > 1:
         notes.append(
-            f"VAE({vae_kind.source})は {g.name} では fp32 で載せるので、VAE の重みを 2 倍で見積もった"
-            "(仕上げで VRAM が足りなければ ComfyUI がタイルに分けるので遅くなる)"
+            tr(
+                f"VAE({shown(vae_kind.source)})は {g.name} では fp32 で載せるので、VAE の重みを 2 "
+                "倍で見積もった"
+                "(仕上げで VRAM が足りなければ ComfyUI がタイルに分けるので遅くなる)",
+                f"The VAE ({shown(vae_kind.source)}) is loaded in fp32 on {g.name}, so its weights were "
+                "doubled"
+                " (if VRAM runs short when decoding, ComfyUI splits it into tiles, which is slower)",
+            )
         )
     if prec == "fp8" and g.fp8 is False:
+        ada = getattr(g, "vendor", "nvidia") == "nvidia"
         notes.append(
-            f"{g.name} は fp8 の計算に対応しない"
-            + ("(Ada 以降が対応)" if getattr(g, "vendor", "nvidia") == "nvidia" else "")
-            + "。ComfyUI は fp8 の重みを、fp16 に広げても "
-            "VRAM に収まれば広げて使い(VRAM を多く使う)、収まらなければ fp8 のまま計算のたびに"
-            "変換する(遅い)。見積もりは fp8 の大きさのまま"
+            tr(
+                f"{g.name} は fp8 の計算に対応しない"
+                + ("(Ada 以降が対応)" if ada else "")
+                + "。ComfyUI は fp8 の重みを、fp16 に広げても "
+                "VRAM に収まれば広げて使い(VRAM を多く使う)、収まらなければ fp8 のまま計算のたびに"
+                "変換する(遅い)。見積もりは fp8 の大きさのまま",
+                f"{g.name} does not support fp8 compute"
+                + (" (Ada and later do)" if ada else "")
+                + ". ComfyUI widens fp8 weights to fp16 if they still fit in VRAM (uses more VRAM),"
+                " otherwise keeps fp8 and converts at every step (slow). The estimate keeps the fp8 size",
+            )
         )
     return GpuPrecision(act, vae, tuple(notes))
 
@@ -1214,7 +1354,7 @@ def _unknown_estimate(entry: ModelEntry, parts: Parts, s: Settings) -> Estimate:
         basis="estimated",
         fit=FIT_UNKNOWN,
         run_mode=RUN_UNKNOWN,
-        reasons=[UNKNOWN_SIZE_REASON, *parts.notes],
+        reasons=[unknown_size_reason(), *parts.notes],
         measured_on=None,
         vram_sequential_gb=None,
         settings={k: v for k, v in vars(s).items() if v is not None},
@@ -1250,10 +1390,13 @@ def _sample_count(m: Measurement) -> int:
 def community_label(m: Measurement) -> str:
     """理由に出す「ほかの利用者の実測 3 件(中央値 7.02 GB。OOM 1 件)」。"""
     oom = getattr(m, "n_oom", None) or 0
-    return (
+    return tr(
         f"ほかの利用者の実測 {_sample_count(m)} 件(中央値 {m.peak_vram_gb:.2f} GB"
         + (f"。同じ構成で OOM の報告 {oom} 件" if oom else "")
-        + ")"
+        + ")",
+        f"{_sample_count(m)} measurement(s) by other users (median {m.peak_vram_gb:.2f} GB"
+        + (f"; {oom} OOM report(s) with the same setup" if oom else "")
+        + ")",
     )
 
 
@@ -1279,39 +1422,75 @@ def _estimate(
     if m is not None:
         on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
         if is_community(m):
-            reasons.append(f"{on} の実測は、{community_label(m)}")
+            reasons.append(
+                tr(f"{on} の実測は、{community_label(m)}", f"Measured on {on}: {community_label(m)}")
+            )
         other_vendor = g0 is not None and g0.vendor != measurement_vendor(m)
         same_settings = _settings_match(m.settings, s, entry) and not _precision_changed(m, s, entry)
         if system.vram_gb <= 0:
-            reasons.append(f"GPU が無いので、{on} の実測は判定に使っていない")
+            reasons.append(
+                tr(
+                    f"GPU が無いので、{on} の実測は判定に使っていない",
+                    f"No GPU, so the measurement on {on} is not used",
+                )
+            )
         elif other_vendor:
             # 別の会社の GPU の実測は、作業用メモリをずらすのに使うだけ(その GPU での実測ではない)
             detail = "calibrated"
-            reasons.append(f"{on} の実測で補正した推定({_vendor_label(g0.vendor)} の GPU での実測は無い)")
+            reasons.append(
+                tr(
+                    f"{on} の実測で補正した推定({_vendor_label(g0.vendor)} の GPU での実測は無い)",
+                    f"Estimate calibrated with a measurement on {on} (none on a {_vendor_label(g0.vendor)} "
+                    "GPU)",
+                )
+            )
         elif prec.act_factor != 1:
             detail = "calibrated"
-            reasons.append(f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした")
+            reasons.append(
+                tr(
+                    f"{on} の実測は半精度で計算する GPU のものなので、精度の違いを足した推定にした",
+                    f"The measurement on {on} is from a GPU that computes in half precision;"
+                    " the estimate adds the precision difference",
+                )
+            )
         elif same_settings and prep.clamped:
             # 実測の値をそのまま使わなかった(下限・上限で切り詰めた): 値は実測ではないので basis は estimated
             detail = "measured_community" if is_community(m) else "calibrated"
             if not is_community(m):
                 reasons.append(
-                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
-                    "それを使わない見積もりのほうが大きいので、そちらの値にした"
+                    tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
+                        "それを使わない見積もりのほうが大きいので、そちらの値にした",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) is used only as a lower bound;"
+                        " the estimate without it is larger, so that value is used",
+                    )
                 )
             elif prep.clamp == "cap":
                 reasons.append(
-                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の総量を超えるので、"
-                    "上限(総量 × 1.02 + 0.25 GB)までにした"
+                    tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の総量を超えるので、"
+                        "上限(総量 × 1.02 + 0.25 GB)までにした",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) exceeds the GPU total,"
+                        " so it was capped (total × 1.02 + 0.25 GB)",
+                    )
                 )
             else:
                 reasons.append(
-                    f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限"
-                    f"(重み + 固定分 {n.full:.2f} GB)より小さいので、下限の値にした"
-                    "(一部の重みをメインメモリに置いていた実測)"
+                    tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限"
+                        f"(重み + 固定分 {n.full:.2f} GB)より小さいので、下限の値にした"
+                        "(一部の重みをメインメモリに置いていた実測)",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) is below the minimum for loading"
+                        f" everything on the GPU (weights + fixed {n.full:.2f} GB), so the minimum is used"
+                        " (some weights were kept in main memory during the measurement)",
+                    )
                     if not is_censored(m)
-                    else f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の上限に張り付いた値なので、"
-                    "これ以上としてだけ使い、式の値にした"
+                    else tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は GPU の上限に張り付いた値なので、"
+                        "これ以上としてだけ使い、式の値にした",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) hit the GPU limit,"
+                        " so it is used only as a lower bound and the formula value is used",
+                    )
                 )
             if m.peak_ram_gb:
                 n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
@@ -1320,16 +1499,25 @@ def _estimate(
             detail = "measured_community" if is_community(m) else "measured"
             if is_censored(m):
                 reasons.append(
-                    f"実測 {m.peak_vram_gb:.1f} GB は GPU の上限に張り付いた値(全部載せにはこれ以上要る)"
+                    tr(
+                        f"実測 {m.peak_vram_gb:.1f} GB は GPU の上限に張り付いた値(全部載せにはこれ以上要る)",
+                        f"The measured {m.peak_vram_gb:.1f} GB hit the GPU limit (loading everything needs "
+                        "at least this)",
+                    )
                 )
             if m.peak_ram_gb:
                 n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
         elif not _precision_changed(m, s, entry):
             detail = "calibrated"
-            reasons.append(f"{on} の実測({_describe(entry, m.settings)})で補正した推定")
+            reasons.append(
+                tr(
+                    f"{on} の実測({_describe(entry, m.settings)})で補正した推定",
+                    f"Estimate calibrated with a measurement on {on} ({_describe(entry, m.settings)})",
+                )
+            )
     desc = _describe(entry, s)
     if desc:
-        reasons.append(f"設定: {desc}")
+        reasons.append(tr(f"設定: {desc}", f"Settings: {desc}"))
     parts = prep.parts_for(s)
     disk = parts.files_gb
     fit, mode, why, ram_need = _judge(n, system, prep.c, entry, parts.total)
@@ -1344,8 +1532,12 @@ def _estimate(
     elif m is not None and basis == "measured" and system.vram_gb > 0 and mode in ("gpu", "offload"):
         if m.gpu_vram_gb > system.vram_gb / MEASURED_VRAM_TOLERANCE:
             reasons.append(
-                f"段階は見積もりで決めた(実測の GPU {m.gpu_vram_gb:g} GB は"
-                f"この PC の {system.vram_gb:.1f} GB より大きい)"
+                tr(
+                    f"段階は見積もりで決めた(実測の GPU {m.gpu_vram_gb:g} GB は"
+                    f"この PC の {system.vram_gb:.1f} GB より大きい)",
+                    f"The level comes from the estimate (the measured GPU, {m.gpu_vram_gb:g} GB, is larger"
+                    f" than this PC's {system.vram_gb:.1f} GB)",
+                )
             )
     g = system.best_gpu
     if g is not None and g.vendor != "nvidia" and system.vram_gb > 0 and mode in ("gpu", "offload"):
@@ -1356,15 +1548,35 @@ def _estimate(
         if own is not None:
             if fit == "perfect" and fit_from != "measurement":
                 if own[0] == "perfect":
-                    why = [*why, f"{label} のこの GPU で同じ設定の実測があるので、段階の上限(good)を外した"]
+                    why = [
+                        *why,
+                        tr(
+                            f"{label} のこの GPU で同じ設定の実測があるので、段階の上限(good)を外した",
+                            f"A measurement with the same settings exists on this {label} GPU,"
+                            " so the level cap (good) was lifted",
+                        ),
+                    ]
                 else:
                     fit = own[0]
-                    why = [*why, f"{label} のこの GPU の同じ設定の実測で決まる段階 {own[0]} までにした"]
+                    why = [
+                        *why,
+                        tr(
+                            f"{label} のこの GPU の同じ設定の実測で決まる段階 {own[0]} までにした",
+                            f"Capped at {own[0]}, the level from a measurement with the same settings"
+                            f" on this {label} GPU",
+                        ),
+                    ]
         elif fit == "perfect" and fit_from != "measurement":
             fit = "good"
-            why = [*why, f"推定({label}・実測なし)なので、段階は good までにした"]
+            why = [
+                *why,
+                tr(
+                    f"推定({label}・実測なし)なので、段階は good までにした",
+                    f"Estimated ({label}, no measurement), so the level is capped at good",
+                ),
+            ]
         elif fit_from != "measurement":
-            why = [*why, f"推定({label}・実測なし)"]
+            why = [*why, tr(f"推定({label}・実測なし)", f"Estimated ({label}, no measurement)")]
     reasons.extend(prec.notes)
     free_short = False
     g = system.best_gpu
@@ -1377,11 +1589,19 @@ def _estimate(
             use = measured_total_gb(m)
         if use > g.vram_free_gb:
             free_short = True
-            others = f"(ほかのアプリが {g.vram_used_gb:.1f} GB 使用中)" if g.vram_used_gb is not None else ""
+            used = g.vram_used_gb
             why = [
                 *why,
-                f"今の空き VRAM は {g.vram_free_gb:.1f} GB{others}で、要る {use:.1f} GB に足りない。"
-                "ほかのアプリ(ブラウザ・ゲームなど)を閉じれば動く",
+                tr(
+                    f"今の空き VRAM は {g.vram_free_gb:.1f} GB"
+                    + (f"(ほかのアプリが {used:.1f} GB 使用中)" if used is not None else "")
+                    + f"で、要る {use:.1f} GB に足りない。"
+                    "ほかのアプリ(ブラウザ・ゲームなど)を閉じれば動く",
+                    f"Free VRAM is now {g.vram_free_gb:.1f} GB"
+                    + (f" (other apps use {used:.1f} GB)" if used is not None else "")
+                    + f", short of the {use:.1f} GB needed."
+                    " Close other apps (browser, games, etc.) to run it",
+                ),
             ]
     est = Estimate(
         vram_gb=round(n.full, 2),
@@ -1482,17 +1702,31 @@ def _measured_band(
     weak = is_censored(m) or (getattr(m, "n_oom", None) or 0) > 0
     level = "perfect" if band == "perfect" and not weak else "good"
     on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
-    pinned = "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)" if is_censored(m) else ""
+    pinned = (
+        tr(
+            "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)",
+            " (hit the GPU limit: dynamic VRAM used the free space)",
+        )
+        if is_censored(m)
+        else ""
+    )
     ctx = (
-        f"(torch の確保量。文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足して {total:.1f} GB とみた)"
+        tr(
+            f"(torch の確保量。文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足して {total:.1f} GB とみた)",
+            f" (torch reserved; counted as {total:.1f} GB with {TORCH_RESERVED_CONTEXT_GB:g} GB added for "
+            "the context etc.)",
+        )
         if total != m.peak_vram_gb
         else ""
     )
-    who = f"({community_label(m)})" if is_community(m) else ""
-    return level, (
+    who = tr(f"({community_label(m)})", f" ({community_label(m)})") if is_community(m) else ""
+    return level, tr(
         f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{ctx}{pinned}{who}・成功があり、"
         f"この PC の VRAM {vram:.1f} GB はそれ以上なので、"
-        "GPU で動くと判定した(段階は実測で決めた。見積もりは目安)"
+        "GPU で動くと判定した(段階は実測で決めた。見積もりは目安)",
+        f"A successful measurement on {on} with the same settings, {m.peak_vram_gb:.1f} GB{ctx}{pinned}{who},"
+        f" and this PC has at least that VRAM ({vram:.1f} GB), so it runs on the GPU"
+        " (level from the measurement; the estimate is a guide)",
     )
 
 
@@ -1504,20 +1738,27 @@ def _ram_check(fit: str, mode: str, reasons: list[str], need_gb: float, system: 
         return fit, mode, reasons
     limit, swap = ram_limit(system)
     if need_gb > limit:
-        pf = f"、ページファイルは最大 {swap:.1f} GB" if swap is not None else ""
-        return (
-            "too_tight",
-            "none",
-            [f"メモリ不足: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB{pf})", *reasons],
+        if swap is not None:
+            pf = tr(f"、ページファイルは最大 {swap:.1f} GB", f", page file up to {swap:.1f} GB")
+        else:
+            pf = ""
+        msg = tr(
+            f"メモリ不足: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB{pf})",
+            f"Not enough memory: about {need_gb:.1f} GB needed (this PC has {ram_total:.1f} GB{pf})",
         )
+        return ("too_tight", "none", [msg, *reasons])
     worse = fit if fit in ("marginal", "too_tight") else "marginal"
     return (
         worse,
         mode,
         [
             *reasons,
-            f"メモリが少し足りない: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB)。"
-            "足りない分は仮想メモリ(ページファイル)を使うので遅い",
+            tr(
+                f"メモリが少し足りない: 約 {need_gb:.1f} GB 必要(この PC は {ram_total:.1f} GB)。"
+                "足りない分は仮想メモリ(ページファイル)を使うので遅い",
+                f"Memory is a little short: about {need_gb:.1f} GB needed (this PC has {ram_total:.1f} GB)."
+                " The rest uses virtual memory (page file), which is slow",
+            ),
         ],
     )
 
@@ -1538,7 +1779,12 @@ def _judge(
         return gpu
     cpu = _judge_cpu(n, system, entry, weights_gb)
     if cpu[0] != "too_tight":
-        return cpu[0], cpu[1], [*cpu[2], f"GPU では動かない: {gpu[2][0]}"], cpu[3]
+        return (
+            cpu[0],
+            cpu[1],
+            [*cpu[2], tr(f"GPU では動かない: {gpu[2][0]}", f"Does not run on the GPU: {gpu[2][0]}")],
+            cpu[3],
+        )
     return gpu
 
 
@@ -1560,28 +1806,43 @@ def _judge_cpu(
 ) -> tuple[str, str, list[str], float]:
     """GPU を使わない判定。小さく CPU で動く種類と、CPU で動く系統(families.CPU_FAMILIES)だけ marginal。"""
     w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
-    why = "GPU なし" if system.vram_gb <= 0 else "GPU に載らない"
+    why = tr("GPU なし", "No GPU") if system.vram_gb <= 0 else tr("GPU に載らない", "Does not fit on the GPU")
     run = cpu_family(entry)
     if run is not None and w > 0:
         # ComfyUI は CPU では本体と VAE を fp32 で持ち、fp32 で計算する(families.CPU_FAMILIES の説明)。
         # 2 バイトの重みは 2 倍、作業用メモリも 2 倍にする
         two_byte = source_precision(entry) in ("fp16", "bf16")
         ram = n.ram + (n.main + n.vae if two_byte else n.vae) + 2 * max(0.0, n.act)
+        speed, evidence = run.speed_text(), run.evidence_text()
         reasons = [
-            f"{why}: CPU で動く系統({run.family})なので CPU で動く見込み(CPU は推定・実測なし。遅い"
-            + (f"。{run.speed}" if run.speed else "")
-            + f")。ComfyUI は CPU では本体と VAE を fp32 で持つので、メインメモリを約 {ram:.1f} GB とみた",
-            f"CPU で動く根拠: {run.evidence}",
+            tr(
+                f"{why}: CPU で動く系統({run.family})なので CPU で動く見込み(CPU は推定・実測なし。遅い"
+                + (f"。{speed}" if speed else "")
+                + f")。ComfyUI は CPU では本体と VAE を fp32 で持つので、メインメモリを約 {ram:.1f} GB "
+                "とみた",
+                f"{why}: a family that runs on CPU ({run.family}), so it should run on the CPU (CPU is "
+                "estimated, not measured; slow"
+                + (f". {speed}" if speed else "")
+                + "). ComfyUI keeps the model and VAE in fp32 on CPU, so main memory is taken as "
+                f"about {ram:.1f} GB",
+            ),
+            tr(f"CPU で動く根拠: {evidence}", f"Evidence that it runs on CPU: {evidence}"),
         ]
         fit, mode, reasons = _ram_check("marginal", "cpu", reasons, ram, system)
         return fit, mode, reasons, ram
     if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
-        fit, mode, reasons = _ram_check("marginal", "cpu", [f"{why}: CPU で動く見込み(遅い)"], n.ram, system)
+        line = tr(f"{why}: CPU で動く見込み(遅い)", f"{why}: should run on the CPU (slow)")
+        fit, mode, reasons = _ram_check("marginal", "cpu", [line], n.ram, system)
         return fit, mode, reasons, n.ram
     return (
         "too_tight",
         "none",
-        ["GPU なし: このモデルは GPU が必要(CPU で動く系統・小さなモデルではない)"],
+        [
+            tr(
+                "GPU なし: このモデルは GPU が必要(CPU で動く系統・小さなモデルではない)",
+                "No GPU: this model needs a GPU (not a CPU-capable family or a small model)",
+            )
+        ],
         n.ram,
     )
 
@@ -1642,22 +1903,41 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
     if shared:
         return _judge_shared(n, system, pct)
     if fit == "too_tight":
-        msg = f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)"
+        msg = tr(
+            f"VRAM 不足: 逃がしても {n.offload:.1f} GB 必要(この PC は {vram:.1f} GB、{pct['offload']}%)",
+            f"Not enough VRAM: {n.offload:.1f} GB needed even with offloading"
+            f" (this PC has {vram:.1f} GB, {pct['offload']}%)",
+        )
         return "too_tight", "none", [msg], n.ram
     if how == "full":
         mode = "gpu"
-        reasons = [f"VRAM {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る"]
+        reasons = [
+            tr(
+                f"VRAM {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る",
+                f"VRAM {n.full:.1f} / {vram:.1f} GB ({pct['full']}%): fits entirely",
+            )
+        ]
     elif how == "seq":
         mode = "gpu"
         reasons = [
-            f"VRAM {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
-            f"(全部載せは {n.full:.1f} GB。段階は good まで)"
+            tr(
+                f"VRAM {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
+                f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+                f"VRAM {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are loaded in "
+                "turn"
+                f" (all at once needs {n.full:.1f} GB; level up to good)",
+            )
         ]
     else:
         mode = "offload"
         reasons = [
-            f"VRAM {n.full:.1f} GB 必要 > {vram:.1f} GB: 重みの一部をメインメモリに逃がせば動く"
-            f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)"
+            tr(
+                f"VRAM {n.full:.1f} GB 必要 > {vram:.1f} GB: 重みの一部をメインメモリに逃がせば動く"
+                f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)",
+                f"VRAM {n.full:.1f} GB needed > {vram:.1f} GB: runs by offloading part of the weights to "
+                "main memory"
+                f" (slow; {n.offload:.1f} GB offloaded, {pct['offload']}%; level up to marginal)",
+            )
         ]
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
     fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, system)
@@ -1675,13 +1955,26 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
     carve = (getattr(g, "carveout_gb", None) or 0.0) if g is not None else 0.0
     best: tuple[str, str, list[str], float] | None = None
     for _how, use, top, line in (
-        ("full", n.full, "perfect", f"GPU のメモリ {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る"),
+        (
+            "full",
+            n.full,
+            "perfect",
+            tr(
+                f"GPU のメモリ {n.full:.1f} / {vram:.1f} GB({pct['full']}%): 全部載る",
+                f"GPU memory {n.full:.1f} / {vram:.1f} GB ({pct['full']}%): fits entirely",
+            ),
+        ),
         (
             "seq",
             n.sequential,
             "good",
-            f"GPU のメモリ {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
-            f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+            tr(
+                f"GPU のメモリ {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
+                f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+                f"GPU memory {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are "
+                "loaded"
+                f" in turn (all at once needs {n.full:.1f} GB; level up to good)",
+            ),
         ),
     ):
         level = _cap(fit_band(use, vram), top)
@@ -1689,16 +1982,20 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
             continue
         from_ram = max(0.0, use - carve)
         ram_need = n.ram_gpu + from_ram
-        note = (
-            f"GPU の分 {from_ram:.1f} GB もメインメモリから使うので、メインメモリは約 {ram_need:.1f} GB 要る"
+        note = tr(
+            f"GPU の分 {from_ram:.1f} GB もメインメモリから使うので、メインメモリは約 {ram_need:.1f} GB 要る",
+            f"The GPU share ({from_ram:.1f} GB) also comes from main memory, so about {ram_need:.1f} GB of "
+            "main memory is needed",
         )
         fit, mode, reasons = _ram_check(level, "gpu", [line, note], ram_need, system)
         if best is None or _LEVELS.index(fit) < _LEVELS.index(best[0]):
             best = (fit, mode, reasons, ram_need)
     if best is None:
-        msg = (
+        msg = tr(
             f"GPU のメモリ不足: 部品を順に載せ替えても {n.sequential:.1f} GB 必要"
-            f"(GPU が使えるのは {vram:.1f} GB、{pct['seq']}%)"
+            f"(GPU が使えるのは {vram:.1f} GB、{pct['seq']}%)",
+            f"Not enough GPU memory: {n.sequential:.1f} GB needed even loading the parts in turn"
+            f" (the GPU can use {vram:.1f} GB, {pct['seq']}%)",
         )
         return "too_tight", "none", [msg], n.ram
     return best

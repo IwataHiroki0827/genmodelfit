@@ -29,6 +29,7 @@ import requests
 
 from .db import Database, DatabaseError, cache_dir, cached_db_path, parse_db
 from .fetch import USER_AGENT, _NoAuth, make_session
+from .i18n import tr
 from .signing import SigningError, decode_sig, verify
 
 RELEASE_BASE_URL = "https://github.com/laxshmate/genmodelfit/releases/download/data-latest"
@@ -75,12 +76,14 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
     try:
         first = _origin(url)
     except ValueError as e:
-        raise RemoteError(f"URL が正しくありません: {url}: {e}") from e
+        raise RemoteError(tr(f"URL が正しくありません: {url}: {e}", f"invalid URL: {url}: {e}")) from e
     for _ in range(MAX_REDIRECTS + 1):
         try:
             same = _origin(url) == first
         except ValueError as e:
-            raise RemoteError(f"転送先の URL が正しくありません: {url}: {e}") from e
+            raise RemoteError(
+                tr(f"転送先の URL が正しくありません: {url}: {e}", f"invalid redirect URL: {url}: {e}")
+            ) from e
         headers: dict[str, Any] = {"User-Agent": USER_AGENT}
         if not same:
             headers["Authorization"] = None  # セッションのヘッダーにあっても、別のホストへは送らない
@@ -99,7 +102,7 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
             return r
         r.close()
         url = urljoin(url, loc)
-    raise RemoteError(f"転送が多すぎます: {url}")
+    raise RemoteError(tr(f"転送が多すぎます: {url}", f"too many redirects: {url}"))
 
 
 def _get(url: str, timeout: float, session: requests.Session | None = None) -> bytes:
@@ -115,16 +118,18 @@ def _get(url: str, timeout: float, session: requests.Session | None = None) -> b
             r.raise_for_status()
             length = r.headers.get("Content-Length")
             if length and length.isdigit() and int(length) > MAX_BYTES:
-                raise RemoteError(f"ファイルが大きすぎます: {url}")
+                raise RemoteError(tr(f"ファイルが大きすぎます: {url}", f"file too large: {url}"))
             buf = bytearray()
             for chunk in r.iter_content(chunk_size=1024 * 1024):
                 buf.extend(chunk)
                 if len(buf) > MAX_BYTES:
-                    raise RemoteError(f"ファイルが大きすぎます: {url}")
+                    raise RemoteError(tr(f"ファイルが大きすぎます: {url}", f"file too large: {url}"))
         finally:
             r.close()
     except requests.RequestException as e:
-        raise RemoteError(f"ダウンロードできませんでした: {url}: {e}") from e
+        raise RemoteError(
+            tr(f"ダウンロードできませんでした: {url}: {e}", f"download failed: {url}: {e}")
+        ) from e
     return bytes(buf)
 
 
@@ -142,8 +147,11 @@ def _atomic_write(path: Path, data: bytes) -> None:
         tmp = None
     except OSError as e:
         raise RemoteError(
-            f"書き込めませんでした: {path}: {e}"
-            "(ほかのプログラムがこのファイルを開いていないか確かめて、もう一度実行してください)"
+            tr(
+                f"書き込めませんでした: {path}: {e}"
+                "(ほかのプログラムがこのファイルを開いていないか確かめて、もう一度実行してください)",
+                f"cannot write: {path}: {e} (make sure no other program has this file open, then run again)",
+            )
         ) from e
     finally:
         if tmp is not None:
@@ -160,14 +168,16 @@ def parse_time(value: Any) -> datetime:
     小数の秒は 6 桁にそろえてから読む)。
     """
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"日時がありません: {value!r}")
+        raise ValueError(tr(f"日時がありません: {value!r}", f"no date and time: {value!r}"))
     s = value.strip()
     if s[-1] in "Zz":
         s = s[:-1] + "+00:00"
     s = _FRACTION.sub(lambda m: "." + (m.group(1)[1:] + "000000")[:6], s, count=1)
     dt = datetime.fromisoformat(s)
     if dt.tzinfo is None or dt.utcoffset() is None:
-        raise ValueError(f"日時にタイムゾーンがありません: {value!r}")
+        raise ValueError(
+            tr(f"日時にタイムゾーンがありません: {value!r}", f"the date and time has no time zone: {value!r}")
+        )
     return dt.astimezone(timezone.utc)
 
 
@@ -196,8 +206,18 @@ def _fetch_verified(base: str, timeout: float, session: requests.Session | None 
         if attempt == 0:
             time.sleep(RETRY_DELAY)
     if not sig:
-        raise RemoteError("署名ファイルの形が正しくありません(取り込みません)")
-    raise RemoteError("署名が合いません。改ざんされたか、壊れた一覧です(取り込みません)")
+        raise RemoteError(
+            tr(
+                "署名ファイルの形が正しくありません(取り込みません)",
+                "the signature file is malformed (not imported)",
+            )
+        )
+    raise RemoteError(
+        tr(
+            "署名が合いません。改ざんされたか、壊れた一覧です(取り込みません)",
+            "the signature does not match: the list was tampered with or is broken (not imported)",
+        )
+    )
 
 
 def update_from_release(
@@ -225,16 +245,21 @@ def update_from_release(
     try:
         raw = json.loads(data.decode("utf-8"))
         if not isinstance(raw, dict):
-            raise TypeError("一覧が JSON のオブジェクトではありません")
+            raise TypeError(tr("一覧が JSON のオブジェクトではありません", "the list is not a JSON object"))
         db = parse_db(raw, "cache")
         new_time = parse_time(raw.get("generated_at"))
     except (ValueError, TypeError, KeyError, AttributeError, DatabaseError) as e:
-        raise RemoteError(f"一覧の形が正しくありません: {e}") from e
+        raise RemoteError(tr(f"一覧の形が正しくありません: {e}", f"the list is malformed: {e}")) from e
     last = _read_state(state_dir)
     if last is not None and new_time < last and not force:
         raise RemoteError(
-            f"前に取り込んだ一覧より古い一覧です({new_time.isoformat()} < {last.isoformat()})。"
-            "取り込みません(わざと戻すときは --force)"
+            tr(
+                f"前に取り込んだ一覧より古い一覧です({new_time.isoformat()} < {last.isoformat()})。"
+                "取り込みません(わざと戻すときは --force)",
+                f"the list is older than the one imported before"
+                f" ({new_time.isoformat()} < {last.isoformat()});"
+                " not imported (use --force to go back on purpose)",
+            )
         )
     # 記録を先に進める。後の書き込みが失敗しても、同じ配布はもう一度取り込める(同じ日時は通す)
     state = {"generated_at": new_time.isoformat(), "accepted_at": datetime.now(timezone.utc).isoformat()}

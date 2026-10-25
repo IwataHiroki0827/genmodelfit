@@ -51,6 +51,7 @@ from .hf import (
     select_weight_files,
     upstream_candidates,
 )
+from .i18n import tr
 from .license_sources import enforce_lineage, source_for
 from .models import ModelEntry, ModelFile, Template
 from .tasks import tool_task_from_title
@@ -179,16 +180,28 @@ class UpstreamFormatError(UpdateError):
 
 def validate_index(data: Any) -> list[dict[str, Any]]:
     if not isinstance(data, list) or not data:
-        raise UpstreamFormatError("index.json の形が変わりました: 一覧(list)ではありません")
+        raise UpstreamFormatError(
+            tr(
+                "index.json の形が変わりました: 一覧(list)ではありません",
+                "index.json changed shape: not a list",
+            )
+        )
     for i, cat in enumerate(data):
         if not isinstance(cat, dict) or not isinstance(cat.get("templates"), list):
             raise UpstreamFormatError(
-                f"index.json の形が変わりました: {i} 番目の分類に templates がありません"
+                tr(
+                    f"index.json の形が変わりました: {i} 番目の分類に templates がありません",
+                    f"index.json changed shape: category {i} has no templates",
+                )
             )
         for j, t in enumerate(cat["templates"]):
             if not isinstance(t, dict) or not isinstance(t.get("name"), str) or not t["name"]:
                 raise UpstreamFormatError(
-                    f"index.json の形が変わりました: 「{cat.get('title')}」の {j} 番目に name がありません"
+                    tr(
+                        f"index.json の形が変わりました: 「{cat.get('title')}」の "
+                        f"{j} 番目に name がありません",
+                        f'index.json changed shape: item {j} of "{cat.get("title")}" has no name',
+                    )
                 )
     return data
 
@@ -264,7 +277,9 @@ def template_tasks(t: dict[str, Any], modality: str, category: str | None = None
 def workflow_models(wf: Any) -> list[dict[str, Any]]:
     """ワークフローの全ノード(サブグラフの中も)の properties.models を、URL で重複を除いて返す。"""
     if not isinstance(wf, dict) or not isinstance(wf.get("nodes"), list):
-        raise UpstreamFormatError("テンプレートの JSON に nodes がありません")
+        raise UpstreamFormatError(
+            tr("テンプレートの JSON に nodes がありません", "the template JSON has no nodes")
+        )
     nodes = list(wf["nodes"])
     defs = wf.get("definitions")
     if isinstance(defs, dict):
@@ -788,19 +803,19 @@ def discover_hf(
         queries.append((search_url(**params), mod))
     queries = [(f"{u}&" + "&".join(f"expand[]={x}" for x in SEARCH_EXPAND), h) for u, h in queries]
 
-    def _run(q: tuple[str, str | None]) -> tuple[str, str | None, list[dict[str, Any]] | str]:
+    def _run(q: tuple[str, str | None]) -> tuple[str, str | None, list[dict[str, Any]] | FetchError]:
         try:
             return q[0], q[1], client.search(q[0])
         except FetchError as e:
-            return q[0], q[1], str(e)
+            return q[0], q[1], e
 
     cands: dict[str, Candidate] = {}
     warnings: list[str] = []
     network_fail = 0
     for url, hint, res in client.map(_run, queries):
-        if isinstance(res, str):
-            warnings.append(f"HF の検索に失敗: {res}")
-            network_fail += "つながりません" in res
+        if isinstance(res, FetchError):
+            warnings.append(f"HF の検索に失敗: {res}")  # 一覧(sources)に残す文は日本語のまま
+            network_fail += isinstance(res, NetworkError)
             continue
         for item in res:
             c = _candidate(item, url, hint)
@@ -821,7 +836,10 @@ def discover_hf(
             else:
                 cands[c.repo_id] = c
     if network_fail and network_fail == len(queries):
-        raise NetworkError(queries[0][0], "Hugging Face の検索につながりません")
+        raise NetworkError(
+            queries[0][0],
+            tr("Hugging Face の検索につながりません", "cannot connect to the Hugging Face search"),
+        )
 
     skipped: Counter[str] = Counter()
     excluded = 0
@@ -867,7 +885,12 @@ def discover_hf(
         return CAP_UNCENSORED if key[1] else CAP_SFW.get(key[0], 0)
 
     shortlist = [c for key, cs in picked.items() for c in cs[: cap(key) * 2]]
-    progress(f"Hugging Face: 候補 {len(shortlist)} 件を確かめています")
+    progress(
+        tr(
+            f"Hugging Face: 候補 {len(shortlist)} 件を確かめています",
+            f"Hugging Face: checking {len(shortlist)} candidates",
+        )
+    )
     client.prefetch((c.repo_id, "main") for c in shortlist)
     client.prefetch_chains(
         b for c in shortlist for b in ((client.repo(c.repo_id) or RepoInfo(repo_id="")).base_models)
@@ -1087,7 +1110,12 @@ def build_database(
     warnings: list[str] = []
     inspect = head if inspect is None else inspect
 
-    say("ComfyUI 公式テンプレートの一覧を取得しています")
+    say(
+        tr(
+            "ComfyUI 公式テンプレートの一覧を取得しています",
+            "fetching the list of official ComfyUI templates",
+        )
+    )
     index = validate_index(fetch.get_json(INDEX_URL))
     total = sum(len(c["templates"]) for c in index)
     reasons: Counter[str] = Counter()
@@ -1105,23 +1133,30 @@ def build_database(
             seen.add(t["name"])
             chosen.append((title, t, template_modality(title, t) or "image"))
 
-    say(f"テンプレート {len(chosen)} 件の JSON を取得しています")
+    say(
+        tr(
+            f"テンプレート {len(chosen)} 件の JSON を取得しています",
+            f"fetching the JSON of {len(chosen)} templates",
+        )
+    )
     client = HfClient(fetch, workers=workers)
 
-    def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, str | None]:
+    def _load(item: tuple[str, dict[str, Any], str]) -> tuple[Any, tuple[str, bool] | None]:
         try:
             wf = fetch.get_json(f"{RAW}/{item[1]['name']}.json")
             return (workflow_models(wf), _stages_of(wf), wf), None
         except (FetchError, UpstreamFormatError) as e:
-            return None, f"{item[1]['name']}: {e}"
+            return None, (f"{item[1]['name']}: {e}", isinstance(e, NetworkError))
 
     entries: list[ModelEntry] = []
     tmpl_by_id: dict[str, dict[str, Any]] = {}
     failed: list[str] = []
+    failed_net: list[bool] = []
     failed_names: list[str] = []
     for item, (loaded, err) in zip(chosen, client.map(_load, chosen), strict=False):
         if err:
-            failed.append(err)
+            failed.append(err[0])
+            failed_net.append(err[1])
             failed_names.append(item[1]["name"])
             continue
         models, stages, wf = loaded
@@ -1131,11 +1166,19 @@ def build_database(
         entries.append(e)
         tmpl_by_id[e.id] = item[1]
     if chosen and len(failed) / len(chosen) > MAX_FAIL_RATIO:
-        if all("つながりません" in f for f in failed):
-            raise NetworkError(RAW, "テンプレートの JSON を取得できません")
+        if all(failed_net):
+            raise NetworkError(
+                RAW, tr("テンプレートの JSON を取得できません", "cannot fetch the template JSON")
+            )
         raise UpstreamFormatError(
-            f"テンプレートの JSON の {len(failed)}/{len(chosen)} 件が読めません(上流の形が変わった可能性)。"
-            f"例: {failed[0]}"
+            tr(
+                f"テンプレートの JSON の {len(failed)}/{len(chosen)} 件が読めません"
+                "(上流の形が変わった可能性)。"
+                f"例: {failed[0]}",
+                f"cannot read {len(failed)}/{len(chosen)} template JSON files"
+                " (the upstream format may have changed)."
+                f" Example: {failed[0]}",
+            )
         )
     warnings += [f"テンプレートを読めません: {f}" for f in failed]
 
@@ -1163,18 +1206,31 @@ def build_database(
     }
 
     if hf:
-        say(f"Hugging Face: {len(_hf_keys(entries))} リポジトリの情報を取得しています")
+        say(
+            tr(
+                f"Hugging Face: {len(_hf_keys(entries))} リポジトリの情報を取得しています",
+                f"Hugging Face: fetching information on {len(_hf_keys(entries))} repositories",
+            )
+        )
         enrich_files(entries, client, fetch, head=head)
         net = [f for f in client.failures if f.network]
         repos = len(_hf_keys(entries))
         if repos and len(net) / repos > MAX_FAIL_RATIO:
-            raise NetworkError("https://huggingface.co/api/models", "Hugging Face につながりません")
+            raise NetworkError(
+                "https://huggingface.co/api/models",
+                tr("Hugging Face につながりません", "cannot connect to Hugging Face"),
+            )
     for e in entries:
         mark_template_content(e, tmpl_by_id[e.id], client)
 
     hf_stats: dict[str, Any] = {}
     if hf and hf_search:
-        say("Hugging Face: 無検閲のモデルと、読み上げ・効果音のモデルを探しています")
+        say(
+            tr(
+                "Hugging Face: 無検閲のモデルと、読み上げ・効果音のモデルを探しています",
+                "Hugging Face: looking for uncensored models and text-to-speech / sound-effect models",
+            )
+        )
         found = discover_hf(client, progress=say, stats=hf_stats)
         ids = {e.id for e in entries}
         entries += [e for e in found if e.id not in ids]
@@ -1216,9 +1272,19 @@ def build_database(
     if hf:
         warnings += appinfo.verify_manual_licenses(entries, client)
     if inspect:
-        say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
+        say(
+            tr(
+                "本体のファイルの見出しを読んでいます(精度。重み本体は落としません)",
+                "reading the headers of the weight files (precision; the weights are not downloaded)",
+            )
+        )
         stats["file_headers"] = inspect_headers(entries, fetch, progress=say)
-        say("精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます")
+        say(
+            tr(
+                "精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます",
+                "reading repository information (Hub API, config.json) for weights of unknown precision",
+            )
+        )
         stats["repo_precision"] = inspect_repo_precision(entries, fetch)
     from .families import assign
 
@@ -1274,9 +1340,14 @@ def build_database(
         stats["huggingface-search"] = hf_stats
     stats["civitai"] = "使っていません(利用規約。docs/sources.md)"
     if hf and head:
-        say("ファイルの URL に匿名の HEAD を送っています(自動のおすすめの判定に使う)")
+        say(
+            tr(
+                "ファイルの URL に匿名の HEAD を送っています(自動のおすすめの判定に使う)",
+                "sending anonymous HEAD requests to the file URLs (used for auto-recommendation)",
+            )
+        )
         stats["head_check"] = check_heads(entries, fetch, workers=workers)
-    say("ComfyUI の最新の版を確かめています")
+    say(tr("ComfyUI の最新の版を確かめています", "checking the latest ComfyUI version"))
     stats["comfyui"], warn = latest_comfyui(fetch)
     if warn:
         warnings.append(warn)
@@ -1294,7 +1365,12 @@ def build_database(
     stats["warnings"] = warnings
     stats["generator"] = f"genmodelfit {__version__}"
     if not entries:
-        raise UpstreamFormatError("一覧が空になりました(上流の形が変わった可能性)")
+        raise UpstreamFormatError(
+            tr(
+                "一覧が空になりました(上流の形が変わった可能性)",
+                "the list came out empty (the upstream format may have changed)",
+            )
+        )
     return Database(
         models=entries,
         generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -1336,17 +1412,32 @@ def update_database(
         db = build_database(fetch, hf=hf, head=head, progress=progress, previous=previous)
     except NetworkError as e:
         raise UpdateFailed(
-            f"ネットワークにつながらないため更新できませんでした(前の一覧はそのまま使えます): {e}"
+            tr(
+                f"ネットワークにつながらないため更新できませんでした(前の一覧はそのまま使えます): {e}",
+                f"could not update: no network connection (the previous list still works): {e}",
+            )
         ) from e
     except (UpdateError, FetchError) as e:
-        raise UpdateFailed(f"更新できませんでした(前の一覧はそのまま使えます): {e}") from e
+        raise UpdateFailed(
+            tr(
+                f"更新できませんでした(前の一覧はそのまま使えます): {e}",
+                f"could not update (the previous list still works): {e}",
+            )
+        ) from e
     if db.sources.get("partial") and not allow_partial:
         pc = db.sources["partial_counts"]
         detail = ", ".join(f"{k}={v}" for k, v in pc.items() if v)
-        hint = "時間をおいてやり直すか、" if pc["rate_limit_budget_exhausted"] else ""
+        exhausted = bool(pc["rate_limit_budget_exhausted"])
+        hint = "時間をおいてやり直すか、" if exhausted else ""
+        hint_en = "try again later, or " if exhausted else ""
         raise UpdateFailed(
-            f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
-            f"{hint}欠けたままでよければ --allow-partial を付けてください"
+            tr(
+                f"一部を取得できなかったため書き出しませんでした({detail})。前の一覧はそのまま使えます。"
+                f"{hint}欠けたままでよければ --allow-partial を付けてください",
+                f"not written because some parts could not be fetched ({detail});"
+                " the previous list still works."
+                f" {hint_en.capitalize()}add --allow-partial if the missing parts are acceptable",
+            )
         )
     db.save(out_path)
     return db
@@ -1413,7 +1504,12 @@ def refresh_templates(
     本体の読み込みノードから推す精度(workflow_precision)だけを決め直す。"""
     say = progress or _silent
     tmpl = [e for e in entries if e.source == "comfyui-template"]
-    say(f"テンプレート {len(tmpl)} 件の JSON からサンプラーごとの本体の組を読んでいます")
+    say(
+        tr(
+            f"テンプレート {len(tmpl)} 件の JSON からサンプラーごとの本体の組を読んでいます",
+            f"reading the weight sets per sampler from the JSON of {len(tmpl)} templates",
+        )
+    )
     failed = 0
     for e in tmpl:
         try:
@@ -1453,20 +1549,35 @@ def inspect_database(
     try:
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
-        raise UpdateFailed(f"一覧を読めません: {e}") from e
+        raise UpdateFailed(tr(f"一覧を読めません: {e}", f"cannot read the list: {e}")) from e
     before = copy.deepcopy(db.models)  # 確認の印を付けるために比べる元(精度が変わると必要量も変わる)
     if not offline and fetch is not None:
         db.sources["sampler_stages"] = refresh_templates(db.models, fetch, say)
-    say("本体のファイルの見出しを読んでいます(精度。重み本体は落としません)")
+    say(
+        tr(
+            "本体のファイルの見出しを読んでいます(精度。重み本体は落としません)",
+            "reading the headers of the weight files (precision; the weights are not downloaded)",
+        )
+    )
     db.sources["file_headers"] = inspect_headers(db.models, fetch, offline=offline, progress=say)
-    say("精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます")
+    say(
+        tr(
+            "精度の分からない本体のリポジトリの情報(Hub API・config.json)を読んでいます",
+            "reading repository information (Hub API, config.json) for weights of unknown precision",
+        )
+    )
     db.sources["repo_precision"] = inspect_repo_precision(db.models, fetch, offline=offline)
     hf = db.sources.get("huggingface")
     if not offline and fetch is not None and isinstance(hf, dict):
         # 前に API が 401 だったリポジトリ(非公開)が公開されたかを確かめ直す(毎週の更新の差分に出る。#30)
         from .repo_precision import recheck_unauthorized
 
-        say("前に読めなかった(401)リポジトリを確かめ直しています")
+        say(
+            tr(
+                "前に読めなかった(401)リポジトリを確かめ直しています",
+                "rechecking repositories that could not be read before (401)",
+            )
+        )
         hf["unauthorized_recheck"] = recheck_unauthorized(unauthorized_repos(hf), fetch.get_json)
         hf["unauthorized"] = list(hf["unauthorized_recheck"]["unauthorized"])
         hf["unauthorized_missing"] = list(hf["unauthorized_recheck"]["missing"])
@@ -1515,13 +1626,23 @@ def refresh_heads(
     try:
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
-        raise UpdateFailed(f"一覧を読めません: {e}") from e
+        raise UpdateFailed(tr(f"一覧を読めません: {e}", f"cannot read the list: {e}")) from e
     before = copy.deepcopy(db.models)
     db.models = appinfo.merge_manual(db.models)
-    say(f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています")
+    say(
+        tr(
+            f"{len(db.models)} 件のファイルの URL に匿名の HEAD を送っています",
+            f"sending anonymous HEAD requests to the file URLs of {len(db.models)} entries",
+        )
+    )
     stats = check_heads(db.models, fetch)
     if stats["urls"] and stats["unchecked"] == stats["urls"]:
-        raise UpdateFailed("HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)")
+        raise UpdateFailed(
+            tr(
+                "HEAD がすべて失敗しました(ネットワークを確かめてください。一覧はそのままです)",
+                "every HEAD request failed (check the network; the list is unchanged)",
+            )
+        )
     db.sources["head_check"] = stats
     prev_comfy = db.sources.get("comfyui") if isinstance(db.sources.get("comfyui"), dict) else None
     db.sources["comfyui"], warn = latest_comfyui(fetch)
@@ -1570,15 +1691,26 @@ def refresh_app_fields(
     try:
         db = load_db(db_path, use_cache=use_cache)
     except (DatabaseError, OSError, ValueError) as e:
-        raise UpdateFailed(f"一覧を読めません: {e}") from e
+        raise UpdateFailed(tr(f"一覧を読めません: {e}", f"cannot read the list: {e}")) from e
     before = copy.deepcopy(db.models)
     manual = appinfo.manual_entries()
     if not offline and fetch is not None:
-        say(f"手のモデル {len(manual)} 件のライセンスを上流のカードと照らしています")
+        say(
+            tr(
+                f"手のモデル {len(manual)} 件のライセンスを上流のカードと照らしています",
+                f"checking the licenses of {len(manual)} hand-added models against the upstream cards",
+            )
+        )
         db.sources["warnings"] = [
             w for w in db.sources.get("warnings", []) if not w.startswith("手のモデル ")
         ] + appinfo.verify_manual_licenses(manual, HfClient(fetch))
-        say("手のモデルのファイルの URL に匿名の HEAD を送り、見出しを読んでいます")
+        say(
+            tr(
+                "手のモデルのファイルの URL に匿名の HEAD を送り、見出しを読んでいます",
+                "sending anonymous HEAD requests to the hand-added models' file URLs"
+                " and reading their headers",
+            )
+        )
         check_heads(manual, fetch)
         inspect_headers(manual, fetch, progress=say)
         inspect_repo_precision(manual, fetch)
@@ -1596,13 +1728,23 @@ def refresh_app_fields(
     ]
     fresh = [m for m in fresh if m.files]
     if fresh and not offline and fetch is not None:
-        say("手で足した部品のファイルの URL に匿名の HEAD を送っています")
+        say(
+            tr(
+                "手で足した部品のファイルの URL に匿名の HEAD を送っています",
+                "sending anonymous HEAD requests to the file URLs of the hand-added parts",
+            )
+        )
         check_heads(fresh, fetch)
     client = None
     if not offline and fetch is not None:
         client = HfClient(fetch)
         repos = sorted({r for m in db.models if m.source != "manual" for r in appinfo.card_repos(m)})
-        say(f"{len(repos)} 件のリポジトリのカードを読み、言語を確かめています")
+        say(
+            tr(
+                f"{len(repos)} 件のリポジトリのカードを読み、言語を確かめています",
+                f"reading the cards of {len(repos)} repositories to check the languages",
+            )
+        )
         client.prefetch((r, "main") for r in repos)
     db.sources["app_fields"] = appinfo.apply_app_fields(db.models, client)
     _finish_reviews(db, before)
