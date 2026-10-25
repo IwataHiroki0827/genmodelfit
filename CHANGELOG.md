@@ -60,6 +60,13 @@ All notable changes to this project are documented here. The format is based on
   - JSON (optional keys): `plan.blocked_codes`, `alternatives[].ok`, and per file `directory_basis` (an
     object) and `check_url` (https pages only).
 
+### Fixed
+
+- Read-only commands (`system` / `recommend` / `fit` / `info` / `search` / `types`) and `import genmodelfit` no longer
+  import `requests`. It is now imported only by the functions that use the network, so a mismatched urllib3 / chardet
+  in the user's environment no longer prints `RequestsDependencyWarning` on every run, and start-up is about 60 ms faster
+  (#74).
+
 ## [0.9.2] - 2026-10-24
 
 ### Fixed

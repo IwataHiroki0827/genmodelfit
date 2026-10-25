@@ -19,13 +19,14 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
-
-import requests
 
 from ._version import __version__
 from .i18n import ja_of, tr
+
+if TYPE_CHECKING:
+    import requests
 
 USER_AGENT = f"genmodelfit/{__version__} (+https://github.com/laxshmate/genmodelfit)"
 TIMEOUT = (10, 60)  # (接続, 読み込み) 秒
@@ -35,36 +36,62 @@ MAX_RETRY_AFTER = 300.0
 RATE_LIMIT_BUDGET = 900.0  # 429 で待つ時間の合計の上限(秒)。超えたら RateLimitExhausted で止める
 
 
-class _NoAuth(requests.auth.AuthBase):
-    """何も足さない認証。Session.auth に置くと、requests が ~/.netrc を読まなくなる。"""
+def _build_session_classes() -> tuple[type, type]:
+    """requests に依存する 2 つのクラスを作る。requests は読むだけのコマンドでは読み込まない(Issue #74)ので、
+    最初に使うときまで定義を遅らせる。"""
+    import requests
 
-    def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
-        return r
+    class _NoAuth(requests.auth.AuthBase):
+        """何も足さない認証。Session.auth に置くと、requests が ~/.netrc を読まなくなる。"""
+
+        def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
+            return r
+
+    class NoNetrcSession(requests.Session):
+        """~/.netrc の資格情報を送らない Session(Issue #18。利用者の資格情報を勝手に付けない)。
+
+        requests は trust_env=True のとき、認証の無い要求と転送先(リダイレクト)に
+        ~/.netrc の資格情報を付ける。
+        プロキシと証明書の環境変数(HTTPS_PROXY・REQUESTS_CA_BUNDLE など)は使いたいので trust_env は残し、
+        netrc だけを止める: 既定の認証を _NoAuth にし、転送のときに netrc を読み直す
+        rebuild_auth を差し替える。
+        """
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.auth = _NoAuth()
+            self.headers["User-Agent"] = USER_AGENT
+
+        def rebuild_auth(
+            self, prepared_request: requests.PreparedRequest, response: requests.Response
+        ) -> None:
+            # 別のホストへの転送では Authorization を外す(requests と同じ)。netrc は読まない
+            headers = prepared_request.headers
+            if "Authorization" in headers and self.should_strip_auth(
+                response.request.url, prepared_request.url
+            ):
+                del headers["Authorization"]
+
+    _NoAuth.__module__ = NoNetrcSession.__module__ = __name__
+    return _NoAuth, NoNetrcSession
 
 
-class NoNetrcSession(requests.Session):
-    """~/.netrc の資格情報を送らない Session(Issue #18。利用者の資格情報を勝手に付けない)。
+_classes: tuple[type, type] | None = None
 
-    requests は trust_env=True のとき、認証の無い要求と転送先(リダイレクト)に ~/.netrc の資格情報を付ける。
-    プロキシと証明書の環境変数(HTTPS_PROXY・REQUESTS_CA_BUNDLE など)は使いたいので trust_env は残し、
-    netrc だけを止める: 既定の認証を _NoAuth にし、転送のときに netrc を読み直す rebuild_auth を差し替える。
-    """
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.auth = _NoAuth()
-        self.headers["User-Agent"] = USER_AGENT
-
-    def rebuild_auth(self, prepared_request: requests.PreparedRequest, response: requests.Response) -> None:
-        # 別のホストへの転送では Authorization を外す(requests と同じ)。netrc は読まない
-        headers = prepared_request.headers
-        if "Authorization" in headers and self.should_strip_auth(response.request.url, prepared_request.url):
-            del headers["Authorization"]
+def __getattr__(name: str) -> Any:
+    """`_NoAuth` / `NoNetrcSession` は最初に参照したときに作る(import genmodelfit で requests を読まない)。"""
+    global _classes
+    if name in ("_NoAuth", "NoNetrcSession"):
+        if _classes is None:
+            _classes = _build_session_classes()
+        return _classes[0] if name == "_NoAuth" else _classes[1]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def make_session() -> requests.Session:
     """genmodelfit の HTTP はすべてこれを使う(User-Agent を付け、~/.netrc を送らない)。"""
-    return NoNetrcSession()
+    return __getattr__("NoNetrcSession")()
 
 
 class FetchError(RuntimeError):
@@ -150,6 +177,8 @@ class HttpFetcher:
         headers: dict[str, str] | None = None,
         stream: bool = False,
     ) -> requests.Response:
+        import requests
+
         last: Exception | None = None
         host = urlsplit(url).netloc
         attempt = limited = 0
