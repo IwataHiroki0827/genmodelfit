@@ -329,6 +329,9 @@ sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満�
 
 一覧にある https の URL だけを使い、転送先は Hugging Face・GitHub のホストだけ、書きながら sha256 を確かめ、Ctrl-C のあとは続きから、
 置き場所の外には書きません。gated・無検閲・ライセンス不明のファイルは、許可しない限り落としません。
+足りないのが同意の指定だけなら、`--content all`・`--include-unknown-license` を足したコマンドを 1 行と、それぞれの意味を出します
+(勝手に足して落とすことはしません)。ComfyUI のどのフォルダか分からないファイルは `other/` に置きます。ComfyUI は読まないので、
+計画の中でそう知らせます(使う前に移す)。環境変数 `GENMODELFIT_COMFYUI_DIR` に ComfyUI のフォルダを入れておけば `--comfyui-dir` を省けます。
 詳しい決まりと Python の関数は [docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md)。
 
 ### 一覧の保守

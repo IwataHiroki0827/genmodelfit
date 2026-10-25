@@ -38,6 +38,7 @@ def _fixed_gate_clock(monkeypatch):
 
     monkeypatch.setattr(gate, "_now", lambda: SNAPSHOT_NOW)
     monkeypatch.delenv("COLUMNS", raising=False)  # 表の幅を、テストを動かす端末によらず決める
+    monkeypatch.delenv("GENMODELFIT_COMFYUI_DIR", raising=False)  # download の既定の置き場所(#75)
 
 
 def pytest_collection_modifyitems(config, items):

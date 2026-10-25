@@ -13,6 +13,7 @@ The implementation is `src/genmodelfit/downloader.py`; `tests/test_download.py` 
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
+genmodelfit download MODEL --content all --include-unknown-license   # uncensored / unknown license (your choice)
 ```
 
 - **Which files**: all files of one workflow.
@@ -23,13 +24,17 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
 - **Where**:
   - `--comfyui-dir` puts each file in the ComfyUI folder the template names (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, ...). Subfolders in the file name are kept.
   - `--output-dir` (default: genmodelfit's user data folder, `models`) uses the same layout, so it can be added to ComfyUI's `extra_model_paths.yaml`.
+  - The environment variable `GENMODELFIT_COMFYUI_DIR` is the default for `--comfyui-dir` (CLI only; in Python pass `comfyui_dir`). Order: `--comfyui-dir`, then `--output-dir`, then `GENMODELFIT_COMFYUI_DIR`, then the default folder. The value is checked like the flag (it must look like a ComfyUI folder). When none is set, the plan shows how to set it, e.g. PowerShell `$env:GENMODELFIT_COMFYUI_DIR = "C:\ComfyUI"`, bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"`.
+  - Files whose ComfyUI folder is unknown (many Hugging Face models) go to `other/`. ComfyUI does not read `models/other`: the plan says so, and you move them (to `checkpoints`, `diffusion_models`, `loras`, ... as the model page says) before use.
+  - For such a file the folder is inferred only from one piece of evidence in the bundled list: the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all matching files are in one folder (e.g. an SDXL all-in-one file has the same count as `sd_xl_base_1.0.safetensors`, so `checkpoints`). The plan shows the basis (`directory_basis` in JSON). Names and tags are not used to guess.
 - **Consent first**: before anything is downloaded you see:
-  - every file with its license and the license URL;
+  - every file with its license and the license URL. A file with no license URL says "no license stated" and shows the page to check (the Hugging Face page of the model, or the page stored in the list); the consent question then asks you to check those pages yourself;
   - licenses that are not on the allowlist, marked (commercial use without use restrictions; see [gate.md](gate.md); change it with `--license-allowlist`);
   - the total size and the free disk.
   - Then you are asked `[y/N]`. `--yes` skips the question (required with `--json`).
   - Read the terms of each file before you use the model.
 - **Refused**: if any file matches, nothing of that workflow is downloaded. It never downloads only part of it.
+  - Each reason is shown once. When only `--content all` and / or `--include-unknown-license` are missing, the plan ends with "To download anyway:" and one command that adds all of them (keeping your other options), with one line per flag on what you agree to. It never adds them by itself. For the other reasons no command is shown; it says what to do instead (request access, free disk space, ...).
   - Gated files. genmodelfit never handles logins or tokens: request access on the model page and download them yourself.
   - Uncensored models, unless you pass `--content all` (or `uncensored`).
   - Files whose license is unknown, unless you pass `--include-unknown-license`.

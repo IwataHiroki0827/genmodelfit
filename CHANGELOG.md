@@ -33,6 +33,24 @@ All notable changes to this project are documented here. The format is based on
   `set_language()`, then `en`. The weekly PR body stays Japanese.
 - An EXAMPLES section in `genmodelfit --help` and in the `--help` of `recommend`, `fit`, `info`, `search` and
   `download`, in the display language.
+- `download` explains what to do next (#75):
+  - When it stops, each reason is shown once (the final `error:` line that repeated them is gone; the exit code stays
+    1 and `--json` keeps `error`). When only `--content all` / `--include-unknown-license` are missing, it ends with
+    "To download anyway:" and one ready-to-run command with all of them added (your other options kept), plus one
+    line per flag on what you agree to. It never adds them by itself. For gated files, disk space, hosts and the
+    like no command is shown; it says what to do instead. `--list` shows the same guidance.
+  - Files whose ComfyUI folder is unknown go to `other/` as before, and the plan now says clearly (in every layout)
+    that ComfyUI does not read `models/other` and that they must be moved before use. For Hugging Face models, the
+    folder of the main file is inferred when its header parameter count matches a file of an official template in
+    exactly one folder (e.g. SDXL all-in-one files → `checkpoints`); the plan shows the basis. In the bundled list
+    this places the main file of 12 of the 48 Hugging Face models.
+  - A file with no license URL says "no license stated" and shows the page to check (the model's Hugging Face page or
+    the page in the list), and the consent question no longer refers to URLs that are not shown.
+  - The environment variable `GENMODELFIT_COMFYUI_DIR` sets the default for `--comfyui-dir` (`--comfyui-dir` and
+    `--output-dir` win over it; checked like the flag). Without either, the plan shows how to set it.
+  - `download --help`: examples for `--list` first, then downloading into ComfyUI, and
+    `--content all --include-unknown-license`.
+  - JSON (optional keys): `plan.blocked_codes`, and per file `directory_basis` and `check_url`.
 
 ## [0.9.2] - 2026-10-24
 

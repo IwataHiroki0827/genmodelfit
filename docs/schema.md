@@ -1194,6 +1194,7 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` in bytes |
 | `blocked` | str[] | why it will not download (in the display language, `en` / `ja`). Empty = can download |
+| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by `--content all` / `--include-unknown-license`, i.e. by the user's consent), `gated`, `no_files`, `unavailable`, `conflict`, `budget`, `disk` (no flag lifts these) |
 | `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
 | `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto` |
 | `license_url` | str \| null | the model's license page |
@@ -1204,11 +1205,14 @@ PlannedFile:
 | key | type | meaning |
 |---|---|---|
 | `name` | str | file name in the list (may contain ComfyUI subfolders, `/`) |
-| `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the list has no directory); "" when refused |
+| `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the ComfyUI folder is unknown; ComfyUI does not read `other`, move such files before use); "" when refused |
 | `dest` | str | absolute destination path; "" when refused |
-| `url`, `sha256`, `size_bytes`, `directory`, `role` | | from ModelFile |
+| `url`, `sha256`, `size_bytes`, `role` | | from ModelFile |
+| `directory` | str \| null | the ComfyUI folder: from ModelFile, or inferred when the list has none (see `directory_basis`); null = unknown (`other/`) |
+| `directory_basis` | str \| null | why `directory` was inferred (optional, since #75; in the display language): the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all such files are in one folder (e.g. an SDXL all-in-one file = `sd_xl_base_1.0.safetensors` → `checkpoints`). null = from the list, or unknown |
 | `license`, `license_name` | str \| null | the license used for the check (gate's conservative reading; null = unknown) |
 | `license_url` | str \| null | where the license text is |
+| `check_url` | str \| null | when `license_url` is null: the page to check the terms on (optional, since #75): `https://huggingface.co/<owner>/<repo>` for `hf:` ids, else the entry's `homepage`, else the file's Hugging Face repository. null when `license_url` is set |
 | `license_note` | str \| null | why the license differs from the list's value, or why it could not be confirmed |
 | `license_allowed` | bool | on the license allowlist (gate default or `--license-allowlist`) |
 | `gated` | bool \| null | access request needed (also when the upstream of a component asks for it) |

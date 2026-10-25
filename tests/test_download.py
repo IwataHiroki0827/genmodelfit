@@ -11,6 +11,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import threading
 from pathlib import Path
 from typing import ClassVar
@@ -20,7 +21,7 @@ import pytest
 import requests
 
 import genmodelfit as gmf
-from genmodelfit import cli, downloader
+from genmodelfit import cli, downloader, i18n
 from genmodelfit.db import Database
 from genmodelfit.downloader import (
     ChecksumMismatch,
@@ -1101,3 +1102,297 @@ def test_stale_lock_retire_keeps_fresh_lock(tmp_path, monkeypatch):
     assert [x.name for x in tmp_path.iterdir()] == ["x.safetensors.lock"]  # 墓標は残らない
     lock.write_text("999999999 0\n", encoding="ascii")  # 本当の残骸
     assert downloader._retire_stale_lock(lock) is True and list(tmp_path.iterdir()) == []
+
+
+# --- 止めたときの案内・置き場所・確かめる場所・環境変数(#75) ----------------------------------------
+
+HF = "https://huggingface.co"
+PAGE = "https://example.invalid/tiny"
+
+
+def _cli_db(tmp_path: Path, *, content: str = "sfw", unknown: bool = False, gated: bool = False) -> Path:
+    """通信しない試験用の一覧(--list か、止まって落とさない実行だけに使う)。"""
+    db = make_db(HF, content=content)
+    db.models[0].homepage = PAGE
+    if unknown:
+        db.models[0].files[1].license = None
+        db.models[0].files[1].license_url = None
+    if gated:
+        db.models[0].files[0].gated = True
+    path = tmp_path / "guide_db.json"
+    db.save(path)
+    return path
+
+
+def _run(args: list[str], capsys) -> tuple[int, str, str]:
+    code = cli.main(args)
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+def _expected(db: Path, comfy: Path, *flags: str) -> str:
+    q = cli.shell_quote
+    parts = ["genmodelfit", "download", "test_tiny", "--comfyui-dir", q(str(comfy)), *flags]
+    return " ".join([*parts, "--db", q(str(db)), *HW])
+
+
+@pytest.mark.parametrize(
+    ("content", "unknown", "flags"),
+    [
+        ("uncensored", False, ["--content", "all"]),
+        ("sfw", True, ["--include-unknown-license"]),
+        ("uncensored", True, ["--content", "all", "--include-unknown-license"]),
+    ],
+    ids=["uncensored", "unknown-license", "both"],
+)
+def test_blocked_prints_one_command_with_all_flags(tmp_path, comfy, capsys, content, unknown, flags):
+    db = _cli_db(tmp_path, content=content, unknown=unknown)
+    base = ["download", "test_tiny", "--comfyui-dir", str(comfy), "--db", str(db), *HW]
+    for args in ([*base, "--list"], base):  # --list でも、止まった実行でも同じ案内(どちらも落とさない)
+        code, out, err = _run(args, capsys)
+        assert code == (0 if "--list" in args else 1)
+        lines = out.splitlines()
+        assert "落とすなら:" in lines
+        cmds = [x.strip() for x in lines if x.strip().startswith("genmodelfit download")]
+        assert cmds == [_expected(db, comfy, *flags)]  # 1 行に全部(--list・--yes は付けない)
+        assert ("--content all:" in out) == ("--content" in flags)
+        assert ("--include-unknown-license:" in out) == ("--include-unknown-license" in flags)
+        reasons = [x for x in lines if "落とせません:" in x]
+        assert len(reasons) == len(set(reasons)) == (2 if len(flags) == 3 else 1)  # 理由は 1 回ずつ
+        assert "error:" not in err and "落とせません" not in err  # 最後に同じ文を繰り返さない
+        assert not any(comfy.rglob("*.safetensors*"))
+
+
+def test_blocked_command_keeps_other_args_and_quotes(tmp_path, capsys):
+    comfy = tmp_path / "Comfy UI dir"
+    (comfy / "models").mkdir(parents=True)
+    db = _cli_db(tmp_path, unknown=True)
+    args = ["download", "Tiny Test", "--comfyui-dir", str(comfy), "--db", str(db), "--budget", "2.5"]
+    args += ["--precision", "fp16", "--list", "--lang", "en"]
+    code, out, _ = _run(args, capsys)
+    assert code == 0
+    cmd = next(x.strip() for x in out.splitlines() if x.strip().startswith("genmodelfit download"))
+    assert cmd.startswith('genmodelfit download "Tiny Test" --precision fp16 --budget 2.5 --comfyui-dir "')
+    assert f'--comfyui-dir "{comfy}" --include-unknown-license' in cmd and cmd.endswith("--lang en")
+    assert "--list" not in cmd and "--yes" not in cmd and "--json" not in cmd and "--content" not in cmd
+    # 利用者が付けた --content uncensored はそのまま(all に置き換えない)
+    db2 = _cli_db(tmp_path, content="uncensored", unknown=True)
+    args = ["download", "test_tiny", "--db", str(db2), "--content", "uncensored", "--output-dir", str(comfy)]
+    code, out, _ = _run([*args, "--list"], capsys)
+    cmd = next(x.strip() for x in out.splitlines() if x.strip().startswith("genmodelfit download"))
+    assert "--content uncensored --include-unknown-license" in cmd and "--content all" not in cmd
+    assert f'--output-dir "{comfy}"' in cmd
+
+
+def test_shell_quote():
+    q = cli.shell_quote
+    assert q("test_tiny") == "test_tiny" and q("fp16") == "fp16" and q("/opt/ComfyUI") == "/opt/ComfyUI"
+    assert q("Tiny Test") == '"Tiny Test"'
+    assert q("C:\\ComfyUI") == '"C:\\ComfyUI"'  # POSIX の sh は引用符の外の \ を消すので囲む
+    assert q("mit,apache-2.0") == '"mit,apache-2.0"'  # PowerShell は , で配列にする
+    assert q("") == '""' and q('a"b') == '"a\\"b"'
+
+
+@pytest.mark.parametrize("kind", ["gated", "disk"])
+def test_hard_block_prints_no_command(tmp_path, comfy, capsys, monkeypatch, kind):
+    db = _cli_db(tmp_path, content="uncensored", gated=kind == "gated")
+    if kind == "disk":
+        monkeypatch.setattr(downloader, "_free_bytes", lambda p: 1024**3)
+    args = ["download", "test_tiny", "--comfyui-dir", str(comfy), "--db", str(db), *HW]
+    code, out, err = _run(args, capsys)
+    assert code == 1 and "error:" not in err
+    assert "落とすなら:" not in out
+    assert not any(x.strip().startswith("genmodelfit download") for x in out.splitlines())
+    assert "どの指定でも落とせません" in out
+    assert ("利用申請し" in out) == (kind == "gated")
+    assert ("ディスクを" in out) == (kind == "disk")
+    assert "次の同意の指定も要ります: --content all" in out  # 無検閲も重なるので、そのあとに要る指定も書く
+
+
+def test_blocked_codes_follow_blocked(comfy, monkeypatch):
+    db = make_db(HF, content="uncensored")
+    db.models[0].files[1].license = None
+    db.models[0].files[0].gated = True
+    monkeypatch.setattr(downloader, "_free_bytes", lambda p: 1024**3)
+    p = plan(db, comfy)
+    assert p.blocked_codes == ["uncensored", "gated", "unknown_license", "disk"]
+    assert len(p.blocked) == len(p.blocked_codes)
+    assert set(p.blocked_codes) <= set(downloader.BLOCK_CODES)
+    assert p.to_dict()["blocked_codes"] == p.blocked_codes
+    monkeypatch.undo()
+    assert plan(make_db(HF), comfy).blocked_codes == []
+
+
+def test_blocked_guide_in_english(tmp_path, comfy, capsys):
+    db = _cli_db(tmp_path, content="uncensored", unknown=True)
+    args = ["download", "test_tiny", "--comfyui-dir", str(comfy), "--db", str(db), *HW, "--lang", "en"]
+    code, out, err = _run(args, capsys)
+    assert code == 1 and err == ""
+    assert "To download anyway:" in out and "cannot download:" in out
+    assert _expected(db, comfy, "--content", "all", "--include-unknown-license") + " --lang en" in out
+    assert "--content all: you choose to download an uncensored model" in out
+    assert "no license stated" in out and f"check:   {PAGE}" in out
+    assert not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", out)
+
+
+def test_other_folder_explained_in_every_layout(server, comfy, tmp_path):
+    files = [_file(server, "tiny_vae.safetensors", BODY_B, None)]
+    for kw in ({"comfyui_dir": comfy}, {"output_dir": tmp_path / "out"}):
+        p = gmf.plan_download("test_tiny", db=make_db(server, files=files), system_info=pc(), **kw)
+        assert p.files[0].relpath == "other/tiny_vae.safetensors" and p.files[0].directory_basis is None
+        w = next(w for w in p.warnings if "models/other" in w)
+        assert "読まない" in w and "移して" in w and "checkpoints" in w and "tiny_vae.safetensors" in w
+
+
+def _with_refs(files: list[ModelFile], ref_files: list[ModelFile], username: str = "ComfyUI") -> Database:
+    hf = ModelEntry(id="hf:o/r", name="Hf Model", modality="image", source="huggingface", files=files)
+    ref = ModelEntry(id="ref_tpl", name="Ref", modality="image", files=ref_files)
+    ref.template = Template(name="ref_tpl", username=username)
+    return Database(models=[hf, ref])
+
+
+def _ref(directory: str, params: int, name: str = "sd_xl_base_1.0.safetensors") -> ModelFile:
+    return ModelFile(name=name, directory=directory, header_params=params)
+
+
+def test_directory_inferred_from_official_template_params(server, comfy, capsys, tmp_path):
+    _Handler.files["mix_v1.safetensors"] = BODY_A
+    f = _file(server, "mix_v1.safetensors", BODY_A, None, header_params=3_468_852_345)  # SDXL の inpainting
+    db = _with_refs([f], [_ref("checkpoints", 3_468_837_945)])
+    p = gmf.plan_download("hf:o/r", db=db, system_info=pc(), comfyui_dir=comfy)
+    pf = p.files[0]
+    assert pf.directory == "checkpoints" and pf.relpath == "checkpoints/mix_v1.safetensors"
+    assert "sd_xl_base_1.0.safetensors" in pf.directory_basis and "3,468,852,345" in pf.directory_basis
+    assert p.to_dict()["files"][0]["directory_basis"] == pf.directory_basis
+    assert not any("models/other" in w for w in p.warnings)
+    path = tmp_path / "ref_db.json"
+    db.save(path)
+    args = ["download", "hf:o/r", "--list", "--db", str(path), "--comfyui-dir", str(comfy), *HW]
+    code, out, _ = _run(args, capsys)
+    assert code == 0 and "置き場所: checkpoints(一覧に無いので推定: " in out
+    gmf.download(p, yes=True)  # 決めた置き場所に落ちる
+    assert (comfy / "models" / "checkpoints" / "mix_v1.safetensors").read_bytes() == BODY_A
+
+
+@pytest.mark.parametrize(
+    ("params", "refs", "username", "role"),
+    [
+        (1_066_261_786, [("checkpoints", 3_468_837_945)], "ComfyUI", "main"),  # 一致しない(SD1.5 の数)
+        (
+            3_468_837_945,
+            [("checkpoints", 3_468_837_945), ("diffusion_models", 3_468_837_950)],
+            "ComfyUI",
+            "main",
+        ),
+        (
+            3_468_837_945,
+            [("checkpoints", 3_468_837_945)],
+            "someone",
+            "main",
+        ),  # 利用者のテンプレートは手本にしない
+        (3_468_837_945, [("checkpoints", 3_468_837_945)], "ComfyUI", "vae"),  # 本体だけ
+        (None, [("checkpoints", 3_468_837_945)], "ComfyUI", "main"),  # パラメータ数が無い
+    ],
+    ids=["no-match", "two-folders", "community", "not-main", "no-params"],
+)
+def test_directory_stays_other_without_solid_evidence(comfy, params, refs, username, role):
+    f = _file(HF, "mix.safetensors", BODY_A, None, header_params=params, role=role)
+    db = _with_refs([f], [_ref(d, n, f"ref{i}.safetensors") for i, (d, n) in enumerate(refs)], username)
+    p = gmf.plan_download("hf:o/r", db=db, system_info=pc(), comfyui_dir=comfy)
+    assert p.files[0].relpath == "other/mix.safetensors" and p.files[0].directory_basis is None
+    assert any("models/other" in w for w in p.warnings)
+
+
+def test_listed_directory_is_never_replaced(comfy):
+    f = _file(HF, "mix.safetensors", BODY_A, "loras", header_params=3_468_837_945)
+    db = _with_refs([f], [_ref("checkpoints", 3_468_837_945)])
+    pf = gmf.plan_download("hf:o/r", db=db, system_info=pc(), comfyui_dir=comfy).files[0]
+    assert pf.relpath == "loras/mix.safetensors" and pf.directory_basis is None
+
+
+def test_check_url_fallbacks():
+    f = ModelFile(name="x.safetensors", repo_id="up/stream")
+    hf = ModelEntry(id="hf:own/repo", name="A", modality="image", homepage="https://example.invalid/a")
+    assert downloader.check_url(hf, f) == "https://huggingface.co/own/repo"
+    tpl = ModelEntry(id="tpl", name="B", modality="image", homepage="https://example.invalid/tpl")
+    assert downloader.check_url(tpl, f) == "https://example.invalid/tpl"
+    bare = ModelEntry(id="tpl2", name="C", modality="image")
+    assert downloader.check_url(bare, f) == "https://huggingface.co/up/stream"
+    assert downloader.check_url(bare, ModelFile(name="x")) is None
+
+
+def test_check_url_in_plan_and_json(tmp_path, comfy, capsys):
+    db = _cli_db(tmp_path, unknown=True)
+    base = ["download", "test_tiny", "--list", "--db", str(db), "--comfyui-dir", str(comfy), *HW]
+    _, out, _ = _run([*base, "--json"], capsys)
+    files = json.loads(out)["plan"]["files"]
+    assert files[0]["license_url"] and files[0]["check_url"] is None
+    assert files[1]["license_url"] is None and files[1]["check_url"] == PAGE
+    _, out, _ = _run(base, capsys)
+    assert "ライセンスの記載がありません" in out and f"確かめる場所: {PAGE}" in out
+
+
+@pytest.mark.parametrize("unknown", [False, True], ids=["all-urls", "no-license-url"])
+def test_consent_question_matches_shown_urls(tmp_path, comfy, capsys, monkeypatch, unknown):
+    db = _cli_db(tmp_path, unknown=unknown)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    args = [
+        "download",
+        "test_tiny",
+        "--db",
+        str(db),
+        "--comfyui-dir",
+        str(comfy),
+        *HW,
+        "--include-unknown-license",
+    ]
+    code, out, _ = _run(args, capsys)
+    assert code == 1 and "同意して落としますか" in out
+    assert ("(URL)に従って" in out) is not unknown  # 出ていない URL を指す言い方をしない
+    assert ("確かめる場所で条件を自分で確かめたうえで" in out) is unknown
+    code, out, _ = _run([*args, "--lang", "en"], capsys)
+    assert ("terms (URLs)" in out) is not unknown
+    assert ("after checking the pages shown above" in out) is unknown
+
+
+def test_comfyui_dir_env_precedence(tmp_path, comfy, capsys, monkeypatch):
+    db = _cli_db(tmp_path)
+    base = ["download", "test_tiny", "--list", "--json", "--db", str(db), *HW]
+
+    def plan_json(extra: list[str]) -> dict:
+        code, out, _ = _run([*base, *extra], capsys)
+        assert code == 0
+        return json.loads(out)["plan"]
+
+    monkeypatch.setenv(cli.COMFYUI_DIR_ENV, str(comfy))
+    p = plan_json([])  # 環境変数が --comfyui-dir の既定
+    assert p["layout"] == "comfyui" and p["root"] == str(comfy / "models")
+    other = tmp_path / "ComfyUI2"
+    (other / "models").mkdir(parents=True)
+    assert plan_json(["--comfyui-dir", str(other)])["root"] == str(other / "models")  # フラグが勝つ
+    p = plan_json(["--output-dir", str(tmp_path / "out")])  # --output-dir も環境変数に勝つ
+    assert p["layout"] == "output" and p["root"] == str(tmp_path / "out")
+    code, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
+    assert f"ComfyUI models folder, {cli.COMFYUI_DIR_ENV}" in out and "ComfyUI:   指定なし" not in out
+
+    monkeypatch.setenv(cli.COMFYUI_DIR_ENV, str(tmp_path / "not-comfy"))  # フラグと同じく確かめる
+    code, out, err = _run(base, capsys)
+    assert code == 1 and "ComfyUI のフォルダに見えません" in out + err and cli.COMFYUI_DIR_ENV in out + err
+    assert plan_json(["--comfyui-dir", str(comfy)])["root"] == str(comfy / "models")  # フラグがあれば使わない
+    assert plan_json(["--output-dir", str(tmp_path / "out")])["layout"] == "output"
+
+
+def test_comfyui_hint_when_not_set(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(downloader, "default_output_dir", lambda: tmp_path / "gmf-models")
+    db = _cli_db(tmp_path)
+    code, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
+    assert code == 0 and "ComfyUI:   指定なし" in out and "--comfyui-dir" in out
+    assert f'$env:{cli.COMFYUI_DIR_ENV} = "C:\\ComfyUI"' in out
+    assert f'export {cli.COMFYUI_DIR_ENV}="$HOME/ComfyUI"' in out
+    code, out, _ = _run(
+        ["download", "test_tiny", "--list", "--db", str(db), "--output-dir", str(tmp_path)], capsys
+    )
+    assert "ComfyUI:   指定なし" not in out  # 置き場所を自分で決めたときは出さない
+    with i18n.forced("en"):
+        code, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
+    assert "ComfyUI:   not set" in out

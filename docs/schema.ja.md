@@ -1181,6 +1181,7 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` をバイトで |
 | `blocked` | str[] | 落とさない理由(表示の言語 `en` / `ja`)。空なら落とせる |
+| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは `--content all`・`--include-unknown-license`、つまり利用者の同意で外せる)、`gated`・`no_files`・`unavailable`・`conflict`・`budget`・`disk`(どの指定でも外れない) |
 | `warnings` | str[] | 知っておくべきこと(許可リストに無いライセンス、この PC では動かない、配置のヒント) |
 | `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto` |
 | `license_url` | str \| null | モデルのライセンスのページ |
@@ -1191,11 +1192,14 @@ PlannedFile:
 | キー | 型 | 意味 |
 |---|---|---|
 | `name` | str | 一覧にあるファイル名(ComfyUI のサブフォルダ `/` を含むことがある) |
-| `relpath` | str | `root` の下のパス(`<directory>/<name>`。一覧に directory が無ければ `other/<name>`)。断ったときは "" |
+| `relpath` | str | `root` の下のパス(`<directory>/<name>`。ComfyUI のフォルダが分からなければ `other/<name>`。ComfyUI は `other` を読まないので、使う前に移す)。断ったときは "" |
 | `dest` | str | 保存先の絶対パス。断ったときは "" |
-| `url`、`sha256`、`size_bytes`、`directory`、`role` | | ModelFile から |
+| `url`、`sha256`、`size_bytes`、`role` | | ModelFile から |
+| `directory` | str \| null | ComfyUI のフォルダ。ModelFile から。一覧に無ければ決めたもの(`directory_basis` を参照)。null は分からない(`other/`) |
+| `directory_basis` | str \| null | `directory` を決めた根拠(任意。#75 から。表示の言語): 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけ(例 SDXL の全部入り = `sd_xl_base_1.0.safetensors` → `checkpoints`)。null は一覧の値か、分からない |
 | `license`、`license_name` | str \| null | 確認に使ったライセンス(ゲートの保守的な読み。null は不明) |
 | `license_url` | str \| null | ライセンスの本文がある場所 |
+| `check_url` | str \| null | `license_url` が null のとき、条件を確かめるページ(任意。#75 から): `hf:` の ID なら `https://huggingface.co/<owner>/<repo>`、無ければエントリの `homepage`、それも無ければファイルの Hugging Face のリポジトリ。`license_url` があれば null |
 | `license_note` | str \| null | 一覧の値とライセンスが違う理由、または確かめられなかった理由 |
 | `license_allowed` | bool | ライセンスの許可リストにある(ゲートの既定、または `--license-allowlist`) |
 | `gated` | bool \| null | アクセスの申請が要る(部品の上流が求める場合も) |

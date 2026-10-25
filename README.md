@@ -333,7 +333,10 @@ Otherwise the reasons are in `held_reasons`. Details: [docs/gate.md](https://git
 
 Only https URLs in the list, redirects only to Hugging Face / GitHub hosts, sha256-checked while writing, resumable
 after Ctrl-C, never outside the destination. Gated, uncensored and unknown-license files are not downloaded unless
-allowed. Details and Python API: [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md).
+allowed. When only the consent flags are missing, it shows one command with `--content all` / `--include-unknown-license`
+added and what each means; it never adds them by itself. Files whose ComfyUI folder is unknown go to `other/`, which
+ComfyUI does not read (the plan says so; move them before use). Set `GENMODELFIT_COMFYUI_DIR` to your ComfyUI folder to
+skip `--comfyui-dir`. Details and Python API: [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md).
 
 ### Maintenance
 

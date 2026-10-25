@@ -2213,9 +2213,17 @@ def _gb(n: int | None) -> str:
     return f"{n / GIB:.2f} GB" if n is not None else "?"
 
 
-def format_plan(plan, *, consent: bool = False) -> list[str]:
-    """download --list と同意の画面の文(人が読む形。幅は _emit で 100 桁までに折り返す)。"""
-    from .downloader import license_label
+COMFYUI_DIR_ENV = (
+    "GENMODELFIT_COMFYUI_DIR"  # --comfyui-dir の既定(#75。docs/download.ja.md「コマンドライン」)
+)
+
+
+def format_plan(plan, *, consent: bool = False, comfyui_from: str | None = None) -> list[str]:
+    """download --list と同意の画面の文(人が読む形。幅は _emit で 100 桁までに折り返す)。
+
+    comfyui_from: ComfyUI のフォルダをどこで決めたか("flag" / "env" / "default" = どちらも無く既定の場所。
+    None = 知らせない)。"""
+    from .downloader import OTHER_DIR, license_label
 
     out = [f"{plan.model_name}  [{plan.model_id}]"]
     out.append(
@@ -2223,18 +2231,44 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
     )
     out.append(f"  this PC:   {plan.fit_level} ({plan.run_mode_label}); {plan.chosen}")
     where = "ComfyUI models folder" if plan.layout == "comfyui" else "models folder (ComfyUI layout)"
+    if comfyui_from == "env":
+        where += f", {COMFYUI_DIR_ENV}"
     out.append(f"  to:        {plan.root}  ({where}: <folder>/<file>)")
+    if comfyui_from == "default":
+        out += _comfyui_hint()
     out.append(f"  files ({len(plan.files)}; GB = GiB):")
     for f in plan.files:
         state = {"download": "", "resume": f"  resume from {_gb(f.part_bytes)}", "present": "  already there"}
         mark = state.get(f.status, f"  {f.status.upper()}")
         out.append(f"    - {f.relpath or f.name}  {_gb(f.size_bytes)}{mark}")
+        if f.relpath and not f.directory:
+            # 詳しくは warnings(models/other は ComfyUI が読まない・移す)。ここは印だけ
+            out.append(
+                tr(f"        置き場所: 分からない({OTHER_DIR}/)", f"        folder:  unknown ({OTHER_DIR}/)")
+            )
+        elif f.directory_basis:
+            out.append(
+                tr(
+                    f"        置き場所: {f.directory}(一覧に無いので推定: {f.directory_basis})",
+                    f"        folder:  {f.directory} (not in the list; inferred: {f.directory_basis})",
+                )
+            )
         lic = license_label(f)
         if f.license is None:
             lic += " (UNKNOWN)"
         elif not f.license_allowed:
             lic += " (not on the allowlist: read the terms)"
-        out.append(f"        license: {lic}" + (f"  {f.license_url}" if f.license_url else ""))
+        if f.license_url:
+            out.append(f"        license: {lic}  {f.license_url}")
+        else:
+            missing = (
+                tr("ライセンスの記載がありません", "no license stated")
+                if f.license is None
+                else tr("一覧にライセンスの原文の URL がありません", "no license URL in the list")
+            )
+            out.append(f"        license: {lic}; {missing}")
+            if f.check_url:
+                out.append(tr(f"        確かめる場所: {f.check_url}", f"        check:   {f.check_url}"))
         if f.license_note:
             out.append(f"        note: {f.license_note}")
         if f.reason:
@@ -2273,6 +2307,16 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
                 "Nothing to download (only the sha256 of the files there is checked). Continue?",
             )
         )
+    elif consent and not plan.blocked and any(not f.license_url for f in plan.files):
+        out.append("")
+        out.append(
+            tr(
+                "上のファイルを、それぞれのライセンス・利用条件に従って使うこと(ライセンスの原文の URL が無い"
+                "ファイルは、上の確かめる場所で条件を自分で確かめたうえで)に同意して落としますか?",
+                "Do you agree to use the files above under their licenses and terms (for files without a"
+                " license URL, after checking the pages shown above yourself), and download them?",
+            )
+        )
     elif consent and not plan.blocked:
         out.append("")
         out.append(
@@ -2283,6 +2327,159 @@ def format_plan(plan, *, consent: bool = False) -> list[str]:
             )
         )
     return out
+
+
+def _comfyui_hint() -> list[str]:
+    """ComfyUI のフォルダを指定していないときの、指定のしかた(フラグと環境変数。#75)。"""
+    return [
+        tr(
+            "  ComfyUI:   指定なし。--comfyui-dir で ComfyUI のフォルダを渡すか、この端末で環境変数を決める:",
+            "  ComfyUI:   not set. Give the ComfyUI folder with --comfyui-dir, or set it for this terminal:",
+        ),
+        f'               PowerShell: $env:{COMFYUI_DIR_ENV} = "C:\\ComfyUI"',
+        f'               bash / zsh: export {COMFYUI_DIR_ENV}="$HOME/ComfyUI"',
+    ]
+
+
+# 引用符なしで両方のシェル(PowerShell・POSIX sh)にそのまま渡る文字。ほかを含めば " で囲む
+_SHELL_SAFE = re.compile(r"[A-Za-z0-9_./:=+%-]+")
+
+
+def shell_quote(arg: str) -> str:
+    """コマンドの 1 つの引数を、PowerShell と POSIX sh の両方に貼れる形にする(#75)。
+
+    簡単な決まり: 安全な文字だけならそのまま、ほかは " で囲む(中の " は \\" にする)。$ や ` は
+    両方のシェルで " の中でも展開されるが、モデル名・パスにはまず無いので扱わない。"""
+    if arg and _SHELL_SAFE.fullmatch(arg):
+        return arg
+    return '"' + arg.replace('"', '\\"') + '"'
+
+
+def _download_command(args: argparse.Namespace, add: list[str]) -> str:
+    """利用者の指定(解釈した引数から。argv の字面ではない)に add の指定を足した download のコマンド(#75)。
+
+    --list・--json・--yes は付けない(落とすためのコマンドなので)。環境変数で決めた ComfyUI のフォルダは
+    付けない(同じ環境変数で同じ場所になる)。"""
+    parts = ["genmodelfit", "download", args.model]
+    if args.precision:
+        parts += ["--precision", args.precision]
+    if args.budget is not None:
+        parts += ["--budget", f"{args.budget:g}"]
+    if args.comfyui_dir:
+        parts += ["--comfyui-dir", args.comfyui_dir]
+    elif args.output_dir:
+        parts += ["--output-dir", args.output_dir]
+    content = "all" if "--content" in add else args.content
+    if content != DEFAULT_CONTENT:
+        parts += ["--content", content]
+    if args.include_unknown_license or "--include-unknown-license" in add:
+        parts.append("--include-unknown-license")
+    for flag, value in (
+        ("--db", args.db),
+        ("--vram", None if args.vram is None else f"{args.vram:g}"),
+        ("--ram", None if args.ram is None else f"{args.ram:g}"),
+        ("--license-allowlist", args.license_allowlist),
+        ("--comfyui-version", args.comfyui_version),
+    ):
+        if value is not None:
+            parts += [flag, value]
+    if args.max_head_age_days != 30:
+        days = args.max_head_age_days
+        parts += ["--max-head-age-days", "none" if days is None else f"{days:g}"]
+    if args.no_cache:
+        parts.append("--no-cache")
+    if args.allow_uncensored_auto:
+        parts.append("--allow-uncensored-auto")
+    if getattr(args, "lang", None):
+        parts += ["--lang", args.lang]
+    return " ".join(shell_quote(p) for p in parts)
+
+
+def download_next_steps(plan, args: argparse.Namespace) -> tuple[list[str], str | None, list[str]]:
+    """止めたときの次の一手(#75)。(前の文, 1 行のコマンド(無ければ None), 後の文)。
+
+    同意の指定(--content all・--include-unknown-license)だけで外せるなら、それを全部足した
+    コマンドを 1 つ出し、
+    指定ごとに何に同意するかを 1 行ずつ添える。指定では外せない理由(gated・空き・取得先・置き場所の外など)が
+    あれば、コマンドは出さずにすることを書く。勝手に指定を足して落とすことはしない。"""
+    from .downloader import CONSENT_CODES
+
+    codes = list(dict.fromkeys(plan.blocked_codes))
+    add: list[str] = []
+    agree: list[str] = []
+    if "uncensored" in codes:
+        add += ["--content", "all"]
+        agree.append(
+            tr(
+                "  --content all: 無検閲(成人向けを含みうる)のモデルを、自分の判断で落とす",
+                "  --content all: you choose to download an uncensored model (may include adult content)",
+            )
+        )
+    if "unknown_license" in codes:
+        add.append("--include-unknown-license")
+        agree.append(
+            tr(
+                "  --include-unknown-license: ライセンスの記載が無いファイルの条件を、上の確かめる場所で"
+                "自分で確かめ、使う責任を自分で負う",
+                "  --include-unknown-license: you check the terms of the files with no stated license"
+                " yourself (pages above) and take responsibility for using them",
+            )
+        )
+    hard = [c for c in codes if c not in CONSENT_CODES]
+    if not hard:
+        if not add:
+            return [], None, []
+        return [tr("落とすなら:", "To download anyway:")], "  " + _download_command(args, add), agree
+    page = next((f.check_url for f in plan.files if f.check_url), None) or plan.license_url
+    todo = {
+        "gated": tr(
+            "  - gated: モデルのページで利用申請し、自分で落とす(genmodelfit はログインしない)",
+            "  - gated: request access on the model page and download those files yourself"
+            " (genmodelfit does not log in)",
+        ),
+        "disk": tr(
+            f"  - 空き: ディスクを {_gb(plan.disk_needed_bytes)} 空けるか、--comfyui-dir / --output-dir で"
+            "別のドライブを選ぶ",
+            f"  - disk: free up space (needs {_gb(plan.disk_needed_bytes)}) or choose another drive with"
+            " --comfyui-dir / --output-dir",
+        ),
+        "budget": tr(
+            "  - 上限: --budget を上げるか外す、または --precision で小さい精度を選ぶ",
+            "  - budget: raise or drop --budget, or pick a smaller precision with --precision",
+        ),
+        "conflict": tr(
+            "  - 同じ名前の別のファイル: 移すか、--output-dir で別の置き場所を選ぶ",
+            "  - a different file with the same name: move it, or choose another place with --output-dir",
+        ),
+        "unavailable": tr(
+            "  - genmodelfit では落とせないファイル(理由は上): モデルのページから自分で落とす"
+            + (f"({page})" if page else ""),
+            "  - files genmodelfit cannot download (reasons above): get them from the model page yourself"
+            + (f" ({page})" if page else ""),
+        ),
+        "no_files": tr("  - 一覧に落とすファイルがありません", "  - the list has no files to download"),
+    }
+    head = [tr("どの指定でも落とせません。先に:", "No flag lifts this. First:")]
+    head += [todo[c] for c in hard if c in todo]
+    if add:
+        head.append(
+            tr(
+                f"  - そのうえで、次の同意の指定も要ります: {' '.join(add)}",
+                f"  - then these consent flags are also needed: {' '.join(add)}",
+            )
+        )
+    return head, None, []
+
+
+def _emit_next_steps(plan, args: argparse.Namespace) -> None:
+    head, command, tail = download_next_steps(plan, args)
+    if not (head or command or tail):
+        return
+    print()
+    _emit(head)
+    if command:
+        print(command)  # コピーして貼れるよう折り返さない
+    _emit(tail)
 
 
 class _ProgressLine:
@@ -2348,6 +2545,11 @@ def cmd_download(args: argparse.Namespace) -> int:
                 "--json needs --yes to download (consent cannot be asked; check with --list first)",
             )
         )
+    # ComfyUI のフォルダ: --comfyui-dir > --output-dir > 環境変数 GENMODELFIT_COMFYUI_DIR > 既定の場所(#75)
+    comfyui_dir, comfyui_from = args.comfyui_dir, "flag" if args.comfyui_dir else None
+    env_dir = os.environ.get(COMFYUI_DIR_ENV, "").strip()
+    if not comfyui_dir and not args.output_dir:
+        comfyui_dir, comfyui_from = (env_dir, "env") if env_dir else (None, "default")
     s, db = _system(args), _db(args)
     try:
         plan = plan_download(
@@ -2355,7 +2557,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             precision=args.precision,
             budget_gb=args.budget,
             output_dir=args.output_dir,
-            comfyui_dir=args.comfyui_dir,
+            comfyui_dir=comfyui_dir,
             content=args.content,
             include_unknown_license=args.include_unknown_license,
             system_info=s,
@@ -2367,6 +2569,11 @@ def cmd_download(args: argparse.Namespace) -> int:
         err.candidates = e.candidates or None  # type: ignore[attr-defined]
         raise err from e
     except DownloadError as e:
+        if comfyui_from == "env":
+            src = tr(
+                f"(環境変数 {COMFYUI_DIR_ENV} の値)", f" (from the environment variable {COMFYUI_DIR_ENV})"
+            )
+            raise CliError(str(e) + src) from e
         raise CliError(str(e)) from e
 
     def fail(e: Exception, code: int = 1) -> int:
@@ -2380,18 +2587,22 @@ def cmd_download(args: argparse.Namespace) -> int:
         if args.json:
             _out(_envelope("download", s, db, listed=True, plan=plan.to_dict(), result=None))
         else:
-            _emit(format_plan(plan))
+            _emit(format_plan(plan, comfyui_from=comfyui_from))
+            _emit_next_steps(plan, args)
         return 0
     if plan.blocked:
-        if not args.json:
-            _emit(format_plan(plan))
-        return fail(DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(plan.blocked)))
+        if args.json:
+            return fail(DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(plan.blocked)))
+        # 理由は計画の中に 1 回だけ出し、最後に次の一手を出す(同じ文を error: で繰り返さない。#75)
+        _emit(format_plan(plan, comfyui_from=comfyui_from))
+        _emit_next_steps(plan, args)
+        return 1
     if not args.yes:
-        if not _ask(format_plan(plan, consent=True)):
+        if not _ask(format_plan(plan, consent=True, comfyui_from=comfyui_from)):
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
     elif not args.json:
-        _emit(format_plan(plan))
+        _emit(format_plan(plan, comfyui_from=comfyui_from))
     show = None if args.json else _ProgressLine()
     try:
         result = download(plan, progress=show, yes=True)
@@ -2704,12 +2915,17 @@ that runs on this PC without offloading (--precision picks one; --budget caps th
 Files go to <--comfyui-dir>/models/<folder>/<file> (the folder comes from the template:
 diffusion_models, text_encoders, vae, loras, checkpoints, ...), or the same layout under
 --output-dir (default: the user data folder of genmodelfit, "models").
-Before downloading, the files, each license and its URL, the total size and the free disk are
-shown and you are asked to agree (--yes skips the question).
+The environment variable GENMODELFIT_COMFYUI_DIR is the default for --comfyui-dir
+(--comfyui-dir and --output-dir win over it). Files whose ComfyUI folder is unknown go to
+other/, which ComfyUI does not read: move them before use.
+Before downloading, the files, each license and its URL (or the page to check when no license
+is stated), the total size and the free disk are shown and you are asked to agree (--yes skips
+the question).
 Refused: gated files (no login is used), uncensored models unless --content all|uncensored,
 files with an unknown license unless --include-unknown-license, too little disk (needs the
 download + 1 GB), names that would land outside the folder, hosts other than Hugging Face /
-GitHub.
+GitHub. When only the two consent flags are missing, the plan ends with one command that adds
+them (it never adds them by itself).
 
 PRECONDITIONS:
   Network access to huggingface.co (or github.com) for the download. --list needs none.
@@ -2737,9 +2953,10 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, system, database, listed, plan: { model_id, name,
   model_name, precision, fit_level, layout, root, files: [{ name, relpath, dest, url, sha256,
-  size_bytes, directory, license, license_url, license_allowed, gated, status, part_bytes,
-  remaining_bytes, reason }], total_bytes, download_bytes, disk_free_bytes,
-  disk_needed_bytes, blocked, warnings, alternatives, ok }, result: { downloaded, resumed,
+  size_bytes, directory, directory_basis, license, license_url, check_url, license_allowed,
+  gated, status, part_bytes, remaining_bytes, reason }], total_bytes, download_bytes,
+  disk_free_bytes, disk_needed_bytes, blocked, blocked_codes, warnings, alternatives, ok },
+  result: { downloaded, resumed,
   restarted, skipped, bytes_downloaded, seconds, files } | null, error? }.
   Details: docs/schema.md""",
 }
@@ -2842,11 +3059,20 @@ EXAMPLES: dict[str, list[tuple[str, str, str]]] = {
         ),
     ],
     "download": [
-        ('genmodelfit download "Z-Image-Turbo" --list', "落とすファイルを見るだけ", "only list the files"),
+        (
+            'genmodelfit download "Z-Image-Turbo" --list',
+            "1. まず落とすファイル・ライセンス・大きさを見る(落とさない)",
+            "1. first see the files, licenses and sizes (downloads nothing)",
+        ),
         (
             'genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI',
-            "ComfyUI のフォルダへ落とす",
-            "download into a ComfyUI folder",
+            "2. ComfyUI のフォルダへ落とす(同意を尋ねる)",
+            "2. download into your ComfyUI folder (asks first)",
+        ),
+        (
+            "genmodelfit download MODEL --content all --include-unknown-license",
+            "無検閲・ライセンス不明のモデルも落とす(条件は自分で確かめる)",
+            "also uncensored / unknown-license models (check the terms yourself)",
         ),
     ],
 }
@@ -3329,8 +3555,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--comfyui-dir",
         metavar="DIR",
         help=tr(
-            "ComfyUI のフォルダ。models/<diffusion_models など>/ に置く",
-            "the ComfyUI folder; files go to models/<diffusion_models etc.>/",
+            "ComfyUI のフォルダ。models/<diffusion_models など>/ に置く"
+            "(既定は環境変数 GENMODELFIT_COMFYUI_DIR)",
+            "the ComfyUI folder; files go to models/<diffusion_models etc.>/"
+            " (default: $GENMODELFIT_COMFYUI_DIR)",
         ),
     )
     sp.add_argument(
