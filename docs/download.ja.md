@@ -13,7 +13,7 @@ JSON の形は [schema.ja.md](schema.ja.md)「download」にあります。
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
-genmodelfit download MODEL --content all --include-unknown-license   # uncensored / unknown license (your choice)
+genmodelfit download MODEL --uncensored --any-license --yes   # without the question (scripts)
 ```
 
 - **落とすもの**: 1 つのワークフローの全部のファイル。
@@ -32,13 +32,14 @@ genmodelfit download MODEL --content all --include-unknown-license   # uncensore
   - ファイルごとのライセンスと原文の URL。原文の URL が無いファイルは「ライセンスの記載がありません」と書き、確かめる場所(モデルの Hugging Face のページか、一覧にあるページ)を出す。そのときの同意の質問は、そのページで自分で確かめることを求める文になる。
   - 許可リストに無いライセンスの印(利用制限の無い商用利用ができるもの。[gate.ja.md](gate.ja.md)。`--license-allowlist` で変えられる)。
   - 合計の大きさと空き。
-  - そのあと `[y/N]` で尋ねる。`--yes` で省ける(`--json` で落とすときは必須)。
+  - そのあと `[y/N]` で尋ねる(既定は No)。`--yes` で省ける(`--json` で落とすときは必須)。
+  - 無検閲のモデルとライセンスの記載が無いファイル: 端末(標準入力と標準出力が端末で、`--yes`・`--json` が無い)では計画を止めず、計画に出したうえで、同意の質問で名指しする(「このモデルは無検閲(成人向けを含みうる)で、ライセンスの記載が無いファイルを含みます(上の確かめる場所で条件を確かめてください)。…それでも落としますか?」)。1 回の `y` で名指ししたもの全部に同意する。端末でない・`--yes`・`--json` では `--uncensored`・`--any-license`(前からの書き方は `--content all`・`--include-unknown-license`)が要る。`--list` は尋ねることと、スクリプト向けのコマンドを出す。Python の API は変えない(`content=`・`include_unknown_license=` を自分で渡す)。
   - 使う前に各ファイルの条件を読むこと。
 - **落とさないもの**: 1 つでも当てはまるファイルがあれば、そのワークフローは何も落とさない。一部だけ落とすことはしない。
-  - 理由は 1 回ずつ出す。足りないのが `--content all`・`--include-unknown-license` だけなら、計画の最後に「落とすなら:」として、それを全部足したコマンドを 1 行で出し(ほかの指定はそのまま)、指定ごとに何に同意するかを 1 行ずつ添える。勝手に足して落とすことはしない。gated・genmodelfit では落とせないファイル(自分で落とせるよう URL を出す)・ファイルの無いワークフローでは、このワークフローは genmodelfit では落とせないと書き、同じモデルの別のワークフローにその問題が無ければそれを示す。空き・`--budget`・同じ名前の別のファイルでは、外し方(空ける・`--output-dir`、`--budget`、ファイルを移す)と、足りなければそのあとに要る同意の指定を書く。どちらもコマンドは出さない。コマンドは計画のワークフローの ID と、実行したときの形(`genmodelfit` か `python -m genmodelfit`)で書き、要る引数は ' で囲む。stderr には短い `error:` の 1 行を出す(終了コード 1)。
+  - 理由は 1 回ずつ出す。足りないのが `--uncensored`・`--any-license` だけなら(端末でない・`--yes`・`--json`)、計画の最後に「落とすなら(端末で実行すれば、指定の代わりに y/N で尋ねます):」として、それを全部足したコマンドを 1 行で出し(ほかの指定はそのまま)、指定ごとに何に同意するかを 1 行ずつ添える。勝手に足して落とすことはしない。gated・genmodelfit では落とせないファイル(自分で落とせるよう URL を出す)・ファイルの無いワークフローでは、このワークフローは genmodelfit では落とせないと書き、同じモデルの別のワークフローにその問題が無ければそれを示す。空き・`--budget`・同じ名前の別のファイルでは、外し方(空ける・`--output-dir`、`--budget`、ファイルを移す)と、足りなければそのあとに要る同意の指定を書く。どちらもコマンドは出さない。コマンドは計画のワークフローの ID と、実行したときの形(`genmodelfit` か `python -m genmodelfit`)で書き、要る引数は ' で囲む。stderr には短い `error:` の 1 行を出す(終了コード 1)。
   - gated(ログインや利用申請が要る)。genmodelfit はログイン情報やトークンを扱わない。モデルのページで申請して自分で落とす。
-  - 無検閲のモデル(`--content all` か `uncensored` を明示したときだけ)。
-  - ライセンス不明(`--include-unknown-license` のときだけ)。
+  - 無検閲のモデル(端末の質問で y、または `--uncensored`・`--content all|uncensored` のときだけ)。
+  - ライセンス不明(端末の質問で y、または `--any-license` のときだけ)。
   - 一覧に sha256・大きさの無いもの。
   - Hugging Face・GitHub 以外の取得先。
 - **安全**:

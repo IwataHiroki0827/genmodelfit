@@ -62,7 +62,7 @@ OTHER_DIR = "other"  # ComfyUI の置き場所(directory)が一覧に無いフ�
 # 計画のファイルの状態
 STATUSES = ("download", "resume", "present", "conflict", "unavailable")
 # 止める理由の種類(DownloadPlan.blocked_codes。#75)。uncensored と unknown_license だけは、利用者が同意の指定
-# (--content all・--include-unknown-license)で外せる。ほかは指定では外れない
+# (CLI の端末の質問か --uncensored・--any-license)で外せる。ほかは指定では外れない
 BLOCK_CODES = (
     "uncensored",
     "unknown_license",
@@ -484,9 +484,9 @@ def resolve_candidates(db: Database, query: str, content: str = "sfw") -> tuple[
             tr(
                 f"モデルが見つかりません: {q}(content {content} で外れた {kinds} のモデルが "
                 f"{len(hits)} 件あります。"
-                "--content all を付けるか ID で指定してください)",
+                "--uncensored を付けるか ID で指定してください)",
                 f"No such model: {q} ({len(hits)} {'/'.join(kind_set)} models are hidden by "
-                f"content {content}; add --content all or give the id)",
+                f"content {content}; add --uncensored or give the id)",
             )
         )
     raise ModelNotFound(tr(f"モデルが見つかりません: {q}", f"No such model: {q}"))
@@ -713,8 +713,10 @@ def _model_blocks(
             (
                 "uncensored",
                 tr(
-                    "無検閲のモデルです。落とすなら --content all か --content uncensored を明示してください",
-                    "This is an uncensored model. To download it, pass --content all or --content uncensored",
+                    "無検閲のモデルです。落とすなら同意が要ります"
+                    "(端末の質問で y、尋ねないときは --uncensored)",
+                    "This is an uncensored model. Downloading it needs your consent (y to the question in a"
+                    " terminal; --uncensored without the question)",
                 ),
             )
         )
@@ -743,10 +745,12 @@ def _model_blocks(
                 tr(
                     "ライセンスが分からないファイルがあります: "
                     + ", ".join(unknown[:3])
-                    + "。中身の条件を自分で確かめたうえで落とすなら --include-unknown-license",
+                    + "。中身の条件を自分で確かめたうえで落とすなら同意が要ります"
+                    "(端末の質問で y、尋ねないときは --any-license)",
                     "Some files have an unknown license: "
                     + ", ".join(unknown[:3])
-                    + ". To download them after checking the terms yourself, use --include-unknown-license",
+                    + ". Downloading them after checking the terms yourself needs your consent (y to the"
+                    " question in a terminal; --any-license without the question)",
                 ),
             )
         )
@@ -945,8 +949,8 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
     if unknown and not plan.blocked:
         plan.warnings.append(
             tr(
-                "ライセンスが分からないファイルを含みます(--include-unknown-license): ",
-                "Includes files with an unknown license (--include-unknown-license): ",
+                "ライセンスが分からないファイルを含みます(条件は自分で確かめる): ",
+                "Includes files with an unknown license (check their terms yourself): ",
             )
             + ", ".join(unknown[:4])
         )

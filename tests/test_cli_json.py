@@ -616,4 +616,4 @@ def test_info_ambiguous_is_error_with_candidates(cache):
     assert any(c["content"] == "uncensored" for c in every["candidates"])
     # 無検閲にしか合わないものは黙って選ばない
     d = call(["info", "Qwen-Image-2.1", *HW], cache, code=1)
-    assert set(d) == ENVELOPE | {"error"} and "--content all" in d["error"]
+    assert set(d) == ENVELOPE | {"error"} and "--uncensored" in d["error"]

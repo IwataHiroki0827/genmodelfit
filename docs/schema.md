@@ -169,7 +169,7 @@ LoRA, …) are collapsed into one item; the others are listed in `workflows` / `
 
 `fit` (0.1.1, Issue #28; Python `gmf.fit_list()`): by default only the models that run (`--fit runnable` = perfect /
 good / marginal), without utility tools, unknown-license and uncensored models; `--all` (`show_all=True`) is `--fit all`
-plus tools and unknown licenses (uncensored still needs `--content all`). `--fit perfect|good|marginal` shows exactly
+plus tools and unknown licenses (uncensored still needs `--uncensored`). `--fit perfect|good|marginal` shows exactly
 that level (other runnable levels are counted as `hidden.other_fit`); `--fit` and `--min-fit` cannot be combined
 (`--perfect` = `--fit perfect`). `fit` and `search` print **one table** sorted by `--sort` (`sort=`):
 
@@ -227,11 +227,11 @@ shown. `fit` shows the runnable levels by default and `search` every level (`--f
 limit; models with unknown size (`fit_level: "unknown"`, `?`) come after marginal ones of their type (`--fit all`). `search <query>` matches a
 part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
 `models: []` and exits 0 (text mode prints `(no match)` in English, `(no match / 該当なし)` in Japanese); a blank query exits 1.
-`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
+`content` defaults to **`sfw`**: uncensored models appear only with `--uncensored` (= `--content all`) or `--content uncensored` (only uncensored). `--uncensored` with `--content sfw` is a usage error.
 
 **Unknown licenses are hidden by default** (0.1.1, Issue #28): an entry where any file's license (the entry's license
 when it lists no files) is unknown (`null`) is not shown by `recommend` / `fit` / `search` or by `gmf.recommend()` /
-`gmf.search()`; it is counted as `hidden.license_unknown`. `--include-unknown-license` (Python
+`gmf.search()`; it is counted as `hidden.license_unknown`. `--any-license` (old form `--include-unknown-license`; Python
 `include_unknown_license=True`) shows them. `info <exact id>` always shows the entry.
 
 `hidden` reasons, each entry counted once under the first reason that applies, in this order:
@@ -806,7 +806,7 @@ How `info <query>` picks the model:
   (default `sfw`)**. Exactly one match → that model.
 - Two or more matches → never picks one: exit code 1. Text mode lists the candidates on stderr; `--json` prints
   the envelope with `error` and `candidates` (`[{"id", "name", "content"}]`, all of them).
-- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--content all`).
+- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--uncensored`).
 
 Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwise.
 
@@ -1194,7 +1194,7 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` in bytes |
 | `blocked` | str[] | why it will not download (in the display language, `en` / `ja`). Empty = can download |
-| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by `--content all` / `--include-unknown-license`, i.e. by the user's consent), `gated`, `no_files`, `unavailable` (genmodelfit cannot download the workflow at all), `conflict`, `budget`, `disk` (the consent flags do not lift these; move the file / `--output-dir`, raise `--budget`, free disk space) |
+| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by the user's consent: `--uncensored` / `--any-license`; the CLI asks y/N in a terminal instead and then plans without them), `gated`, `no_files`, `unavailable` (genmodelfit cannot download the workflow at all), `conflict`, `budget`, `disk` (the consent flags do not lift these; move the file / `--output-dir`, raise `--budget`, free disk space) |
 | `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
 | `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto`, `ok` (optional, since #75: true when it has no gated, unavailable or conflicting file; uncensored, unknown license, disk and budget are not counted) |
 | `license_url` | str \| null | the model's license page |

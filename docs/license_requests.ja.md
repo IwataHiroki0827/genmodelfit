@@ -29,7 +29,7 @@
   - 記載が入ったら、`license_sources.py` の表か本家の表記で一覧を作り直す。
 - 利用者への影響(共通):
   - genmodelfit はライセンス不明を「許されていない」と同じに扱う([schema.ja.md](schema.ja.md)「License contract」)。
-  - `recommend` / `fit` / `search` には既定で出さず(`--include-unknown-license` で出る)、自動のおすすめ(gate)にも出さない。
+  - `recommend` / `fit` / `search` には既定で出さず(`--any-license` で出る)、自動のおすすめ(gate)にも出さない。
   - ソースを公開せずに配るアプリ(AI生成キットなど)は、そのモデルを利用者に勧められない。
 
 ## A. 重みにライセンスの記載が無い

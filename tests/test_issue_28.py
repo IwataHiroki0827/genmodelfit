@@ -257,7 +257,7 @@ def test_text_mode_says_how_to_show_unknown_licenses(tmp_path):
     out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache"], tmp_path / "c").stdout.decode(
         "utf-8"
     )
-    assert "license unknown" in out and "--include-unknown-license" in out
+    assert "license unknown" in out and "--any-license" in out
 
 
 # --- 4. 判定できないものは「?」 --------------------------------------------------------------------

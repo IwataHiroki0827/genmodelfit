@@ -217,8 +217,8 @@ Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
-Note: 26 uncensored model(s) hidden; add --content all to show them.
-Note: 28 model(s) with an unknown license hidden; add --include-unknown-license to show them.
+Note: 26 uncensored model(s) hidden; add --uncensored to show them.
+Note: 28 model(s) with an unknown license hidden; add --any-license to show them.
 ? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).
 ```
 
@@ -248,7 +248,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 | Type | image, video, music, sfx, tts, 3d |
 | Status | fit level (below) |
 | Score | 0–100: fit level, VRAM headroom, Verified, measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score)) |
-| Censored | `Y` censored / `N` uncensored; only with `--content all` or `uncensored` |
+| Censored | `Y` censored / `N` uncensored; only with `--uncensored` (or `--content all|uncensored`) |
 | Model | one row per model (same weights); long names are cut in the middle with `…` |
 | Use | `gen`, `edit`, `i2v`, … (`genmodelfit types`); `+N` = N more workflows of the same model (`--all-workflows`) |
 | Prec | the best precision that fits (fp16, bf16, fp8, int8, …) |
@@ -306,7 +306,7 @@ Every page of the documentation, with who each one is for: [docs/README.md](http
 | `review`, `bench`, `contrib` | maintenance and measurements (below) |
 
 Each command's `--help` lists options, exit codes and examples. Common options: `--json`, `--vram`, `--ram`,
-`--content`, `--include-unknown-license`, `--license apache-2.0,mit`, `--comfyui-version`.
+`--uncensored` (include uncensored models; old form `--content all`), `--any-license` (include unknown licenses; old form `--include-unknown-license`), `--content uncensored` (only uncensored), `--license apache-2.0,mit`, `--comfyui-version`.
 
 ### Data sources
 
@@ -318,7 +318,7 @@ limit automated access). Details: [docs/sources.md](https://github.com/laxshmate
 ### Content marks
 
 Models with safety filtering removed or made for adult output are marked `uncensored` and **hidden by default**.
-`--content all` (or `uncensored`) shows them, with the `Censored` column. They are never Verified by default.
+`--uncensored` (or `--content all|uncensored`) shows them, with the `Censored` column. They are never Verified by default.
 Models aimed at sexual content involving minors are excluded entirely
 ([docs/sources.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.md)).
 
@@ -333,8 +333,9 @@ Otherwise the reasons are in `held_reasons`. Details: [docs/gate.md](https://git
 
 Only https URLs in the list, redirects only to Hugging Face / GitHub hosts, sha256-checked while writing, resumable
 after Ctrl-C, never outside the destination. Gated, uncensored and unknown-license files are not downloaded unless
-allowed. When only the consent flags are missing, it shows one command with `--content all` / `--include-unknown-license`
-added and what each means; it never adds them by itself. Files whose ComfyUI folder is unknown go to `other/`, which
+allowed: in a terminal the consent question names uncensored / unknown-license items (y/N, default No); with
+`--yes`, `--json` or no terminal pass `--uncensored` / `--any-license` (the plan then shows one ready command with
+them added and what each means; it never adds them by itself). Gated files are never downloaded. Files whose ComfyUI folder is unknown go to `other/`, which
 ComfyUI does not read (the plan says so; move them before use). Set `GENMODELFIT_COMFYUI_DIR` to your ComfyUI folder to
 skip `--comfyui-dir`. Details and Python API: [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md).
 

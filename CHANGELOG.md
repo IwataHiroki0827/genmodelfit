@@ -59,6 +59,15 @@ All notable changes to this project are documented here. The format is based on
     `--content all --include-unknown-license`.
   - JSON (optional keys): `plan.blocked_codes`, `alternatives[].ok`, and per file `directory_basis` (an
     object) and `check_url` (https pages only).
+  - In a terminal, `download` no longer needs consent flags: uncensored models and files with no stated license are
+    shown in the plan and named in the consent question (y/N, default No; one `y` covers them). Without a terminal,
+    with `--yes` or `--json` the flags are still required. `--list` shows what will be asked. The Python API is
+    unchanged (pass `content=` / `include_unknown_license=`). Gated files are still never downloaded.
+- Shorter flags (#75): `--uncensored` (= `--content all`) on `recommend`, `fit`, `search`, `info`, `types` and
+  `download`, and `--any-license` (= `--include-unknown-license`) on `recommend`, `fit`, `search` and `download`.
+  The old forms still work; `--content uncensored` still means "only uncensored"; `--uncensored` with
+  `--content sfw` is a usage error. Hints, notes and `--help` examples now suggest the short forms. JSON is
+  unchanged.
 
 ### Fixed
 
