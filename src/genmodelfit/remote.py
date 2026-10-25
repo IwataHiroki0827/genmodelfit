@@ -22,14 +22,16 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin, urlsplit
 
-import requests
-
+from . import fetch as _fetch
 from .db import Database, DatabaseError, cache_dir, cached_db_path, parse_db
-from .fetch import USER_AGENT, _NoAuth, make_session
+from .fetch import USER_AGENT, make_session
 from .signing import SigningError, decode_sig, verify
+
+if TYPE_CHECKING:
+    import requests
 
 RELEASE_BASE_URL = "https://github.com/laxshmate/genmodelfit/releases/download/data-latest"
 MAX_BYTES = 64 * 1024 * 1024  # 一覧としては十分大きい上限
@@ -89,7 +91,7 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
             timeout=timeout,
             stream=True,
             headers=headers,
-            auth=session.auth if (session.auth and same) else _NoAuth(),
+            auth=session.auth if (session.auth and same) else _fetch._NoAuth(),
             verify=session.verify,
             proxies=dict(session.proxies),
             allow_redirects=False,
@@ -105,6 +107,8 @@ def _session_get(session: requests.Session, url: str, timeout: float) -> request
 def _get(url: str, timeout: float, session: requests.Session | None = None) -> bytes:
     """url を取る。MAX_BYTES を超えたら読むのをやめて RemoteError。
     session があればそれで取る(無ければ _http_get = fetch.make_session)。"""
+    import requests
+
     try:
         r = (
             _session_get(session, url, timeout)
@@ -241,3 +245,10 @@ def update_from_release(
     _atomic_write(state_path(state_dir), (json.dumps(state) + "\n").encode("utf-8"))
     _atomic_write(dest or cached_db_path(), data)
     return db
+
+
+def __getattr__(name: str) -> Any:
+    """`_NoAuth` は fetch から遅れて取る(import genmodelfit で requests を読まない。Issue #74)。"""
+    if name == "_NoAuth":
+        return _fetch._NoAuth
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
