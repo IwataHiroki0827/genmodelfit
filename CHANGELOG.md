@@ -34,7 +34,8 @@ All notable changes to this project are documented here. The format is based on
 - Line wrapping (tables, `info`, `download`, `diff`, `system` notes, option help) counts East Asian wide characters
   as two columns and never splits file names, URLs, options or numbers with units (one longer than the width stays
   whole on its own line, so it can be copied); Japanese lines do not start with 、。) or end with (「 (#76). English
-  lines break where they did before, except that a long path is no longer cut in the middle.
+  lines break where they did before, except that URLs, words with hyphens and numbers with units
+  are no longer cut in the middle (as a long path no longer is).
 - The Japanese descriptions of Stable Audio 3 Small (music), Irodori-TTS and Tsukuyomi-chan now carry what only the
   English ones said (English prompts; the ethical restrictions on the MIT license; the voice data's own terms).
 

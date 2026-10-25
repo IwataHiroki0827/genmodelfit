@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -3770,25 +3771,43 @@ _ARGPARSE_JA = {
 _ARGPARSE_JA_N = {"expected %s argument": "値を %s 個指定してください"}
 
 
+_ARGPARSE_LOCK = threading.Lock()
+_ARGPARSE_DEPTH = 0
+_ARGPARSE_ORIG: tuple[Any, Any] | None = None
+
+
 @contextlib.contextmanager
 def _argparse_language() -> Any:
-    """argparse の決まった文を今の言語にする(main の間だけ。言語は呼んだときに見るので、
-    ほかのスレッドの argparse は英語のまま)。"""
-    gettext_, ngettext_ = argparse._, argparse.ngettext  # type: ignore[attr-defined]
+    """argparse の決まった文を今の言語にする(main の間だけ)。
 
-    def ja_gettext(msg: str) -> str:
-        return _ARGPARSE_JA.get(msg, msg) if i18n.get_language() == "ja" else gettext_(msg)
+    差し替えは argparse モジュールの全体に効く。main を同時に複数のスレッドで呼んでも戻せるように、
+    入った数を数え、最後に出る main が元に戻す(途中で戻すと、ほかの main の文が英語になる)。
+    置き換えた関数は呼ぶたびに言語を見る。言語が en なら元の関数と同じ文を返すので影響はない。
+    main の外のスレッドの argparse も、main の間は今の言語で出る(日本語のとき)。"""
+    global _ARGPARSE_DEPTH, _ARGPARSE_ORIG
+    with _ARGPARSE_LOCK:
+        if _ARGPARSE_DEPTH == 0:
+            _ARGPARSE_ORIG = (argparse._, argparse.ngettext)  # type: ignore[attr-defined]
+            gettext_, ngettext_ = _ARGPARSE_ORIG
 
-    def ja_ngettext(singular: str, plural: str, n: int) -> str:
-        if i18n.get_language() == "ja" and singular in _ARGPARSE_JA_N:
-            return _ARGPARSE_JA_N[singular]
-        return ngettext_(singular, plural, n)
+            def ja_gettext(msg: str) -> str:
+                return _ARGPARSE_JA.get(msg, msg) if i18n.get_language() == "ja" else gettext_(msg)
 
-    argparse._, argparse.ngettext = ja_gettext, ja_ngettext  # type: ignore[attr-defined]
+            def ja_ngettext(singular: str, plural: str, n: int) -> str:
+                if i18n.get_language() == "ja" and singular in _ARGPARSE_JA_N:
+                    return _ARGPARSE_JA_N[singular]
+                return ngettext_(singular, plural, n)
+
+            argparse._, argparse.ngettext = ja_gettext, ja_ngettext  # type: ignore[attr-defined]
+        _ARGPARSE_DEPTH += 1
     try:
         yield
     finally:
-        argparse._, argparse.ngettext = gettext_, ngettext_  # type: ignore[attr-defined]
+        with _ARGPARSE_LOCK:
+            _ARGPARSE_DEPTH -= 1
+            if _ARGPARSE_DEPTH == 0 and _ARGPARSE_ORIG is not None:
+                argparse._, argparse.ngettext = _ARGPARSE_ORIG  # type: ignore[attr-defined]
+                _ARGPARSE_ORIG = None
 
 
 def _help_width() -> int:

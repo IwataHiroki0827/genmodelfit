@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 import pytest
-from clihelp import run_cli
+from clihelp import overlong_lines, run_cli
 from rich.cells import cell_len
 
 import genmodelfit as gmf
@@ -255,6 +255,12 @@ TABLE_CASES = [
     ["diff"],
     ["diff", *DIFF_PAIR],
     ["contrib", "validate", str(FIXTURES / "contrib")],
+    ["contrib", "aggregate", str(FIXTURES / "contrib")],
+    [
+        "diff",
+        str(FIXTURES / "diff" / "0.4.0-0.7.0" / "old.json"),
+        str(FIXTURES / "diff" / "0.4.0-0.7.0" / "new.json"),
+    ],
     ["contrib", "show", str(FIXTURES / "contrib" / "rtx-3070" / "2026-10-20-5bedb2da.json")],
     ["contrib", "aggregate", str(FIXTURES / "contrib"), "--report"],
     ["recommend", "--min-fit", "good", "--fit", "good", *HW],  # 使い方の誤り
@@ -357,44 +363,69 @@ def test_ja_text_is_japanese(capsys):
     assert capsys.readouterr().err.startswith("エラー: モデルが見つかりません")
 
 
-# 英語の文の印: 小文字で始まる英語の語(記号を含まない。末尾の , . ; : ) は許す)
-_EN_WORD = re.compile(r"^\(?[a-z][a-z']+[,.;:)]*$")
-# 機械の行の印: JSON の鍵の並び・ID・引数の並び({ } [ ] _)
-_MACHINE = re.compile(r"[{}\[\]_]")
-# 環境変数の例・JSON の鍵の並びの頭(行ごと機械の行)
+# 英語の語(大文字で始まってもよい。記号・数字を含まない。前後の ( ) , . ; : は許す)
+_EN_WORD = re.compile(r"^[\"'(]*[A-Za-z][A-Za-z']+[,.;:)\"']*$")
+# 機械の値の印: ID・ファイル名・パス・URL・オプション・引数の並び・数を含む語({ } [ ] _ / \ < > = $ 数字)
+_MACHINE_TOKEN = re.compile(r"[{}\[\]_/\<>=$|~+@#%0-9]|^-|\w\.\w")
+# 環境変数の例・JSON の鍵の並びの頭(段落ごと機械の行)
 _MACHINE_HEAD = ("$env:", "export ", "JSON (--json):")
 _COMMAND_HEAD = ("genmodelfit ", "python -m genmodelfit")
 _OPTION = re.compile(r"-{1,2}[A-Za-z]")
+_WORD_PUNCT = "\"'(),.;:)"
+_TITLE_ID = re.compile(r"\s\[[\w:./-]+\]$")
+# 日本語の出力でも英語のまま出すもの(README「Language」): 段階の名前・動かし方の印・列の名前・用語・固有名詞
+_KEEP_ENGLISH = frozenset(
+    re.findall(
+        r"\w+",
+        "gib mib kib tib gb mb perfect good marginal too tight verified gpu cpu ram vram ssd hdd gen edit "
+        "json comfyui hugging face windows linux "
+        "macos nvidia amd intel apple torch pytorch cuda rocm xpu mps",
+    )
+)
 
 
 def english_only_lines(text: str) -> list[str]:
     """ja の出力のうち、日本語の無い英語の文の行(#76)。
 
-    外すもの: 日本語を含む行、表の列の名前と行(先頭が Type か種類の名前)、使い方の段落(使い方: から空行まで)、
-    環境変数の例・JSON の鍵の並び・ID・パス({ } [ ] _ を含む行)。コマンドの行は「#」の後の説明だけ、
-    オプションの行(--help の一覧)は名前の後の説明だけを見る。残りで、小文字の英語の語が 2 つ以上あれば
-    英語の文とみなす(「Mode: GPU all on GPU, …」「Order: runs, …」を見つける)。"""
+    外すもの: 日本語を含む行、表の列の名前と行(先頭が Type か種類の名前)、contrib validate の ok の行、
+    「題名  [ID]」の見出し、使い方の段落(使い方: から空行まで)、
+    環境変数の例・JSON の鍵の並びの段落(JSON (--json): から空行まで)。コマンドの行は「#」の後の説明だけ、
+    オプションの行(--help の一覧)は名前の後の説明だけを見る。
+    行ごとは外さない。ID・ファイル名・パス・URL・オプション・数のような語(_MACHINE_TOKEN)と、英語のまま出す
+    決まりの語(_KEEP_ENGLISH)・全部大文字の語だけを取り除き、残った英語の語が 2 つ以上あれば英語の文とみなす
+    (「Mode: GPU all on GPU, …」「error: Not Found」「Note: image_x needs a license check …」を見つける)。"""
     bad = []
-    in_usage = False
+    skip_block = False  # 使い方・JSON の鍵の段落(空行まで)
     for line in text.splitlines():
         s = line.strip()
-        if s.startswith(("使い方:", "usage:")):
-            in_usage = True
-        if in_usage:
-            in_usage = bool(s)
+        if s.startswith(("使い方:", "usage:", *_MACHINE_HEAD)):
+            skip_block = True
+        if skip_block:
+            skip_block = bool(s)
             continue
         if not s or JA.search(s):
             continue
-        if s.split()[0] in (*MODALITIES, "Type") or s.startswith(_MACHINE_HEAD):
+        head = s.split()
+        if head[0] in ("Type", "ok"):  # 表の列の名前の行・contrib validate の結果の行(GPU の名前が入る)
+            continue
+        if head[0] in MODALITIES and not (len(head) > 1 and _EN_WORD.match(head[1])):  # 表の行(種類 ● …)
+            continue
+        if _TITLE_ID.search(s):  # info の見出し(テンプレートの題名は一覧のデータ): 「題名  [ID]」
             continue
         if s.startswith(_COMMAND_HEAD):  # コマンドの例: 説明(# の後)だけ
             s = s.split("#", 1)[1] if "#" in s else ""
         elif _OPTION.match(s):  # --help のオプションの行: 名前の後(2 つ以上の空白の後)の説明だけ
             parts = re.split(r"\s{2,}", s, maxsplit=1)
             s = parts[1] if len(parts) > 1 else ""
-        if _MACHINE.search(s):
-            continue
-        if len([w for w in s.split() if _EN_WORD.match(w)]) >= 2:
+        words = [
+            w
+            for w in s.split()
+            if not _MACHINE_TOKEN.search(w)
+            and _EN_WORD.match(w)
+            and w.strip(_WORD_PUNCT).lower() not in _KEEP_ENGLISH
+            and not w.strip(_WORD_PUNCT).isupper()
+        ]
+        if len(words) >= 2:
             bad.append(line)
     return bad
 
@@ -408,7 +439,23 @@ Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (s
   model:    Z-Image-Turbo  (6 workflows use these weights)
   -h, --help            show this help message and exit
 Right-size generation models to your PC."""
-    assert len(english_only_lines(old)) == 6  # PC: assumed … は小文字の語が 1 つだけなので数えない
+    # 以前は行ごと外れて見逃した英語の行(ID・{ } [ ] _ を含む行、先頭が種類名の行)
+    missed = [
+        "error: Not Found",
+        "Order: Type, Status, Score (--sort).",
+        "Note: image_sdxl_simple needs a license check before download",
+        "image models are hidden because the list is old",
+        "  Note: image_sdxl_simple needs a license check before download {--any-license}",
+    ]
+    assert english_only_lines("\n".join(missed)) == missed
+    # 日本語の行・ID・ファイル名・オプションだけの行は通す
+    ok = [
+        "注意: image_sdxl_simple はライセンスの確認が要ります",
+        "  - image_z_image_turbo  (gen, bf16, marginal, 6.2 GB)",
+        "  diffusion_models/sub/tiny_unet.safetensors  https://example.invalid/LICENSE --any-license",
+    ]
+    assert english_only_lines("\n".join(ok)) == []
+    assert len(english_only_lines(old)) == 6  # PC: assumed … は語が 1 つ(assumed)だけなので数えない
     new = """Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License
 image ● Marginal     54 Z-Image-Turbo            gen+5   int8  7.6m  96% GPU~    apache-2.0 yes
   genmodelfit download hf:x/y --uncensored --any-license --vram 8 --ram 32 --lang ja
@@ -484,7 +531,7 @@ def test_download_plan_keeps_file_names_whole(capsys, monkeypatch, tmp_path, lan
     assert text.count(name) == text.count("lazymixRealAmateur") >= 2
     assert not [x for x in lines if x.rstrip().endswith("safetensor") or x.strip() in ("s", "rs")]
     # 幅を超えてよいのは、貼るためのコマンドの行と、1 つの長い並びだけの行
-    wide = [x for x in lines if cell_len(x) > 100 and len(x.split()) > 1]
+    wide = overlong_lines(lines, 100)
     assert all(x.strip().startswith(("genmodelfit ", "python -m genmodelfit")) for x in wide), wide
 
 
@@ -510,8 +557,7 @@ def test_wrap_text_rules(width):
         assert x.strip()[0] not in "、。,.)」』", x  # 行の頭に置かない文字
     for x in lines[:-1]:
         assert x.rstrip()[-1] not in "(「『", x  # 行の終わりに置かない文字
-    for x in lines:  # 全角は 2 桁。幅を超えるのは 1 つの長い並びだけの行
-        assert cell_len(x) <= width or len(x.split()) == 1, (width, x)
+    assert not overlong_lines(lines, width)  # 全角は 2 桁。幅を超えるのは 1 つの長い ASCII の並びだけの行
 
 
 def test_wrap_text_long_run_stays_whole_on_its_own_line():
@@ -570,3 +616,42 @@ def test_every_description_has_both_languages():
         assert (d.get("ja") or "").strip() and (d.get("en") or "").strip(), (where, mid, d)
         assert JA.search(d["ja"]) and not JA.search(d["en"]), (where, mid)
     assert checked > 0
+
+
+def test_overlong_lines_helper_rejects_long_japanese():
+    """幅を超えてよいのは ASCII の 1 語だけの行。空白の無い長い日本語の行は許さない(#76)。"""
+    assert overlong_lines(["あ" * 60], 100)
+    assert overlong_lines(["  - " + "あ" * 60], 100)
+    assert overlong_lines(["x" * 120 + "あ"], 100)
+    assert overlong_lines(["x" * 60 + " " + "y" * 60], 100)
+    assert not overlong_lines(["  - " + "x" * 120], 100)
+    assert not overlong_lines(["      " + "x" * 120 + "。"], 100)
+    assert not overlong_lines(["あ" * 50], 100)  # 50 字 = 100 桁は収まる
+
+
+def test_wrap_text_exact_fit_and_angle_placeholder():
+    """幅ちょうどの行は次へ送らない(前の版と同じ)。< > で囲んだ日本語の印は切らない(#76)。"""
+    from genmodelfit.table import wrap_line, wrap_text
+
+    path = "C:\\" + "x" * 44  # 8 + 4 + 48 = 60 桁
+    text = "  to:        " + path + "  (models folder (ComfyUI layout): <folder>/<file>)"
+    lines = wrap_line(text, 60)
+    assert lines[0] == "  to:        " + path and cell_len(lines[0]) == 60, lines
+    mark = "<フォルダ>/<GPU>/<日付>-<sha8>.json"
+    for width in (40, 60, 80):
+        out = wrap_text("フォルダなら " + mark + "(フォークの data/contrib を渡す)", width)
+        assert any(mark in x for x in out), (width, out)
+
+
+def test_argparse_language_nesting_restores():
+    """main を重ねて(同時に)呼んでも、最後に出る呼び出しが argparse を元に戻す。"""
+    import argparse
+
+    orig = argparse._
+    with cli._argparse_language():
+        patched = argparse._
+        assert patched is not orig
+        with cli._argparse_language():
+            assert argparse._ is patched
+        assert argparse._ is patched  # 内側が出ても、外側が残っている間は戻さない
+    assert argparse._ is orig

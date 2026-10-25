@@ -7,8 +7,7 @@ import subprocess
 import sys
 
 import pytest
-from clihelp import bundled_uncensored, child_env, console_script, run_cli
-from rich.cells import cell_len
+from clihelp import bundled_uncensored, child_env, console_script, overlong_lines, run_cli
 
 from genmodelfit import __version__, cli
 
@@ -148,8 +147,7 @@ def test_width(cache, args, columns):
     assert lines
     limit = 100 if args[0] in _PLAIN else min(columns, 100)
     # 1 つで幅より長い英数字の並び(ID・ファイル名・URL)は途中で折り返さず、その行だけはみ出す(#76)
-    wide = [x for x in lines if cell_len(x.rstrip()) > limit]
-    assert all(len([w for w in x.split() if w != "-"]) == 1 for x in wide), wide  # 箇条書きの「- 」は除く
+    assert not overlong_lines(lines, limit)  # 箇条書きの「- 」は語に数えない
 
 
 def test_fit_says_uncensored_hidden(cache):

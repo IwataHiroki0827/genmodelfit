@@ -145,7 +145,8 @@ _NUMBER = re.compile(r"[(（]?[+-]?\d[\d.,]*$")
 
 # ASCII の「(」の前でも分ける(日本語の文は「ファイル名(5.25 GB、…)」のように半角の括弧を続けて書く)。
 # 「(s)」(model(s) など)は分けない
-_ATOM = re.compile(r" +|\(s\)|\(*[!-'\)-~]+|\(+|[^ !-~]")
+# 「<フォルダ>/<GPU>.json」のように < > で囲んだ日本語の入る印は、ASCII の並びの一部として切らない
+_ATOM = re.compile(r" +|\(s\)|\(*(?:<[^<>\s]*>|[!-'\)-~])+|\(+|[^ !-~]")
 
 
 def _atoms(text: str) -> list[str]:
@@ -200,7 +201,8 @@ def wrap_text(text: str, width: int, first: str = "", rest: str = "", space_room
     英数字の並び(ファイル名・URL・オプション・単位つきの数)の途中では折り返さない(1 つで幅より長ければ
     その行だけはみ出す)。行の頭に 、。) などを、行の終わりに ( 「 などを置かない(#76)。
     space_room: 後ろに空白で続く行は、その空白の分も幅に入れる(表・info の前からの折り返しと同じ位置。
-    False は textwrap と同じく幅いっぱいまで使う: --help)。"""
+    False は textwrap と同じく幅いっぱいまで使う: --help)。ただし、その空白の分だけで溢れるときも、
+    行の前の部分が幅の半分までなら同じ行に置く(前の版と同じ。短い見出しの後ろの長いパスを次の行へ送らない)。"""
     out: list[str] = []
     line, prefix = "", first
     chunks = _chunks(text)
@@ -209,7 +211,9 @@ def wrap_text(text: str, width: int, first: str = "", rest: str = "", space_room
         after = 1 if space_room and k + 1 < len(chunks) and chunks[k + 1][0] else 0
         while True:
             sep = space if line else ""
-            if cell_len(prefix + line + sep + chunk) + after <= width:
+            need = cell_len(prefix + line + sep + chunk)
+            # 空白の分だけで溢れる(need == width)ときは、前の部分が幅の半分までなら動かさない
+            if need + after <= width or (need <= width and cell_len(prefix + line) <= width // 2):
                 line += sep + chunk
                 break
             if line:  # 次の行へ

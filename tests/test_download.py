@@ -19,6 +19,7 @@ from urllib.parse import unquote
 
 import pytest
 import requests
+from clihelp import overlong_lines
 
 import genmodelfit as gmf
 from genmodelfit import cli, downloader, i18n
@@ -589,7 +590,7 @@ def test_cli_list_makes_no_request_and_writes_nothing(db_file, comfy, monkeypatc
     assert "diffusion_models/sub/tiny_unet.safetensors" in out and "ライセンス: mit" in out
     assert "https://example.invalid/LICENSE" in out and "空き" in out
     # 幅 100 に収める(1 つで長いパスだけの行は、途中で切らずにはみ出してよい。#76)
-    assert all(len(line) <= 100 or len(line.split()) == 1 for line in out.splitlines())
+    assert not overlong_lines(out.splitlines(), 100)
     assert (
         cli.main(
             ["download", "test_tiny", "--list", "--json", "--db", str(db_file), "--comfyui-dir", str(comfy)]

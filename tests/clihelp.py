@@ -41,3 +41,25 @@ def bundled_uncensored() -> int:
     from genmodelfit.db import load
 
     return sum(1 for m in load(use_cache=False).models if m.content == "uncensored")
+
+
+def overlong_lines(lines, width: int) -> list[str]:
+    """幅(表示の桁。全角は 2 桁)を超えた行のうち、許されないもの(#76)。
+
+    許すのは、1 つで幅より長い ASCII の語(パス・URL・ID・長いライセンス名)だけの行。先頭の「-」などの
+    箇条書きの印は語に数えない。空白の無い日本語の長い行は、ASCII の語ではないので許さない。"""
+    from rich.cells import cell_len
+
+    bad = []
+    for line in lines:
+        text = line.rstrip()
+        if cell_len(text) <= width:
+            continue
+        words = text.split()
+        if words and words[0] in ("-", "*", "•"):
+            words = words[1:]
+        # 禁則で語の後ろに付いた全角の句読点・閉じ括弧は、語の一部として許す
+        if len(words) == 1 and words[0].rstrip("、。」』）").isascii():
+            continue
+        bad.append(line)
+    return bad

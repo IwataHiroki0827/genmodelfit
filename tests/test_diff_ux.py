@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from rich.cells import cell_len
+from clihelp import overlong_lines
 
 from genmodelfit import cli, weekly
 from genmodelfit.db import Database, bundled_text, load
@@ -62,8 +62,7 @@ def _has(out: str, text: str) -> bool:
 def _width_ok(text: str) -> None:
     """幅 100 に収まる。ただし 1 つで幅より長い英数字の並び(パス・ID)だけの行ははみ出してよい
     (英数字の並びの途中では折り返さない。#76)。"""
-    for line in text.splitlines():
-        assert cell_len(line) <= MAX_COLS or len(line.split()) == 1, line
+    assert not overlong_lines(text.splitlines(), MAX_COLS)
 
 
 # ---- 本物の一覧(0.6.0 → 0.7.0) ----
