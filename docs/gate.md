@@ -215,7 +215,7 @@ HEAD is counted in HF's "resolvers" window (the response header `ratelimit-polic
 Upstream, files disappear and repositories become gated.
 
 - HEAD checks are trusted for **30 days** by default.
-- If any file's check is older than that (or has no recorded time), `url_reachable` is held (detail: 「確認が古い」, "the check is old").
+- If any file's check is older than that (or has no recorded time), `url_reachable` is held (detail: "check too old" in English, 「確認が古い」 in Japanese).
 - Change it with `GatePolicy(max_head_age_days=…)` or `--max-head-age-days N` (`none` = no limit).
 
 **The HEAD check time of the bundled list (`src/genmodelfit/data/db.json`)** is in `database.status` of `genmodelfit system --json` (`heads_checked_oldest`, `expires_at`; [schema.md](schema.md), "Data status").

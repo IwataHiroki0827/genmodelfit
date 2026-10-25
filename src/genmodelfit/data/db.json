@@ -50510,7 +50510,7 @@
    },
    "runtime": "comfyui",
    "description": {
-    "ja": "短い BGM やループ素材をつくる軽量なモデルです(歌は入りません)。",
+    "ja": "短い BGM やループ素材をつくる軽量なモデルです(歌は入りません)。指示は英語で書きます。",
     "en": "A lightweight model that makes short background music and loop material (no vocals). Write prompts in English."
    },
    "card_languages": null,
@@ -53738,7 +53738,7 @@
    },
    "runtime": "irodori-tts",
    "description": {
-    "ja": "人間らしく自然な日本語の読み上げです。落ち着いた女性・元気な女性・ナレーターなど、声の雰囲気を選べます。NVIDIA の GPU 向けです。",
+    "ja": "人間らしく自然な日本語の読み上げです。落ち着いた女性・元気な女性・ナレーターなど、声の雰囲気を選べます。NVIDIA の GPU 向けです。カードは MIT のライセンスに倫理上の制限を加えています(声のなりすまし・ディープフェイク・偽情報には使えません)。",
     "en": "Natural, human-like Japanese text-to-speech with selectable voice styles (calm, lively, narrator). Japanese only. Aimed at NVIDIA GPUs. The card adds ethical restrictions to the MIT license (no impersonation, no deepfakes or misinformation)."
    },
    "card_languages": null,
@@ -53849,7 +53849,7 @@
    },
    "runtime": "piper",
    "description": {
-    "ja": "軽くて速い読み上げです。GPU なしの PC でもすぐに読み上げます。日本語・英語に対応しています。",
+    "ja": "軽くて速い読み上げです。GPU なしの PC でもすぐに読み上げます。日本語・英語に対応しています。声のデータには独自の利用規約があります(クレジットの表記と、出力の使い方の制限)。",
     "en": "A light, fast text-to-speech voice (Tsukuyomi-chan, piper-plus). Reads Japanese and English right away, even on a PC without a GPU. The voice data has its own terms (credit line and output restrictions)."
    },
    "card_languages": null,

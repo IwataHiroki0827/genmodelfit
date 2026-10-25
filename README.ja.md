@@ -165,19 +165,22 @@ db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", stat
 
 ### 表示の言語
 
-出力は英語か日本語のどちらか 1 つで出る(混ぜない)。既定は OS の言語に従う(日本語なら日本語、それ以外は英語)。
-どのコマンドでも `--lang en|ja`(例 `genmodelfit recommend --lang en`)、環境変数 `GENMODELFIT_LANG=en|ja`、
-Python の `gmf.set_language("ja")` で選べる(優先は `--lang`、環境変数、`set_language` の順)。変わるのは文
-(理由・注意・エラー・`--help`)だけで、JSON のキー・ID・コード・判定はどちらの言語でも同じ。
+出力の既定は英語。日本語にするには、どのコマンドでも `--lang ja` を付ける(例 `genmodelfit recommend --lang ja`)か、
+環境変数 `GENMODELFIT_LANG=ja` を置くか、Python で `gmf.set_language("ja")` を呼ぶ(優先は `--lang`、環境変数、
+`set_language` の順。OS の言語は見ない)。英語の出力には日本語が出ない。変わるのは文(理由・注意・エラー・`--help`)
+だけで、JSON のキー・ID・コード・判定はどちらの言語でも同じ。
+日本語の出力は 0.9.2 と同じ(表の最後の説明や `--help` の一部などに英語が混ざる)。違うのは、`info` が日本語の説明だけを
+出すことと、`--help` に `--lang` と例が増えたこと。日本語の出力を日本語だけにするのは
+[#76](https://github.com/laxshmate/genmodelfit/issues/76) で予定している。
 
 ## 3. 結果
 
 ### 例
 
-VRAM 8 GiB・メモリ 32 GiB の PC での `genmodelfit recommend`(種類ごとに上位 2 件。`COLUMNS=100`):
+VRAM 8 GiB・メモリ 32 GiB の PC での `genmodelfit recommend --lang ja`(種類ごとに上位 2 件。`COLUMNS=100`):
 
 ```
-$ genmodelfit recommend --vram 8 --ram 32 -n 2
+$ genmodelfit recommend --vram 8 --ram 32 -n 2 --lang ja
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
 Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, too tight 136; 25
     more workflows merged into their models)

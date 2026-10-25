@@ -215,7 +215,7 @@ HEAD は HF の "resolvers" の枠(応答の `ratelimit-policy: "fixed window";"
 上流ではファイルが消えたり、リポジトリが gated になったりする。
 
 - HEAD の確認は既定で **30 日**まで信じる。
-- それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 「確認が古い」)。
+- それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 日本語なら「確認が古い」、英語なら "check too old")。
 - `GatePolicy(max_head_age_days=…)` / `--max-head-age-days N`(`none` で期限なし)で変えられる。
 
 **同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD の確認の日時**は `genmodelfit system --json` の `database.status`(`heads_checked_oldest`・`expires_at`。[schema.ja.md](schema.ja.md)「Data status / 一覧の新しさ」)で分かる。

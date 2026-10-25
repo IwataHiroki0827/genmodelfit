@@ -252,7 +252,7 @@ JSON では次のように分ける。
 `search <query>`:
 - id か名前の一部に合うものを探す(大文字小文字を区別しない)。
 - 合わないエントリは `hidden` に数えない。
-- 1 件も合わないときは `models: []` を出して終了コード 0(テキストでは `(no match / 該当なし)` を出す)。
+- 1 件も合わないときは `models: []` を出して終了コード 0(テキストでは、英語なら `(no match)`、日本語なら `(no match / 該当なし)` を出す)。
 - 空の query は終了コード 1。
 
 `content` の既定は **`sfw`**。無検閲のモデルは `--content all` か `--content uncensored` のときだけ出す。
@@ -642,7 +642,7 @@ Check: `id`(安定した、機械が読む名前)、`passed`(bool)、`detail`(�
 | `classification` | 0.6.0(#42): `{safe, judgement_needed, safe_changes}`。下を参照 |
 | `old_label`、`new_label` | #59: 表示用の、何を比べたか: `同梱の一覧(genmodelfit <version>)`、`取ってきた一覧(<cache path>)`、または与えたままのファイルのパス。`gmf.diff_db` では、渡さなければ null |
 | `field_changes` | #59: 変化のある共通のエントリすべて(安全なものも含む)の `{id: [field, …]}`。項目は `diff.entry_changes`(分類が使うのと同じ関数)の名前: 最上位のキー(`languages`、`license`、`review` など)、`files`(ファイルの追加・削除・並べ替え)、`files.<key>`(対になったファイルのキー)、`template.<key>`。ファイルの対応づけは、同じ名前のファイルが混ざらないよう段階的に行う: 同じ(name, url, sha256, directory, repo_id)→ 同じ(directory, name, sha256)→ 同じ(directory, name, url)→ 残りを(directory, name)の順で。名前や directory が変わったら、削除 + 追加のファイルとして扱う。片側に無く もう片側が null のキーは、変化としない |
-| `model_changes` | #59: 安全の一覧の外の変化、または 自動のおすすめの変化がある共通のエントリ: `{id, name, modality, items, other}`。`items`(変化ごとに 1 つ)は下の形。`other`: 残りの変化した項目名(「その他の変化」として表示)。安全の一覧の外で変化した項目は、すべて `items` か `other` に入る |
+| `model_changes` | #59: 安全の一覧の外の変化、または 自動のおすすめの変化がある共通のエントリ: `{id, name, modality, items, other}`。`items`(変化ごとに 1 つ)は下の形。`other`: 残りの変化した項目名(日本語では「その他の変化:」、英語では "other changes:" として表示)。安全の一覧の外で変化した項目は、すべて `items` か `other` に入る |
 | `top_changes` | #59: `generated_at` / `sources` / `models` 以外の、一覧の最上位のキーの変化(生の JSON を比べるとき、つまり `genmodelfit diff` と `merge-check` のときだけ。`raw` 無しの `gmf.diff_db` は [] を返す) |
 | `warnings` | #59、CLI だけ: 比較についての注意: 新しい一覧が古い一覧より古い(`generated_at`)(どの引数の形でも。引数なしのときは `genmodelfit update --from-release` の実行も促す) |
 | `stats` | `sources` の変化した値を、ドット区切りのキー(`counts.modality.image`、`head_check.status.302` など)に平らにしたもの: `{key, old, new}`。リストは長さで比べる。`checked_at` / `url` / `api` / `generator` / `failures` / `errors` は飛ばす |
@@ -1246,7 +1246,7 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dict `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (既定 nvidia)}` または `Gpu`。判定するのは、使える NVIDIA の GPU のうち最大のもの。NVIDIA 以外は判定しない。`ram_gb` は 合計 = 空き とし、この PC のページファイルは無視する(`--ram` と同じ)。`gpu_usable`: `None` = 今のどの PyTorch CUDA ビルドも対応しない GPU、またはドライバが古すぎる GPU は CPU として扱う(理由は `notes`、[hardware.md](hardware.ja.md))。`True` = 呼び出し側が確かめた(世代と精度はここで決める)。`False` = CPU。`windows`(既定: この PC): Windows のドライバの表と、Windows の ComfyUI の精度(Pascal は fp16)。OS、CPU、ディスクの空きはこの PC のもの。不正な GPU の dict は `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: id の完全一致は内容によらず使う。そうでなければ `download` の名前の探索(`content` で絞る。1 つのモデルのワークフローが複数あれば、`recommend` の行の代表。ほかは `fit.workflows`)。見つからない / 複数のモデルに合う → `gmf.ModelNotFound`(`.candidates`)。PC は、`system_info`、無ければ `gpu_name` + `vram_gb`(両方必要。そうでなければ `ValueError`)、無ければ `cpu_only=True`(GPU 無し)、無ければこの PC(`gmf.system()`)。`system_info` を GPU の引数と一緒に渡すと `ValueError` |
-| `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | genmodelfit が返す文(`estimate.reasons`・`notes`・gate の `detail`・エラーの文など)の表示の言語。`"en"` か `"ja"`。`None` で取り消す。決め方(上が優先): CLI の `--lang`、環境変数 `GENMODELFIT_LANG`、`set_language()`、OS の言語(日本語なら `ja`)、`en`。変わるのは文の言語だけで、キー・ID・コード・点数・判定は変わらない。一覧に保存された自由記述(`review.note`・`license_evidence`・実測の `source` / `note`)は訳さない。ほかの値は `ValueError`(#73) |
+| `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | genmodelfit が返す文(`estimate.reasons`・`notes`・gate の `detail`・エラーの文など)の表示の言語。`"en"` か `"ja"`。`None` で取り消す。**既定は英語**で、OS の言語は見ない。決め方(上が優先): CLI の `--lang`、環境変数 `GENMODELFIT_LANG`、`set_language()`、`en`。CLI の `--lang` はその呼び出しの間だけ効き(`contextvars.ContextVar`)、ほかのスレッドのライブラリの呼び出しの言語は変えない。文は、それを持つ値を作ったときの言語で決まる(`ja` で作った `Fit` の `notes` は、後で `set_language("en")` にしても日本語のまま)。変わるのは文の言語だけで、キー・ID・コード・点数・判定は変わらない。一覧に保存された自由記述(`review.note`・`license_evidence`・実測の `source` / `note`)は訳さない。ほかの値は `ValueError`(#73) |
 
 Python から配布の一覧を取ってくる(0.7.1、#58)。`__all__` には `gmf.RemoteError`(`DatabaseError`)も入る:
 

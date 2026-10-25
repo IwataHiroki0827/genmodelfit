@@ -168,11 +168,13 @@ setting.
 
 ### Language
 
-Output is in English or Japanese, never mixed. By default it follows the OS language (Japanese → Japanese,
-anything else → English). Choose it with `--lang en|ja` on any command (e.g. `genmodelfit recommend --lang ja`),
-the environment variable `GENMODELFIT_LANG=en|ja`, or `gmf.set_language("en")` from Python (the flag wins, then the
-variable, then `set_language`). Only the texts change (reasons, notes, errors, `--help`); JSON keys, ids, codes and
-judgments are the same in both languages.
+Output is in English by default. For Japanese, add `--lang ja` to any command (e.g. `genmodelfit recommend --lang ja`),
+set the environment variable `GENMODELFIT_LANG=ja`, or call `gmf.set_language("ja")` from Python (the flag wins, then
+the variable, then `set_language`; the OS language is not used). English output contains no Japanese. Only the texts
+change (reasons, notes, errors, `--help`); JSON keys, ids, codes and judgments are the same in both languages.
+The Japanese output is the same as in 0.9.2 (it still mixes some English, e.g. table footers and parts of `--help`),
+except that `info` shows only the Japanese description and `--help` gains `--lang` and examples; making the Japanese
+output Japanese only is planned ([#76](https://github.com/laxshmate/genmodelfit/issues/76)).
 
 ## 3. Results
 
@@ -346,7 +348,7 @@ it, `diff` only prints how to). `diff NEW.json` compares the bundled list with a
 files. It shows models as `name (type) — id`: added and removed models, auto-recommendation changes, and for each
 changed model its license (`!` = toward the permissive side), size, precision, prompt / speech languages, added /
 removed files with their license, newly uncensored, review status, and the names of any other changed fields
-(「その他の変化」), in three sections (files / license / uncensored / runtime, then auto-recommendation with ids,
+("other changes:"), in three sections (files / license / uncensored / runtime, then auto-recommendation with ids,
 then license provenance, languages, size and the rest), most important first; the same minor change on many models is one
 line with a count. Changes of popularity numbers, dates and HEAD results, old HEAD failures and the `sources` numbers
 are only counted; `--all` lists them (the content of the weekly pull request). `--json`: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff).
