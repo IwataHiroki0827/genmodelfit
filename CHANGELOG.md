@@ -91,6 +91,10 @@ All notable changes to this project are documented here. The format is based on
   import `requests`. It is now imported only by the functions that use the network, so a mismatched urllib3 / chardet
   in the user's environment no longer prints `RequestsDependencyWarning` on every run, and start-up is about 60 ms faster
   (#74).
+- `download`: when two downloads of the same file run at once, the one that gets the lock after the other has
+  finished now checks the placed file (sha256) and skips it, instead of downloading it again, refusing to overwrite
+  and leaving a `.part` behind. A download refused because a file appeared at the destination no longer leaves its
+  `.part` either (found by a rare failure of the two-thread test in the local CI).
 
 ## [0.9.2] - 2026-10-24
 

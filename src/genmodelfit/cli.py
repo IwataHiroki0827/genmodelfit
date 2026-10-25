@@ -4067,7 +4067,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="\n".join(wrap_text(epilog, _help_width(), space_room=False)) + "\n\n" + _examples(""),
         formatter_class=_HelpFormatter,
     )
-    p.add_argument("--version", action="version", version=f"genmodelfit {__version__}")
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"genmodelfit {__version__}",
+        # Python 3.10 の argparse はこの既定の文を訳さずに使うので、自分で渡す(#76)
+        help=tr("版を出して終わる", "show program's version number and exit"),
+    )
     p.add_argument("--lang", choices=LANGUAGES, default=argparse.SUPPRESS, help=lang._actions[0].help)
     sub = p.add_subparsers(dest="command", required=True)
 

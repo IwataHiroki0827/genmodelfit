@@ -968,6 +968,39 @@ def test_two_threads_same_destination(server, comfy):
     assert all("別の download" in str(e) or "上書き" in str(e) for e in errors), errors
 
 
+def test_file_placed_while_waiting_for_lock_is_skipped(server, comfy, monkeypatch):
+    """鍵を待つ間に別の download が同じファイルを置き終えたら、落とさずに飛ばし .part を残さない
+    (2 つのスレッドの試験がまれに落ちた順を、決まった順で再現する)。"""
+    p = plan(make_db(server), comfy)
+    dest = comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors"
+    real_lock = downloader._file_lock
+
+    def lock_then_place(path, name):
+        dest.write_bytes(BODY_A)  # 鍵を取る直前に、別の download が置き終えた
+        return real_lock(path, name)
+
+    monkeypatch.setattr(downloader, "_file_lock", lock_then_place)
+    r = gmf.download(p, yes=True, sleep=lambda s: None)
+    assert r.skipped == [p.files[0].relpath] and p.files[0].relpath not in r.downloaded
+    assert dest.read_bytes() == BODY_A
+    assert not list(comfy.rglob("*.part")) and not list(comfy.rglob("*.lock"))
+
+
+def test_file_placed_during_transfer_leaves_no_part(server, comfy, monkeypatch):
+    """落としている間に同じ名前のファイルが置かれたら、上書きせず、落とした .part も残さない。"""
+    p = plan(make_db(server), comfy)
+    dest = comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors"
+
+    def emit(ev):
+        if getattr(ev, "phase", None) == "verify" and not dest.exists():
+            dest.write_bytes(b"other")
+
+    with pytest.raises(DownloadRefused, match="上書き"):
+        gmf.download(p, yes=True, sleep=lambda s: None, progress=emit)
+    assert dest.read_bytes() == b"other"
+    assert not list(comfy.rglob("*.part")) and not list(comfy.rglob("*.lock"))
+
+
 EXT = "\\\\?\\"  # Windows の拡張パスの頭
 
 
