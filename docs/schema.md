@@ -247,6 +247,8 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
+### Order of `recommend`
+
 **Order of `recommend`** (`gmf.recommend()` and `recommend --json`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
 **runs without offload** (perfect or good on `GPU` / `GPU~`, one tier like the row score, 0.1.1: the precision upgrade
 to a `good` bf16 row must not move a model below where its `perfect` int8 row was) → marginal → official before
@@ -370,8 +372,13 @@ The six big types stay the top level. Uses are sub-divisions inside a type, deci
 | `tool` | utility tool (depth, pose, mask, …) | 補助ツール(深度・ポーズ・切り抜きなど) | tool, estimate, matting, interp, segment, separate |
 
 `--task` takes use names, aliases or task codes, comma-separated (`--task edit`, `--task i2v,lipsync`, `--task t2i`).
-An entry matches when one of its tasks is in the set. `use` (JSON) / the table's Use column is the matching use, else
+An entry matches when one of its tasks is in the set. `use` (JSON) is the matching use, else
 the first of tool, upscale, lipsync, motion, voice, edit, gen, i2v that the entry has.
+The table's Use column (#84) lists, without repeats and in the order of the table above, the `use` of the row and of
+every workflow of the same model (`workflows`, including ones hidden by the filters), e.g. `gen,edit`; with
+`--all-workflows` it is the row's `use` only. A list longer than the column (8 characters) is cut after the last use
+that fits and ends with `…` (`gen,…`); `info` lists the workflows. Until 0.10.0 it was the row's `use` plus `+N`
+(the number of other workflows).
 Utility tools (`upscale` and `tool`, plus Image / Video Tools templates whose title is a depth / normal / line-art /
 pose / geometry map or a segmentation, any audio separation, and MoGe / geometry estimation even under 3D Model) are hidden by `recommend` unless `--include-tools` or a
 tool use is given in `--task`.

@@ -1,4 +1,6 @@
 import io
+import json
+import re
 
 import pytest
 from rich.cells import cell_len
@@ -266,11 +268,11 @@ def test_type_column_is_always_first():
     v.model.modality = "video"
     header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Type"))
     assert header.split()[:4] == ["Type", "Status", "Score", "Model"]
-    # 幅 100 でも Disk を出す(Verified の列を外して空いた幅。#84)。Model は 28 桁
+    # 幅 100 でも Disk を出す(Verified の列を外して空いた幅。#84)。Model は 27 桁(Use は 8 桁)
     assert "Disk" in header
     from genmodelfit.table import columns_for, model_width
 
-    assert model_width(100, columns_for(100)) == 28
+    assert model_width(100, columns_for(100)) == 27
 
 
 def test_middle_ellipsis_and_distinct_names():
@@ -380,3 +382,134 @@ def test_recommend_table_and_json_orders_real_db(capsys):
     shown = [row.split()[2].lower() for row in rows]  # 「● Good」の段階
     assert shown == [w.lower().replace("_", " ") for w in want]
     assert [f for f in sel.fits] == sorted(sel.fits, key=lambda f: list_key(f, verified_first=False))
+
+
+# --- Use の列(#84: +N をやめ、まとめたワークフローの用途を並べる) ---------------------------------------
+
+
+def _with_uses(mid, use, others):
+    f = fit(mid)
+    f.use = use
+    f.workflows = [{"id": f"{mid}_{i}", "use": u} for i, u in enumerate(others)]
+    return f
+
+
+def _use_of(out: str, mid: str) -> str:
+    cells = row_of(out, mid).split()
+    return cells[cells.index(mid) + 1]
+
+
+def test_use_lists_the_uses_of_the_merged_workflows():
+    rows = [
+        _with_uses("mixed", "edit", ["gen", "edit", "gen"]),  # 違う用途: 重複なく USES の順(gen → edit)
+        _with_uses("same", "gen", ["gen", "gen"]),  # 同じ用途なら 1 つ
+        _with_uses("alone", "i2v", []),
+        _with_uses("long", "lipsync", ["gen", "edit", "i2v"]),  # 収まらない: 用途の境目で切って …
+    ]
+    out = render(rows)
+    assert _use_of(out, "mixed") == "gen,edit"
+    assert _use_of(out, "same") == "gen"
+    assert _use_of(out, "alone") == "i2v"
+    assert _use_of(out, "long") == "gen,…"
+    assert "+" not in "".join(_use_of(out, m) for m in ("mixed", "same", "alone", "long"))
+    for lang, text in (
+        ("en", "Use = workflow uses (info, --all-workflows)."),
+        ("ja", "Use = ワークフローの用途"),
+    ):
+        with i18n.forced(lang):
+            legend_out = render(rows)
+        assert text in legend_out and "+N" not in legend_out
+
+
+def test_use_is_the_rows_own_use_with_all_workflows():
+    buf = io.StringIO()
+    rows = [_with_uses("w", "edit", ["gen", "i2v"])]
+    print_fit_table(rows, title="T", system=pc(), console=make_console(buf, width=100), grouped=False)
+    assert _use_of(buf.getvalue(), "w") == "edit"
+
+
+def test_use_text_cuts_between_uses():
+    from genmodelfit.table import use_text
+
+    assert use_text(["gen", "edit"], 8) == "gen,edit"
+    assert use_text(["edit", "tool"], 8) == "edit,…"
+    assert use_text(["gen", "edit", "i2v"], 12) == "gen,edit,i2v"
+    assert use_text(["gen", "edit", "i2v", "lipsync"], 14) == "gen,edit,i2v,…"
+    assert use_text(["upscale"], 8) == "upscale"
+
+
+def test_use_column_on_the_bundled_list(capsys):
+    """同梱の一覧: Use に +N が無く、用途は info の材料(fit.workflows)と合う。"""
+    from genmodelfit.table import row_uses
+
+    db = load(use_cache=False)
+    from genmodelfit.recommend import select
+
+    sel = select(db, pc(24.0), content="all", include_tools=True, include_unknown_license=True)
+    merged = [f for f in sel.fits if len(row_uses(f)) > 1]
+    assert merged  # 用途の違うワークフローをまとめたモデルがある
+    for f in sel.fits:
+        want = {f.use} | {w["use"] for w in f.workflows}
+        assert set(row_uses(f)) == want
+    assert cli.main(["fit", "--vram", "24", "--ram", "64", "--no-cache", "--lang", "en"]) == 0
+    rows = [x for x in capsys.readouterr().out.splitlines() if "● " in x]
+    assert rows and not any(
+        re.search(r"\s(gen|edit|i2v|lipsync|motion|voice|upscale|tool)[a-z0-9,]*\+\d+\s", r) for r in rows
+    )
+
+
+# --- recommend の表は「並べてから -n で切る」(#84) -----------------------------------------------
+
+
+def _sections(out: str) -> dict[str, list[str]]:
+    """表の出力を種類ごとの行(モデルの表示)に分ける。"""
+    got: dict[str, list[str]] = {}
+    cur = None
+    for line in out.splitlines():
+        if line.startswith("== "):
+            cur = line[3:].split(":")[0].strip()
+            got[cur] = []
+        elif cur and "● " in line:
+            got[cur].append(line)
+    return got
+
+
+def test_recommend_table_cuts_after_sorting(capsys):
+    """-n は Verified を使わない並びで切る(選んでから並べ替えるのではない)。auto と非 auto が混ざる節では、
+    表と --json の顔ぶれが違う。"""
+    from genmodelfit.recommend import list_key, select
+    from genmodelfit.table import columns_for, distinct_names, model_width
+
+    db = load(use_cache=False)
+    width = model_width(100, columns_for(100))
+    differs = 0
+    for vram in ("8", "12", "16"):
+        for n in ("1", "2"):
+            args = ["recommend", "--vram", vram, "--ram", "32", "--no-cache", "-n", n]
+            with i18n.forced("en"):
+                assert cli.main(args) == 0
+            table = _sections(capsys.readouterr().out)
+            assert cli.main([*args, "--json"]) == 0
+            json_models = json.loads(capsys.readouterr().out)["models"]
+            system = cli._system(cli.build_parser().parse_args(args))
+            # 期待: 種類ごとの全部(件数で切らない)を、auto を使わない鍵で並べ、先頭の n 件
+            every = select(db, system, min_fit="marginal", drop_unknown_size=True, include_tools=False).fits
+            for mod, rows in table.items():
+                full = sorted(
+                    (f for f in every if f.model.modality == mod),
+                    key=lambda f: list_key(f, verified_first=False),
+                )
+                top = full[: int(n)]
+                shown = distinct_names([f.model_name or f.model.id for f in top], width)
+                assert len(rows) == len(top), (vram, n, mod)
+                for row, f in zip(rows, top, strict=True):
+                    assert f" {shown[f.model_name or f.model.id]} " in row, (vram, n, mod, row)
+                in_json = {m["id"] for m in json_models if m["modality"] == mod}
+                in_table = {f.model.id for f in top}
+                autos = [f for f in full if f.auto]
+                if len(autos) >= int(n) and not all(f.auto for f in top):
+                    # JSON は auto を先に n 件選ぶので、非 auto を含む表とは顔ぶれが違う
+                    assert in_json != in_table, (vram, n, mod)
+                    assert all(m["auto"] for m in json_models if m["modality"] == mod)
+                    differs += 1
+    assert differs  # auto と非 auto が混ざって顔ぶれの違う節が、少なくとも 1 つある(試験が空振りしない)

@@ -12,15 +12,25 @@ All notable changes to this project are documented here. The format is based on
 - **The `recommend` / `fit` / `search` tables no longer have a Verified column** (#84). It showed the gate's verdict
   for automatic recommendation (`yes`, or the first failed check such as `license` or `workflow`), which was hard to
   read and to check by hand; llmfit has no such column either. The legend line about it is gone, and the freed width
-  goes back to the other columns (at 100 columns the Model column is 4 characters wider and Disk is shown again).
+  goes back to the other columns: at 100 columns without the Censored column (the default `sfw`), Model is 3
+  characters wider (24 → 27) and Disk is shown again; with the Censored column (`--content all|uncensored`), License
+  is shown instead of being dropped (Model 31 → 28; Disk and Mem% are still dropped).
   `info <id>` still shows each gate check with [ok] / [NG], and `gate` still counts them.
 - **The `recommend` table no longer puts Verified models first**: rows are ordered runs → Perfect/Good → Marginal →
   official first → Score → id (the legend says `Order: runs, Perfect/Good, Marginal, Score.`), and `-n` cuts this
   order, so the table may list different models than before. **`recommend --json` and `gmf.recommend()` are
   unchanged** (same order with `auto: true` first, same contents, `auto` / `held_by` / `gate` kept), so with `-n` the
-  table and the JSON can list different models (docs/schema.md "Order of `recommend`"). `fit` and `search` never
+  table and the JSON can list different models (docs/schema.md "Order of `recommend`"); the legend of `recommend`
+  says `--json lists auto-recommendable models first (schema.md).` `fit` and `search` never
   sorted by it. The README screenshots (`docs/images/*.png`) still show the old column; there is no tool to render
   them, so they are left unchanged.
+- **The table's Use column no longer shows `+N`** (#84, owner's comment): `gen+3` ("the shown use plus N other
+  workflows of the same model") was not understood. A row that merges the workflows of one model now lists their uses
+  without repeats, in the order of `genmodelfit types` (`gen`, `edit`, `i2v`, …), e.g. `gen,edit`, or just `gen` when
+  they are all the same; with `--all-workflows` it is the row's own use. The column is 8 characters wide (was 7, so
+  `gen,edit` fits); a longer list is cut after the last use that fits and ends with `…` (`gen,…`). The legend says
+  `Use = workflow uses (info, --all-workflows)` instead of `+N = other workflows (--all-workflows)`. JSON (`use`,
+  `workflows`) and `info` are unchanged.
 
 ## [0.10.0] - 2026-10-26
 

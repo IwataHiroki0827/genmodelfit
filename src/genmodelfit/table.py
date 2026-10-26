@@ -33,7 +33,7 @@ from . import i18n
 from .groups import precision_label
 from .i18n import tr
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
-from .tasks import MODALITY_LABEL
+from .tasks import MODALITY_LABEL, USES
 
 LEVEL_STYLE = {
     "perfect": "bold green",
@@ -96,7 +96,7 @@ COLUMN_WIDTH = {
     "Status": 11,
     "Score": 5,
     CONTENT_COLUMN: 8,
-    "Use": 7,
+    "Use": 8,  # 「gen,edit」が収まる幅(#84。それより長い並びは「gen,…」)
     "Prec": 4,
     "VRAM": 5,
     "Mem%": 4,
@@ -346,10 +346,32 @@ def mode_cell(e, system) -> str:
     return label
 
 
+def row_uses(f, grouped: bool = True) -> list[str]:
+    """表の Use に出す用途(#84)。まとめた行は代表と仲間のワークフロー(fit.workflows。絞り込みで隠した仲間も)の
+    用途を重複なく USES の順に、--all-workflows(grouped=False)はその行の用途だけ。分からなければ ["?"]。"""
+    uses = {getattr(f, "use", "") or "?"}
+    if grouped:
+        uses |= {w.get("use") or "?" for w in getattr(f, "workflows", []) or []}
+    order = [*USES, "?"]
+    return sorted(uses, key=lambda u: (order.index(u) if u in order else len(order), u))
+
+
+def use_text(uses: Sequence[str], width: int) -> str:
+    """用途を「gen,edit」のように並べる。幅を超えるときは、収まるところまでの用途の後ろに「…」を付ける
+    (用途の途中では切らない。全部は info か --all-workflows で見る)。"""
+    text = ",".join(uses)
+    if cell_len(text) <= width:
+        return text
+    out = uses[0]
+    for u in uses[1:]:
+        if cell_len(f"{out},{u},…") > width:
+            break
+        out = f"{out},{u}"
+    return f"{out},…" if cell_len(f"{out},…") <= width else f"{out[: width - 1]}…"
+
+
 def _use_cell(f, grouped: bool) -> Text:
-    use = getattr(f, "use", "") or "?"  # 用途が分からない
-    n = len(getattr(f, "workflows", []) or []) if grouped else 0
-    return Text.assemble(use, (f"+{n}", "dim") if n else "")
+    return Text(use_text(row_uses(f, grouped), COLUMN_WIDTH["Use"]))
 
 
 def content_column_wanted(fits: Sequence, content: str | None = None) -> bool:
@@ -623,11 +645,13 @@ def legend(
     ]
     if grouped:
         out.append(
-            "One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows)."
+            "One row per model: Prec = best precision that fits, Use = workflow uses (info, --all-workflows)."
         )
     out.append(
         "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
     )
+    if order == "auto":  # recommend の --json だけ並びが表と違う(#84)
+        out.append("--json lists auto-recommendable models first (schema.md).")
     if shown:
         out.append("Censored: N = safety filter removed / adult model")
     if hidden.get("uncensored"):
@@ -678,9 +702,11 @@ def _legend_ja(
     ]
     if grouped:
         out.append(
-            "1 行に 1 モデル: Prec = 載る中で一番高い精度、+N = ほかのワークフローの数(--all-workflows)。"
+            "1 行に 1 モデル: Prec = 載る中で一番高い精度、Use = ワークフローの用途(info、--all-workflows)。"
         )
     out.append("m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。")
+    if order == "auto":
+        out.append("--json は自動でおすすめしてよいものを先に並べる(schema.md)。")
     if shown:
         out.append("Censored: N = 安全のための絞り込みを外したモデル・成人向けのモデル")
     if hidden.get("uncensored"):

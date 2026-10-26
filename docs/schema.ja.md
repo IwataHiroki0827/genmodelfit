@@ -279,6 +279,8 @@ JSON では次のように分ける。
 
 `--license a,b`: すべてのファイルのライセンス(`ModelFile.license`。ファイルを持たないエントリはエントリの `license`)が、この一覧に入っていなければならない(大文字小文字を区別しない)。不明なライセンス(`null`)は決して合わない。
 
+### Order of `recommend` / recommend の並べ方
+
 **`recommend` の並べ方**(`gmf.recommend()` と `recommend --json`):
 1. 動くもの(`fit_level` が `too_tight` でない。`unknown` は `too_tight` の後ろ)
 2. `auto: true`
@@ -394,7 +396,10 @@ VRAM を足しても、行の点数は下がらず、行が「逃がさずに動
 
 `--task` には、用途の名前、別名、task コードを、コンマ区切りで渡す(`--task edit`、`--task i2v,lipsync`、`--task t2i`)。
 エントリの task のどれかが集合に入っていれば合う。
-JSON の `use` と表の Use の列は、合った用途。合うものが無ければ、エントリが持つものの中で tool、upscale、lipsync、motion、voice、edit、gen、i2v のうち最初のもの。
+JSON の `use` は、合った用途。合うものが無ければ、エントリが持つものの中で tool、upscale、lipsync、motion、voice、edit、gen、i2v のうち最初のもの。
+表の Use の列(#84)は、行と同じモデルのすべてのワークフロー(`workflows`。絞り込みで隠したものも)の `use` を、重複なく上の表の順に並べたもの(例 `gen,edit`)。
+`--all-workflows` では行の `use` だけ。列(8 文字)に収まらないときは、収まる最後の用途の後ろで切って `…` を付ける(`gen,…`)。ワークフローの一覧は `info` で見られる。
+0.10.0 までは、行の `use` に `+N`(ほかのワークフローの数)を付けていた。
 
 補助ツールは、`--include-tools` か、`--task` で tool 系の用途を指定しないかぎり、`recommend` では隠す。
 補助ツールとは、次のもの:
