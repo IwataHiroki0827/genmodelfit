@@ -968,6 +968,25 @@ def test_two_threads_same_destination(server, comfy):
     assert all("別の download" in str(e) or "上書き" in str(e) for e in errors), errors
 
 
+def test_lock_removed_even_while_another_download_reads_it(server, comfy, monkeypatch):
+    """Windows では、別の download が .lock を読んでいる間は消せない(PermissionError)。
+    持ち主は少し待ってやり直し、.lock を残さない(#85。2 つのスレッドの試験がまれに落ちた順の再現)。"""
+    p = plan(make_db(server), comfy)
+    real_unlink = Path.unlink
+    busy = {"n": 3}
+
+    def unlink(self, *a, **kw):
+        if self.name.endswith(".lock") and busy["n"] > 0:
+            busy["n"] -= 1
+            raise PermissionError(13, "The process cannot access the file")
+        return real_unlink(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    gmf.download(p, yes=True, sleep=lambda s: None)
+    assert busy["n"] == 0
+    assert not list(comfy.rglob("*.lock")) and not list(comfy.rglob("*.part"))
+
+
 def test_file_placed_while_waiting_for_lock_is_skipped(server, comfy, monkeypatch):
     """鍵を待つ間に別の download が同じファイルを置き終えたら、落とさずに飛ばし .part を残さない
     (2 つのスレッドの試験がまれに落ちた順を、決まった順で再現する)。"""

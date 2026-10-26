@@ -1195,8 +1195,22 @@ def _file_lock(path: Path, name: str):
             fh.write(f"{os.getpid()} {int(time.time())}\n")
         yield
     finally:
-        with contextlib.suppress(OSError):
+        _remove_lock(path)
+
+
+def _remove_lock(path: Path, tries: int = 50) -> None:
+    """自分の .lock を消す。Windows では、鍵を取れなかった別の download が残骸かを確かめるために
+    読んでいる間は消せない(PermissionError)ので、少し待ってやり直す(#85)。"""
+    for _ in range(tries):
+        try:
             path.unlink()
+            return
+        except FileNotFoundError:
+            return
+        except PermissionError:
+            time.sleep(0.02)
+        except OSError:
+            return
 
 
 def _fetch_one(

@@ -36,6 +36,12 @@ All notable changes to this project are documented here. The format is based on
   `Use = workflow uses (info, --all-workflows)` instead of `+N = other workflows (--all-workflows)`. JSON (`use`,
   `workflows`) and `info` are unchanged.
 
+### Fixed
+
+- `download` on Windows: when two downloads of the same file overlapped, the `.lock` could be left behind
+  (the owner could not delete it while the other one was reading it), and the next download in the same process
+  then stopped with "another download is fetching the same file". The owner now retries the delete (#85).
+
 ## [0.10.0] - 2026-10-26
 
 ### Changed
