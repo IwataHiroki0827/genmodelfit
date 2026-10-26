@@ -169,7 +169,7 @@ LoRA, …) are collapsed into one item; the others are listed in `workflows` / `
 
 `fit` (0.1.1, Issue #28; Python `gmf.fit_list()`): by default only the models that run (`--fit runnable` = perfect /
 good / marginal), without utility tools, unknown-license and uncensored models; `--all` (`show_all=True`) is `--fit all`
-plus tools and unknown licenses (uncensored still needs `--content all`). `--fit perfect|good|marginal` shows exactly
+plus tools and unknown licenses (uncensored still needs `--uncensored`). `--fit perfect|good|marginal` shows exactly
 that level (other runnable levels are counted as `hidden.other_fit`); `--fit` and `--min-fit` cannot be combined
 (`--perfect` = `--fit perfect`). `fit` and `search` print **one table** sorted by `--sort` (`sort=`):
 
@@ -227,11 +227,11 @@ shown. `fit` shows the runnable levels by default and `search` every level (`--f
 limit; models with unknown size (`fit_level: "unknown"`, `?`) come after marginal ones of their type (`--fit all`). `search <query>` matches a
 part of the id or name (case-insensitive); entries that do not match are not counted in `hidden`. With no match it prints
 `models: []` and exits 0 (text mode prints `(no match)` in English, `(no match / 該当なし)` in Japanese); a blank query exits 1.
-`content` defaults to **`sfw`**: uncensored models appear only with `--content all` or `--content uncensored`.
+`content` defaults to **`sfw`**: uncensored models appear only with `--uncensored` (= `--content all`) or `--content uncensored` (only uncensored). `--uncensored` with `--content sfw` is a usage error.
 
 **Unknown licenses are hidden by default** (0.1.1, Issue #28): an entry where any file's license (the entry's license
 when it lists no files) is unknown (`null`) is not shown by `recommend` / `fit` / `search` or by `gmf.recommend()` /
-`gmf.search()`; it is counted as `hidden.license_unknown`. `--include-unknown-license` (Python
+`gmf.search()`; it is counted as `hidden.license_unknown`. `--any-license` (old form `--include-unknown-license`; Python
 `include_unknown_license=True`) shows them. `info <exact id>` always shows the entry.
 
 `hidden` reasons, each entry counted once under the first reason that applies, in this order:
@@ -806,7 +806,7 @@ How `info <query>` picks the model:
   (default `sfw`)**. Exactly one match → that model.
 - Two or more matches → never picks one: exit code 1. Text mode lists the candidates on stderr; `--json` prints
   the envelope with `error` and `candidates` (`[{"id", "name", "content"}]`, all of them).
-- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--content all`).
+- No match (or only uncensored matches under `sfw`) → exit code 1 with `error` (the message suggests `--uncensored`).
 
 Python `gmf.info(model_id)` matches the exact id only and returns `None` otherwise.
 
@@ -1194,8 +1194,9 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` in bytes |
 | `blocked` | str[] | why it will not download (in the display language, `en` / `ja`). Empty = can download |
+| `blocked_codes` | str[] | the kind of each `blocked` entry, same order (optional, since #75): `uncensored`, `unknown_license` (these two are lifted by the user's consent: Python `content="all"` / `include_unknown_license=True`; CLI `--uncensored` / `--any-license`, or the y/N question in a terminal. The `blocked` texts of the library name the Python arguments; the CLI shows its own flags), `gated`, `no_files`, `unavailable` (genmodelfit cannot download the workflow at all), `conflict`, `budget`, `disk` (the consent flags do not lift these; move the file / `--output-dir`, raise `--budget`, free disk space) |
 | `warnings` | str[] | things to know (licenses not on the allowlist, will not run on this PC, layout hint) |
-| `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto` |
+| `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto`, `ok` (optional, since #75: true when it has no gated, unavailable or conflicting file; uncensored, unknown license, disk and budget are not counted) |
 | `license_url` | str \| null | the model's license page |
 | `ok` | bool | `blocked` is empty |
 
@@ -1204,11 +1205,14 @@ PlannedFile:
 | key | type | meaning |
 |---|---|---|
 | `name` | str | file name in the list (may contain ComfyUI subfolders, `/`) |
-| `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the list has no directory); "" when refused |
+| `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the ComfyUI folder is unknown; ComfyUI does not read `other`, move such files before use); "" when refused |
 | `dest` | str | absolute destination path; "" when refused |
-| `url`, `sha256`, `size_bytes`, `directory`, `role` | | from ModelFile |
+| `url`, `sha256`, `size_bytes`, `role` | | from ModelFile |
+| `directory` | str \| null | the ComfyUI folder: from ModelFile, or inferred when the list has none (see `directory_basis`); null = unknown (`other/`) |
+| `directory_basis` | object \| null | why `directory` was inferred for a file the list gives no folder (any source; optional, since #75): the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all such files are in one folder (`unet` counts as `diffusion_models`, `clip` as `text_encoders`; e.g. an SDXL all-in-one file = `sd_xl_base_1.0.safetensors` → `checkpoints`). Keys: `kind` (`header_params`), `template` (the template id), `file` (its file), `params`, `reference_params`, and `needs` (`ComfyUI-GGUF` for a GGUF file in `diffusion_models` / `text_encoders`). null = from the list, or unknown |
 | `license`, `license_name` | str \| null | the license used for the check (gate's conservative reading; null = unknown) |
 | `license_url` | str \| null | where the license text is |
+| `check_url` | str \| null | when `license_url` is null: the page to check the terms on (optional, since #75): `https://huggingface.co/<owner>/<repo>` for `hf:` ids, else the entry's `homepage` (https only), else the file's Hugging Face repository (for official templates often a Comfy-Org repository, not the original publisher; the CLI labels it so). null when `license_url` is set |
 | `license_note` | str \| null | why the license differs from the list's value, or why it could not be confirmed |
 | `license_allowed` | bool | on the license allowlist (gate default or `--license-allowlist`) |
 | `gated` | bool \| null | access request needed (also when the upstream of a component asks for it) |

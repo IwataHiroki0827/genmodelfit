@@ -486,15 +486,13 @@ def legend(
     if shown:
         out.append("Censored: N = safety filter removed / adult model")
     if hidden.get("uncensored"):
-        out.append(
-            f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --content all to show them."
-        )
+        out.append(f"Note: {hidden['uncensored']} uncensored model(s) hidden; add --uncensored to show them.")
     if order != "auto" and any(hidden.get(k) for k in ("tools", "too_tight", "size_unknown", "other_fit")):
         out.append("Note: add --all to also show tools, models that do not run and models not judged (?).")
     if hidden.get("license_unknown"):
         out.append(
             f"Note: {hidden['license_unknown']} model(s) with an unknown license hidden;"
-            " add --include-unknown-license to show them."
+            " add --any-license to show them."
         )
     out.append("? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).")
     if any(f.estimate.unknown_size for f in fits):

@@ -33,6 +33,44 @@ All notable changes to this project are documented here. The format is based on
   `set_language()`, then `en`. The weekly PR body stays Japanese.
 - An EXAMPLES section in `genmodelfit --help` and in the `--help` of `recommend`, `fit`, `info`, `search` and
   `download`, in the display language.
+- `download` explains what to do next (#75):
+  - When it stops, each reason is shown once (the final `error:` line that repeated them is gone; the exit code stays
+    1 and `--json` keeps `error`). When only `--content all` / `--include-unknown-license` are missing, it ends with
+    "To download anyway:" and one ready-to-run command with all of them added (your other options kept), plus one
+    line per flag on what you agree to. It never adds them by itself. For gated files, files it cannot fetch
+    (their URLs are listed) and workflows without files it says genmodelfit cannot download the workflow and names a
+    clean alternative workflow if there is one; for disk space, `--budget` and same-name files it names the lever.
+    No command is shown in those cases. `--list` shows the same guidance; a blocked run writes one short `error:`
+    line to stderr. The command uses the plan's workflow id and the program form you ran (`genmodelfit` or
+    `python -m genmodelfit`), with single-quoted arguments where needed.
+  - Files whose ComfyUI folder is unknown go to `other/` as before, and the plan now says clearly (in every layout)
+    that ComfyUI does not read `models/other` and that they must be moved before use. For a main file without a
+    folder in the list, the folder is inferred when its header parameter count matches a file of an official template
+    in exactly one folder (e.g. SDXL all-in-one files → `checkpoints`); the plan shows the basis, and says when a GGUF
+    file needs the ComfyUI-GGUF custom nodes. In the bundled list this places the main file of 12 of the 48 Hugging
+    Face models in `checkpoints/` or `diffusion_models/` instead of `other/`: a copy downloaded with 0.9.2 into
+    `other/` is downloaded again (move it to the new folder first to avoid that).
+  - A file with no license URL says "no license stated" and shows the page to check (the model's Hugging Face page or
+    the page in the list), and the consent question no longer refers to URLs that are not shown.
+  - The environment variable `GENMODELFIT_COMFYUI_DIR` sets the default for `--comfyui-dir` (`--comfyui-dir` and
+    `--output-dir` win over it; checked like the flag). Without either, the plan says the default folder is not
+    ComfyUI's and shows how to set it (one hint for this OS, merged with the extra_model_paths.yaml note).
+  - `download --help`: examples for `--list` first, then downloading into ComfyUI, and
+    `--content all --include-unknown-license`.
+  - JSON (optional keys): `plan.blocked_codes`, `alternatives[].ok`, and per file `directory_basis` (an
+    object) and `check_url` (https pages only).
+  - In a terminal, `download` no longer needs consent flags: uncensored models and files with no stated license are
+    shown in the plan and named in the consent question (y/N, default No; one `y` covers them). Without a terminal,
+    with `--yes` or `--json` the flags are still required. `--list` shows what will be asked. The Python API is
+    unchanged (pass `content=` / `include_unknown_license=`). Gated files are still never downloaded.
+- Shorter flags (#75): `--uncensored` (= `--content all`) on `recommend`, `fit`, `search`, `info`, `types` and
+  `download`, and `--any-license` (= `--include-unknown-license`) on `recommend`, `fit`, `search` and `download`.
+  The old forms still work; `--content uncensored` still means "only uncensored"; `--uncensored` with
+  `--content sfw|uncensored` is a usage error. Consent flags (`--uncensored`, `--any-license`,
+  `--include-unknown-license`, `--content`) must be written in full: abbreviations such as `--u` are a usage
+  error. Hints, notes and `--help` examples now suggest the short forms. JSON is unchanged. The library's
+  `blocked` / not-found texts name the Python arguments (`content="all"`, `include_unknown_license=True`); the CLI
+  shows its own flags.
 
 ### Fixed
 

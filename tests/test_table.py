@@ -219,7 +219,7 @@ def test_header_hidden_and_count():
     lines = buf.getvalue().splitlines()
     assert lines[0] == "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB (32.0 available)"
     assert lines[1] == "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)"
-    assert any("--content all" in x for x in lines)
+    assert any("--uncensored" in x for x in lines)
 
 
 @pytest.mark.parametrize("width", [60, 70, 80, 90, 99, 100])

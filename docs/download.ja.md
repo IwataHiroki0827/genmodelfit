@@ -13,6 +13,7 @@ JSON の形は [schema.ja.md](schema.ja.md)「download」にあります。
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
+genmodelfit download MODEL --uncensored --any-license --yes   # without the question (scripts)
 ```
 
 - **落とすもの**: 1 つのワークフローの全部のファイル。
@@ -23,16 +24,22 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
 - **置き場所**:
   - `--comfyui-dir` なら、テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・`checkpoints` など)に置く。ファイル名の中のサブフォルダは保つ。
   - `--output-dir`(既定は genmodelfit のデータのフォルダの `models`)も同じ並びなので、ComfyUI の `extra_model_paths.yaml` に足せる。
+  - 環境変数 `GENMODELFIT_COMFYUI_DIR` が `--comfyui-dir` の既定になる(CLI だけ。Python は `comfyui_dir` を渡す)。順は `--comfyui-dir` → `--output-dir` → `GENMODELFIT_COMFYUI_DIR` → 既定のフォルダ。値はフラグと同じく確かめる(ComfyUI のフォルダに見えること)。どれも無いときは、計画の中で genmodelfit のフォルダであること(ComfyUI は読まない)と決め方を、この OS の形だけで示す(Windows は PowerShell `$env:GENMODELFIT_COMFYUI_DIR = 'C:\ComfyUI'`、ほかは bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"`)。
+  - ComfyUI のどのフォルダか分からないファイル(Hugging Face のモデルに多い)は `other/` に置く。ComfyUI は `models/other` を読まないので、計画の中でそう知らせる。使う前に(モデルのページの説明に従って `checkpoints`・`diffusion_models`・`loras` などへ)移すこと。
+  - 一覧に置き場所の無いファイル(出どころによらない)の置き場所は、同梱の一覧の 1 つの根拠だけで決める: 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけのとき(`unet` と `diffusion_models`、`clip` と `text_encoders` は同じとみなす。例 SDXL の全部入りのファイルは `sd_xl_base_1.0.safetensors` と同じ数なので `checkpoints`)。計画に根拠を出す(JSON は `directory_basis`)。名前やタグからの推測はしない。こうして `diffusion_models`・`text_encoders` に置く GGUF のファイルは、読むのにカスタムノード ComfyUI-GGUF が要る(計画にそう出す)。
+  - #75 から、Hugging Face の 12 モデルの本体は `other/` ではなく `checkpoints/`・`diffusion_models/` に置く。0.9.2 でそれを `other/` に落とした人は、新しいフォルダへもう一度落とすことになる。先にファイルを自分で移せば落とし直さない(sha256 は計り直す)。
 - **先に同意**: 落とす前に、次を見せる。
-  - ファイルごとのライセンスと原文の URL。
+  - ファイルごとのライセンスと原文の URL。原文の URL が無いファイルは「ライセンスの記載がありません」と書き、確かめる場所(モデルの Hugging Face のページか、一覧にあるページ)を出す。そのときの同意の質問は、そのページで自分で確かめることを求める文になる。
   - 許可リストに無いライセンスの印(利用制限の無い商用利用ができるもの。[gate.ja.md](gate.ja.md)。`--license-allowlist` で変えられる)。
   - 合計の大きさと空き。
-  - そのあと `[y/N]` で尋ねる。`--yes` で省ける(`--json` で落とすときは必須)。
+  - そのあと `[y/N]` で尋ねる(既定は No)。`--yes` で省ける(`--json` で落とすときは必須)。
+  - 無検閲のモデルとライセンスの記載が無いファイル: 端末(標準入力と標準出力が端末で、`--yes`・`--json` が無い)では計画を止めず、計画に出したうえで、同意の質問で名指しする(「このモデルは無検閲(成人向けを含みうる)で、ライセンスの記載が無いファイルを含みます(上の確かめる場所で条件を確かめてください)。…それでも落としますか?」)。1 回の `y` で名指ししたもの全部に同意する。端末でない・`--yes`・`--json` では `--uncensored`・`--any-license`(前からの書き方は `--content all`・`--include-unknown-license`)が要る。`--list` は本当に実行したときと同じ: 端末(`--yes` 無し)なら尋ねることを `同意:` の 1 行と、スクリプト向けのコマンド(`--uncensored`・`--any-license` と `--yes` 付き)を出し、そうでなければ「落とせません」と指定のコマンドを出す。同意の指定は略さずに書く(`--u`・`--an` は使い方の誤りで終了コード 2)。`--uncensored` は `--content sfw|uncensored` と一緒に使えない。Python の API は変えない(`content=`・`include_unknown_license=` を自分で渡す)。
   - 使う前に各ファイルの条件を読むこと。
 - **落とさないもの**: 1 つでも当てはまるファイルがあれば、そのワークフローは何も落とさない。一部だけ落とすことはしない。
+  - 理由は 1 回ずつ出す。足りないのが `--uncensored`・`--any-license` だけなら(端末でない・`--yes`)、計画の最後に「落とすなら(端末で実行すれば、指定の代わりに y/N で尋ねます):」(`--yes` のときは「--yes を外せば y/N で尋ねます。または下の指定を足す」)として、それを全部足したコマンドを 1 行で出し(ほかの指定はそのまま)、指定ごとに何に同意するかを 1 行ずつ添える。勝手に足して落とすことはしない。gated・genmodelfit では落とせないファイル(自分で落とせるよう URL を出す)・ファイルの無いワークフローでは、このワークフローは genmodelfit では落とせないと書き、同じモデルの別のワークフローにその問題が無ければそれを示す。空き・`--budget`・同じ名前の別のファイルでは、外し方(空ける・`--output-dir`、`--budget`、ファイルを移す)と、足りなければそのあとに要る同意の指定を書く。どちらもコマンドは出さない。コマンドは計画のワークフローの ID と、実行したときの形(`genmodelfit` か `python -m genmodelfit`)で書き、要る引数は ' で囲む。stderr には短い `error:` の 1 行を出す(終了コード 1)。
   - gated(ログインや利用申請が要る)。genmodelfit はログイン情報やトークンを扱わない。モデルのページで申請して自分で落とす。
-  - 無検閲のモデル(`--content all` か `uncensored` を明示したときだけ)。
-  - ライセンス不明(`--include-unknown-license` のときだけ)。
+  - 無検閲のモデル(端末の質問で y、または `--uncensored`・`--content all|uncensored` のときだけ)。
+  - ライセンス不明(端末の質問で y、または `--any-license` のときだけ)。
   - 一覧に sha256・大きさの無いもの。
   - Hugging Face・GitHub 以外の取得先。
 - **安全**:

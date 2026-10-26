@@ -176,7 +176,7 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 
 `fit`(0.1.1、Issue #28。Python は `gmf.fit_list()`):
 - 既定では、動くモデルだけを出す(`--fit runnable` = perfect / good / marginal)。補助ツール、ライセンス不明のもの、無検閲のモデルは出さない。
-- `--all`(`show_all=True`)は `--fit all` に、補助ツールとライセンス不明のものを足したもの。無検閲は `--content all` も要る。
+- `--all`(`show_all=True`)は `--fit all` に、補助ツールとライセンス不明のものを足したもの。無検閲は `--uncensored` も要る。
 - `--fit perfect|good|marginal` はその段階だけを出す。ほかの動く段階は `hidden.other_fit` に数える。
 - `--fit` と `--min-fit` は同時に使えない(`--perfect` = `--fit perfect`)。
 
@@ -255,11 +255,11 @@ JSON では次のように分ける。
 - 1 件も合わないときは `models: []` を出して終了コード 0(テキストでは、英語なら `(no match)`、日本語なら `(no match / 該当なし)` を出す)。
 - 空の query は終了コード 1。
 
-`content` の既定は **`sfw`**。無検閲のモデルは `--content all` か `--content uncensored` のときだけ出す。
+`content` の既定は **`sfw`**。無検閲のモデルは `--uncensored`(= `--content all`)か `--content uncensored`(無検閲だけ)のときだけ出す。`--uncensored` と `--content sfw` を同時に指定すると使い方の誤り。
 
 **ライセンス不明は既定で隠す**(0.1.1、Issue #28)。
 - どれかのファイルのライセンス(ファイルを持たないエントリはエントリのライセンス)が不明(`null`)のエントリは、`recommend` / `fit` / `search` と `gmf.recommend()` / `gmf.search()` で出さない。`hidden.license_unknown` に数える。
-- `--include-unknown-license`(Python は `include_unknown_license=True`)で出す。
+- `--any-license`(前からの書き方は `--include-unknown-license`。Python は `include_unknown_license=True`)で出す。
 - `info <ID そのまま>` は常にエントリを出す。
 
 `hidden` の理由。各エントリは、当てはまる最初の理由で 1 回だけ数える。順は次のとおり:
@@ -848,7 +848,7 @@ id の重複したモデルは、どこでも断る(0.6.0、#42)。
 - id がそのまま合えば、内容によらず(無検閲も)常に出す。
 - そうでなければ、query を id か名前の一部として探し、**`--content` で絞る(既定 `sfw`)**。ちょうど 1 件なら、そのモデル。
 - 2 件以上は、選ばずに終了コード 1。テキストでは候補を stderr に並べる。`--json` は `error` と `candidates`(`[{"id", "name", "content"}]`、全件)を付けた外枠を出す。
-- 1 件も合わない(または `sfw` で無検閲だけが合った)ときは、`error` を付けて終了コード 1(メッセージは `--content all` を勧める)。
+- 1 件も合わない(または `sfw` で無検閲だけが合った)ときは、`error` を付けて終了コード 1(メッセージは `--uncensored` を勧める)。
 
 Python の `gmf.info(model_id)` は、id の完全一致だけで探し、無ければ `None` を返す。
 
@@ -1181,8 +1181,9 @@ DownloadPlan:
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` をバイトで |
 | `blocked` | str[] | 落とさない理由(表示の言語 `en` / `ja`)。空なら落とせる |
+| `blocked_codes` | str[] | `blocked` のそれぞれの種類。同じ順(任意。#75 から): `uncensored`・`unknown_license`(この 2 つは利用者の同意で外せる: Python は `content="all"`・`include_unknown_license=True`、CLI は `--uncensored`・`--any-license` か端末の y/N の質問。ライブラリの `blocked` の文は Python の引数を書き、CLI は自分の指定を書く)、`gated`・`no_files`・`unavailable`(このワークフローは genmodelfit では落とせない)、`conflict`・`budget`・`disk`(同意の指定では外れない。ファイルを移す・`--output-dir`、`--budget` を上げる、ディスクを空ける) |
 | `warnings` | str[] | 知っておくべきこと(許可リストに無いライセンス、この PC では動かない、配置のヒント) |
-| `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto` |
+| `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto`、`ok`(任意。#75 から。gated・取得できない・同じ名前の別のファイルが無ければ true。無検閲・ライセンス不明・空き・上限は数えない) |
 | `license_url` | str \| null | モデルのライセンスのページ |
 | `ok` | bool | `blocked` が空 |
 
@@ -1191,11 +1192,14 @@ PlannedFile:
 | キー | 型 | 意味 |
 |---|---|---|
 | `name` | str | 一覧にあるファイル名(ComfyUI のサブフォルダ `/` を含むことがある) |
-| `relpath` | str | `root` の下のパス(`<directory>/<name>`。一覧に directory が無ければ `other/<name>`)。断ったときは "" |
+| `relpath` | str | `root` の下のパス(`<directory>/<name>`。ComfyUI のフォルダが分からなければ `other/<name>`。ComfyUI は `other` を読まないので、使う前に移す)。断ったときは "" |
 | `dest` | str | 保存先の絶対パス。断ったときは "" |
-| `url`、`sha256`、`size_bytes`、`directory`、`role` | | ModelFile から |
+| `url`、`sha256`、`size_bytes`、`role` | | ModelFile から |
+| `directory` | str \| null | ComfyUI のフォルダ。ModelFile から。一覧に無ければ決めたもの(`directory_basis` を参照)。null は分からない(`other/`) |
+| `directory_basis` | object \| null | 一覧に置き場所の無いファイル(出どころによらない)の `directory` を決めた根拠(任意。#75 から): 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけ(`unet` は `diffusion_models`、`clip` は `text_encoders` と同じとみなす。例 SDXL の全部入り = `sd_xl_base_1.0.safetensors` → `checkpoints`)。キー: `kind`(`header_params`)、`template`(テンプレートの ID)、`file`(そのファイル)、`params`、`reference_params`、`needs`(GGUF を `diffusion_models`・`text_encoders` に置くときの `ComfyUI-GGUF`)。null は一覧の値か、分からない |
 | `license`、`license_name` | str \| null | 確認に使ったライセンス(ゲートの保守的な読み。null は不明) |
 | `license_url` | str \| null | ライセンスの本文がある場所 |
+| `check_url` | str \| null | `license_url` が null のとき、条件を確かめるページ(任意。#75 から): `hf:` の ID なら `https://huggingface.co/<owner>/<repo>`、無ければエントリの `homepage`(https のものだけ)、それも無ければファイルの Hugging Face のリポジトリ(公式テンプレートでは Comfy-Org などの置き場所で、作者とは限らない。CLI はそう書く)。`license_url` があれば null |
 | `license_note` | str \| null | 一覧の値とライセンスが違う理由、または確かめられなかった理由 |
 | `license_allowed` | bool | ライセンスの許可リストにある(ゲートの既定、または `--license-allowlist`) |
 | `gated` | bool \| null | アクセスの申請が要る(部品の上流が求める場合も) |

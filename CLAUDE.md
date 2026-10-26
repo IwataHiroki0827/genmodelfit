@@ -22,8 +22,8 @@
 - 持つのはモデルの**情報**だけ。モデル本体は持たない・配らない
 - 無検閲のモデルも一覧から外さず、`content: uncensored` の印と根拠(content_evidence)を付ける。
   **未成年の性的表現を目的とするものは除外**する
-  年齢制限があるので、`recommend` / `fit` / `gmf.recommend()` の既定は `sfw`。無検閲は `--content all|uncensored`
-  (Python は `content="all"|"uncensored"`)を指定したときだけ出す(2026-10-20)。`info <id>` は ID を指定するので出す
+  年齢制限があるので、`recommend` / `fit` / `gmf.recommend()` の既定は `sfw`。無検閲は `--uncensored`(= `--content all`)か
+  `--content uncensored`(Python は `content="all"|"uncensored"`)を指定したときだけ出す(2026-10-20)。`info <id>` は ID を指定するので出す
 - 見積もりには必ず `basis`(measured / estimated)を付ける。実測があれば実測を使う
 - 精度の目標に届かないとき、係数を無理に合わせてごまかさない。docs/accuracy.md に正直に書く
 - 版の正本は `src/genmodelfit/_version.py`(pyproject は hatch が読む)。変えたら CHANGELOG.md も書く
@@ -32,7 +32,10 @@
 - HTTP は必ず `fetch.make_session()`(User-Agent を付け、~/.netrc の資格情報を送らない。プロキシの環境変数は使う)。
   読むだけのコマンドと Python の関数はネットに触らない(README「Privacy」、tests/test_privacy.py・test_embedding.py)
 - `download`(#31、`downloader.py`)は一覧の URL だけを https で落とし、転送先は `HOST_POLICY` のホストだけ。
-  同意(confirm / yes)・sha256・`.part` の続き・置き場所の外に書かない・gated / 無検閲 / ライセンス不明を落とさない、
+  同意(confirm / yes)・sha256・`.part` の続き・置き場所の外に書かない・gated は落とさない・無検閲 / ライセンス不明は
+  はっきりした同意があるときだけ(端末なら名指しした y/N の質問(--yes / --json を除く)、それ以外(--yes・--json・端末でない)は
+  --uncensored / --any-license。
+  ライブラリは content / include_unknown_license を渡したときだけ)、
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
 - REST の serve は(未定)(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く

@@ -159,7 +159,7 @@ def test_fit_says_uncensored_hidden(cache):
         )
         and " more workflows merged into" in re.sub(r"\s+", " ", out)  # 見出しは幅 100 で折り返す
     )
-    assert "add --content all" in out and "--include-unknown-license" in out
+    assert "add --uncensored" in out and "--any-license" in out
     every = ["--content", "all", "--all-workflows", "--all"]
     out = run_cli(["fit", *HW, *every], cache).stdout.decode("utf-8")
     assert "hidden" not in out
@@ -221,10 +221,10 @@ def test_info_partial_match(cache):
     assert "lustify" not in err.lower() and "nova-furry" not in err
     r = run_cli(["info", "sdxl", *HW, "--content", "all"], cache)
     assert r.returncode == 1 and "lustify" in r.stderr.decode("utf-8").lower()
-    # 無検閲にしか合わないときは、--content all を案内する
+    # 無検閲にしか合わないときは、--uncensored を案内する
     r = run_cli(["info", "Qwen-Image-2.1", *HW], cache)
     err = r.stderr.decode("utf-8")
-    assert r.returncode == 1 and r.stdout == b"" and "--content all" in err
+    assert r.returncode == 1 and r.stdout == b"" and "--uncensored" in err
 
 
 def test_python_m(cache):

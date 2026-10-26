@@ -13,6 +13,7 @@ The implementation is `src/genmodelfit/downloader.py`; `tests/test_download.py` 
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
+genmodelfit download MODEL --uncensored --any-license --yes   # without the question (scripts)
 ```
 
 - **Which files**: all files of one workflow.
@@ -23,16 +24,22 @@ genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15
 - **Where**:
   - `--comfyui-dir` puts each file in the ComfyUI folder the template names (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, ...). Subfolders in the file name are kept.
   - `--output-dir` (default: genmodelfit's user data folder, `models`) uses the same layout, so it can be added to ComfyUI's `extra_model_paths.yaml`.
+  - The environment variable `GENMODELFIT_COMFYUI_DIR` is the default for `--comfyui-dir` (CLI only; in Python pass `comfyui_dir`). Order: `--comfyui-dir`, then `--output-dir`, then `GENMODELFIT_COMFYUI_DIR`, then the default folder. The value is checked like the flag (it must look like a ComfyUI folder). When none is set, the plan says the folder is genmodelfit's (ComfyUI does not read it) and shows how to set it, for this OS only: PowerShell `$env:GENMODELFIT_COMFYUI_DIR = 'C:\ComfyUI'` on Windows, bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"` elsewhere.
+  - Files whose ComfyUI folder is unknown (many Hugging Face models) go to `other/`. ComfyUI does not read `models/other`: the plan says so, and you move them (to `checkpoints`, `diffusion_models`, `loras`, ... as the model page says) before use.
+  - For a file without a folder in the list (from any source) the folder is inferred only from one piece of evidence in the bundled list: the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all matching files are in one folder (`unet` and `diffusion_models`, `clip` and `text_encoders` count as one; e.g. an SDXL all-in-one file has the same count as `sd_xl_base_1.0.safetensors`, so `checkpoints`). The plan shows the basis (`directory_basis` in JSON). Names and tags are not used to guess. A GGUF file placed in `diffusion_models` / `text_encoders` this way needs the ComfyUI-GGUF custom nodes; the plan says so.
+  - Since #75 the main files of 12 Hugging Face models go to `checkpoints/` or `diffusion_models/` instead of `other/`. If you downloaded one of them with 0.9.2 into `other/`, it is downloaded again into the new folder; move the file there yourself first to skip that (the sha256 is checked again).
 - **Consent first**: before anything is downloaded you see:
-  - every file with its license and the license URL;
+  - every file with its license and the license URL. A file with no license URL says "no license stated" and shows the page to check (the Hugging Face page of the model, or the page stored in the list); the consent question then asks you to check those pages yourself;
   - licenses that are not on the allowlist, marked (commercial use without use restrictions; see [gate.md](gate.md); change it with `--license-allowlist`);
   - the total size and the free disk.
-  - Then you are asked `[y/N]`. `--yes` skips the question (required with `--json`).
+  - Then you are asked `[y/N]` (default No). `--yes` skips the question (required with `--json`).
+  - Uncensored models and files with no stated license: in a terminal (stdin and stdout are terminals, no `--yes` / `--json`) they do not stop the plan; they are shown, and the question names them ("This model is uncensored (may include adult content) and has files with no stated license (check the pages above). Download anyway, ...?"). One `y` covers everything named. Without a terminal, with `--yes` or `--json` you must pass `--uncensored` and / or `--any-license` (old forms `--content all`, `--include-unknown-license`). `--list` shows what a real run would do: in a terminal (no `--yes`), one `consent:` line with what will be asked and the command for scripts (with `--uncensored` / `--any-license` and `--yes`); otherwise "cannot download" and the flags command. Consent flags must be written in full (`--u` or `--an` is a usage error, exit 2), and `--uncensored` cannot be combined with `--content sfw|uncensored`. The Python API is unchanged: pass `content=` / `include_unknown_license=` yourself.
   - Read the terms of each file before you use the model.
 - **Refused**: if any file matches, nothing of that workflow is downloaded. It never downloads only part of it.
+  - Each reason is shown once. When only `--uncensored` and / or `--any-license` are missing (no terminal or `--yes`), the plan ends with "To download anyway (run it in a terminal to be asked y/N instead of adding flags):" (with `--yes`: "drop --yes to be asked y/N instead, or add the flags below") and one command that adds all of them (keeping your other options), with one line per flag on what you agree to. It never adds them by itself. For gated files, files genmodelfit cannot download (their URLs are listed so you can get them yourself) and workflows without files it says genmodelfit cannot download the workflow, and names another workflow of the same model without that problem when there is one. For disk space, `--budget` and a different file with the same name it names the lever (free space or `--output-dir`, `--budget`, move the file), then the consent flags if they are also missing. In both cases no command is shown. The command uses the workflow id of the plan and the program form you ran (`genmodelfit` or `python -m genmodelfit`); arguments are put in single quotes when needed. A short `error:` line goes to stderr (exit code 1).
   - Gated files. genmodelfit never handles logins or tokens: request access on the model page and download them yourself.
-  - Uncensored models, unless you pass `--content all` (or `uncensored`).
-  - Files whose license is unknown, unless you pass `--include-unknown-license`.
+  - Uncensored models, unless you agree (y in a terminal, or `--uncensored` / `--content all|uncensored`).
+  - Files whose license is unknown, unless you agree (y in a terminal, or `--any-license`).
   - Files without a sha256 or size in the list.
   - Hosts other than Hugging Face / GitHub.
 - **Safety**:

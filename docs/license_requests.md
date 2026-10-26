@@ -30,7 +30,7 @@ The draft texts are meant to be posted on other people's English-language reposi
   - Once a license is stated, rebuild the list with the table in `license_sources.py` or the upstream's statement.
 - Effect on users (common to all):
   - genmodelfit treats an unknown license the same as "not permitted" ("License contract" in [schema.md](schema.md)).
-  - By default such models are not shown by `recommend` / `fit` / `search` (`--include-unknown-license` shows them), and not in the automatic recommendation (gate) either.
+  - By default such models are not shown by `recommend` / `fit` / `search` (`--any-license` shows them), and not in the automatic recommendation (gate) either.
   - An app that is distributed without its source (such as AI生成キット) cannot recommend those models to its users.
 
 ## A. No license stated for the weights

@@ -61,6 +61,20 @@ OTHER_DIR = "other"  # ComfyUI の置き場所(directory)が一覧に無いフ�
 
 # 計画のファイルの状態
 STATUSES = ("download", "resume", "present", "conflict", "unavailable")
+# 止める理由の種類(DownloadPlan.blocked_codes。#75)。uncensored と unknown_license だけは、利用者が同意の指定
+# (content・include_unknown_license。CLI は端末の質問か --uncensored・--any-license)で外せる。
+# ほかは指定では外れない
+BLOCK_CODES = (
+    "uncensored",
+    "unknown_license",
+    "gated",
+    "no_files",
+    "unavailable",
+    "conflict",
+    "budget",
+    "disk",
+)
+CONSENT_CODES = ("uncensored", "unknown_license")
 
 
 class DownloadError(RuntimeError):
@@ -344,6 +358,12 @@ class PlannedFile:
     part_bytes: int = 0  # 途中まで落とした .part の大きさ
     reason: str | None = None  # unavailable / conflict の理由
     verified: bool = False  # present のとき、計画で sha256 まで計ったか(download は必ず計り直す)
+    # 一覧に置き場所が無く、同梱の一覧の根拠から置き場所を決めたときの根拠
+    # (機械が読む形。#75。infer_directory)。
+    # 一覧の値・分からないときは None
+    directory_basis: dict[str, Any] | None = None
+    # license_url が無いとき、条件を確かめる場所(モデルのページ。#75)。license_url があれば None
+    check_url: str | None = None
 
     @property
     def remaining_bytes(self) -> int:
@@ -376,6 +396,7 @@ class DownloadPlan:
     disk_free_bytes: int | None = None
     budget_bytes: int | None = None
     blocked: list[str] = field(default_factory=list)  # 落とさない理由
+    blocked_codes: list[str] = field(default_factory=list)  # blocked と同じ順の種類(BLOCK_CODES。#75)
     warnings: list[str] = field(default_factory=list)  # 落とせるが知らせること
     alternatives: list[dict[str, Any]] = field(default_factory=list)  # 同じモデルのほかの精度・使い方
     license_url: str | None = None  # モデル一式のライセンスの場所
@@ -464,9 +485,9 @@ def resolve_candidates(db: Database, query: str, content: str = "sfw") -> tuple[
             tr(
                 f"モデルが見つかりません: {q}(content {content} で外れた {kinds} のモデルが "
                 f"{len(hits)} 件あります。"
-                "--content all を付けるか ID で指定してください)",
+                'content="all" にするか ID で指定してください)',
                 f"No such model: {q} ({len(hits)} {'/'.join(kind_set)} models are hidden by "
-                f"content {content}; add --content all or give the id)",
+                f'content {content}; use content="all" or give the id)',
             )
         )
     raise ModelNotFound(tr(f"モデルが見つかりません: {q}", f"No such model: {q}"))
@@ -485,18 +506,104 @@ def _hash_file(path: Path, progress: Callable[[int], None] | None = None) -> str
     return h.hexdigest()
 
 
-def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing: bool) -> PlannedFile:
+# 置き場所を決める根拠にする、パラメータ数の一致の幅(相対)。SDXL の inpainting(入力の層が 14,400 個多い)が
+# sd_xl_base_1.0 と 4e-6 違う。別の系統はけた違いに離れる(docs/download.ja.md「コマンドライン」)
+PARAMS_MATCH = 1e-5
+
+
+# ComfyUI の folder_paths で同じフォルダとして読まれる古い名前
+# (unet は diffusion_models、clip は text_encoders。
+# estimate.DIRECTORY_ROLE も同じ組で同じ役割にしている)。一致の数え方ではこの組を 1 つの置き場所とみなす
+DIRECTORY_ALIASES = {"unet": "diffusion_models", "clip": "text_encoders"}
+GGUF_NODE = "ComfyUI-GGUF"  # GGUF を diffusion_models / text_encoders から読むのに要るカスタムノード
+
+
+@dataclass(frozen=True)
+class _DirRef:
+    """公式テンプレートのファイル(置き場所が一覧にあり、ヘッダのパラメータ数が分かるもの)。"""
+
+    params: int
+    directory: str
+    name: str
+    template: str = ""
+
+
+def directory_refs(db: Database) -> list[_DirRef]:
+    """置き場所を決める手本: 公式テンプレート(利用者のテンプレートは除く)の、
+    置き場所とパラメータ数のあるファイル。"""
+    out = []
+    for m in db.models:
+        if m.source != "comfyui-template" or (m.template and m.template.username not in (None, "ComfyUI")):
+            continue
+        for f in m.files:
+            if f.directory and f.header_params:
+                folder = DIRECTORY_ALIASES.get(f.directory, f.directory)
+                out.append(_DirRef(f.header_params, folder, f.name.rsplit("/", 1)[-1], m.id))
+    return out
+
+
+def infer_directory(f: ModelFile, refs: Iterable[_DirRef]) -> tuple[str | None, dict[str, Any] | None]:
+    """一覧に置き場所が無いファイル(出どころによらない)の置き場所を、同梱の一覧の根拠から決める(#75)。
+    (置き場所, 根拠)。
+
+    根拠は 1 つだけ: 本体のファイルのヘッダのパラメータ数が、公式テンプレートのファイルと PARAMS_MATCH の幅で
+    一致し、一致したファイルの置き場所が 1 通り(DIRECTORY_ALIASES は同じ置き場所。例 SDXL の全部入り =
+    sd_xl_base_1.0 と同じ数 → checkpoints)。名前・タグからの推測はしない。決められなければ (None, None)
+    (other に置く)。根拠は {kind, template, file, params, reference_params[, needs]}(needs は GGUF を
+    diffusion_models / text_encoders に置くとき要るカスタムノード)。"""
+    if f.directory or not f.header_params or f.role not in (None, "main"):
+        return None, None
+    n = f.header_params
+    hits = [r for r in refs if abs(r.params - n) <= n * PARAMS_MATCH]
+    dirs = {r.directory for r in hits}
+    if len(dirs) != 1:
+        return None, None
+    ref = min(hits, key=lambda r: (abs(r.params - n), r.name))
+    basis: dict[str, Any] = {
+        "kind": "header_params",
+        "template": ref.template,
+        "file": ref.name,
+        "params": n,
+        "reference_params": ref.params,
+    }
+    if f.name.lower().endswith(".gguf") and ref.directory in ("diffusion_models", "text_encoders"):
+        basis["needs"] = GGUF_NODE
+    return ref.directory, basis
+
+
+def check_url(m: ModelEntry, f: ModelFile) -> str | None:
+    """license_url が無いファイルの条件を確かめる場所(モデルのページ)。HF の ID ならそのページ、
+    無ければ一覧のモデルのページ(homepage。https のものだけ)、それも無ければファイルの HF のリポジトリ
+    (公式テンプレートでは Comfy-Org などの置き場所で、作者とは限らない)。"""
+    if m.id.startswith("hf:") and "/" in m.id:
+        return f"https://huggingface.co/{m.id[3:]}"
+    if m.homepage and m.homepage.lower().startswith("https://"):
+        return m.homepage
+    if f.repo_id:
+        return f"https://huggingface.co/{f.repo_id}"
+    return None
+
+
+def _plan_file(
+    f: ModelFile,
+    root: Path,
+    allow: frozenset[str],
+    verify_existing: bool,
+    m: ModelEntry | None = None,
+    refs: Iterable[_DirRef] = (),
+) -> PlannedFile:
     from .gate import license_allowed, resolve_file_license
 
     r = resolve_file_license(f)
-    rel = safe_relpath(f.directory, f.name)
+    directory, basis = (f.directory, None) if f.directory else infer_directory(f, refs)
+    rel = safe_relpath(directory, f.name)
     dest = root.joinpath(*rel) if rel else None
     pf = PlannedFile(
         name=f.name,
         url=f.url,
         sha256=(f.sha256 or "").lower() or None,
         size_bytes=f.size_bytes,
-        directory=f.directory,
+        directory=directory,
         role=f.role,
         license=r.license,
         license_name=r.license_name,
@@ -506,12 +613,14 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
         gated=True if (f.gated or r.gated) else f.gated,
         dest=str(dest) if dest else "",
         relpath="/".join(rel) if rel else "",
+        directory_basis=basis,
+        check_url=None if f.license_url or m is None else check_url(m, f),
     )
     reason = None
     if rel is None or dest is None or not _inside(dest, root):
         reason = tr(
-            f"置き場所の外を指す名前です({f.directory or '-'}/{f.name})",
-            f"The name points outside the destination ({f.directory or '-'}/{f.name})",
+            f"置き場所の外を指す名前です({directory or '-'}/{f.name})",
+            f"The name points outside the destination ({directory or '-'}/{f.name})",
         )
     elif not f.url:
         reason = tr("一覧に URL がありません", "The list has no URL")
@@ -568,7 +677,7 @@ def _plan_file(f: ModelFile, root: Path, allow: frozenset[str], verify_existing:
     return pf
 
 
-def _alt_dict(fit: Fit) -> dict[str, Any]:
+def _alt_dict(fit: Fit, p: DownloadPlan | None = None) -> dict[str, Any]:
     from .recommend import memory_use
 
     _, need, _ = memory_use(fit.estimate, fit.system)
@@ -580,48 +689,75 @@ def _alt_dict(fit: Fit) -> dict[str, Any]:
         "memory_required_gb": round(need, 2) if need is not None else None,
         "size_bytes": fit.model.total_size_bytes,
         "auto": fit.auto,
+        # 指定では外せない理由(gated・ファイル無し・取得できないファイル・同じ名前の別のファイル)
+        # が無いか(#75)。
+        # 無検閲・ライセンス不明・空き・上限は数えない
+        "ok": p is not None
+        and not any(c in ("gated", "no_files") for c in p.blocked_codes)
+        and all(f.status not in ("unavailable", "conflict") for f in p.files),
     }
+
+
+def _block(plan: DownloadPlan, code: str, text: str) -> None:
+    """止める理由を足す(blocked と blocked_codes を同じ順に保つ)。"""
+    plan.blocked.append(text)
+    plan.blocked_codes.append(code)
 
 
 def _model_blocks(
     m: ModelEntry, content: str, include_unknown_license: bool, files: list[PlannedFile]
-) -> list[str]:
-    out = []
+) -> list[tuple[str, str]]:
+    """モデル一式で止める理由((種類, 文) の並び)。"""
+    out: list[tuple[str, str]] = []
     if m.content == "uncensored" and content not in ("all", "uncensored"):
         out.append(
-            tr(
-                "無検閲のモデルです。落とすなら --content all か --content uncensored を明示してください",
-                "This is an uncensored model. To download it, pass --content all or --content uncensored",
+            (
+                "uncensored",
+                tr(
+                    '無検閲のモデルです。落とすなら同意が要ります(content="all" か "uncensored")',
+                    "This is an uncensored model. Downloading it needs consent"
+                    ' (content="all" or "uncensored")',
+                ),
             )
         )
     gated = [f.name for f in files if f.gated]
     if gated:
         out.append(
-            tr(
-                "利用申請(gated)が要るファイルがあります: "
-                + ", ".join(gated[:3])
-                + "。genmodelfit はログイン情報を扱わないので落としません"
-                "(配布元のページで申請して自分で落としてください)",
-                "Some files need an access request (gated): "
-                + ", ".join(gated[:3])
-                + ". genmodelfit does not handle login credentials, so it will not download them"
-                " (request access on the publisher's page and download them yourself)",
+            (
+                "gated",
+                tr(
+                    "利用申請(gated)が要るファイルがあります: "
+                    + ", ".join(gated[:3])
+                    + "。genmodelfit はログイン情報を扱わないので落としません"
+                    "(配布元のページで申請して自分で落としてください)",
+                    "Some files need an access request (gated): "
+                    + ", ".join(gated[:3])
+                    + ". genmodelfit does not handle login credentials, so it will not download them"
+                    " (request access on the publisher's page and download them yourself)",
+                ),
             )
         )
     unknown = [f.name for f in files if f.license is None]
     if unknown and not include_unknown_license:
         out.append(
-            tr(
-                "ライセンスが分からないファイルがあります: "
-                + ", ".join(unknown[:3])
-                + "。中身の条件を自分で確かめたうえで落とすなら --include-unknown-license",
-                "Some files have an unknown license: "
-                + ", ".join(unknown[:3])
-                + ". To download them after checking the terms yourself, use --include-unknown-license",
+            (
+                "unknown_license",
+                tr(
+                    "ライセンスが分からないファイルがあります: "
+                    + ", ".join(unknown[:3])
+                    + "。中身の条件を自分で確かめたうえで落とすなら同意が要ります"
+                    "(include_unknown_license=True)",
+                    "Some files have an unknown license: "
+                    + ", ".join(unknown[:3])
+                    + ". Downloading them after checking the terms yourself needs consent"
+                    " (include_unknown_license=True)",
+                ),
             )
         )
     if not m.files:
-        out.append(tr("一覧にファイルの記載がありません", "The list has no files for this model"))
+        out.append(
+            ("no_files", tr("一覧にファイルの記載がありません", "The list has no files for this model"))
+        )
     return out
 
 
@@ -714,10 +850,11 @@ def plan_download(
     fits = [judge(m, system, db, settings=settings, coefficients=c, policy=pol) for m in cands]
     budget = int(budget_gb * GIB) if budget_gb is not None else None
 
+    refs = directory_refs(db)
     plans: list[tuple[tuple, DownloadPlan, Fit]] = []
     for fit in fits:
         m = fit.model
-        files = [_plan_file(f, root, allow, verify_existing and len(fits) == 1) for f in m.files]
+        files = [_plan_file(f, root, allow, verify_existing and len(fits) == 1, m, refs) for f in m.files]
         p = DownloadPlan(
             model_id=m.id,
             name=m.name,
@@ -734,15 +871,17 @@ def plan_download(
             budget_bytes=budget,
             license_url=m.license_url,
         )
-        p.blocked = _model_blocks(m, content, include_unknown_license, files)
+        for code, text in _model_blocks(m, content, include_unknown_license, files):
+            _block(p, code, text)
         over = budget is not None and p.download_bytes > budget
         # 候補の順: 止める理由が無い → 上限に収まる → recommend と同じ選び方(variant_key)
         plans.append(((bool(p.blocked), over, *variant_key(fit)), p, fit))
     plans.sort(key=lambda x: x[0])
     _, plan, fit = plans[0]
     if len(plans) > 1 and verify_existing:
-        plan.files = [_plan_file(f, root, allow, True) for f in fit.model.files]  # 選んだものだけ計り直す
-    plan.alternatives = [_alt_dict(x[2]) for x in plans[1:]]
+        # 選んだものだけ計り直す
+        plan.files = [_plan_file(f, root, allow, True, fit.model, refs) for f in fit.model.files]
+    plan.alternatives = [_alt_dict(x[2], x[1]) for x in plans[1:]]
     plan.chosen = (
         tr("ID で指定", "Given by id")
         if exact and not precision
@@ -761,32 +900,38 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
     root = Path(plan.root)
     for f in plan.files:
         if f.status == "unavailable":
-            plan.blocked.append(f"{f.name}: {f.reason}")
+            _block(plan, "unavailable", f"{f.name}: {f.reason}")
         elif f.status == "conflict":
-            plan.blocked.append(
+            _block(
+                plan,
+                "conflict",
                 tr(
                     f"{f.relpath}: {f.reason}(別の場所へ移すか、--output-dir で別の置き場所を)",
                     f"{f.relpath}: {f.reason} (move it elsewhere, or choose another place with --output-dir)",
-                )
+                ),
             )
     if plan.budget_bytes is not None and plan.download_bytes > plan.budget_bytes:
-        plan.blocked.append(
+        _block(
+            plan,
+            "budget",
             tr(
                 f"落とす量 {plan.download_bytes / GIB:.2f} GB が上限 "
                 f"{plan.budget_bytes / GIB:.2f} GB を超えます(--budget)",
                 f"The download of {plan.download_bytes / GIB:.2f} GB exceeds the limit of "
                 f"{plan.budget_bytes / GIB:.2f} GB (--budget)",
-            )
+            ),
         )
     plan.disk_free_bytes = _free_bytes(root)
     if plan.disk_free_bytes is not None and plan.disk_needed_bytes > plan.disk_free_bytes:
-        plan.blocked.append(
+        _block(
+            plan,
+            "disk",
             tr(
                 f"空きが足りません: 要る {plan.disk_needed_bytes / GIB:.2f} GB(落とす残り + 1 GB)、"
                 f"空き {plan.disk_free_bytes / GIB:.2f} GB",
                 f"Not enough free disk: needs {plan.disk_needed_bytes / GIB:.2f} GB (the rest to download "
                 f"+ 1 GB), free {plan.disk_free_bytes / GIB:.2f} GB",
-            )
+            ),
         )
     names = [f"{f.name}({_lic(f)})" for f in plan.files if f.license is not None and not f.license_allowed]
     if names:
@@ -802,13 +947,7 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
         )
     unknown = [f.name for f in plan.files if f.license is None]
     if unknown and not plan.blocked:
-        plan.warnings.append(
-            tr(
-                "ライセンスが分からないファイルを含みます(--include-unknown-license): ",
-                "Includes files with an unknown license (--include-unknown-license): ",
-            )
-            + ", ".join(unknown[:4])
-        )
+        plan.warnings.append(tr(UNKNOWN_WARNING_JA, UNKNOWN_WARNING_EN) + ", ".join(unknown[:4]))
     if fit.estimate.fit in ("too_tight",):
         plan.warnings.append(
             tr(
@@ -824,26 +963,50 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
             )
         )
     other = [f.name for f in plan.files if not f.directory and f.status != "unavailable"]
-    if other and plan.layout == "comfyui":
+    if other:
         plan.warnings.append(
             tr(
-                f"ComfyUI の置き場所が一覧に無いファイルは models/{OTHER_DIR} に置きます"
-                "(ComfyUI はこのフォルダを"
-                "読みません。使うノードの説明に従って移してください): ",
-                f"Files with no ComfyUI folder in the list go to models/{OTHER_DIR} (ComfyUI does not read "
-                "this folder; move them as the node that uses them says): ",
+                f"ComfyUI のどのフォルダに置くか分からないファイルは models/{OTHER_DIR} に置きます。"
+                f"ComfyUI は models/{OTHER_DIR} を読まないので、使う前に正しいフォルダ"
+                "(checkpoints・diffusion_models・loras など。モデルのページの説明に従う)へ移してください: ",
+                f"Files whose ComfyUI folder is unknown go to models/{OTHER_DIR}. ComfyUI does not read "
+                f"models/{OTHER_DIR}: move them to the right folder (checkpoints, diffusion_models, loras,"
+                " ...; see the model page) before use: ",
             )
             + ", ".join(other[:4])
+            + (f" (+{len(other) - 4})" if len(other) > 4 else "")
         )
     if plan.layout == "output":
         plan.warnings.append(
             tr(
-                "ComfyUI の models と同じ並びで置きます。ComfyUI で使うなら --comfyui-dir を指定するか、"
-                "extra_model_paths.yaml にこのフォルダを足してください",
-                "Files are laid out like ComfyUI's models folder. To use them in ComfyUI, pass --comfyui-dir "
-                "or add this folder to extra_model_paths.yaml",
+                LAYOUT_WARNING_JA,
+                LAYOUT_WARNING_EN,
             )
         )
+    gguf = [f.name for f in plan.files if (f.directory_basis or {}).get("needs") == GGUF_NODE]
+    if gguf:
+        plan.warnings.append(
+            tr(
+                f"GGUF のファイルを読むには ComfyUI にカスタムノード {GGUF_NODE} が要ります: ",
+                f"ComfyUI needs the {GGUF_NODE} custom nodes to load the GGUF files: ",
+            )
+            + ", ".join(gguf[:4])
+        )
+
+
+# ライセンス不明を含めて落とすときの知らせの頭(CLI は端末で尋ねるとき、自分の「同意」の行に置き換える)
+UNKNOWN_WARNING_JA = "ライセンスが分からないファイルを含みます(条件は自分で確かめる): "
+UNKNOWN_WARNING_EN = "Includes files with an unknown license (check their terms yourself): "
+
+# --output-dir か既定の場所に置くときの知らせ(CLI は既定の場所のとき、自分の案内に置き換える)
+LAYOUT_WARNING_JA = (
+    "ComfyUI の models と同じ並びで置きます(ComfyUI のフォルダではありません)。ComfyUI で使うなら"
+    " --comfyui-dir を指定するか、extra_model_paths.yaml にこのフォルダを足してください"
+)
+LAYOUT_WARNING_EN = (
+    "Files are laid out like ComfyUI's models folder (this is not the ComfyUI folder). To use them in"
+    " ComfyUI, pass --comfyui-dir or add this folder to extra_model_paths.yaml"
+)
 
 
 def _lic(f: PlannedFile) -> str:

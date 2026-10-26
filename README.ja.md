@@ -214,8 +214,8 @@ Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can
 Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
-Note: 26 uncensored model(s) hidden; add --content all to show them.
-Note: 28 model(s) with an unknown license hidden; add --include-unknown-license to show them.
+Note: 26 uncensored model(s) hidden; add --uncensored to show them.
+Note: 28 model(s) with an unknown license hidden; add --any-license to show them.
 ? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).
 ```
 
@@ -245,7 +245,7 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 | Type | image・video・music・sfx・tts・3d |
 | Status | 段階(下の表) |
 | Score | 0〜100。段階・VRAM の余裕・Verified か・実測か・人気から計算([式](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#score--点数)) |
-| Censored | `Y` 検閲あり / `N` 無検閲。`--content all` か `uncensored` のときだけ出る |
+| Censored | `Y` 検閲あり / `N` 無検閲。`--uncensored`(か `--content all|uncensored`)のときだけ出る |
 | Model | 同じ重みを 1 行にまとめたモデル。長い名前は真ん中を `…` で詰める |
 | Use | `gen`・`edit`・`i2v` など(`genmodelfit types`)。`+N` = 同じモデルのほかのワークフローが N 個(`--all-workflows`) |
 | Prec | 載る中で一番良い精度(fp16・bf16・fp8・int8 など) |
@@ -302,7 +302,7 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `review`・`bench`・`contrib` | 保守と実測(下) |
 
 オプション・終了コード・例は各コマンドの `--help` にあります。よく使うオプション: `--json`・`--vram`・`--ram`・
-`--content`・`--include-unknown-license`・`--license apache-2.0,mit`・`--comfyui-version`。
+`--uncensored`(無検閲も含める。前からの書き方は `--content all`)・`--any-license`(ライセンス不明も含める。前からの書き方は `--include-unknown-license`)・`--content uncensored`(無検閲だけ)・`--license apache-2.0,mit`・`--comfyui-version`。
 
 ### データ源
 
@@ -314,7 +314,7 @@ Civitai は使いません(規約が自動アクセスを制限しているた�
 ### 内容の印
 
 安全フィルタを外したモデルや成人向けの出力を想定したモデルは `uncensored` の印を付け、**既定では出しません**。
-`--content all`(または `uncensored`)で `Censored` の列と一緒に出します。既定では Verified になりません。
+`--uncensored`(または `--content all|uncensored`)で `Censored` の列と一緒に出します。既定では Verified になりません。
 未成年の性的表現を目的とするモデルは一覧から除外しています
 ([docs/sources.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/sources.ja.md))。
 
@@ -328,7 +328,10 @@ sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満�
 ### ダウンロード
 
 一覧にある https の URL だけを使い、転送先は Hugging Face・GitHub のホストだけ、書きながら sha256 を確かめ、Ctrl-C のあとは続きから、
-置き場所の外には書きません。gated・無検閲・ライセンス不明のファイルは、許可しない限り落としません。
+置き場所の外には書きません。gated は落としません。無検閲のモデルとライセンス不明のファイルは、同意があるときだけ落とします。
+端末では、それを名指しした同意の質問(y/N。既定は No)で尋ねます。`--yes`・`--json`・スクリプトでは `--uncensored`・
+`--any-license` が要ります(足したコマンドを 1 行と、それぞれの意味を出します。勝手に足して落とすことはしません)。ComfyUI のどのフォルダか分からないファイルは `other/` に置きます。ComfyUI は読まないので、
+計画の中でそう知らせます(使う前に移す)。環境変数 `GENMODELFIT_COMFYUI_DIR` に ComfyUI のフォルダを入れておけば `--comfyui-dir` を省けます。
 詳しい決まりと Python の関数は [docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md)。
 
 ### 一覧の保守
