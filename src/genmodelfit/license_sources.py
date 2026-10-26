@@ -49,6 +49,7 @@ from .hf import (
     parse_hf_url,
     unverified_component_for,
 )
+from .i18n import tr
 
 if TYPE_CHECKING:
     from .db import Database
@@ -767,23 +768,38 @@ def main() -> None:
     from .db import load
 
     r = report(load(use_cache=False))
-    print(f"無検閲を除く {r['entries']} 項目")
-    print(f"ライセンス不明の項目: {r['unknown_before']} → {r['unknown_after']}")
+    print(tr(f"無検閲を除く {r['entries']} 項目", f"{r['entries']} entries, uncensored excluded"))
     print(
-        f"ライセンス不明のファイル(置き場所・名前): {r['unknown_files_before']} → {r['unknown_files_after']}"
+        tr(
+            f"ライセンス不明の項目: {r['unknown_before']} → {r['unknown_after']}",
+            f"entries with an unknown license: {r['unknown_before']} -> {r['unknown_after']}",
+        )
     )
-    print(f"auto(HEAD の期限なし): {r['auto_before']} → {r['auto_after']}")
+    print(
+        tr(
+            f"ライセンス不明のファイル(置き場所・名前): {r['unknown_files_before']} "
+            f"→ {r['unknown_files_after']}",
+            f"files with an unknown license (repository, name): {r['unknown_files_before']}"
+            f" -> {r['unknown_files_after']}",
+        )
+    )
+    print(
+        tr(
+            f"auto(HEAD の期限なし): {r['auto_before']} → {r['auto_after']}",
+            f"auto (no HEAD age limit): {r['auto_before']} -> {r['auto_after']}",
+        )
+    )
     for i in r["newly_auto"]:
-        print(f"  新しく auto: {i}")
+        print(tr(f"  新しく auto: {i}", f"  newly auto: {i}"))
     for i in r["no_longer_auto"]:
-        print(f"  auto でなくなった: {i}")
-    print("ライセンスが決まった項目:")
+        print(tr(f"  auto でなくなった: {i}", f"  no longer auto: {i}"))
+    print(tr("ライセンスが決まった項目:", "entries whose license was resolved:"))
     for i, lab in r["licenses_after"].items():
         print(f"  {i}: {lab}")
     rows: dict[str, int] = {}
     for _, _, k in r["applied"]:
         rows[k] = rows.get(k, 0) + 1
-    print("当てた行(ファイルののべ数):")
+    print(tr("当てた行(ファイルののべ数):", "rows applied (file count):"))
     for k, n in sorted(rows.items()):
         print(f"  {k}: {n}")
 

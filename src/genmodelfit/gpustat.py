@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import hardware
+from .i18n import tr
 
 MIB = 1024**2
 TOOL_TIMEOUT = 8.0  # 1 回の読み取りの時間制限(秒)。typeperf は 1 秒の標本を取るので約 2〜3 秒かかる
@@ -236,6 +237,15 @@ ROCM_SMI = Tool("rocm-smi", ("rocm-smi", "--showuse", "--showmeminfo", "vram", "
 XPU_SMI = Tool(
     "xpu-smi", ("xpu-smi", "dump", "-d", "-1", "-m", "0,18", "-n", "1"), parse_xpu_smi_dump, combine=False
 )
+
+
+def _tool_name(t: Tool) -> str:
+    """表示の名前(typeperf だけ説明つきの名前を訳す)。bench の結果に残す名前は t.name のまま。"""
+    if t is TYPEPERF:
+        return tr(t.name, "Windows performance counters (typeperf)")
+    return t.name
+
+
 TYPEPERF = Tool(
     "Windows の性能カウンタ(typeperf)",
     (
@@ -311,7 +321,7 @@ class Probe:
 
     @property
     def tool_names(self) -> str:
-        return "・".join(t.name for t in self.tools) or "なし"
+        return tr("・", ", ").join(_tool_name(t) for t in self.tools) or tr("なし", "none")
 
     def read(self) -> Reading | None:
         for tool in [self.tool] if self.tool else self.tools:

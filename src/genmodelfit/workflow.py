@@ -19,6 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .i18n import tr
 from .models import Settings
 
 TEMPLATES_RAW = "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main"
@@ -109,7 +110,7 @@ def _flatten(
 ) -> None:
     """サブグラフを展開して平らなノードの並びにする。中のノードの ID は「外の ID:中の ID」。"""
     if depth > 16:
-        raise WorkflowError("サブグラフの入れ子が深すぎます")
+        raise WorkflowError(tr("サブグラフの入れ子が深すぎます", "subgraphs are nested too deeply"))
 
     def src_of(link_id: int | None) -> tuple[str, int] | None:
         if link_id is None or link_id not in links:
@@ -139,7 +140,12 @@ def _flatten(
             _apply_proxy_widgets(n, sg, sub_links, inner, out[child_start:])
             continue
         if ntype in defs:
-            raise WorkflowError(f"無効・素通しのサブグラフには対応していません(ノード {nid})")
+            raise WorkflowError(
+                tr(
+                    f"無効・素通しのサブグラフには対応していません(ノード {nid})",
+                    f"muted or bypassed subgraphs are not supported (node {nid})",
+                )
+            )
         inputs = [
             _Input(
                 name=str(i.get("name")),
@@ -276,7 +282,9 @@ class Conversion:
 
 def _flat_graph(ui: dict[str, Any]) -> tuple[list[_Node], dict[tuple[str, int], tuple[str, int] | None]]:
     if not isinstance(ui, dict) or not isinstance(ui.get("nodes"), list):
-        raise WorkflowError("ワークフローの形が違います(nodes がありません)")
+        raise WorkflowError(
+            tr("ワークフローの形が違います(nodes がありません)", "unexpected workflow shape (no nodes)")
+        )
     defs = {
         str(sg.get("id")): sg
         for sg in ((ui.get("definitions") or {}).get("subgraphs") or [])
@@ -366,8 +374,12 @@ def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
         raise
     except (TypeError, ValueError, KeyError, IndexError, AttributeError, RecursionError) as e:
         raise WorkflowError(
-            f"ワークフローを API 形式に直せませんでした(想定していない形です: {type(e).__name__})。"
-            "ComfyUI の「API 形式で書き出し」で保存した JSON を --workflow で渡してください"
+            tr(
+                f"ワークフローを API 形式に直せませんでした(想定していない形です: {type(e).__name__})。"
+                "ComfyUI の「API 形式で書き出し」で保存した JSON を --workflow で渡してください",
+                f"could not convert the workflow to the API format (unexpected shape: {type(e).__name__});"
+                ' pass a JSON saved with ComfyUI\'s "Export (API)" via --workflow',
+            )
         ) from e
 
 
@@ -424,7 +436,12 @@ def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
             r = resolve(i.src)
             if r is None:
                 if not i.widget:
-                    warnings.append(f"ノード {n.id}({n.type})の入力 {i.name} の元がありません")
+                    warnings.append(
+                        tr(
+                            f"ノード {n.id}({n.type})の入力 {i.name} の元がありません",
+                            f"node {n.id} ({n.type}): input {i.name} has no source",
+                        )
+                    )
                 continue
             inputs[i.name] = r[1]
         # テンプレートが作られた後に足された必須の入力欄は、値が入っていない。画面(frontend)と同じく
@@ -437,19 +454,33 @@ def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
             if _is_widget(typ, opts) and "default" in opts:
                 inputs[name] = opts["default"]
                 warnings.append(
-                    f"ノード {n.id}({n.type})の入力 {name} はテンプレートに値が無いので"
-                    f"既定値 {opts['default']!r} を使った"
+                    tr(
+                        f"ノード {n.id}({n.type})の入力 {name} はテンプレートに値が無いので"
+                        f"既定値 {opts['default']!r} を使った",
+                        f"node {n.id} ({n.type}): input {name} has no value in the template;"
+                        f" used the default {opts['default']!r}",
+                    )
                 )
         api[n.id] = {"class_type": n.type, "inputs": inputs, "_meta": {"title": n.title or n.type}}
     if missing:
         names = ", ".join(sorted(set(missing)))
         raise WorkflowError(
-            f"ComfyUI に無いノードを使っています: {names}"
-            "(ComfyUI が古いか、カスタムノードが要ります。"
-            "ComfyUI を更新するか --workflow で API 形式を渡してください)"
+            tr(
+                f"ComfyUI に無いノードを使っています: {names}"
+                "(ComfyUI が古いか、カスタムノードが要ります。"
+                "ComfyUI を更新するか --workflow で API 形式を渡してください)",
+                f"uses nodes that ComfyUI does not have: {names}"
+                " (ComfyUI is old or custom nodes are needed;"
+                " update ComfyUI or pass the API format via --workflow)",
+            )
         )
     if not any(object_info.get(v["class_type"], {}).get("output_node") for v in api.values()):
-        raise WorkflowError("保存・出力のノードがありません(実行しても何も動きません)")
+        raise WorkflowError(
+            tr(
+                "保存・出力のノードがありません(実行しても何も動きません)",
+                "no save or output node (running it would do nothing)",
+            )
+        )
     return Conversion(workflow=api, warnings=warnings)
 
 
@@ -497,9 +528,14 @@ def check_inputs(api: dict[str, dict[str, Any]], object_info: dict[str, Any]) ->
             if choices is None or val is None or isinstance(val, list):
                 continue
             if val not in choices:
-                kind = "モデルのファイル" if isinstance(val, str) and MODEL_FILE_EXT.search(val) else "選択肢"
+                is_file = isinstance(val, str) and MODEL_FILE_EXT.search(val)
                 problems.append(
-                    f"{kind}がサーバーにありません: ノード {nid}({node['class_type']})の {name}={val}"
+                    tr(
+                        f"{'モデルのファイル' if is_file else '選択肢'}がサーバーにありません: "
+                        f"ノード {nid}({node['class_type']})の {name}={val}",
+                        f"{'model file' if is_file else 'choice'} not on the server: "
+                        f"node {nid} ({node['class_type']}) {name}={val}",
+                    )
                 )
     return problems
 
@@ -555,7 +591,7 @@ def apply_settings(
     wf = copy.deepcopy(api)
     notes: list[str] = []
 
-    def set_all(keys: tuple[str, ...], value: Any, nodes: list[str], label: str) -> None:
+    def set_all(keys: tuple[str, ...], value: Any, nodes: list[str], label: tuple[str, str]) -> None:
         hit = False
         for nid in nodes:
             n = wf[nid]
@@ -566,21 +602,26 @@ def apply_settings(
                     n["inputs"][k] = value
                     hit = True
                 else:
-                    notes.append(f"ノード {nid} の {k} は他のノードから来るので {label} を変えられません")
+                    notes.append(
+                        tr(
+                            f"ノード {nid} の {k} は他のノードから来るので {label[0]} を変えられません",
+                            f"node {nid}: {k} comes from another node, so the {label[1]} cannot be changed",
+                        )
+                    )
         if not hit:
-            notes.append(f"{label} を設定できるノードがありません")
+            notes.append(tr(f"{label[0]} を設定できるノードがありません", f"no node can set the {label[1]}"))
 
     size = _size_nodes(wf)
     if width is not None:
-        set_all(("width",), int(width), size, "幅")
+        set_all(("width",), int(width), size, ("幅", "width"))
     if height is not None:
-        set_all(("height",), int(height), size, "高さ")
+        set_all(("height",), int(height), size, ("高さ", "height"))
     if frames is not None:
-        set_all(FRAME_KEYS, int(frames), size, "フレーム数")
+        set_all(FRAME_KEYS, int(frames), size, ("フレーム数", "frame count"))
     if seconds is not None:
-        set_all(SECONDS_KEYS, float(seconds), list(wf), "長さ(秒)")
+        set_all(SECONDS_KEYS, float(seconds), list(wf), ("長さ(秒)", "length (seconds)"))
     if steps is not None:
-        set_all(("steps",), int(steps), list(wf), "ステップ数")
+        set_all(("steps",), int(steps), list(wf), ("ステップ数", "step count"))
     return wf, notes
 
 

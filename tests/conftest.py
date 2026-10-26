@@ -21,6 +21,18 @@ def _no_real_hardware(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _pin_language(monkeypatch):
+    """表示の言語を ja に固定する(機械の言語に左右されないように。#73)。
+    子プロセスで CLI を動かす試験にも効くよう環境変数で渡し、set_language・--lang の状態も毎回戻す。"""
+    from genmodelfit import i18n
+
+    monkeypatch.setenv(i18n.ENV_VAR, "ja")
+    monkeypatch.setattr(i18n, "_api_language", None)
+    with i18n.forced(None):  # --lang・weekly の固定(ContextVar)も毎回外して始め、終われば戻す
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _fixed_gate_clock(monkeypatch):
     from genmodelfit import gate
 

@@ -166,6 +166,16 @@ GPU), `--vram` judges a hypothetical NVIDIA GPU of unknown generation. Other use
 `--vram` is within 3% of the measured card's VRAM. `--width`, `--height`, `--frames`, `--length` and `--precision` judge a specific
 setting.
 
+### Language
+
+Output is in English by default. For Japanese, add `--lang ja` to any command (e.g. `genmodelfit recommend --lang ja`),
+set the environment variable `GENMODELFIT_LANG=ja`, or call `gmf.set_language("ja")` from Python (the flag wins, then
+the variable, then `set_language`; the OS language is not used). English output contains no Japanese. Only the texts
+change (reasons, notes, errors, `--help`); JSON keys, ids, codes and judgments are the same in both languages.
+The Japanese output is the same as in 0.9.2 (it still mixes some English, e.g. table footers and parts of `--help`),
+except that `info` shows only the Japanese description and `--help` gains `--lang` and examples; making the Japanese
+output Japanese only is planned ([#76](https://github.com/laxshmate/genmodelfit/issues/76)).
+
 ## 3. Results
 
 ### Example
@@ -177,27 +187,27 @@ $ genmodelfit recommend --vram 8 --ram 32 -n 2
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
 Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, too tight 136; 25
     more workflows merged into their models)
-== image (画像): top 2 of 37  (-m image for more)
+== image: top 2 of 37  (-m image for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 image ● Marginal     54 Z-Image-Turbo            gen+5   int8  7.6m  96% GPU~    apache-2.0 yes
 image ● Marginal     42 MOSS-Image SFT           gen+1   int8   4.2  53% GPU+RAM apache-2.0 yes
-== video (動画): top 2 of 4  (-m video for more)
+== video: top 2 of 4  (-m video for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 video ● Marginal     50 Wan 2.1 1.3B T2V         gen     fp16  7.8m  97% GPU~    apache-2.0 yes
 video ● Marginal     39 Wan 2.1 ControlNet 1.3B  edit    bf16   7.7  96% GPU+RAM apache-2.0 yes
-== music (音楽): top 2 of 10  (-m music for more)
+== music: top 2 of 10  (-m music for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 music ● Good         65 ACE-Step 1.5 Turbo       gen+2   bf16  6.0m  76% GPU~    mit        yes
 music ● Marginal     40 ACE-Step 1.5XL Turbo     gen     bf16   5.2  65% GPU+RAM mit        yes
-== sfx (効果音): top 2 of 2  (-m sfx for more)
+== sfx: top 2 of 2  (-m sfx for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 sfx   ● Perfect      66 stable-audio-3-small-sfx gen     fp32   4.7  59% GPU     other      license
 sfx   ● Good         54 stable-audio-open-1.0    gen+1   fp32   4.9  61% GPU~    other      license
-== tts (読み上げ): top 2 of 20  (-m tts for more)
+== tts: top 2 of 20  (-m tts for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 tts   ● Perfect      80 Chatterbox               gen     fp32   3.5  44% GPU     mit        workflow
 tts   ● Perfect      80 VieNeu-TTS-v3-Turbo      gen     q8     1.6  21% GPU     apache-2.0 workflow
-== 3d (3D): top 2 of 7  (-m 3d for more)
+== 3d: top 2 of 7  (-m 3d for more)
 Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
 3d    ● Good         64 HY 3D 2.0                gen     fp16  6.7m  84% GPU     other      license
 3d    ● Good         57 TripoSplat               gen     fp16   5.8  72% GPU     other      license
@@ -338,7 +348,7 @@ it, `diff` only prints how to). `diff NEW.json` compares the bundled list with a
 files. It shows models as `name (type) — id`: added and removed models, auto-recommendation changes, and for each
 changed model its license (`!` = toward the permissive side), size, precision, prompt / speech languages, added /
 removed files with their license, newly uncensored, review status, and the names of any other changed fields
-(「その他の変化」), in three sections (files / license / uncensored / runtime, then auto-recommendation with ids,
+("other changes:"), in three sections (files / license / uncensored / runtime, then auto-recommendation with ids,
 then license provenance, languages, size and the rest), most important first; the same minor change on many models is one
 line with a count. Changes of popularity numbers, dates and HEAD results, old HEAD failures and the `sources` numbers
 are only counted; `--all` lists them (the content of the weekly pull request). `--json`: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#diff).

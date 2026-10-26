@@ -65,7 +65,7 @@ The shape of `to_dict()`:
 - `checks` follows the order of the table below. A ComfyUI model (`runtime` is `comfyui` or null) has 10: every row except `app_runtime`.
 - For a model whose `runtime` is neither `comfyui` nor null, one `app_runtime` takes the place of `official_workflow`, `custom_nodes` and `comfyui_version`, so there are 8.
 - `held_by[0]` (the first failed check) is shown in the Verified column of the tables (called Auto up to 0.5.0; it shows JSON `auto`) as a short name such as `workflow`. In `gate --only-held` it appears as `held:<id>`.
-- `detail` is Japanese text for people. The wording may change; machines should read `id` and `passed`.
+- `detail` is text for people, in the display language (`en` / `ja`; `--lang`, `GENMODELFIT_LANG`). The wording may change; machines should read `id` and `passed`.
 
 ## Checks
 
@@ -215,7 +215,7 @@ HEAD is counted in HF's "resolvers" window (the response header `ratelimit-polic
 Upstream, files disappear and repositories become gated.
 
 - HEAD checks are trusted for **30 days** by default.
-- If any file's check is older than that (or has no recorded time), `url_reachable` is held (detail: 「確認が古い」, "the check is old").
+- If any file's check is older than that (or has no recorded time), `url_reachable` is held (detail: "check too old" in English, 「確認が古い」 in Japanese).
 - Change it with `GatePolicy(max_head_age_days=…)` or `--max-head-age-days N` (`none` = no limit).
 
 **The HEAD check time of the bundled list (`src/genmodelfit/data/db.json`)** is in `database.status` of `genmodelfit system --json` (`heads_checked_oldest`, `expires_at`; [schema.md](schema.md), "Data status").

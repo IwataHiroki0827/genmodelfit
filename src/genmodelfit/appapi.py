@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .db import Database
+from .i18n import tr
 from .models import Gpu, Settings, SystemInfo
 from .recommend import Fit
 
@@ -37,7 +38,12 @@ def _amount(name: str, value: Any) -> float:
         or not math.isfinite(value)
         or value < 0
     ):
-        raise ValueError(f"{name} が正しくありません(0 以上の有限の数): {value!r}")
+        raise ValueError(
+            tr(
+                f"{name} が正しくありません(0 以上の有限の数): {value!r}",
+                f"invalid {name} (a finite number >= 0): {value!r}",
+            )
+        )
     return float(value)
 
 
@@ -52,15 +58,22 @@ def _gpu_from(spec: Mapping[str, Any] | Gpu) -> Gpu:
             backend="cuda",
         )
     if not isinstance(spec, Mapping):
-        raise TypeError(f"GPU は dict か Gpu で渡してください: {spec!r}")
+        raise TypeError(
+            tr(f"GPU は dict か Gpu で渡してください: {spec!r}", f"pass a GPU as a dict or Gpu: {spec!r}")
+        )
     name = spec.get("name")
     vram = spec.get("vram_gb")
     if not isinstance(name, str) or not name.strip():
-        raise ValueError(f"GPU の name がありません: {spec!r}")
+        raise ValueError(tr(f"GPU の name がありません: {spec!r}", f"the GPU has no name: {spec!r}"))
     try:
         vram = _amount("vram_gb", vram)
     except ValueError:
-        raise ValueError(f"GPU の vram_gb が正しくありません(0 以上の有限の数): {spec!r}") from None
+        raise ValueError(
+            tr(
+                f"GPU の vram_gb が正しくありません(0 以上の有限の数): {spec!r}",
+                f"invalid GPU vram_gb (a finite number >= 0): {spec!r}",
+            )
+        ) from None
     driver = spec.get("driver")
     cc = spec.get("compute_capability")
     return Gpu(
@@ -99,7 +112,9 @@ def system_from(
     from .hardware import Memory, classify_gpu, comfy_precision, detect, is_wsl, parse_compute_cap
 
     if gpu_usable is not None and not isinstance(gpu_usable, bool):
-        raise TypeError("gpu_usable は None / True / False のどれかです")
+        raise TypeError(
+            tr("gpu_usable は None / True / False のどれかです", "gpu_usable must be None, True or False")
+        )
     if ram_gb is not None:
         ram_gb = _amount("ram_gb", ram_gb)
     if windows is None:
@@ -112,7 +127,12 @@ def system_from(
         if g.vendor != "nvidia" or g.vram_total_gb <= 0 or gpu_usable is False:
             g.backend = "none"
             if gpu_usable is False:
-                g.notes.append("使う側が GPU を使わないと決めたので、CPU として判定した")
+                g.notes.append(
+                    tr(
+                        "使う側が GPU を使わないと決めたので、CPU として判定した",
+                        "The caller chose not to use the GPU, so judged as CPU",
+                    )
+                )
             found.append(g)
             continue
         classify_gpu(g, windows_driver=windows_driver, comfy_windows=comfy_windows)
@@ -121,7 +141,12 @@ def system_from(
             g.backend = "cuda"
             cc = parse_compute_cap(g.compute_capability)
             g.compute_dtype, g.bf16, g.fp8 = comfy_precision(cc, g.name, windows=comfy_windows)
-            g.notes.append("使う側が動くことを確かめたので、GPU として判定した")
+            g.notes.append(
+                tr(
+                    "使う側が動くことを確かめたので、GPU として判定した",
+                    "The caller confirmed it works, so judged as GPU",
+                )
+            )
         found.append(g)
     memory = None
     if ram_gb is not None:
@@ -167,21 +192,29 @@ def judge_model(
 
     check_filters(content=content)
     if not isinstance(model, str):
-        raise TypeError("model は ID かモデル名の文字列です")
+        raise TypeError(tr("model は ID かモデル名の文字列です", "model must be an id or model name string"))
     if vram_gb is not None:
         vram_gb = _amount("vram_gb", vram_gb)
     if ram_gb is not None:
         ram_gb = _amount("ram_gb", ram_gb)
     if cpu_only and (gpu_usable is not None or gpu_name is not None or vram_gb is not None):
         raise ValueError(
-            "cpu_only=True のときは gpu_name / vram_gb / gpu_usable を渡せません(GPU を使わないので)"
+            tr(
+                "cpu_only=True のときは gpu_name / vram_gb / gpu_usable を渡せません(GPU を使わないので)",
+                "gpu_name / vram_gb / gpu_usable cannot be given with cpu_only=True (no GPU is used)",
+            )
         )
     if system_info is None:
         if cpu_only:
             system_info = system_from((), ram_gb=ram_gb, windows=windows)
         elif gpu_name is not None or vram_gb is not None:
             if gpu_name is None or vram_gb is None:
-                raise ValueError("gpu_name と vram_gb は両方渡してください(GPU が無いなら cpu_only=True)")
+                raise ValueError(
+                    tr(
+                        "gpu_name と vram_gb は両方渡してください(GPU が無いなら cpu_only=True)",
+                        "give both gpu_name and vram_gb (cpu_only=True if there is no GPU)",
+                    )
+                )
             spec = {
                 "name": gpu_name,
                 "vram_gb": vram_gb,
@@ -194,7 +227,12 @@ def judge_model(
 
             system_info = detect(ram_gb=ram_gb)
     elif cpu_only or gpu_name is not None or vram_gb is not None:
-        raise ValueError("system_info と gpu_name / vram_gb / cpu_only は同時に渡せません")
+        raise ValueError(
+            tr(
+                "system_info と gpu_name / vram_gb / cpu_only は同時に渡せません",
+                "system_info cannot be given with gpu_name / vram_gb / cpu_only",
+            )
+        )
     if db is None:
         from .db import load
 

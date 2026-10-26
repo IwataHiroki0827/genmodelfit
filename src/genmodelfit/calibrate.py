@@ -23,6 +23,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import i18n
 from .db import Database
 from .db import load as load_db
 from .estimate import (
@@ -35,6 +36,7 @@ from .estimate import (
     settings_for,
     usable,
 )
+from .i18n import tr
 from .models import Measurement
 
 # 範囲(物理的にありえる幅)と事前値。事前値は #1 の仮の値で、実測を見る前に決めたもの
@@ -335,28 +337,37 @@ def _settings_text(s: dict) -> str:
     if s.get("width"):
         bits.append(f"{s['width']}x{s['height']}")
     if s.get("frames"):
-        bits.append(f"{s['frames']} コマ")
+        bits.append(tr(f"{s['frames']} コマ", f"{s['frames']} frames"))
     if s.get("seconds"):
-        bits.append(f"{s['seconds']:g} 秒")
-    return "・".join(bits) or "-"
+        bits.append(tr(f"{s['seconds']:g} 秒", f"{s['seconds']:g} s"))
+    return tr("・", ", ").join(bits) or "-"
 
 
 def check_table(rows: list[dict]) -> list[str]:
     """照合の表(係数の合わせに使わない測り方の実測を、全件で合わせた係数で当てたもの)。
-    提出から来る文字(モデル ID・GPU 名)は md_cell で無害にする。"""
+    提出から来る文字(モデル ID・GPU 名)は md_cell で無害にする。
+    文は表示の言語で出す(contrib aggregate --report。calibrate の main は
+    docs/accuracy.ja.md 用に ja に固める)。"""
     from .contrib import md_cell
 
     lines = [
-        "照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):",
+        tr(
+            "照合(測り方が違うので係数の合わせには使わない。全件で合わせた係数で当てた値):",
+            "Cross-check (measured differently, so not used for fitting;"
+            " predicted with the coefficients fitted on all):",
+        ),
         "",
-        "| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |",
+        tr(
+            "| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |",
+            "| Model | GPU | Source | Settings | Measured GiB | Estimated GiB (all on GPU) | Error |",
+        ),
         "|---|---|---|---|---:|---:|---:|",
     ]
     for x in rows:
-        who = "ほかの利用者" if x["origin"] == "community" else "作者"
+        who = tr("ほかの利用者", "other users") if x["origin"] == "community" else tr("作者", "author")
         if x["origin"] == "community" and x.get("n_submissions"):
-            who += f"({x['n_submissions']} 件)"
-        err = "張り付き" if x["censored"] else f"{x['error_pct']:+.0f}%"
+            who += tr(f"({x['n_submissions']} 件)", f" ({x['n_submissions']})")
+        err = tr("張り付き", "censored") if x["censored"] else f"{x['error_pct']:+.0f}%"
         lines.append(
             f"| {md_cell(x['model_id'])} | {md_cell(x['gpu_name'])} | {who} |"
             f" {_settings_text(x['settings'])} |"
@@ -377,6 +388,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="書き出さずに表だけ出す")
     p.add_argument("--date", help="記録する日付(既定は今日)")
     args = p.parse_args(argv)
+    # 出す表は docs/accuracy.ja.md にそのまま貼るので、表示の言語によらず日本語にする(#73)
+    with i18n.forced("ja"):
+        return _main(args)
+
+
+def _main(args: argparse.Namespace) -> int:
     result = calibrate(date=args.date)
     if not args.dry_run:
         args.output.write_text(

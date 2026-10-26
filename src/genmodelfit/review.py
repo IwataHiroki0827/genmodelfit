@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .i18n import tr
 from .models import REVIEW_REASONS, Measurement, ModelEntry, Review, SystemInfo
 
 # 同梱の今の一覧に付けた印の decided_by(すべて ok で始めた。2026-10-21)
@@ -397,10 +398,20 @@ def _https_url(text: str) -> bool:
 def check_evidence(evidence: Iterable[str]) -> list[str]:
     ev = [e.strip() for e in evidence if e and e.strip()]
     if not ev:
-        raise ReviewError("根拠(--evidence の URL。一次資料)が 1 つも無いため確かめられません")
+        raise ReviewError(
+            tr(
+                "根拠(--evidence の URL。一次資料)が 1 つも無いため確かめられません",
+                "cannot approve without evidence (--evidence URL of a primary source)",
+            )
+        )
     bad = [e for e in ev if not _https_url(e)]
     if bad:
-        raise ReviewError(f"根拠は https:// で始まり、ホストのある URL にしてください: {', '.join(bad)}")
+        raise ReviewError(
+            tr(
+                f"根拠は https:// で始まり、ホストのある URL にしてください: {', '.join(bad)}",
+                f"evidence must be URLs that start with https:// and have a host: {', '.join(bad)}",
+            )
+        )
     return ev
 
 
@@ -417,11 +428,11 @@ def approve(
     ev = check_evidence(evidence)
     m = db.get(model_id)
     if m is None:
-        raise ReviewError(f"一覧に無い ID です: {model_id}")
+        raise ReviewError(tr(f"一覧に無い ID です: {model_id}", f"no such id in the list: {model_id}"))
     if m.reviewed:
-        raise ReviewError(f"確認待ちではありません: {model_id}")
+        raise ReviewError(tr(f"確認待ちではありません: {model_id}", f"not waiting for review: {model_id}"))
     if not by or not by.strip():
-        raise ReviewError("確かめた人(--by)が空です")
+        raise ReviewError(tr("確かめた人(--by)が空です", "the reviewer (--by) is empty"))
     assert m.review is not None
     m.review = Review(
         "ok", list(m.review.reasons), by.strip(), _today(today), ev, (note or "").strip() or None
@@ -439,10 +450,10 @@ def reject(
 ) -> str:
     """項目を一覧から外す(db を書き換える。保存はしない)。返す値は review_rejected.txt に足す 1 行。"""
     if not note or not note.strip():
-        raise ReviewError("外す理由(--note)が空です")
+        raise ReviewError(tr("外す理由(--note)が空です", "the reason (--note) is empty"))
     m = db.get(model_id)
     if m is None:
-        raise ReviewError(f"一覧に無い ID です: {model_id}")
+        raise ReviewError(tr(f"一覧に無い ID です: {model_id}", f"no such id in the list: {model_id}"))
     db.models = [x for x in db.models if x.id != model_id]
     key = id_hash(model_id) if hide_name else model_id
     text = " ".join(note.split())
@@ -582,59 +593,109 @@ def validate_decisions(data: Any, db: Any, *, max_approve: int = DEFAULT_MAX_APP
     errs: list[str] = []
     shape_ok = isinstance(data, dict) and set(data) == DECISIONS_FILE_KEYS
     if not (shape_ok and isinstance(data["decisions"], list)):
-        raise DecisionError('判断の一覧は {"decisions": [...]} の形にしてください(ほかの鍵は持たない)')
+        raise DecisionError(
+            tr(
+                '判断の一覧は {"decisions": [...]} の形にしてください(ほかの鍵は持たない)',
+                'the decisions must be {"decisions": [...]} (no other keys)',
+            )
+        )
     pending = {m.id for m in db.models if not m.reviewed}
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for k, d in enumerate(data["decisions"]):
         where = f"decisions[{k}]"
         if not isinstance(d, dict):
-            errs.append(f"{where} はオブジェクトではない")
+            errs.append(tr(f"{where} はオブジェクトではない", f"{where} is not an object"))
             continue
         unknown = sorted(set(d) - DECISION_KEYS)
         if unknown:
-            errs.append(f"{where} に知らない鍵: {', '.join(map(repr, unknown))}")
+            errs.append(
+                tr(
+                    f"{where} に知らない鍵: {', '.join(map(repr, unknown))}",
+                    f"{where} has unknown keys: {', '.join(map(repr, unknown))}",
+                )
+            )
         mid, action = d.get("id"), d.get("action")
         if not isinstance(mid, str) or not mid:
-            errs.append(f"{where}.id は空でない文字列")
+            errs.append(tr(f"{where}.id は空でない文字列", f"{where}.id must be a non-empty string"))
             continue
         if mid in seen:
-            errs.append(f"{where}.id {mid!r} が 2 回ある")
+            errs.append(tr(f"{where}.id {mid!r} が 2 回ある", f"{where}.id {mid!r} appears twice"))
         seen.add(mid)
         if mid not in pending:
-            errs.append(f"{where}.id {mid!r} は確認待ちの項目ではない")
+            errs.append(
+                tr(
+                    f"{where}.id {mid!r} は確認待ちの項目ではない",
+                    f"{where}.id {mid!r} is not waiting for review",
+                )
+            )
         if action not in DECISION_ACTIONS:
-            errs.append(f"{where}.action は {' / '.join(DECISION_ACTIONS)}: {action!r}")
+            errs.append(
+                tr(
+                    f"{where}.action は {' / '.join(DECISION_ACTIONS)}: {action!r}",
+                    f"{where}.action must be {' / '.join(DECISION_ACTIONS)}: {action!r}",
+                )
+            )
         ev = d.get("evidence", [])
         if not isinstance(ev, list) or not all(isinstance(e, str) for e in ev):
-            errs.append(f"{where}.evidence は文字列の並び")
+            errs.append(tr(f"{where}.evidence は文字列の並び", f"{where}.evidence must be a list of strings"))
             ev = []
         bad_ev = [e for e in ev if not _https_url(e)]
         if bad_ev:
-            errs.append(f"{where}.evidence は https でホストのある URL だけ: {bad_ev!r}")
+            errs.append(
+                tr(
+                    f"{where}.evidence は https でホストのある URL だけ: {bad_ev!r}",
+                    f"{where}.evidence must be https URLs with a host: {bad_ev!r}",
+                )
+            )
         note = d.get("note")
         if note is not None and not isinstance(note, str):
-            errs.append(f"{where}.note は文字列")
+            errs.append(tr(f"{where}.note は文字列", f"{where}.note must be a string"))
             note = None
         if note is not None and (len(note) > NOTE_MAX_CHARS or _bad_text(note)):
-            errs.append(f"{where}.note は {NOTE_MAX_CHARS} 文字まで・制御文字なし")
+            errs.append(
+                tr(
+                    f"{where}.note は {NOTE_MAX_CHARS} 文字まで・制御文字なし",
+                    f"{where}.note must be up to {NOTE_MAX_CHARS} characters, no control characters",
+                )
+            )
         safety = d.get("safety", False)
         if not isinstance(safety, bool):
-            errs.append(f"{where}.safety は真偽")
+            errs.append(tr(f"{where}.safety は真偽", f"{where}.safety must be a boolean"))
             safety = False
         if action == "approve":
             if not ev:
-                errs.append(f"{where}: approve には根拠(evidence)が 1 つ以上要る")
+                errs.append(
+                    tr(
+                        f"{where}: approve には根拠(evidence)が 1 つ以上要る",
+                        f"{where}: approve needs at least one evidence URL",
+                    )
+                )
             if safety:
-                errs.append(f"{where}: approve に safety は付けない")
+                errs.append(
+                    tr(f"{where}: approve に safety は付けない", f"{where}: approve cannot have safety")
+                )
         if action == "reject" and not (note and note.strip()):
-            errs.append(f"{where}: reject には note(理由)が要る")
+            errs.append(
+                tr(f"{where}: reject には note(理由)が要る", f"{where}: reject needs a note (reason)")
+            )
         out.append({"id": mid, "action": action, "evidence": list(ev), "note": note, "safety": safety})
     approvals = sum(1 for d in out if d["action"] == "approve")
     if approvals > max_approve:
-        errs.append(f"approve が {approvals} 件ある({max_approve} 件まで。--max-approve)")
+        errs.append(
+            tr(
+                f"approve が {approvals} 件ある({max_approve} 件まで。--max-approve)",
+                f"{approvals} approvals (up to {max_approve}; --max-approve)",
+            )
+        )
     if errs:
-        raise DecisionError("判断の一覧を当てませんでした(何も変えていない): " + " / ".join(errs))
+        raise DecisionError(
+            tr(
+                "判断の一覧を当てませんでした(何も変えていない): ",
+                "decisions not applied (nothing changed): ",
+            )
+            + " / ".join(errs)
+        )
     return out
 
 
@@ -721,19 +782,57 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import sys
 
-    p = argparse.ArgumentParser(prog="python -m genmodelfit.review", description="確認の印の道具(#42)")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    pub = sub.add_parser("publish", help="確認待ちの項目を除いた、署名して配る一覧を書く")
-    pub.add_argument("src", help="元の一覧(main の src/genmodelfit/data/db.json)")
-    pub.add_argument("dst", help="書き出す先(同じパスでもよい)")
-    ap = sub.add_parser("apply", help="確認待ちの項目への判断(approve / reject / hold)の JSON を当てる")
-    ap.add_argument("decisions", help='判断の一覧(JSON。{"decisions": [...]})')
-    ap.add_argument(
-        "--db", required=True, metavar="PATH", help="書き換える一覧(例 src/genmodelfit/data/db.json)"
+    p = argparse.ArgumentParser(
+        prog="python -m genmodelfit.review", description=tr("確認の印の道具(#42)", "Review mark tools (#42)")
     )
-    ap.add_argument("--max-approve", type=int, default=DEFAULT_MAX_APPROVE, help="approve の上限(既定 10)")
-    ap.add_argument("--rejected", metavar="PATH", help="外した記録(既定は --db と同じフォルダ)")
-    ap.add_argument("--json", action="store_true", help="要約を JSON で出す")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    pub = sub.add_parser(
+        "publish",
+        help=tr(
+            "確認待ちの項目を除いた、署名して配る一覧を書く",
+            "write the list to sign and publish, without pending items",
+        ),
+    )
+    pub.add_argument(
+        "src",
+        help=tr(
+            "元の一覧(main の src/genmodelfit/data/db.json)",
+            "the source list (src/genmodelfit/data/db.json on main)",
+        ),
+    )
+    pub.add_argument("dst", help=tr("書き出す先(同じパスでもよい)", "where to write (may be the same path)"))
+    ap = sub.add_parser(
+        "apply",
+        help=tr(
+            "確認待ちの項目への判断(approve / reject / hold)の JSON を当てる",
+            "apply a JSON of decisions (approve / reject / hold) on pending items",
+        ),
+    )
+    ap.add_argument(
+        "decisions",
+        help=tr('判断の一覧(JSON。{"decisions": [...]})', 'the decisions (JSON: {"decisions": [...]})'),
+    )
+    ap.add_argument(
+        "--db",
+        required=True,
+        metavar="PATH",
+        help=tr(
+            "書き換える一覧(例 src/genmodelfit/data/db.json)",
+            "the list to rewrite (e.g. src/genmodelfit/data/db.json)",
+        ),
+    )
+    ap.add_argument(
+        "--max-approve",
+        type=int,
+        default=DEFAULT_MAX_APPROVE,
+        help=tr("approve の上限(既定 10)", "maximum approvals (default 10)"),
+    )
+    ap.add_argument(
+        "--rejected",
+        metavar="PATH",
+        help=tr("外した記録(既定は --db と同じフォルダ)", "the rejected file (default: the folder of --db)"),
+    )
+    ap.add_argument("--json", action="store_true", help=tr("要約を JSON で出す", "print the summary as JSON"))
     args = p.parse_args(argv)
     if args.cmd == "apply":
         return _apply_main(args)
@@ -745,7 +844,12 @@ def main(argv: list[str] | None = None) -> int:
     out = publishable(db)
     out.save(Path(args.dst))
     withheld = out.sources["review"]["withheld_pending"]
-    print(f"{len(out.models)} 件を書きました(確認待ち {withheld} 件を除いた): {args.dst}")
+    print(
+        tr(
+            f"{len(out.models)} 件を書きました(確認待ち {withheld} 件を除いた): {args.dst}",
+            f"wrote {len(out.models)} entries ({withheld} pending left out): {args.dst}",
+        )
+    )
     return 0
 
 
@@ -762,7 +866,7 @@ def _apply_main(args: Any) -> int:
     try:
         data = json.loads(Path(args.decisions).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        return fail(f"判断の一覧を読めません: {e}", 2)
+        return fail(tr(f"判断の一覧を読めません: {e}", f"cannot read the decisions: {e}"), 2)
     try:
         res = apply_decisions(args.db, data, max_approve=args.max_approve, rejected_path=args.rejected)
     except DecisionError as e:
@@ -774,7 +878,10 @@ def _apply_main(args: Any) -> int:
     else:
         c = res["counts"]
         left = res["pending_left"]
-        print(f"approve {c['approve']} / reject {c['reject']} / hold {c['hold']}(残りの確認待ち {left})")
+        print(
+            f"approve {c['approve']} / reject {c['reject']} / hold {c['hold']}"
+            + tr(f"(残りの確認待ち {left})", f" ({left} still pending)")
+        )
         for r in res["results"]:
             print(f"  {r['result']}: {r['id']}")
     return 0

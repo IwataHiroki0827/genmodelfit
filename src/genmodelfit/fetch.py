@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 from ._version import __version__
+from .i18n import ja_of, tr
 
 if TYPE_CHECKING:
     import requests
@@ -98,6 +99,7 @@ class FetchError(RuntimeError):
 
     def __init__(self, url: str, message: str, status: int | None = None):
         super().__init__(f"{message}: {url}")
+        self.ja_message = f"{ja_of(message)}: {url}"  # 一覧(sources.warnings)に残す文は日本語(#73)
         self.url = url
         self.status = status
 
@@ -226,12 +228,16 @@ class HttpFetcher:
             return resp
         if isinstance(last, FetchError):
             raise last
-        raise NetworkError(url, f"つながりません({type(last).__name__})")
+        raise NetworkError(
+            url, tr(f"つながりません({type(last).__name__})", f"cannot connect ({type(last).__name__})")
+        )
 
     def _budget_message(self) -> str:
-        return (
+        return tr(
             f"上限(HTTP 429)で待つ時間の合計が {self.rate_limit_budget:.0f} 秒を超えました"
-            "(--rate-limit-budget で変えられます)"
+            "(--rate-limit-budget で変えられます)",
+            f"waited more than {self.rate_limit_budget:.0f} seconds in total for the rate limit (HTTP 429)"
+            " (change it with --rate-limit-budget)",
         )
 
     def get_json(self, url: str) -> Any:
@@ -239,7 +245,7 @@ class HttpFetcher:
         try:
             return resp.json()
         except ValueError as e:
-            raise FetchError(url, "JSON ではありません", resp.status_code) from e
+            raise FetchError(url, tr("JSON ではありません", "not JSON"), resp.status_code) from e
 
     def get_text(self, url: str) -> str:
         resp = self._request("GET", url)
@@ -349,7 +355,9 @@ class DirFetcher:
         self.requests += 1
         p = self.root / url_to_relpath(url)
         if not p.exists():
-            raise FetchError(url, "ファイルがありません(試験用のフォルダ)", 404)
+            raise FetchError(
+                url, tr("ファイルがありません(試験用のフォルダ)", "no such file (test folder)"), 404
+            )
         return p
 
     def get_json(self, url: str) -> Any:
@@ -357,7 +365,7 @@ class DirFetcher:
         try:
             return json.loads(p.read_text(encoding="utf-8"))
         except ValueError as e:
-            raise FetchError(url, "JSON ではありません") from e
+            raise FetchError(url, tr("JSON ではありません", "not JSON")) from e
 
     def get_text(self, url: str) -> str:
         return self._path(url).read_text(encoding="utf-8")

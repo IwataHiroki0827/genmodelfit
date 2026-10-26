@@ -65,7 +65,7 @@ r.auto, r.held_by, r.to_dict()
 - `checks` は下の表の順に並ぶ。ComfyUI のモデル(`runtime` が `comfyui` か null)は `app_runtime` を除く 10 個。
 - `runtime` が `comfyui` でも null でもないモデルは、`official_workflow`・`custom_nodes`・`comfyui_version` の位置に `app_runtime` が 1 つ入って 8 個。
 - `held_by[0]`(最初に落ちた条件)は、表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)に短い名前(`workflow` など)で出る。`gate --only-held` には `held:<id>` で出る。
-- `detail` は人が読む日本語(文言は変わりうる。機械は `id` と `passed` を見る)。
+- `detail` は人が読む文で、表示の言語(`en` / `ja`。`--lang`・`GENMODELFIT_LANG`)で出る(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件
 
@@ -215,7 +215,7 @@ HEAD は HF の "resolvers" の枠(応答の `ratelimit-policy: "fixed window";"
 上流ではファイルが消えたり、リポジトリが gated になったりする。
 
 - HEAD の確認は既定で **30 日**まで信じる。
-- それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 「確認が古い」)。
+- それより古い(または日時の記録が無い)ファイルがあれば `url_reachable` を保留にする(detail: 日本語なら「確認が古い」、英語なら "check too old")。
 - `GatePolicy(max_head_age_days=…)` / `--max-head-age-days N`(`none` で期限なし)で変えられる。
 
 **同梱の一覧(`src/genmodelfit/data/db.json`)の HEAD の確認の日時**は `genmodelfit system --json` の `database.status`(`heads_checked_oldest`・`expires_at`。[schema.ja.md](schema.ja.md)「Data status / 一覧の新しさ」)で分かる。

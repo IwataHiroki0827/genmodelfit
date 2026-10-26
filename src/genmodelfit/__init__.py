@@ -51,6 +51,7 @@ from .downloader import (
 )
 from .estimate import estimate
 from .hardware import detect
+from .i18n import get_language, set_language
 from .models import (
     CONTENT_LEVELS,
     FIT_LEVELS,
@@ -330,6 +331,7 @@ __all__ = [
     "estimate",
     "evaluate",
     "fit_list",
+    "get_language",
     "info",
     "judge_model",
     "load_db",
@@ -339,6 +341,7 @@ __all__ = [
     "review_list",
     "review_reject",
     "search",
+    "set_language",
     "system",
     "system_from",
     "update_from_release",

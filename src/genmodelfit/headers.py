@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .i18n import tr
 from .models import ModelEntry, ModelFile
 
 MAX_SAFETENSORS_HEADER = 100 * 1024 * 1024  # 見出しがこれより大きいものは読まない(壊れている)
@@ -149,11 +150,13 @@ def _numel(shape: Any) -> int:
     if shape is None:
         return 1
     if not isinstance(shape, list):
-        raise HeaderError(f"テンソルの形が並びではありません: {shape!r}"[:200])
+        raise HeaderError(
+            tr(f"テンソルの形が並びではありません: {shape!r}", f"tensor shape is not a list: {shape!r}")[:200]
+        )
     n = 1
     for d in shape:
         if isinstance(d, bool) or not isinstance(d, int) or d < 0:
-            raise HeaderError(f"テンソルの形がおかしい: {shape!r}"[:200])
+            raise HeaderError(tr(f"テンソルの形がおかしい: {shape!r}", f"bad tensor shape: {shape!r}")[:200])
         n *= d
     return n
 
@@ -170,7 +173,11 @@ def _guarded(fn):
         except (HeaderError, NeedMore):
             raise
         except (ValueError, TypeError, OverflowError, AttributeError, struct.error) as e:
-            raise HeaderError(f"見出しの形がおかしい: {type(e).__name__}: {e}"[:300]) from e
+            raise HeaderError(
+                tr(f"見出しの形がおかしい: {type(e).__name__}: {e}", f"bad header: {type(e).__name__}: {e}")[
+                    :300
+                ]
+            ) from e
 
     return run
 
@@ -181,16 +188,20 @@ def parse_safetensors_header(header: bytes) -> HeaderInfo:
     try:
         data = json.loads(header.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as e:
-        raise HeaderError(f"safetensors の見出しが JSON ではありません: {e}") from e
+        raise HeaderError(
+            tr(f"safetensors の見出しが JSON ではありません: {e}", f"the safetensors header is not JSON: {e}")
+        ) from e
     if not isinstance(data, dict):
-        raise HeaderError("safetensors の見出しの形が違います")
+        raise HeaderError(tr("safetensors の見出しの形が違います", "unexpected safetensors header shape"))
     by_bytes: dict[str, float] = {}
     params = 0
     for name, t in data.items():
         if name == "__metadata__" or not isinstance(t, dict):
             continue
         if not isinstance(t.get("dtype", ""), str):
-            raise HeaderError(f"dtype が文字列ではありません: {name}"[:200])
+            raise HeaderError(
+                tr(f"dtype が文字列ではありません: {name}", f"dtype is not a string: {name}")[:200]
+            )
         dtype = str(t.get("dtype", "")).upper()
         n = _numel(t.get("shape"))
         params += n
@@ -233,7 +244,7 @@ class _Reader:
     def string(self) -> str:
         n = self.u64()
         if n > MAX_GGUF_BYTES:
-            raise HeaderError("GGUF の文字列が長すぎます")
+            raise HeaderError(tr("GGUF の文字列が長すぎます", "GGUF string too long"))
         return self.take(n).decode("utf-8", errors="replace")
 
 
@@ -254,7 +265,7 @@ def _gguf_value(r: _Reader, vtype: int) -> Any:
             _gguf_value(r, etype)
         return None
     if vtype not in _GGUF_FIXED:
-        raise HeaderError(f"GGUF の値の型 {vtype} を知りません")
+        raise HeaderError(tr(f"GGUF の値の型 {vtype} を知りません", f"unknown GGUF value type {vtype}"))
     raw = r.take(_GGUF_FIXED[vtype])
     if vtype in (4, 5):
         return struct.unpack("<I" if vtype == 4 else "<i", raw)[0]
@@ -268,10 +279,12 @@ def parse_gguf_header(buf: bytes) -> HeaderInfo:
     """GGUF の先頭(buf)から精度と要素の数を求める。足りなければ NeedMore(要るバイト数)。"""
     r = _Reader(buf)
     if r.take(4) != b"GGUF":
-        raise HeaderError("GGUF ではありません")
+        raise HeaderError(tr("GGUF ではありません", "not GGUF"))
     version = r.u32()
     if version < 2:
-        raise HeaderError(f"GGUF の版 {version} には対応していません")
+        raise HeaderError(
+            tr(f"GGUF の版 {version} には対応していません", f"GGUF version {version} is not supported")
+        )
     n_tensors = r.u64()
     n_kv = r.u64()
     ftype: int | None = None
@@ -319,17 +332,34 @@ def read_header(url: str, get_range: RangeGetter) -> HeaderInfo:
                 return parse_gguf_header(buf)
             except NeedMore as e:
                 if e.upto > MAX_GGUF_BYTES or len(buf) < upto:  # 上限を超える・ファイルの終わり
-                    raise HeaderError("GGUF の見出しが大きすぎるか、途中で切れています") from e
+                    raise HeaderError(
+                        tr(
+                            "GGUF の見出しが大きすぎるか、途中で切れています",
+                            "the GGUF header is too large or truncated",
+                        )
+                    ) from e
                 upto = min(MAX_GGUF_BYTES, max(e.upto, upto * 2))
     head = get_range(url, 0, 7)
     if len(head) < 8:
-        raise HeaderError("safetensors の先頭 8 バイトを読めません")
+        raise HeaderError(
+            tr(
+                "safetensors の先頭 8 バイトを読めません",
+                "cannot read the first 8 bytes of the safetensors file",
+            )
+        )
     n = struct.unpack("<Q", head[:8])[0]
     if n <= 0 or n > MAX_SAFETENSORS_HEADER:
-        raise HeaderError(f"safetensors の見出しの長さがおかしい({n} バイト)")
+        raise HeaderError(
+            tr(
+                f"safetensors の見出しの長さがおかしい({n} バイト)",
+                f"bad safetensors header length ({n} bytes)",
+            )
+        )
     body = get_range(url, 8, 8 + n - 1)
     if len(body) < n:
-        raise HeaderError("safetensors の見出しが途中で切れています")
+        raise HeaderError(
+            tr("safetensors の見出しが途中で切れています", "the safetensors header is truncated")
+        )
     return parse_safetensors_header(body[:n])
 
 
@@ -455,7 +485,7 @@ def inspect_files(
             row = cache.get(fs[0])
             stats.fetched += 1
             if progress and i % 25 == 0:
-                progress(f"  見出し {i}/{stats.urls}")
+                progress(tr(f"  見出し {i}/{stats.urls}", f"  headers {i}/{stats.urls}"))
         elif row is not None and not row.get("error"):
             stats.from_cache += 1
         else:

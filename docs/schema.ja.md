@@ -87,7 +87,7 @@ User-Agent は `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit
 | `commit_limit_gb`、`commit_used_gb` | float \| null | Windows のコミット上限(RAM + ページファイル)と今のコミット(`GlobalMemoryStatusEx`) |
 | `other_gpus` | Adapter[] | どのベンダーのものでも、ディスプレイアダプタ。AMD / Intel / Apple のものは分類する(`usable`、`reason`)。使える NVIDIA の GPU が無いときは、使えるものを `gpus` にも入れる。調べなかったときは空 |
 | `other_gpus_checked` | bool | `other_gpus` を調べたか。既定では、`nvidia-smi` が NVIDIA の GPU を見つけず `--vram` も無いときだけ。`system --all-gpus` では常に調べる |
-| `notes` | str[] | 検出で分かったこと・分からなかったこと(日本語): GPU を CPU として判定する理由、古いドライバ、NVIDIA 以外の GPU、ページファイル、WSL / コンテナの制限 |
+| `notes` | str[] | 検出で分かったこと・分からなかったこと(表示の言語 `en` / `ja`): GPU を CPU として判定する理由、古いドライバ、NVIDIA 以外の GPU、ページファイル、WSL / コンテナの制限 |
 
 `--ram` を付けると、swap / commit の値は null になる(別の PC を仮定するため)。
 検出は失敗しない。分からない値は null にして、理由を `notes` に書く。
@@ -123,7 +123,7 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 0.7.0(#22)で追加:
 - `integrated`(bool | null)
 - `usable`(bool | null。NVIDIA は `nvidia-smi` が決めるので null)
-- `reason`(使う・使わない理由の日本語の文)
+- `reason`(使う・使わない理由の文。表示の言語 `en` / `ja`)
 - `shared_gb`(Linux の amdgpu の GTT。sysfs の `mem_info_gtt_total`)
 - `needs`(string | null。GPU を使えるようにするのに要るもの。今は、既知の Windows 10 のビルドだけが理由のときの `"Windows 11"` だけ。表の見出しは `needs Windows 11 for generation`)
 
@@ -252,7 +252,7 @@ JSON では次のように分ける。
 `search <query>`:
 - id か名前の一部に合うものを探す(大文字小文字を区別しない)。
 - 合わないエントリは `hidden` に数えない。
-- 1 件も合わないときは `models: []` を出して終了コード 0(テキストでは `(no match / 該当なし)` を出す)。
+- 1 件も合わないときは `models: []` を出して終了コード 0(テキストでは、英語なら `(no match)`、日本語なら `(no match / 該当なし)` を出す)。
 - 空の query は終了コード 1。
 
 `content` の既定は **`sfw`**。無検閲のモデルは `--content all` か `--content uncensored` のときだけ出す。
@@ -441,7 +441,7 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 | `held_reasons` | str[] | 失敗したゲートの確認(= `gate.held_by`) |
 | `community` | bool | community のテンプレート(索引の `username` が ComfyUI でない。[sources.md](sources.ja.md)) |
 | `estimate_confidence` | str | `measured` / `estimated`(= `estimate.basis`。細かい段階は `estimate.basis_detail`) |
-| `notes` | str[] | 日本語の理由(= `estimate.reasons`) |
+| `notes` | str[] | 理由(表示の言語 `en` / `ja`。= `estimate.reasons`) |
 | `files_count` | int | 載っているダウンロードのファイル数 |
 | `use` | str | 出した用途(上の Uses) |
 | `precision` | str \| null | 選んだエントリの精度(`ModelEntry.precision`: `bf16`、`fp8`、`int8`、`gguf-q8_0` など。null は不明で `?` と表示し、順位はフル精度と同じ扱い)。出どころは `precision_source`(次の行) |
@@ -495,7 +495,7 @@ VRAM や RAM が増えても、点数は下がらない。理由:
 | `measured_on` | str \| null | `basis` が `measured` のときの、実測した GPU(GPU 無しで判定したときは null) |
 | `fit` | str | 下の 4 つの段階、または `unknown`(大きさが不明で判定していない) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
-| `reasons` | str[] | 人が読める理由(日本語) |
+| `reasons` | str[] | 人が読める理由(表示の言語 `en` / `ja`) |
 | `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測から、無ければ種類ごとの既定で埋める) |
 | `limits` | Limits \| null | この PC で `good` に届く最大の設定。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
 | `vram_free_short` | bool | GPU で動くと判定したが、今の空き VRAM(`nvidia-smi` の `memory.free`)が選んだ動かし方に要る量を下回る: ほかのアプリを閉じること。段階は全体の VRAM のまま。空き VRAM が不明(`--vram`)のときは常に false |
@@ -597,7 +597,7 @@ ComfyUI が fp32 で計算する GPU(`compute_dtype: "fp32"`: Maxwell、一部�
 | `comfyui_version` | str \| null | 比べた ComfyUI の版(`--comfyui-version`、無ければ `sources.comfyui.latest_release`) |
 | `checks` | Check[] | 10 個の確認。順は `license`、`gated`、`official_workflow`、`custom_nodes`、`comfyui_version`、`url_reachable`、`sha256`、`content`、`size_known`、`reviewed`(0.6.0、#42: `review.status` が `ok` でなければ通らない。常に最後なので、古い確認の `held_by[0]` は変わらない)。`runtime` が `comfyui` でも null でもないモデル(0.5.0)では、ComfyUI の 3 つの確認を、決して通らない `app_runtime` の確認 1 つに置き換える(8 個の確認) |
 
-Check: `id`(安定した、機械が読む名前)、`passed`(bool)、`detail`(人向けの日本語。文言は変わりうる)。
+Check: `id`(安定した、機械が読む名前)、`passed`(bool)、`detail`(人向けの文。表示の言語 `en` / `ja`。文言は変わりうる)。
 
 ## gate
 
@@ -642,7 +642,7 @@ Check: `id`(安定した、機械が読む名前)、`passed`(bool)、`detail`(�
 | `classification` | 0.6.0(#42): `{safe, judgement_needed, safe_changes}`。下を参照 |
 | `old_label`、`new_label` | #59: 表示用の、何を比べたか: `同梱の一覧(genmodelfit <version>)`、`取ってきた一覧(<cache path>)`、または与えたままのファイルのパス。`gmf.diff_db` では、渡さなければ null |
 | `field_changes` | #59: 変化のある共通のエントリすべて(安全なものも含む)の `{id: [field, …]}`。項目は `diff.entry_changes`(分類が使うのと同じ関数)の名前: 最上位のキー(`languages`、`license`、`review` など)、`files`(ファイルの追加・削除・並べ替え)、`files.<key>`(対になったファイルのキー)、`template.<key>`。ファイルの対応づけは、同じ名前のファイルが混ざらないよう段階的に行う: 同じ(name, url, sha256, directory, repo_id)→ 同じ(directory, name, sha256)→ 同じ(directory, name, url)→ 残りを(directory, name)の順で。名前や directory が変わったら、削除 + 追加のファイルとして扱う。片側に無く もう片側が null のキーは、変化としない |
-| `model_changes` | #59: 安全の一覧の外の変化、または 自動のおすすめの変化がある共通のエントリ: `{id, name, modality, items, other}`。`items`(変化ごとに 1 つ)は下の形。`other`: 残りの変化した項目名(「その他の変化」として表示)。安全の一覧の外で変化した項目は、すべて `items` か `other` に入る |
+| `model_changes` | #59: 安全の一覧の外の変化、または 自動のおすすめの変化がある共通のエントリ: `{id, name, modality, items, other}`。`items`(変化ごとに 1 つ)は下の形。`other`: 残りの変化した項目名(日本語では「その他の変化:」、英語では "other changes:" として表示)。安全の一覧の外で変化した項目は、すべて `items` か `other` に入る |
 | `top_changes` | #59: `generated_at` / `sources` / `models` 以外の、一覧の最上位のキーの変化(生の JSON を比べるとき、つまり `genmodelfit diff` と `merge-check` のときだけ。`raw` 無しの `gmf.diff_db` は [] を返す) |
 | `warnings` | #59、CLI だけ: 比較についての注意: 新しい一覧が古い一覧より古い(`generated_at`)(どの引数の形でも。引数なしのときは `genmodelfit update --from-release` の実行も促す) |
 | `stats` | `sources` の変化した値を、ドット区切りのキー(`counts.modality.image`、`head_check.status.302` など)に平らにしたもの: `{key, old, new}`。リストは長さで比べる。`checked_at` / `url` / `api` / `generator` / `failures` / `errors` は飛ばす |
@@ -934,7 +934,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `saved_to` | str \| null | JSON を書いた場所(`--output`、既定は `<cache>/measurements/<model>_<gpu>_<UTC>.json`)。保存しなかったときは null |
 | `not_saved` | str | 保存しなかったときだけ: その理由(失敗した結果と標準でない結果は、`--save-failed` / `--save-nonstandard` / `--output` が無いとキャッシュしない) |
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
-| `warnings` | str[] | 適用できなかった設定、アップロードした入力など(日本語) |
+| `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
 | `submission` | object | `--submission` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照) |
 
@@ -1169,7 +1169,7 @@ DownloadPlan:
 | `model_name` | str | 表に出るモデル名 |
 | `modality`、`content`、`precision` | str / str / str \| null | ModelEntry と同じ |
 | `fit_level`、`run_mode_label`、`auto` | str / str / bool | この PC での判定(`recommend` と同じ) |
-| `chosen` | str | このワークフローを選んだ理由(日本語) |
+| `chosen` | str | このワークフローを選んだ理由(表示の言語 `en` / `ja`) |
 | `layout` | str | `comfyui`(`--comfyui-dir`。`root` は `<dir>/models`)/ `output`(`--output-dir` または既定。同じ配置) |
 | `root` | str | ファイルを置くフォルダの絶対パス(`<root>/<directory>/<name>`) |
 | `files` | PlannedFile[] | ワークフローのファイルごとに 1 つ |
@@ -1180,7 +1180,7 @@ DownloadPlan:
 | `disk_needed_bytes` | int | `download_bytes` + `margin_bytes`(落とすものが無ければ 0) |
 | `margin_bytes` | int | 1 GiB |
 | `budget_bytes` | int \| null | `--budget` をバイトで |
-| `blocked` | str[] | 落とさない理由(日本語)。空なら落とせる |
+| `blocked` | str[] | 落とさない理由(表示の言語 `en` / `ja`)。空なら落とせる |
 | `warnings` | str[] | 知っておくべきこと(許可リストに無いライセンス、この PC では動かない、配置のヒント) |
 | `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto` |
 | `license_url` | str \| null | モデルのライセンスのページ |
@@ -1202,7 +1202,7 @@ PlannedFile:
 | `status` | str | `download` / `resume`(`.part` がある)/ `present`(すでにあり、sha256 が合う)/ `conflict`(別のファイルが その名前を使っている。決して上書きしない)/ `unavailable`(`reason` を参照) |
 | `part_bytes` | int | 既存の `.part` の大きさ |
 | `remaining_bytes` | int | このファイルでこれから落とすバイト数 |
-| `reason` | str \| null | `conflict` / `unavailable` の理由(日本語) |
+| `reason` | str \| null | `conflict` / `unavailable` の理由(表示の言語 `en` / `ja`) |
 | `verified` | bool | `present` について: 計画のときに sha256 を測った(`verify_existing=False` では false で、大きさだけ)。`download` は、飛ばす前に、既存のファイルを必ずもう一度測る |
 
 DownloadResult:
@@ -1246,6 +1246,7 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dict `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (既定 nvidia)}` または `Gpu`。判定するのは、使える NVIDIA の GPU のうち最大のもの。NVIDIA 以外は判定しない。`ram_gb` は 合計 = 空き とし、この PC のページファイルは無視する(`--ram` と同じ)。`gpu_usable`: `None` = 今のどの PyTorch CUDA ビルドも対応しない GPU、またはドライバが古すぎる GPU は CPU として扱う(理由は `notes`、[hardware.md](hardware.ja.md))。`True` = 呼び出し側が確かめた(世代と精度はここで決める)。`False` = CPU。`windows`(既定: この PC): Windows のドライバの表と、Windows の ComfyUI の精度(Pascal は fp16)。OS、CPU、ディスクの空きはこの PC のもの。不正な GPU の dict は `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: id の完全一致は内容によらず使う。そうでなければ `download` の名前の探索(`content` で絞る。1 つのモデルのワークフローが複数あれば、`recommend` の行の代表。ほかは `fit.workflows`)。見つからない / 複数のモデルに合う → `gmf.ModelNotFound`(`.candidates`)。PC は、`system_info`、無ければ `gpu_name` + `vram_gb`(両方必要。そうでなければ `ValueError`)、無ければ `cpu_only=True`(GPU 無し)、無ければこの PC(`gmf.system()`)。`system_info` を GPU の引数と一緒に渡すと `ValueError` |
+| `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | genmodelfit が返す文(`estimate.reasons`・`notes`・gate の `detail`・エラーの文など)の表示の言語。`"en"` か `"ja"`。`None` で取り消す。**既定は英語**で、OS の言語は見ない。決め方(上が優先): CLI の `--lang`、環境変数 `GENMODELFIT_LANG`、`set_language()`、`en`。CLI の `--lang` はその呼び出しの間だけ効き(`contextvars.ContextVar`)、ほかのスレッドのライブラリの呼び出しの言語は変えない。文は、それを持つ値を作ったときの言語で決まる(`ja` で作った `Fit` の `notes` は、後で `set_language("en")` にしても日本語のまま)。変わるのは文の言語だけで、キー・ID・コード・点数・判定は変わらない。一覧に保存された自由記述(`review.note`・`license_evidence`・実測の `source` / `note`)は訳さない。ほかの値は `ValueError`(#73) |
 
 Python から配布の一覧を取ってくる(0.7.1、#58)。`__all__` には `gmf.RemoteError`(`DatabaseError`)も入る:
 

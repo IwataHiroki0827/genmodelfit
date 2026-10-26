@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from .i18n import tr
 from .models import MODALITIES, ModelEntry
 
 # 種類の表示名(英語, 日本語)
@@ -109,9 +110,14 @@ def task_codes(names: Iterable[str]) -> frozenset[str]:
             out.add(n)
         else:
             names_ok = ", ".join([*USES, *USE_ALIASES, *sorted(known)])
-            raise ValueError(f"task が正しくありません: {raw!r}(使えるのは {names_ok})")
+            raise ValueError(
+                tr(
+                    f"task が正しくありません: {raw!r}(使えるのは {names_ok})",
+                    f"invalid task: {raw!r} (allowed: {names_ok})",
+                )
+            )
     if not out:
-        raise ValueError("task が空です")
+        raise ValueError(tr("task が空です", "task is empty"))
     return frozenset(out)
 
 
@@ -142,5 +148,11 @@ def parse_modalities(value: str | Iterable[str] | None) -> tuple[str, ...] | Non
     out = tuple(dict.fromkeys(x.strip().lower() for x in items if x and x.strip()))
     bad = [x for x in out if x not in MODALITIES]
     if bad or not out:
-        raise ValueError(f"modality が正しくありません: {value!r}(使えるのは {', '.join(MODALITIES)})")
+        ok = ", ".join(MODALITIES)
+        raise ValueError(
+            tr(
+                f"modality が正しくありません: {value!r}(使えるのは {ok})",
+                f"invalid modality: {value!r} (allowed: {ok})",
+            )
+        )
     return out

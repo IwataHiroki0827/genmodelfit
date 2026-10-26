@@ -25,6 +25,7 @@ import re
 from typing import Any
 
 from .db import bundled_text
+from .i18n import tr
 from .models import ModelEntry
 
 OVERRIDES_FILE = "overrides.json"
@@ -375,14 +376,29 @@ def components(data: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     out = {k: v for k, v in table.items() if not k.startswith("_")}
     for mid, row in out.items():
         if not isinstance(row, dict) or not isinstance(row.get("files"), list) or not row["files"]:
-            raise ValueError(f"components の {mid}: files(1 つ以上)がありません")
+            raise ValueError(
+                tr(
+                    f"components の {mid}: files(1 つ以上)がありません",
+                    f"components {mid}: no files (one or more needed)",
+                )
+            )
         seen: set[str] = set()
         for raw in row["files"]:
             url = raw.get("url") if isinstance(raw, dict) else None
             if not isinstance(url, str) or not url.startswith("https://") or not raw.get("name"):
-                raise ValueError(f"components の {mid}: ファイルに https の url と name が要ります: {raw!r}")
+                raise ValueError(
+                    tr(
+                        f"components の {mid}: ファイルに https の url と name が要ります: {raw!r}",
+                        f"components {mid}: a file needs an https url and a name: {raw!r}",
+                    )
+                )
             if url in seen:
-                raise ValueError(f"components の {mid}: 同じ url が 2 回あります: {url}")
+                raise ValueError(
+                    tr(
+                        f"components の {mid}: 同じ url が 2 回あります: {url}",
+                        f"components {mid}: the same url appears twice: {url}",
+                    )
+                )
             seen.add(url)
     return out
 

@@ -7,6 +7,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Output is now English by default, in exactly one language** (#73). Japanese needs `--lang ja`,
+  `GENMODELFIT_LANG=ja` or `gmf.set_language("ja")`; the OS language is not used. **Behavior change for apps**: an app
+  that shows genmodelfit's texts to Japanese users (e.g. AI生成キット) must call `gmf.set_language("ja")` (or set
+  `GENMODELFIT_LANG=ja`) to keep Japanese reasons, `notes`, gate `detail` and error messages.
+- English output contains no Japanese: table section headers (`== image` instead of `== image (画像)`), `types`,
+  `info` labels and descriptions (`description[lang]`, falling back to the other language), estimate reasons and
+  `notes`, limits, gate `detail`, errors and warnings, `--help` of every command, and the messages of `download` /
+  `update` / `bench` / `contrib` / `review` / `diff`. JSON keys, ids, codes (`fit_level`, `basis`, check ids,
+  `vram_free_short`, …), scores, judgments and ordering do not change; only the language of the texts does. Free text
+  stored in the list (`review.note`, `license_evidence`, measurement `source` / `note`) is not translated, and text
+  that `update` writes into the list stays Japanese whatever the display language.
+- Japanese output (`--lang ja`) is the same as in 0.9.2, which still mixes some English (table footers, parts of
+  `--help`), except that `info` shows only the Japanese description and `--help` gains `--lang` and examples.
+  Making the Japanese output Japanese only is planned (#76).
+- The Japanese descriptions of Stable Audio 3 Small (music), Irodori-TTS and Tsukuyomi-chan now carry what only the
+  English ones said (English prompts; the ethical restrictions on the MIT license; the voice data's own terms).
+
+### Added
+
+- `--lang en|ja` on every command (abbreviations such as `--lan ja` work too), the environment variable
+  `GENMODELFIT_LANG`, and `gmf.set_language()` / `gmf.get_language()` (#73). Order: `--lang`, `GENMODELFIT_LANG`,
+  `set_language()`, then `en`. The weekly PR body stays Japanese.
+- An EXAMPLES section in `genmodelfit --help` and in the `--help` of `recommend`, `fit`, `info`, `search` and
+  `download`, in the display language.
+
 ### Fixed
 
 - Read-only commands (`system` / `recommend` / `fit` / `info` / `search` / `types`) and `import genmodelfit` no longer

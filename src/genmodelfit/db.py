@@ -21,6 +21,7 @@ from typing import Any
 
 from platformdirs import user_cache_dir
 
+from .i18n import tr
 from .models import SCHEMA_VERSION, Measurement, ModelEntry
 
 
@@ -76,7 +77,12 @@ class Database:
     def save(self, path: Path) -> None:
         dup = duplicate_ids(self.models)
         if dup:
-            raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
+            raise DatabaseError(
+                tr(
+                    f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}",
+                    f"the same model id appears more than once: {', '.join(dup[:5])}",
+                )
+            )
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(
@@ -175,21 +181,33 @@ _TEMPLATE_TYPES = {
 def _check_str_list(d: dict, key: str, where: str) -> None:
     v = d.get(key)
     if v is not None and not all(isinstance(x, str) for x in v):
-        raise DatabaseError(f"{where} の {key} は文字列の並びです")
+        raise DatabaseError(
+            tr(f"{where} の {key} は文字列の並びです", f"{where}: {key} must be a list of strings")
+        )
 
 
 def _check_types(d: Any, types: dict[str, tuple], where: str) -> None:
     if not isinstance(d, dict):
-        raise DatabaseError(f"{where} の形が正しくありません(オブジェクトではない)")
+        raise DatabaseError(
+            tr(
+                f"{where} の形が正しくありません(オブジェクトではない)",
+                f"{where} is malformed (not an object)",
+            )
+        )
     for key, ok in types.items():
         if key not in d:
             if ok is _STR:
-                raise DatabaseError(f"{where} に {key} がありません")
+                raise DatabaseError(tr(f"{where} に {key} がありません", f"{where} has no {key}"))
             continue
         v = d[key]
         bad = not isinstance(v, ok) or (isinstance(v, bool) and bool not in ok)
         if bad:
-            raise DatabaseError(f"{where} の {key} の型が正しくありません: {v!r}")
+            raise DatabaseError(
+                tr(
+                    f"{where} の {key} の型が正しくありません: {v!r}",
+                    f"{where}: {key} has the wrong type: {v!r}",
+                )
+            )
 
 
 def check_entry(d: Any, i: int) -> None:
@@ -197,32 +215,59 @@ def check_entry(d: Any, i: int) -> None:
     where = f"models[{i}]"
     _check_types(d, _ENTRY_TYPES, where)
     if not all(isinstance(t, str) for t in d.get("tasks", [])):
-        raise DatabaseError(f"{where} の tasks は文字列の並びです")
+        raise DatabaseError(
+            tr(f"{where} の tasks は文字列の並びです", f"{where}: tasks must be a list of strings")
+        )
     for key in ("content_evidence", "discovered_from", "license_evidence"):
         _check_str_list(d, key, where)
     ss = d.get("sampler_stages")
     if ss is not None and not all(isinstance(g, list) and all(isinstance(x, str) for x in g) for g in ss):
-        raise DatabaseError(f"{where} の sampler_stages は文字列の並びの並びです: {ss!r}")
+        raise DatabaseError(
+            tr(
+                f"{where} の sampler_stages は文字列の並びの並びです: {ss!r}",
+                f"{where}: sampler_stages must be a list of lists of strings: {ss!r}",
+            )
+        )
     if d.get("template") is not None:
         _check_types(d["template"], _TEMPLATE_TYPES, f"{where}.template")
         _check_str_list(d["template"], "requires_custom_nodes", f"{where}.template")
     langs = d.get("languages")
     for k, v in (langs or {}).items():
         if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(x, str) for x in v):
-            raise DatabaseError(f"{where} の languages は {{種類: 言語コードの並び}} です: {langs!r}")
+            raise DatabaseError(
+                tr(
+                    f"{where} の languages は {{種類: 言語コードの並び}} です: {langs!r}",
+                    f"{where}: languages must be {{kind: [language codes]}}: {langs!r}",
+                )
+            )
     cl = d.get("card_languages")
     if cl is not None and not all(isinstance(x, str) for x in cl):
-        raise DatabaseError(f"{where} の card_languages は言語コードの並びです: {cl!r}")
+        raise DatabaseError(
+            tr(
+                f"{where} の card_languages は言語コードの並びです: {cl!r}",
+                f"{where}: card_languages must be a list of language codes: {cl!r}",
+            )
+        )
     desc = d.get("description")
     if any(not isinstance(k, str) or not isinstance(v, str) for k, v in (desc or {}).items()):
-        raise DatabaseError(f"{where} の description は {{言語: 文}} です: {desc!r}")
+        raise DatabaseError(
+            tr(
+                f"{where} の description は {{言語: 文}} です: {desc!r}",
+                f"{where}: description must be {{language: text}}: {desc!r}",
+            )
+        )
     rv = d.get("review")
     if rv is not None:
         # status の値は確かめない(知らない値は ok でないので、確認待ちと同じく自動のおすすめに出ない)
         _check_types(rv, _REVIEW_TYPES, f"{where}.review")
         for key in ("reasons", "evidence"):
             if not all(isinstance(x, str) for x in rv.get(key, [])):
-                raise DatabaseError(f"{where}.review の {key} は文字列の並びです")
+                raise DatabaseError(
+                    tr(
+                        f"{where}.review の {key} は文字列の並びです",
+                        f"{where}.review: {key} must be a list of strings",
+                    )
+                )
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
         for key in ("license_path", "license_evidence"):
@@ -243,26 +288,53 @@ def duplicate_ids(models: list[Any]) -> list[str]:
 
 def parse_db(data: dict[str, Any], origin: str) -> Database:
     if not isinstance(data, dict):
-        raise DatabaseError("一覧の形が正しくありません(JSON のオブジェクトではない)")
+        raise DatabaseError(
+            tr(
+                "一覧の形が正しくありません(JSON のオブジェクトではない)",
+                "the list is malformed (not a JSON object)",
+            )
+        )
     ver = data.get("schema_version")
     if ver != SCHEMA_VERSION:
-        raise DatabaseError(f"未対応のデータ形式です(schema_version={ver}、対応={SCHEMA_VERSION})")
+        raise DatabaseError(
+            tr(
+                f"未対応のデータ形式です(schema_version={ver}、対応={SCHEMA_VERSION})",
+                f"unsupported data format (schema_version={ver}, supported={SCHEMA_VERSION})",
+            )
+        )
     if not isinstance(data.get("models"), list):
-        raise DatabaseError("models がありません")
+        raise DatabaseError(tr("models がありません", "no models"))
     if not isinstance(data.get("generated_at"), (str, type(None))):
-        raise DatabaseError(f"generated_at の型が正しくありません: {data.get('generated_at')!r}")
+        raise DatabaseError(
+            tr(
+                f"generated_at の型が正しくありません: {data.get('generated_at')!r}",
+                f"generated_at has the wrong type: {data.get('generated_at')!r}",
+            )
+        )
     if not isinstance(data.get("sources"), (dict, type(None))):
-        raise DatabaseError("sources の型が正しくありません(オブジェクトではない)")
+        raise DatabaseError(
+            tr(
+                "sources の型が正しくありません(オブジェクトではない)",
+                "sources has the wrong type (not an object)",
+            )
+        )
     for i, m in enumerate(data["models"]):
         check_entry(m, i)
     dup = duplicate_ids(data["models"])
     if dup:
         # 同じ ID が 2 つあると get() が片方だけを黙って選ぶ(差し替えた項目を紛れ込ませられる)。#42
-        raise DatabaseError(f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}")
+        raise DatabaseError(
+            tr(
+                f"同じモデル ID が 2 回以上あります: {', '.join(dup[:5])}",
+                f"the same model id appears more than once: {', '.join(dup[:5])}",
+            )
+        )
     try:
         models = [ModelEntry.from_dict(m) for m in data["models"]]
     except (TypeError, AttributeError, ValueError) as e:
-        raise DatabaseError(f"一覧のモデルの形が正しくありません: {e}") from e
+        raise DatabaseError(
+            tr(f"一覧のモデルの形が正しくありません: {e}", f"a model in the list is malformed: {e}")
+        ) from e
     return Database(
         models=models,
         generated_at=data.get("generated_at"),
@@ -272,7 +344,12 @@ def parse_db(data: dict[str, Any], origin: str) -> Database:
 
 
 def _no_constants(name: str) -> Any:
-    raise ValueError(f"JSON に {name} があります(NaN・Infinity は受け付けません)")
+    raise ValueError(
+        tr(
+            f"JSON に {name} があります(NaN・Infinity は受け付けません)",
+            f"the JSON has {name} (NaN and Infinity are not accepted)",
+        )
+    )
 
 
 def _loads_measurements(text: str) -> Any:
@@ -287,7 +364,12 @@ def parse_measurements(data: Any) -> list[Measurement]:
         for k in ("gpu_vram_gb", "peak_vram_gb", "peak_ram_gb", "seconds"):
             v = getattr(m, k)
             if v is not None and (not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0):
-                raise ValueError(f"実測の {k} が有限の 0 以上の数ではありません: {v!r}")
+                raise ValueError(
+                    tr(
+                        f"実測の {k} が有限の 0 以上の数ではありません: {v!r}",
+                        f"measurement {k} is not a finite number of 0 or more: {v!r}",
+                    )
+                )
     return out
 
 
@@ -305,7 +387,12 @@ def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]
                 try:
                     out.extend(parse_measurements(_loads_measurements(p.read_text(encoding="utf-8"))))
                 except (OSError, ValueError, TypeError) as e:
-                    raise DatabaseError(f"実測のファイルを読めません: {p}: {e}") from e
+                    raise DatabaseError(
+                        tr(
+                            f"実測のファイルを読めません: {p}: {e}",
+                            f"cannot read the measurements file: {p}: {e}",
+                        )
+                    ) from e
     return out
 
 
@@ -315,7 +402,9 @@ def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) 
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:  # 無い・読めない・JSON でない(UnicodeDecodeError も ValueError)
-            raise DatabaseError(f"一覧のファイルを読めません: {p}: {e}") from e
+            raise DatabaseError(
+                tr(f"一覧のファイルを読めません: {p}: {e}", f"cannot read the list file: {p}: {e}")
+            ) from e
         db = parse_db(data, "path")
     else:
         db = None

@@ -52,6 +52,7 @@ from .fetch import make_session
 from .gpustat import Probe
 from .hardware import VENDOR_LABEL
 from .hardware import find_nvidia_smi as _nvidia_smi
+from .i18n import tr
 from .models import Measurement
 from .workflow import (
     FRAME_KEYS,
@@ -101,16 +102,28 @@ class ComfyClient:
         try:
             return self.s.request(method, self.url + path, **kw)
         except requests.RequestException as e:
-            raise BenchError(f"ComfyUI({self.url})に接続できません: {e}") from e
+            raise BenchError(
+                tr(
+                    f"ComfyUI({self.url})に接続できません: {e}",
+                    f"Cannot connect to ComfyUI ({self.url}): {e}",
+                )
+            ) from e
 
     def get_json(self, path: str) -> Any:
         r = self._req("GET", path)
         if r.status_code != 200:
-            raise BenchError(f"ComfyUI の {path} が {r.status_code} を返しました")
+            raise BenchError(
+                tr(
+                    f"ComfyUI の {path} が {r.status_code} を返しました",
+                    f"ComfyUI {path} returned {r.status_code}",
+                )
+            )
         try:
             return r.json()
         except ValueError as e:
-            raise BenchError(f"ComfyUI の {path} の応答が JSON ではありません") from e
+            raise BenchError(
+                tr(f"ComfyUI の {path} の応答が JSON ではありません", f"ComfyUI {path} did not return JSON")
+            ) from e
 
     def system_stats(self) -> dict[str, Any]:
         return self.get_json("/system_stats")
@@ -143,7 +156,10 @@ class ComfyClient:
         except ValueError:
             body = {}
         if r.status_code != 200 or "prompt_id" not in body:
-            raise BenchError("ComfyUI がワークフローを受け付けませんでした: " + _prompt_error_text(body, r))
+            raise BenchError(
+                tr("ComfyUI がワークフローを受け付けませんでした: ", "ComfyUI rejected the workflow: ")
+                + _prompt_error_text(body, r)
+            )
         return str(body["prompt_id"])
 
     def history(self, prompt_id: str) -> dict[str, Any] | None:
@@ -170,7 +186,12 @@ class ComfyClient:
             data={"type": "input"},
         )
         if r.status_code != 200:
-            raise BenchError(f"入力の画像をアップロードできません({r.status_code}): {filename}")
+            raise BenchError(
+                tr(
+                    f"入力の画像をアップロードできません({r.status_code}): {filename}",
+                    f"Cannot upload the input image ({r.status_code}): {filename}",
+                )
+            )
         try:
             return str(r.json().get("name") or filename)
         except ValueError:
@@ -198,7 +219,10 @@ def _prompt_error_text(body: dict[str, Any], r: requests.Response) -> str:
     for nid, ne in (body.get("node_errors") or {}).items():
         for e in (ne or {}).get("errors") or []:
             parts.append(
-                f"ノード {nid}({ne.get('class_type')}): {e.get('message')} {e.get('details') or ''}".strip()
+                tr(
+                    f"ノード {nid}({ne.get('class_type')}): {e.get('message')} {e.get('details') or ''}",
+                    f"node {nid} ({ne.get('class_type')}): {e.get('message')} {e.get('details') or ''}",
+                ).strip()
             )
     return " / ".join(parts) if parts else f"HTTP {r.status_code}"
 
@@ -420,13 +444,22 @@ def match_gpu(
     if not local:
         return (
             None,
-            "ComfyUI が別の PC で動いているので、この PC の nvidia-smi では GPU の空きを確かめられません",
+            tr(
+                "ComfyUI が別の PC で動いているので、この PC の nvidia-smi では GPU の空きを確かめられません",
+                "ComfyUI runs on another PC, so nvidia-smi on this PC cannot check whether the GPU is free",
+            ),
         )
     if not gpus:
-        return None, "nvidia-smi が使えないので、GPU が他の仕事で使われていないかを確かめられません"
+        return None, tr(
+            "nvidia-smi が使えないので、GPU が他の仕事で使われていないかを確かめられません",
+            "nvidia-smi is not available, so whether the GPU is busy with other work cannot be checked",
+        )
     same = [g for g in gpus if g["name"] == name]
     if not same:
-        return None, f"nvidia-smi の一覧に ComfyUI の GPU({name})が見つかりません"
+        return None, tr(
+            f"nvidia-smi の一覧に ComfyUI の GPU({name})が見つかりません",
+            f"ComfyUI's GPU ({name}) is not in the nvidia-smi list",
+        )
     if len(same) == 1:
         return same[0], None
     if proc is not None:
@@ -437,7 +470,10 @@ def match_gpu(
         hit = [g for g in same if g["uuid"] in uuids]
         if len(hit) == 1:
             return hit[0], None
-    return None, f"同じ名前の GPU({name})が {len(same)} 枚あり、ComfyUI がどれを使っているか分かりません"
+    return None, tr(
+        f"同じ名前の GPU({name})が {len(same)} 枚あり、ComfyUI がどれを使っているか分かりません",
+        f"There are {len(same)} GPUs named {name}; which one ComfyUI uses is unknown",
+    )
 
 
 def sample_gpu(gpu_id: str, count: int = 5, every: float = 0.5) -> list[tuple[float, float]]:
@@ -497,10 +533,13 @@ def _check_other_gpu(
     docs/accuracy.md「NVIDIA 以外の GPU の bench」)。"""
     label = VENDOR_LABEL.get(vendor, vendor)
     if not local:
-        why = "ComfyUI が別の PC で動いているので、この PC からは GPU の空きを確かめられません"
+        why = tr(
+            "ComfyUI が別の PC で動いているので、この PC からは GPU の空きを確かめられません",
+            "ComfyUI runs on another PC, so this PC cannot check whether the GPU is free",
+        )
         if not opts.force:
-            raise BenchError(f"{why}。確かめずに測るなら --force を付けてください")
-        warnings.append(f"{why}(--force なので確かめずに測った)")
+            raise BenchError(_force_hint(why))
+        warnings.append(_forced(why))
         return None, None, "GPU の空きは確かめていない(--force)"
     vram_total = int(dev0.get("vram_total") or 0)
     probe = Probe(vendor, total_mib=vram_total / 1024**2 if vram_total else None)
@@ -518,38 +557,77 @@ def _check_other_gpu(
         util = sum(u for _, u in samples) / len(samples)
         if probe.combined:
             warnings.append(
-                f"{tool} に GPU が複数あり、ComfyUI の GPU を選べないので、使用率はいちばん高い GPU、"
-                "使用中のメモリは合計で見た"
+                tr(
+                    f"{tool} に GPU が複数あり、ComfyUI の GPU を選べないので、使用率はいちばん高い GPU、"
+                    "使用中のメモリは合計で見た",
+                    f"{tool} shows several GPUs and ComfyUI's cannot be picked, so the busiest GPU's usage "
+                    "and the total used memory were checked",
+                )
             )
         if util >= opts.busy_util_pct:
             if not opts.force:
                 raise BenchError(
-                    f"GPU が他の仕事で使われています({tool}、平均の使用率 {util:.0f}%)。"
-                    "空いてから測るか、--force を付けてください"
+                    tr(
+                        f"GPU が他の仕事で使われています({tool}、平均の使用率 {util:.0f}%)。"
+                        "空いてから測るか、--force を付けてください",
+                        f"The GPU is busy with other work ({tool}, average usage {util:.0f}%). "
+                        "Measure when it is free, or add --force",
+                    )
                 )
-            warnings.append(f"GPU の使用率が {util:.0f}% のまま測った(--force)")
+            warnings.append(_busy_forced(util))
         return (min(m for m, _ in samples), util), probe, None
     # 使用率を読む道具が無い・読めない
     used = vram_total - int(dev0.get("vram_free") or 0)
     other = used - int(dev0.get("torch_vram_total") or 0)
     if vendor != "apple" and vram_total and other > vram_total * OTHER_APPS_VRAM_SHARE:
-        msg = (
+        msg = tr(
             f"ComfyUI 以外が GPU のメモリを {other / GIB:.1f} GB(全体の {other / vram_total:.0%})使っています"
-            "(ほかのアプリが GPU を使っているおそれ)"
+            "(ほかのアプリが GPU を使っているおそれ)",
+            f"Something other than ComfyUI uses {other / GIB:.1f} GB of GPU memory ({other / vram_total:.0%} "
+            "of it; another app may be using the GPU)",
         )
         if not opts.force:
-            raise BenchError(f"{msg}。空いてから測るか、--force を付けてください")
-        warnings.append(f"{msg}(--force)")
+            raise BenchError(
+                tr(
+                    f"{msg}。空いてから測るか、--force を付けてください",
+                    f"{msg}. Measure when it is free, or add --force",
+                )
+            )
+        warnings.append(tr(f"{msg}(--force)", f"{msg} (--force)"))
     warnings.append(
-        f"{label} の GPU の使用率を読む道具({probe.tool_names})が無いか読めないので、"
-        "ComfyUI のキューが空なことと GPU のメモリだけを確かめて測った"
-        "(ほかのアプリが GPU を使っていても分からない)"
+        tr(
+            f"{label} の GPU の使用率を読む道具({probe.tool_names})が無いか読めないので、"
+            "ComfyUI のキューが空なことと GPU のメモリだけを確かめて測った"
+            "(ほかのアプリが GPU を使っていても分からない)",
+            f"No tool could read the {label} GPU usage ({probe.tool_names}), so only an empty ComfyUI queue "
+            "and the GPU memory were checked (another app using the GPU would go unnoticed)",
+        )
     )
     return (
         None,
         None,
         f"GPU の使用率は確かめていない({probe.tool_names} で読めない。"
         "ComfyUI のキューと GPU のメモリだけ確かめた)",
+    )
+
+
+def _force_hint(why: str) -> str:
+    return tr(
+        f"{why}。確かめずに測るなら --force を付けてください",
+        f"{why}. To measure without checking, add --force",
+    )
+
+
+def _forced(why: str) -> str:
+    return tr(
+        f"{why}(--force なので確かめずに測った)", f"{why} (measured without checking because of --force)"
+    )
+
+
+def _busy_forced(util: float) -> str:
+    return tr(
+        f"GPU の使用率が {util:.0f}% のまま測った(--force)",
+        f"Measured with the GPU at {util:.0f}% usage (--force)",
     )
 
 
@@ -603,8 +681,13 @@ def _new_log_lines(before: list[dict[str, Any]], after: list[dict[str, Any]]) ->
     return [str(e.get("m") or "") for e in after if (e.get("t"), e.get("m")) not in seen]
 
 
-def _history_error(entry: dict[str, Any]) -> tuple[str, bool] | None:
-    """履歴が失敗なら (理由, メモリ不足か)。"""
+def _history_error(entry: dict[str, Any], *, stored: bool = False) -> tuple[str, bool] | None:
+    """履歴が失敗なら (理由, メモリ不足か)。
+    stored=True なら実測の note に残す文(表示の言語によらず日本語)。"""
+
+    def say(ja: str, en: str) -> str:
+        return ja if stored else tr(ja, en)
+
     status = entry.get("status") or {}
     if status.get("status_str") != "error":
         return None
@@ -617,8 +700,16 @@ def _history_error(entry: dict[str, Any]) -> tuple[str, bool] | None:
             oom = "OutOfMemory" in str(d.get("exception_type")) or "out of memory" in text.lower()
             return text, oom
         if isinstance(msg, list) and len(msg) == 2 and msg[0] == "execution_interrupted":
-            return "途中で中断されました(ComfyUI の画面か /interrupt で止められた)", False
-    return "実行に失敗しました(理由は ComfyUI のログを見てください)", False
+            return (
+                say(
+                    "途中で中断されました(ComfyUI の画面か /interrupt で止められた)",
+                    "Interrupted (stopped from the ComfyUI page or /interrupt)",
+                ),
+                False,
+            )
+    return say(
+        "実行に失敗しました(理由は ComfyUI のログを見てください)", "The run failed (see the ComfyUI log)"
+    ), False
 
 
 def _timestamps(entry: dict[str, Any]) -> dict[str, float]:
@@ -697,9 +788,13 @@ def read_workflow_file(path: str) -> dict[str, Any]:
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        raise BenchError(f"ワークフローを読めません: {p.name}: {e}") from e
+        raise BenchError(
+            tr(f"ワークフローを読めません: {p.name}: {e}", f"Cannot read the workflow: {p.name}: {e}")
+        ) from e
     if not isinstance(data, dict):
-        raise BenchError(f"ワークフローの形が違います: {p.name}")
+        raise BenchError(
+            tr(f"ワークフローの形が違います: {p.name}", f"The workflow has the wrong shape: {p.name}")
+        )
     return data
 
 
@@ -726,16 +821,20 @@ def load_workflow(
         try:
             r = session.get(template_url(opts.model_id), timeout=30)
         except requests.RequestException as e:
-            raise BenchError(f"テンプレートを取れません: {e}") from e
+            raise BenchError(tr(f"テンプレートを取れません: {e}", f"Cannot fetch the template: {e}")) from e
         if r.status_code != 200:
             raise BenchError(
-                f"テンプレート {opts.model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
-                "名前を確かめるか、--workflow で API 形式のワークフローを渡してください"
+                tr(
+                    f"テンプレート {opts.model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
+                    "名前を確かめるか、--workflow で API 形式のワークフローを渡してください",
+                    f"Template {opts.model_id} not found (neither in ComfyUI nor on GitHub). "
+                    "Check the name, or pass an API-format workflow with --workflow",
+                )
             )
         try:
             ui = r.json()
         except ValueError as e:
-            raise BenchError("テンプレートが JSON ではありません") from e
+            raise BenchError(tr("テンプレートが JSON ではありません", "The template is not JSON")) from e
         source = "github-template"
     conv = ui_to_api(ui, object_info)
     return conv.workflow, source, conv.warnings
@@ -752,14 +851,23 @@ def _ensure_inputs(
         try:
             r = session.get(template_input_url(filename), timeout=60)
         except requests.RequestException as e:
-            raise BenchError(f"入力の画像を取れません: {filename}: {e}") from e
+            raise BenchError(
+                tr(
+                    f"入力の画像を取れません: {filename}: {e}",
+                    f"Cannot fetch the input image: {filename}: {e}",
+                )
+            ) from e
         if r.status_code != 200:
             raise BenchError(
-                f"入力の画像 {filename} がサーバーにも公式テンプレートにもありません。"
-                "ComfyUI の input フォルダに置くか、--workflow で別の画像を指定してください"
+                tr(
+                    f"入力の画像 {filename} がサーバーにも公式テンプレートにもありません。"
+                    "ComfyUI の input フォルダに置くか、--workflow で別の画像を指定してください",
+                    f"The input image {filename} is neither on the server nor in the official templates. "
+                    "Put it in ComfyUI's input folder, or give another image with --workflow",
+                )
             )
         wf[nid]["inputs"][name] = client.upload_image(filename, r.content)
-        notes.append(f"入力の画像 {filename} をアップロードした")
+        notes.append(tr(f"入力の画像 {filename} をアップロードした", f"Uploaded the input image {filename}"))
     return notes
 
 
@@ -767,7 +875,9 @@ def _parse_set(items: list[str] | None) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for item in items or []:
         if "=" not in item:
-            raise BenchError(f"--set は 名前=値 の形で書いてください: {item}")
+            raise BenchError(
+                tr(f"--set は 名前=値 の形で書いてください: {item}", f"Write --set as NAME=VALUE: {item}")
+            )
         k, v = item.split("=", 1)
         try:
             out[k.strip()] = json.loads(v)
@@ -791,8 +901,12 @@ def _check_queue_empty(client: ComfyClient, when: str) -> None:
     running, pending = client.queue_ids()
     if running or pending:
         raise BenchError(
-            f"ComfyUI のキューに他の仕事があります({when})。"
-            "終わってから測ってください(他の人の生成を邪魔しないため)"
+            tr(
+                f"ComfyUI のキューに他の仕事があります({when})。"
+                "終わってから測ってください(他の人の生成を邪魔しないため)",
+                f"ComfyUI's queue has other work ({when}). "
+                "Measure after it finishes (so as not to disturb others' generations)",
+            )
         )
 
 
@@ -800,7 +914,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。"""
     log = log or logging.getLogger("genmodelfit").info
     if not opts.timeout or opts.timeout <= 0:
-        raise BenchError("--timeout は 0 より大きい秒数にしてください")
+        raise BenchError(_timeout_error())
     session = make_session()
     file_data = (
         read_workflow_file(opts.workflow_path) if opts.workflow_path else None
@@ -811,9 +925,14 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     stats = client.system_stats()
     devices = stats.get("devices") or []
     if not devices or devices[0].get("type") not in ("cuda", "rocm", "xpu", "mps"):
-        raise BenchError("ComfyUI が GPU を使っていません(CPU だけでは VRAM を測れません)")
+        raise BenchError(
+            tr(
+                "ComfyUI が GPU を使っていません(CPU だけでは VRAM を測れません)",
+                "ComfyUI is not using a GPU (VRAM cannot be measured on CPU only)",
+            )
+        )
     dev0 = devices[0]
-    _check_queue_empty(client, "開始前")
+    _check_queue_empty(client, tr("開始前", "before starting"))
 
     object_info = client.object_info()
     wf, source, warnings = load_workflow(client, opts, object_info, session, file_data)
@@ -827,7 +946,9 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     for key, value in opts.sets.items():
         hit = [n for n in wf.values() if key in n["inputs"] and not isinstance(n["inputs"][key], list)]
         if not hit:
-            warnings.append(f"--set {key}: その名前の入力がありません")
+            warnings.append(
+                tr(f"--set {key}: その名前の入力がありません", f"--set {key}: no input has that name")
+            )
         for n in hit:
             n["inputs"][key] = value
         if hit and key not in STANDARD_SET_KEYS:
@@ -836,7 +957,15 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     problems = check_inputs(wf, object_info)
     if problems:
         raise BenchError(
-            "\n".join(["必要なファイルがサーバーにありません。先にモデルを置いてください:", *problems])
+            "\n".join(
+                [
+                    tr(
+                        "必要なファイルがサーバーにありません。先にモデルを置いてください:",
+                        "The server is missing required files. Put the model files in place first:",
+                    ),
+                    *problems,
+                ]
+            )
         )
     settings = effective_settings(wf, precision=opts.precision)
 
@@ -855,7 +984,11 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         else:
             name = "mps"
             warnings.append(
-                "Apple のチップ名が分からないので GPU 名は mps のまま(同じ GPU の実測としては使われない)"
+                tr(
+                    "Apple のチップ名が分からないので GPU 名は mps のまま(同じ GPU の実測としては使われない)",
+                    "The Apple chip name is unknown, so the GPU name stays mps "
+                    "(not used as a same-GPU measurement)",
+                )
             )
     # PCI の型番 ID(同じ GPU の照合に使う。Linux と Windows で名前が違う AMD・Intel のため)。
     # ComfyUI が同じ PC のときだけ
@@ -873,30 +1006,47 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         driver = gpu.get("driver") if gpu else None
         if gpu is None:
             if not opts.force:
-                raise BenchError(f"{why}。確かめずに測るなら --force を付けてください")
-            warnings.append(f"{why}(--force なので確かめずに測った)")
+                raise BenchError(_force_hint(why))
+            warnings.append(_forced(why))
             unchecked = "GPU の空きは確かめていない(--force)"
     if gpu_id is not None:
         samples = sample_gpu(gpu_id)
         if not samples:
             if not opts.force:
                 raise BenchError(
-                    "nvidia-smi で GPU の使用率を読めませんでした。"
-                    "確かめずに測るなら --force を付けてください"
+                    tr(
+                        "nvidia-smi で GPU の使用率を読めませんでした。"
+                        "確かめずに測るなら --force を付けてください",
+                        "nvidia-smi could not read the GPU usage. To measure without checking, add --force",
+                    )
                 )
-            warnings.append("nvidia-smi で GPU の使用率を読めなかった(--force なので確かめずに測った)")
+            warnings.append(
+                tr(
+                    "nvidia-smi で GPU の使用率を読めなかった(--force なので確かめずに測った)",
+                    "nvidia-smi could not read the GPU usage (measured without checking because of --force)",
+                )
+            )
         else:
             util = sum(u for _, u in samples) / len(samples)
             if util >= opts.busy_util_pct:
                 if not opts.force:
                     raise BenchError(
-                        f"GPU が他の仕事で使われています(約 2 秒の平均の使用率 {util:.0f}%)。"
-                        "空いてから測るか、--force を付けてください"
+                        tr(
+                            f"GPU が他の仕事で使われています(約 2 秒の平均の使用率 {util:.0f}%)。"
+                            "空いてから測るか、--force を付けてください",
+                            f"The GPU is busy with other work (average usage over about 2 s: {util:.0f}%). "
+                            "Measure when it is free, or add --force",
+                        )
                     )
-                warnings.append(f"GPU の使用率が {util:.0f}% のまま測った(--force)")
+                warnings.append(_busy_forced(util))
             base_smi = (min(m for m, _ in samples), util)
     if local and proc is None:
-        warnings.append("ComfyUI のプロセスを特定できないので、最大メモリは記録しない")
+        warnings.append(
+            tr(
+                "ComfyUI のプロセスを特定できないので、最大メモリは記録しない",
+                "The ComfyUI process cannot be identified, so the peak RAM is not recorded",
+            )
+        )
 
     # 2. ここから書き換える要求
     warnings += _ensure_inputs(client, wf, object_info, session)
@@ -906,15 +1056,21 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         time.sleep(2.0)
     elif preloaded:
         warnings.append(
-            f"開始前に torch が {preloaded / GIB:.2f} GB 確保しています(読み込み済みのモデル)。"
-            "結果に前のモデルの分が混ざることがあります。自分の ComfyUI なら --free で解放してから測れます"
+            tr(
+                f"開始前に torch が {preloaded / GIB:.2f} GB 確保しています(読み込み済みのモデル)。"
+                "結果に前のモデルの分が混ざることがあります。"
+                "自分の ComfyUI なら --free で解放してから測れます",
+                f"torch already holds {preloaded / GIB:.2f} GB before starting (models already loaded). "
+                "The result may include the previous model. "
+                "If this ComfyUI is yours, --free releases it first",
+            )
         )
     base_stats = (client.system_stats().get("devices") or [dev0])[0]
     base_torch = int(base_stats.get("torch_vram_total") or 0)
     base_dev = int(base_stats.get("vram_total") or 0) - int(base_stats.get("vram_free") or 0)
 
     # 3. 送る直前にもう一度キューを見る
-    _check_queue_empty(client, "送る直前")
+    _check_queue_empty(client, tr("送る直前", "just before sending"))
     log_before = client.log_entries()
     mon = Monitor(
         client,
@@ -925,7 +1081,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         other_used=probe.used_mib if probe is not None and probe.tool is not None else None,
     )
     client_id = uuid.uuid4().hex
-    log(f"{opts.model_id} を {opts.url} で実行します …")
+    log(tr(f"{opts.model_id} を {opts.url} で実行します …", f"Running {opts.model_id} on {opts.url} …"))
     mon.start()
     t0 = time.monotonic()
     submit_wall = time.time()
@@ -944,14 +1100,20 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
             if time.monotonic() - t0 > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
                 raise BenchError(
-                    f"{opts.timeout:g} 秒で終わらなかったので中止しました"
-                    + ("(自分の仕事を中断した)" if done == "interrupted" else "")
+                    tr(
+                        f"{opts.timeout:g} 秒で終わらなかったので中止しました"
+                        + ("(自分の仕事を中断した)" if done == "interrupted" else ""),
+                        f"Stopped: not finished in {opts.timeout:g} s"
+                        + (" (interrupted our own job)" if done == "interrupted" else ""),
+                    )
                 )
             time.sleep(0.5)
     except KeyboardInterrupt:
         if prompt_id is not None:
             cancel_own_prompt(client, prompt_id)
-        raise BenchError("中断しました(送った自分の仕事は取り消しました)") from None
+        raise BenchError(
+            tr("中断しました(送った自分の仕事は取り消しました)", "Interrupted (our own job was cancelled)")
+        ) from None
     finally:
         peaks = mon.stop()
     wall = time.monotonic() - t0
@@ -960,34 +1122,52 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         foreign.update(r for r in running if r != prompt_id)
 
     failed: str | None = None
+    failed_note: str | None = None  # 実測の note に残す文(表示の言語によらず日本語)
     outcome = "ok"
     err = _history_error(entry) if entry else None
     if err:
         failed, oom = err
+        failed_note = (_history_error(entry, stored=True) or err)[0] if entry else failed
         outcome = "oom" if oom else "error"
 
     reach = reachable_nodes(wf, object_info)
     cached = _cached_nodes(entry or {}) & reach
     if outcome == "ok" and cached and cached >= reach:
         raise BenchError(
-            "前と同じ内容だったので ComfyUI が前の結果を返し、何も実行されませんでした。"
-            "--free を付けるか、シードなどの入力を変えてください(--set seed=…)"
+            tr(
+                "前と同じ内容だったので ComfyUI が前の結果を返し、何も実行されませんでした。"
+                "--free を付けるか、シードなどの入力を変えてください(--set seed=…)",
+                "The job was the same as before, so ComfyUI returned the previous result and ran nothing. "
+                "Add --free, or change an input such as the seed (--set seed=…)",
+            )
         )
     if cached:
         nonstandard.append(f"前の結果を使ったノードが {len(cached)} 個(一部だけ実行)")
         warnings.append(
-            f"{len(cached)} 個のノードが前の結果を使い、実行されませんでした。"
-            "その分のメモリは測れていません(--free を付けると避けられます)"
+            tr(
+                f"{len(cached)} 個のノードが前の結果を使い、実行されませんでした。"
+                "その分のメモリは測れていません(--free を付けると避けられます)",
+                f"{len(cached)} nodes reused the previous result and did not run. "
+                "Their memory is not measured (--free avoids this)",
+            )
         )
     if foreign:
         nonstandard.append("測っている間に他の仕事が動いた")
-        warnings.append("測っている間に ComfyUI で他の仕事が動いたので、値に混ざっているおそれがあります")
+        warnings.append(
+            tr(
+                "測っている間に ComfyUI で他の仕事が動いたので、値に混ざっているおそれがあります",
+                "Other work ran in ComfyUI during the measurement, so the values may include it",
+            )
+        )
     start_ts = _timestamps(entry or {}).get("execution_start")
     if local and start_ts and start_ts / 1000 - submit_wall > START_DELAY_S:
         delay = start_ts / 1000 - submit_wall
         nonstandard.append(f"送ってから実行が始まるまで {delay:.0f} 秒(先に他の仕事が動いた)")
         warnings.append(
-            f"送ってから実行が始まるまで {delay:.0f} 秒かかりました(先に他の仕事が動いたとみられます)"
+            tr(
+                f"送ってから実行が始まるまで {delay:.0f} 秒かかりました(先に他の仕事が動いたとみられます)",
+                f"The run started {delay:.0f} s after sending (other work likely ran first)",
+            )
         )
 
     log_lines = _new_log_lines(log_before, client.log_entries())
@@ -1001,7 +1181,12 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         peak_vram = torch_peak / GIB
     else:  # torch の量が出ない版では、GPU 全体の増分で代える
         peak_vram = dev_delta / GIB
-        warnings.append("torch_vram_total が取れないので、GPU 全体の増分を最大 VRAM にした")
+        warnings.append(
+            tr(
+                "torch_vram_total が取れないので、GPU 全体の増分を最大 VRAM にした",
+                "torch_vram_total is not available, so the whole-GPU increase is used as the peak VRAM",
+            )
+        )
     note_parts = []
     if base_smi and peaks.smi_samples:
         gpu_delta = max(0.0, peaks.gpu_used_mib - base_smi[0]) / 1024
@@ -1029,7 +1214,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     note_parts.append(f"計測 {peaks.samples} 回")
     if failed:
         label = "メモリ不足で失敗" if outcome == "oom" else "失敗"
-        note_parts.append(f"{label}: {failed[:300]}")
+        note_parts.append(f"{label}: {(failed_note or failed)[:300]}")
     if opts.sets:
         note_parts.append("変えた入力: " + describe_sets(opts.sets))
     if nonstandard:
@@ -1088,13 +1273,22 @@ def save_decision(
     if output:
         return Path(output), None
     if m.outcome != "ok" and not save_failed:
-        return None, "失敗した結果なのでキャッシュには保存しません(--save-failed か --output で保存できます)"
+        return None, tr(
+            "失敗した結果なのでキャッシュには保存しません(--save-failed か --output で保存できます)",
+            "A failed result is not saved to the cache (--save-failed or --output saves it)",
+        )
     if not m.standard and not save_nonstandard:
-        return None, (
+        return None, tr(
             "標準でない条件の結果なのでキャッシュには保存しません"
-            "(--save-nonstandard か --output で保存できます)"
+            "(--save-nonstandard か --output で保存できます)",
+            "A result under non-standard conditions is not saved to the cache "
+            "(--save-nonstandard or --output saves it)",
         )
     return default_output_path(m), None
+
+
+def _timeout_error() -> str:
+    return tr("--timeout は 0 より大きい秒数にしてください", "--timeout must be a number of seconds above 0")
 
 
 def options_from_args(args: argparse.Namespace) -> BenchOptions:
@@ -1103,12 +1297,17 @@ def options_from_args(args: argparse.Namespace) -> BenchOptions:
     if res:
         mres = re.fullmatch(r"\s*(\d+)\s*[xX*×]\s*(\d+)\s*", res)
         if not mres:
-            raise BenchError(f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}")
+            raise BenchError(
+                tr(
+                    f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}",
+                    f"Write --resolution as WIDTHxHEIGHT (e.g. 768x768): {res}",
+                )
+            )
         width, height = int(mres.group(1)), int(mres.group(2))
     timeout = getattr(args, "timeout", None)
     timeout = 1800.0 if timeout is None else timeout
     if timeout <= 0:
-        raise BenchError("--timeout は 0 より大きい秒数にしてください")
+        raise BenchError(_timeout_error())
     precision = None
     with contextlib.suppress(Exception):
         from .db import load as load_db

@@ -37,6 +37,8 @@ from typing import Any
 
 from .hf import (
     COMPONENTS,
+    LINEAGE_WHY_EN,
+    UNVERIFIED_WHY_EN,
     UPSTREAM_GATED,
     component_for,
     families_for,
@@ -47,6 +49,7 @@ from .hf import (
     unverified_component_for,
     verified_row_for,
 )
+from .i18n import get_language, tr
 from .models import ModelEntry, ModelFile
 
 CHECK_IDS = (
@@ -229,7 +232,7 @@ def load_allowlist(value: str) -> frozenset[str]:
 
 def _license_label(lic: str | None, name: str | None) -> str:
     if lic is None:
-        return "不明"
+        return tr("不明", "unknown")
     if lic == "other" and name:
         return f"other({name})"
     return lic
@@ -265,44 +268,64 @@ def license_allowed(lic: str | None, name: str | None, allow: Iterable[str]) -> 
 #      当たらなければ「確かめられない」
 #   6. それ以外は一覧の値(本家から読んだもの)
 
-# (ファイル名の正規表現, ライセンス(None は確かめられない), 根拠, 本家が利用申請を求めるか)。
+# (ファイル名の正規表現, ライセンス(None は確かめられない), 根拠(日本語, 英語), 本家が利用申請を求めるか)。
 # hf の部品の表と重なるが、一覧が古い決め方で作られていても判定で落とせるよう、名前を広めに取って別に持つ
-RESTRICTED_COMPONENTS: tuple[tuple[re.Pattern[str], str | None, str, bool], ...] = (
+RESTRICTED_COMPONENTS: tuple[tuple[re.Pattern[str], str | None, tuple[str, str], bool], ...] = (
     (
         re.compile(r"llama|llava", re.IGNORECASE),
         "llama3.1",
-        "Meta Llama の規約(https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)",
+        (
+            "Meta Llama の規約(https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)",
+            "the Meta Llama license (https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)",
+        ),
         False,
     ),
     (
         re.compile(r"t5gemma|gemma[-_ ]?[123](?![0-9])", re.IGNORECASE),
         "gemma",
-        "Gemma 利用規約(https://ai.google.dev/gemma/terms)",
+        (
+            "Gemma 利用規約(https://ai.google.dev/gemma/terms)",
+            "the Gemma Terms of Use (https://ai.google.dev/gemma/terms)",
+        ),
         False,
     ),
     (
         re.compile(r"dino[\W_]?v3", re.IGNORECASE),
         "other",
-        "DINOv3 の規約(https://ai.meta.com/resources/models-and-libraries/dinov3-license。"
-        "https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m は gated)",
+        (
+            "DINOv3 の規約(https://ai.meta.com/resources/models-and-libraries/dinov3-license。"
+            "https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m は gated)",
+            "the DINOv3 license (https://ai.meta.com/resources/models-and-libraries/dinov3-license;"
+            " https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m is gated)",
+        ),
         True,
     ),
     (
         re.compile(r"(^|[^a-z0-9])sam[\W_]?3(?!\d)", re.IGNORECASE),
         "other",
-        "SAM 3 の規約(https://huggingface.co/facebook/sam3。gated)",
+        (
+            "SAM 3 の規約(https://huggingface.co/facebook/sam3。gated)",
+            "the SAM 3 license (https://huggingface.co/facebook/sam3; gated)",
+        ),
         True,
     ),
     (
         re.compile(r"depth[\W_]?anything[\W_]?v2[\W_]*(vit)?[blg]", re.IGNORECASE),
         "cc-by-nc-4.0",
-        "Depth Anything V2 Base/Large/Giant は非商用(https://huggingface.co/depth-anything/Depth-Anything-V2-Large)",
+        (
+            "Depth Anything V2 Base/Large/Giant は非商用(https://huggingface.co/depth-anything/Depth-Anything-V2-Large)",
+            "Depth Anything V2 Base/Large/Giant is non-commercial"
+            " (https://huggingface.co/depth-anything/Depth-Anything-V2-Large)",
+        ),
         False,
     ),
     (
         re.compile(r"(lumina|neta).*(all[\W_]?in[\W_]?one|aio)|^lumina_2\.safetensors$", re.IGNORECASE),
         "gemma",
-        "Lumina Image 2.0 系の一式のファイルはテキストエンコーダ Gemma 2 2B を含む(Gemma 利用規約)",
+        (
+            "Lumina Image 2.0 系の一式のファイルはテキストエンコーダ Gemma 2 2B を含む(Gemma 利用規約)",
+            "all-in-one Lumina Image 2.0 files include the Gemma 2 2B text encoder (the Gemma Terms of Use)",
+        ),
         False,
     ),
 )
@@ -360,23 +383,30 @@ def resolve_file_license(f: ModelFile) -> ResolvedLicense:
     # 1. 制限付きの部品(どのリポジトリの中にあっても)
     for pat, lic, why, gated in RESTRICTED_COMPONENTS:
         if pat.search(base):
-            return ResolvedLicense(lic, None, f"ファイル名から {why}", gated)
+            return ResolvedLicense(
+                lic, None, tr(f"ファイル名から {why[0]}", f"from the file name: {why[1]}"), gated
+            )
     comp = component_for(base)
     if comp and comp.everywhere:
         return ResolvedLicense(
-            comp.license, comp.license_name, f"ファイル名から {comp.key}({comp.url})", comp.gated
+            comp.license,
+            comp.license_name,
+            tr(f"ファイル名から {comp.key}({comp.url})", f"from the file name: {comp.key} ({comp.url})"),
+            comp.gated,
         )
     # 2. 本家を確かめられない部品
     unv = unverified_component_for(base)
     if unv:
-        return ResolvedLicense(None, None, f"ファイル名から {unv[1]}")
+        why = unv[1] if get_language() == "ja" else UNVERIFIED_WHY_EN.get(unv[0], unv[1])
+        return ResolvedLicense(None, None, tr(f"ファイル名から {why}", f"from the file name: {why}"))
     if f.license is None:
         return ResolvedLicense(None, None, None, upstream_gated)
     # 3. 元のライセンスを読めない系統・系統の表より寛容な値
     names = _lineage_names(f)
     lin = lineage_for(names)
     if lin:
-        return ResolvedLicense(None, None, f"系統 {lin[0]}: {lin[1]}")
+        why = lin[1] if get_language() == "ja" else LINEAGE_WHY_EN.get(lin[0], lin[1])
+        return ResolvedLicense(None, None, tr(f"系統 {lin[0]}: {why}", f"lineage {lin[0]}: {why}"))
     fams = families_for(names)
     if fams:
         fw = max(fams, key=lambda x: license_tier(x.license, x.license_name))
@@ -385,16 +415,29 @@ def resolve_file_license(f: ModelFile) -> ResolvedLicense:
             return ResolvedLicense(
                 None,
                 None,
-                f"一覧の {label} は系統 {fw.key} の {_license_label(fw.license, fw.license_name)} より寛容",
+                tr(
+                    f"一覧の {label} は系統 {fw.key} の "
+                    f"{_license_label(fw.license, fw.license_name)} より寛容",
+                    f"the listed {label} is more permissive than "
+                    f"{_license_label(fw.license, fw.license_name)}"
+                    f" of lineage {fw.key}",
+                ),
             )
     # 4. 再配布側の表記しか無い
     src = f.license_from or f.repo_id
     if src and is_repackager(src):
         for pat, lic, why in PERMISSIVE_COMPONENTS:
             if pat.search(base):
-                return ResolvedLicense(lic, None, f"ファイル名から {why}")
+                return ResolvedLicense(lic, None, tr(f"ファイル名から {why}", f"from the file name: {why}"))
         label = _license_label(f.license, f.license_name)
-        return ResolvedLicense(None, None, f"再配布側({src})の表記 {label} だけで、本家を確かめられない")
+        return ResolvedLicense(
+            None,
+            None,
+            tr(
+                f"再配布側({src})の表記 {label} だけで、本家を確かめられない",
+                f"only the repackager's ({src}) label {label}; the original cannot be checked",
+            ),
+        )
     # 5. 別の系統の部品
     fk = foreign_marker(base, _own_names(f))
     if fk:
@@ -403,73 +446,135 @@ def resolve_file_license(f: ModelFile) -> ResolvedLicense:
             return ResolvedLicense(
                 None,
                 None,
-                f"置き場所 {f.repo_id} の本体と別の系統({fk})の部品とみえ、本家を確かめた表に無い",
+                tr(
+                    f"置き場所 {f.repo_id} の本体と別の系統({fk})の部品とみえ、本家を確かめた表に無い",
+                    f"looks like a part of another lineage ({fk}) than the main model in {f.repo_id},"
+                    " and is not in the table of checked originals",
+                ),
             )
         if row in COMPONENTS and license_tier(row.license, row.license_name) >= license_tier(
             f.license, f.license_name
         ):
-            return ResolvedLicense(row.license, row.license_name, f"ファイル名から {row.key}({row.url})")
+            return ResolvedLicense(
+                row.license,
+                row.license_name,
+                tr(f"ファイル名から {row.key}({row.url})", f"from the file name: {row.key} ({row.url})"),
+            )
     return ResolvedLicense(f.license, f.license_name, None, upstream_gated)
 
 
 # --- 条件ごとの判定 -------------------------------------------------------------------------------
 
-_NO_FILES = "ファイルの記載がありません"
+
+def _no_files() -> str:
+    return tr("ファイルの記載がありません", "no files listed")
+
+
+def _not_official() -> str:
+    return tr("公式テンプレートではないため確かめられない", "cannot be checked: not an official template")
 
 
 def _first(items: list[str], more: int) -> str:
-    s = "、".join(items[:3])
-    return s + (f" ほか {more - 3} 件" if more > 3 else "")
+    s = tr("、", ", ").join(items[:3])
+    return s + (tr(f" ほか {more - 3} 件", f" and {more - 3} more") if more > 3 else "")
 
 
 def check_license(m: ModelEntry, allow: frozenset[str]) -> Check:
     if not m.files:
-        return Check("license", False, _NO_FILES)
+        return Check("license", False, _no_files())
     resolved = [(f, resolve_file_license(f)) for f in m.files]
     bad = [(f, r) for f, r in resolved if not license_allowed(r.license, r.license_name, allow)]
     if bad:
         items = [
-            f"{f.name}: {_license_label(r.license, r.license_name)}" + (f"({r.note})" if r.note else "")
+            f"{f.name}: {_license_label(r.license, r.license_name)}"
+            + ((tr(f"({r.note})", f" ({r.note})")) if r.note else "")
             for f, r in bad
         ]
-        return Check("license", False, "許可リストに無いライセンス: " + _first(items, len(items)))
+        return Check(
+            "license",
+            False,
+            tr("許可リストに無いライセンス: ", "license not in the allowlist: ") + _first(items, len(items)),
+        )
     labels = sorted({_license_label(r.license, r.license_name) for _, r in resolved})
-    return Check("license", True, "すべて許可リストにある: " + ", ".join(labels))
+    return Check(
+        "license", True, tr("すべて許可リストにある: ", "all in the allowlist: ") + ", ".join(labels)
+    )
 
 
 def check_gated(m: ModelEntry) -> Check:
     if not m.files:
-        return Check("gated", False, _NO_FILES)
+        return Check("gated", False, _no_files())
     gated = [f.name for f in m.files if f.gated is True]
     unknown = [f.name for f in m.files if f.gated is None]
     upstream = [f.name for f in m.files if f.gated is not True and resolve_file_license(f).gated]
     if gated:
-        return Check("gated", False, "利用申請(gated)が要る: " + _first(gated, len(gated)))
+        return Check(
+            "gated",
+            False,
+            tr("利用申請(gated)が要る: ", "access request (gated) needed: ") + _first(gated, len(gated)),
+        )
     if upstream:
         return Check(
-            "gated", False, "本家が利用申請(規約への同意)を求める部品: " + _first(upstream, len(upstream))
+            "gated",
+            False,
+            tr(
+                "本家が利用申請(規約への同意)を求める部品: ",
+                "parts whose original requires an access request (agreeing to terms): ",
+            )
+            + _first(upstream, len(upstream)),
         )
     if unknown:
-        return Check("gated", False, "利用申請が要るか不明: " + _first(unknown, len(unknown)))
-    return Check("gated", True, "利用申請は要らない")
+        return Check(
+            "gated",
+            False,
+            tr("利用申請が要るか不明: ", "unknown whether an access request is needed: ")
+            + _first(unknown, len(unknown)),
+        )
+    return Check("gated", True, tr("利用申請は要らない", "no access request needed"))
 
 
 def check_official(m: ModelEntry) -> Check:
     if m.source != "comfyui-template" or m.template is None:
-        return Check("official_workflow", False, f"ComfyUI 公式テンプレートではない(出どころ: {m.source})")
+        return Check(
+            "official_workflow",
+            False,
+            tr(
+                f"ComfyUI 公式テンプレートではない(出どころ: {m.source})",
+                f"not an official ComfyUI template (source: {m.source})",
+            ),
+        )
     if m.template.open_source is False:
-        return Check("official_workflow", False, "公式テンプレートだが openSource が false")
-    note = "" if m.template.open_source else "(openSource の記載なし。ローカルで動くテンプレートとして扱う)"
-    return Check("official_workflow", True, f"公式テンプレート {m.template.name}{note}")
+        return Check(
+            "official_workflow",
+            False,
+            tr("公式テンプレートだが openSource が false", "official template, but openSource is false"),
+        )
+    note = (
+        ""
+        if m.template.open_source
+        else tr(
+            "(openSource の記載なし。ローカルで動くテンプレートとして扱う)",
+            " (openSource not stated; treated as a template that runs locally)",
+        )
+    )
+    return Check(
+        "official_workflow",
+        True,
+        tr(f"公式テンプレート {m.template.name}{note}", f"official template {m.template.name}{note}"),
+    )
 
 
 def check_custom_nodes(m: ModelEntry) -> Check:
     if m.template is None:
-        return Check("custom_nodes", False, "公式テンプレートではないため確かめられない")
+        return Check("custom_nodes", False, _not_official())
     nodes = m.template.requires_custom_nodes
     if nodes:
-        return Check("custom_nodes", False, "カスタムノードが要る: " + _first(list(nodes), len(nodes)))
-    return Check("custom_nodes", True, "カスタムノードは要らない")
+        return Check(
+            "custom_nodes",
+            False,
+            tr("カスタムノードが要る: ", "custom nodes needed: ") + _first(list(nodes), len(nodes)),
+        )
+    return Check("custom_nodes", True, tr("カスタムノードは要らない", "no custom nodes needed"))
 
 
 def check_app_runtime(m: ModelEntry) -> Check:
@@ -477,7 +582,10 @@ def check_app_runtime(m: ModelEntry) -> Check:
     return Check(
         "app_runtime",
         False,
-        f"ComfyUI 以外の仕組み({m.runtime})で動かすモデル。動かせるかは使う側(アプリ)が確かめる",
+        tr(
+            f"ComfyUI 以外の仕組み({m.runtime})で動かすモデル。動かせるかは使う側(アプリ)が確かめる",
+            f"runs on something other than ComfyUI ({m.runtime}); the app using it checks that it runs",
+        ),
     )
 
 
@@ -486,28 +594,76 @@ def check_reviewed(m: ModelEntry) -> Check:
     人が一次資料で確かめる(genmodelfit review approve)まで自動のおすすめに出さない。"""
     r = m.review
     if r is None:
-        return Check("reviewed", True, "確認の印が無い(印を入れる前の一覧。確認済みとして扱う)")
+        return Check(
+            "reviewed",
+            True,
+            tr(
+                "確認の印が無い(印を入れる前の一覧。確認済みとして扱う)",
+                "no review mark (a list from before the marks; treated as reviewed)",
+            ),
+        )
     if r.status == "ok":
-        who = f"({r.decided_by}、{r.decided_at})" if r.decided_by else ""
-        return Check("reviewed", True, f"確認済み{who}")
-    why = ", ".join(r.reasons) or "理由の記載なし"
-    return Check("reviewed", False, f"確認待ち({r.status}: {why})。根拠を付けて確かめるまで自動で出さない")
+        who = (
+            tr(f"({r.decided_by}、{r.decided_at})", f" ({r.decided_by}, {r.decided_at})")
+            if r.decided_by
+            else ""
+        )
+        return Check("reviewed", True, tr(f"確認済み{who}", f"reviewed{who}"))
+    why = ", ".join(r.reasons) or tr("理由の記載なし", "no reason given")
+    return Check(
+        "reviewed",
+        False,
+        tr(
+            f"確認待ち({r.status}: {why})。根拠を付けて確かめるまで自動で出さない",
+            f"waiting for review ({r.status}: {why}); not auto-recommended until checked with evidence",
+        ),
+    )
 
 
 def check_comfyui_version(m: ModelEntry, target: str | None) -> Check:
     if m.template is None:
-        return Check("comfyui_version", False, "公式テンプレートではないため確かめられない")
+        return Check("comfyui_version", False, _not_official())
     need = m.template.min_comfyui_version
     if not target:
-        return Check("comfyui_version", False, "使う ComfyUI の版が分からない(update で記録するか指定する)")
+        return Check(
+            "comfyui_version",
+            False,
+            tr(
+                "使う ComfyUI の版が分からない(update で記録するか指定する)",
+                "the ComfyUI version in use is unknown (record it with update or pass it)",
+            ),
+        )
     if not need:
-        return Check("comfyui_version", False, "テンプレートに必要な版(minComfyUIVersion)の記載がない")
+        return Check(
+            "comfyui_version",
+            False,
+            tr(
+                "テンプレートに必要な版(minComfyUIVersion)の記載がない",
+                "the template does not state the version it needs (minComfyUIVersion)",
+            ),
+        )
     ok = version_le(need, target)
     if ok is None:
-        return Check("comfyui_version", False, f"版を読めない: 必要 {need} / 使う {target}")
+        return Check(
+            "comfyui_version",
+            False,
+            tr(
+                f"版を読めない: 必要 {need} / 使う {target}",
+                f"cannot read the versions: needs {need} / uses {target}",
+            ),
+        )
     if not ok:
-        return Check("comfyui_version", False, f"ComfyUI {need} 以上が要る(使う版 {target})")
-    return Check("comfyui_version", True, f"必要 {need} ≦ 使う版 {target}")
+        return Check(
+            "comfyui_version",
+            False,
+            tr(
+                f"ComfyUI {need} 以上が要る(使う版 {target})",
+                f"needs ComfyUI {need} or later (uses {target})",
+            ),
+        )
+    return Check(
+        "comfyui_version", True, tr(f"必要 {need} ≦ 使う版 {target}", f"needs {need} <= uses {target}")
+    )
 
 
 def _parse_time(v: str | None) -> datetime | None:
@@ -527,7 +683,7 @@ def _now() -> datetime:
 
 def check_url(m: ModelEntry, max_age_days: int | None = None, now: datetime | None = None) -> Check:
     if not m.files:
-        return Check("url_reachable", False, _NO_FILES)
+        return Check("url_reachable", False, _no_files())
     no_url = [f.name for f in m.files if not f.url]
     unchecked = [f.name for f in m.files if f.url and f.head_status is None]
     bad = [
@@ -536,62 +692,106 @@ def check_url(m: ModelEntry, max_age_days: int | None = None, now: datetime | No
         if f.url and f.head_status is not None and f.head_status not in REACHABLE_STATUSES
     ]
     if no_url:
-        return Check("url_reachable", False, "URL が無い: " + _first(no_url, len(no_url)))
+        return Check("url_reachable", False, tr("URL が無い: ", "no URL: ") + _first(no_url, len(no_url)))
     if bad:
-        return Check("url_reachable", False, "匿名で取れない: " + _first(bad, len(bad)))
+        return Check(
+            "url_reachable",
+            False,
+            tr("匿名で取れない: ", "not downloadable anonymously: ") + _first(bad, len(bad)),
+        )
     if unchecked:
-        return Check("url_reachable", False, "未確認(HEAD の記録なし): " + _first(unchecked, len(unchecked)))
+        return Check(
+            "url_reachable",
+            False,
+            tr("未確認(HEAD の記録なし): ", "unchecked (no HEAD record): ")
+            + _first(unchecked, len(unchecked)),
+        )
     if max_age_days is not None:
         now = now or _now()
         times = [_parse_time(f.head_checked_at) for f in m.files]
         if any(t is None for t in times):
             no_time = [f.name for f, t in zip(m.files, times, strict=True) if t is None]
-            return Check("url_reachable", False, "確認の日時が無い: " + _first(no_time, len(no_time)))
+            return Check(
+                "url_reachable",
+                False,
+                tr("確認の日時が無い: ", "no check time: ") + _first(no_time, len(no_time)),
+            )
         oldest = min(t for t in times if t is not None)
         age = (now - oldest).total_seconds() / 86400
         if age > max_age_days:
             return Check(
                 "url_reachable",
                 False,
-                f"確認が古い({oldest:%Y-%m-%d}、{age:.0f} 日前。{max_age_days} 日まで。"
-                "genmodelfit update --heads-only でやり直す)",
+                tr(
+                    f"確認が古い({oldest:%Y-%m-%d}、{age:.0f} 日前。{max_age_days} 日まで。"
+                    "genmodelfit update --heads-only でやり直す)",
+                    f"check too old ({oldest:%Y-%m-%d}, {age:.0f} days ago; up to {max_age_days} days;"
+                    " redo with genmodelfit update --heads-only)",
+                ),
             )
     codes = sorted({f.head_status for f in m.files if f.head_status is not None})
-    return Check("url_reachable", True, "匿名の HEAD で取れる: " + ", ".join(str(c) for c in codes))
+    return Check(
+        "url_reachable",
+        True,
+        tr("匿名の HEAD で取れる: ", "reachable by anonymous HEAD: ") + ", ".join(str(c) for c in codes),
+    )
 
 
 def check_sha256(m: ModelEntry) -> Check:
     if not m.files:
-        return Check("sha256", False, _NO_FILES)
+        return Check("sha256", False, _no_files())
     bad = [f.name for f in m.files if not (isinstance(f.sha256, str) and _SHA256.match(f.sha256.lower()))]
     if bad:
-        return Check("sha256", False, "sha256 が無い: " + _first(bad, len(bad)))
-    return Check("sha256", True, "すべてのファイルに sha256 がある")
+        return Check("sha256", False, tr("sha256 が無い: ", "no sha256: ") + _first(bad, len(bad)))
+    return Check("sha256", True, tr("すべてのファイルに sha256 がある", "every file has a sha256"))
 
 
 def check_content(m: ModelEntry, allow_uncensored: bool) -> Check:
     if m.content == "sfw":
-        return Check("content", True, "無検閲の印は無い")
+        return Check("content", True, tr("無検閲の印は無い", "not marked uncensored"))
     if m.content == "uncensored" and allow_uncensored:
-        return Check("content", True, "無検閲(方針で自動のおすすめを許可)")
+        return Check(
+            "content",
+            True,
+            tr(
+                "無検閲(方針で自動のおすすめを許可)", "uncensored (auto-recommendation allowed by the policy)"
+            ),
+        )
     if m.content == "uncensored":
         return Check(
-            "content", False, "無検閲のモデルは初心者向けの自動おすすめに出さない(一覧・絞り込みには出る)"
+            "content",
+            False,
+            tr(
+                "無検閲のモデルは初心者向けの自動おすすめに出さない(一覧・絞り込みには出る)",
+                "uncensored models are not auto-recommended to beginners"
+                " (they still appear in lists and filters)",
+            ),
         )
-    return Check("content", False, f"内容の印が分からない: {m.content}")
+    return Check(
+        "content", False, tr(f"内容の印が分からない: {m.content}", f"unknown content mark: {m.content}")
+    )
 
 
 def check_size(m: ModelEntry) -> Check:
     if not m.files:
-        return Check("size_known", False, _NO_FILES)
+        return Check("size_known", False, _no_files())
     if getattr(m, "files_complete", None) is False:
         # テンプレートがモデルのファイルを全部は書いていない(カスタムノードが自分で取るなど)
-        return Check("size_known", False, "ファイルの一覧が完全でない(files_complete=false)")
+        return Check(
+            "size_known",
+            False,
+            tr(
+                "ファイルの一覧が完全でない(files_complete=false)",
+                "the file list is incomplete (files_complete=false)",
+            ),
+        )
     unknown = [f.name for f in m.files if not f.size_bytes or f.size_bytes <= 0]
     if unknown:
-        return Check("size_known", False, "大きさが分からない: " + _first(unknown, len(unknown)))
+        return Check(
+            "size_known", False, tr("大きさが分からない: ", "unknown size: ") + _first(unknown, len(unknown))
+        )
     total = m.total_size_bytes or 0
-    return Check("size_known", True, f"合計 {total / 1e9:.2f} GB")
+    return Check("size_known", True, tr(f"合計 {total / 1e9:.2f} GB", f"{total / 1e9:.2f} GB in total"))
 
 
 # --- まとめ ---------------------------------------------------------------------------------------

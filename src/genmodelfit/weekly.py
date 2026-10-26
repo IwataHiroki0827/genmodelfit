@@ -40,6 +40,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import html
 import json
 import os
@@ -52,6 +53,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from . import i18n
 from ._version import __version__
 from .db import Database, DatabaseError, duplicate_ids
 from .db import load as load_db
@@ -98,6 +100,14 @@ class WeeklyRecorder(RecordingFetcher):
 
     def __getattr__(self, name: str) -> Any:  # get_range・budget_exhausted・rate_limited などは中身のもの
         return getattr(self.inner, name)
+
+
+@contextlib.contextmanager
+def _japanese():
+    """表示の言語を ja に固定する(#73)。毎週の PR の本文・結果はオーナー(日本語)向けなので、
+    diff・review・update が返す文も今までどおり日本語にする。終わったら前の状態に戻す。"""
+    with i18n.forced("ja"):
+        yield
 
 
 def replay_fetcher(root: str | Path) -> DirFetcher:
@@ -240,6 +250,7 @@ def _gb(b: int | None) -> str:
     return "—" if not b else f"{b / 2**30:.2f}"
 
 
+@_japanese()
 def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
     """PR の本文(Markdown)。d は diff_db の結果、result は run の結果。"""
     s = d["summary"]
@@ -419,6 +430,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
     return limit_body("\n".join(lines) + "\n")
 
 
+@_japanese()
 def review_section(d: dict[str, Any], pending: list[dict[str, Any]]) -> list[str]:
     """PR の本文の「分類」と「確認待ち」の節(#42)。上流の文字は md() で無害にする(_table が使う)。"""
     cl = d.get("classification") or {}
@@ -465,6 +477,7 @@ def limit_body(body: str) -> str:
     return cut + tail
 
 
+@_japanese()
 def run(
     out_dir: str | Path,
     *,
@@ -571,6 +584,7 @@ def _write_json(path: Path, data: Any) -> None:
 MERGE_NOT_SAFE = 3
 
 
+@_japanese()
 def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
     """2 つの一覧のファイルから分類を計算し直す(何も書かず、通信しない)。読めなければ DatabaseError。
 
@@ -600,6 +614,7 @@ def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
     }
 
 
+@_japanese()
 def merge_check_main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(
         prog="python -m genmodelfit.weekly merge-check",
@@ -638,6 +653,7 @@ def _utf8_stdio() -> None:
                 stream.reconfigure(encoding="utf-8")
 
 
+@_japanese()
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     _utf8_stdio()

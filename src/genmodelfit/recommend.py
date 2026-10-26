@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from .db import Database
 from .estimate import GIB, Coefficients, estimate, gpu_choice, load_coefficients, shared_memory
 from .groups import group_key, index_for, is_community, precision_rank
+from .i18n import tr
 from .models import (
     CONTENT_LEVELS,
     FIT_LEVELS,
@@ -325,16 +326,25 @@ def check_filters(
     modality は 1 つ・カンマ区切り・並びのどれでもよく、確かめた並びを返す。"""
     mods = parse_modalities(modality)
     if content not in CONTENT_FILTERS:
-        raise ValueError(f"content が正しくありません: {content!r}(使えるのは {', '.join(CONTENT_FILTERS)})")
+        raise ValueError(_bad("content", content, CONTENT_FILTERS))
     if min_fit is not None and min_fit not in FIT_LEVELS:
-        raise ValueError(f"min_fit が正しくありません: {min_fit!r}(使えるのは {', '.join(FIT_LEVELS)})")
+        raise ValueError(_bad("min_fit", min_fit, FIT_LEVELS))
     if fit is not None and fit not in FIT_FILTERS:
-        raise ValueError(f"fit が正しくありません: {fit!r}(使えるのは {', '.join(FIT_FILTERS)})")
+        raise ValueError(_bad("fit", fit, FIT_FILTERS))
     if fit is not None and min_fit is not None:
-        raise ValueError("fit と min_fit は同時に指定できません")
+        raise ValueError(
+            tr("fit と min_fit は同時に指定できません", "fit and min_fit cannot be given together")
+        )
     if sort not in SORTS:
-        raise ValueError(f"sort が正しくありません: {sort!r}(使えるのは {', '.join(SORTS)})")
+        raise ValueError(_bad("sort", sort, SORTS))
     return mods
+
+
+def _bad(name: str, value: object, allowed: Iterable[str]) -> str:
+    ok = ", ".join(allowed)
+    return tr(
+        f"{name} が正しくありません: {value!r}(使えるのは {ok})", f"invalid {name}: {value!r} (allowed: {ok})"
+    )
 
 
 def _license_list(license: str | Iterable[str] | None) -> list[str] | None:
@@ -344,13 +354,18 @@ def _license_list(license: str | Iterable[str] | None) -> list[str] | None:
     items = license.split(",") if isinstance(license, str) else list(license)
     out = [x.strip().lower() for x in items if x and x.strip()]
     if not out:
-        raise ValueError("license が空です(例: apache-2.0,mit)")
+        raise ValueError(tr("license が空です(例: apache-2.0,mit)", "license is empty (e.g. apache-2.0,mit)"))
     return out
 
 
 def _check_limit(limit: int | None, name: str = "limit") -> None:
     if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
-        raise ValueError(f"{name} は 1 以上の整数か None です: {limit!r}")
+        raise ValueError(
+            tr(
+                f"{name} は 1 以上の整数か None です: {limit!r}",
+                f"{name} must be an integer >= 1 or None: {limit!r}",
+            )
+        )
 
 
 def sort_key(f: Fit) -> tuple:
@@ -603,7 +618,7 @@ def select(
     _check_limit(limit)
     _check_limit(per_modality, "per_modality")
     if query is not None and not query.strip():
-        raise ValueError("query が空です")
+        raise ValueError(tr("query が空です", "query is empty"))
     codes = task_codes(task.split(",") if isinstance(task, str) else task) if task is not None else None
     if codes and codes & TOOL_TASKS:
         include_tools = True  # 補助ツールの用途を指定したら、補助ツールを外さない
