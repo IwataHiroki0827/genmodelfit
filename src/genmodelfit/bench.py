@@ -36,11 +36,13 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import psutil
-import requests
+
+if TYPE_CHECKING:
+    import requests
 
 from . import hardware
 from ._version import __version__
@@ -93,6 +95,8 @@ class ComfyClient:
         self.timeout = timeout
 
     def _req(self, method: str, path: str, **kw: Any) -> requests.Response:
+        import requests
+
         kw.setdefault("timeout", self.timeout)
         try:
             return self.s.request(method, self.url + path, **kw)
@@ -714,6 +718,8 @@ def load_workflow(
             return data, "file:api", []
         conv = ui_to_api(data, object_info)
         return conv.workflow, "file:ui", conv.warnings
+    import requests
+
     ui = client.template(opts.model_id)
     source = "server-template"
     if ui is None:
@@ -739,6 +745,8 @@ def _ensure_inputs(
     client: ComfyClient, wf: dict[str, Any], object_info: dict[str, Any], session: requests.Session
 ) -> list[str]:
     """テンプレートの入力画像がサーバーに無ければ、公式のものを取ってアップロードする。"""
+    import requests
+
     notes: list[str] = []
     for nid, name, filename in upload_inputs(wf, object_info):
         try:

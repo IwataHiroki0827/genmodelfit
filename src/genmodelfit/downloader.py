@@ -36,12 +36,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin, urlsplit
 
-import requests
-
 from .estimate import GIB
 from .fetch import TIMEOUT, make_session
 
 if TYPE_CHECKING:
+    import requests
+
     from .db import Database
     from .gate import GatePolicy
     from .models import ModelEntry, ModelFile, Settings, SystemInfo
@@ -778,6 +778,8 @@ def _retry_after(resp: requests.Response, n: int) -> float:
 
 def _check_hop(hosts: HostPolicy, url: str, *, start: bool) -> None:
     """URL そのものと、requests が実際に使う形(prepare した URL)の両方を確かめる。"""
+    import requests
+
     hosts.check(url, start=start)
     try:
         prepared = requests.Request("GET", url).prepare().url or ""
@@ -902,6 +904,8 @@ def _fetch_one(
         raise DownloadError(f"{pf.relpath}: フォルダを作れません({e.strerror or e}): {dest.parent}") from e
     if not _inside(dest.parent, root):
         raise DownloadRefused(f"置き場所の外には書きません: {dest.parent}")
+    import requests
+
     with _file_lock(lock, pf.relpath):
         try:
             _transfer(
@@ -937,6 +941,8 @@ def _transfer(
     report: Callable[[str, int, str | None], None],
     result: DownloadResult,
 ) -> None:
+    import requests
+
     size = pf.size_bytes or 0
     hasher, hashed = None, -1  # .part のどこまでを hasher に入れたか
     stalled = restarts = 0
