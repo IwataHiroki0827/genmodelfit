@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
 ### Changed
 
 - **Output is now English by default, in exactly one language** (#73). Japanese needs `--lang ja`,
@@ -764,7 +766,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.0
 [0.9.2]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.2
 [0.9.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.1
 [0.9.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.0
