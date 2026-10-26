@@ -170,11 +170,20 @@ setting.
 
 Output is in English by default. For Japanese, add `--lang ja` to any command (e.g. `genmodelfit recommend --lang ja`),
 set the environment variable `GENMODELFIT_LANG=ja`, or call `gmf.set_language("ja")` from Python (the flag wins, then
-the variable, then `set_language`; the OS language is not used). English output contains no Japanese. Only the texts
-change (reasons, notes, errors, `--help`); JSON keys, ids, codes and judgments are the same in both languages.
-The Japanese output is the same as in 0.9.2 (it still mixes some English, e.g. table footers and parts of `--help`),
-except that `info` shows only the Japanese description and `--help` gains `--lang` and examples; making the Japanese
-output Japanese only is planned ([#76](https://github.com/laxshmate/genmodelfit/issues/76)).
+the variable, then `set_language`; the OS language is not used). Only the texts change (reasons, notes, errors, table
+headings and footers, `--help`); JSON keys, ids, codes and judgments are the same in both languages. English output
+contains no Japanese, and Japanese output contains no English-only sentences (one language per line).
+
+Kept in English in both languages: the table column names (`Type`, `Status`, `Score`, `Model`, `Use`, `Prec`, `VRAM`,
+`Mem%`, `Mode`, `License`, `Verified`, `Censored`), the fit level names (`Perfect`, `Good`, `Marginal`, `Too tight`),
+the run-mode marks (`GPU`, `GPU~`, `GPU+RAM`, `CPU`), units, and machine-readable values such as ids, license ids and
+option names. This keeps the table widths stable and matches what you type for `--fit`, `--sort` and so on; the
+Japanese output explains them in Japanese below the table. Type headings show the Japanese type name followed by
+the name for `-m` (e.g. `(image)`).
+
+Long lines are wrapped counting East Asian wide characters as two columns. File names, URLs, options and numbers with
+units are never split (a single one longer than the width stays whole on its own line), and the basic Japanese
+line-breaking rules apply (no line starts with a closing mark or comma, or ends with an opening bracket).
 
 ## 3. Results
 

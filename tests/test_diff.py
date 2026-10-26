@@ -10,7 +10,7 @@ import copy
 import json
 
 import pytest
-from rich.cells import cell_len
+from clihelp import overlong_lines
 
 import genmodelfit as gmf
 from genmodelfit import cli
@@ -210,7 +210,8 @@ def test_cli_json_and_text(pair, tmp_path, capsys):
     text = capsys.readouterr().out
     flat = "".join(text.split())  # 長い行は折り返されるので、空白を除いて見る
     assert gone.id in flat and "--allで全部" in flat and "-n" in text
-    assert all(cell_len(line) <= 100 for line in text.splitlines()), max(text.splitlines(), key=cell_len)
+    # 1 つで幅より長い並び(長いライセンス名)は途中で切らず、その行だけはみ出す(#76)
+    assert not overlong_lines(text.splitlines(), 100)
 
 
 def test_cli_bad_file(tmp_path, capsys):

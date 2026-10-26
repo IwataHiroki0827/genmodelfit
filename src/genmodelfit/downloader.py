@@ -1238,6 +1238,10 @@ def _fetch_one(
     import requests
 
     with _file_lock(lock, pf.relpath):
+        if os.path.lexists(dest):  # 鍵を待つ間に、別の download が同じファイルを置き終えた
+            _existing_ok(dest, pf, report)
+            result.skipped.append(pf.relpath)
+            return
         try:
             _transfer(
                 pf,
@@ -1469,6 +1473,7 @@ def _transfer(
             )
         )
     if dest.exists() or dest.is_symlink():  # 落としている間に別のものが置かれた: 上書きしない
+        part.unlink(missing_ok=True)  # 置かなかった写しを残さない
         raise DownloadRefused(
             tr(
                 f"{pf.relpath}: 落としている間に同じ名前のファイルが置かれました(上書きしません)",

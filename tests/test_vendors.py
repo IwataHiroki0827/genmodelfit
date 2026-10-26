@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 import genmodelfit as gmf
-from genmodelfit import hardware
+from genmodelfit import hardware, i18n
 from genmodelfit.estimate import Coefficients, estimate
 from genmodelfit.hardware import (
     Host,
@@ -83,8 +83,11 @@ def test_rx7900xtx_linux_rocm(monkeypatch):
     assert any("推定(AMD・実測なし)" in n for n in s.notes)
     # gfx1100 は pytorch.org の ROCm 版に入っているので、TheRock の注意は出さない
     assert not any("TheRock" in n for n in s.notes)
-    assert pc_line(s).startswith(
+    assert pc_line_en(s).startswith(
         "PC: AMD Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M 24.0 GiB VRAM (ROCm, estimated)"
+    )
+    assert pc_line(s).startswith(
+        "PC: AMD Radeon RX 7900 XT/7900 XTX/7900 GRE/7900M VRAM 24.0 GiB(ROCm、推定)"
     )
 
 
@@ -116,11 +119,12 @@ def test_rx6600_windows_rdna2(monkeypatch):
     s10 = system_of(monkeypatch, adapters, WIN10)
     assert s10.best_gpu is None and any("Windows 11 が要る" in n for n in s10.notes)
     # 表の先頭の行は、使えるようにする条件(Windows 11)を出す
-    assert "(needs Windows 11 for generation → judged as CPU)" in " ".join(_unusable_gpus(s10))
+    assert "(needs Windows 11 for generation → judged as CPU)" in " ".join(unusable_en(s10))
+    assert "(生成には Windows 11 が要る → CPU として判定)" in " ".join(_unusable_gpus(s10))
     # 版が分からないときは条件を言わない
     s_unknown = system_of(monkeypatch, adapters, Host("Windows", None))
     assert s_unknown.best_gpu is None
-    assert all("needs Windows 11" not in x for x in _unusable_gpus(s_unknown))
+    assert all("needs Windows 11" not in x for x in unusable_en(s_unknown))
 
 
 def test_arc_a770_windows_xpu(monkeypatch):
@@ -128,7 +132,7 @@ def test_arc_a770_windows_xpu(monkeypatch):
     s = system_of(monkeypatch, adapters, WIN11)
     g = s.best_gpu
     assert (g.vendor, g.backend, g.memory, round(g.vram_total_gb, 1)) == ("intel", "xpu", "dedicated", 15.9)
-    assert pc_line(s).startswith("PC: Intel(R) Arc(TM) A770 Graphics 15.9 GiB VRAM (XPU, estimated)")
+    assert pc_line_en(s).startswith("PC: Intel(R) Arc(TM) A770 Graphics 15.9 GiB VRAM (XPU, estimated)")
     # Linux の lspci では VRAM が読めないので、名前から少ないほうの 8 GB とみなす
     a = Adapter(name="Intel Arc A770", vendor="intel", source="lspci")
     g2 = classify_adapter(a, LINUX, 32.0)
@@ -141,7 +145,8 @@ def test_core_ultra_155h_igpu_shares_half_of_ram(monkeypatch):
     g = s.best_gpu
     assert (g.backend, g.memory) == ("xpu", "shared")
     assert g.vram_total_gb == pytest.approx(0.12 + 16.0, abs=0.01)  # 取り分け 128 MB + RAM の半分
-    assert "(integrated; 16.1 GiB shared with RAM, XPU, estimated)" in pc_line(s)
+    assert "(integrated; 16.1 GiB shared with RAM, XPU, estimated)" in pc_line_en(s)
+    assert "(内蔵。メモリと共有で 16.1 GiB、XPU、推定)" in pc_line(s)
 
 
 def test_uhd770_is_cpu_with_a_reason(monkeypatch):
@@ -150,9 +155,12 @@ def test_uhd770_is_cpu_with_a_reason(monkeypatch):
     assert s.best_gpu is None and s.vram_gb == 0
     a = s.other_gpus[0]
     assert a.usable is False and a.integrated is True and "XPU 版" in a.reason
-    line = pc_line(s)
+    line = pc_line_en(s)
     assert line.startswith(
         "PC: Intel(R) UHD Graphics 770 (integrated; not usable for generation → judged as CPU), RAM 15.7 GiB"
+    )
+    assert pc_line(s).startswith(
+        "PC: Intel(R) UHD Graphics 770(内蔵。生成に使えない → CPU として判定)、メモリ 15.7 GiB"
     )
 
 
@@ -162,7 +170,7 @@ def test_m2_pro_unified_memory(monkeypatch):
     s = system_of(monkeypatch, adapters, MAC, ram_gb=32.0)
     g = s.best_gpu
     assert (g.backend, g.memory, g.vram_total_gb) == ("mps", "unified", 24.0)
-    assert pc_line(s).startswith("PC: Apple M2 Pro (unified memory; 24.0 GiB for the GPU, MPS, estimated)")
+    assert pc_line_en(s).startswith("PC: Apple M2 Pro (unified memory; 24.0 GiB for the GPU, MPS, estimated)")
     # macOS 13 は MPS 版 PyTorch の対象外
     adapters = parse_system_profiler(fx("system_profiler_m2pro.json"))
     s13 = system_of(monkeypatch, adapters, Host("Darwin", mac_version=(13, 6)), ram_gb=32.0)
@@ -392,6 +400,17 @@ def test_cpu_judgement_monotonic_in_ram(db):
             prev = ORDER.index(fit)
 
 
+def pc_line_en(s) -> str:
+    """表の先頭の行の英語(日本語は #76 で日本語だけ)。"""
+    with i18n.forced("en"):
+        return str(pc_line(s))
+
+
+def unusable_en(s) -> list[str]:
+    with i18n.forced("en"):
+        return [str(x) for x in _unusable_gpus(s)]
+
+
 # --- 表の先頭の行と Mode ---------------------------------------------------------------------------------
 
 
@@ -400,7 +419,7 @@ def test_no_gpu_header_lines(db, monkeypatch):
     s = system_of(monkeypatch, adapters, WIN11, ram_gb=15.7)
     sel = select(db, s, min_fit="marginal", include_tools=False, drop_unknown_size=True)
     console = make_console(width=100)
-    with console.capture() as cap:
+    with console.capture() as cap, i18n.forced("en"):
         print_fit_table(
             sel.fits, title="Recommended", system=s, console=console, matched=sel.matched, hidden=sel.hidden
         )
@@ -595,9 +614,12 @@ def test_pc_line_hides_unknown_vendor_and_legend_caps(db, monkeypatch):
     from genmodelfit.table import legend
 
     sel = select(db, vendor_system("amd", 24.0, 64.0), min_fit="marginal", drop_unknown_size=True, limit=3)
-    lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
+    with i18n.forced("en"):
+        lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
     cap = [x for x in lines if "AMD / Intel / Apple GPUs are estimates" in x]
     assert len(cap) == 1 and len(cap[0]) <= 100
+    lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
+    assert len([x for x in lines if "AMD / Intel / Apple の GPU は推定" in x]) == 1
 
 
 # --- #56: 安全側に倒れすぎていた名前 --------------------------------------------------------------

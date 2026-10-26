@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -29,6 +30,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from . import i18n
 from .groups import precision_label
 from .i18n import tr
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
@@ -73,6 +75,29 @@ HIDDEN_LABEL = {
     "task": "other uses",
     "same_model": "merged into their models",
 }
+# 日本語の表示名(#76)
+HIDDEN_LABEL_JA = {
+    "modality": "ほかの種類",
+    "uncensored": "無検閲",
+    "sfw": "sfw",
+    "tools": "補助ツール",
+    "license": "ライセンス",
+    "license_unknown": "ライセンス不明",
+    "size_unknown": "大きさ不明",
+    "too_tight": "動かない",
+    "below_min_fit": "--min-fit 未満",
+    "other_fit": "ほかの段階(--fit)",
+    "held": "保留",
+    "task": "ほかの用途",
+    "same_model": "モデルにまとめた",
+}
+
+
+def hidden_label(key: str) -> str:
+    """隠した理由の表示名(今の言語)。"""
+    return tr(HIDDEN_LABEL_JA.get(key, key), HIDDEN_LABEL.get(key, key))
+
+
 MAX_WIDTH = 100
 MIN_NAME_WIDTH = 24  # モデル名がこれより狭くなるなら列を外す
 # 列の幅(並びもこの順。Model は Score の右)と、狭いときに外す順。Type・Status・Score・Model は外さない
@@ -110,29 +135,113 @@ def output_width(file=None) -> int:
         return MAX_WIDTH
 
 
+# 折り返しの禁則(#76): 行の頭に置かない文字と、行の終わりに置かない文字
+_NO_LINE_START = frozenset("、。,.)」』）〕】・:;!?：；！？ー")
+_NO_LINE_END = frozenset("(「『（〔【")
+# 数のあとの単位(「3.95 GB」を数と単位で分けない)
+_UNITS = frozenset({"GB", "GiB", "MB", "MiB", "KB", "TB", "px", "s", "%", "B"})
+_NUMBER = re.compile(r"[(（]?[+-]?\d[\d.,]*$")
+
+
+# ASCII の「(」の前でも分ける(日本語の文は「ファイル名(5.25 GB、…)」のように半角の括弧を続けて書く)。
+# 「(s)」(model(s) など)は分けない
+# 「<フォルダ>/<GPU>.json」のように < > で囲んだ日本語の入る印は、ASCII の並びの一部として切らない
+_ATOM = re.compile(r" +|\(s\)|\(*(?:<[^<>\s]*>|[!-'\)-~])+|\(+|[^ !-~]")
+
+
+def _atoms(text: str) -> list[str]:
+    """空白の並び・ASCII の語(空白を含まない ASCII の並び。「(」の前で分ける)・ASCII でない 1 文字に
+    分ける。"""
+    return _ATOM.findall(text)
+
+
+def _chunks(text: str) -> list[tuple[str, str]]:
+    """折り返せない塊 (前の空白, 塊) の並び。塊の間だけで折り返す(空白は折り返しの所で落とす)。
+
+    ASCII の語(ファイル名・URL・--uncensored・数)は塊の途中で切らない。数と単位(3.95 GB)はつなぐ。
+    行の頭に置かない文字(、。)」 など)は前に、行の終わりに置かない文字((「 など)は後ろにつなぐ。"""
+    chunks: list[list[str]] = []  # [前の空白, 塊]
+    space = ""
+    for a in _atoms(text):
+        if a[0] == " ":
+            space += a
+            continue
+        if chunks:
+            prev = chunks[-1][1]
+            glue = (
+                (space and _NUMBER.search(prev) and a.rstrip(")）,.、。") in _UNITS)
+                or (not space and (a[0] in _NO_LINE_START or prev[-1] in _NO_LINE_END))
+                or (not space and a == "(s)")
+            )
+            if glue:
+                chunks[-1][1] = prev + space + a
+                space = ""
+                continue
+        chunks.append([space, a])
+        space = ""
+    return [(s, c) for s, c in chunks]
+
+
+def _hard_split(chunk: str, room: int) -> tuple[str, str]:
+    """幅より長い塊を、幅に入るところで切る(ASCII の語の途中では切らない。日本語の文字の間で切る)。"""
+    used, cut = 0, 0
+    for i, ch in enumerate(chunk[:-1]):
+        used += cell_len(ch)
+        if used > room:
+            break
+        nxt = chunk[i + 1]
+        if not (ch.isascii() and nxt.isascii()) and nxt not in _NO_LINE_START and ch not in _NO_LINE_END:
+            cut = i + 1
+    return chunk[:cut], chunk[cut:]  # 切れなければ ("", 塊)
+
+
+def wrap_text(text: str, width: int, first: str = "", rest: str = "", space_room: bool = True) -> list[str]:
+    """first + text を幅(全角は 2 桁)に収まるように折り返す。続きの行の頭は rest。
+
+    英数字の並び(ファイル名・URL・オプション・単位つきの数)の途中では折り返さない(1 つで幅より長ければ
+    その行だけはみ出す)。行の頭に 、。) などを、行の終わりに ( 「 などを置かない(#76)。
+    space_room: 後ろに空白で続く行は、その空白の分も幅に入れる(表・info の前からの折り返しと同じ位置。
+    False は textwrap と同じく幅いっぱいまで使う: --help)。ただし、その空白の分だけで溢れるときも、
+    行の前の部分が幅の半分までなら同じ行に置く(前の版と同じ。短い見出しの後ろの長いパスを次の行へ送らない)。"""
+    out: list[str] = []
+    line, prefix = "", first
+    chunks = _chunks(text)
+    for k, (space, chunk) in enumerate(chunks):
+        # 後ろに空白で続くときは、その空白まで幅に入れる(前からの英語の折り返しと同じ位置にする)
+        after = 1 if space_room and k + 1 < len(chunks) and chunks[k + 1][0] else 0
+        while True:
+            sep = space if line else ""
+            need = cell_len(prefix + line + sep + chunk)
+            # 空白の分だけで溢れる(need == width)ときは、前の部分が幅の半分までなら動かさない
+            if need + after <= width or (need <= width and cell_len(prefix + line) <= width // 2):
+                line += sep + chunk
+                break
+            if line:  # 次の行へ
+                out.append(prefix + line)
+                line, prefix, space = "", rest, ""
+                continue
+            if cell_len(prefix + chunk) <= width:  # 行の頭なら、後ろの空白は数えない
+                line = chunk
+                break
+            # 1 つの塊だけで幅を超える: 日本語の文字の間で切れるなら切る、切れなければはみ出す
+            head, remainder = _hard_split(chunk, width - cell_len(prefix))
+            if not head:
+                line = chunk
+                break
+            out.append(prefix + head)
+            prefix, chunk = rest, remainder
+    out.append(prefix + line)
+    return out
+
+
 def wrap_line(text: str, width: int) -> list[str]:
     """1 行を幅に収まるように折り返す(全角は 2 桁)。続きの行は元の字下げ + 4 桁。"""
     if cell_len(text) <= width:
         return [text]
     lead = len(text) - len(text.lstrip(" "))
     pad = " " * min(lead + 4, max(0, width // 2))
-    out: list[str] = []
-    rest = text
-    while rest:
-        prefix = pad if out else ""
-        room = width - cell_len(prefix)
-        n, used = 0, 0
-        while n < len(rest) and used + cell_len(rest[n]) <= room:
-            used += cell_len(rest[n])
-            n += 1
-        if n < len(rest):
-            cut = rest.rfind(" ", 0, n)  # 英数字の語の途中で切らない(空白があれば)
-            if cut > len(prefix.strip()) and cut > n // 2:
-                n = cut + 1
-        n = max(n, 1)
-        out.append(prefix + rest[:n].rstrip(" "))
-        rest = rest[n:].lstrip(" ")
-    return out
+    head = lead + 2 if text[lead:].startswith("- ") else lead  # 箇条書きの「- 」は次の語と離さない
+    return [part.rstrip(" ") for part in wrap_text(text[head:], width, text[:head], pad)]
 
 
 class _Console(Console):
@@ -358,51 +467,83 @@ def _unusable_gpus(system) -> list[str]:
     for g in system.gpus:
         if g.name not in seen:
             seen.add(g.name)
-            out.append(f"{g.name} (not usable for generation → judged as CPU)")
+            out.append(
+                tr(
+                    f"{g.name}(生成に使えない → CPU として判定)",
+                    f"{g.name} (not usable for generation → judged as CPU)",
+                )
+            )
     for a in getattr(system, "other_gpus", []) or []:
         if (
             a.name in seen or a.vendor == "unknown"
         ):  # 会社の分からない画面(Microsoft の基本の画面など)は出さない
             continue
         seen.add(a.name)
-        kind = "integrated; " if a.integrated else ""
+        kind = tr("内蔵。" if a.integrated else "", "integrated; " if a.integrated else "")
         if getattr(a, "needs", None):  # OS の版だけで断った GPU は、使えるようにする条件を出す
-            out.append(f"{a.name} ({kind}needs {a.needs} for generation → judged as CPU)")
+            out.append(
+                tr(
+                    f"{a.name}({kind}生成には {a.needs} が要る → CPU として判定)",
+                    f"{a.name} ({kind}needs {a.needs} for generation → judged as CPU)",
+                )
+            )
         else:
-            out.append(f"{a.name} ({kind}not usable for generation → judged as CPU)")
+            out.append(
+                tr(
+                    f"{a.name}({kind}生成に使えない → CPU として判定)",
+                    f"{a.name} ({kind}not usable for generation → judged as CPU)",
+                )
+            )
     return out
 
 
 def pc_line(system) -> str:
-    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed。
+    """この PC の 1 行。調べた値なら空きも出す。--vram / --ram で上書きしたら assumed(仮定)。
     使える GPU が無ければ、見つけた GPU とその扱い(CPU として判定した)を出す(0.7.0、#22)。"""
     g = system.best_gpu
     if g and g.vendor != "nvidia":
         backend = BACKEND_LABEL.get(g.backend, g.backend)
         memory = getattr(g, "memory", "dedicated")
+        size = f"{g.vram_total_gb:.1f} GiB"
         if memory == "unified":
-            gpu = f"{g.name} (unified memory; {g.vram_total_gb:.1f} GiB for the GPU, {backend}, estimated)"
+            gpu = tr(
+                f"{g.name}(ユニファイドメモリ。GPU に {size}、{backend}、推定)",
+                f"{g.name} (unified memory; {size} for the GPU, {backend}, estimated)",
+            )
         elif memory == "shared":
-            gpu = f"{g.name} (integrated; {g.vram_total_gb:.1f} GiB shared with RAM, {backend}, estimated)"
+            gpu = tr(
+                f"{g.name}(内蔵。メモリと共有で {size}、{backend}、推定)",
+                f"{g.name} (integrated; {size} shared with RAM, {backend}, estimated)",
+            )
         else:
-            gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM ({backend}, estimated)"
+            gpu = tr(f"{g.name} VRAM {size}({backend}、推定)", f"{g.name} {size} VRAM ({backend}, estimated)")
     elif g:
-        free = f" ({g.vram_free_gb:.1f} free)" if g.vram_free_gb is not None else ""
-        gpu = f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
+        if g.vram_free_gb is not None:
+            free = tr(f"(空き {g.vram_free_gb:.1f})", f" ({g.vram_free_gb:.1f} free)")
+        else:
+            free = ""
+        gpu = tr(
+            f"{g.name} VRAM {g.vram_total_gb:.1f} GiB{free}", f"{g.name} {g.vram_total_gb:.1f} GiB VRAM{free}"
+        )
     else:
         found = _unusable_gpus(system)
-        gpu = "; ".join(found) if found else "no GPU (CPU only)"
+        gpu = tr("、", "; ").join(found) if found else tr("GPU なし(CPU だけ)", "no GPU (CPU only)")
     if "vram" in system.overrides:
-        gpu = (
-            f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)"
-            if system.vram_gb > 0
-            else "assumed no GPU (--vram 0)"
-        )
+        if system.vram_gb > 0:
+            gpu = tr(
+                f"VRAM {system.vram_gb:.1f} GiB と仮定(--vram)",
+                f"assumed {system.vram_gb:.1f} GiB VRAM (--vram)",
+            )
+        else:
+            gpu = tr("GPU なしと仮定(--vram 0)", "assumed no GPU (--vram 0)")
     if "ram" in system.overrides:
-        ram = f"RAM {system.ram_total_gb:.1f} GiB (--ram)"
+        ram = tr(f"メモリ {system.ram_total_gb:.1f} GiB(--ram)", f"RAM {system.ram_total_gb:.1f} GiB (--ram)")
     else:
-        ram = f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)"
-    return f"PC: {gpu}, {ram}"
+        ram = tr(
+            f"メモリ {system.ram_total_gb:.1f} GiB(空き {system.ram_available_gb:.1f})",
+            f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)",
+        )
+    return tr(f"PC: {gpu}、{ram}", f"PC: {gpu}, {ram}")
 
 
 def no_gpu_line(system, hidden: Mapping[str, int], fits: Sequence = ()) -> str:
@@ -410,10 +551,21 @@ def no_gpu_line(system, hidden: Mapping[str, int], fits: Sequence = ()) -> str:
     if system is None or system.vram_gb > 0:
         return ""
     tools = hidden.get("tools", 0)
-    tail = f" ({tools} tools hidden: --include-tools)" if tools else ""
+    if tools:
+        tail = tr(
+            f"(補助ツール {tools} 件は隠した: --include-tools)", f" ({tools} tools hidden: --include-tools)"
+        )
+    else:
+        tail = ""
     if any(f.estimate.fit == "too_tight" for f in fits):
-        return f"This PC has no usable GPU: models marked GPU req need one{tail}"
-    return f"This PC has no usable GPU: only models that run on CPU are shown{tail}"
+        return tr(
+            f"この PC には使える GPU がありません: Mode が GPU req のモデルは GPU が要ります{tail}",
+            f"This PC has no usable GPU: models marked GPU req need one{tail}",
+        )
+    return tr(
+        f"この PC には使える GPU がありません: CPU で動くモデルだけを出します{tail}",
+        f"This PC has no usable GPU: only models that run on CPU are shown{tail}",
+    )
 
 
 def hidden_text(hidden: Mapping[str, int]) -> str:
@@ -423,13 +575,23 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
     rest = {k: v for k, v in hidden.items() if v and k != "same_model"}
     parts = []
     if rest:
+        total = sum(rest.values())
         parts.append(
-            f"{sum(rest.values())} hidden: "
-            + ", ".join(f"{HIDDEN_LABEL.get(k, k)} {v}" for k, v in rest.items())
+            tr(
+                f"隠した {total} 件: " + "・".join(f"{hidden_label(k)} {v}" for k, v in rest.items()),
+                f"{total} hidden: " + ", ".join(f"{hidden_label(k)} {v}" for k, v in rest.items()),
+            )
         )
     if merged:
-        parts.append(f"{merged} more workflows merged into their models")
-    return f"({'; '.join(parts)})" if parts else ""
+        parts.append(
+            tr(
+                f"ほかに {merged} 件のワークフローをモデルにまとめた",
+                f"{merged} more workflows merged into their models",
+            )
+        )
+    if not parts:
+        return ""
+    return tr(f"({'。'.join(parts)})", f"({'; '.join(parts)})")
 
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
@@ -440,6 +602,15 @@ ORDER_TEXT = {
     "vram": "Order: runs, VRAM (least first).",
     "disk": "Order: runs, Disk (smallest first).",
     "name": "Order: runs, Model name.",
+}
+# 日本語(#76。列の名前・段階の名前・Mode の印は表と同じ英語のまま)
+ORDER_TEXT_JA = {
+    "auto": "並び: 動く → Verified → Perfect/Good → Marginal → Score。",
+    "type": "並び: Type → Status → Score(--sort)。",
+    "score": "並び: Status → Score(種類をまたいで)。",
+    "vram": "並び: 動くもの → VRAM の少ない順。",
+    "disk": "並び: 動くもの → Disk の小さい順。",
+    "name": "並び: 動くもの → モデルの名前。",
 }
 
 
@@ -455,6 +626,9 @@ def legend(
     best = system.best_gpu if system is not None else None
     non_nvidia = best is not None and best.vendor != "nvidia"
     community = any(getattr(f.estimate, "basis_detail", "") == "measured_community" for f in fits)
+    shown = content_column_wanted(fits) if with_content is None else with_content
+    if i18n.get_language() == "ja":
+        return _legend_ja(fits, hidden, grouped, order, shown, system_marks, non_nvidia, community)
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
@@ -482,7 +656,6 @@ def legend(
     out.append(
         "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
     )
-    shown = content_column_wanted(fits) if with_content is None else with_content
     if shown:
         out.append("Censored: N = safety filter removed / adult model")
     if hidden.get("uncensored"):
@@ -497,6 +670,59 @@ def legend(
     out.append("? = unknown (precision, license, size: not judged), - = not applicable (e.g. no run).")
     if any(f.estimate.unknown_size for f in fits):
         out.append("Status ? = size unknown, not judged (after the levels that run, before Too tight).")
+    return out
+
+
+def _legend_ja(
+    fits: Sequence,
+    hidden: Mapping[str, int],
+    grouped: bool,
+    order: str,
+    shown: bool,
+    system_marks: bool,
+    non_nvidia: bool,
+    community: bool,
+) -> list[str]:
+    """表の下の説明の日本語(#76)。英語と同じ項目を同じ順に、1 項目 1 行で。"""
+    out = [
+        f"{ORDER_TEXT_JA.get(order, ORDER_TEXT_JA['auto'])}Score 0〜100。VRAM = 要る GiB(m = 実測)。",
+        *(["VRAM の c = ほかの利用者の実測(件数は genmodelfit info <id>)。"] if community else []),
+        "Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。",
+        *(
+            ["動かないときの Mode: GPU req = GPU が要る(ここでは使えない)、RAM = メインメモリが足りない。"]
+            if system_marks
+            else []
+        ),
+        "段階の上限: GPU~ は Good まで、GPU+RAM と CPU は Marginal まで(Mem% が低くても)。",
+        *(
+            [
+                "段階の上限: AMD / Intel / Apple の GPU は推定なので、実測が入るまで Good まで"
+                "(CONTRIBUTING.md)。"
+            ]
+            if non_nvidia
+            else []
+        ),
+        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。Verified = yes か最初に落ちた条件。",
+    ]
+    if grouped:
+        out.append(
+            "1 行に 1 モデル: Prec = 載る中で一番高い精度、+N = ほかのワークフローの数(--all-workflows)。"
+        )
+    out.append("m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。")
+    if shown:
+        out.append("Censored: N = 安全のための絞り込みを外したモデル・成人向けのモデル")
+    if hidden.get("uncensored"):
+        out.append(f"注意: 無検閲のモデル {hidden['uncensored']} 件を隠しました。出すなら --uncensored。")
+    if order != "auto" and any(hidden.get(k) for k in ("tools", "too_tight", "size_unknown", "other_fit")):
+        out.append("注意: 補助ツール・動かないモデル・判定していないモデル(?)も出すなら --all。")
+    if hidden.get("license_unknown"):
+        out.append(
+            f"注意: ライセンスの分からないモデル {hidden['license_unknown']} 件を隠しました。"
+            "出すなら --any-license。"
+        )
+    out.append("? = 分からない(精度・ライセンス・大きさ。判定していない)、- = 当てはまらない(動かないなど)。")
+    if any(f.estimate.unknown_size for f in fits):
+        out.append("Status の ? = 大きさが分からず判定していない(動く段階の後、Too tight の前に並ぶ)。")
     return out
 
 
@@ -533,22 +759,38 @@ def print_fit_table(
         line = no_gpu_line(system, hidden, fits)
         if line:
             say(line)
-    count = f"{len(fits)} of {matched}" if matched != len(fits) else str(len(fits))
+    if matched != len(fits):
+        count = tr(f"{matched} 件中 {len(fits)} 件", f"{len(fits)} of {matched}")
+    else:
+        count = tr(f"{len(fits)} 件", str(len(fits)))
     head = f"{title}: {count}" if title else count
-    say(" ".join(x for x in (head, hidden_text(hidden)) if x), "bold")
+    say(tr("", " ").join(x for x in (head, hidden_text(hidden)) if x), "bold")
     if groups is not None:
         for g in groups:
             mod = g["modality"]
             _en, ja = MODALITY_LABEL.get(mod, (mod, mod))
-            head = tr(f"{mod} ({ja})", mod)  # 英語は種類の名前だけ(1 行に 2 つの言語を並べない。#73)
+            # 機械の名前(-m に書く名前)も見せる。英語は種類の名前だけ(1 行に 2 つの言語を並べない。#73)
+            head = tr(f"{ja} ({mod})", mod)
             rows = [f for f in fits if f.model.modality == mod]
             if not g["matched"]:
-                say(f"== {head}: no model runs on this PC with these filters", "bold")
+                say(
+                    tr(
+                        f"== {head}: この条件でこの PC で動くモデルはありません",
+                        f"== {head}: no model runs on this PC with these filters",
+                    ),
+                    "bold",
+                )
                 continue
-            say(f"== {head}: top {g['shown']} of {g['matched']}  (-m {mod} for more)", "bold")
+            say(
+                tr(
+                    f"== {head}: {g['matched']} 件中 上位 {g['shown']} 件(続きは -m {mod})",
+                    f"== {head}: top {g['shown']} of {g['matched']}  (-m {mod} for more)",
+                ),
+                "bold",
+            )
             con.print(build_table(rows, width=con.width, system=system, **kw))
     elif not fits:
-        say(tr("(no match / 該当なし)", "(no match)"))
+        say(tr("(該当なし)", "(no match)"))
     else:
         con.print(build_table(fits, width=con.width, system=system, **kw))
     for n in [*(legend(fits, hidden, grouped, order, kw["with_content"], system) if fits else []), *notes]:

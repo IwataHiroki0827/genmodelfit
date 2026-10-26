@@ -20,9 +20,22 @@ All notable changes to this project are documented here. The format is based on
   `vram_free_short`, …), scores, judgments and ordering do not change; only the language of the texts does. Free text
   stored in the list (`review.note`, `license_evidence`, measurement `source` / `note`) is not translated, and text
   that `update` writes into the list stays Japanese whatever the display language.
-- Japanese output (`--lang ja`) is the same as in 0.9.2, which still mixes some English (table footers, parts of
-  `--help`), except that `info` shows only the Japanese description and `--help` gains `--lang` and examples.
-  Making the Japanese output Japanese only is planned (#76).
+- **Japanese output (`--lang ja`) is now Japanese only** (#76), one language per line: the lines above and below
+  the tables (`PC:`, the heading with hidden counts, the legend and notes), section headers
+  (`== 画像 (image): 37 件中 上位 3 件(続きは -m image)`, keeping the name for `-m`), `system`, `info`, `types`,
+  the `download` plan, `gate`, `review`, `contrib`, error messages (`エラー:`) and `--help` (descriptions, option help,
+  section titles, and argparse's own texts such as `使い方:` and `-h`). Kept in English in both languages: table
+  column names, fit level names (`Perfect` / `Good` / `Marginal` / `Too tight`), run-mode marks (`GPU` / `GPU~` /
+  `GPU+RAM` / `CPU`), units, ids and other machine-readable values (README "Language"). JSON is unchanged. Tests
+  that ran in Japanese and pinned the old mixed text now check the Japanese text (and the English text with
+  `--lang en`); a new test fails on any English-only sentence in the Japanese output of the main commands and of
+  every `--help`. The README screenshots (`docs/images/*.png`) still show the old mixed output; there is no tool to
+  render them, so they are left unchanged for now.
+- Line wrapping (tables, `info`, `download`, `diff`, `system` notes, option help) counts East Asian wide characters
+  as two columns and never splits file names, URLs, options or numbers with units (one longer than the width stays
+  whole on its own line, so it can be copied); Japanese lines do not start with 、。) or end with (「 (#76). English
+  lines break where they did before, except that URLs, words with hyphens and numbers with units
+  are no longer cut in the middle (as a long path no longer is).
 - The Japanese descriptions of Stable Audio 3 Small (music), Irodori-TTS and Tsukuyomi-chan now carry what only the
   English ones said (English prompts; the ethical restrictions on the MIT license; the voice data's own terms).
 
@@ -78,6 +91,10 @@ All notable changes to this project are documented here. The format is based on
   import `requests`. It is now imported only by the functions that use the network, so a mismatched urllib3 / chardet
   in the user's environment no longer prints `RequestsDependencyWarning` on every run, and start-up is about 60 ms faster
   (#74).
+- `download`: when two downloads of the same file run at once, the one that gets the lock after the other has
+  finished now checks the placed file (sha256) and skips it, instead of downloading it again, refusing to overwrite
+  and leaving a `.part` behind. A download refused because a file appeared at the destination no longer leaves its
+  `.part` either (found by a rare failure of the two-thread test in the local CI).
 
 ## [0.9.2] - 2026-10-24
 

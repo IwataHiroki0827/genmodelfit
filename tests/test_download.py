@@ -19,6 +19,7 @@ from urllib.parse import unquote
 
 import pytest
 import requests
+from clihelp import overlong_lines
 
 import genmodelfit as gmf
 from genmodelfit import cli, downloader, i18n
@@ -586,9 +587,10 @@ def test_cli_list_makes_no_request_and_writes_nothing(db_file, comfy, monkeypatc
         == 0
     )
     out = capsys.readouterr().out
-    assert "diffusion_models/sub/tiny_unet.safetensors" in out and "license: mit" in out
-    assert "https://example.invalid/LICENSE" in out and "free" in out
-    assert max(len(line) for line in out.splitlines()) <= 100
+    assert "diffusion_models/sub/tiny_unet.safetensors" in out and "ライセンス: mit" in out
+    assert "https://example.invalid/LICENSE" in out and "空き" in out
+    # 幅 100 に収める(1 つで長いパスだけの行は、途中で切らずにはみ出してよい。#76)
+    assert not overlong_lines(out.splitlines(), 100)
     assert (
         cli.main(
             ["download", "test_tiny", "--list", "--json", "--db", str(db_file), "--comfyui-dir", str(comfy)]
@@ -664,7 +666,7 @@ def test_cli_asks_for_consent(db_file, comfy, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt="": "n")
     assert cli.main(args) == 1
     out = capsys.readouterr().out
-    assert "同意して落としますか" in out and "license: mit" in out
+    assert "同意して落としますか" in out and "ライセンス: mit" in out
     assert _Handler.seen == []
     monkeypatch.setattr("builtins.input", lambda prompt="": "y")
     assert cli.main(args) == 0
@@ -966,6 +968,39 @@ def test_two_threads_same_destination(server, comfy):
     assert all("別の download" in str(e) or "上書き" in str(e) for e in errors), errors
 
 
+def test_file_placed_while_waiting_for_lock_is_skipped(server, comfy, monkeypatch):
+    """鍵を待つ間に別の download が同じファイルを置き終えたら、落とさずに飛ばし .part を残さない
+    (2 つのスレッドの試験がまれに落ちた順を、決まった順で再現する)。"""
+    p = plan(make_db(server), comfy)
+    dest = comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors"
+    real_lock = downloader._file_lock
+
+    def lock_then_place(path, name):
+        dest.write_bytes(BODY_A)  # 鍵を取る直前に、別の download が置き終えた
+        return real_lock(path, name)
+
+    monkeypatch.setattr(downloader, "_file_lock", lock_then_place)
+    r = gmf.download(p, yes=True, sleep=lambda s: None)
+    assert r.skipped == [p.files[0].relpath] and p.files[0].relpath not in r.downloaded
+    assert dest.read_bytes() == BODY_A
+    assert not list(comfy.rglob("*.part")) and not list(comfy.rglob("*.lock"))
+
+
+def test_file_placed_during_transfer_leaves_no_part(server, comfy, monkeypatch):
+    """落としている間に同じ名前のファイルが置かれたら、上書きせず、落とした .part も残さない。"""
+    p = plan(make_db(server), comfy)
+    dest = comfy / "models" / "diffusion_models" / "sub" / "tiny_unet.safetensors"
+
+    def emit(ev):
+        if getattr(ev, "phase", None) == "verify" and not dest.exists():
+            dest.write_bytes(b"other")
+
+    with pytest.raises(DownloadRefused, match="上書き"):
+        gmf.download(p, yes=True, sleep=lambda s: None, progress=emit)
+    assert dest.read_bytes() == b"other"
+    assert not list(comfy.rglob("*.part")) and not list(comfy.rglob("*.lock"))
+
+
 EXT = "\\\\?\\"  # Windows の拡張パスの頭
 
 
@@ -1045,7 +1080,7 @@ def test_consent_when_nothing_to_download(db_file, comfy, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt="": "y")
     assert cli.main(base) == 0
     out = capsys.readouterr().out
-    assert "nothing to download" in out and "needs" not in out and "落とすものはありません" in out
+    assert "落とすものは無い" in out and "要る量" not in out and "落とすものはありません" in out
 
 
 # --- パスに空白のある URL(再確認の指摘。hf:Meina/MeinaHentai の「meinaHentai V3 - baked VAE」) ---
@@ -1108,7 +1143,7 @@ def test_stale_lock_retire_keeps_fresh_lock(tmp_path, monkeypatch):
 
 HF = "https://huggingface.co"
 PAGE = "https://example.invalid/tiny"
-ERR_JA = "error: 落とせません(上を見てください)"
+ERR_JA = "エラー: 落とせません(上を見てください)"
 
 
 def _cli_db(tmp_path: Path, *, content: str = "sfw", unknown: bool = False, gated: bool = False) -> Path:
@@ -1555,7 +1590,7 @@ def test_comfyui_dir_env_precedence(tmp_path, comfy, capsys, monkeypatch):
     p = plan_json(["--output-dir", str(tmp_path / "out")])  # --output-dir も環境変数に勝つ
     assert p["layout"] == "output" and p["root"] == str(tmp_path / "out")
     _, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
-    assert f"ComfyUI models folder, {cli.COMFYUI_DIR_ENV}" in out and "ComfyUI:   指定なし" not in out
+    assert f"ComfyUI の models のフォルダ、{cli.COMFYUI_DIR_ENV}" in out and "指定なし" not in out
 
     monkeypatch.setenv(cli.COMFYUI_DIR_ENV, str(tmp_path / "not-comfy"))  # フラグと同じく確かめる
     code, out, err = _run(base, capsys)
@@ -1572,7 +1607,7 @@ def test_comfyui_hint_when_not_set(tmp_path, capsys, monkeypatch, windows):
     code, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
     assert (
         code == 0
-        and "ComfyUI:   指定なし" in out
+        and "ComfyUI:      指定なし" in out
         and "--comfyui-dir" in out
         and "extra_model_paths.yaml" in out
     )
@@ -1582,7 +1617,7 @@ def test_comfyui_hint_when_not_set(tmp_path, capsys, monkeypatch, windows):
     _, out, _ = _run(
         ["download", "test_tiny", "--list", "--db", str(db), "--output-dir", str(tmp_path)], capsys
     )
-    assert "ComfyUI:   指定なし" not in out and out.count("extra_model_paths.yaml") == 1
+    assert "指定なし" not in out and out.count("extra_model_paths.yaml") == 1
     with i18n.forced("en"):
         _, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
     assert "ComfyUI:   not set" in out
@@ -1881,7 +1916,7 @@ def test_replan_keeps_the_workflow_chosen_with_precision(server, tmp_path, comfy
         *HW,
     ]
     code, out, _ = _run(args, capsys)
-    assert code == 1 and "[test_tiny]" in out and "precision fp16" in out and "tiny_unet_bf16" not in out
+    assert code == 1 and "[test_tiny]" in out and "精度 fp16" in out and "tiny_unet_bf16" not in out
     assert "このモデルは無検閲" in out
 
 
@@ -1900,7 +1935,7 @@ def test_existing_files_are_hashed_once_when_asking(server, tmp_path, comfy, cap
     code, out, _ = _run(
         ["download", "test_tiny", "--db", str(path), "--comfyui-dir", str(comfy), *HW], capsys
     )
-    assert code == 1 and "already there" in out
+    assert code == 1 and "既にある" in out
     assert calls == ["tiny_vae.safetensors"]  # 計画し直しても計り直さない
 
 

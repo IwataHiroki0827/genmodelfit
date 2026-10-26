@@ -364,7 +364,7 @@ def test_validate_notices_do_not_fail(key, value, code, db, tmp_path, capsys):
     p.write_text(contrib.dumps(d), encoding="utf-8")
     assert cli.main(["contrib", "validate", str(p)]) == 0
     out = capsys.readouterr().out
-    assert "確認 " + code in out and "ok with notices" in out
+    assert "確認 " + code in out and "確認つきの ok 1" in out
     assert cli.main(["contrib", "validate", str(p), "--markdown"]) == 0
     md = capsys.readouterr().out
     assert "マージする人へ: 確認の項目のある提出が 1 件あります" in md and "ok(**確認**)" in md
@@ -829,7 +829,7 @@ def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypa
     args = ["fit", "--vram", "80", "--ram", "32", "--no-cache", "--all-workflows", "--min-fit", "too_tight"]
     assert cli.main([*args, "--modality", "image", "-n", "500"]) == 0
     out = capsys.readouterr().out
-    assert "c = measured by other users" in out  # 凡例
+    assert "VRAM の c = ほかの利用者の実測" in out  # 凡例
     assert re.search(r" \d+\.\dc ", out), out  # 表の VRAM はほかの利用者の実測に c を付ける
 
 
@@ -1009,7 +1009,7 @@ def test_cli_validate_strict_turns_warnings_into_failure(tmp_path, capsys):
 def test_cli_show(capsys):
     assert cli.main(["contrib", "show", str(SDXL_3070[0])]) == 0
     out = capsys.readouterr().out
-    assert "これがファイルの中身のすべてです" in out and "Privacy checklist" in out
+    assert "これがファイルの中身のすべてです" in out and "=== 個人の情報の点検 ===" in out
     assert "NVIDIA GeForce RTX 3070" in out and "[NG]" not in out
     assert cli.main(["contrib", "show", str(SDXL_3070[0]), "--json"]) == 0
     d = json.loads(capsys.readouterr().out)
@@ -1094,7 +1094,7 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
     )
     text = capsys.readouterr().out
     assert "警告: 誤差が閾値 10% を超えた" in text and "| 種類 | LOO 件数 |" in text
-    assert "Fit-level changes caused by community data" in text
+    assert "### ほかの利用者の実測で変わる段階" in text
     assert cli.main(["contrib", "aggregate", str(FIX), "--report", "--json"]) == 0  # 既定の 25% は超えない
     rep = json.loads(capsys.readouterr().out)["report"]
     assert rep["breach"] is False and rep["threshold_pct"] == 25.0

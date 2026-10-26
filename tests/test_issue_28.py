@@ -257,7 +257,7 @@ def test_text_mode_says_how_to_show_unknown_licenses(tmp_path):
     out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache"], tmp_path / "c").stdout.decode(
         "utf-8"
     )
-    assert "license unknown" in out and "--any-license" in out
+    assert "ライセンス不明" in out and "--any-license" in out
 
 
 # --- 4. 判定できないものは「?」 --------------------------------------------------------------------
@@ -612,8 +612,10 @@ def test_level_cap_in_json_and_legend(capsys):
     assert {m["level_cap"] for m in every["models"] if m["run_mode_label"] == "GPU+RAM"} == {"offload"}
     assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
     out = capsys.readouterr().out
-    assert "GPU~ is at most Good; GPU+RAM and CPU are at most Marginal" in out
+    assert "GPU~ は Good まで、GPU+RAM と CPU は Marginal まで" in out
     assert all(len(x) <= 100 for x in out.splitlines())
+    assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--lang", "en"]) == 0
+    assert "GPU~ is at most Good; GPU+RAM and CPU are at most Marginal" in capsys.readouterr().out
 
 
 def test_fit_and_min_fit_together_is_a_usage_error(tmp_path):
@@ -624,6 +626,11 @@ def test_fit_and_min_fit_together_is_a_usage_error(tmp_path):
 
 def test_other_fit_label_is_humanized(tmp_path):
     out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--fit", "good"], tmp_path / "c")
+    text = re.sub(r"\s+", "", out.stdout.decode("utf-8"))
+    assert "ほかの段階(--fit)" in text and "other_fit" not in text
+    out = run_cli(
+        ["fit", "--vram", "24", "--ram", "128", "--no-cache", "--fit", "good", "--lang", "en"], tmp_path / "c"
+    )
     text = re.sub(r"\s+", " ", out.stdout.decode("utf-8"))
     assert "other levels (--fit)" in text and "other_fit" not in text
 
