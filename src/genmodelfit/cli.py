@@ -493,6 +493,8 @@ def cmd_recommend(args: argparse.Namespace) -> int:
         drop_unknown_size=True,
         limit=limit,
         per_modality=per_type,
+        # 表は自動のおすすめ(Verified)を先にしない(#84)。--json は今までの並び(verified が先)のまま
+        verified_first=bool(args.json),
     )
     filters = _filters(args, min_fit, limit) | {
         "per_type": per_type,
@@ -519,7 +521,7 @@ def _fit_choice(args: argparse.Namespace, default: str | None) -> tuple[str | No
 
 def cmd_fit(args: argparse.Namespace) -> int:
     """既定は動くもの(perfect / good / marginal)だけ、補助ツール・ライセンス不明・無検閲は隠す。--all で全部。
-    並びは種類 → 段階 → 点数(--sort)。自動のおすすめを先にはしない(Verified の列で分かる)。"""
+    並びは種類 → 段階 → 点数(--sort)。自動のおすすめを先にはしない(自動のおすすめかは info で分かる)。"""
     s, db = _system(args), _db(args)
     min_fit, fit = _fit_choice(args, "runnable")
     tools = args.include_tools or args.all
@@ -3251,9 +3253,10 @@ _HELP_EN = {
 Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
 (default 3) each. With -m or --task: one table (default 10).
 One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
-Order: models that run, then auto-recommendable ones (gate: Verified=yes), then Score (0-100),
-then id. Uncensored models and utility tools are hidden unless asked. The default output is a
-table (llmfit uses JSON by default); add --json for apps.
+Order: models that run, then Perfect/Good, then Marginal, then Score (0-100), then id
+(--json puts auto-recommendable ones, gate: auto, before the levels). Uncensored models and
+utility tools are hidden unless asked. The default output is a table (llmfit uses JSON by
+default); add --json for apps.
 
 """
     + _COMMON_HELP.format(zero="", one="")
@@ -3497,7 +3500,8 @@ _HELP_JA = {
 -m も --task も無ければ、種類(image, video, music, sfx, tts, 3d)ごとに上位 -n 件(既定 3 件)。
 -m か --task があれば 1 つの表(既定 10 件)。
 同じモデルは 1 行にまとめ、一番合う精度とワークフローを選ぶ(--all-workflows で全部)。
-並べ方: 動くもの → 自動でおすすめに出せるもの(gate: Verified=yes)→ Score(0〜100)の高い順 → ID。
+並べ方: 動くもの → Perfect/Good → Marginal → Score(0〜100)の高い順 → ID
+(--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
 無検閲のモデルと補助ツールは、指定しなければ出さない。既定の出力は表(llmfit の既定は JSON)。
 アプリは --json を付ける。
 

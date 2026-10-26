@@ -181,13 +181,13 @@ that level (other runnable levels are counted as `hidden.other_fit`); `--fit` an
 | `name` | runs → unknown → too_tight, then model name |
 
 The fit level always comes before the score (the score weights the level most, but the other components could invert
-two levels). Auto-recommendable models are not moved up in `fit` / `search` (the Verified column shows it). JSON `models`
+two levels). Auto-recommendable models are not moved up in `fit` / `search` (`info` shows the checks). JSON `models`
 follows the same order; `filters` of `fit` adds `sort`, `all`, `include_tools`, of `search` `query`, `sort`, `all`.
-Table columns (all commands): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Verified`;
-when the terminal is narrow, the Model column shrinks first (down to 24 characters), then Disk, Mem%, License, Verified,
-Prec, Use are dropped in that order (Type, Status, Score, Censored and Model never). **Verified** (named Auto up to 0.5.0) is the JSON `auto`:
-`yes`, or the first failed gate check (`held_by[0]`, shortened); the JSON fields keep their names (`auto`, `held_by`,
-the check ids). **Censored** (0.6.0, in place of the `[U] ` name prefix) is `Y` (`content: sfw`) or `N`
+Table columns (all commands): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License`;
+when the terminal is narrow, the Model column shrinks first (down to 24 characters), then Disk, Mem%, License,
+Prec, Use are dropped in that order (Type, Status, Score, Censored and Model never). The **Verified** column (named Auto
+up to 0.5.0: JSON `auto`, `yes` or the first failed gate check) was removed from the tables (#84); `info` shows the gate
+checks and `gate` counts them. JSON is unchanged (`auto`, `held_by`, `gate`). **Censored** (0.6.0, in place of the `[U] ` name prefix) is `Y` (`content: sfw`) or `N`
 (`content: uncensored`), never blank; the column is
 shown only when uncensored rows can appear (`--content all|uncensored`; a table built from Python without a content
 filter shows it when a row is uncensored) and is omitted with the default `sfw`. The legend then says
@@ -206,7 +206,6 @@ is **unknown** and `-` means it **does not apply**:
 | Mode | size unknown (`run_mode: "unknown"`) | does not run (`run_mode: "none"`) |
 | Disk / License | size / license unknown (`null`) | — |
 | Use / `info` tasks | no task known | — |
-| Verified | — | the gate was not evaluated |
 | `info` file folder | — | the file has no ComfyUI folder (Hugging Face repo) |
 
 JSON: an unknown **value** is `null` (`precision`, `license`, `memory_required_gb`, `disk_size_gb`, and the
@@ -248,11 +247,14 @@ whose id or name matched). Tested in `tests/test_cli_json.py`.
 `--license a,b`: every file's license (`ModelFile.license`; the entry's `license` when it lists no files) must be in the
 list (case-insensitive). An unknown license (`null`) never matches.
 
-**Order of `recommend`** (`gmf.recommend()`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
+**Order of `recommend`** (`gmf.recommend()` and `recommend --json`): models that run (`fit_level` is not `too_tight`; `unknown` after `too_tight`) → `auto: true` →
 **runs without offload** (perfect or good on `GPU` / `GPU~`, one tier like the row score, 0.1.1: the precision upgrade
 to a `good` bf16 row must not move a model below where its `perfect` int8 row was) → marginal → official before
 community templates (`community`) **within the same tier** → `score` (desc) → `id`. Until 0.1.0 community templates
 came after every official row of all levels.
+The `recommend` **table** (text output) uses the same order without `auto: true` (#84: runs → runs without offload →
+marginal → official first → `score` → `id`), and `-n` cuts that order, so with `-n` the table and `--json` can list
+different models. The JSON order and contents did not change.
 
 ### Models
 
@@ -380,7 +382,7 @@ workflows}}]`; `models` = number of models as above, `workflows` = list entries;
 
 ### Fit (one item of `models`)
 
-Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` give the same list as the CLI).
+Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` give the same list as the CLI's `--json`).
 
 | key | type | meaning |
 |---|---|---|
@@ -567,7 +569,7 @@ Computed every time (never stored in `db.json`). Details and the default license
 | key | type | meaning |
 |---|---|---|
 | `auto` | bool | true only when every check passed |
-| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown, shortened, in the table's Verified column and as `held:<id>` by `gate --only-held`) |
+| `held_by` | str[] | ids of the failed checks, in the order below (`held_by[0]` is shown as `held:<id>` by `gate --only-held`) |
 | `comfyui_version` | str \| null | the ComfyUI version compared against (`--comfyui-version`, else `sources.comfyui.latest_release`) |
 | `checks` | Check[] | the 10 checks, in this order: `license`, `gated`, `official_workflow`, `custom_nodes`, `comfyui_version`, `url_reachable`, `sha256`, `content`, `size_known`, `reviewed` (0.6.0, #42: passes unless `review.status` is not `ok`; always last, so `held_by[0]` of the older checks is unchanged). For a model whose `runtime` is neither `comfyui` nor null (0.5.0), the three ComfyUI checks are replaced by one `app_runtime` check that never passes (8 checks) |
 
@@ -704,7 +706,7 @@ up to 0.5.0 drop the key):
 
 **A missing `review` (null) means ok** (lists made before 0.6.0). **Apps should filter with
 `entry.review is None or entry.review.status == "ok"`** (Python: `entry.reviewed`); the gate already holds pending
-models (`reviewed`, shown as `review` in the Verified column).
+models (`reviewed`; `info` shows it as a failed check).
 
 How `update` sets it (`review.apply_reviews`, comparing with the list it carries over from: the cache or the bundled
 list, or the base list in the weekly run):

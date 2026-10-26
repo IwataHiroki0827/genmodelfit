@@ -22,7 +22,6 @@ HEADER = [
     "Mode",
     "Disk",
     "License",
-    "Verified",
 ]
 
 
@@ -83,7 +82,10 @@ def row_of(out: str, mid: str) -> str:
 def test_held_reason_and_uncensored_marker():
     gate = {"auto": False, "checks": [{"id": "license", "passed": False}, {"id": "gated", "passed": True}]}
     out = render([fit("x", gate=gate, content="uncensored"), fit("y", gate={"auto": True, "checks": []})])
-    assert row_of(out, "x").rstrip().endswith("license") and row_of(out, "y").rstrip().endswith("yes")
+    # Verified の列は無い(#84)。行の最後は License
+    assert row_of(out, "x").rstrip().endswith("apache-2.0") and row_of(out, "y").rstrip().endswith(
+        "apache-2.0"
+    )
     assert "[U]" not in out  # 0.6.0 から名前の前の印ではなく Censored の列
     assert row_of(out, "x").split()[4:6] == ["N", "x"]
     assert row_of(out, "y").split()[4:6] == ["Y", "y"]  # 空にしない
@@ -264,7 +266,11 @@ def test_type_column_is_always_first():
     v.model.modality = "video"
     header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Type"))
     assert header.split()[:4] == ["Type", "Status", "Score", "Model"]
-    assert "Disk" not in header  # 幅 100 では名前の幅を残すため Disk を外す
+    # 幅 100 でも Disk を出す(Verified の列を外して空いた幅。#84)。Model は 28 桁
+    assert "Disk" in header
+    from genmodelfit.table import columns_for, model_width
+
+    assert model_width(100, columns_for(100)) == 28
 
 
 def test_middle_ellipsis_and_distinct_names():
@@ -278,10 +284,24 @@ def test_middle_ellipsis_and_distinct_names():
     assert len(set(shown.values())) == 2 and all(len(v) <= 20 for v in shown.values())
 
 
-def test_held_label_is_short():
-    gate = {"auto": False, "checks": [{"id": "official_workflow", "passed": False}]}
-    assert row_of(render([fit("w", gate=gate)]), "w").rstrip().endswith(" workflow")
-    assert row_of(render([fit("w2", gate={"auto": False, "checks": []})]), "w2").rstrip().endswith(" held")
+@pytest.mark.parametrize("lang", ["en", "ja"])
+def test_no_verified_column(lang):
+    """#84: 表に Verified の列も、その説明も無い(gate の結果は info と gate で見る)。"""
+    held = {"auto": False, "checks": [{"id": "official_workflow", "passed": False}]}
+    fits = [fit("w", gate=held), fit("w2", gate={"auto": False, "checks": []}), fit("y", gate={"auto": True})]
+    with i18n.forced(lang):
+        out = render(fits)
+    assert "Verified" not in out
+    assert header_of(out)[-1] == "License"
+    for mid in ("w", "w2", "y"):
+        cells = row_of(out, mid).split()
+        assert cells[-1] == "apache-2.0" and not {"workflow", "held", "yes"} & set(cells)
+    order = (
+        "Order: runs, Perfect/Good, Marginal, Score."
+        if lang == "en"
+        else "並び: 動く → Perfect/Good → Marginal → Score。"
+    )
+    assert order in out
 
 
 def test_recommend_excludes_tools_unless_asked(capsys):
@@ -299,3 +319,64 @@ def test_recommend_excludes_tools_unless_asked(capsys):
     )
     ids2 = {m["id"] for m in json.loads(capsys.readouterr().out)["models"]}
     assert ids2 & tools
+
+
+def _recommend_args(*extra):
+    return ["recommend", "--vram", "8", "--ram", "32", "--no-cache", "-m", "image", "-n", "1000", *extra]
+
+
+def test_recommend_table_order_ignores_verified():
+    """#84: recommend の表は Verified(auto)で並べない。
+    JSON とライブラリ(verified_first=True)の並びは今までどおり。"""
+    from dataclasses import replace
+
+    from genmodelfit.recommend import list_key
+
+    held = {"auto": False, "checks": [{"id": "license", "passed": False}]}
+    perfect = fit("perfect_held", "perfect", gate=held)
+    marginal = fit("marginal_auto", "marginal", gate={"auto": True, "checks": []}, mode="offload")
+    marginal = replace(marginal, score=90.0)  # 点数が上でも、段階が先
+    rows = [marginal, perfect]
+    table = sorted(rows, key=lambda f: list_key(f, verified_first=False))
+    library = sorted(rows, key=lambda f: list_key(f))
+    assert [f.model.id for f in table] == ["perfect_held", "marginal_auto"]
+    assert [f.model.id for f in library] == ["marginal_auto", "perfect_held"]
+
+
+def test_recommend_table_and_json_orders_real_db(capsys):
+    """同梱の一覧で: 表の行は「動く → 段階 → 点数」(auto に依らない)。
+    JSON はライブラリの recommend と同じ(auto が先)。"""
+    import json
+
+    from genmodelfit.recommend import list_key, recommend, select
+
+    assert cli.main(_recommend_args("--json")) == 0
+    models = json.loads(capsys.readouterr().out)["models"]
+    db = load(use_cache=False)
+    system = cli._system(cli.build_parser().parse_args(_recommend_args()))
+    lib = recommend(db, system, modality="image", limit=1000)  # gmf.recommend() の中身
+    assert [m["id"] for m in models] == [f.model.id for f in lib]  # JSON = ライブラリの並び(変えない)
+    assert [m["auto"] for m in models] == [f.auto for f in lib]
+    autos = [m["auto"] for m in models]
+    assert autos == sorted(autos, reverse=True)  # 動くものだけなので、auto が先
+
+    with i18n.forced("en"):
+        assert cli.main(_recommend_args()) == 0
+    out = capsys.readouterr().out
+    rows = [x for x in out.splitlines() if "● " in x]
+    sel = select(
+        db,
+        system,
+        modality="image",
+        min_fit="marginal",
+        include_tools=False,
+        drop_unknown_size=True,
+        limit=1000,
+        verified_first=False,
+    )
+    assert len(rows) == len(sel.fits) == len(models)
+    assert sorted(f.model.id for f in sel.fits) == sorted(m["id"] for m in models)  # 同じモデル、並びだけ違う
+    want = [f.estimate.fit for f in sel.fits]
+    shown = [row.split()[2].lower() for row in rows]  # 「● Good」の段階
+    assert shown == [w.lower().replace("_", " ") for w in want]
+    assert [f for f in sel.fits] == sorted(sel.fits, key=lambda f: list_key(f, verified_first=False))

@@ -190,18 +190,18 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 | `name` | 動く → unknown → too_tight、その中でモデル名 |
 
 段階は常に点数より先に見る(点数は段階にいちばん大きい重みを掛けるが、ほかの成分で 2 つの段階が逆転しうるため)。
-自動でおすすめに出せるモデルを、`fit` / `search` で上へ動かすことはしない(Verified の列に出る)。
+自動でおすすめに出せるモデルを、`fit` / `search` で上へ動かすことはしない(条件は `info` で見られる)。
 JSON の `models` も同じ順。`fit` の `filters` は `sort`、`all`、`include_tools` を足し、`search` は `query`、`sort`、`all` を足す。
 
-表の列(全コマンド共通): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License | Verified`。
+表の列(全コマンド共通): `Type | Status | Score | Censored | Model | Use | Prec | VRAM | Mem% | Mode | Disk | License`。
 
 端末が狭いときは、次の順で詰める。
 - まず Model の列を 24 文字まで縮める。
-- そのあと Disk、Mem%、License、Verified、Prec、Use の順に落とす。
+- そのあと Disk、Mem%、License、Prec、Use の順に落とす。
 - Type、Status、Score、Censored、Model は落とさない。
 
-**Verified**(0.5.0 までは Auto)は JSON の `auto`: `yes`、または最初に失敗したゲートの確認(`held_by[0]`。短くしたもの)。
-JSON のキーの名前は変えない(`auto`、`held_by`、確認の ID)。
+**Verified** の列(0.5.0 までは Auto。JSON の `auto` で、`yes` か最初に失敗したゲートの確認)は表から外した(#84)。
+ゲートの確認は `info` で、数は `gate` で見られる。JSON は変わらない(`auto`、`held_by`、`gate`)。
 
 **Censored**(0.6.0。それまでの名前の頭の `[U] ` に代わる)は、`Y`(`content: sfw`)か `N`(`content: uncensored`)。空欄にはならない。
 - 無検閲の行が出うるときだけ出す(`--content all|uncensored`。Python で内容の絞り込み無しに作った表は、無検閲の行があれば出す)。
@@ -222,7 +222,6 @@ JSON のキーの名前は変えない(`auto`、`held_by`、確認の ID)。
 | Mode | 大きさが不明(`run_mode: "unknown"`) | 動かない(`run_mode: "none"`) |
 | Disk / License | 大きさ / ライセンスが不明(`null`) | — |
 | Use / `info` の tasks | 分かっている task が無い | — |
-| Verified | — | ゲートを評価しなかった |
 | `info` のファイルのフォルダ | — | ファイルに ComfyUI のフォルダが無い(Hugging Face のリポジトリ) |
 
 JSON では次のように分ける。
@@ -280,7 +279,7 @@ JSON では次のように分ける。
 
 `--license a,b`: すべてのファイルのライセンス(`ModelFile.license`。ファイルを持たないエントリはエントリの `license`)が、この一覧に入っていなければならない(大文字小文字を区別しない)。不明なライセンス(`null`)は決して合わない。
 
-**`recommend` の並べ方**(`gmf.recommend()`):
+**`recommend` の並べ方**(`gmf.recommend()` と `recommend --json`):
 1. 動くもの(`fit_level` が `too_tight` でない。`unknown` は `too_tight` の後ろ)
 2. `auto: true`
 3. **逃がさずに動くもの**(`GPU` / `GPU~` の perfect か good。行の点数と同じ 1 つの階層。0.1.1: 精度を上げて `good` の bf16 の行になっても、`perfect` の int8 の行があった位置より下に動かさない)
@@ -290,6 +289,9 @@ JSON では次のように分ける。
 7. `id`
 
 0.1.0 までは、community のテンプレートが全段階の公式の行より後ろに来ていた。
+
+`recommend` の**表**(文字の出力)は、この順から 2(`auto: true`)を除いた順で並べる(#84)。`-n` はその順で切るので、
+`-n` を付けると表と `--json` で出るモデルが違うことがある。JSON の並びと中身は変わらない。
 
 ### Models / モデルのまとめ方
 
@@ -409,7 +411,7 @@ JSON の `use` と表の Use の列は、合った用途。合うものが無け
 
 ### Fit / models の 1 件
 
-Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` は CLI と同じ一覧を返す)。
+Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()` / `gmf.fit_list()` / `gmf.search()` は CLI の `--json` と同じ一覧を返す)。
 
 | キー | 型 | 意味 |
 |---|---|---|
@@ -593,7 +595,7 @@ ComfyUI が fp32 で計算する GPU(`compute_dtype: "fp32"`: Maxwell、一部�
 | キー | 型 | 意味 |
 |---|---|---|
 | `auto` | bool | すべての確認が通ったときだけ true |
-| `held_by` | str[] | 失敗した確認の id。下の順(`held_by[0]` を、表の Verified の列に短くして出し、`gate --only-held` では `held:<id>` として出す) |
+| `held_by` | str[] | 失敗した確認の id。下の順(`held_by[0]` を、`gate --only-held` で `held:<id>` として出す) |
 | `comfyui_version` | str \| null | 比べた ComfyUI の版(`--comfyui-version`、無ければ `sources.comfyui.latest_release`) |
 | `checks` | Check[] | 10 個の確認。順は `license`、`gated`、`official_workflow`、`custom_nodes`、`comfyui_version`、`url_reachable`、`sha256`、`content`、`size_known`、`reviewed`(0.6.0、#42: `review.status` が `ok` でなければ通らない。常に最後なので、古い確認の `held_by[0]` は変わらない)。`runtime` が `comfyui` でも null でもないモデル(0.5.0)では、ComfyUI の 3 つの確認を、決して通らない `app_runtime` の確認 1 つに置き換える(8 個の確認) |
 
@@ -744,7 +746,7 @@ Pull Request の本文には「分類」の節と「確認待ち」の表があ�
 
 **`review` が無い(null)のは ok の意味**(0.6.0 より前に作った一覧)。
 **アプリは `entry.review is None or entry.review.status == "ok"` で絞る**(Python: `entry.reviewed`)。印の無い古い一覧は確認済みとして扱う。
-ゲートはすでに pending のモデルを止める(`reviewed`。Verified の列では `review` と出る)。
+ゲートはすでに pending のモデルを止める(`reviewed`。`info` では落ちた条件として出る)。
 
 `update` が印を付ける方法(`review.apply_reviews`。引き継ぎ元の一覧 = キャッシュまたは同梱の一覧、週ごとの実行では基準の一覧と比べる):
 

@@ -175,7 +175,7 @@ headings and footers, `--help`); JSON keys, ids, codes and judgments are the sam
 contains no Japanese, and Japanese output contains no English-only sentences (one language per line).
 
 Kept in English in both languages: the table column names (`Type`, `Status`, `Score`, `Model`, `Use`, `Prec`, `VRAM`,
-`Mem%`, `Mode`, `License`, `Verified`, `Censored`), the fit level names (`Perfect`, `Good`, `Marginal`, `Too tight`),
+`Mem%`, `Mode`, `Disk`, `License`, `Censored`), the fit level names (`Perfect`, `Good`, `Marginal`, `Too tight`),
 the run-mode marks (`GPU`, `GPU~`, `GPU+RAM`, `CPU`), units, and machine-readable values such as ids, license ids and
 option names. This keeps the table widths stable and matches what you type for `--fit`, `--sort` and so on; the
 Japanese output explains them in Japanese below the table. Type headings show the Japanese type name followed by
@@ -197,33 +197,33 @@ PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
 Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, too tight 136; 25
     more workflows merged into their models)
 == image: top 2 of 37  (-m image for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-image ● Marginal     54 Z-Image-Turbo            gen+5   int8  7.6m  96% GPU~    apache-2.0 yes
-image ● Marginal     42 MOSS-Image SFT           gen+1   int8   4.2  53% GPU+RAM apache-2.0 yes
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+image ● Good         62 SDXL1.0 Base                 gen+3   fp16  6.3m  79% GPU~     6.5 openrail++
+image ● Good         56 Anima Base 1.0               gen+3   bf16   5.8  72% GPU~     5.4 other
 == video: top 2 of 4  (-m video for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-video ● Marginal     50 Wan 2.1 1.3B T2V         gen     fp16  7.8m  97% GPU~    apache-2.0 yes
-video ● Marginal     39 Wan 2.1 ControlNet 1.3B  edit    bf16   7.7  96% GPU+RAM apache-2.0 yes
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+video ● Marginal     50 Wan 2.1 1.3B T2V             gen     fp16  7.8m  97% GPU~     9.2 apache-2.0
+video ● Marginal     39 Wan 2.1 ControlNet 1.3B      edit    bf16   7.7  96% GPU+RAM 10.6 apache-2.0
 == music: top 2 of 10  (-m music for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-music ● Good         65 ACE-Step 1.5 Turbo       gen+2   bf16  6.0m  76% GPU~    mit        yes
-music ● Marginal     40 ACE-Step 1.5XL Turbo     gen     bf16   5.2  65% GPU+RAM mit        yes
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+music ● Good         65 ACE-Step 1.5 Turbo           gen+2   bf16  6.0m  76% GPU~     9.3 mit
+music ● Perfect      64 Stable Audio 3 Small music   gen     fp32   4.7  59% GPU      3.2 other
 == sfx: top 2 of 2  (-m sfx for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-sfx   ● Perfect      66 stable-audio-3-small-sfx gen     fp32   4.7  59% GPU     other      license
-sfx   ● Good         54 stable-audio-open-1.0    gen+1   fp32   4.9  61% GPU~    other      license
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+sfx   ● Perfect      66 stable-audio-3-small-sfx     gen     fp32   4.7  59% GPU      3.2 other
+sfx   ● Good         54 stable-audio-open-1.0        gen+1   fp32   4.9  61% GPU~     5.3 other
 == tts: top 2 of 20  (-m tts for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-tts   ● Perfect      80 Chatterbox               gen     fp32   3.5  44% GPU     mit        workflow
-tts   ● Perfect      80 VieNeu-TTS-v3-Turbo      gen     q8     1.6  21% GPU     apache-2.0 workflow
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+tts   ● Perfect      80 Chatterbox                   gen     fp32   3.5  44% GPU      2.0 mit
+tts   ● Perfect      80 VieNeu-TTS-v3-Turbo          gen     q8     1.6  21% GPU      0.2 apache-2.0
 == 3d: top 2 of 7  (-m 3d for more)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-3d    ● Good         64 HY 3D 2.0                gen     fp16  6.7m  84% GPU     other      license
-3d    ● Good         57 TripoSplat               gen     fp16   5.8  72% GPU     other      license
-Order: runs, Verified, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+3d    ● Good         64 HY 3D 2.0                    gen     fp16  6.7m  84% GPU      4.6 other
+3d    ● Good         57 TripoSplat                   gen     fp16   5.8  72% GPU      3.5 other
+Order: runs, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
-Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.
+Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short.
 One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
 Note: 26 uncensored model(s) hidden; add --uncensored to show them.
@@ -239,13 +239,13 @@ $ genmodelfit fit --vram 24 --ram 128 -m image -n 6
 PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
 All models: 6 of 60 (218 hidden: other types 166, uncensored 21, tools 19, license unknown 12; 51
     more workflows merged into their models)
-Type  Status      Score Model                    Use     Prec  VRAM Mem% Mode    License    Verified
-image ● Perfect      90 SDXL1.0 Base             gen+3   fp16  8.0m  33% GPU     openrail++ license
-image ● Perfect      84 MOSS-Image SFT           gen+1   int8  13.8  58% GPU     apache-2.0 yes
-image ● Perfect      83 FLUX.2 [Klein] 4B Base   edit    fp8   13.2  55% GPU     apache-2.0 yes
-image ● Perfect      82 MOSS-Image Base          gen+1   int8  13.8  58% GPU     apache-2.0 yes
-image ● Perfect      81 Anima Base 1.0           gen+3   bf16   7.1  30% GPU     other      license
-image ● Perfect      80 Anima Preview 3 Base     gen     bf16   7.0  29% GPU     other      license
+Type  Status      Score Model                        Use     Prec  VRAM Mem% Mode    Disk License
+image ● Perfect      90 SDXL1.0 Base                 gen+3   fp16  8.0m  33% GPU      6.5 openrail++
+image ● Perfect      84 MOSS-Image SFT               gen+1   int8  13.8  58% GPU     12.1 apache-2.0
+image ● Perfect      83 FLUX.2 [Klein] 4B Base       edit    fp8   13.2  55% GPU     11.5 apache-2.0
+image ● Perfect      82 MOSS-Image Base              gen+1   int8  13.8  58% GPU     12.1 apache-2.0
+image ● Perfect      81 Anima Base 1.0               gen+3   bf16   7.1  30% GPU      5.4 other
+image ● Perfect      80 Anima Preview 3 Base         gen     bf16   7.0  29% GPU      5.2 other
 Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured.
 …
 ```
@@ -264,9 +264,8 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 | VRAM | GiB needed in that mode; `m` = measured by the maintainer or on this PC, `c` = median of other users' measurements of the same GPU (count: `info`, JSON `sample_count`) |
 | Mem% | share of VRAM used (of RAM on CPU); `RAM` = system RAM is short |
 | Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
-| Disk | download size (GiB); dropped first when the width is short, so at 100 columns see `info` or `--json` |
+| Disk | download size (GiB); dropped first when the width is short (then see `info` or `--json`) |
 | License | license of the files (`other` = read it yourself) |
-| Verified | `yes` = can be recommended automatically; otherwise the first failed check (`license`, `workflow`, `review`, …) |
 
 ### Fit levels
 
@@ -285,7 +284,8 @@ a mark it is a formula estimate. Measurements win over the formula. Other users'
 GPU (same PCI model ID, else the same normalized name, and VRAM within 3%) and can move the needs either way. `bench`
 values (`torch_reserved`) get +0.5 GiB when they set the level.
 `?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
-`recommend` orders rows by: runs, Verified, Perfect/Good, Marginal, Score. `fit` orders by type, level, Score.
+`recommend` orders rows by: runs, Perfect/Good, Marginal, Score. `fit` orders by type, level, Score.
+(`recommend --json` and `gmf.recommend()` keep their order, with Verified models first: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md).)
 
 ### Accuracy
 
@@ -336,7 +336,8 @@ Models aimed at sexual content involving minors are excluded entirely
 `Verified: yes` (JSON `auto`) only when **all** checks pass: every file's license is on a commercial-use allowlist,
 nothing is gated, an official ComfyUI workflow without custom nodes, a supported ComfyUI version, every URL answered
 an anonymous HEAD within 30 days, sha256 and size are known, content is `sfw`, and no review is pending.
-Otherwise the reasons are in `held_reasons`. Details: [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
+Otherwise the reasons are in `held_reasons`. The `recommend` / `fit` tables do not show it; `info <name or id>`
+shows each check and `gate` counts them. Details: [docs/gate.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/gate.md).
 
 ### Download
 

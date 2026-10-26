@@ -6,12 +6,11 @@
 
 - 先頭に PC と「何件中何件を出したか・隠した件数と理由」、末尾に印の説明
 - 幅 100 文字の端末で崩れない。モデル名は残りの幅を全部使い、長い名前は真ん中を省略記号で詰める
-  (狭い端末では Disk → Mem% → License → Verified → Prec → Use の順に列を外す)
+  (狭い端末では Disk → Mem% → License → Prec → Use の順に列を外す)
 - 段階は色と「●」で分ける。色の無い端末でも文字で分かる(NO_COLOR やパイプ出力では色を付けない)。
   絵文字は Windows の端末(cp932)で幅が崩れるので使わない
 - VRAM は判定に使った値(m = 実測)。Mode は GPU / GPU~(部品を順に載せ替え)/ GPU+RAM(逃がす)/ CPU / -(動かない)
-- Verified(0.5.0 までは Auto。JSON の auto)は自動でおすすめに出せれば yes、出せなければ
-  最初に落ちた条件の短い名前
+- 自動のおすすめ(gate。JSON の auto)の列(Verified)は外した(#84)。info と gate で出す
 - 「?」は分からない(精度・ライセンス・大きさ = 判定していない)、「-」は当てはまらない
   (動かないので Mode が無い、CPU で動くので VRAM が無い、GPU が無いので Mem% が無い、など)。
   #30 で使い分けをそろえた
@@ -45,20 +44,6 @@ LEVEL_STYLE = {
 }
 LEVEL_LABEL = FIT_LABEL
 MARK = "●"  # 段階の印(絵文字ではない記号)
-# 落ちた条件の id(gate.py)を、表に収まる短い名前にする
-CHECK_LABEL = {
-    "license": "license",
-    "gated": "gated",
-    "official_workflow": "workflow",
-    "custom_nodes": "nodes",
-    "comfyui_version": "comfyui",
-    "url_reachable": "url",
-    "sha256": "sha256",
-    "content": "content",
-    "size_known": "size",
-    "app_runtime": "runtime",
-    "reviewed": "review",
-}
 # 隠した理由の表示名(recommend.HIDDEN_KEYS)
 HIDDEN_LABEL = {
     "modality": "other types",
@@ -118,9 +103,8 @@ COLUMN_WIDTH = {
     "Mode": 7,
     "Disk": 4,
     "License": 10,
-    "Verified": 8,  # 0.6.0 で Auto から名前を変えた(JSON の auto・held_by はそのまま)
 }
-DROP_ORDER = ("Disk", "Mem%", "License", "Verified", "Prec", "Use")
+DROP_ORDER = ("Disk", "Mem%", "License", "Prec", "Use")
 
 
 def output_width(file=None) -> int:
@@ -312,17 +296,6 @@ def columns_for(width: int, with_type: bool = True, with_content: bool = False) 
     return cols
 
 
-def _auto_cell(gate: dict[str, Any] | None) -> Text:
-    if not gate:
-        return Text("-", style="dim")
-    if gate.get("auto"):
-        return Text("yes", style="green")
-    failed = [c.get("id", "?") for c in gate.get("checks", []) if not c.get("passed")]
-    if not failed:
-        return Text("held", style="yellow")
-    return Text(CHECK_LABEL.get(failed[0], failed[0]), style="yellow")
-
-
 def _gb(v: float) -> str:
     """GiB の値を 4 桁に収める(100 以上は整数、1000 以上は 999+)。"""
     if v < 99.95:
@@ -450,7 +423,6 @@ def build_table(
             "Mode": Text(mode_cell(e, system), style="red" if e.fit == "too_tight" else ""),
             "Disk": Text(_gb(e.disk_gb) if e.disk_gb else "?"),
             "License": Text(m.license or "?"),
-            "Verified": _auto_cell(f.gate),
         }
         t.add_row(*(cells[c] for c in left), name, *(cells[c] for c in right))
     return t
@@ -596,7 +568,7 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Verified, Perfect/Good, Marginal, Score.",
+    "auto": "Order: runs, Perfect/Good, Marginal, Score.",
     "type": "Order: Type, Status, Score (--sort).",
     "score": "Order: Status, Score (all types).",
     "vram": "Order: runs, VRAM (least first).",
@@ -605,7 +577,7 @@ ORDER_TEXT = {
 }
 # 日本語(#76。列の名前・段階の名前・Mode の印は表と同じ英語のまま)
 ORDER_TEXT_JA = {
-    "auto": "並び: 動く → Verified → Perfect/Good → Marginal → Score。",
+    "auto": "並び: 動く → Perfect/Good → Marginal → Score。",
     "type": "並び: Type → Status → Score(--sort)。",
     "score": "並び: Status → Score(種類をまたいで)。",
     "vram": "並び: 動くもの → VRAM の少ない順。",
@@ -647,7 +619,7 @@ def legend(
             if non_nvidia
             else []
         ),
-        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.",
+        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short.",
     ]
     if grouped:
         out.append(
@@ -702,7 +674,7 @@ def _legend_ja(
             if non_nvidia
             else []
         ),
-        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。Verified = yes か最初に落ちた条件。",
+        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。",
     ]
     if grouped:
         out.append(

@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The `recommend` / `fit` / `search` tables no longer have a Verified column** (#84). It showed the gate's verdict
+  for automatic recommendation (`yes`, or the first failed check such as `license` or `workflow`), which was hard to
+  read and to check by hand; llmfit has no such column either. The legend line about it is gone, and the freed width
+  goes back to the other columns (at 100 columns the Model column is 4 characters wider and Disk is shown again).
+  `info <id>` still shows each gate check with [ok] / [NG], and `gate` still counts them.
+- **The `recommend` table no longer puts Verified models first**: rows are ordered runs → Perfect/Good → Marginal →
+  official first → Score → id (the legend says `Order: runs, Perfect/Good, Marginal, Score.`), and `-n` cuts this
+  order, so the table may list different models than before. **`recommend --json` and `gmf.recommend()` are
+  unchanged** (same order with `auto: true` first, same contents, `auto` / `held_by` / `gate` kept), so with `-n` the
+  table and the JSON can list different models (docs/schema.md "Order of `recommend`"). `fit` and `search` never
+  sorted by it. The README screenshots (`docs/images/*.png`) still show the old column; there is no tool to render
+  them, so they are left unchanged.
+
 ## [0.10.0] - 2026-10-26
 
 ### Changed

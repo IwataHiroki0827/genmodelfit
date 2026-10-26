@@ -385,7 +385,7 @@ def _runs(f: Fit) -> int:
 LIST_LEVEL_ORDER = {"perfect": 0, "good": 1, "marginal": 2, FIT_UNKNOWN: 3, "too_tight": 4}
 
 
-def list_key(f: Fit, sort: str = "score", auto_first: bool = True) -> tuple:
+def list_key(f: Fit, sort: str = "score", auto_first: bool = True, verified_first: bool = True) -> tuple:
     """表の並べ方(fit / search の --sort、recommend)。
 
     type(fit / search の既定): 種類(image → video → music → sfx → tts → 3d)→ 段階(perfect → good →
@@ -396,7 +396,9 @@ def list_key(f: Fit, sort: str = "score", auto_first: bool = True) -> tuple:
     vram: 判定に使ったメモリ(表の VRAM)の少ない順 / disk: ダウンロードの小さい順 / name: 名前の順
         (どれも、動くもの → 判定できない → too_tight で分けてから)
     auto_first=True(recommend)なら sort は使わず、動くもの → 自動のおすすめに出せるもの → 逃がさずに載るもの
-    (perfect / good を 1 つの段階に)→ marginal → 公式 → 点数 → ID。"""
+    (perfect / good を 1 つの段階に)→ marginal → 公式 → 点数 → ID。
+    verified_first=False(CLI の recommend の表。#84)なら、自動のおすすめに出せるかを並びに使わない
+    (ほかの鍵は同じ)。ライブラリと --json は True のまま(並びを変えない)。"""
     level = LIST_LEVEL_ORDER.get(f.estimate.fit, 4)
     score = -round(f.score, 1)
     name = (f.model_name or f.model.name or f.model.id).lower()
@@ -405,7 +407,8 @@ def list_key(f: Fit, sort: str = "score", auto_first: bool = True) -> tuple:
         # 点数で並べる。代表を高い精度に替えて good になったモデル(24 GB の Z-Image Turbo の bf16)が、
         # int8 の perfect のときより下がらないように(行の点数と同じ考え方。#28 のレビュー)
         tier = 0 if runs_clean(f.estimate) else fit_rank(f.estimate.fit)
-        return (_runs(f), not f.auto, tier, is_community(f.model), score, f.model.id)
+        verified = (not f.auto,) if verified_first else ()
+        return (_runs(f), *verified, tier, is_community(f.model), score, f.model.id)
     if sort == "type":
         mod = MODALITIES.index(f.model.modality) if f.model.modality in MODALITIES else len(MODALITIES)
         return (mod, level, is_community(f.model), score, name, f.model.id)
@@ -595,6 +598,7 @@ def select(
     per_modality: int | None = None,
     sort: str = "score",
     auto_first: bool = True,
+    verified_first: bool = True,
     settings: Settings | None = None,
     coefficients: Coefficients | None = None,
     with_limits: bool = False,
@@ -612,6 +616,8 @@ def select(
     min_fit(その段階以上。判定できないものは min_fit が too_tight のときだけ)。どちらも無ければ全部
     (判定できないものも)。drop_unknown_size=True なら判定できないものは必ず外す。
     並べ方は list_key(sort、auto_first。auto_first=True のときは sort を使わず recommend の順)。
+    verified_first=False は CLI の recommend の表だけが使う(自動のおすすめを先にしない。#84)。
+    件数(limit・per_modality)はこの並びで切る。
     """
     mods = check_filters(modality=modality, content=content, min_fit=min_fit, fit=fit, sort=sort)
     allow = _license_list(license)
@@ -723,7 +729,7 @@ def select(
                 for v in sorted(best.values(), key=lambda v: precision_rank(v.model.precision))
             ]
         rows += reps
-    rows.sort(key=lambda f: list_key(f, sort, auto_first))
+    rows.sort(key=lambda f: list_key(f, sort, auto_first, verified_first))
     matched = len(rows)
     counts = {mod: sum(1 for f in rows if f.model.modality == mod) for mod in MODALITIES}
     if per_modality:

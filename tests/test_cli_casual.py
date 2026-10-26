@@ -40,7 +40,6 @@ HEADER = [
     "Mode",
     "Disk",
     "License",
-    "Verified",
 ]
 
 
