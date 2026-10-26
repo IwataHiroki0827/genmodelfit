@@ -281,7 +281,7 @@ JSON では次のように分ける。
 
 ### Order of `recommend` / recommend の並べ方
 
-**`recommend` の並べ方**(`gmf.recommend()` と `recommend --json`):
+`gmf.recommend()` と `recommend --json`:
 1. 動くもの(`fit_level` が `too_tight` でない。`unknown` は `too_tight` の後ろ)
 2. `auto: true`
 3. **逃がさずに動くもの**(`GPU` / `GPU~` の perfect か good。行の点数と同じ 1 つの階層。0.1.1: 精度を上げて `good` の bf16 の行になっても、`perfect` の int8 の行があった位置より下に動かさない)
@@ -397,8 +397,8 @@ VRAM を足しても、行の点数は下がらず、行が「逃がさずに動
 `--task` には、用途の名前、別名、task コードを、コンマ区切りで渡す(`--task edit`、`--task i2v,lipsync`、`--task t2i`)。
 エントリの task のどれかが集合に入っていれば合う。
 JSON の `use` は、合った用途。合うものが無ければ、エントリが持つものの中で tool、upscale、lipsync、motion、voice、edit、gen、i2v のうち最初のもの。
-表の Use の列(#84)は、行と同じモデルのすべてのワークフロー(`workflows`。絞り込みで隠したものも)の `use` を、重複なく上の表の順に並べたもの(例 `gen,edit`)。
-`--all-workflows` では行の `use` だけ。列(8 文字)に収まらないときは、収まる最後の用途の後ろで切って `…` を付ける(`gen,…`)。ワークフローの一覧は `info` で見られる。
+表の Use の列(#84)は、先頭に行自身の `use`(`--task` で合った用途。無ければ代表の用途)、そのあとに同じモデルのほかのワークフロー(`workflows`。絞り込みで隠したものも)の `use` を、重複なく上の表の順に並べたもの(例 `gen,edit`。`--task edit` なら `edit,gen`)。
+`--all-workflows` では行の `use` だけ。列(9 文字)に収まらないときは、収まる最後の用途の後ろで切って `,…` を付ける(`gen,…`、`lipsync,…`)ので、行自身の用途はいつも見える。ワークフローの一覧は `info` で見られる。
 0.10.0 までは、行の `use` に `+N`(ほかのワークフローの数)を付けていた。
 
 補助ツールは、`--include-tools` か、`--task` で tool 系の用途を指定しないかぎり、`recommend` では隠す。

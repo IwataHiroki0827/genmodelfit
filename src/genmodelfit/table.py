@@ -96,7 +96,7 @@ COLUMN_WIDTH = {
     "Status": 11,
     "Score": 5,
     CONTENT_COLUMN: 8,
-    "Use": 8,  # 「gen,edit」が収まる幅(#84。それより長い並びは「gen,…」)
+    "Use": 9,  # 「gen,edit」と、一番長い用途 1 つ +「,…」(「lipsync,…」)が収まる幅(#84)
     "Prec": 4,
     "VRAM": 5,
     "Mem%": 4,
@@ -347,13 +347,15 @@ def mode_cell(e, system) -> str:
 
 
 def row_uses(f, grouped: bool = True) -> list[str]:
-    """表の Use に出す用途(#84)。まとめた行は代表と仲間のワークフロー(fit.workflows。絞り込みで隠した仲間も)の
-    用途を重複なく USES の順に、--all-workflows(grouped=False)はその行の用途だけ。分からなければ ["?"]。"""
-    uses = {getattr(f, "use", "") or "?"}
-    if grouped:
-        uses |= {w.get("use") or "?" for w in getattr(f, "workflows", []) or []}
+    """表の Use に出す用途(#84)。先頭は行自身の用途(f.use: --task で合った用途か代表の用途。幅が足りなくても
+    見えるように)、そのあとに仲間のワークフロー(fit.workflows。絞り込みで隠した仲間も)の用途を重複なく
+    USES の順に。--all-workflows(grouped=False)はその行の用途だけ。分からなければ「?」。"""
+    own = getattr(f, "use", "") or "?"
+    if not grouped:
+        return [own]
+    rest = {w.get("use") or "?" for w in getattr(f, "workflows", []) or []} - {own}
     order = [*USES, "?"]
-    return sorted(uses, key=lambda u: (order.index(u) if u in order else len(order), u))
+    return [own, *sorted(rest, key=lambda u: (order.index(u) if u in order else len(order), u))]
 
 
 def use_text(uses: Sequence[str], width: int) -> str:
@@ -615,14 +617,21 @@ def legend(
     order: str = "auto",
     with_content: bool | None = None,
     system=None,
+    json_first: bool | None = None,
 ) -> list[str]:
+    """表の下の説明。json_first: 「--json は自動のおすすめを先に並べる」の行を出すか(None は order == "auto"。
+    --auto-only では表と JSON の並びが同じなので CLI は False を渡す。#84)。"""
+    if json_first is None:
+        json_first = order == "auto"
     system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
     best = system.best_gpu if system is not None else None
     non_nvidia = best is not None and best.vendor != "nvidia"
     community = any(getattr(f.estimate, "basis_detail", "") == "measured_community" for f in fits)
     shown = content_column_wanted(fits) if with_content is None else with_content
     if i18n.get_language() == "ja":
-        return _legend_ja(fits, hidden, grouped, order, shown, system_marks, non_nvidia, community)
+        return _legend_ja(
+            fits, hidden, grouped, order, shown, system_marks, non_nvidia, community, json_first
+        )
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
@@ -650,7 +659,7 @@ def legend(
     out.append(
         "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
     )
-    if order == "auto":  # recommend の --json だけ並びが表と違う(#84)
+    if json_first:  # recommend の --json だけ並びが表と違う(#84)
         out.append("--json lists auto-recommendable models first (schema.md).")
     if shown:
         out.append("Censored: N = safety filter removed / adult model")
@@ -678,6 +687,7 @@ def _legend_ja(
     system_marks: bool,
     non_nvidia: bool,
     community: bool,
+    json_first: bool = False,
 ) -> list[str]:
     """表の下の説明の日本語(#76)。英語と同じ項目を同じ順に、1 項目 1 行で。"""
     out = [
@@ -705,7 +715,7 @@ def _legend_ja(
             "1 行に 1 モデル: Prec = 載る中で一番高い精度、Use = ワークフローの用途(info、--all-workflows)。"
         )
     out.append("m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。")
-    if order == "auto":
+    if json_first:
         out.append("--json は自動でおすすめしてよいものを先に並べる(schema.md)。")
     if shown:
         out.append("Censored: N = 安全のための絞り込みを外したモデル・成人向けのモデル")
@@ -736,6 +746,7 @@ def print_fit_table(
     grouped: bool = True,
     order: str = "auto",
     content: str | None = None,
+    json_first: bool | None = None,
 ) -> None:
     """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。
 
@@ -791,5 +802,8 @@ def print_fit_table(
         say(tr("(該当なし)", "(no match)"))
     else:
         con.print(build_table(fits, width=con.width, system=system, **kw))
-    for n in [*(legend(fits, hidden, grouped, order, kw["with_content"], system) if fits else []), *notes]:
+    for n in [
+        *(legend(fits, hidden, grouped, order, kw["with_content"], system, json_first) if fits else []),
+        *notes,
+    ]:
         say(n, "dim")

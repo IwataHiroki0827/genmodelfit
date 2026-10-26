@@ -268,11 +268,11 @@ def test_type_column_is_always_first():
     v.model.modality = "video"
     header = next(x for x in render([fit("a"), v]).splitlines() if x.startswith("Type"))
     assert header.split()[:4] == ["Type", "Status", "Score", "Model"]
-    # 幅 100 でも Disk を出す(Verified の列を外して空いた幅。#84)。Model は 27 桁(Use は 8 桁)
+    # 幅 100 でも Disk を出す(Verified の列を外して空いた幅。#84)。Model は 26 桁(Use は 9 桁)
     assert "Disk" in header
     from genmodelfit.table import columns_for, model_width
 
-    assert model_width(100, columns_for(100)) == 27
+    assert model_width(100, columns_for(100)) == 26
 
 
 def test_middle_ellipsis_and_distinct_names():
@@ -401,17 +401,20 @@ def _use_of(out: str, mid: str) -> str:
 
 def test_use_lists_the_uses_of_the_merged_workflows():
     rows = [
-        _with_uses("mixed", "edit", ["gen", "edit", "gen"]),  # 違う用途: 重複なく USES の順(gen → edit)
+        _with_uses("mixed", "gen", ["i2v", "edit", "edit"]),  # 違う用途: 行の用途、残りは重複なく USES の順
+        _with_uses("own_first", "edit", ["gen", "edit", "gen"]),  # 行の用途(--task edit など)が先頭
         _with_uses("same", "gen", ["gen", "gen"]),  # 同じ用途なら 1 つ
         _with_uses("alone", "i2v", []),
-        _with_uses("long", "lipsync", ["gen", "edit", "i2v"]),  # 収まらない: 用途の境目で切って …
+        _with_uses("long", "lipsync", ["gen", "edit", "i2v"]),  # 収まらない: 行の用途を残し、境目で切って ,…
     ]
     out = render(rows)
-    assert _use_of(out, "mixed") == "gen,edit"
+    assert _use_of(out, "mixed") == "gen,…"  # 「gen,edit,i2v」も「gen,edit,…」も 9 桁に入らない
+    assert _use_of(out, "own_first") == "edit,gen"
     assert _use_of(out, "same") == "gen"
     assert _use_of(out, "alone") == "i2v"
-    assert _use_of(out, "long") == "gen,…"
-    assert "+" not in "".join(_use_of(out, m) for m in ("mixed", "same", "alone", "long"))
+    assert _use_of(out, "long") == "lipsync,…"
+    names = ("mixed", "own_first", "same", "alone", "long")
+    assert "+" not in "".join(_use_of(out, m) for m in names)
     for lang, text in (
         ("en", "Use = workflow uses (info, --all-workflows)."),
         ("ja", "Use = ワークフローの用途"),
@@ -429,13 +432,21 @@ def test_use_is_the_rows_own_use_with_all_workflows():
 
 
 def test_use_text_cuts_between_uses():
-    from genmodelfit.table import use_text
+    from genmodelfit.table import COLUMN_WIDTH, use_text
+    from genmodelfit.tasks import USES
 
-    assert use_text(["gen", "edit"], 8) == "gen,edit"
-    assert use_text(["edit", "tool"], 8) == "edit,…"
-    assert use_text(["gen", "edit", "i2v"], 12) == "gen,edit,i2v"
+    w = COLUMN_WIDTH["Use"]
+    assert use_text(["gen", "edit"], w) == "gen,edit"
+    assert use_text(["edit", "tool"], w) == "edit,tool"
+    assert use_text(["i2v", "motion"], w) == "i2v,…"
     assert use_text(["gen", "edit", "i2v", "lipsync"], 14) == "gen,edit,i2v,…"
-    assert use_text(["upscale"], 8) == "upscale"
+    assert use_text(["upscale"], w) == "upscale"
+    # 用途 1 つで幅を埋めるときも、区切りを残して「,…」(「lipsync…」にしない)
+    assert use_text(["lipsync", "motion"], w) == "lipsync,…"
+    assert use_text(["upscale", "tool"], w) == "upscale,…"
+    # 一番長い用途 1 つ +「,…」が列に収まる
+    longest = max(USES, key=len)
+    assert len(f"{longest},…") <= w
 
 
 def test_use_column_on_the_bundled_list(capsys):
@@ -450,7 +461,8 @@ def test_use_column_on_the_bundled_list(capsys):
     assert merged  # 用途の違うワークフローをまとめたモデルがある
     for f in sel.fits:
         want = {f.use} | {w["use"] for w in f.workflows}
-        assert set(row_uses(f)) == want
+        uses = row_uses(f)
+        assert set(uses) == want and uses[0] == f.use and len(uses) == len(set(uses))
     assert cli.main(["fit", "--vram", "24", "--ram", "64", "--no-cache", "--lang", "en"]) == 0
     rows = [x for x in capsys.readouterr().out.splitlines() if "● " in x]
     assert rows and not any(
@@ -513,3 +525,57 @@ def test_recommend_table_cuts_after_sorting(capsys):
                     assert all(m["auto"] for m in json_models if m["modality"] == mod)
                     differs += 1
     assert differs  # auto と非 auto が混ざって顔ぶれの違う節が、少なくとも 1 つある(試験が空振りしない)
+
+
+@pytest.mark.parametrize("task", ["lipsync", "edit"])
+def test_use_starts_with_the_task_use(task, capsys):
+    """--task で合った用途を先頭に出す(幅が足りずに「gen,…」となって、合った用途が見えなくならない)。"""
+    args = [
+        "recommend",
+        "--vram",
+        "24",
+        "--ram",
+        "64",
+        "--no-cache",
+        "--task",
+        task,
+        "-n",
+        "20",
+        "--content",
+        "all",
+    ]
+    with i18n.forced("en"):
+        assert cli.main(args) == 0
+    rows = [x for x in capsys.readouterr().out.splitlines() if "● " in x]
+    assert rows
+    for row in rows:
+        assert re.search(rf"\s{task}(,[a-z0-9]+)*(,…)?\s", row), row
+
+
+# --- 表の下の「--json は auto を先に並べる」の行(#84) --------------------------------------------
+
+JSON_FIRST = {
+    "en": "--json lists auto-recommendable models first (schema.md).",
+    "ja": "--json は自動でおすすめしてよいものを先に並べる(schema.md)。",
+}
+
+
+@pytest.mark.parametrize("lang", ["en", "ja"])
+@pytest.mark.parametrize(
+    "args,shown",
+    [
+        (["recommend", "-n", "2"], True),
+        (["recommend", "-m", "image"], True),
+        (["recommend", "-n", "2", "--auto-only"], False),  # 表も JSON も auto だけで、並びが同じ
+        (["fit"], False),
+        (["search", "sdxl"], False),
+    ],
+)
+def test_json_first_line_only_for_recommend(lang, args, shown, capsys):
+    with i18n.forced(lang):
+        assert cli.main([*args, "--vram", "8", "--ram", "32", "--no-cache"]) == 0
+    out = capsys.readouterr().out
+    assert "● " in out  # 表が出ている(説明の行は表があるときだけ)
+    assert (JSON_FIRST[lang] in out) is shown
+    other = JSON_FIRST["ja" if lang == "en" else "en"]
+    assert other not in out

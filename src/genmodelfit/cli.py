@@ -467,6 +467,8 @@ def _show(
         grouped=not args.all_workflows,
         order=getattr(args, "sort", None) or "auto",
         content=getattr(args, "content", None),
+        # --auto-only は表も JSON も auto だけなので、並びの違いを知らせない(#84)
+        json_first=command == "recommend" and not getattr(args, "auto_only", False),
     )
     return 0
 
