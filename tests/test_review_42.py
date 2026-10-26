@@ -21,7 +21,6 @@ from genmodelfit.diff import diff_db
 from genmodelfit.gate import CHECK_IDS, GatePolicy, evaluate_offline
 from genmodelfit.hf import TIER_PERMISSIVE, license_tier
 from genmodelfit.models import ModelEntry, Review
-from genmodelfit.table import CHECK_LABEL
 
 NOW = datetime(2026, 10, 21, tzinfo=timezone.utc)
 URL = "https://huggingface.co/org/model/blob/main/LICENSE"
@@ -260,7 +259,7 @@ def test_gate_holds_pending(bundled):
     r = evaluate_offline(m, p, sources=bundled.sources)
     assert not r.auto and r.held_by == ["reviewed"]
     assert "new" in r.checks[-1].detail
-    assert CHECK_IDS[-1] == "reviewed" and CHECK_LABEL["reviewed"] == "review"
+    assert CHECK_IDS[-1] == "reviewed"
 
 
 # --- CLI と Python ---------------------------------------------------------------------------------

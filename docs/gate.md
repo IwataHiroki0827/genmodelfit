@@ -2,7 +2,7 @@
 
 **English** · [日本語](gate.ja.md)
 
-The rule behind `auto: true` ("Verified" in the tables): which models may be shown to PC beginners without a human checking.
+The rule behind `auto: true` ("Verified" in `info`): which models may be shown to PC beginners without a human checking.
 This page is for app developers who use the list and for contributors who change the rule or the list.
 
 ## Contents
@@ -64,7 +64,7 @@ The shape of `to_dict()`:
 
 - `checks` follows the order of the table below. A ComfyUI model (`runtime` is `comfyui` or null) has 10: every row except `app_runtime`.
 - For a model whose `runtime` is neither `comfyui` nor null, one `app_runtime` takes the place of `official_workflow`, `custom_nodes` and `comfyui_version`, so there are 8.
-- `held_by[0]` (the first failed check) is shown in the Verified column of the tables (called Auto up to 0.5.0; it shows JSON `auto`) as a short name such as `workflow`. In `gate --only-held` it appears as `held:<id>`.
+- `held_by[0]` (the first failed check) appears as `held:<id>` in `gate --only-held`; `info` shows every check with [ok] / [NG]. The tables of `recommend` / `fit` no longer have a Verified column (#84).
 - `detail` is text for people, in the display language (`en` / `ja`; `--lang`, `GENMODELFIT_LANG`). The wording may change; machines should read `id` and `passed`.
 
 ## Checks
@@ -81,7 +81,7 @@ The shape of `to_dict()`:
 | `sha256` | Every file has a 64-digit hexadecimal sha256 | Civitai files and similar |
 | `content` | Not uncensored (`content: uncensored`) | Uncensored (can be lifted with `--allow-uncensored-auto`) |
 | `size_known` | Every file's size is known and the file list is complete (`files_complete` is not false) | Size unknown, no files listed |
-| `reviewed` | The review mark (`review`) is not awaiting review (`pending`). Old lists without the mark (up to 0.5.0) pass. In the Verified column of the tables it shows as `review`. Its weight in the score (readiness) is 0. It is always the last check (0.6.0, #42; [schema.md](schema.md), "review") | A new entry added by `update` (rebuild, `--heads-only`, `--fields-only`, `--inspect-only`); a license that moved to the permissive side; a drop in the required amount; newly uncensored; a file change (`files_changed`: a change or loss of a URL (including the query) or sha256, a size increase or decrease, files added or removed, repo_id; 0.9.0; [sources.md](sources.md), "Review marks") — held until confirmed with evidence by `genmodelfit review approve` |
+| `reviewed` | The review mark (`review`) is not awaiting review (`pending`). Old lists without the mark (up to 0.5.0) pass. Its weight in the score (readiness) is 0. It is always the last check (0.6.0, #42; [schema.md](schema.md), "review") | A new entry added by `update` (rebuild, `--heads-only`, `--fields-only`, `--inspect-only`); a license that moved to the permissive side; a drop in the required amount; newly uncensored; a file change (`files_changed`: a change or loss of a URL (including the query) or sha256, a size increase or decrease, files added or removed, repo_id; 0.9.0; [sources.md](sources.md), "Review marks") — held until confirmed with evidence by `genmodelfit review approve` |
 
 - An entry with no files at all is held on every file-related check (an empty list does not pass).
 - A template with no `openSource` entry is treated as a template that runs locally.

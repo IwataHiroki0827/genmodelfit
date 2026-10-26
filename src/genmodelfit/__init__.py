@@ -100,7 +100,8 @@ def recommend(
     db: Database | None = None,
     comfyui_version: str | None = None,
 ) -> list[Fit]:
-    """おすすめ順の一覧(先頭が一番のおすすめ)。CLI の `recommend` と同じ並べ方。
+    """おすすめ順の一覧(先頭が一番のおすすめ)。`recommend --json` と同じ並べ方
+    (CLI の表は自動のおすすめ(Verified)を使わずに並べる。#84)。
 
     1 件 = 1 モデル(同じ重みの系統と大きさ。精度・使い方だけ違うワークフローはまとめ、段階が良く精度が
     高いものを出す。ほかは fit.workflows / fit.variants)。all_workflows=True ならワークフローごと。

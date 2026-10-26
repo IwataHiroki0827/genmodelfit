@@ -2,7 +2,7 @@
 
 [English](gate.md) · **日本語**
 
-`auto: true`(表の Verified)の規則を説明するページです。人が確かめずに PC 初心者へ出してよいモデルを、どう決めているかをまとめています。
+`auto: true`(`info` の Verified)の規則を説明するページです。人が確かめずに PC 初心者へ出してよいモデルを、どう決めているかをまとめています。
 一覧を使うアプリの開発者と、規則や一覧を変えるコントリビューター向けです。
 
 ## 目次
@@ -64,7 +64,7 @@ r.auto, r.held_by, r.to_dict()
 
 - `checks` は下の表の順に並ぶ。ComfyUI のモデル(`runtime` が `comfyui` か null)は `app_runtime` を除く 10 個。
 - `runtime` が `comfyui` でも null でもないモデルは、`official_workflow`・`custom_nodes`・`comfyui_version` の位置に `app_runtime` が 1 つ入って 8 個。
-- `held_by[0]`(最初に落ちた条件)は、表の Verified の列(0.5.0 までは Auto。JSON の `auto` を表に出したもの)に短い名前(`workflow` など)で出る。`gate --only-held` には `held:<id>` で出る。
+- `held_by[0]`(最初に落ちた条件)は `gate --only-held` に `held:<id>` で出る。`info` は条件ごとに [ok] / [NG] を出す。`recommend` / `fit` の表には Verified の列はもう無い(#84)。
 - `detail` は人が読む文で、表示の言語(`en` / `ja`。`--lang`・`GENMODELFIT_LANG`)で出る(文言は変わりうる。機械は `id` と `passed` を見る)。
 
 ## 条件
@@ -81,7 +81,7 @@ r.auto, r.held_by, r.to_dict()
 | `sha256` | すべてのファイルに 64 桁の 16 進の sha256 がある | Civitai のファイルなど |
 | `content` | 無検閲(`content: uncensored`)でない | 無検閲(`--allow-uncensored-auto` で外せる) |
 | `size_known` | すべてのファイルの大きさが分かり、ファイルの一覧が完全(`files_complete` が false でない) | 大きさ不明、ファイルの記載なし |
-| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。表の Verified の列では `review`。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。[schema.ja.md](schema.ja.md)「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。[sources.ja.md](sources.ja.md)「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
+| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。[schema.ja.md](schema.ja.md)「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。[sources.ja.md](sources.ja.md)「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
 
 - ファイルが 1 つも書かれていない項目は、ファイルについての条件がすべて保留になる(空なら通る、にはしない)。
 - `openSource` の記載が無いテンプレートは、ローカルで動くテンプレートとして通す。

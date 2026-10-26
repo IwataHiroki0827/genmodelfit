@@ -6,12 +6,11 @@
 
 - 先頭に PC と「何件中何件を出したか・隠した件数と理由」、末尾に印の説明
 - 幅 100 文字の端末で崩れない。モデル名は残りの幅を全部使い、長い名前は真ん中を省略記号で詰める
-  (狭い端末では Disk → Mem% → License → Verified → Prec → Use の順に列を外す)
+  (狭い端末では Disk → Mem% → License → Prec → Use の順に列を外す)
 - 段階は色と「●」で分ける。色の無い端末でも文字で分かる(NO_COLOR やパイプ出力では色を付けない)。
   絵文字は Windows の端末(cp932)で幅が崩れるので使わない
 - VRAM は判定に使った値(m = 実測)。Mode は GPU / GPU~(部品を順に載せ替え)/ GPU+RAM(逃がす)/ CPU / -(動かない)
-- Verified(0.5.0 までは Auto。JSON の auto)は自動でおすすめに出せれば yes、出せなければ
-  最初に落ちた条件の短い名前
+- 自動のおすすめ(gate。JSON の auto)の列(Verified)は外した(#84)。info と gate で出す
 - 「?」は分からない(精度・ライセンス・大きさ = 判定していない)、「-」は当てはまらない
   (動かないので Mode が無い、CPU で動くので VRAM が無い、GPU が無いので Mem% が無い、など)。
   #30 で使い分けをそろえた
@@ -34,7 +33,7 @@ from . import i18n
 from .groups import precision_label
 from .i18n import tr
 from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
-from .tasks import MODALITY_LABEL
+from .tasks import MODALITY_LABEL, USES
 
 LEVEL_STYLE = {
     "perfect": "bold green",
@@ -45,20 +44,6 @@ LEVEL_STYLE = {
 }
 LEVEL_LABEL = FIT_LABEL
 MARK = "●"  # 段階の印(絵文字ではない記号)
-# 落ちた条件の id(gate.py)を、表に収まる短い名前にする
-CHECK_LABEL = {
-    "license": "license",
-    "gated": "gated",
-    "official_workflow": "workflow",
-    "custom_nodes": "nodes",
-    "comfyui_version": "comfyui",
-    "url_reachable": "url",
-    "sha256": "sha256",
-    "content": "content",
-    "size_known": "size",
-    "app_runtime": "runtime",
-    "reviewed": "review",
-}
 # 隠した理由の表示名(recommend.HIDDEN_KEYS)
 HIDDEN_LABEL = {
     "modality": "other types",
@@ -111,16 +96,15 @@ COLUMN_WIDTH = {
     "Status": 11,
     "Score": 5,
     CONTENT_COLUMN: 8,
-    "Use": 7,
+    "Use": 9,  # 「gen,edit」と、一番長い用途 1 つ +「,…」(「lipsync,…」)が収まる幅(#84)
     "Prec": 4,
     "VRAM": 5,
     "Mem%": 4,
     "Mode": 7,
     "Disk": 4,
     "License": 10,
-    "Verified": 8,  # 0.6.0 で Auto から名前を変えた(JSON の auto・held_by はそのまま)
 }
-DROP_ORDER = ("Disk", "Mem%", "License", "Verified", "Prec", "Use")
+DROP_ORDER = ("Disk", "Mem%", "License", "Prec", "Use")
 
 
 def output_width(file=None) -> int:
@@ -312,17 +296,6 @@ def columns_for(width: int, with_type: bool = True, with_content: bool = False) 
     return cols
 
 
-def _auto_cell(gate: dict[str, Any] | None) -> Text:
-    if not gate:
-        return Text("-", style="dim")
-    if gate.get("auto"):
-        return Text("yes", style="green")
-    failed = [c.get("id", "?") for c in gate.get("checks", []) if not c.get("passed")]
-    if not failed:
-        return Text("held", style="yellow")
-    return Text(CHECK_LABEL.get(failed[0], failed[0]), style="yellow")
-
-
 def _gb(v: float) -> str:
     """GiB の値を 4 桁に収める(100 以上は整数、1000 以上は 999+)。"""
     if v < 99.95:
@@ -373,10 +346,34 @@ def mode_cell(e, system) -> str:
     return label
 
 
+def row_uses(f, grouped: bool = True) -> list[str]:
+    """表の Use に出す用途(#84)。先頭は行自身の用途(f.use: --task で合った用途か代表の用途。幅が足りなくても
+    見えるように)、そのあとに仲間のワークフロー(fit.workflows。絞り込みで隠した仲間も)の用途を重複なく
+    USES の順に。--all-workflows(grouped=False)はその行の用途だけ。分からなければ「?」。"""
+    own = getattr(f, "use", "") or "?"
+    if not grouped:
+        return [own]
+    rest = {w.get("use") or "?" for w in getattr(f, "workflows", []) or []} - {own}
+    order = [*USES, "?"]
+    return [own, *sorted(rest, key=lambda u: (order.index(u) if u in order else len(order), u))]
+
+
+def use_text(uses: Sequence[str], width: int) -> str:
+    """用途を「gen,edit」のように並べる。幅を超えるときは、収まるところまでの用途の後ろに「…」を付ける
+    (用途の途中では切らない。全部は info か --all-workflows で見る)。"""
+    text = ",".join(uses)
+    if cell_len(text) <= width:
+        return text
+    out = uses[0]
+    for u in uses[1:]:
+        if cell_len(f"{out},{u},…") > width:
+            break
+        out = f"{out},{u}"
+    return f"{out},…" if cell_len(f"{out},…") <= width else f"{out[: width - 1]}…"
+
+
 def _use_cell(f, grouped: bool) -> Text:
-    use = getattr(f, "use", "") or "?"  # 用途が分からない
-    n = len(getattr(f, "workflows", []) or []) if grouped else 0
-    return Text.assemble(use, (f"+{n}", "dim") if n else "")
+    return Text(use_text(row_uses(f, grouped), COLUMN_WIDTH["Use"]))
 
 
 def content_column_wanted(fits: Sequence, content: str | None = None) -> bool:
@@ -450,7 +447,6 @@ def build_table(
             "Mode": Text(mode_cell(e, system), style="red" if e.fit == "too_tight" else ""),
             "Disk": Text(_gb(e.disk_gb) if e.disk_gb else "?"),
             "License": Text(m.license or "?"),
-            "Verified": _auto_cell(f.gate),
         }
         t.add_row(*(cells[c] for c in left), name, *(cells[c] for c in right))
     return t
@@ -596,7 +592,7 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Verified, Perfect/Good, Marginal, Score.",
+    "auto": "Order: runs, Perfect/Good, Marginal, Score.",
     "type": "Order: Type, Status, Score (--sort).",
     "score": "Order: Status, Score (all types).",
     "vram": "Order: runs, VRAM (least first).",
@@ -605,7 +601,7 @@ ORDER_TEXT = {
 }
 # 日本語(#76。列の名前・段階の名前・Mode の印は表と同じ英語のまま)
 ORDER_TEXT_JA = {
-    "auto": "並び: 動く → Verified → Perfect/Good → Marginal → Score。",
+    "auto": "並び: 動く → Perfect/Good → Marginal → Score。",
     "type": "並び: Type → Status → Score(--sort)。",
     "score": "並び: Status → Score(種類をまたいで)。",
     "vram": "並び: 動くもの → VRAM の少ない順。",
@@ -621,14 +617,21 @@ def legend(
     order: str = "auto",
     with_content: bool | None = None,
     system=None,
+    json_first: bool | None = None,
 ) -> list[str]:
+    """表の下の説明。json_first: 「--json は自動のおすすめを先に並べる」の行を出すか(None は order == "auto"。
+    --auto-only では表と JSON の並びが同じなので CLI は False を渡す。#84)。"""
+    if json_first is None:
+        json_first = order == "auto"
     system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
     best = system.best_gpu if system is not None else None
     non_nvidia = best is not None and best.vendor != "nvidia"
     community = any(getattr(f.estimate, "basis_detail", "") == "measured_community" for f in fits)
     shown = content_column_wanted(fits) if with_content is None else with_content
     if i18n.get_language() == "ja":
-        return _legend_ja(fits, hidden, grouped, order, shown, system_marks, non_nvidia, community)
+        return _legend_ja(
+            fits, hidden, grouped, order, shown, system_marks, non_nvidia, community, json_first
+        )
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
         *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
@@ -647,15 +650,17 @@ def legend(
             if non_nvidia
             else []
         ),
-        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short. Verified: yes, or first failed check.",
+        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short.",
     ]
     if grouped:
         out.append(
-            "One row per model: Prec = best precision that fits, +N = other workflows (--all-workflows)."
+            "One row per model: Prec = best precision that fits, Use = workflow uses (info, --all-workflows)."
         )
     out.append(
         "Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md)."
     )
+    if json_first:  # recommend の --json だけ並びが表と違う(#84)
+        out.append("--json lists auto-recommendable models first (schema.md).")
     if shown:
         out.append("Censored: N = safety filter removed / adult model")
     if hidden.get("uncensored"):
@@ -682,6 +687,7 @@ def _legend_ja(
     system_marks: bool,
     non_nvidia: bool,
     community: bool,
+    json_first: bool = False,
 ) -> list[str]:
     """表の下の説明の日本語(#76)。英語と同じ項目を同じ順に、1 項目 1 行で。"""
     out = [
@@ -702,13 +708,15 @@ def _legend_ja(
             if non_nvidia
             else []
         ),
-        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。Verified = yes か最初に落ちた条件。",
+        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。",
     ]
     if grouped:
         out.append(
-            "1 行に 1 モデル: Prec = 載る中で一番高い精度、+N = ほかのワークフローの数(--all-workflows)。"
+            "1 行に 1 モデル: Prec = 載る中で一番高い精度、Use = ワークフローの用途(info、--all-workflows)。"
         )
     out.append("m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。")
+    if json_first:
+        out.append("--json は自動でおすすめしてよいものを先に並べる(schema.md)。")
     if shown:
         out.append("Censored: N = 安全のための絞り込みを外したモデル・成人向けのモデル")
     if hidden.get("uncensored"):
@@ -738,6 +746,7 @@ def print_fit_table(
     grouped: bool = True,
     order: str = "auto",
     content: str | None = None,
+    json_first: bool | None = None,
 ) -> None:
     """PC の行 → 見出し(何件中何件・隠した理由)→ 表 → 説明。notes は末尾に足す一行の注意。
 
@@ -793,5 +802,8 @@ def print_fit_table(
         say(tr("(該当なし)", "(no match)"))
     else:
         con.print(build_table(fits, width=con.width, system=system, **kw))
-    for n in [*(legend(fits, hidden, grouped, order, kw["with_content"], system) if fits else []), *notes]:
+    for n in [
+        *(legend(fits, hidden, grouped, order, kw["with_content"], system, json_first) if fits else []),
+        *notes,
+    ]:
         say(n, "dim")
