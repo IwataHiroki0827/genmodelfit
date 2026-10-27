@@ -406,7 +406,8 @@ def english_only_lines(text: str) -> list[str]:
         if not s or JA.search(s):
             continue
         head = s.split()
-        if head[0] in ("Type", "ok"):  # 表の列の名前の行・contrib validate の結果の行(GPU の名前が入る)
+        # 表の列の名前の行・contrib validate の結果の行(結果の語 ok / notice と GPU の名前が入る)
+        if head[0] in ("Type", "ok", "notice"):
             continue
         if head[0] in MODALITIES and not (len(head) > 1 and _EN_WORD.match(head[1])):  # 表の行(種類 ● …)
             continue

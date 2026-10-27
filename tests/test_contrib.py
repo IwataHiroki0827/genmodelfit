@@ -18,7 +18,7 @@ import pytest
 from genmodelfit import cli, contrib
 from genmodelfit.calibrate import build_check_rows, build_rows, calibrate
 from genmodelfit.db import COMMUNITY_FILE, Database, bundled_text, load, parse_measurements
-from genmodelfit.estimate import estimate, pick_measurement, usable
+from genmodelfit.estimate import estimate, pick_measurement, usable, working_only
 from genmodelfit.models import BASIS_DETAILS, Gpu, Measurement, Settings, SystemInfo
 
 FIX = Path(__file__).parent / "fixtures" / "contrib"
@@ -690,7 +690,7 @@ def test_basis_ordering(db):
     assert e.vram_gb == round(floor, 2) < base.vram_gb
     assert (e.basis, e.basis_detail) == ("estimated", "measured_community")  # 値は実測ではない(下限)
     assert any("下限" in r for r in e.reasons)
-    mid = _community(high, peak_vram_gb=round(floor + 0.3, 2))  # 下限より上なら、そのまま使う
+    mid = _community(high, peak_vram_gb=round((floor + base.vram_gb) / 2, 2))  # 下限より上なら、そのまま使う
     e = est([*maint, mid])
     assert e.vram_gb == mid.peak_vram_gb < base.vram_gb and e.basis == "measured"
     # 1 件だけ・そろっていない(consistent でない)まとめも使う
@@ -765,12 +765,16 @@ def test_calibrated_spread_is_bounded(db):
 
 
 def test_torch_reserved_is_a_lower_bound(db):
-    """作者の torch_reserved の実測(CUDA の文脈を含まない)は「これ以上」としてだけ使う(RTX 3070 の 2 件)。
-    ほかの利用者の実測は物理的な下限まで下げてよい(上の試験)。"""
+    """作者の torch_reserved の実測(CUDA の文脈を含まない)は「これ以上」としてだけ使う。
+    ほかの利用者の実測は物理的な下限まで下げてよい(上の試験)。
+    #100: 同梱の RTX 3070 の 2 件は動的 VRAM(作業用メモリだけ)なので見積もりに使わない。全部 GPU に載せた
+    (offload none の)torch_reserved の実測として決まりを確かめる。"""
     for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
         entry = db.get(mid)
-        ms = [m for m in db.measurements if m.model_id == mid]
-        assert ms and all(m.vram_metric == "torch_reserved" for m in ms)
+        bundled = [m for m in db.measurements if m.model_id == mid]
+        assert bundled and all(m.vram_metric == "torch_reserved" and working_only(m) for m in bundled)
+        assert estimate(entry, pc(8), None, bundled).basis_detail == "estimated"  # 照合だけ(#100)
+        ms = _full_rows(bundled)
         with_m = estimate(entry, pc(8), None, ms)
         without = estimate(entry, pc(8), Settings(**{k: v for k, v in with_m.settings.items()}), [])
         assert with_m.vram_gb >= without.vram_gb > ms[0].peak_vram_gb
@@ -787,14 +791,21 @@ def _sizeless_sub(mid: str, peak: float, gpu: str = "NVIDIA GeForce RTX 3070") -
     d = good()
     d["system"]["gpu"]["name"] = gpu
     d["measurement"].update(
-        model_id=mid, peak_vram_gb=peak, settings={"precision": "fp16"}, offload="dynamic"
-    )
+        model_id=mid, peak_vram_gb=peak, settings={"precision": "fp16"}, offload="dynamic", vram_metric=None
+    )  # 全体の量の実測(torch_reserved で動的 VRAM の提出は作業用メモリだけなので見積もりに使わない。#100)
     return contrib.Submission(path="-", sha256=contrib.content_hash(d), data=d)
 
 
+def _full_rows(ms: list[Measurement]) -> list[Measurement]:
+    """作業用メモリだけの実測(動的 VRAM の torch_reserved。#100)を、全部 GPU に載せた実測(offload none)に
+    書き換えたもの。#100 より前の決まり(作者の torch_reserved は下限)を確かめる試験で使う。"""
+    return [Measurement(**{**vars(m), "offload": "none"}) if working_only(m) else m for m in ms]
+
+
 def _own(db) -> list[Measurement]:
-    """同梱の作者の実測だけ(同梱のほかの利用者のまとめの中身によらない試験にする)。"""
-    return [m for m in db.measurements if m.origin != "community"]
+    """同梱の作者の実測だけ(同梱のほかの利用者のまとめの中身によらない試験にする)。動的 VRAM の
+    torch_reserved の行(#100 から照合だけ)は、全部 GPU に載せた実測に書き換える(_full_rows)。"""
+    return _full_rows([m for m in db.measurements if m.origin != "community"])
 
 
 def test_no_size_input_is_decided_only_by_the_hand_table(db):
@@ -993,7 +1004,10 @@ def _upward(db, factor, models):
                 name="NVIDIA GeForce RTX 4090", vram_gb=24.0, arch="ada", compute_capability="8.9"
             )
             v = min(24.0, round(e0.vram_gb * factor * (1 + eps), 2))
-            d["measurement"].update(model_id=t.id, settings=sett, peak_vram_gb=v, note=f"x{i}")
+            # 全部 GPU に載せた実測(動的 VRAM の torch_reserved は作業用メモリだけ。#100)
+            d["measurement"].update(
+                model_id=t.id, settings=sett, peak_vram_gb=v, note=f"x{i}", offload="none"
+            )
             subs.append(contrib.Submission(path=f"p{i}", sha256=contrib.content_hash(d), data=d))
         out.append((t, subs))
     return out
@@ -1178,10 +1192,12 @@ def test_report_on_fixtures(fixture_report):
         ("image_sdxl_simple", "NVIDIA GeForce RTX 3070")
     ]
     assert check[0]["n_submissions"] == 3 and check[0]["measured_gb"] == 6.96
+    assert check[0]["quantity"] == "work"  # 動的 VRAM の torch_reserved は作業用メモリと比べる(#100)
     assert rep["n_fit"] == 9  # torch_reserved の提出は係数の合わせに入れない(照合だけ)
-    # 閾値 10% にすると、ほかの利用者の照合(+16%)が引っかかる。作者の照合(RTX 3070 の 2 件)は判定に入れない
+    # 閾値 10% にすると、SDXL の作者の実測の LOO(+12.5%。#100 の段ごとの式)が引っかかる。
+    # 作業用メモリだけの照合と作者の照合(RTX 3070)は判定に入れない
     assert rep["breach"] is True
-    assert {(b["kind"], b["model_id"]) for b in rep["breaches"]} == {("community_check", "image_sdxl_simple")}
+    assert {(b["kind"], b["model_id"]) for b in rep["breaches"]} == {("loo", "image_sdxl_simple")}
     assert set(rep["by_modality"]) >= {"image", "3d"}
     assert rep["by_modality"]["image"]["evaluable"] is True
 
@@ -1460,6 +1476,7 @@ def test_torch_reserved_measurement_sets_perfect_with_the_context_added(db):
         n_sources=2,  # 段階を決めるのは別々の出どころ 2 つ以上(#95)
         vram_metric="torch_reserved",
         gpu_backend="rocm",
+        offload="none",  # 全部 GPU に載せた実測(動的 VRAM の torch_reserved は作業用メモリだけ。#100)
     )
     b = estimate(entry, amd_pc(), None, [*maint, tr])
     assert b.fit == "perfect" and any("段階の上限(good)を外した" in r for r in b.reasons)
@@ -1489,6 +1506,7 @@ def test_measurement_vendor_prefers_the_recorded_backend(db):
             "gpu_vram_gb": 21.0,
             "peak_vram_gb": 8.0,
             "vram_metric": "torch_reserved",
+            "offload": "none",  # 動的 VRAM の torch_reserved は作業用メモリだけ(#100)
         }
     )
     assert measurement_vendor(mps) == "apple"

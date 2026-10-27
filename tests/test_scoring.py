@@ -136,18 +136,19 @@ def test_usage_ratio_per_run_mode(kw, label, want):
 
 
 def test_score_can_drop_with_more_vram(db):
-    """約束は段階だけ: VRAM が増えて代表がより重い精度・動かし方に替わると、使用率が上がり Score は
-    下がることがある(Z-Image Turbo: 12 GB は int8 で 100、16 GB は bf16 の GPU~ で 82.6。llmfit も同じ。
-    docs/scoring.md「Score」)。段階は下がらない。"""
+    """約束は段階だけ: VRAM が増えて代表がより重い動かし方に替わると、使用率が上がり Score は
+    下がることがある(Z-Image Turbo int8: 14 GB は GPU~ で 100、16 GB は全部載せで 82.3。llmfit も同じ。
+    docs/scoring.md「Score」。#100 の段ごとの式で、16 GB の代表は bf16 から int8 に替わった)。
+    段階は下がらない。"""
     from genmodelfit.models import fit_rank
 
     rows = {}
-    for v in (12, 16):
+    for v in (14, 16):
         sel = select(db, plain(v, 32), modality="image")
         rows[v] = next(f for f in sel.fits if f.group_key == "image:sfw:image turbo z")
-    assert rows[12].model.id == "image_z_image_turbo_int8" and rows[12].score == 100.0
-    assert rows[16].model.id == "image_z_image_turbo" and rows[16].score == pytest.approx(82.6, abs=0.1)
-    assert fit_rank(rows[16].estimate.fit) <= fit_rank(rows[12].estimate.fit)
+    assert rows[14].model.id == "image_z_image_turbo_int8" and rows[14].score == 100.0
+    assert rows[16].model.id == "image_z_image_turbo_int8" and rows[16].score == pytest.approx(82.3, abs=0.1)
+    assert fit_rank(rows[16].estimate.fit) <= fit_rank(rows[14].estimate.fit)
 
 
 # --- §4.3 人気 -------------------------------------------------------------------------------------
@@ -400,10 +401,15 @@ def test_f_allowlist_does_not_change_table_order_or_score(db):
 
 
 def test_g_measurements_without_size_are_used(db):
-    """(g) 大きさの入力の無いテンプレートの実測(BiRefNet・MoGe)は、その GPU の PC の判定に使われる(§3.4)。"""
+    """(g) 大きさの入力の無いテンプレートの実測(BiRefNet・MoGe)は、その GPU の PC の判定に使われる(§3.4)。
+    #100: 同梱の 2 件は動的 VRAM の torch_reserved(作業用メモリだけ)なので照合にだけ使う。全部 GPU に
+    載せた実測として決まり(大きさの無い実測が指定の無い判定と同じ設定になる)を確かめる。"""
+    from test_contrib import _full_rows
+
     system = nvidia(RTX_3070, 8.0)
     for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
-        e = estimate(db.get(mid), system, None, db.measurements)
+        assert estimate(db.get(mid), system, None, db.measurements).basis_detail == "estimated", mid
+        e = estimate(db.get(mid), system, None, _full_rows(db.measurements))
         assert e.basis_detail != "estimated" and e.sample_count == 1, mid
         assert any("RTX 3070" in r for r in e.reasons), mid
 
@@ -467,7 +473,7 @@ def test_fake_small_submission_does_not_make_flux_perfect(db):
 
 def test_one_source_with_many_files_does_not_set_the_level(db):
     """1 人(同じ PR)が 4 件のほぼ同じ提出を出しても、出どころは 1 つ。段階は決めない。"""
-    subs = [_sub(p) for p in (6.0, 6.01, 6.02, 6.03)]
+    subs = [_full_sub(p) for p in (6.0, 6.01, 6.02, 6.03)]
     for i, sub in enumerate(subs):
         sub.path = f"p{i}.json"
     rows = contrib.aggregate(subs, {s.sha256: "commit-a" for s in subs})
@@ -490,9 +496,12 @@ def test_one_source_with_many_files_does_not_set_the_level(db):
 def test_author_one_and_community_one_agree(db):
     """作者の実測 1 行 + ほかの利用者の提出 1 つがそろえば段階を決める。
     そろわなければ(幅 15% 超・OOM)決めない。"""
+    from test_contrib import _full_rows
+
     entry = db.get("utility_birefnet_remove_background")
     system = nvidia(RTX_3070, 8.0)
-    own = [m for m in db.measurements if m.model_id == entry.id]
+    # 同梱の行は動的 VRAM の torch_reserved(作業用メモリだけ。#100)なので、全部 GPU に載せた実測に書き換える
+    own = _full_rows([m for m in db.measurements if m.model_id == entry.id])
     assert len(own) == 1
     s = own[0].settings
     prec = gpu_precision(entry, system, s)
@@ -543,9 +552,18 @@ def test_author_rows_are_one_source(db):
 # --- #95 のチェッカーの指摘 -------------------------------------------------------------------------
 
 
+def _full_sub(peak: float):
+    """全部 GPU に載せた実測の提出(offload none)。bench の動的 VRAM の torch_reserved の提出は
+    作業用メモリだけで、段階を決めるのに使わない(#100)ので、出どころの数え方の試験はこちらで行う。"""
+    s = _sub(peak)
+    s.data["measurement"]["offload"] = "none"
+    s.sha256 = contrib.content_hash(s.data)
+    return s
+
+
 def _split_rows(kind: str):
     """1 つの PR(同じコミット)の 2 つの提出が、GPU の型番 ID の有無か測り方の違いで 2 行に分かれる。"""
-    a, b = _sub(6.0), _sub(6.05)
+    a, b = _full_sub(6.0), _full_sub(6.05)
     if kind == "pci":
         b.data["system"]["gpu"]["pci_id"] = "10de:2484"
     else:

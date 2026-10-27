@@ -491,7 +491,7 @@ score = round(memory_fit, 1)
 - 0.10 までの式(`0.45·fit + 0.15·headroom + 0.20·readiness + 0.10·basis + 0.10·popularity`)と内訳の鍵は無くした。
 
 **約束**: VRAM やメモリを増やしても、段階は下がらない。メモリを増やしても `score` は下がらない。
-VRAM を増やすと、代表がより重い精度・動かし方に替わって `score` が下がることはある(例: Z-Image Turbo は 12 GB で 100、16 GB で 82.6。0.11.0。llmfit も同じ)。
+VRAM を増やすと、代表がより重い精度・動かし方に替わって `score` が下がることはある(例: Z-Image Turbo int8 は 14 GB で GPU~ の 100、16 GB で全部載せの 82.3。0.11.0。llmfit も同じ)。
 `tests/test_invariants.py` と `tests/test_scoring.py` で試験している。
 
 **例外: 同じ GPU の実測が決めた段階**(0.9.1、0.11.0)。
@@ -543,6 +543,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 そのほかの決まり:
 - 同じ設定では、そのような行が保守者 / この PC の行より先に来る。
 - 保守者の `torch_reserved` の行は下限のまま(上げるだけ)。
+- 作業用メモリだけの行(`vram_metric: torch_reserved` かつ `offload: dynamic`。#100、`estimate.working_only`)は、ここでは使わない。動的 VRAM は重みを必要なときだけ読み込み・追い出すので、重みを含まない。段ごとの山を測れるようになるまでは [accuracy.ja.md](accuracy.ja.md) の照合にだけ使う(ずらしにも段階にも使わない)。
 - 上限を当てたときは、値は実測そのものではない。`basis` は `estimated` で、`basis_detail` は `measured_community`(または `calibrated`)のまま。
 - `basis` が `measured` で、実測が GPU の上限に張り付いていなければ、`vram_gb` は実測の値と等しい。
 - [accuracy.md](accuracy.ja.md)「ほかの利用者の実測」を参照。
@@ -599,7 +600,7 @@ ComfyUI が fp32 で計算する GPU(`compute_dtype: "fp32"`: Maxwell、一部�
 大きさが不明のモデル(`unknown_size: true`)は、段階の代わりに `unknown` になる。定数は `estimate.FIT_BANDS`。
 
 **1 つのワークフローに拡散モデルが複数ある場合**(0.1.1、Issue #28):
-- ComfyUI はサンプラーを順に動かす。次のサンプラーがモデルを読み込むとき、`load_models_gpu` が `free_memory` を呼び、読み込み済みで今使わないモデルを必要な分だけ降ろす(ComfyUI のコミット `b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c`: `comfy/samplers.py:1241` → `comfy/sampler_helpers.py:201` → `comfy/model_management.py:1001`。降ろすのは `:905` / `:919`。dynamic VRAM のモデルは必要に応じて読み込む。`:914`)。
+- ComfyUI はサンプラーを順に動かす。次のサンプラーがモデルを読み込むとき、`load_models_gpu` が `free_memory` を呼び、読み込み済みで今使わないモデルを必要な分だけ降ろす(ComfyUI のコミット `426f5eea52a7ece1dd599fff4cb6cd1f352ddd24`: `comfy/samplers.py:1242` → `comfy/sampler_helpers.py:201` → `comfy/model_management.py:1001`。降ろすのは `:905` / `:919`。dynamic VRAM のモデルは必要に応じて読み込む。`:914`)。
 - だから載せ替え(`GPU~`)と逃がす量は、サンプラー 1 つ分の組を 1 つずつ数える: そのモデル + MODEL 入力のファイル(LoRA)+ すべてで共有するノイズ除去の段階のファイル(ControlNet、モデルのパッチ)。
 - 全部載せの量とシステム RAM は、全部を数える(降ろしたモデルは RAM に残る)。
 - 組は `ModelEntry.sampler_stages`(`update` がテンプレートのグラフから読む)から来る。それが null(未確認)のときは、「主なファイルの名前が `*high_noise*` と `*low_noise*`」という規則から決める(high_noise / low_noise という名前の LoRA はその組に入り、ほかは共有)。`estimate.expert_sets`。
@@ -908,7 +909,7 @@ Python の `gmf.info(model_id)` は、id の完全一致だけで探し、無け
 
 `review`(object \| null、任意。0.6.0、#42): 確認の印。「review」を参照。null は ok(古い一覧)。
 
-`comfy_family` / `comfy_vae`(str \| null、任意。#21 で追加。無い古いファイルも読める): ComfyUI のモデルの系統と VAE の種類(`families.FAMILIES` / `families.VAES` のキー)。`update` が主なファイル / VAE のファイル名から設定する。bf16 の無い GPU で ComfyUI が fp32 で計算するかを決めるためだけに使う([hardware.md](hardware.ja.md)「系統の表」)。null は不明(見積もりは変えない。bf16 の無い GPU では、理由にそう書く)。null のときは、推定器がファイル名からもう一度導く。
+`comfy_family` / `comfy_vae`(str \| null、任意。#21 で追加。無い古いファイルも読める): ComfyUI のモデルの系統と VAE の種類(`families.FAMILIES` / `families.VAES` のキー)。`update` が主なファイル / VAE のファイル名から設定する。bf16 の無い GPU で ComfyUI が fp32 で計算するかを決めるのと([hardware.md](hardware.ja.md)「系統の表」)、#100 からは段ごとの作業用メモリの式を選ぶのに使う(`working.py`。[accuracy.ja.md](accuracy.ja.md)「式」)。#100 で VAE の種類 `wan22`(Wan 2.2)・`qwen21`(Qwen Image 2.1)・`flux2`(Flux2 の VAE)・`oobleck`(ACE-Step 1.5・Stable Audio Open)・`yue2`・`pixel`(ピクセル空間)を `wan` / `kl` / null から分けた。`schema_version` は上げない(古い一覧は前の鍵のままで、推定器は系統の VAE に読み替える)。null は不明(見積もりは変えない。bf16 の無い GPU では、理由にそう書く)。null のときは、推定器がファイル名からもう一度導く。
 
 ModelFile: `name`、`url`、`sha256`、`size_bytes`、`directory`(ComfyUI のフォルダ)、`repo_id`、`license`、`license_name`、`gated`(bool \| null。null は不明)、`role`(`main` / `text_encoder` / `vae` / `clip_vision` / `lora` / `other`)、`license_from`(ライセンスを読んだリポジトリ: 再梱包のファイルでは上流のリポジトリ、既知の部品では表の上流。リポジトリ id で、パスではない)、`repo_license`(置いてあるリポジトリ自身のラベル。上流のものと違うとき)、`license_url`、`license_path`(str[]: 確かめた導出の経路。置いてあるリポジトリ → base_model … → 決めたリポジトリ)、`license_evidence`(str[]: `license_unverified: …`、`component:<key>`、`family:<key>`、`upstream_gated: <repo>`。部品の上流が利用条件への同意を求める)、`head_status`(int \| null: リダイレクトを辿らない匿名の HEAD のステータス。`update` が記録する。null は未確認)、`head_checked_at`(その HEAD の UTC ISO-8601)、`header_precision`(str \| null: ファイル自身の見出しから読んだ精度。safetensors: 最もバイト数の多い dtype、`F32`→`fp32`、`F16`→`fp16`、`BF16`→`bf16`、`F8_*`→`fp8`、`I8`→`int8`、4 ビットを詰めた `U8` → null。GGUF: `general.file_type`、無ければ最も多いテンソルの型を `gguf-q8_0` などで)、`header_params`(int \| null: ファイルの全テンソルの要素数の合計)。
 この 2 つは、Hugging Face の主な重みのファイルだけについて `update` / `update --inspect-only` が読む(`headers.py`。最初の 8 バイトと JSON の見出し、GGUF では最初の 1〜数 MiB の範囲指定 GET。重みは決して取らない)。null は未読。
@@ -929,7 +930,7 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `gpu_vram_gb` | float | VRAM の合計。bench は `/system_stats` の `vram_total` を GiB で小数 2 桁に丸めて保存する(例: `7.99`)。古い同梱の行は公称の大きさ(`16`) |
 | `offload` | str \| null | ComfyUI がモデルをどう置いたか: `none`(全部 GPU)/ `dynamic`(dynamic VRAM)/ `partial`(一部だけ読み込み)/ `lowvram`(`--lowvram` / `--novram`)/ `oom`(メモリ不足) |
 | `outcome` | str | `ok`(終わった)/ `oom`(メモリ不足)/ `error`(ほかの理由で失敗)。既定は `"ok"` |
-| `vram_metric` | str \| null | `peak_vram_gb` の取り方: `torch_reserved`(bench: ComfyUI のプロセスの torch の確保のピーク。CUDA コンテキストは除く)、または null(記録なし。同梱の RTX 5080 の行)。較正は null の行だけを使う(`calibrate.CALIBRATION_METRIC`) |
+| `vram_metric` | str \| null | `peak_vram_gb` の取り方: `torch_reserved`(bench: ComfyUI のプロセスの torch の確保のピーク。CUDA コンテキストは除く)、または null(記録なし。同梱の RTX 5080 の行)。較正は null の行だけを使う(`calibrate.CALIBRATION_METRIC`)。#100: `torch_reserved` で `offload` が `dynamic` の行は重みを含まない(作業用メモリだけ。`estimate.working_only`)。見積もりのずらしにも段階にも使わず、照合では作業用メモリの見積もりと比べる。それ以外の `torch_reserved` の行は重みを含む(全体の下限) |
 | `origin` | str \| null | (#34)`measurements_community.json` の行(ほかの利用者の提出を `contrib aggregate` でまとめたもの)は `community`。保守者の同梱の行と、この PC の bench の結果は null |
 | `n_submissions` | int \| null | community の行: グループの提出数(外れ値と OOM を含む)。ファイルには `n_outliers`、`spread_mad_gb`、`spread_rel_pct`、`peak_vram_min_gb` / `peak_vram_max_gb`、`outlier_submissions`、`submissions`(各ファイルの sha8)も残るが、読み手は無視する |
 | `n_used` | int \| null | community の行: 中央値の元になった `ok` の提出数(外れ値を除く)。0.10 までは `Estimate.sample_count` だった(0.11.0 からは `n_sources`) |
@@ -982,6 +983,8 @@ bench が Measurement を埋める方法(測り方):
 利用者の実測の提出(#34)。
 genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。`contrib share`(`bench --share`)は、ブラウザでファイルを足す GitHub のページの URL を出すだけ(#90)。
 コードは `src/genmodelfit/contrib.py`。
+
+動的 VRAM の bench の提出(`vram_metric: torch_reserved`・`offload: dynamic`)は作業用メモリだけを持つ(#100)。まとめて残すが、段ごとの山を測れるようになるまでは照合だけに使う(見積もりのずらしにも段階にも使わない。「Measurement」と [accuracy.ja.md](accuracy.ja.md))。
 
 ### Submission file (`contrib_schema` 1・2) / 提出ファイル
 

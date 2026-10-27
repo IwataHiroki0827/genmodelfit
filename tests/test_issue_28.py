@@ -621,7 +621,9 @@ def test_recommend_keeps_z_image_turbo_on_top_after_precision_upgrade(db):
     rows = recommend(db, pc(24), modality="image", limit=6)
     assert rows[0].model.id == "image_z_image_turbo" and rows[0].estimate.fit == "good"
     clean = [f for f in rows if runs_clean(f.estimate) and f.auto]
-    assert [f.score for f in clean] == sorted((f.score for f in clean), reverse=True)
+    # 逃がさずに載るものは 1 つの段階として並べる(段階の中は公式 → 人気 → Score。recommend.list_key)
+    assert all(f.estimate.fit in ("perfect", "good") for f in clean)
+    assert [list_key(f) for f in rows] == sorted(list_key(f) for f in rows)
 
 
 def test_level_cap_in_json_and_legend(capsys):

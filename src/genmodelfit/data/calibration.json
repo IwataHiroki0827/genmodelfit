@@ -1,40 +1,27 @@
 {
  "source": "calibration.json",
- "date": "2026-10-20",
- "method": "全部載せの VRAM = overhead + 重み + 作業用メモリ。5 係数を相対誤差の 2 乗和(張り付いた実測は片側) + 事前値への罰(重み 0.0001)で、範囲付きの座標降下により最小化。精度は leave-one-out",
+ "date": "2026-10-27",
+ "method": "全部載せの VRAM = overhead + 重み + 作業用メモリ。作業用メモリは段ごとに当てられるモデルは ComfyUI の見込み max(S, V_eff, T)(係数なし)、ほかは種類ごとの式。合わせるのは act_3d_gb だけで、固定分と画像・動画・音声の係数は 0.10 の値に固定(frozen)。相対誤差の 2 乗和(張り付いた実測は片側) + 事前値への罰(重み 0.0001)を、範囲付きの座標降下で最小化。精度は leave-one-out",
  "n": 9,
  "n_censored": 3,
+ "n_staged": 7,
  "coefficients": {
   "overhead_gb": 1.472,
   "act_image_gb_per_mp": 0.2284,
   "act_video_gb_per_mp": 9.8704,
   "act_audio_gb_per_min": 0.0455,
-  "act_3d_gb": 0.784
+  "act_3d_gb": 0.7839
+ },
+ "frozen": {
+  "overhead_gb": 1.472,
+  "act_image_gb_per_mp": 0.2284,
+  "act_video_gb_per_mp": 9.8704,
+  "act_audio_gb_per_min": 0.0455
  },
  "prior": {
-  "overhead_gb": 0.6,
-  "act_image_gb_per_mp": 0.5,
-  "act_video_gb_per_mp": 2.4,
-  "act_audio_gb_per_min": 1.0,
   "act_3d_gb": 2.0
  },
  "bounds": {
-  "overhead_gb": [
-   0.3,
-   1.5
-  ],
-  "act_image_gb_per_mp": [
-   0.0,
-   4.0
-  ],
-  "act_video_gb_per_mp": [
-   0.0,
-   30.0
-  ],
-  "act_audio_gb_per_min": [
-   0.0,
-   5.0
-  ],
   "act_3d_gb": [
    0.0,
    4.0
@@ -62,9 +49,9 @@
    "note": null,
    "measured_gb": 13.2,
    "censored": false,
-   "fit_predicted_gb": 12.94,
-   "loo_predicted_gb": 12.85,
-   "loo_error_pct": -2.7,
+   "fit_predicted_gb": 13.87,
+   "loo_predicted_gb": 13.87,
+   "loo_error_pct": 5.1,
    "weights_only_error_pct": -14.1,
    "loo_ok": null,
    "censored_trivial": false
@@ -82,9 +69,9 @@
    "note": null,
    "measured_gb": 15.0,
    "censored": true,
-   "fit_predicted_gb": 20.88,
-   "loo_predicted_gb": 20.88,
-   "loo_error_pct": 39.2,
+   "fit_predicted_gb": 21.8,
+   "loo_predicted_gb": 21.8,
+   "loo_error_pct": 45.4,
    "weights_only_error_pct": 28.5,
    "loo_ok": true,
    "censored_trivial": true
@@ -102,9 +89,9 @@
    "note": null,
    "measured_gb": 8.0,
    "censored": false,
-   "fit_predicted_gb": 8.09,
-   "loo_predicted_gb": 8.38,
-   "loo_error_pct": 4.7,
+   "fit_predicted_gb": 9.0,
+   "loo_predicted_gb": 9.0,
+   "loo_error_pct": 12.5,
    "weights_only_error_pct": -19.2,
    "loo_ok": null,
    "censored_trivial": false
@@ -123,9 +110,9 @@
    "note": "解像度は長辺 512px。縦横比は記録が無いので正方形と仮定",
    "measured_gb": 13.3,
    "censored": false,
-   "fit_predicted_gb": 13.21,
-   "loo_predicted_gb": 11.02,
-   "loo_error_pct": -17.2,
+   "fit_predicted_gb": 11.34,
+   "loo_predicted_gb": 11.34,
+   "loo_error_pct": -14.7,
    "weights_only_error_pct": -31.2,
    "loo_ok": null,
    "censored_trivial": false
@@ -144,9 +131,9 @@
    "note": "解像度は長辺 640px。縦横比は記録が無いので正方形と仮定",
    "measured_gb": 15.8,
    "censored": true,
-   "fit_predicted_gb": 23.31,
-   "loo_predicted_gb": 23.31,
-   "loo_error_pct": 47.5,
+   "fit_predicted_gb": 19.35,
+   "loo_predicted_gb": 19.35,
+   "loo_error_pct": 22.5,
    "weights_only_error_pct": 7.0,
    "loo_ok": true,
    "censored_trivial": true
@@ -165,9 +152,9 @@
    "note": "文章から動画。画像から動画より 0.8 GB 少ない",
    "measured_gb": 15.0,
    "censored": true,
-   "fit_predicted_gb": 23.31,
-   "loo_predicted_gb": 23.31,
-   "loo_error_pct": 55.4,
+   "fit_predicted_gb": 19.35,
+   "loo_predicted_gb": 19.35,
+   "loo_error_pct": 29.0,
    "weights_only_error_pct": 12.7,
    "loo_ok": true,
    "censored_trivial": true
@@ -184,9 +171,9 @@
    "note": null,
    "measured_gb": 10.8,
    "censored": false,
-   "fit_predicted_gb": 10.83,
-   "loo_predicted_gb": 11.18,
-   "loo_error_pct": 3.5,
+   "fit_predicted_gb": 11.79,
+   "loo_predicted_gb": 11.79,
+   "loo_error_pct": 9.2,
    "weights_only_error_pct": -13.5,
    "loo_ok": null,
    "censored_trivial": false
@@ -232,8 +219,8 @@
   "target_abs_pct": 20.0,
   "n_point": 6,
   "n_censored": 3,
-  "mean_abs_pct": 6.5,
-  "max_abs_pct": 17.2,
+  "mean_abs_pct": 8.8,
+  "max_abs_pct": 14.7,
   "weights_only_mean_abs_pct": 22.8,
   "censored_ok": 3,
   "censored_trivial": 3,
@@ -242,8 +229,8 @@
    "3d",
    "image"
   ],
-  "evaluable_mean_abs_pct": 4.6,
-  "evaluable_max_abs_pct": 6.4,
+  "evaluable_mean_abs_pct": 7.2,
+  "evaluable_max_abs_pct": 12.5,
   "target_met": true,
   "by_modality": {
    "3d": {
@@ -255,19 +242,19 @@
    "image": {
     "n_point": 2,
     "n_censored": 1,
-    "max_abs_pct": 4.7,
+    "max_abs_pct": 12.5,
     "target_met": true
    },
    "music": {
     "n_point": 1,
     "n_censored": 0,
-    "max_abs_pct": 3.5,
+    "max_abs_pct": 9.2,
     "target_met": null
    },
    "video": {
     "n_point": 1,
     "n_censored": 2,
-    "max_abs_pct": 17.2,
+    "max_abs_pct": 14.7,
     "target_met": null
    }
   }
@@ -284,8 +271,9 @@
    "settings": {},
    "measured_gb": 1.25,
    "censored": false,
-   "predicted_gb": 2.13,
-   "error_pct": 70.0
+   "quantity": "work",
+   "predicted_gb": 0.24,
+   "error_pct": -80.8
   },
   {
    "model_id": "3d_moge_perspective_to_mesh",
@@ -300,8 +288,26 @@
    },
    "measured_gb": 0.72,
    "censored": false,
-   "predicted_gb": 2.87,
-   "error_pct": 298.9
+   "quantity": "work",
+   "predicted_gb": 0.78,
+   "error_pct": 8.9
+  },
+  {
+   "model_id": "utility_moge_depth_estimation",
+   "modality": "image",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "origin": "maintainer",
+   "n_submissions": null,
+   "vram_metric": "torch_reserved",
+   "settings": {
+    "precision": "fp16"
+   },
+   "measured_gb": 0.78,
+   "censored": false,
+   "quantity": "work",
+   "predicted_gb": 0.96,
+   "error_pct": 22.8
   }
  ]
 }

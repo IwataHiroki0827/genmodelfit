@@ -471,7 +471,7 @@ score = round(memory_fit, 1)
 
 **Promise**: more VRAM or RAM never lowers the level, and more RAM never lowers `score`.
 More VRAM can lower `score` when the representative switches to a heavier precision or run mode (for example Z-Image
-Turbo: 100 at 12 GB, 82.6 at 16 GB; 0.11.0; llmfit behaves the same). Tested in `tests/test_invariants.py` and
+Turbo int8: 100 on GPU~ at 14 GB, 82.3 all on GPU at 16 GB; 0.11.0; llmfit behaves the same). Tested in `tests/test_invariants.py` and
 `tests/test_scoring.py`.
 
 **Exception: a level set by measurements on the same GPU** (0.9.1, 0.11.0). Measurements set the level only on the same
@@ -527,6 +527,7 @@ Other rules:
 
 - At the same settings, such a row comes before the maintainer's / this PC's.
 - The maintainer's `torch_reserved` rows stay lower bounds (they only raise).
+- Working-memory-only rows (`vram_metric: torch_reserved` with `offload: dynamic`; #100, `estimate.working_only`) are not used at all here: they hold no weights, because dynamic VRAM loads and evicts the weights on demand. Until the per-stage peaks can be measured they are only cross-checked in [accuracy.md](accuracy.md) (not for the shift, not for the level).
 - When a bound was applied, the value is not the measurement: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`).
 - When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value.
 - See [accuracy.md](accuracy.md), "Other users' measurements".
@@ -586,8 +587,8 @@ measurements on the same GPU, which applies only at a VRAM ratio of 0.95 or more
 
 **Several diffusion models in one workflow** (0.1.1, Issue #28): ComfyUI runs the samplers one
 after another, and when the next sampler loads its model, `load_models_gpu` calls `free_memory`, which unloads models
-that are loaded but not used now, as much as needed (ComfyUI commit `b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c`:
-`comfy/samplers.py:1241` → `comfy/sampler_helpers.py:201` → `comfy/model_management.py:1001`, unloading at `:905` /
+that are loaded but not used now, as much as needed (ComfyUI commit `426f5eea52a7ece1dd599fff4cb6cd1f352ddd24`:
+`comfy/samplers.py:1242` → `comfy/sampler_helpers.py:201` → `comfy/model_management.py:1001`, unloading at `:905` /
 `:919`; dynamic-VRAM models are loaded on demand, `:914`). So the swapped (`GPU~`) and offload figures count one
 sampler's set at a time: that model + the files on its MODEL input (LoRAs) + the denoise-stage files shared by all
 (ControlNet, model patches); the all-in figure and system RAM still count all of them (unloaded models stay in RAM).
@@ -914,7 +915,11 @@ entries are null). Used by the estimator as above.
 
 `comfy_family` / `comfy_vae` (str \| null, optional; added in #21 — older files without them still load): the ComfyUI
 model family and VAE kind (keys of `families.FAMILIES` / `families.VAES`), set by `update` from the main / VAE file
-names. Used only to decide whether ComfyUI computes in fp32 on GPUs without bf16 ([hardware.md](hardware.md), "Family table").
+names. Used to decide whether ComfyUI computes in fp32 on GPUs without bf16 ([hardware.md](hardware.md), "Family table")
+and, since #100, which per-stage working-memory formula applies (`working.py`; [accuracy.md](accuracy.md), "Formulas").
+#100 split the VAE kinds `wan22` (Wan 2.2), `qwen21` (Qwen Image 2.1), `flux2` (the Flux2 VAE), `oobleck`
+(ACE-Step 1.5, Stable Audio Open), `yue2` and `pixel` (pixel space) out of `wan` / `kl` / null; `schema_version` stays 1
+(older lists keep the old keys, and the estimator maps them to the family's VAE).
 null = unknown (the estimate is not changed; a reason says so on GPUs without bf16). When null, the estimator derives
 them from the file names again.
 
@@ -953,7 +958,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `gpu_vram_gb` | float | total VRAM. bench stores `/system_stats` `vram_total` in GiB rounded to 2 decimals (e.g. `7.99`); older bundled rows hold the nominal size (`16`) |
 | `offload` | str \| null | how ComfyUI placed the model: `none` (all on GPU) / `dynamic` (dynamic VRAM) / `partial` (partially loaded) / `lowvram` (`--lowvram` / `--novram`) / `oom` (ran out of memory) |
 | `outcome` | str | `ok` (finished) / `oom` (out of memory) / `error` (failed for another reason). Default `"ok"` |
-| `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`) |
+| `vram_metric` | str \| null | how `peak_vram_gb` was taken: `torch_reserved` (bench: peak torch reservation of the ComfyUI process, excluding the CUDA context) or null (not recorded; the bundled RTX 5080 rows). Calibration uses only rows with null (`calibrate.CALIBRATION_METRIC`). #100: `torch_reserved` with `offload: dynamic` excludes the weights (working memory only; `estimate.working_only`): such rows neither shift the estimate nor set the level, and the cross-check compares them with the working-memory estimate. Other `torch_reserved` rows include the weights (a lower bound of the total) |
 | `origin` | str \| null | (#34) `community` for rows of `measurements_community.json` (other users' submissions aggregated by `contrib aggregate`); null for the maintainer's bundled rows and this PC's bench results |
 | `n_submissions` | int \| null | community rows: submissions in the group (outliers and OOM included). The file also keeps `n_outliers`, `spread_mad_gb`, `spread_rel_pct`, `peak_vram_min_gb` / `peak_vram_max_gb`, `outlier_submissions` and `submissions` (sha8 of each file), which the reader ignores |
 | `n_used` | int \| null | community rows: `ok` submissions behind the median (outliers removed). Was `Estimate.sample_count` up to 0.10 (`n_sources` since 0.11.0) |
@@ -1010,6 +1015,8 @@ How bench fills Measurement:
 Measurement submissions from users (#34). genmodelfit **never sends** them: users add the file to `data/contrib/` of
 their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). `contrib share` (`bench --share`)
 only prints the URL of the GitHub page that adds the file in a browser (#90). Code: `src/genmodelfit/contrib.py`.
+
+Submissions measured by bench with dynamic VRAM (`vram_metric: torch_reserved`, `offload: dynamic`) hold only the working memory (#100). They are aggregated and kept, but until the per-stage peaks can be measured they are used only for the cross-check (not for the estimate's shift or the level; see "Measurement" and [accuracy.md](accuracy.md)).
 
 ### Submission file (`contrib_schema` 1 and 2)
 

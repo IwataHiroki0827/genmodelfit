@@ -322,6 +322,7 @@ def test_files_fp_is_recorded_and_stale_rows_are_unused(db):
         settings={"width": 1024, "height": 1024, "steps": 20},
         peak_vram_gb=7.6,
         files_fp=fp,
+        offload="none",  # 動的 VRAM の torch_reserved は作業用メモリだけで、見積もりに使わない(#100)
     )
     assert contrib.validate_submission(d, db, check_filename=False).ok
     rows = rows_of([as_sub(d)])

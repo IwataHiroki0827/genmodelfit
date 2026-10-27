@@ -344,6 +344,7 @@ def test_apple_measurement_matches_this_pc_by_chip_name():
         "gpu_vram_gb": g.vram_total_gb,
         "peak_vram_gb": 6.0,
         "vram_metric": "torch_reserved",
+        "offload": "none",  # 動的 VRAM の torch_reserved は作業用メモリだけ(#100)
         "origin": "community",
         "n_used": 2,
         "n_oom": 0,

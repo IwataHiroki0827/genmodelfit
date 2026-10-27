@@ -1695,7 +1695,7 @@ def _check_against_estimate(
     r: Report, entry: Any, mm: dict[str, Any], s: dict[str, Any], peak: float
 ) -> None:
     """式の見積もりと比べ、ありそうにない値を注意にする(失敗にはしない。マージするメンテナが見る)。"""
-    from .estimate import activation_gb, apply_precision, components, load_coefficients, need, settings_for
+    from .estimate import apply_precision, components, formula_need, load_coefficients, settings_for
 
     parts = components(entry)
     if parts.unknown:
@@ -1704,7 +1704,7 @@ def _check_against_estimate(
     try:
         settings = settings_for(entry, Settings.from_dict({k: v for k, v in s.items() if k in SETTINGS_KEYS}))
         parts = apply_precision(parts, entry, settings)
-        full = need(parts, activation_gb(entry, settings, c), c).full
+        full = formula_need(entry, settings, c, parts).full
     except (TypeError, ValueError):
         return
     if full > 0 and abs(peak - full) / full > NOTICE_DEVIATION:
@@ -2441,7 +2441,7 @@ def accuracy_report(db: Database, threshold_pct: float = DEFAULT_THRESHOLD_PCT) 
 
     閾値を超えたかは、(1) 評価できる種類(張り付いていない実測が 2 件以上)の LOO 誤差と、
     (2) ほかの利用者の実測(係数の合わせに使わない測り方のもの)を全件の係数で当てた誤差、で見る。
-    作者の照合の行(RTX 3070 の 2 件など)は表に出すが、閾値の判定には入れない
+    作者の照合の行(RTX 3070 の 2 件など)と、作業用メモリだけの実測(#100)は表に出すが、閾値の判定には入れない
     (docs/accuracy.md に既知の外れとして書いた)。"""
     from .calibrate import calibrate
 
@@ -2485,7 +2485,10 @@ def accuracy_report(db: Database, threshold_pct: float = DEFAULT_THRESHOLD_PCT) 
         b = slot(x["modality"])
         b["check_n"] += 1
         b["check_errors_pct"].append(x["error_pct"])
-        if x.get("origin") == ORIGIN_COMMUNITY and abs(x["error_pct"]) > threshold_pct:
+        # 作業用メモリだけの実測(#100。quantity が work)は照合の表に出すだけで、閾値の判定に入れない
+        # (段ごとの山を測れるようになるまで、作業用メモリの見積もりとは粗くしか比べられない)
+        work_only = x.get("quantity") == "work"
+        if x.get("origin") == ORIGIN_COMMUNITY and not work_only and abs(x["error_pct"]) > threshold_pct:
             breaches.append(
                 {
                     "kind": "community_check",
