@@ -767,6 +767,7 @@ class BenchOptions:
     note: str | None = None
     precision: str | None = None
     busy_util_pct: float = 30.0
+    files_fp: str | None = None  # 測る時点の一覧のファイルの指紋(estimate.files_fingerprint。#90)
 
 
 @dataclass
@@ -1243,6 +1244,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         vram_metric="torch_reserved",
         gpu_backend=BACKEND_OF_VENDOR.get(vendor),
         gpu_pci_id=pci_id,
+        files_fp=opts.files_fp,
     )
     return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
 
@@ -1308,14 +1310,16 @@ def options_from_args(args: argparse.Namespace) -> BenchOptions:
     timeout = 1800.0 if timeout is None else timeout
     if timeout <= 0:
         raise BenchError(_timeout_error())
-    precision = None
+    precision = files_fp = None
     with contextlib.suppress(Exception):
         from .db import load as load_db
+        from .estimate import files_fingerprint
 
         entry = load_db(getattr(args, "db", None), use_cache=not getattr(args, "no_cache", False)).get(
             args.template
         )
         precision = entry.precision if entry else None
+        files_fp = files_fingerprint(entry) if entry else None
     return BenchOptions(
         model_id=args.template,
         url=args.url,
@@ -1332,4 +1336,5 @@ def options_from_args(args: argparse.Namespace) -> BenchOptions:
         source=getattr(args, "source", None),
         note=getattr(args, "note", None),
         precision=precision,
+        files_fp=files_fp,
     )

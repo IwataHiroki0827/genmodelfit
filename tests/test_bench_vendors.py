@@ -212,7 +212,9 @@ def test_submission_records_vendor_and_backend():
     assert r.ok, r.errors
     assert contrib.to_measurement(data).gpu_backend == "rocm"
     # 記録が無い古い bench の結果からは、会社・backend を入れない(これまでと同じ形)
-    old = contrib.build_submission(_m("NVIDIA GeForce RTX 3070", None))
+    old_m = _m("NVIDIA GeForce RTX 3070", None)
+    old_m.gpu_vram_gb = 8.0  # RTX 3070 は 8 GB(名前の表と違う VRAM は誤り。#90)
+    old = contrib.build_submission(old_m)
     assert "vendor" not in old["system"]["gpu"] and contrib.validate_submission(old, check_filename=False).ok
 
 

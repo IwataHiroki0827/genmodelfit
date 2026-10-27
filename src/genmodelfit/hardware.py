@@ -301,6 +301,28 @@ _NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
 )
 
 
+# 名前の表に当てるときに除いてよい語(版・形・大きさを表す語。#90)。これを除いた残りが _NAME_CC のどれかに
+# 丸ごと当たれば「知っている NVIDIA の GPU 名」とする
+_NAME_EXTRA_WORDS = re.compile(
+    r"\b(ti|super|laptop|gpu|max-q|mobile|design|with|generation|tesla|pcie|sxm\d?|nvl|hbm\w*|\d+ ?gb)\b"
+    r"|\(\d+ ?gb\)",
+)
+
+
+def nvidia_name_known(name: str) -> bool:
+    """NVIDIA の GPU 名が名前の表(_NAME_CC)の 1 つに丸ごと当たるか(#90)。「RTX 3070」「RTX 4060 Ti」
+    「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」「NVIDIA Graphics Device」は当たらない。
+    ほかの利用者の提出で、表に無い名前の行を判定に使わないための見分け。"""
+    n = re.sub(r"\s+", " ", name.lower().replace("nvidia", "").replace("geforce", "")).strip()
+    n = n.replace("(tm)", "").replace("(r)", "").replace("-", " ")
+    short = re.sub(r"\s+", " ", _NAME_EXTRA_WORDS.sub(" ", n)).strip()
+    # 系列だけの表の行(「quadro rtx」など)には型番の数字が後ろに付く(Quadro RTX 6000)
+    for cand in (n, short, re.sub(r" \d{3,5}$", "", short)):
+        if cand and any(re.fullmatch(f"(?:{pat})", cand) for pat, _cc in _NAME_CC):
+            return True
+    return False
+
+
 def cc_from_name(name: str) -> tuple[int, int] | None:
     n = re.sub(r"\s+", " ", name.lower().replace("nvidia", "").replace("geforce", "")).strip()
     n = n.replace("(tm)", "").replace("(r)", "")

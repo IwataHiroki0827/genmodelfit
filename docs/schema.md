@@ -934,6 +934,11 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `n_oom` | int \| null | community rows: submissions of the same group that ran out of memory. A group with `ok` and `oom` uses the `ok` median and keeps this count (shown in the reasons; such a row never makes Perfect) |
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
+| `files_fp` | str \| null | (#90) fingerprint of the model's files in the list when measured (`estimate.files_fingerprint`; see "Rules of the submission pipeline" below). If it differs from the current list's fingerprint, the measurement is not used. null = not recorded (the maintainer's measurements.json, older rows; used as before) |
+| `gpu_known` | bool \| null | (#90) community rows: false = an NVIDIA GPU not in the name table (kept as a record, never used for judging) |
+| `n_sources` | int \| null | (#90) community rows: number of independent sources (the commit that added the file to the repository) behind the value |
+| `n_error` | int \| null | (#90) community rows: submissions of the same group that ended in `error` (not used for the value) |
+| `runs_evidence` | bool \| null | (#90) community rows: false = OOM sources are at least as many as ok sources (not evidence that it runs; how it is used is the level rule of PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match); since 0.9.1 the VRAM must also be within 3% (`estimate.same_vram`, `MEASURED_VRAM_TOLERANCE` 0.97; not for shared / unified memory) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
@@ -979,7 +984,7 @@ Measurement submissions from users (#34). genmodelfit **never sends** them: user
 their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). `contrib share` (`bench --share`)
 only prints the URL of the GitHub page that adds the file in a browser (#90). Code: `src/genmodelfit/contrib.py`.
 
-### Submission file (`contrib_schema` 1)
+### Submission file (`contrib_schema` 1 and 2)
 
 Written by `genmodelfit bench … --submission PATH` or `genmodelfit contrib make --from <bench result>`. Stored in the
 repository as `data/contrib/<gpu-slug>/<date>-<sha8>.json`: `gpu-slug` is `estimate.gpu_key` of the GPU name
@@ -1028,21 +1033,62 @@ Contents of `system.gpu`:
 
 Other rules:
 
-- Older files without these stay valid (`contrib_schema` stays 1).
+- Older files without these stay valid.
+- `contrib_schema` 1 and 2 are accepted (#90). 2 is 1 plus `measurement.files_fp` (optional; 64 lowercase hex
+  digits), written from the version after 0.10.1. `files_fp` in a schema 1 file is an error.
 - The name may contain `(R)`, `(TM)`, `™`, `®`. A name of another vendor than `vendor` is an error. For `apple` only a chip name (`Apple M2 Pro`) or `mps`.
 - `vram_gb` above 256 GiB, `peak_ram_gb` above `ram_total_gb` × 1.05 + 1 GiB, and any NaN / infinity / negative number are errors (NaN in the file is refused when reading).
 
 Not written by genmodelfit: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses,
 the measurement's free-text `source`, CPU name, exact time. **Limits (honest)**: the checks are patterns, not
 understanding. **Not detected**: personal names or other identifying words in plain text (e.g. `山田太郎のPCで測った`,
-`on Taro's desktop`, `github KoyoYeager`), paths written in base64 or another encoding (URL-encoded `%2F` / `%5C` /
-`%3A` is detected), and paths without separators described in words. That is why `contrib show` asks the user to
+`on Taro's desktop`, `github KoyoYeager`), addresses (`東京都港区…`), encodings other than base64-like runs
+and URL encoding, and paths without separators described in words. That is why `contrib show` asks the user to
 read the note and a person reviews each pull request.
 Free-text fields are kept small: `gpu.name` only letters, digits, space, `.`, `-`, `(R)`, `(TM)`, `™`, `®` and a
 size such as `(16GB)` (64 chars), `comfyui_version`
 strictly `x.y.z`, `precision` one of the known precisions, `model_id` up to 200 chars of `[A-Za-z0-9_.:/+-]`, other
-strings 100 chars, `note` 2000 chars; no control characters, newlines or invisible characters anywhere; unknown keys,
+strings 100 chars, `note` 500 chars (lowered from 2000 in #90; bench truncates longer notes); no control characters, newlines or invisible characters anywhere; unknown keys,
 arrays and nesting deeper than 8 are rejected; files over 64 KB and symbolic links are not read.
+
+### Rules of the submission pipeline (#90)
+
+Each rule can be explained in one sentence. They are checked with about 60 kinds of crafted submissions
+(tests/test_contrib_robust.py).
+
+- **Add only**: a submission PR only adds new files under `data/contrib`; a PR that deletes, modifies or renames an
+  existing file fails in CI (contrib.yml) (removing one is a maintainer PR).
+- **Layout**: only `data/contrib/<GPU>/<date>-<sha8>.json` (lowercase `.json`) can be added; any other file or place
+  is the error `layout`, both in CI and in `contrib validate <folder>`.
+- **Empty**: a PR or folder without any submission file fails (`contrib validate` exits 1).
+- **Unreadable forms**: a UTF-8 BOM is refused with the reason (not stripped), and JSON with the same key twice in
+  one object is refused (the later value would silently win).
+- **Personal information**: base64-like runs of 20+ characters, 32+ hex digits, domain names, phone numbers, dotted
+  MAC addresses, obfuscated e-mail (`[at]`, アット) and words like 「製品番号」 are errors. Base64, hex, domain and
+  phone patterns are not applied to fixed-form fields such as the model id (those are bound by their form and the
+  list).
+- **Measured files**: bench writes `files_fp`, the fingerprint of the model's files in the list when measured (the
+  sha256 of the lowercased file sha256s, sorted and joined with newlines; omitted if any file has no sha256), and a
+  measurement whose fingerprint differs from the current list is not used.
+- **GPU names**: an NVIDIA GPU is used for judging only when its name fully matches the name table
+  (`hardware.nvidia_name_known`); rows with other names (`NVIDIA Graphics Device` etc.) are kept as records with
+  `gpu_known: false` (notice `unknown_gpu`).
+- **GPU memory**: for NVIDIA GPUs whose VRAM follows from the name (`estimate.NVIDIA_NOMINAL_VRAM`; desktop RTX 20–50
+  series), a `vram_gb` more than 3% away from every version's amount is the error `gpu_inconsistent`.
+- **Error runs**: `outcome: error` submissions are not used for a row's value and only counted (`n_error`; a group of
+  only errors makes no row).
+- **Steps**: peak VRAM does not depend on the step count, so neither the aggregation key nor judging's matching uses
+  it (a row's `settings.steps` is the most common value, for display).
+- **Sources**: submissions added by the same PR (the commit that added the file, in main's first-parent history)
+  count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
+  history or in a shallow clone each submission counts on its own, and the output says so).
+- **OOM-heavy groups**: a row whose OOM sources are at least as many as its ok sources has `runs_evidence: false` (not
+  evidence that it runs; how it is used is PR #95).
+- **Versions**: a submission made by a newer genmodelfit than the checker (`tool_newer`), a ComfyUI older than the
+  template needs (`comfyui_old`) or 6+ minor versions newer than the latest the list knows (`comfyui_newer`) gets a
+  notice only.
+- **Templates without a size input** with `batch` other than 1 get the notice `batch_sizeless` (a recording error of
+  0.10.1's bench).
 
 ### `contrib make --from FILE [--output PATH] [--no-pc-info] [--json]`
 
@@ -1107,6 +1153,7 @@ Like llmfit's `validate_community_benchmarks.py`, **only mechanical checks fail*
 | `filename` | name not `<date>-<sha8>.json`, date or sha8 not matching the content, folder not the GPU slug |
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |
+| `layout` | (#90) when checking a folder: a file that is not at `<GPU>/<date>-<sha8>.json` (lowercase `.json`) |
 
 `privacy` rejects:
 
@@ -1165,18 +1212,26 @@ width and height when the model is not in the hand table of templates without a 
 and values cannot inject Markdown, HTML, links or workflow commands into the CI summary. CI appends genmodelfit's
 stderr to the summary through the same escaping.
 
-Exit codes: 0 every file passed (warnings and notices allowed) / 1 a file failed or has a warning with `--strict` /
-2 usage error.
+Exit codes: 0 every file passed (warnings and notices allowed) / 1 a file failed, has a warning with `--strict`, or
+there is no submission at all (#90) / 2 usage error.
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
 Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (notices
 allowed), and groups standard submissions by model id, the GPU (PCI model ID when present, else
 the name normalized by `estimate.gpu_key`: case, spaces / symbols, `(R)` `(TM)` `™` `®`, `NVIDIA` / `GeForce`), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
-`vram_metric` and settings (precision normalized: `BF16` = `bfloat16` = `bf16`). Among the `ok` runs of a group, values with |x − median| / (1.4826 × MAD) > 3.5
-are outliers (only with 3 or more runs; MAD floored at 2% of the median); the rest's median is the value, with
-`n_used` and `n_oom` (a group of only OOM runs becomes one `outcome: oom` row, never used). A group is `consistent`
-(enters the calibration) with at least 2 used runs whose range is within 15% of the median and no OOM in the group. Output rows are Measurement records
+`vram_metric`, settings (precision normalized: `BF16` = `bfloat16` = `bf16`; the step count is not part of it, #90) and
+the fingerprint of the list's files when measured, `files_fp` (#90). `error` submissions are not used for the value
+and are counted in `n_error` (#90). `ok` submissions are reduced to one median per source
+(`contrib.submission_sources`: the commit that added the file; per submission without git history or in a shallow
+clone), and among those source values, values with |x − median| / (1.4826 × MAD) > 3.5
+are outliers (only with 3 or more sources; MAD floored at 2% of the median); the median of the remaining source
+values is the value, with `n_used` (submissions used), `n_sources` (sources used), `n_oom`, `n_error`,
+`runs_evidence` (whether OOM sources are fewer than ok sources), `gpu_known` and `files_fp` (a group of only OOM runs
+becomes one `outcome: oom` row, never used). A group is `consistent`
+(enters the calibration) with at least 2 used sources whose range is within 15% of the median and no OOM in the
+group. `--json` and the text output say how sources were counted (`sources_from`: `git` / `files`); the bundled
+aggregate is made from a clone with history when releasing (docs/release.md "Releasing later versions"). Output rows are Measurement records
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
 `--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, submissions,
 measurements}` (an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake).

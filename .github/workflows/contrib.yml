@@ -73,6 +73,35 @@ jobs:
             echo "data/contrib の外のファイルを ${n} 件変えています(実測の PR は data/contrib だけにしてください)" >&2
             exit 1
           fi
+      - name: data/contrib に足すだけか・足したファイルの形(#90)
+        # 提出の PR は新しいファイルを足すだけ(消す・書き換える・名前を変えるのはメンテナの PR)。
+        # 足すファイルは data/contrib/<GPU>/<日付>-<sha8>.json だけ(.json は小文字)。1 件も無ければ失敗。
+        # ファイル名は PR から来る文字なので、ログにもまとめにも出さない(件数だけ)
+        working-directory: pr
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          fail() {
+            { echo "## $1"; echo; echo "$2"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "$1" >&2
+            exit 1
+          }
+          changed=$(git diff --diff-filter=DMRTC --name-only "$BASE_SHA" HEAD -- data/contrib | wc -l)
+          if [ "$changed" -ne 0 ]; then
+            fail "data/contrib の既にあるファイルを ${changed} 件、消す・書き換える・名前を変えています" \
+              "提出の PR は新しいファイルを足すだけにしてください(直した提出を出し直すときも、新しいファイルとして足します。古い提出はメンテナが外します)。"
+          fi
+          added=$(git diff --diff-filter=A --name-only "$BASE_SHA" HEAD -- data/contrib)
+          n=$(printf '%s\n' "$added" | grep -c . || true)
+          if [ "$n" -eq 0 ]; then
+            fail "提出のファイルを足していません" "data/contrib/<GPU>/<日付>-<sha8>.json を 1 件以上足してください。"
+          fi
+          bad=$(printf '%s\n' "$added" \
+            | grep -c -v -E '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$' || true)
+          if [ "$bad" -ne 0 ]; then
+            fail "置けない名前・場所のファイルを ${bad} 件足しています" \
+              "足せるのは data/contrib/<GPU>/<日付>-<sha8>.json だけです(.json は小文字。フォルダの直下・深いフォルダ・ほかの形のファイルは置けません)。"
+          fi
       - name: 検査(contrib validate)
         run: |
           token="$(openssl rand -hex 16)"

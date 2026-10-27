@@ -31,6 +31,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterable
@@ -982,6 +983,11 @@ GENERIC_GPU_KEYS = frozenset(
         "intel-iris-xe-graphics",
         "intel-hd-graphics",
         "apple-gpu",
+        # #90: ドライバが名前を知らない GPU(「NVIDIA Graphics Device」)・汎用の表示用の名前
+        "graphics-device",
+        "video-controller",
+        "microsoft-basic-display-adapter",
+        "display-adapter",
     }
 )
 
@@ -1011,6 +1017,48 @@ NVIDIA_VRAM_VARIANTS: dict[str, tuple[float, ...]] = {
     "rtx-4060-ti": (8.0, 16.0),
     "rtx-5060-ti": (8.0, 16.0),
 }
+
+
+# デスクトップの GeForce RTX 20〜50 系の公称の VRAM(GB。gpu_key の形 → 版の VRAM)。#90: ほかの利用者の提出の
+# vram_gb が名前の GPU に無い量(RTX 3070 で 16 GB など)なら誤りにする。NVIDIA の比較ページ
+# https://www.nvidia.com/en-us/geforce/graphics-cards/compare/ で 2026-10-27 に確かめた値。量の違う版は
+# NVIDIA_VRAM_VARIANTS と同じ。ノート用・業務用は名前と量の対応が一つに決まらないので入れない
+NVIDIA_NOMINAL_VRAM: dict[str, tuple[float, ...]] = {
+    **NVIDIA_VRAM_VARIANTS,
+    "rtx-5090": (32.0,),
+    "rtx-5080": (16.0,),
+    "rtx-5070-ti": (16.0,),
+    "rtx-5070": (12.0,),
+    "rtx-5060": (8.0,),
+    "rtx-5050": (8.0,),
+    "rtx-4090": (24.0,),
+    "rtx-4080-super": (16.0,),
+    "rtx-4080": (16.0,),
+    "rtx-4070-ti-super": (16.0,),
+    "rtx-4070-ti": (12.0,),
+    "rtx-4070-super": (12.0,),
+    "rtx-4070": (12.0,),
+    "rtx-4060": (8.0,),
+    "rtx-3090-ti": (24.0,),
+    "rtx-3090": (24.0,),
+    "rtx-3080-ti": (12.0,),
+    "rtx-3070-ti": (8.0,),
+    "rtx-3070": (8.0,),
+    "rtx-3060-ti": (8.0,),
+    "rtx-2080-ti": (11.0,),
+    "rtx-2080-super": (8.0,),
+    "rtx-2080": (8.0,),
+    "rtx-2070-super": (8.0,),
+    "rtx-2070": (8.0,),
+    "rtx-2060-super": (8.0,),
+}
+# 提出の vram_gb(GiB。/system_stats の総量)と公称の VRAM の比の許容(1 枚の GPU の数え方の違いだけを許す)
+NOMINAL_VRAM_TOLERANCE = (0.97, 1.03)
+
+
+def nvidia_nominal_vram(name: str | None) -> tuple[float, ...]:
+    """名前の表で分かる NVIDIA の GPU の公称の VRAM(GB)。表に無ければ空。"""
+    return NVIDIA_NOMINAL_VRAM.get(gpu_key(name), ())
 
 
 def nvidia_vram_variants(name: str | None) -> tuple[float, ...]:
@@ -1057,6 +1105,24 @@ def same_gpu_name(a: str | None, b: str | None) -> bool:
     return bool(a) and bool(b) and gpu_key(a) == gpu_key(b) and not generic_gpu_name(a)
 
 
+def files_fingerprint(entry: ModelEntry) -> str | None:
+    """一覧のモデルのファイルの指紋(#90): ファイルの sha256(16 進の小文字)を並べ替えて改行でつないだ文字列の
+    sha256。ファイルが無い・sha256 の無いファイルが 1 つでもあるときは None(比べない)。bench が実測に書き、
+    一覧のファイルが変わった(上流が重みを差し替えた)ときに古い実測を使わないために比べる。"""
+    shas = [(f.sha256 or "").strip().lower() for f in entry.files]
+    if not shas or not all(re.fullmatch(r"[0-9a-f]{64}", s) for s in shas):
+        return None
+    return hashlib.sha256("\n".join(sorted(shas)).encode("ascii")).hexdigest()
+
+
+def files_match(m: Measurement, entry: ModelEntry) -> bool:
+    """実測が今の一覧のファイルで測ったものか(#90)。両方に指紋があって違うときだけ False(指紋の無い古い実測・
+    作者の measurements.json は今までどおり使う)。"""
+    fp = getattr(m, "files_fp", None)
+    now = files_fingerprint(entry) if fp else None
+    return not (fp and now and fp != now)
+
+
 def measured_on_this_gpu(m: Measurement, gpu: Any) -> bool:
     return same_gpu(m.gpu_name, getattr(m, "gpu_pci_id", None), gpu, m.gpu_vram_gb)
 
@@ -1075,7 +1141,10 @@ def pick_measurement(
     cands = [
         m
         for m in measurements
-        if m.model_id == entry.id and usable(m) and (not is_community(m) or measured_on_this_gpu(m, gpu))
+        if m.model_id == entry.id
+        and usable(m)
+        and files_match(m, entry)
+        and (not is_community(m) or (m.gpu_known is not False and measured_on_this_gpu(m, gpu)))
     ]
     if not cands:
         return None

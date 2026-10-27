@@ -2198,15 +2198,24 @@ def _validate_markdown(reports: list) -> list[str]:
 
 
 def cmd_contrib_validate(args: argparse.Namespace) -> int:
-    from .contrib import find_files, validate_files
+    from .contrib import layout_report, scan_dir, validate_files
 
     files: list[Path] = []
+    misplaced: list[Path] = []
     for f in args.files:
         p = Path(f)
-        files += find_files(p) if p.is_dir() else [p]
+        if p.is_dir():
+            ok, ng = scan_dir(p)
+            files += ok
+            misplaced += ng
+        else:
+            files.append(p)
     reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
+    # 置けない場所・形のファイルも誤り(CI の「足したファイルの形」と同じ。#90)
+    reports = sorted([*reports, *(layout_report(b) for b in misplaced)], key=lambda r: r.path)
     bad = [r for r in reports if not r.ok or (args.strict and r.warnings)]
-    code = 1 if bad else 0
+    # 提出が 1 件も無いのも失敗(フォルダの指定の間違い・空の PR を通さない。#90)
+    code = 1 if bad or not reports else 0
     if args.json:
         _out(
             _envelope(
@@ -2229,7 +2238,15 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
             print(line)
         return code
     if not reports:
-        print(tr("検査するファイルがありません", "no files to check"))
+        print(
+            tr(
+                "検査する提出がありません(data/contrib のように <GPU>/<日付>-<sha8>.json の入ったフォルダを"
+                "渡してください)",
+                "no submissions to check"
+                " (pass a folder like data/contrib that holds <GPU>/<date>-<sha8>.json)",
+            ),
+            file=sys.stderr,
+        )
     err_w, notice_w, warn_w = tr("誤り", "error"), tr("確認", "notice"), tr("注意", "warning")
     for r in reports:
         what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
@@ -2406,6 +2423,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         load_dir,
         md_cell,
         report_db,
+        submission_sources,
         write_community,
     )
 
@@ -2417,7 +2435,8 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         )
     db = _contrib_db(args)
     subs, reports = load_dir(args.dir, db)
-    rows = aggregate(subs)
+    sources, via_git = submission_sources(args.dir, subs)
+    rows = aggregate(subs, sources)
     if args.output and not rows and not args.allow_empty:
         raise CliError(
             tr(
@@ -2439,6 +2458,8 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         "submissions_used": len(subs),
         "groups": len(rows),
         "consistent": sum(1 for r in rows if r["consistent"]),
+        # 出どころ(#90): git = リポジトリに足したコミットごと、files = git の履歴が無いので提出ごと
+        "sources_from": "git" if via_git else "files",
     }
     if args.json:
         payload: dict[str, Any] = {"action": "aggregate", **stats, "written_to": written}
@@ -2459,12 +2480,24 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
             " from one submission)",
         )
     )
+    if not via_git:
+        print(
+            tr(
+                "git の履歴(浅くない clone)が無いので、出どころは提出ごとに数えた(同じ PR の提出も別々)",
+                "No git history (a non-shallow clone), so each submission was counted as its own source"
+                " (even submissions from the same PR)",
+            )
+        )
     for r in rows:
         if r["outcome"] != "ok":
             mark = tr("oom だけ", "oom only")
         else:
             mark = tr("そろった", "consistent") if r["consistent"] else tr("使う", "used")
-        counts = f"n={r['n_submissions']}, used={r['n_used']}, outliers={r['n_outliers']}, oom={r['n_oom']}, "
+        counts = (
+            f"n={r['n_submissions']}, used={r['n_used']}, sources={r['n_sources']},"
+            f" outliers={r['n_outliers']},"
+            f" oom={r['n_oom']}, error={r['n_error']}, "
+        )
         spread = tr(f"ばらつき {r['spread_rel_pct']:g}%", f"spread {r['spread_rel_pct']:g}%")
         print(
             f"  {md_cell(r['model_id'])}  {md_cell(r['gpu_name'])}  {r['peak_vram_gb']:g} GiB  "

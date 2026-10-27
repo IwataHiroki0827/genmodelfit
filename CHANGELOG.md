@@ -20,6 +20,30 @@ All notable changes to this project are documented here. The format is based on
   genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
   the alternative.
 
+### Changed
+
+- **Submissions are checked more robustly** (#90; about 60 crafted kinds of submissions in
+  `tests/test_contrib_robust.py`; each rule is one sentence in docs/schema.md "Rules of the submission pipeline"):
+  - A submission PR may only add files: the `Contrib` workflow fails on deleted / modified / renamed files under
+    `data/contrib`, on added files not named `data/contrib/<GPU>/<date>-<sha8>.json` (lowercase `.json`), and on PRs
+    that add no submission. `contrib validate <folder>` reports misplaced or non-`.json` files as the error `layout` and
+    exits 1 when there is no submission. A fixed resubmission is a new file; the maintainer removes the old one.
+  - New privacy errors in `note`: base64-like runs, 32+ hex digits, domain names, phone numbers, dotted MAC addresses,
+    obfuscated e-mail, 「製品番号」. `note` is limited to 500 characters (was 2000; bench truncates). A UTF-8 BOM and
+    duplicate JSON keys are refused with a clear message.
+  - `contrib_schema` 2 adds `measurement.files_fp`, the fingerprint of the model's files in the list when measured
+    (bench writes it for local measurements and submissions); a measurement whose fingerprint differs from the
+    current list is not used. Schema 1 stays valid.
+  - NVIDIA GPU names must fully match the name table; other names (e.g. `NVIDIA Graphics Device`) are kept as records
+    with `gpu_known: false` and never used for judging. A `vram_gb` that does not match the GPU's nominal VRAM
+    (desktop RTX 20–50, from NVIDIA's comparison page) is an error.
+  - `contrib aggregate`: `error` runs are counted (`n_error`) instead of becoming OOM rows; the step count is no longer
+    part of the key (matching already ignored it); submissions added by the same commit / PR count as one source
+    (`n_sources`; outliers are judged between sources; without git history each file counts on its own and the output
+    says so); rows whose OOM sources are at least their ok sources get `runs_evidence: false`.
+  - Notices for a submission made by a newer genmodelfit, a ComfyUI older than the template needs, or much newer than
+    the latest the list knows.
+
 ### Fixed
 
 - **Measurements of templates without a size input are now used** (#90). Templates that work from an input image

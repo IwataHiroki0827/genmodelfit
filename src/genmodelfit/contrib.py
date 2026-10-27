@@ -45,18 +45,32 @@ from ._version import __version__
 from .db import Database
 from .estimate import (
     COMMUNITY_DEVIATION,
+    NOMINAL_VRAM_TOLERANCE,
     PEAK_VRAM_RATIO,
     PEAK_VRAM_SLACK_GB,
     PRECISION_BYTES,
+    generic_gpu_name,
     gpu_key,
     no_size_input,
     norm_precision,
+    nvidia_nominal_vram,
 )
-from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, intel_xpu, parse_compute_cap, pci_name_conflict
+from .hardware import (
+    APPLE_CHIP_NAME,
+    arch_of,
+    cc_from_name,
+    intel_xpu,
+    nvidia_name_known,
+    parse_compute_cap,
+    pci_name_conflict,
+)
 from .i18n import tr
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
-CONTRIB_SCHEMA = 1
+# 提出の形の版。2(#90)= 1 に measurement.files_fp(測ったときの一覧のファイルの指紋)を足した形。
+# 書くのは 2、検査は 1 と 2 を受け付ける(1 には files_fp を入れない)
+CONTRIB_SCHEMA = 2
+CONTRIB_SCHEMAS = (1, 2)
 CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足す)
 KIND = "genmodelfit-measurement"
 
@@ -65,7 +79,9 @@ VRAM_TOLERANCE_GB = PEAK_VRAM_SLACK_GB  # 最大 VRAM は GPU の総量 × 1.02 
 RAM_TOLERANCE_GB = 1.0  # 最大メモリはメインメモリ × 1.05 + これまで
 MAX_GPU_VRAM_GB = 256.0  # 1 枚の GPU の VRAM の上限(超えたら誤り。0.9.0 で 512 から下げた)
 MAX_RAM_GB = 4096.0
-MAX_NOTE_CHARS = 2000
+# note の長さの上限(#90 で 2000 から下げた。bench の note は固定の部分が 230 字ほどで、長い失敗の理由などで
+# 超えるときは build_submission が切り詰める)
+MAX_NOTE_CHARS = 500
 # 設定の範囲(テンプレートで使うありえる幅。外れたら誤り)
 SETTING_RANGES: dict[str, tuple[float, float]] = {
     "width": (64, 8192),
@@ -115,7 +131,9 @@ MEASUREMENT_KEYS = {
     "seconds",
     "vram_metric",
     "note",
+    "files_fp",  # contrib_schema 2 だけ(#90)
 }
+_FILES_FP = re.compile(r"[0-9a-f]{64}")
 SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 
 # --- 個人の情報の検出 ------------------------------------------------------------------------------
@@ -237,8 +255,60 @@ PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], tuple[str, str]], ...] = (
         ),
         ("時刻(hh:mm、2pm など。日付より細かい)", "a time of day (hh:mm, 2pm etc.; finer than a date)"),
     ),
-    ("serial", re.compile(r"\b(S/?N|serial)\b|シリアル|製造番号", re.I), ("シリアル番号", "a serial number")),
+    (
+        "serial",
+        re.compile(r"\b(S/?N|serial)\b|シリアル|製造番号|製品番号|個体番号", re.I),
+        ("シリアル番号", "a serial number"),
+    ),
+    # #90 で足したもの(書き換えた・崩した書き方の個人の情報)
+    (
+        "encoded",
+        # base64 らしい 20 字以上の続き(大文字・小文字・数字がどれも入るもの。パスやメールを書き換えて隠す)
+        re.compile(
+            r"(?=[A-Za-z0-9+/]{20,})(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*\d)"
+            r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{20,}={0,2}"
+        ),
+        ("base64 などで書き換えた文字", "base64 or other encoded text"),
+    ),
+    (
+        "hex_id",
+        re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{32,}(?![0-9A-Za-z])"),
+        ("32 桁以上の 16 進(UUID・個体の ID など)", "32 or more hex digits (a UUID or device ID)"),
+    ),
+    (
+        "domain",
+        re.compile(
+            r"(?<![\w.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|net|org|jp|io|dev|me|info|biz|co|ai|app|xyz"
+            r"|us|uk|de|cn|kr|tw|ru|fr|eu|tv|cc|ne|or|ac|go|ed)\b(?![.-]\w)",
+            re.I,
+        ),
+        ("ドメイン名(example.com など)", "a domain name (example.com etc.)"),
+    ),
+    (
+        "phone",
+        re.compile(
+            r"(?<![\d-])0\d{1,4}-\d{1,4}-\d{3,4}(?![\d-])|\+\d{1,3}[ -]\d{1,4}[ -]\d{2,4}[ -]?\d{0,4}"
+        ),
+        ("電話番号", "a phone number"),
+    ),
+    (
+        "mac",
+        re.compile(
+            r"\b[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\b|\b(?:[0-9A-Fa-f]{2}\.){5}[0-9A-Fa-f]{2}\b"
+        ),
+        ("MAC アドレス(点で区切った形)", "a MAC address (dotted form)"),
+    ),
+    (
+        "at_sign",
+        re.compile(r"[\[(]\s*(?:at|dot)\s*[\])]|アット|あっと|\bat\s+\w+\s+dot\b", re.I),
+        ("崩して書いたメールアドレス([at]・アット など)", "an obfuscated email address ([at] etc.)"),
+    ),
 )
+
+
+# 自由な文(note)にだけ当てる種類(#90)。モデル ID(hf:Ine007/waiNSFWIllustrious_v140 など)は base64 や
+# ドメインに似ることがあり、決まった形の項目は別に形と一覧で縛っているので当てない
+NOTE_ONLY_KINDS = frozenset({"encoded", "hex_id", "domain", "phone"})
 
 
 def normalize_for_scan(text: str) -> str:
@@ -309,6 +379,8 @@ def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
         if len(text) > MAX_NOTE_CHARS:
             return
         for kind, what in _hits(text):
+            if kind in NOTE_ONLY_KINDS and where != "$.measurement.note":
+                continue  # 決まった形の項目(モデル ID・GPU 名など)は形の検査で縛っている
             if (where, kind) not in seen:
                 seen.add((where, kind))
                 found.append({"where": where, "kind": kind, "what": what})
@@ -325,6 +397,8 @@ def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
             for i, v in enumerate(x[:100]):
                 walk(v, f"{where}[{i}]", depth + 1)
         elif isinstance(x, str):
+            if where == "$.measurement.files_fp" and _FILES_FP.fullmatch(x):
+                return  # ファイルの sha256 から作った指紋(個人の情報ではない。形は validate が見る)
             check(where, x)
 
     walk(data, "$")
@@ -411,7 +485,7 @@ CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
             "GPU の UUID・PCI の位置・MAC・シリアルが入っていない",
             "No GPU UUID, PCI location, MAC or serial number",
         ),
-        ("uuid", "gpu_uuid", "pci", "mac", "serial"),
+        ("uuid", "gpu_uuid", "pci", "mac", "serial", "hex_id", "encoded"),
     ),
     (
         "network",
@@ -419,7 +493,7 @@ CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
             "IP アドレス・URL・メールアドレス・@ の名前が入っていない",
             "No IP address, URL, email address or @name",
         ),
-        ("ip", "url", "at_sign"),
+        ("ip", "url", "at_sign", "domain", "phone"),
     ),
     ("date_only", ("日時は日付だけ(時刻が入っていない)", "Dates only (no time of day)"), ("time",)),
 )
@@ -585,6 +659,8 @@ def build_submission(
             "seconds": m.seconds,
             "vram_metric": m.vram_metric,
             "note": note,
+            # 測った時点の一覧のファイルの指紋(contrib_schema 2。#90)。分からなければ入れない
+            **({"files_fp": m.files_fp} if getattr(m, "files_fp", None) else {}),
         },
     }
 
@@ -714,6 +790,7 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
         origin=ORIGIN_COMMUNITY,
         gpu_backend=gpu.get("backend"),
         gpu_pci_id=gpu.get("pci_id"),
+        files_fp=mm.get("files_fp"),
     )
 
 
@@ -789,9 +866,25 @@ def _no_constants(name: str) -> Any:
     )
 
 
+class DuplicateKeyError(ValueError):
+    """同じオブジェクトの中に同じキーが 2 回ある(後の値が黙って勝つので、見た中身と使う中身が変わる)。"""
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise DuplicateKeyError(
+                tr(f"同じキー {k!r} が 2 回あります", f"The key {k!r} appears twice in one object")
+            )
+        out[k] = v
+    return out
+
+
 def loads_strict(text: str) -> Any:
-    """JSON を読む。NaN・Infinity・-Infinity は断る(Python の json は既定で読んでしまう)。"""
-    return json.loads(text, parse_constant=_no_constants)
+    """JSON を読む。NaN・Infinity・-Infinity と、同じオブジェクトの中の重複したキーは断る
+    (Python の json は既定で読んでしまう)。"""
+    return json.loads(text, parse_constant=_no_constants, object_pairs_hook=_no_duplicates)
 
 
 def name_vendor(name: str) -> str | None:
@@ -842,6 +935,65 @@ _CC = re.compile(r"\d{1,2}\.\d")
 _FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})\.json")
 
 
+def _version_tuple(v: Any) -> tuple[int, ...] | None:
+    m = re.match(r"v?(\d{1,3})\.(\d{1,3})\.(\d{1,4})", v) if isinstance(v, str) else None
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def _check_versions(r: Report, data: dict[str, Any], db: Database | None) -> None:
+    """版の範囲の確認(失敗にしない。#90): 検査する genmodelfit より新しい版で作った提出、テンプレートが求める
+    ComfyUI より古い版・一覧が知る最新より新しい ComfyUI の版で測った提出。"""
+    tool = data.get("tool") if isinstance(data.get("tool"), dict) else {}
+    tv, mine = _version_tuple(tool.get("version")), _version_tuple(__version__)
+    if tv and mine and tv > mine:
+        r.notice(
+            "tool_newer",
+            tr(
+                f"検査している genmodelfit({__version__})より新しい版({tool.get('version')})で作った提出です",
+                f"Made by a newer genmodelfit ({tool.get('version')})"
+                f" than the one checking it ({__version__})",
+            ),
+        )
+    cv = _version_tuple(data.get("comfyui_version"))
+    if cv is None or db is None:
+        return
+    mm = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    entry = db.get(mm.get("model_id")) if isinstance(mm.get("model_id"), str) else None
+    need = _version_tuple(getattr(getattr(entry, "template", None), "min_comfyui_version", None))
+    if need and cv < need:
+        r.notice(
+            "comfyui_old",
+            tr(
+                f"ComfyUI {data.get('comfyui_version')} はテンプレートが求める版"
+                f"({'.'.join(map(str, need))} 以上)より古いです",
+                f"ComfyUI {data.get('comfyui_version')} is older than the template needs"
+                f" ({'.'.join(map(str, need))} or later)",
+            ),
+        )
+    latest = _version_tuple(((db.sources or {}).get("comfyui") or {}).get("latest_release"))
+    if latest and cv[:2] > (latest[0], latest[1] + 5):
+        r.notice(
+            "comfyui_newer",
+            tr(
+                f"ComfyUI {data.get('comfyui_version')} は一覧が知る最新({'.'.join(map(str, latest))})より"
+                "ずっと新しい版です",
+                f"ComfyUI {data.get('comfyui_version')} is much newer than the latest the list knows"
+                f" ({'.'.join(map(str, latest))})",
+            ),
+        )
+
+
+def gpu_known(name: str | None, vendor: str | None = None) -> bool:
+    """判定に使える GPU 名か(#90)。NVIDIA は名前の表に丸ごと当たる名前(hardware.nvidia_name_known)で、
+    汎用の名前(NVIDIA Graphics Device など)でないもの。AMD・Intel・Apple は今までどおり(PCI の型番 ID・
+    チップ名で照合するので、ここでは断らない)。"""
+    if not isinstance(name, str) or not name:
+        return False
+    if (vendor or name_vendor(name) or "nvidia") != "nvidia":
+        return True
+    return nvidia_name_known(name) and not generic_gpu_name(name)
+
+
 def validate_submission(
     data: Any,
     db: Database | None = None,
@@ -873,15 +1025,36 @@ def validate_submission(
             ),
         )
     _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
-    if data.get("contrib_schema") != CONTRIB_SCHEMA:
+    schema = data.get("contrib_schema")
+    if isinstance(schema, bool) or schema not in CONTRIB_SCHEMAS:
         r.error(
             "schema",
             tr(
-                f"contrib_schema が {CONTRIB_SCHEMA} ではありません: {data.get('contrib_schema')!r}",
-                f"contrib_schema is not {CONTRIB_SCHEMA}: {data.get('contrib_schema')!r}",
+                f"contrib_schema が 1 か 2 ではありません: {schema!r}",
+                f"contrib_schema is not 1 or 2: {schema!r}",
             ),
         )
         return r
+    mm0 = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    if "files_fp" in mm0:
+        fp = mm0.get("files_fp")
+        if schema == 1:
+            r.error(
+                "schema",
+                tr(
+                    "measurement.files_fp は contrib_schema 2 の項目です",
+                    "measurement.files_fp is a contrib_schema 2 field",
+                ),
+            )
+        elif not isinstance(fp, str) or not _FILES_FP.fullmatch(fp):
+            r.error(
+                "value",
+                tr(
+                    "measurement.files_fp は 16 進の小文字 64 桁(sha256)です",
+                    "measurement.files_fp must be 64 lowercase hex digits (sha256)",
+                ),
+            )
+    _check_versions(r, data, db)
     if data.get("kind") != KIND:
         r.error("schema", tr(f"kind は {KIND!r} にしてください", f"kind must be {KIND!r}"))
     tool = data.get("tool")
@@ -1121,15 +1294,32 @@ def validate_submission(
         if name:
             r.gpu_name = name
             known = cc_from_name(name)
-            if known is None:
+            nvidia = (gpu.get("vendor") or name_vendor(name) or "nvidia") == "nvidia"
+            if known is None or (nvidia and not gpu_known(name, gpu.get("vendor"))):
+                # NVIDIA は名前の表に丸ごと当たる名前だけを知っている GPU とする(#90。当たらない行は記録として
+                # 残すが、判定には使わない: aggregate の gpu_known)
                 r.notice(
                     "unknown_gpu",
                     tr(
-                        f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}",
-                        f"The GPU name is not in the known table (non-NVIDIA or a new GPU?): {name}",
+                        f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}"
+                        + ("。NVIDIA の名前の表に無いので、判定には使いません" if nvidia else ""),
+                        f"The GPU name is not in the known table (non-NVIDIA or a new GPU?): {name}"
+                        + (". Not in the NVIDIA name table, so it is not used for judging" if nvidia else ""),
                     ),
                 )
-            elif cc and parse_compute_cap(cc) != known:
+            nominal = nvidia_nominal_vram(name) if nvidia else ()
+            lo, hi = NOMINAL_VRAM_TOLERANCE
+            if nominal and _num(vram) and not any(lo <= vram / v <= hi for v in nominal):
+                r.error(
+                    "gpu_inconsistent",
+                    tr(
+                        f"{name} の VRAM は {' / '.join(f'{v:g}' for v in nominal)} GB ですが、"
+                        f"system.gpu.vram_gb が {vram:g} です",
+                        f"{name} has {' / '.join(f'{v:g}' for v in nominal)} GB of VRAM,"
+                        f" but system.gpu.vram_gb is {vram:g}",
+                    ),
+                )
+            if known is not None and cc and parse_compute_cap(cc) != known:
                 r.error(
                     "gpu_inconsistent",
                     tr(
@@ -1628,11 +1818,22 @@ def read_submission(path: str | os.PathLike[str]) -> tuple[Any, str]:
                 f"Too large ({size} bytes; up to {MAX_FILE_BYTES})",
             )
         )
+    data = p.read_bytes()
+    if data.startswith(b"\xef\xbb\xbf"):
+        # BOM は消さずに断る(消すとファイルの中身と検査した中身が変わる。bench・contrib は BOM を書かない)
+        raise SubmissionReadError(
+            tr(
+                "先頭に UTF-8 の BOM があります。BOM の無い UTF-8 で保存し直してください",
+                "The file starts with a UTF-8 BOM. Save it again as UTF-8 without a BOM",
+            )
+        )
     try:
-        raw = p.read_bytes().decode("utf-8")
+        raw = data.decode("utf-8")
         return loads_strict(raw), raw
     except RecursionError as e:
         raise SubmissionReadError(tr("入れ子が深すぎます", "Nested too deeply")) from e
+    except DuplicateKeyError as e:
+        raise SubmissionReadError(str(e)) from e
     except (UnicodeDecodeError, ValueError) as e:
         raise SubmissionReadError(
             tr(f"JSON ではありません({type(e).__name__})", f"Not JSON ({type(e).__name__})")
@@ -1689,6 +1890,62 @@ def find_files(root: str | os.PathLike[str]) -> list[Path]:
     return sorted(out, key=lambda x: x.as_posix())
 
 
+def scan_dir(root: str | os.PathLike[str]) -> tuple[list[Path], list[Path]]:
+    """提出のフォルダを見る(#90)。(<GPU>/<名前>.json の形の場所にある *.json, 置けない場所・形のファイル)。
+    置けるのは <root>/<GPU のフォルダ>/<ファイル> の .json(小文字)だけ。直下・深いフォルダの .json、
+    .json でないファイル(.txt・.JSON など)は置けないものに入れる。ファイルを渡せば、それだけを検査する。"""
+    p = Path(root)
+    if p.is_file() or p.is_symlink():
+        return [p], []
+    if not p.is_dir():
+        return [], []
+    ok: list[Path] = []
+    bad: list[Path] = []
+    for d, dirs, files in os.walk(p, followlinks=False):
+        dirs[:] = sorted(x for x in dirs if not (Path(d) / x).is_symlink())
+        for f in files:
+            fp = Path(d) / f
+            depth = len(fp.relative_to(p).parts)
+            (ok if f.endswith(".json") and depth == 2 else bad).append(fp)
+    key = lambda x: x.as_posix()  # noqa: E731
+    return sorted(ok, key=key), sorted(bad, key=key)
+
+
+def layout_report(path: Path) -> Report:
+    """置けない場所・形のファイルの検査結果(誤り layout)。"""
+    r = Report(path=path.as_posix())
+    r.error(
+        "layout",
+        tr(
+            "提出として置けるのは <GPU のフォルダ>/<日付>-<sha8>.json(.json は小文字)だけです"
+            "(ほかの形のファイル・フォルダの直下や深いフォルダには置けません)",
+            "Only <GPU folder>/<date>-<sha8>.json (lowercase .json) can be submitted"
+            " (no other files, nothing directly in the folder or in deeper folders)",
+        ),
+    )
+    return r
+
+
+def validate_dirs(
+    roots: list[str | os.PathLike[str]],
+    db: Database | None = None,
+    *,
+    today: _date | None = None,
+    check_filename: bool = True,
+) -> list[Report]:
+    """フォルダ(とファイル)をまとめて検査する。置けない場所・形のファイルも誤り(layout)として返す
+    (CI の「足したファイルの形」の検査と手元の検査をそろえる。#90)。並びはパスの順。"""
+    files: list[Path] = []
+    bad: list[Path] = []
+    for root in roots:
+        ok, ng = scan_dir(root)
+        files += ok
+        bad += ng
+    reports = validate_files(files, db, today=today, check_filename=check_filename)
+    reports += [layout_report(b) for b in bad]
+    return sorted(reports, key=lambda r: r.path)
+
+
 # --- まとめる -------------------------------------------------------------------------------------
 
 MAD_SCALE = 1.4826  # 正規分布の標準偏差に合わせる係数
@@ -1699,8 +1956,10 @@ MIN_CONSISTENT = 2  # 「そろった」とみなす最小の件数
 
 
 def _settings_key(s: Settings) -> tuple:
-    """設定の鍵。精度は書き方をそろえる(BF16 と bf16、fp8_e4m3fn と fp8 は同じ)。"""
-    keys = ("width", "height", "frames", "seconds", "steps")
+    """設定の鍵。精度は書き方をそろえる(BF16 と bf16、fp8_e4m3fn と fp8 は同じ)。
+    ステップ数は鍵に入れない(#90): 最大 VRAM は 1 ステップの作業用メモリで決まり、ステップ数では変わらない。
+    判定の実測の照合(estimate._settings_match)もステップ数を比べないので、それとそろえた。"""
+    keys = ("width", "height", "frames", "seconds")
     return (
         *((k, getattr(s, k)) for k in keys),
         ("precision", norm_precision(s.precision)),
@@ -1752,22 +2011,79 @@ def load_dir(
 ) -> tuple[list[Submission], list[Report]]:
     """フォルダの提出を読み、検査を通ったもの(誤りの無いもの。注意があっても使う)だけ返す
     (同じ内容は 1 件)。(通ったもの, 全部の検査結果)。"""
-    files = find_files(root)
+    files, bad = scan_dir(root)
     reports = validate_files(files, db)
     subs: list[Submission] = []
     for p, r in zip(files, reports, strict=True):
         if r.ok and r.sha256:
             data, _ = read_submission(p)
             subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
-    return subs, reports
+    return subs, sorted([*reports, *(layout_report(b) for b in bad)], key=lambda r: r.path)
 
 
-def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
-    """同じモデル・設定・GPU(と測り方)ごとにまとめる。標準でない提出は使わない。
+def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
+    """提出ごとの出どころ(#90)。出どころは、そのファイルをリポジトリに足したコミット(main の first-parent の
+    履歴で。PR のマージ・squash のコミットが 1 つの出どころ)。同じ PR で足した提出は 1 つの出どころになる。
+    (パス → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone(CI の depth 1 は全部が 1 つの
+    コミットに見える)・git が無いときは、使えなかったとして空を返す(aggregate はファイルごとに数える)。
+    通信しない(手元の git の履歴を読むだけ)。"""
+    import subprocess
 
-    最後まで動いた(ok)ものの最大 VRAM で外れ値を除き(robust_filter)、残りの中央値を値にする。
-    OOM だけのまとまりは outcome: oom の 1 行にする(見積もりには使わない)。
+    base = Path(root).resolve()
+
+    def git(*args: str) -> str | None:
+        try:
+            r = subprocess.run(
+                ["git", "-c", "core.quotepath=off", "-C", str(base), *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return r.stdout if r.returncode == 0 else None
+
+    top = git("rev-parse", "--show-toplevel")
+    if not top or (git("rev-parse", "--is-shallow-repository") or "").strip() != "false":
+        return {}, False
+    top_dir = Path(top.strip()).resolve()
+    log = git(
+        "log", "--first-parent", "--diff-filter=A", "--name-only", "--format=commit %H", "--", str(base)
+    )
+    if log is None:
+        return {}, False
+    added: dict[str, str] = {}
+    commit = None
+    for line in log.splitlines():
+        if line.startswith("commit "):
+            commit = line[7:].strip()
+        elif line.strip() and commit and line.strip() not in added:
+            added[line.strip()] = commit  # 新しい順なので、最初に見たもの = いちばん新しく足したコミット
+    out: dict[str, str] = {}
+    for s in subs:
+        try:
+            rel = Path(s.path).resolve().relative_to(top_dir).as_posix()
+        except ValueError:
+            rel = ""
+        out[s.path] = added.get(rel) or f"file:{s.sha256}"  # まだコミットしていないファイルは 1 件で 1 つ
+    return out, True
+
+
+def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出は使わない。
+
+    - error で終わった提出は値に使わず、数だけ数える(n_error)。
+    - 最後まで動いた(ok)ものは出どころ(sources。無ければ提出ごと)ごとに中央値をとり、その出どころの値で
+      外れ値を除き(robust_filter)、残りの中央値を行の値にする(1 人がたくさん出しても 1 つとして数える)。
+    - OOM だけのまとまりは outcome: oom の 1 行にする(見積もりには使わない)。
     結果は決まった順(モデル ID → GPU → 設定)で、同じ入力からは同じ出力になる。"""
+    sources = sources or {}
+
+    def src(sub: Submission) -> str:
+        return sources.get(sub.path) or f"file:{sub.sha256}"
+
     groups: dict[tuple, list[Submission]] = {}
     for sub in subs:
         m = sub.measurement
@@ -1782,46 +2098,71 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
             round(m.gpu_vram_gb or 0),
             m.vram_metric or "",
             _settings_key(m.settings),
+            getattr(m, "files_fp", None) or "",  # 測ったときの一覧のファイルが違えば別の行(#90)
         )
         groups.setdefault(key, []).append(sub)
     out: list[dict[str, Any]] = []
     for key in sorted(groups, key=lambda k: json.dumps(k, default=str)):
-        members = sorted(groups[key], key=lambda s: s.sha256)
+        everyone = sorted(groups[key], key=lambda s: s.sha256)
+        errors = [s for s in everyone if s.measurement.outcome not in ("ok", "oom")]
+        members = [s for s in everyone if s not in errors]
+        if not members:
+            continue  # error だけの組は行にしない(値に使えるものが無い)
         ms = [s.measurement for s in members]
         ok = [(s, m) for s, m in zip(members, ms, strict=True) if m.outcome == "ok"]
-        oom = [m for m in ms if m.outcome == "oom"]
+        oom = [(s, m) for s, m in zip(members, ms, strict=True) if m.outcome == "oom"]
+        oom_sources = {src(s) for s, _ in oom}
         if ok:
-            keep, drop, _ = robust_filter([m.peak_vram_gb for _, m in ok])
-            used = [ok[i] for i in keep]
-            outliers = [ok[i][0].sha256[:8] for i in drop]
-            uv = [m.peak_vram_gb for _, m in used]
+            by_src: dict[str, list[tuple[Submission, Measurement]]] = {}
+            for s, m in ok:
+                by_src.setdefault(src(s), []).append((s, m))
+            names = sorted(by_src)
+            values = [statistics.median(m.peak_vram_gb for _, m in by_src[n]) for n in names]
+            keep, drop, _ = robust_filter(values)
+            kept = [names[i] for i in keep]
+            used = [x for n in kept for x in by_src[n]]
+            outliers = sorted(s.sha256[:8] for i in drop for s, _ in by_src[names[i]])
+            uv = [values[i] for i in keep]
             med = statistics.median(uv)
             mad = statistics.median([abs(v - med) for v in uv])
             rel = (max(uv) - min(uv)) / med if med > 0 else 0.0
             base = [m for _, m in used]
             outcome = "ok"
+            n_sources = len(kept)
+            runs = n_sources > len(oom_sources)
         else:
-            used, outliers, base = [], [], oom
-            uv = [m.peak_vram_gb for m in oom]
+            used, outliers, base = [], [], [m for _, m in oom]
+            uv = [m.peak_vram_gb for m in base]
             med = statistics.median(uv) if uv else 0.0
             mad, rel = 0.0, 0.0
             outcome = "oom"
+            n_sources = 0
+            runs = False
         first = ms[0]
-        # consistent は係数の合わせ直し(calibrate)に入れる条件。見積もりは ok の行を 1 件から使う
-        # (estimate.usable)。OOM を含む組はそろったとみなさない(同じ構成で動かなかった人がいる)
-        consistent = outcome == "ok" and not oom and len(used) >= MIN_CONSISTENT and rel <= CONSISTENT_REL
+        # consistent は係数の合わせ直し(calibrate)に入れる条件: 別々の出どころが 2 つ以上で、そろっていて、
+        # OOM が無い。見積もりは ok の行を 1 件から使う(estimate.usable)
+        consistent = outcome == "ok" and not oom and n_sources >= MIN_CONSISTENT and rel <= CONSISTENT_REL
         settings = {k: v for k, v in asdict(first.settings).items() if v is not None}
+        steps = _mode([m.settings.steps for m in ms])
+        settings.pop("steps", None)
+        if steps is not None:
+            settings["steps"] = steps  # 表示用(鍵には入れない)。いちばん多いステップ数
         if settings.get("precision"):
             settings["precision"] = norm_precision(settings["precision"])
+        gpu_name = _mode([m.gpu_name for m in ms])
+        vendor = next((v for v, b in VENDOR_BACKEND.items() if b == _mode([m.gpu_backend for m in ms])), None)
         out.append(
             {
                 "model_id": first.model_id,
-                "gpu_name": _mode([m.gpu_name for m in ms]),
+                "gpu_name": gpu_name,
                 "gpu_vram_gb": _med([m.gpu_vram_gb for m in base] or [first.gpu_vram_gb]),
                 # 測った GPU の backend(estimate.measurement_vendor が会社を名前より先にこれで決める。
                 # Apple の MPS は GPU 名が "mps" になる)
                 "gpu_backend": _mode([m.gpu_backend for m in ms]),
                 "gpu_pci_id": _mode([getattr(m, "gpu_pci_id", None) for m in ms]),
+                # 名前の表に無い NVIDIA の GPU は記録として残すだけで、判定に使わない(#90)
+                "gpu_known": gpu_known(gpu_name, vendor),
+                "files_fp": getattr(first, "files_fp", None),
                 "peak_vram_gb": round(med, 2),
                 "settings": settings,
                 "peak_ram_gb": _med([m.peak_ram_gb for m in base]),
@@ -1832,8 +2173,8 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
                 "date": max((m.date or "" for m in ms), default="") or None,
                 "note": (
-                    f"ほかの利用者の実測 {len(ms)} 件(使った {len(used)} 件・外れ値 {len(outliers)} 件・"
-                    f"OOM {len(oom)} 件)の中央値"
+                    f"ほかの利用者の実測 {len(ms)} 件(使った {len(used)} 件・出どころ {n_sources}・"
+                    f"外れ値 {len(outliers)} 件・OOM {len(oom)} 件)の中央値"
                 ),
                 "outcome": outcome,
                 "standard": True,
@@ -1842,8 +2183,11 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
                 "n_submissions": len(ms),
                 "consistent": consistent,
                 "n_used": len(used),
+                "n_sources": n_sources,
                 "n_outliers": len(outliers),
                 "n_oom": len(oom),
+                "n_error": len(errors),
+                "runs_evidence": runs,
                 "spread_mad_gb": round(mad, 3),
                 "spread_rel_pct": round(rel * 100, 1),
                 "peak_vram_min_gb": round(min(uv), 2) if uv else None,
@@ -1866,14 +2210,18 @@ def community_document(rows: list[dict[str, Any]], used: list[Submission] | None
         "contrib_schema": CONTRIB_SCHEMA,
         "date": max((r.get("date") or "" for r in rows), default="") or None,
         "method": (
-            "data/contrib の提出を、同じモデル・GPU・測り方・設定ごとにまとめる。"
-            "最後まで動いた(ok)ものの最大 VRAM で、"
+            "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・"
+            "測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。"
+            "最後まで動いた(ok)ものの最大 VRAM を出どころ(リポジトリに足したコミット。git の履歴が無ければ"
+            "提出ごと)ごとの中央値にし、"
             f"|x - 中央値| / ({MAD_SCALE} × MAD) > {OUTLIER_Z} を外れ値として除き"
-            "(3 件以上のとき。MAD は中央値の "
+            "(出どころが 3 つ以上のとき。MAD は中央値の "
             f"{MAD_FLOOR_REL:.0%} を下限)、残りの中央値を値にする。ok の行は 1 件から見積もりに使う"
-            "(件数は n_used、同じ構成の OOM は n_oom)。使った件数が "
+            "(件数は n_used、出どころは n_sources、同じ構成の OOM は n_oom。"
+            "OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが "
             f"{MIN_CONSISTENT} 以上で、幅が中央値の {CONSISTENT_REL:.0%} 以内で、OOM が無ければ consistent"
-            "(係数の合わせ直しに入れる)"
+            "(係数の合わせ直しに入れる)。名前の表に無い NVIDIA の GPU の行は gpu_known が false で、"
+            "判定に使わない"
         ),
         "submissions": sorted({s.sha256 for s in used or []}),
         "measurements": rows,
@@ -1906,7 +2254,9 @@ def bundled_status(
     by = {s.sha256: s for s in subs}
     used = [by[h] for h in listed if h in by]
     missing = [h for h in listed if h not in by]
-    matches = not missing and community_document(aggregate(used), used) == document
+    matches = (
+        not missing and community_document(aggregate(used, submission_sources(p, used)[0]), used) == document
+    )
     return {
         "listed": len(listed),
         "valid": len(subs),
@@ -2037,15 +2387,19 @@ __all__ = [
     "bundled_status",
     "community_document",
     "content_hash",
+    "gpu_known",
     "gpu_slug",
     "load_dir",
     "measurements_from_file",
     "privacy_findings",
     "robust_filter",
+    "scan_dir",
     "scrub_text",
     "share_check",
     "share_urls",
+    "submission_sources",
     "suggested_path",
+    "validate_dirs",
     "validate_files",
     "validate_submission",
     "write_community",

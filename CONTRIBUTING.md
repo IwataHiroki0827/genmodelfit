@@ -169,6 +169,8 @@ This prints everything in the file in readable form, and prints the result of a 
 1. Add only `data/contrib/<GPU>/<date>-<sha8>.json`.
    - Do not change other files (put code changes in a separate PR).
    - The `Contrib` workflow fails a PR that changes files outside data/contrib.
+   - A submission PR **only adds files**. A PR that deletes, modifies or renames an existing file in data/contrib, adds a file whose name or place is not `<GPU>/<date>-<sha8>.json` (lowercase `.json`), or adds no submission at all also fails (#90).
+   - To fix a submission you sent before, send the fixed one as a new file and write the old file's name and the reason in the PR description. The maintainer removes the old file (docs/release.md "Releasing later versions").
 2. Create a branch, commit, and push to your fork:
 
    ```powershell

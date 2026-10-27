@@ -110,6 +110,11 @@ Steps:
    - `genmodelfit contrib aggregate --check` counts the submissions not in it yet (exit code 1 if any).
    - If there are any, rebuild it with `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`
      (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
+   - Make the aggregate in a clone with git history (not shallow): sources (submissions added by the same PR count as
+     one) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
+     and the output says so).
+   - If someone resubmitted a fixed submission, remove the old file in a maintainer PR (write the reason in the PR
+     description; a submission PR only adds files and cannot remove them).
    - If the consistent groups (`consistent`) changed, refit with `python -m genmodelfit.calibrate` and update
      docs/accuracy.ja.md and docs/accuracy.md (CLAUDE.md).
 2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).

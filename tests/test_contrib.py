@@ -274,7 +274,7 @@ BAD_CASES = [
     ("measurement.note", "http://example.org/x", "privacy"),
     ("date", "2026-10-20T10:11:12Z", "date"),
     ("date", "2027-01-01", "date"),
-    ("contrib_schema", 2, "schema"),
+    ("contrib_schema", 3, "schema"),
     ("measurement.peak_vram_gb", 9.5, "value"),
     ("measurement.peak_vram_gb", -1, "value"),
     ("measurement.seconds", 0, "value"),
@@ -1290,8 +1290,11 @@ def test_cli_make_from_bench_file(tmp_path, capsys):
 
 
 def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
+    # git の外に写して数える(リポジトリの中では、同じコミットで足した 3 件が 1 つの出どころになる。#90)
+    fix = tmp_path / "fix"
+    shutil.copytree(FIX, fix)
     out = tmp_path / "community.json"
-    args = ["contrib", "aggregate", str(FIX), "--output", str(out), "--json"]
+    args = ["contrib", "aggregate", str(fix), "--output", str(out), "--json"]
     assert cli.main(args) == 0
     d = json.loads(capsys.readouterr().out)
     keys = {
@@ -1306,16 +1309,16 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
         "consistent",
     }
     assert keys <= set(d)
-    assert (d["files"], d["groups"], d["consistent"]) == (4, 2, 1)
+    assert (d["files"], d["groups"], d["consistent"], d["sources_from"]) == (4, 2, 1, "files")
     assert json.loads(out.read_text(encoding="utf-8")) == d["community"]
     assert "report" not in d
     assert (
-        cli.main(["contrib", "aggregate", str(FIX), "--report", "--threshold", "10", "--fail-on-breach"]) == 3
+        cli.main(["contrib", "aggregate", str(fix), "--report", "--threshold", "10", "--fail-on-breach"]) == 3
     )
     text = capsys.readouterr().out
     assert "警告: 誤差が閾値 10% を超えた" in text and "| 種類 | LOO 件数 |" in text
     assert "### ほかの利用者の実測で変わる段階" in text
-    assert cli.main(["contrib", "aggregate", str(FIX), "--report", "--json"]) == 0  # 既定の 25% は超えない
+    assert cli.main(["contrib", "aggregate", str(fix), "--report", "--json"]) == 0  # 既定の 25% は超えない
     rep = json.loads(capsys.readouterr().out)["report"]
     assert rep["breach"] is False and rep["threshold_pct"] == 25.0
     assert {"breach", "breaches", "by_modality", "summary", "loo", "check", "n_fit", "fit_changes"} <= set(
