@@ -521,7 +521,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
 | `reasons` | str[] | 人が読める理由(表示の言語 `en` / `ja`) |
 | `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測の有無によらず種類ごとの既定で埋める。0.11.0。それまでは実測があれば実測の設定) |
-| `limits` | Limits \| null | この PC で `good` に届く最大の設定。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
+| `limits` | Limits \| null | この PC の GPU で、逃がさずに `good` に届く最大の設定(0.11.0。GPU の無い PC では null)。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
 | `vram_free_short` | bool | GPU で動くと判定したが、今の空き VRAM(`nvidia-smi` の `memory.free`)が選んだ動かし方に要る量を下回る: ほかのアプリを閉じること。段階は全体の VRAM のまま。空き VRAM が不明(`--vram`)のときは常に false |
 | `unknown_size` | bool | 重みの大きさが不明で、何も判定していない。`fit` は `unknown`(`?` と表示。「Too tight」にはしない)、`run_mode` は `unknown`(0.2.0。以前は `none`)、VRAM / RAM の値は JSON で `null`(`Estimate.to_dict`。Python の属性は 0.0 のまま)、`limits` は null、最初の理由は「大きさが分からないため判定できません」。`recommend` はこれを落とし、`fit` / `search` は最後に並べる |
 
@@ -572,7 +572,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 だから既定の設定では、実測の設定が既定と違うモデル(作者の画像・動画・音楽の実測)は `calibrated` になる。実測の設定で判定するには `--width` などを付ける。
 実測と係数の使い方は [accuracy.md](accuracy.ja.md) を参照。
 
-Limits / 限界(値はすべて、`perfect` か `good` になる最大のもの。ほかの設定は変えない。`null` は、試した最小の値でも `good` に届かない):
+Limits / 限界(値はすべて、逃がさずに GPU で `perfect` か `good` になる最大のもの。GPU の無い PC では `limits` が null。ほかの設定は変えない。`null` は、試した最小の値でも `good` に届かない):
 
 | キー | 型 | 意味 |
 |---|---|---|

@@ -2412,8 +2412,8 @@ CPU_REALTIME_TTS: tuple[CpuRealtimeTts, ...] = (
         "Piper",
         None,
         "piper",
-        'README: "A fast, local neural text to speech system"'
-        " (github.com/rhasspy/piper; ONNX Runtime on CPU)",
+        'README: "A fast, local neural text to speech system that sounds great and is optimized for the'
+        ' Raspberry Pi 4." (github.com/rhasspy/piper/blob/2023.11.14-2/README.md)',
     ),
     CpuRealtimeTts(
         "VieNeu-TTS",
@@ -2422,21 +2422,8 @@ CPU_REALTIME_TTS: tuple[CpuRealtimeTts, ...] = (
         'model card: "on CPU everything runs on ONNX Runtime", "RTF < 1, one stream"'
         " (huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo)",
     ),
-    CpuRealtimeTts(
-        "Kokoro",
-        r"^hf:hexgrad/kokoro",
-        None,
-        'model card: "82 million parameters", "Decoder only: no diffusion" (StyleTTS 2 + iSTFTNet;'
-        " huggingface.co/hexgrad/Kokoro-82M. No explicit CPU figure)",
-    ),
-    CpuRealtimeTts(
-        "HiFi-GAN vocoder",
-        r"^hf:speechbrain/tts-hifigan",
-        None,
-        'model card: "takes in input a spectrogram and produces a waveform" (one GAN pass;'
-        " huggingface.co/speechbrain/tts-hifigan-libritts-22050Hz)",
-    ),
 )
+# 作者が CPU について書いていない読み上げ(Kokoro・HiFi-GAN など)は入れない(生成と同じ marginal まで。#108)
 
 
 def cpu_realtime_tts(entry: ModelEntry) -> CpuRealtimeTts | None:
@@ -2501,8 +2488,8 @@ def _judge_cpu(
     n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
     """GPU を使わない判定。小さく CPU で動く種類と、CPU で動く系統(families.CPU_FAMILIES)だけ動く。
-    段階はメインメモリの使用率の帯(FIT_BANDS)で、上限は cpu_top(生成は marginal、読み上げ・1 回の計算の
-    道具は good。#108)。"""
+    段階はメインメモリの使用率の帯(FIT_BANDS)で、上限は cpu_top(生成は marginal、CPU で実時間に動くと
+    作者が書いている読み上げ(CPU_REALTIME_TTS)・1 回の計算の道具は good。#108)。"""
     w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
     why = tr("GPU なし", "No GPU") if system.vram_gb <= 0 else tr("GPU に載らない", "Does not fit on the GPU")
     run = cpu_family(entry)
@@ -2549,7 +2536,7 @@ def _judge_cpu(
 # (llmfit の docs/how-it-works.md「Fit analysis」にならう。2026-10-20 に利用者が決めた):
 # 60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight。
 # 動かし方ごとの上限: 全部 GPU は上限なし、部品を順に載せ替える(GPU~)とメインメモリへ逃がす(GPU+RAM)は
-# good まで、CPU は cpu_top(生成は marginal、読み上げ・1 回の計算の道具は good)。
+# good まで、CPU は cpu_top(生成は marginal、CPU_REALTIME_TTS の読み上げ・1 回の計算の道具は good)。
 # GPU の会社による上限は無い(#108)
 FIT_BANDS = ((0.60, "perfect"), (0.85, "good"), (0.98, "marginal"))
 # 逃がす動かし方の、NVIDIA 以外の GPU の注意(#108)。ComfyUI の Dynamic VRAM(comfy-aimdo。重みを必要なときに

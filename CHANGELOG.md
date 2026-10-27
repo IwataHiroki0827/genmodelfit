@@ -61,11 +61,11 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
     offloading. Rows that switched from GPU / GPU~ Marginal to GPU+RAM Good: 8 at 6 GB, 6 at 8 GB, 18 at 12 GB, 19 at
     16 GB, 49 at 24 GB (bundled list); Marginal → Good overall: 49 / 71 / 68 / 43 / 108 rows.
   - **CPU only**: one-pass tools (depth, pose, segmentation, background removal, audio separation) and speech built to
-    run in real time on a CPU (`estimate.CPU_REALTIME_TTS`: MeloTTS, Piper, VieNeu-TTS, Kokoro, HiFi-GAN, each with
-    the authors' statement) go up to Good by the band of RAM use; image, video, music, sound effect and 3D generation,
+    run in real time on a CPU (`estimate.CPU_REALTIME_TTS`: MeloTTS, Piper, VieNeu-TTS, each with the authors'
+    statement; Kokoro and HiFi-GAN stay Marginal) go up to Good by the band of RAM use; image, video, music, sound effect and 3D generation,
     speech made with a language model, flow matching or diffusion (Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS)
     and upscaling stay at most Marginal (diffusion runs dozens of steps; HF's Intel CPU blog: SD 1.5, 20 steps, 32.3 s
-    on r7iz.metal-16xl in fp32). 13 rows Marginal → Good on a CPU-only PC. The limits (`limits`) are not given on a
+    on r7iz.metal-16xl in fp32). 11 rows Marginal → Good on a CPU-only PC. The limits (`limits`) are not given on a
     PC without a GPU, and their text says "Good on the GPU without offloading". When the GPU judgement is worse than the CPU one, the CPU one is used (adding VRAM never lowers the
     level).
   - **No cap by GPU vendor**: AMD / Intel / Apple GPUs and DGX Spark are judged by the same rules as NVIDIA (Good →

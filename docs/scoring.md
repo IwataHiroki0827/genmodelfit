@@ -75,7 +75,7 @@ Caps per run mode (`estimate.gpu_choice`, `cpu_top`):
 | GPU (all on the GPU) | none | |
 | GPU~ (parts swapped in turn) | Good | The parts are loaded again for each stage. Perfect means "everything stays loaded with room to spare" (the same idea as llmfit's "Perfect has room and runs on the GPU") |
 | GPU+RAM (part offloaded to system RAM) | Good | Slow, so never Perfect, but Good when there is room (as in llmfit). In the diffusers comparison (PR #11682) offloading slowed Wan by 1.14–1.5× (model-level and group offloading) and FLUX by 3.3–10.4× |
-| CPU: speech and one-pass tools | Good | "Running on the CPU" below |
+| CPU: CPU-realtime speech (listed) and one-pass tools | Good | "Running on the CPU" below |
 | CPU: image, video, music, sound effect and 3D generation | Marginal | "Running on the CPU" below |
 
 ### When offloading is chosen
@@ -97,25 +97,25 @@ The level is the band of system RAM use, capped as follows (`estimate.cpu_top`):
 
 | Type / use | Cap | Examples |
 |---|---|---|
-| Speech built to run in real time on a CPU (`estimate.CPU_REALTIME_TTS`; table below) | Good | Kokoro, Piper, MeloTTS, VieNeu-TTS, HiFi-GAN |
+| Speech built to run in real time on a CPU (`estimate.CPU_REALTIME_TTS`; table below) | Good | MeloTTS, Piper, VieNeu-TTS |
 | All uses are one-pass tools (`tool`, `estimate`, `matting`, `interp`, `segment`, `separate`) | Good | background removal (BiRefNet), depth, pose, segmentation, audio separation |
-| Everything else (image, video, music, sound effect and 3D generation; speech made with a language model, flow matching or diffusion; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS |
+| Everything else (image, video, music, sound effect and 3D generation; speech made with a language model, flow matching or diffusion; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS, Kokoro, HiFi-GAN |
 
 Speech built to run in real time on a CPU (the authors' own statements; also shown in the reasons):
 
 | Speech | Matched by | Authors' statement |
 |---|---|---|
 | MeloTTS | `hf:myshell-ai/MeloTTS-*` | model card: "Fast enough for CPU real-time inference" |
-| Piper | run with `piper` | README: "A fast, local neural text to speech system" (runs on ONNX Runtime on the CPU) |
+| Piper | run with `piper` | README (tag 2023.11.14-2, github.com/rhasspy/piper/blob/2023.11.14-2/README.md): "A fast, local neural text to speech system that sounds great and is optimized for the Raspberry Pi 4." |
 | VieNeu-TTS | `hf:pnnbao-ump/VieNeu-TTS*` | model card: "on CPU everything runs on ONNX Runtime", "RTF < 1, one stream" |
-| Kokoro | `hf:hexgrad/Kokoro*` | model card: "82 million parameters", "Decoder only: no diffusion" (StyleTTS 2 + iSTFTNet; no CPU figure is given) |
-| HiFi-GAN (the part that makes the waveform) | `hf:speechbrain/tts-hifigan*` | model card: "takes in input a spectrogram and produces a waveform" (one GAN pass) |
+
+Speech whose authors do not say it runs in real time on or suits a CPU (Kokoro, HiFi-GAN and others) is not listed and is capped at Marginal like generation.
 
 - Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take 32.3 s on an r7iz.metal-16xl (Sapphire Rapids) in fp32 before optimization. Speech made with a language model, flow matching or diffusion also runs tokens or steps dozens to hundreds of times, and its authors do not say it runs in real time on a CPU, so it is capped at Marginal. One-pass tools run no steps.
 - The upscalers in the list are diffusion families, so upscaling is capped at Marginal like generation (SeedVR2 is one-step diffusion but runs a 3B / 7B DiT at high resolution; SUPIR and Z-Image run dozens of steps).
 - llmfit caps the CPU at Good (LLM generation is bound by memory bandwidth and is usable on a CPU). Diffusion generation is bound by compute, so it is separated.
 - On a PC with a GPU too, the CPU judgement is used when the GPU judgement is worse (so adding VRAM never lowers the level; on a tie the GPU wins).
-- Impact: on CPU-only PCs (32 / 64 GB), 13 rows went from Marginal to Good (5 speech, 8 tools).
+- Impact: on CPU-only PCs (32 / 64 GB), 11 rows went from Marginal to Good (3 speech, 8 tools).
 
 ## Verified GPU kinds
 

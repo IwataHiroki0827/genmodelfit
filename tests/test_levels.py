@@ -187,13 +187,13 @@ def test_limits_count_only_rows_that_run_on_the_gpu(db):
             assert not (o.fit in ("perfect", "good") and o.run_mode == "gpu")
 
 
-# --- 2. CPU だけ: 生成は marginal まで、読み上げ・1 回の計算の道具は good まで ---------------------------
+# --- 2. CPU だけ: 生成は marginal まで、CPU で実時間に動く読み上げ(表)・1 回の計算の道具は good まで ---
 
 
 @pytest.mark.parametrize(
     ("mid", "level"),
     [
-        ("hf:hexgrad/Kokoro-82M", "good"),  # 読み上げ(CPU_REALTIME_TTS)
+        ("hf:hexgrad/Kokoro-82M", "marginal"),  # 作者が CPU について書いていない
         ("manual:tsukuyomi-chan-piper-plus", "good"),  # 読み上げ(Piper)
         ("hf:myshell-ai/MeloTTS-English", "good"),  # 「Fast enough for CPU real-time inference」
         ("hf:FunAudioLLM/Fun-CosyVoice3-0.5B-2512", "marginal"),  # 言語モデル + フローマッチングの読み上げ
@@ -217,7 +217,11 @@ def test_cpu_top_table():
     assert E.cpu_top(model(1.0, "tts", ("tts",))) == "marginal"  # 表に無い読み上げは生成と同じ
     kokoro = model(1.0, "tts", ("tts",))
     kokoro.id = "hf:hexgrad/Kokoro-82M"
-    assert E.cpu_top(kokoro) == "good" and E.cpu_realtime_tts(kokoro).name == "Kokoro"
+    assert E.cpu_top(kokoro) == "marginal" and E.cpu_realtime_tts(kokoro) is None
+    melo = model(1.0, "tts", ("tts",))
+    melo.id = "hf:myshell-ai/MeloTTS-English"
+    assert E.cpu_top(melo) == "good" and E.cpu_realtime_tts(melo).name == "MeloTTS"
+    assert {row.name for row in E.CPU_REALTIME_TTS} == {"MeloTTS", "Piper", "VieNeu-TTS"}
     piper = model(1.0, "tts", ("tts",))
     piper.runtime = "piper"
     assert E.cpu_top(piper) == "good"
@@ -231,7 +235,7 @@ def test_cpu_top_table():
 
 
 def test_cpu_level_uses_the_ram_band(db):
-    m = db.get("hf:hexgrad/Kokoro-82M")
+    m = db.get("hf:myshell-ai/MeloTTS-English")
     big = E.estimate(m, _sys(None, 64.0), None, db.measurements)
     assert big.fit == "good"
     need = big.ram_gb
@@ -301,6 +305,8 @@ def test_kind_rows_and_memory_form():
     assert E.measurement_kind(_m("AMD Radeon(TM) Graphics")) == "amd/shared"
     assert E.measurement_kind(_m("AMD Radeon(TM) Graphics", gpu_pci_id="1002:15bf")) == "amd/shared"
     assert E.measurement_kind(_m("Intel(R) Arc(TM) Graphics")) == "intel/shared"
+    # 型番 ID が専用の VRAM の GPU(744c = Navi 31)なら、名前が汎用でも専用
+    assert E.measurement_kind(_m("AMD Radeon(TM) Graphics", gpu_pci_id="1002:744c")) == "amd/dedicated"
     assert E.measurement_kind(_m("NVIDIA GB10")) == "nvidia/shared"
     assert E.measurement_kind(_m("mps", gpu_backend="mps")) == "apple/shared"
 

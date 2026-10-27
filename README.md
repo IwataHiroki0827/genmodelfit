@@ -279,7 +279,7 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 | level | use of memory | cap by mode |
 |---|---|---|
 | **Perfect** | ≤ 60% | only when all on the GPU (`GPU`); room to spare, not a speed guarantee |
-| **Good** | ≤ 85% | highest level for `GPU~` and `GPU+RAM` (offloading is chosen only when it raises the level), and on the `CPU` for speech built for real-time CPU use (Kokoro, Piper, MeloTTS, …) and one-pass tools |
+| **Good** | ≤ 85% | highest level for `GPU~` and `GPU+RAM` (offloading is chosen only when it raises the level), and on the `CPU` for speech whose authors state real-time CPU use (MeloTTS, Piper, VieNeu-TTS) and one-pass tools |
 | **Marginal** | ≤ 98% | highest level for generation on the `CPU` or slightly short RAM (Mem% can be low) |
 | **Too tight** | > 98% | does not run (a level set by measurements can be Good even above 98%) |
 | **?** | — | not judged: the download size is unknown |

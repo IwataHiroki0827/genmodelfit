@@ -75,7 +75,7 @@
 | GPU(全部載せ) | なし | |
 | GPU~(部品を順に載せ替え) | Good | 段ごとに部品を読み込み直す。Perfect は「全部が載ったまま余裕がある」こと(llmfit の「Perfect は余裕があり、かつ GPU で動く」と同じ考え) |
 | GPU+RAM(一部をメインメモリへ逃がす) | Good | 遅いので Perfect にはしないが、余裕があれば Good(llmfit と同じ)。diffusers の比較(PR #11682)で、逃がしたときの遅れは Wan で 1.14〜1.5 倍(モデル単位と組単位の逃がし方)、FLUX で 3.3〜10.4 倍 |
-| CPU: 読み上げ・1 回の計算の道具 | Good | 下の「CPU で動かすとき」 |
+| CPU: CPU で実時間に動く読み上げ(表にあるもの)・1 回の計算の道具 | Good | 下の「CPU で動かすとき」 |
 | CPU: 画像・動画・音楽・効果音・3D の生成 | Marginal | 下の「CPU で動かすとき」 |
 
 ### 逃がす動かし方を選ぶとき
@@ -97,25 +97,25 @@
 
 | 種類・用途 | 上限 | 例 |
 |---|---|---|
-| CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`。下の表) | Good | Kokoro・Piper・MeloTTS・VieNeu-TTS・HiFi-GAN |
+| CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`。下の表) | Good | MeloTTS・Piper・VieNeu-TTS |
 | 用途がすべて 1 回の計算の道具(`tool`・`estimate`・`matting`・`interp`・`segment`・`separate`) | Good | 背景除去(BiRefNet)・深度・ポーズ・切り抜き・音の分離 |
-| それ以外(画像・動画・音楽・効果音・3D の生成、言語モデル・フローマッチング・拡散で音を作る読み上げ、高解像度化 `upscale`) | Marginal | SDXL・Stable Audio・Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS |
+| それ以外(画像・動画・音楽・効果音・3D の生成、言語モデル・フローマッチング・拡散で音を作る読み上げ、高解像度化 `upscale`) | Marginal | SDXL・Stable Audio・Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS・Kokoro・HiFi-GAN |
 
 CPU で実時間に動く設計の読み上げ(作者の資料の文。理由にも出す):
 
 | 読み上げ | 当て方 | 作者の資料 |
 |---|---|---|
 | MeloTTS | `hf:myshell-ai/MeloTTS-*` | モデルカード「Fast enough for CPU real-time inference」 |
-| Piper | 動かし方が `piper` | README「A fast, local neural text to speech system」(CPU の ONNX Runtime で動く) |
+| Piper | 動かし方が `piper` | README(タグ 2023.11.14-2。github.com/rhasspy/piper/blob/2023.11.14-2/README.md)「A fast, local neural text to speech system that sounds great and is optimized for the Raspberry Pi 4.」 |
 | VieNeu-TTS | `hf:pnnbao-ump/VieNeu-TTS*` | モデルカード「on CPU everything runs on ONNX Runtime」「RTF < 1, one stream」 |
-| Kokoro | `hf:hexgrad/Kokoro*` | モデルカード「82 million parameters」「Decoder only: no diffusion」(StyleTTS 2 + iSTFTNet。CPU の数字は書いていない) |
-| HiFi-GAN(声の波形を作る部品) | `hf:speechbrain/tts-hifigan*` | モデルカード「takes in input a spectrogram and produces a waveform」(GAN の 1 回の計算) |
+
+作者が CPU で実時間に動く・CPU に向くと書いていない読み上げ(Kokoro・HiFi-GAN など)は表に入れず、生成と同じ Marginal まで。
 
 - 根拠: 拡散の生成は手順(20〜50 回)ごとに本体の全部を計算する。Hugging Face のブログ「Accelerating Stable Diffusion Inference on Intel CPUs」で、SD 1.5 の 20 手順は r7iz.metal-16xl(Sapphire Rapids)の fp32 で 32.3 秒(最適化の前)。言語モデル・フローマッチング・拡散で音を作る読み上げも、トークンや手順を何十〜何百回も回し、CPU で実時間に動くと作者が書いていないので Marginal まで。1 回の計算の道具は手順を回さない。
 - 高解像度化は一覧のものが拡散の系統なので、生成と同じ Marginal まで(SeedVR2 は 1 手順の拡散だが 3B・7B の DiT を高い解像度で回す。SUPIR・Z-Image は手順を何十回も回す)。
 - llmfit は CPU を Good まで(LLM の生成はメモリの帯域で決まり、CPU でも実用の速さが出る)。拡散の生成は計算の量で決まるので分けた。
 - GPU のある PC でも、GPU の判定が CPU の判定より悪ければ CPU の判定を取る(VRAM を足して段階が下がらないように。同じ段階なら GPU)。
-- 影響: CPU だけの PC(32 / 64 GB)で、Marginal から Good になったのは 13 行(読み上げ 5・道具 8)。
+- 影響: CPU だけの PC(32 / 64 GB)で、Marginal から Good になったのは 11 行(読み上げ 3・道具 8)。
 
 ## 確認済みの GPU の種類
 

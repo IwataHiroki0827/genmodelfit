@@ -114,8 +114,8 @@ def _how(e: Estimate, vram: float, system: SystemInfo | None = None) -> tuple[st
 
 def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
     """動かし方で段階に上限があるとき、その動かし方(JSON の level_cap)。sequential(GPU~、good まで)/
-    offload(GPU+RAM、good まで)/ cpu(生成は marginal まで、読み上げ・1 回の計算の道具は good まで。
-    estimate.cpu_top)。
+    offload(GPU+RAM、good まで)/ cpu(生成は marginal まで、CPU で実時間に動くと
+    作者が書いている読み上げ(estimate.CPU_REALTIME_TTS)・1 回の計算の道具は good まで。estimate.cpu_top)。
     全部 GPU に載る・動かない・判定できないときは None。"""
     label = mode_label(e, system)
     return {"GPU~": "sequential", "GPU+RAM": "offload", "CPU": "cpu"}.get(label)

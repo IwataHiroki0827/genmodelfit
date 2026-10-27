@@ -501,7 +501,7 @@ can fall (for example `--vram 17` on an RTX 5080 PC). Intended: it is a judgemen
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
 | `reasons` | str[] | human-readable reasons, in the display language (`en` / `ja`) |
 | `settings` | object \| null | settings actually judged (unset items filled with the per-modality defaults whether or not there are measurements; 0.11.0, before that from the measurement when there was one) |
-| `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
+| `limits` | Limits \| null | largest settings that still reach `good` on this PC's GPU without offloading (0.11.0; null on PCs without a GPU). Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」 ("size unknown, cannot judge"). `recommend` drops these; `fit` / `search` list them last |
 
@@ -557,7 +557,7 @@ present; other settings are shifted by it and stay `estimated`. Measurements wit
 `standard: false` are ignored. So at the defaults, models whose measurements were taken at other settings (the
 maintainer's image, video and music measurements) are `calibrated`; pass `--width` etc. to judge at the measured settings. How measurements and coefficients are used: [accuracy.md](accuracy.md).
 
-Limits (all values are the largest that give `perfect` or `good`, other settings unchanged; `null` = even the
+Limits (all values are the largest that give `perfect` or `good` on the GPU without offloading; `limits` is null without a GPU; other settings unchanged; `null` = even the
 smallest tried value does not reach `good`):
 
 | key | type | meaning |
