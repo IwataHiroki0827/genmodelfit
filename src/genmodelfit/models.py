@@ -318,7 +318,7 @@ class Measurement:
     # 測った GPU の PyTorch の backend(cuda / rocm / xpu / mps。0.9.0、bench が書く)。None は記録が無い
     # (同梱の実測はすべて NVIDIA の cuda)
     gpu_backend: str | None = None
-    n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除いた数。Estimate.sample_count になる)
+    n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除く。0.11.0 から sample_count は n_sources)
     n_oom: int | None = None  # 同じ構成で OOM だった提出の数(1 件以上なら perfect の根拠にしない)
     # 測った GPU の PCI の型番 ID("1002:744c" = vendor:device。機種の番号で、個体・差し場所は表さない。
     # 0.9.0、bench が ComfyUI と同じ PC の検出から書く)。同じ GPU かの照合に名前より先に使う

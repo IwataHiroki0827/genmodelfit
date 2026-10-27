@@ -470,7 +470,7 @@ def test_one_source_with_many_files_does_not_set_the_level(db):
     subs = [_sub(p) for p in (6.0, 6.01, 6.02, 6.03)]
     for i, sub in enumerate(subs):
         sub.path = f"p{i}.json"
-    rows = contrib.aggregate(subs, {s.path: "commit-a" for s in subs})
+    rows = contrib.aggregate(subs, {s.sha256: "commit-a" for s in subs})
     assert len(rows) == 1 and rows[0]["n_used"] == 4 and rows[0]["n_sources"] == 1
     m = Measurement.from_dict(rows[0])
     entry = db.get(m.model_id)
@@ -481,7 +481,7 @@ def test_one_source_with_many_files_does_not_set_the_level(db):
     e = estimate(entry, system, m.settings, [m])
     assert e.sample_count == 1 and e.fit_from == "estimate"
     # 別々の 2 つの PR からなら決まる
-    rows = contrib.aggregate(subs, {s.path: f"commit-{i % 2}" for i, s in enumerate(subs)})
+    rows = contrib.aggregate(subs, {s.sha256: f"commit-{i % 2}" for i, s in enumerate(subs)})
     m2 = Measurement.from_dict(rows[0])
     assert m2.n_sources == 2 and m2.consistent
     assert measured_level([m2], entry, m2.settings, system, prec, 0.0)[0] is not None
