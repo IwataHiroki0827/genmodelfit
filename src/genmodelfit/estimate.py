@@ -1825,10 +1825,22 @@ def measurement_sources(m: Measurement) -> int:
 def count_sources(rows: Iterable[Measurement]) -> int:
     """実測の行の、別々の出どころの数(#95。docs/scoring.md「実測で段階を決める条件」)。作者・この PC の実測
     (measurements.json と bench の保存。origin が community でないもの)は、何行あっても合わせて 1 つ
-    (作者だけでは段階を決めない)。ほかの利用者のまとめの行は n_sources を足す。"""
+    (作者だけでは段階を決めない)。ほかの利用者のまとめの行は、出どころの ID(source_ids)の和集合の大きさ
+    (1 つの PR の提出が、GPU の型番 ID の有無・測り方の違いで別の行に分かれても 1 つ)。ID の無い古い行は
+    足さずに、その n_sources の一番大きいものとだけ比べる(足すと同じ PR を 2 回数えうる)。"""
     rows = list(rows)
     own = 1 if any(not is_community(m) for m in rows) else 0
-    return own + sum(measurement_sources(m) for m in rows if is_community(m))
+    ids: set[str] = set()
+    legacy = 0
+    for m in rows:
+        if not is_community(m):
+            continue
+        sid = getattr(m, "source_ids", None)
+        if isinstance(sid, list) and sid:
+            ids.update(str(x) for x in sid)
+        else:
+            legacy = max(legacy, measurement_sources(m))
+    return own + max(len(ids), legacy)
 
 
 @dataclass(frozen=True)
@@ -1861,8 +1873,10 @@ def measured_level(
       (同じ構成の OOM の行・n_oom のあるまとめ・runs_evidence が false のまとめが無い)、まとめの行の中も
       そろっていて(出どころ 2 つ以上なら consistent)、行どうしの値の幅(最大 − 最小)が中央値の
       CONSISTENT_REL 以内
-    - 段階に使う量 = max(そろった実測の一番大きいピーク + 文脈の分(torch_reserved は 0.5 GiB), 重み + 固定分
-      (floor_gb))。表の VRAM と同じ値。これがこの PC の VRAM を超えれば決めない
+    - そろった実測の一番大きいピーク + 文脈の分(torch_reserved は 0.5 GiB)が重み + 固定分(floor_gb)より
+      小さければ決めない(重みの一部を逃がして動いた記録。#95 のチェッカーの指摘)。そうでなければそれが
+      段階に使う量 = max(ピーク + 文脈の分, 重み + 固定分)で、表の VRAM と同じ値。
+      この PC の VRAM を超えれば決めない
     - 段階はその量 ÷ VRAM の帯(FIT_BANDS)で、少なくとも good。GPU の上限に張り付いた実測があれば good まで
     見積もりの段階と比べるのは呼び出し側。"""
     g = system.best_gpu
@@ -1914,9 +1928,21 @@ def measured_level(
     top = max(ok, key=measured_total_gb)
     peak = max(m.peak_vram_gb for m in ok)
     total = max(totals)
-    amount = max(total, floor_gb)
+    if total < floor_gb:
+        # ピークが全部載せの物理的な下限(重み + 固定分)より小さい = 重みの一部をメインメモリに逃がして動いた
+        # 記録。逃がせば動くことの根拠にはなるが、GPU に全部載ることの根拠にはならないので段階は決めない
+        # (値をずらすのには使う。docs/scoring.md「実測で段階を決める条件」)
+        return None, tr(
+            f"段階は見積もりで決めた(同じ GPU・同じ設定の実測 {total:.1f} GB は、全部 GPU に載せたときの下限"
+            f"(重み + 固定分 {floor_gb:.1f} GB)より小さい。重みの一部を逃がして動いた記録なので、"
+            "GPU に載る根拠にしない)",
+            "The level comes from the estimate (the measurements on this GPU with these settings,"
+            f" {total:.1f} GB, are below the full-load floor (weights + fixed {floor_gb:.1f} GB): they ran by"
+            " offloading part of the weights, so they do not show that it fits on the GPU)",
+        )
+    amount = total
     if amount > vram:
-        return None, None  # 実測の量(か重み + 固定分)がこの PC の VRAM に収まらない
+        return None, None  # 実測の量がこの PC の VRAM に収まらない
     band = fit_band(amount, vram)
     weak = any(is_censored(m) for m in ok)
     level = "perfect" if band == "perfect" and not weak else "good"
@@ -1937,24 +1963,16 @@ def measured_level(
         if total != peak
         else ""
     )
-    lifted = (
-        tr(
-            f"(重み + 固定分 {floor_gb:.1f} GB のほうが大きいので、そちらを使った)",
-            f" (weights + fixed {floor_gb:.1f} GB is larger, so that is used)",
-        )
-        if floor_gb > total
-        else ""
-    )
     return (
         MeasuredLevel(
             level,
             tr(
                 f"この PC と同じ GPU({on})・同じ設定で、別々の {sources} つの出どころの実測がそろって最後まで"
-                f"動いた(最大 {total:.1f} GB{ctx}{pinned})。段階に使った量 {amount:.1f} GB{lifted} は"
+                f"動いた(最大 {total:.1f} GB{ctx}{pinned})。段階に使った量 {amount:.1f} GB は"
                 f"この PC の VRAM {vram:.1f} GB に収まるので、GPU で動くと判定した(段階は実測で決めた)",
                 f"{sources} independent sources ran to the end on the same GPU as this PC ({on})"
                 f" with the same settings and agree (largest {total:.1f} GB{ctx}{pinned})."
-                f" The amount used for the level, {amount:.1f} GB{lifted}, fits this PC's {vram:.1f} GB"
+                f" The amount used for the level, {amount:.1f} GB, fits this PC's {vram:.1f} GB"
                 " of VRAM, so it runs on the GPU"
                 " (level from the measurements)",
             ),

@@ -327,7 +327,7 @@ weekly-data.yml(手動の予備。#42 から定期の実行はメンテナの PC
      - 出る要約(件数と項目ごとの結果)の文字は `weekly.md` で無害にしてあり、PR の本文にそのまま置ける。
   4. ブランチにコミットして push し、PR を作る。**機械の確かめがすべて通ったときだけ**マージする:
      - 変わったファイルが `src/genmodelfit/data/db.json` だけ。approve・reject を当てた週は status が変わるので、下の条件により必ずメンテナが見ることになる。
-     - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)。
+     - `python -m genmodelfit.weekly merge-check --base <main の db.json> --head <ブランチの db.json> --json` が終了コード 0(`safe: true`)。分類はファイルの JSON から計算し直す(スキルの報告を信じない)。人気のかたよりの注意(`popularity_bias:<種類>`。scoring.ja.md「人気」)が出た週も safe にしない(0.11.0)。
      - 確認の印の status が変わっていない。承認・確認待ちへの変化は分類でも判断が要るになる。
      - 手元の試験(ruff と pytest。新しい一覧を入れた状態)が通った。PR では ci.yml が動かないので(手元で通してから push する決まり。2026-10-22)、CI は待たない。マージの後に main で ci.yml が動く。
 

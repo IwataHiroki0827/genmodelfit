@@ -538,3 +538,89 @@ def test_author_rows_are_one_source(db):
         **{**vars(twin), "origin": "community", "n_sources": 2, "consistent": True, "n_oom": 0}
     )
     assert count_sources([own, twin, community]) == 3
+
+
+# --- #95 のチェッカーの指摘 -------------------------------------------------------------------------
+
+
+def _split_rows(kind: str):
+    """1 つの PR(同じコミット)の 2 つの提出が、GPU の型番 ID の有無か測り方の違いで 2 行に分かれる。"""
+    a, b = _sub(6.0), _sub(6.05)
+    if kind == "pci":
+        b.data["system"]["gpu"]["pci_id"] = "10de:2484"
+    else:
+        b.data["measurement"]["vram_metric"] = "nvidia_smi"
+    b.sha256 = contrib.content_hash(b.data)
+    rows = contrib.aggregate([a, b], {a.sha256: "c" * 40, b.sha256: "c" * 40})
+    assert len(rows) == 2 and all(r["n_sources"] == 1 and r["source_ids"] == ["c" * 12] for r in rows)
+    return [Measurement.from_dict(r) for r in rows]
+
+
+@pytest.mark.parametrize("kind", ["pci", "metric"])
+def test_one_pr_split_into_two_rows_is_one_source(db, kind):
+    """1 つの PR の提出が別の行に分かれても、出どころは ID の和集合で数えるので 1 つ(段階を決めない)。"""
+    from genmodelfit.estimate import count_sources
+
+    ms = _split_rows(kind)
+    assert count_sources(ms) == 1
+    entry = db.get(ms[0].model_id)
+    g = Gpu(
+        name=RTX_3070, vendor="nvidia", vram_total_gb=8.0, driver="610.88", backend="cuda", pci_id="10de:2484"
+    )
+    classify_gpu(g, windows_driver=True, comfy_windows=True)
+    system = SystemInfo(os="Windows", cpu="", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
+    prec = gpu_precision(entry, system, ms[0].settings)
+    lvl, why = measured_level(ms, entry, ms[0].settings, system, prec, 0.0)
+    assert lvl is None and "出どころが 1 つだけ" in why
+    # ID の無い古い行は足さずに一番大きい n_sources だけを使う
+    old = [Measurement(**{**vars(m), "source_ids": None, "n_sources": 1}) for m in ms]
+    assert count_sources(old) == 1
+    # 別の PR(別の ID)なら 2 つ
+    other = Measurement(**{**vars(ms[1]), "source_ids": ["d" * 12]})
+    assert count_sources([ms[0], other]) == 2
+
+
+def test_peak_below_the_floor_does_not_set_the_level(db):
+    """そろった実測(出どころ 2 つ)でも、ピーク + 文脈の分が重み + 固定分より小さければ、重みの一部を逃がして
+    動いた記録なので段階を決めない(値をずらすのには使う)。"""
+    entry = db.get("image_sdxl_simple")
+    system = nvidia(RTX_3070, 8.0)
+    s = Settings(width=1024, height=1024)
+    m = Measurement(
+        model_id=entry.id,
+        gpu_name=RTX_3070,
+        gpu_vram_gb=8.0,
+        peak_vram_gb=5.0,
+        settings=s,
+        origin="community",
+        n_submissions=2,
+        n_used=2,
+        n_sources=2,
+        source_ids=["a" * 12, "b" * 12],
+        n_oom=0,
+        consistent=True,
+    )
+    prec = gpu_precision(entry, system, s)
+    floor = 7.9
+    lvl, why = measured_level([m], entry, s, system, prec, floor)
+    assert lvl is None and "下限" in why
+    e = estimate(entry, system, s, [m])
+    assert e.fit_from == "estimate" and e.measured_level_vram_gb is None
+
+
+def test_memory_fit_non_finite_is_zero():
+    for r in (float("nan"), float("inf"), float("-inf")):
+        assert memory_fit(r, "good") == 0.0
+
+
+def test_popularity_cache_follows_the_list():
+    """同じ件数の別の一覧でも、古い順位を使わない。"""
+    from genmodelfit.db import Database
+    from genmodelfit.popularity import for_db
+
+    a = [_tmpl(f"t{i}", u) for i, u in enumerate((10, 20, 20, 40, 0))]
+    db = Database(models=a)
+    first = dict(for_db(db))
+    db.models = [_tmpl(f"t{i}", u) for i, u in enumerate((0, 0, 0, 0, 10))]
+    second = for_db(db)
+    assert first != second and max(second, key=second.get).endswith("t4")

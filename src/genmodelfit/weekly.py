@@ -294,12 +294,8 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
     if s["unauthorized_added"]:
         warn.append(f"匿名の API が 401 になったリポジトリ: {s['unauthorized_added']} 件")
     for b in result.get("popularity_bias") or []:
-        if b.get("flagged"):
-            warn.append(
-                f"**人気のかたより: {b['modality']} で要る VRAM と使用数の順位の相関が {b['rho']}"
-                f"({b['models']} モデル。-0.3 を下回った)**。軽いモデルほど人気になっているので、"
-                "人気を並びの鍵から外すかを考える(docs/scoring.md「人気」)"
-            )
+        if b.get("flagged") and bias_warning(b) not in (result.get("warnings") or []):
+            warn.append(f"**{md(bias_warning(b))}**")
     cl = d.get("classification") or {}
     if cl and not cl.get("safe"):
         warn.append(
@@ -561,6 +557,7 @@ def run(
     from .popularity import vram_bias
 
     bias = vram_bias(new)  # 人気のかたより(#95。docs/scoring.md「人気」)
+    warnings += [bias_warning(b) for b in bias if b["flagged"]]  # オーナーが見るように(merge-check も止める)
     result.update(
         popularity_bias=bias,
         review_pending=pending,
@@ -607,6 +604,15 @@ def _write_json(path: Path, data: Any) -> None:
 MERGE_NOT_SAFE = 3
 
 
+def bias_warning(b: dict[str, Any]) -> str:
+    """人気のかたよりの注意の 1 文(#95)。PR の本文・result の warnings・merge-check の理由に同じ文を使う。"""
+    return (
+        f"人気のかたより: {b['modality']} で要る VRAM と使用数の順位の相関が {b['rho']}"
+        f"({b['models']} モデル。-0.3 を下回った)。軽いモデルほど人気になっているので、"
+        "人気を並びの鍵から外すかを考える(docs/scoring.md「人気」)"
+    )
+
+
 @_japanese()
 def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
     """2 つの一覧のファイルから分類を計算し直す(何も書かず、通信しない)。読めなければ DatabaseError。
@@ -625,14 +631,23 @@ def merge_check(base: str | Path, head: str | Path) -> dict[str, Any]:
             raise DatabaseError(f"同じモデル ID が 2 回以上あります: {path}: {', '.join(map(str, dup[:5]))}")
     old, new = load_db(base), load_db(head)
     cl = diff_db(old, new, raw=(raws[0], raws[1]))["classification"]
+    from .popularity import vram_bias
+
+    # 人気のかたよりが出た週は自動でマージしない(オーナーが見る。#95。docs/scoring.md「人気」)
+    reasons = list(cl["judgement_needed"])
+    reasons += [
+        {"id": f"popularity_bias:{b['modality']}", "name": b["modality"], "reasons": [bias_warning(b)]}
+        for b in vram_bias(new)
+        if b["flagged"]
+    ]
     return {
         "genmodelfit": __version__,
         "command": "merge-check",
         "base": str(base),
         "head": str(head),
-        "safe": cl["safe"],
-        "judgement_needed": len(cl["judgement_needed"]),
-        "reasons": cl["judgement_needed"],
+        "safe": cl["safe"] and len(reasons) == len(cl["judgement_needed"]),
+        "judgement_needed": len(reasons),
+        "reasons": reasons,
         "safe_changes": cl["safe_changes"],
     }
 

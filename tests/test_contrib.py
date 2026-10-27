@@ -1798,7 +1798,8 @@ def test_fit_change_check_uses_a_pc_with_the_submitted_gpu(db):
     )
     a = estimate(entry, _sys(_amd_gpu(pci="1002:744c")), None, db.measurements)
     sett = {k: v for k, v in a.settings.items() if k != "batch" and v is not None}
-    d["measurement"].update(settings=sett, peak_vram_gb=5.0, offload="none")
+    # 重み + 固定分(7.93 GB)以上の値(それより小さい実測は段階を決めない。#95)
+    d["measurement"].update(settings=sett, peak_vram_gb=9.0, offload="none")
     r = contrib.validate_submission(d, db, check_filename=False, today=TODAY)
     assert r.ok, r.errors
     # 1 つの提出だけでは段階は変わらない(段階を決めるのは別々の出どころ 2 つ以上。#95)
@@ -1823,7 +1824,7 @@ def test_good_cap_needs_the_same_gpu_name(db):
             **vars(maint[0]),
             "gpu_name": "AMD Radeon RX 9998 XT",
             "gpu_vram_gb": 24.0,
-            "peak_vram_gb": 5.0,
+            "peak_vram_gb": 9.0,  # 重み + 固定分(7.93 GB)以上
             "settings": sett,
             "gpu_backend": "rocm",
         }
@@ -1832,7 +1833,7 @@ def test_good_cap_needs_the_same_gpu_name(db):
     assert e.fit == "good" and not any("上限(good)を外した" in x for x in e.reasons)
     same = Measurement(**{**vars(other), "gpu_name": FAKE_AMD})
     assert estimate(entry, amd_pc(), None, [*maint, same]).fit == "good"  # 出どころ 1 つ(#95)
-    same2 = Measurement(**{**vars(same), "peak_vram_gb": 5.2})  # 作者・この PC の行は何行あっても 1 つ
+    same2 = Measurement(**{**vars(same), "peak_vram_gb": 9.2})  # 作者・この PC の行は何行あっても 1 つ
     assert estimate(entry, amd_pc(), None, [*maint, same, same2]).fit == "good"
     other = Measurement(**{**vars(same2), "origin": "community", "n_sources": 1, "n_oom": 0})
     assert estimate(entry, amd_pc(), None, [*maint, same, other]).fit == "perfect"

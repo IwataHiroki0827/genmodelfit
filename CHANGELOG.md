@@ -70,6 +70,12 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   Good / GPU (#26): the maintainer's two rows are one source, and its weights + fixed part (about 18.4 GB) does not
   fit 15.9 GB. The measurement finished by offloading part of the weights with dynamic VRAM, so the right level is
   the offload level (Marginal, GPU+RAM); docs/scoring.md works through this example.
+- Aggregated community rows now carry `source_ids` (short IDs of the sources used), and measured levels count
+  sources as the union of the IDs across rows, so one pull request whose submissions land in two rows (with and
+  without a GPU device ID, or by measuring method) is still one source (#95). A measurement whose peak + context is
+  below weights + fixed part (it ran by offloading weights) no longer sets the level. When the weekly popularity-bias
+  check is flagged, the warning also goes into the result's `warnings` and `merge-check` is not safe, so that week is
+  not merged automatically. Manually added models have no usage count, so their popularity rank is 0.
 - **The same GPU now allows a VRAM ratio of 0.95 (was 0.97)** (#95; `estimate.MEASURED_VRAM_TOLERANCE`). Linux CUDA
   reports the total minus a reservation (a 6 GB card as 5934 MiB = 5.80 GiB, e.g. an RTX 2060 on the NVIDIA developer
   forum; 7.79 for 8 GB, 11.77 for 12 GB, 23.69 for 24 GB) while Windows reports about 6.0, so Linux and Windows owners

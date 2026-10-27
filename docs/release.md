@@ -335,7 +335,7 @@ Roles are split.
      - The summary it prints (counts and per-entry results) is made harmless by `weekly.md`, so it can go into the PR body as it is.
   4. Commit to a branch, push, and make a PR. **Merge only when every machine check passes:**
      - The only changed file is `src/genmodelfit/data/db.json`. In a week where approve or reject was applied, statuses change, so the condition below always sends the PR to the maintainer.
-     - `python -m genmodelfit.weekly merge-check --base <main's db.json> --head <branch's db.json> --json` exits 0 (`safe: true`). The classification is recomputed from the file's JSON; the skill's report is not trusted.
+     - `python -m genmodelfit.weekly merge-check --base <main's db.json> --head <branch's db.json> --json` exits 0 (`safe: true`). The classification is recomputed from the file's JSON; the skill's report is not trusted. A flagged popularity-bias check (`popularity_bias:<type>`, docs/scoring.md "Popularity") also makes it not safe (0.11.0).
      - No review status changed. A change to approved or to awaiting review also becomes "needs judgment" in the classification.
      - Local tests (ruff and pytest, with the new list) passed. ci.yml does not run on PRs (the rule since 2026-10-22 is to pass locally before pushing), so CI is not awaited. ci.yml runs on main after the merge.
 

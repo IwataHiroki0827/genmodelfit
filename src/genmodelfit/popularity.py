@@ -76,12 +76,17 @@ def compute(models: Iterable[ModelEntry], key_of: dict[str, str]) -> dict[str, f
 
 
 def for_db(db: Any) -> dict[str, float]:
-    """一覧(Database)ごとに 1 回だけ計算する(groups.index_for と同じ考え方)。"""
+    """一覧(Database)ごとに 1 回だけ計算する。一覧の中身(ID・種類・出どころ・数)が変われば計算し直す
+    (同じ件数の別の一覧でも古い順位を使わない)。"""
     from .groups import index_for
 
+    key = tuple(
+        (m.id, m.modality, m.source, m.template.usage if m.template else None, m.downloads_all_time)
+        for m in db.models
+    )
     cached = getattr(db, "_popularity", None)
-    if cached is None or cached[0] != len(db.models):
-        cached = (len(db.models), compute(db.models, index_for(db).key_of))
+    if cached is None or cached[0] != key:
+        cached = (key, compute(db.models, index_for(db).key_of))
         db._popularity = cached
     return cached[1]
 

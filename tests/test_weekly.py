@@ -259,6 +259,16 @@ def test_popularity_bias_is_reported(tmp_path, monkeypatch, bundled):
     body = (tmp_path / "out" / "pr_body.md").read_text(encoding="utf-8")
     assert "人気のかたよりの確認" in body and "人気のかたより:" not in body
     flagged = {"modality": "image", "models": 30, "rho": -0.42, "checked": True, "flagged": True}
+    # かたよりが出た週は、result の warnings に入れ、merge-check も safe にしない(自動でマージしない)
+    from genmodelfit import popularity
+
+    monkeypatch.setattr(popularity, "vram_bias", lambda db, coefficients=None: [flagged])
+    r = weekly.run(tmp_path / "out2", base=base, fetch=object(), now=NOW)
+    assert any("人気のかたより: image" in w for w in r["warnings"])
+    weekly_body = (tmp_path / "out2" / "pr_body.md").read_text(encoding="utf-8")
+    assert weekly_body.count("人気のかたより: image") == 1
+    mc = weekly.merge_check(base, base)
+    assert mc["safe"] is False and any(x["id"] == "popularity_bias:image" for x in mc["reasons"])
     body = weekly.pr_body(diff_db(bundled, bundled), {"status": {}, "popularity_bias": [flagged]})
     assert "人気のかたより: image で要る VRAM と使用数の順位の相関が -0.42" in body
 

@@ -2153,6 +2153,13 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
     return out, True
 
 
+def source_id(source: str) -> str:
+    """出どころ(コミットの hash か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
+    if source.startswith("file:"):
+        return "file:" + source[5:17]
+    return source[:12]
+
+
 def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出は使わない。
     sources は提出の内容の sha256 → 出どころ(submission_sources)。無い提出はそれぞれ 1 つの出どころ。
@@ -2213,6 +2220,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
             outcome = "ok"
             n_sources = len(kept)
             runs = n_sources > len(oom_sources)
+            source_ids = sorted(source_id(n) for n in kept)
         else:
             used, outliers, base = [], [], [m for _, m in oom]
             uv = [m.peak_vram_gb for m in base]
@@ -2221,6 +2229,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
             outcome = "oom"
             n_sources = 0
             runs = False
+            source_ids = []
         first = ms[0]
         # consistent は係数の合わせ直し(calibrate)に入れる条件: 別々の出どころが 2 つ以上で、そろっていて、
         # OOM が無い。見積もりは ok の行を 1 件から使う(estimate.usable)
@@ -2267,6 +2276,10 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
                 "consistent": consistent,
                 "n_used": len(used),
                 "n_sources": n_sources,
+                # 使った出どころの短い ID(コミットの先頭 12 桁か file:<内容の sha256 の先頭 12 桁>)。
+                # 1 つの PR の提出が GPU の型番 ID の有無・測り方で別の行に分かれても、判定は ID の和集合で
+                # 出どころを数える(estimate.count_sources。#95)
+                "source_ids": source_ids,
                 "n_outliers": len(outliers),
                 "n_oom": len(oom),
                 "n_error": len(errors),

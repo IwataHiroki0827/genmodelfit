@@ -761,7 +761,7 @@ def cmd_info(args: argparse.Namespace) -> int:
         out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None and e.basis_detail != "measured":
-        basis += f" n={e.sample_count}"  # ほかの利用者の実測の件数(2026-10-22)
+        basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count。0.11.0 で件数から変えた)
     out.append(f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
@@ -831,7 +831,7 @@ def _info_lines_ja(m, e, gate, same: list[dict[str, Any]], model_name: str, comm
         out.append(f"    - {f.name}({fs}、{f.directory or '-'}、ライセンス {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None and e.basis_detail != "measured":
-        basis += f" n={e.sample_count}"
+        basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count)
     where = f"、{e.measured_on} で" if e.measured_on else ""
     out.append(f"{L('段階')}{e.fit}({basis}{where})")
     if e.unknown_size:

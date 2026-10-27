@@ -62,8 +62,8 @@ def memory_fit(r: float | None, level: str) -> float:
     """収まり(0〜100。丸める前の値)。r はその動かし方で一番きつい資源の使用率(usage_ratio)。
     動かない・判定できない・r が分からないときは 0。動く行は SCORE_RUNNABLE_FLOOR を下限にする
     (実測で段階を決めた行・ページファイルで動く CPU の行は r が 0.98 を超えても動く)。"""
-    if level not in RUNNABLE_LEVELS or r is None:
-        return 0.0
+    if level not in RUNNABLE_LEVELS or r is None or not math.isfinite(r):
+        return 0.0  # 分からない r(None・NaN・無限大)は判定できないものと同じ 0
     if r <= SCORE_FLAT_UNTIL:
         v = 100.0
     else:

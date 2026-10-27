@@ -66,7 +66,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 2. **Same settings**: resolution, frames, length, batch and precision match. Same vendor (`gpu_backend`, else the GPU name). Measured with the current list's files (`files_fp`) on a GPU in the name table (`gpu_known`).
 3. **Two or more independent sources** (`MIN_LEVEL_SOURCES`):
    - The author's measurements (`measurements.json`; this PC's saved bench results are treated the same): **however many rows there are for the same model, GPU and settings, together they are one source** (`estimate.count_sources`). The author alone never sets the level.
-   - Other users' measurements: the aggregated row's `n_sources` (one per commit = pull request that added submissions, #90). Older rows without `n_sources` count as one.
+   - Other users' measurements: one per commit = pull request that added submissions (#90). Aggregated rows carry the IDs of the sources they used (`source_ids`: the first 12 characters of the commit, or `file:<first 12 of the content sha256>`), and sources are counted as the **union of the IDs** across rows. Submissions from one pull request split into separate rows (with and without a GPU device ID, or by measuring method `vram_metric`) are still one. Older rows without IDs are not added up; only their largest `n_sources` is used.
    - The author and other users are added up for the same GPU and settings (the author + one submission = 2).
    - With only one source, the level is not set and the values are only shifted ("Shifting values with measurements" below). The reasons say "only one source".
 4. **They agree** (`CONSISTENT_REL`; the same definition as `consistent` in `contrib aggregate`):
@@ -76,6 +76,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 5. **Amount used for the level** = max(largest agreeing peak + context, weights + fixed part).
    - Context: `torch_reserved` measurements leave out the CUDA / HIP context, so 0.5 GiB is added (`TORCH_RESERVED_CONTEXT_GB`).
    - Weights + fixed part: full load with zero working memory (the same physical floor as for the values).
+   - **If peak + context is below weights + fixed part, the level is not set.** A peak below the full-load floor is a record of running with part of the weights kept in system RAM, not evidence that everything fits on the GPU (the same reasoning as Wan2.2 5B below; the values are still shifted). The reasons say it is below the full-load floor.
    - This amount is what the table's VRAM and Mem% show, and JSON's `estimate.measured_level_vram_gb` (and `memory_required_gb`). The raw peak is `estimate.measured_peak_vram_gb`.
    - If the amount exceeds this PC's VRAM, the level is not set.
 6. **Level** = the band of this amount ÷ VRAM, at least Good (the runs finished). If any agreeing measurement hit the GPU limit (dynamic VRAM used up the free space), at most Good. The run mode is GPU.
@@ -148,7 +149,7 @@ r per run mode (the table's Mem% and JSON's `utilization_pct` are this r):
 
 - Examples: r = 0.60 → 100.0, 0.80 → 88.2, 0.85 → 75.5, 0.90 → 60.7, 0.98 → 37.5.
 - The constants 0.70 and 0.20 are llmfit's `fit_score` (`fit.rs:2335-2349`). llmfit PR #648 made the curve one-sided (free space is not a loss) and PR #100 removed the cliff. The input r is, as in llmfit, "the share of the tightest resource of the run mode".
-- The floor 37.5 is the value at r = 0.98 (the edge of Marginal). It covers rows that run although r exceeds 0.98 (levels set by measurements, CPU rows that run with the page file).
+- The floor 37.5 is the value at r = 0.98 (the edge of Marginal). It covers rows that run although r exceeds 0.98: levels set by measurements, and rows short of system RAM that run with the page file (not only CPU but also GPU, GPU~ and GPU+RAM; r is then the RAM share and Mem% can be 110–130%; the level is Marginal).
 - Relation to levels: Perfect (GPU, r ≤ 0.60) is always 100. Good (GPU) is 100 to 75.5, Marginal (GPU) 75.5 to 37.5. GPU+RAM and CPU are capped at Marginal, so a high Score does not mean fast.
 - The Score barely matters for the order (levels and popularity come first). Its job is to show the memory headroom as one number. `--sort score` orders by it.
 - With one row per model, the Score is **the representative's value** (it matches the table's Mem%). The "highest score among the members" of 0.10 was dropped.
@@ -187,6 +188,7 @@ Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Sc
   `100 × (models with a smaller count + models with the same count including itself ÷ 2) ÷ models in the pool`
   - Example: five models with counts 10, 20, 20, 40, 0 → 30 / 60 / 60 / 90 / 0.
 - Models without a count or with 0: 0 (the bottom). They join the pool as count 0.
+- Manually added models (manual; 3 today) have no count, so their rank is 0 (the bottom). No count is fetched over the network. Only the author's own additions are disadvantaged, so fairness holds.
 - Sources with fewer than 5 models in a type: models with a count get 50 (rank differences would not mean much).
 - Comparing template ranks and Hugging Face ranks with the same key is a chosen value ("treat the top of each source alike").
 - Up to 0.10 it was 10% of the Score and Hugging Face downloads (30 days) were divided by 100 to match the template counts. That conversion was dropped.
@@ -194,7 +196,7 @@ Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Sc
 
 **Bias check**: since most users have ordinary PCs, lighter models might become more popular. In the bundled list (2026-10-27), the Spearman correlation between the full-load VRAM (default settings) and the usage count of template models is −0.05 for image (78 models), +0.22 for video (63), +0.48 for music (10) and +0.59 for 3D (9). No "lighter is more popular" bias shows.
 
-The weekly update (`python -m genmodelfit.weekly`) computes the same correlation for types with 20 or more template models ("人気のかたよりの確認" in the PR body) and adds a warning when it falls below −0.3 (a signal to consider dropping popularity as an order key; `popularity.vram_bias`). Music, 3D and speech have too few models for this check.
+The weekly update (`python -m genmodelfit.weekly`) computes the same correlation for types with 20 or more template models ("人気のかたよりの確認" in the PR body) and adds a warning when it falls below −0.3 (a signal to consider dropping popularity as an order key; `popularity.vram_bias`). The warning also goes into the result's `warnings` and makes `merge-check` not safe (`popularity_bias:<type>`), so that week is not merged automatically and the owner reviews it. Music, 3D and speech have too few models for this check.
 
 ## Order
 

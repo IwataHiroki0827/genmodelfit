@@ -507,7 +507,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `fit_from` | str | (0.7.0、#26)`estimate`(段階が見積もりから来る)か `measurement`。詳しくは下 |
 | `measured_peak_vram_gb` | float \| null | (0.7.0)`fit_from` が `measurement` のときの、そろった実測の VRAM のピークの一番大きいもの(文脈の分を足す前) |
 | `measured_level_vram_gb` | float \| null | (0.11.0)`fit_from` が `measurement` のときの、段階に使った量: max(ピーク + 文脈の分, 重み + 固定分)。表の VRAM の列(`m` / `c` を付ける)・Mem%・`memory_required_gb` はこの値 |
-| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
+| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、ID(`source_ids`)の和集合で数えた、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
 | `measured_on` | str \| null | `basis` が `measured` のときの、実測した GPU(GPU 無しで判定したときは null) |
 | `fit` | str | 下の 4 つの段階、または `unknown`(大きさが不明で判定していない) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
@@ -544,7 +544,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 `fit_from`(0.7.0、#26。条件は 0.11.0 で変えた): `estimate`(段階が見積もりから来る)か `measurement`。
 `measurement` になる条件と段階(`estimate.measured_level`。詳しくは [scoring.ja.md](scoring.ja.md)「実測で段階を決める条件」):
 - この PC と**同じ GPU**(`estimate.same_gpu`: PCI 型番 ID が同じ、無ければ正規化した名前が同じ。かつ VRAM の比が 0.95 以上。汎用の名前は決して合わない)の、同じ設定・同じベンダーの標準の実測。保守者の実測もほかの利用者の実測も同じ規則(0.10 までは、保守者の実測は同じベンダーで VRAM が測った GPU 以上ならどの GPU にも効いた)。
-- **別々の出どころが 2 つ以上**: 保守者 / この PC の実測は何行あっても合わせて 1 つ(保守者だけでは決めない)、ほかの利用者はまとめの `n_sources`。足して数える(`estimate.count_sources`)。
+- **別々の出どころが 2 つ以上**: 保守者 / この PC の実測は何行あっても合わせて 1 つ(保守者だけでは決めない)、ほかの利用者はまとめの出どころの ID(`source_ids`)の和集合(ID の無い古い行は `n_sources` の一番大きいもの)。足して数える(`estimate.count_sources`)。ピーク + 文脈の分が重み + 固定分より小さい実測は、段階を決めない(重みを逃がして動いた記録)。
 - **そろっている**: OOM の記録が無い(`outcome: oom` の行・`n_oom`・`runs_evidence: false` が無い)、まとめの行の中もそろっている(`consistent`)、行どうしの幅が中央値の 15% 以内。
 - 段階に使う量 = max(そろった一番大きいピーク + 文脈の分, 重み + 固定分)(`measured_level_vram_gb`)。`torch_reserved` のピークには `estimate.TORCH_RESERVED_CONTEXT_GB`(0.5 GiB)を足す。この量がこの PC の VRAM に収まらなければ決めない。
 - 段階は少なくとも Good。Perfect にするのは、その量がこの VRAM の 60% 以内で、GPU の上限に張り付いた実測が無いときだけ。
@@ -933,6 +933,7 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
 | `gpu_known` | bool \| null | (#90)community の行: false は名前の表に無い NVIDIA の GPU(記録として残し、判定には使わない) |
 | `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
+| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(コミットの先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
 | `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
 | `runs_evidence` | bool \| null | (#90)community の行: false は OOM の出どころが ok の出どころ以上(「動く」根拠にしない。使い方は段階の決まり PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM の比も 0.95 以上でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE`。0.11.0 で 0.97 から 0.95。共有 / 統合メモリには適用しない) |
