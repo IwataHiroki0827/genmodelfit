@@ -283,6 +283,7 @@ MEASUREMENT = {
     "files_fp",  # #90(測ったときの一覧のファイルの指紋)
     "gpu_known",  # #90(以下はほかの利用者のまとめの行)
     "n_sources",
+    "source_ids",  # #95: 出どころの ID(count_sources が和集合で数える)
     "n_error",
     "runs_evidence",
 }
