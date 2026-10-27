@@ -472,6 +472,12 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   compare community data no longer assume an empty bundled aggregate. `tools/ci_local.py` shows
   `contrib aggregate --check` as information (not a failure).
 
+### Changed
+
+- The README picture is retaken with the current table, in English (`docs/images/recommend.png`) and in Japanese
+  (`docs/images/recommend.ja.png`, now used by README.ja.md). `tools/screenshots.py` makes them, so they can be
+  retaken whenever the table changes (#89).
+
 ## [0.10.1] - 2026-10-26
 
 ### Changed

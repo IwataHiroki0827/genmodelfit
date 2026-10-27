@@ -10,9 +10,12 @@ LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit
 llmfit の公式のプロジェクトでも派生(フォーク)でもありません。状態: アルファ版
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md))。
 
-![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.png)
+![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.ja.png)
 
-`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-22 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+`--vram` が変えるのは VRAM の量だけで、GPU の世代(使える精度)は撮った PC の RTX 3070 のものです(bf16 は使え、fp8 は使えない)。
+新しい GPU では fp8 のファイルが選ばれることがあります。
+画像は [tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py) で作っています。
 
 ## すぐ試す
 
