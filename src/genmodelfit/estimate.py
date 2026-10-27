@@ -1891,9 +1891,9 @@ def _estimate(
                     ]
         elif fit == "perfect" and fit_from != "measurement":
             fit = "good"
-            why = [*why, tr(*good_cap_text(kind))]
+            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
         elif fit_from != "measurement":
-            why = [*why, tr(*good_cap_text(kind))]
+            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
     reasons.extend(prec.notes)
     reasons.extend(_stage_notes(n, parts, system, prec, prep.c))
     free_short = False

@@ -739,11 +739,18 @@ GB10_NAME = "NVIDIA GB10"
 GB10_KIND = ("NVIDIA の統合メモリ、DGX Spark", "NVIDIA unified memory, DGX Spark")
 
 
-def good_cap_text(kind: str | tuple[str, str]) -> tuple[str, str]:
+def good_cap_text(kind: str | tuple[str, str], *, measured: bool = False) -> tuple[str, str]:
     """段階を Good までにする理由(日本語, 英語)。NVIDIA 以外の GPU と統合メモリの GB10 の上限は、
     推定だからではなく、この種類の GPU で動いた実測がまだ無いから
-    (#101・#103。docs/hardware.md「NVIDIA 以外の GPU」)。"""
+    (#101・#103。docs/hardware.md「NVIDIA 以外の GPU」)。measured: この GPU・設定の実測はあるが、
+    段階を決める条件(別々の出どころ 2 つ・そろっている)に届かないとき。"""
     ja, en = (kind, kind) if isinstance(kind, str) else kind
+    if measured:
+        return (
+            f"この GPU({ja})で段階を決めるだけの実測(別々の出どころ 2 つ)がまだ無いので、段階は Good まで",
+            f"There are not yet enough measurements on this GPU ({en}) to set the level (two independent"
+            " sources), so the level is capped at Good",
+        )
     return (
         f"この種類の GPU({ja})で動いた実測がまだ無いので、段階は Good まで"
         "(同じ GPU の実測が 2 つ以上そろえば外れる)",
@@ -1888,6 +1895,15 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 f"The product name is generic ({a.name}), so it was taken as {known}"
                 f" from the device ID ({dev})",
             )
+            if a.vendor == "intel":
+                # Intel はメモリが 1 チャンネルのとき、同じ石の Arc Graphics を「Intel Graphics」と表示する
+                # (Intel support 000102144。Windows 11 のデバイス マネージャー)。動くが 2 チャンネルより遅い
+                pci_note += tr(
+                    "。Intel はメモリが 1 チャンネルのとき Arc Graphics を「Intel Graphics」と表示する"
+                    "(Intel support 000102144)。1 チャンネルでは 2 チャンネルより遅い",
+                    '. Intel shows Arc Graphics as "Intel Graphics" when the memory is single-channel'
+                    " (Intel support 000102144); single-channel memory is slower than dual-channel",
+                )
     rule_note = None
     if a.vendor == "amd":
         found = amd_gfx(name, host.cpu)

@@ -198,3 +198,37 @@ def test_every_url_is_https_and_known():
     gpuwatch.collect(f)
     assert all(u.startswith("https://") for u in f.urls)
     assert len(f.urls) == len(gpuwatch.URLS)
+
+
+def test_read_only_commands_never_load_the_watch(tmp_path):
+    """読むだけのコマンドと `import genmodelfit` は gpuwatch を読み込まない(見張りは weekly と手で動かす
+    `python -m genmodelfit.gpuwatch` だけ。#103)。"""
+    import subprocess
+    import sys
+    import textwrap
+
+    from clihelp import child_env
+
+    contrib_dir = Path(__file__).parent / "fixtures" / "contrib"
+    script = textwrap.dedent(
+        f"""
+        import contextlib, io, sys
+        import genmodelfit as gmf
+        from genmodelfit import cli
+        hw = ["--vram", "8", "--ram", "32"]
+        for argv in (["system", "--json", *hw], ["recommend", "--json", *hw], ["info", "image_sdxl_simple"],
+                     ["contrib", "validate", {str(contrib_dir)!r}]):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                cli.main(argv)
+            assert "genmodelfit.gpuwatch" not in sys.modules, argv
+        sys.stdout.write("OK")
+        """
+    )
+    r = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        env=child_env(tmp_path / "cache"),
+        timeout=180,
+        check=False,
+    )
+    assert r.stdout.decode().endswith("OK"), r.stderr.decode(errors="replace")[-2000:]

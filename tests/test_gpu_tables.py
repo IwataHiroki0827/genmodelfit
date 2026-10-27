@@ -224,3 +224,30 @@ def test_old_driver_without_cc_does_not_promise_kepler():
 def test_cu129_text_says_windows_is_only_28_29():
     b = next(b for b in gputables.TORCH_CUDA_BUILDS if b.tag == "cu129")
     assert "2.8.0・2.9.0 だけ" in b.note[0] and b.torch == "2.8〜2.13"
+
+
+def test_windows_intel_graphics_with_an_arc_device_id_is_used():
+    """1 チャンネルのメモリの Core Ultra は Arc Graphics を「Intel(R) Graphics」と出す
+    (Intel support 000102144)。型番 ID が Arc の内蔵 GPU なら使い、1 チャンネルは遅いと書く(#103)。
+    Arc でない ID は今までどおり CPU。"""
+    with i18n.forced("ja"):
+        a = _judge("Intel(R) Graphics", "intel", WIN11, source="wmi", pci_id="8086:7d55", vram_gb=0.1)
+        g = classify_adapter(a, WIN11, 32.0)
+    assert a.usable and g.backend == "xpu" and g.memory == "shared"
+    assert any("1 チャンネル" in n and "000102144" in n for n in g.notes)
+    b = _judge("Intel(R) Graphics", "intel", WIN11, source="wmi", pci_id="8086:7d67", vram_gb=0.1)
+    assert not b.usable
+
+
+@pytest.mark.parametrize(
+    "name,gfx",
+    [
+        ("AMD Oberon/Navi12Lite", None),  # ゲーム機の石(Navi 12 ではない)
+        ("AMD Ariel/Navi10Lite", None),
+        ("AMD Radeon 820M / 840M Graphics", "gfx1153"),  # 新しい pci.ids の 1902。820M の決まりが先
+        ("AMD Radeon 840M / 860M Graphics", "gfx1152"),
+    ],
+)
+def test_pci_names_that_need_care(name, gfx):
+    got = hardware.amd_gfx(name)
+    assert (got[0] if got else None) == gfx

@@ -279,7 +279,7 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 
 - **NVIDIA の判定は変えない**。NVIDIA の GPU が使えれば、ほかの GPU は `--all-gpus` で一覧に出すだけ。
 - 動くかどうかは下の対応表(一次資料)で決める。
-- **段階は Good まで**にする。理由は推定だからではなく、この種類の GPU で動いた実測がまだ無いから(#101・#103)。理由に「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」と書く(`hardware.good_cap_text`)。外れるのは、同じ会社の GPU の、同じ設定で成功した実測があるときだけ(下の「同じ GPU で成功した実測」)。
+- **段階は Good まで**にする。理由は推定だからではなく、この種類の GPU で動いた実測がまだ無いから(#101・#103)。理由に「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」と書く(`hardware.good_cap_text`)。外れるのは、この GPU と同じ GPU・同じ設定の実測が、別々の 2 つ以上の出どころでそろって段階を決めたとき(下の「同じ GPU で成功した実測」)。この GPU・設定の実測が 1 つだけ(またはそろわない)ときは、理由に「この GPU(<会社>)で段階を決めるだけの実測(別々の出どころ 2 つ)がまだ無いので、段階は Good まで」と書く(「動いた実測がまだ無い」とは書かない)。
 - 2026-10-22 から、この GPU と同じ GPU のほかの利用者の実測もその根拠になる([accuracy.ja.md](accuracy.ja.md)「ほかの利用者の実測」)。
 - NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
 - 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
@@ -302,7 +302,7 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 | Intel Arc B シリーズ(Battlemage: B580 / B570、Pro B70 / B65 / B60 / B50) | Windows 11・Linux | **GPU**(`xpu`) | 同上 |
 | Intel Core Ultra の Arc Graphics(Meteor Lake-H、Arrow Lake-H の 140T / 130T、Lunar Lake の 140V / 130V、Panther Lake の B390 など) | Windows 11・Linux | **GPU**(`xpu`、共有メモリ) | 同上(Panther Lake は Ubuntu 26.04) |
 | Intel Data Center GPU Max(Ponte Vecchio) | Linux | **GPU**(`xpu`) | PyTorch 2.14 の Intel Data Center GPU の表(RHEL 9.2・SLES 15 SP5・Ubuntu Server 22.04)。Windows・WSL2 は CPU |
-| Intel UHD・Iris Xe・「Intel(R) Graphics」(Arrow Lake-S など)・HD Graphics | — | CPU | 上の表に入らない |
+| Intel UHD・Iris Xe・「Intel(R) Graphics」(Arrow Lake-S など、型番 ID が Arc の内蔵 GPU でないもの)・HD Graphics | — | CPU | 上の表に入らない。型番 ID が Core Ultra の Arc Graphics(Meteor Lake 7d55・Arrow Lake-H 7d51・Lunar Lake 64a0)なら「Intel(R) Graphics」でも GPU(下の「GPU の登録の表と公式の一覧」) |
 | Intel(どれでも) | Windows 10・版が分からない | CPU | 上の表は Windows 11 |
 | Apple silicon(M1〜M4 など) | macOS 14 以降 | **GPU**(`mps`、統合メモリ) | Apple「Accelerated PyTorch training on Mac」(https://developer.apple.com/metal/pytorch/ : 「Mac computer with Apple silicon」「macOS 14.0 or later」)、ComfyUI README「Apple Mac silicon」 |
 | Apple silicon | macOS 13 以前・版が分からない | CPU | 同上 |
@@ -360,6 +360,7 @@ GPU の名前から世代を決める表:
 - AMD: Radeon 8065S(Ryzen AI Max+ PRO 495、ROCm の hw specs で gfx1151)、RX 7500 / 7400 / 7300・PRO W7400(pci.ids の 749f・7499「Navi 33」= gfx1102)、Steam Machine(pci.ids 7481「Navi 33」)、Radeon Pro W6900X・Pro V520(gfx1030・gfx1011)、Instinct MI25・MI6・MI8(対象外の世代。表示のため)、Ryzen AI 4xx・PRO の CPU 名(内蔵 GPU の名前が汎用のとき)、Ryzen 9 270(TheRock の RELEASES.md で gfx1103)。
 - 新しい pci.ids で製品名が汎用(「Navi 33 [Radeon Graphics]」「Battlemage G31 [Intel Graphics]」)になる型番 ID は、古い pci.ids では使えて新しい pci.ids では断る、という逆転があった。amdkfd が無いときは、汎用の名前でも型番 ID の表を先に引くようにした(理由に「製品名が汎用なので、型番の ID から … とみなした」)。
 - Intel: Arc Pro B65 / B70(Battlemage G31、e222・e223。公称の VRAM は確かめられなかったので持たない)、Data Center GPU Max(Ponte Vecchio。PyTorch の表で Linux だけなので、Windows・WSL2 は CPU)。
+- **Windows の「Intel(R) Graphics」と Core Ultra の Arc**: Intel はメモリが 1 チャンネルのとき、同じ石の Arc Graphics をデバイス マネージャーで「Intel Graphics」と表示する(Intel support 000102144「Intel Arc Graphics Appears As Intel Graphics in Device Manager and Task Manager」https://www.intel.com/content/www/us/en/support/articles/000102144/graphics.html 。解決は 2 チャンネルのメモリ。2026-10-27 に読んだ)。汎用の名前のときに型番 ID の表を引く決まりは Windows の WMI にも効くので、型番 ID が Meteor Lake 7d55・Arrow Lake-H 7d51・Lunar Lake 64a0 なら「Intel(R) Graphics」でも XPU として使う(Linux は前から型番 ID で使っていた)。理由に「1 チャンネルでは 2 チャンネルより遅い」と書く。型番 ID が表に無い「Intel(R) Graphics」(Arrow Lake-S など)は今までどおり CPU。
 - **820M の gfx**: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は Ryzen AI 5 330 の Radeon 820M を gfx1152、pci.ids は別の石(1902「Krackan2 [Radeon 820M / 840M]」)に 820M と 840M を載せる。名前だけでは決まらないので、ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、理由に食い違いの注意を出す。どちらも RDNA 3.5 で判定は同じ。Linux は amdkfd の値が先。
 - **Jetson Orin(8.7)と CUDA 13.2 以降**: PyTorch v2.14.1 は CUDA 13.2 以降のビルドで 8.0 / 8.6 の機械語を 8.7 でも動くとする(`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`)。genmodelfit は Jetson を判定に使わない(JetPack 専用の版・統合メモリ。下の「すべての環境」)ので、表(`SOLO_CC`)は変えない。
 - cu129 の版の範囲: Windows の wheel は 2.8・2.9 だけ(2.10 以降は Linux だけ)。cu128 の aarch64 は 2.7・2.9〜2.11(2.8 は無い)。案内の文言だけで、判定は変わらない。

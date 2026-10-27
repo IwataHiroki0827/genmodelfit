@@ -218,7 +218,11 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   (Linux only, as in PyTorch's table). `AMD_ARCH` gained gfx1170, gfx1171, gfx1250 and gfx803.
 - **A newer pci.ids no longer turns a usable GPU into CPU** (#103). Device IDs whose product name becomes generic
   ("Navi 33 [Radeon Graphics]", "Battlemage G31 [Intel Graphics]") are looked up in the device ID table when amdkfd
-  is not available.
+  is not available. This also applies on Windows: a Core Ultra whose Arc Graphics shows as "Intel(R) Graphics"
+  because the memory is single-channel (Intel support 000102144) is used as XPU when its device ID is Meteor Lake
+  7d55, Arrow Lake-H 7d51 or Lunar Lake 64a0, with a note that single-channel memory is slower. The Radeon 820M
+  row now comes before the 840M / 860M row (pci.ids 1902 "Radeon 820M / 840M"), and "Navi10Lite" / "Navi12Lite"
+  (console chips) no longer match Navi 10 / 12.
 - **gfx that are not Release Ready in TheRock are judged as CPU** (#103): gfx1170 / gfx1171 (Build Passing only) and
   gfx1250 (up to Sanity Tested). Before, they passed as "a newer RDNA" through amdkfd.
 - **The Radeon 820M follows TheRock (gfx1153)** with a note that ROCm hw specs says gfx1152 (#103); the CPU-name table
@@ -229,6 +233,8 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   CUDA 13.2 is not used are documented in docs/hardware.md.
 - **The reason for the Good cap on non-NVIDIA GPUs and DGX Spark** (#101) now says what it is: no measurement has
   run on this kind of GPU yet (lifted once two or more measurements of the same GPU agree), not "an estimate".
+  When one source has measured this GPU with these settings, it says that there are not yet enough measurements to
+  set the level (two independent sources) instead (#103).
 - Workstation Ada GPUs named "RTX 4000 SFF Ada Generation" or "RTX 2000E Ada Generation" now get the Ada generation
   (8.9) from the name when nvidia-smi does not report it, and "RTX 2000E Ada Generation" is a known GPU name.
   Tests pin how NVIDIA GPUs are matched by name and VRAM, without PCI device IDs (#99).

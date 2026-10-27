@@ -40,3 +40,21 @@ def test_inventory_lists_every_rule():
         assert text.count(f"| `{name}` | `") == len(rules), name
     for sid in gputables.SOURCES:
         assert f"- `{sid}`:" in text
+
+
+_JA = __import__("re").compile(r"[぀-ヿ一-鿿]")
+
+
+def test_each_language_page_has_its_own_language():
+    """英語版に日本語の文字が無く、日本語版の注意は日本語(言語の取り違えを防ぐ。#103)。"""
+    from genmodelfit import gputables
+
+    en = (ROOT / "docs" / "gpu-inventory.md").read_text(encoding="utf-8")
+    ja = (ROOT / "docs" / "gpu-inventory.ja.md").read_text(encoding="utf-8")
+    bad = [line for line in en.splitlines() if _JA.search(line.replace("[日本語](gpu-inventory.ja.md)", ""))]
+    assert bad == []
+    notes = [vs.note for vs in gputables.value_sets() if vs.note[0]]
+    notes += [r.note for rules in gputables.rules_by_table().values() for r in rules if r.note[0]]
+    for note_ja, note_en in notes:
+        assert note_ja in ja.replace("\\|", "|") and note_en not in ja
+        assert note_en in en.replace("\\|", "|") and _JA.search(note_ja)

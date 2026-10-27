@@ -335,7 +335,7 @@ def render(lang: str, official: dict) -> str:
     for vs in gputables.value_sets():
         vals = sorted(vs.values) if isinstance(vs.values, frozenset) else list(vs.values)
         shown = ", ".join(str(v) for v in vals)
-        note = vs.note[j] if vs.note[0] else "-"
+        note = vs.note[0 if lang == "ja" else 1] if vs.note[0] else "-"
         out.append(
             f"| {code(vs.name)} | {cell(shown)} | {sources_cell(vs.source)} | {vs.verified} | {cell(note)} |"
         )

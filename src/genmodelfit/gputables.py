@@ -161,6 +161,11 @@ SOURCES: dict[str, Source] = {
         "https://www.intel.com/content/www/us/en/support/articles/000091109.html",
         "2026-10-21",
     ),
+    "intel-arc-naming": Source(
+        "Intel support 000102144: Intel Arc Graphics appears as Intel Graphics (dual-channel memory needed)",
+        "https://www.intel.com/content/www/us/en/support/articles/000102144/graphics.html",
+        AUDIT,
+    ),
     "intel-arc-desktop": Source(
         "Intel Arc A / B-series desktop and Arc Pro B50 / B60 product pages (graphics memory)",
         "https://www.intel.com/content/www/us/en/products/details/discrete-gpus/arc.html",
@@ -199,7 +204,7 @@ class ValueSet:
 # --- NVIDIA: GPU 名 → compute capability(古いドライバ用) -------------------------------------------------
 # compute_cap を返さない古い nvidia-smi のための表(上から順に試す)。迷う名前(同じ型番で世代が混ざるノート用の
 # GT/GTX 7xx・8xx など)は入れない(None = 分からない。断らない)。NVIDIA の一覧の 459 名で照合して誤り 0
-# (tests/test_gpu_inventory.py)。
+# (tests/test_gpu_tables.py)。
 _NV = ("nvidia-cuda-gpus", "nvidia-cuda-legacy")
 NAME_CC_RULES: tuple[Rule, ...] = (
     # Blackwell
@@ -475,18 +480,18 @@ PYTORCH_ROCM_LINUX = ValueSet(
 _TRR = ("therock-releases", "rocm-hw-specs")
 _PCI = ("pci-ids",)
 AMD_NAME_RULES: tuple[Rule, ...] = (
-    _r(r"rx\s*9070|ai pro r9[67]00|navi\s*48", ("gfx1201", False), *_TRR),
-    _r(r"rx\s*90[456]0|navi\s*44", ("gfx1200", False), *_TRR),  # RX 9060 / 9060 XT は Navi 44
+    _r(r"rx\s*9070|ai pro r9[67]00|navi\s*48\b", ("gfx1201", False), *_TRR),
+    _r(r"rx\s*90[456]0|navi\s*44\b", ("gfx1200", False), *_TRR),  # RX 9060 / 9060 XT は Navi 44
     # Radeon 8065S(Ryzen AI Max+ PRO 495)は hw specs で gfx1151(#103)
-    _r(r"8065s|8060s|8050s|8040s|strix halo", ("gfx1151", True), *_TRR),
+    _r(r"8065s|8060s|8050s|8040s|strix halo", ("gfx1151", True), *_TRR, added="0.11.0"),
     _r(r"890m|880m|strix(?! halo)", ("gfx1150", True), *_TRR),
-    _r(r"860m|840m|krackan", ("gfx1152", True), *_TRR),
     # 820M は公式の資料どうしで食い違う: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は
     # Ryzen AI 5 330 の Radeon 820M を gfx1152。pci.ids は 1902「Krackan2 [Radeon 820M / 840M]」で、
     # 別の石(Krackan2)に 820M と 840M が載る(820M・840M の gfx は名前だけでは決まらない)。
     # ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、注意を出す。どちらも RDNA 3.5 で、
     # 判定(使う・pytorch.org の ROCm 版に無い)は同じ。
-    # Linux は amdkfd の値が先。1902 は型番 ID の表に入れない(#103)
+    # Linux は amdkfd の値が先。1902 は型番 ID の表に入れない。新しい pci.ids の lspci の名前「Radeon 820M /
+    # 840M」(1902)もこの行に当たるよう、860M / 840M の行より前に置く(#103)
     _r(
         r"820m",
         ("gfx1153", True),
@@ -500,15 +505,16 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
             " ROCm hw specs: gfx1152). If the TheRock wheel does not work, try the gfx1152 one",
         ),
     ),
+    _r(r"860m|840m|krackan", ("gfx1152", True), *_TRR),
     _r(
         r"rx\s*7[67]00[sm]\b|rx\s*7600m xt", ("gfx1102", False), *_PCI
     ),  # ノート用の RX 7700S / 7600S / 7600M は Navi 33
-    _r(r"rx\s*7900|pro w7[89]00|navi\s*31", ("gfx1100", False), *_TRR),
-    _r(r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32", ("gfx1101", False), *_TRR),
+    _r(r"rx\s*7900|pro w7[89]00|navi\s*31\b", ("gfx1100", False), *_TRR),
+    _r(r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32\b", ("gfx1101", False), *_TRR),
     # RX 7400 / 7300 / 7500・PRO W7400 も Navi 33(pci.ids 7499「Navi 33 [Radeon RX 7400/7300/Pro W7400]」・
     # 749f「Navi 33 [Radeon RX 7500]」。#103)
     _r(r"rx\s*7[3-5]00\b|pro w7400", ("gfx1102", False), *_PCI, added="0.11.0"),
-    _r(r"rx\s*76[05]0|pro w7[56]00|navi\s*33", ("gfx1102", False), *_TRR, *_PCI),
+    _r(r"rx\s*76[05]0|pro w7[56]00|navi\s*33\b", ("gfx1102", False), *_TRR, *_PCI),
     # Valve の Steam Machine の GPU(pci.ids 7481「Navi 33 [Steam Machine]」。#103)
     _r(r"steam machine", ("gfx1102", False), *_PCI, added="0.11.0"),
     _r(r"780m|760m|740m|phoenix|hawk ?point", ("gfx1103", True), *_TRR),
@@ -517,11 +523,11 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
     _r(r"rx\s*6[78][05]0m\b", ("gfx1031", False), *_PCI, verified="2026-10-22"),
     _r(r"rx\s*6[678]00s\b|rx\s*66[05]0m\b", ("gfx1032", False), *_PCI, verified="2026-10-22"),
     _r(r"rx\s*6[345][05]0m\b", ("gfx1034", False), *_PCI, verified="2026-10-22"),
-    _r(r"rx\s*6[89]\d0|pro w6800|pro w6900x|pro v620|navi\s*21", ("gfx1030", False), *_TRR),
-    _r(r"rx\s*67\d0|navi\s*22", ("gfx1031", False), *_TRR),
-    _r(r"rx\s*66\d0|pro w6600|navi\s*23", ("gfx1032", False), *_TRR),
+    _r(r"rx\s*6[89]\d0|pro w6800|pro w6900x|pro v620|navi\s*21\b", ("gfx1030", False), *_TRR, added="0.11.0"),
+    _r(r"rx\s*67\d0|navi\s*22\b", ("gfx1031", False), *_TRR),
+    _r(r"rx\s*66\d0|pro w6600|navi\s*23\b", ("gfx1032", False), *_TRR),
     # デスクトップの RX 6300 も Navi 24(pci.ids「7424 Navi 24 [Radeon RX 6300]」、Pro W6300 / W6400 も同じ)
-    _r(r"rx\s*6[345]00|pro w6[345]00|navi\s*24", ("gfx1034", False), *_PCI, verified="2026-10-22"),
+    _r(r"rx\s*6[345]00|pro w6[345]00|navi\s*24\b", ("gfx1034", False), *_PCI, verified="2026-10-22"),
     _r(r"680m|660m|rembrandt", ("gfx1035", True), "therock-supported", *_PCI, verified="2026-10-22"),
     _r(
         r"610m|raphael|granite ridge|mendocino",
@@ -539,9 +545,9 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
         "steam-deck-spec",
         *_PCI,
     ),
-    _r(r"rx\s*5[67]\d0|navi\s*10", ("gfx1010", False), *_PCI, verified="2026-10-21"),
-    _r(r"pro v520|navi\s*12", ("gfx1011", False), "therock-releases", *_PCI, added="0.11.0"),
-    _r(r"rx\s*5[35]00|pro w5500|navi\s*14", ("gfx1012", False), *_PCI, verified="2026-10-21"),
+    _r(r"rx\s*5[67]\d0|navi\s*10\b", ("gfx1010", False), *_PCI, verified="2026-10-21"),
+    _r(r"pro v520|navi\s*12\b", ("gfx1011", False), "therock-releases", *_PCI, added="0.11.0"),
+    _r(r"rx\s*5[35]00|pro w5500|navi\s*14\b", ("gfx1012", False), *_PCI, verified="2026-10-21"),
     _r(r"mi35\dx?", ("gfx950", False), *_TRR),
     _r(r"mi3[02]\dx?|mi300a", ("gfx942", False), *_TRR),
     _r(r"mi2[15]0x?", ("gfx90a", False), *_TRR),
@@ -555,7 +561,7 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
 # 名前が「AMD Radeon(TM) Graphics」だけの内蔵 GPU は、CPU の名前で決める(上から順に試す。迷うものは入れない)
 AMD_CPU_IGPU_RULES: tuple[Rule, ...] = (
     _r(r"ryzen ai max", "gfx1151", "rocm-hw-specs"),
-    _r(r"ryzen ai 9 (hx )?(pro )?[34][67]\d", "gfx1150", "rocm-hw-specs"),
+    _r(r"ryzen ai 9 (hx )?(pro )?[34][67]\d", "gfx1150", "rocm-hw-specs", added="0.11.0"),
     # Ryzen AI 5 330(Radeon 820M)は名前の表と同じく gfx1153(上の 820M の行の注意。#103)
     _r(
         r"ryzen ai 5 (pro )?330\b",
@@ -570,7 +576,7 @@ AMD_CPU_IGPU_RULES: tuple[Rule, ...] = (
             " ROCm hw specs: gfx1152)",
         ),
     ),
-    _r(r"ryzen ai [57] (pro )?[34][3-5]\d", "gfx1152", "rocm-hw-specs"),
+    _r(r"ryzen ai [57] (pro )?[34][3-5]\d", "gfx1152", "rocm-hw-specs", added="0.11.0"),
     # Dragon Range(7945HX・7940HX・7840HX・7745HX・7645HX など)・Fire Range(9955HX・9850HX など)は
     # Radeon 610M(2 CU)の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY)。AMD の製品ページの「Graphics Model:
     # AMD Radeon 610M」「Graphics Core Count: 2」
@@ -591,6 +597,7 @@ AMD_CPU_IGPU_RULES: tuple[Rule, ...] = (
         "gfx1103",
         "therock-releases",
         "amd-product-pages",
+        added="0.11.0",
     ),
     _r(
         r"ryzen [3579] (pro )?(6[89]\d0|7[37]35)(u|hs|h|hx)\b",
@@ -717,12 +724,15 @@ PCI_DEVICE_RULES: tuple[Rule, ...] = (
     ),
     *_pci({f"8086:{d}": "Battlemage" for d in ("e202", "e20d", "e210", "e215", "e216", "e220", "e221")}),
     *_pci({"8086:e222": "Arc Pro B65", "8086:e223": "Arc Pro B70"}, added="0.11.0"),
-    *_pci(
-        {
+    # Core Ultra の内蔵の Arc。メモリが 1 チャンネルだと Windows でも「Intel(R) Graphics」と出る
+    # (intel-arc-naming)ので、汎用の名前のときも型番 ID で引く(#103。理由に 1 チャンネルは遅いと書く)
+    *(
+        _r(k, v, *_PCI, "intel-arc-naming")
+        for k, v in {
             "8086:7d55": "Arc Graphics",  # Meteor Lake-P [Intel Arc Graphics]
             "8086:7d51": "Arc 140T",  # Arrow Lake-P [Arc Pro 130T/140T]
             "8086:64a0": "Arc 140V",  # Lunar Lake の Arc Graphics 130V/140V
-        }
+        }.items()
     ),
     *_pci({f"8086:{d}": "Arc B390" for d in ("b080", "b082", "b084", "b086")}),  # Panther Lake
     *_pci({f"8086:{d}": "Arc B370" for d in ("b081", "b083", "b085", "b087")}),
@@ -768,12 +778,12 @@ WSL_AMD = ValueSet(
 
 # 公式の一覧にあるが、わざと表で扱わない・値が違うもの(試験と見張りが候補にしない。理由を書く)
 KNOWN_EXCEPTIONS: dict[str, tuple[str, str]] = {
-    # ROCm の hw specs の Ryzen AI 5 330 / Radeon 820M = gfx1152 は、TheRock の RELEASES.md(gfx1153)と食い違う
     # Windows の cu126 は 6.1 も入れている(torch-win-cuda)。PYTORCH_RELEASES_CODE_CC は Linux の一覧
     "torch:cu126 x86_64": (
         "Windows の cu126 は 6.1 も入れている(.ci/pytorch/windows/internal/cuda_config.bat)",
         "The Windows cu126 build also has 6.1 (.ci/pytorch/windows/internal/cuda_config.bat)",
     ),
+    # ROCm の hw specs の Ryzen AI 5 330 / Radeon 820M = gfx1152 は、TheRock の RELEASES.md(gfx1153)と食い違う
     "amd:Radeon 820M=gfx1152": (
         "820M は TheRock の gfx1153 に合わせた(公式の資料どうしの食い違い。820M の行の注意)",
         "820M follows TheRock's gfx1153 (official sources disagree; see the note on the 820M row)",
