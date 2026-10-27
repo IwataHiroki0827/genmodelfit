@@ -1681,7 +1681,7 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
 
 # --- NVIDIA 以外の GPU の対応表(docs/hardware.md「NVIDIA 以外の GPU」。2026-10-21 に一次資料で確かめた)
 #
-# ComfyUI(Comfy-Org/ComfyUI b1a247c の README「AMD GPUs (Linux)」「AMD GPUs (Windows, ROCm 10.0)」
+# ComfyUI(Comfy-Org/ComfyUI 426f5ee の README「AMD GPUs (Linux)」「AMD GPUs (Windows, ROCm 10.0)」
 # 「Intel GPUs (Windows and Linux)」「Apple Mac silicon」)が案内する PyTorch で動く組み合わせだけを使う。
 # 実測は 0 件なので、段階は推定で、印は「推定(<会社>・実測なし)」。段階は good までにする(estimate.py)。
 
