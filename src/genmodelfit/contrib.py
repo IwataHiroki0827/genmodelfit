@@ -1802,8 +1802,11 @@ def aggregate(subs: list[Submission]) -> list[dict[str, Any]]:
     return out
 
 
-def community_document(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """同梱の measurements_community.json の中身(日付は提出の最新の日付。作り直しても同じになる)。"""
+def community_document(rows: list[dict[str, Any]], used: list[Submission] | None = None) -> dict[str, Any]:
+    """同梱の measurements_community.json の中身(日付は提出の最新の日付。作り直しても同じになる)。
+    used はまとめに渡した提出。submissions にその内容の sha256(canonical の hash)を並べて残す
+    (どの提出を入れたか。まだ入れていない提出を bundled_status で見分ける。#90)。古い版は知らないキーとして
+    読み飛ばす(db.parse_measurements は measurements だけを読む)。"""
     return {
         "unit": "GiB",
         "source": "community",
@@ -1819,15 +1822,47 @@ def community_document(rows: list[dict[str, Any]]) -> dict[str, Any]:
             f"{MIN_CONSISTENT} 以上で、幅が中央値の {CONSISTENT_REL:.0%} 以内で、OOM が無ければ consistent"
             "(係数の合わせ直しに入れる)"
         ),
+        "submissions": sorted({s.sha256 for s in used or []}),
         "measurements": rows,
     }
 
 
-def write_community(rows: list[dict[str, Any]], path: str | os.PathLike[str]) -> Path:
+def write_community(
+    rows: list[dict[str, Any]], path: str | os.PathLike[str], used: list[Submission] | None = None
+) -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(dumps(community_document(rows)), encoding="utf-8", newline="\n")
+    p.write_text(dumps(community_document(rows, used)), encoding="utf-8", newline="\n")
     return p
+
+
+def bundled_status(
+    root: str | os.PathLike[str], document: dict[str, Any], db: Database | None = None
+) -> dict[str, Any]:
+    """同梱のまとめ(document)と提出のフォルダ(root)を比べる(#90。まとめは版を出すときに作る)。
+
+    - listed: まとめに入っている提出の数(document の submissions)
+    - pending: フォルダにあって検査を通ったが、まだまとめに入っていない提出のパス(マージした後の提出。
+      次の版で入れる)
+    - missing: まとめに入っているのにフォルダに無い(検査を通らない)提出の hash
+    - matches: まとめに入っている提出だけをまとめ直すと document と同じになるか
+    - ok: missing が無く matches(pending は ok を落とさない。数えて知らせるだけ)"""
+    p = Path(root)
+    subs, reports = load_dir(p, db) if p.is_dir() else ([], [])
+    listed = list((document or {}).get("submissions") or [])
+    by = {s.sha256: s for s in subs}
+    used = [by[h] for h in listed if h in by]
+    missing = [h for h in listed if h not in by]
+    matches = not missing and community_document(aggregate(used), used) == document
+    return {
+        "listed": len(listed),
+        "valid": len(subs),
+        "invalid": [r.path for r in reports if not r.ok],
+        "pending": [s.path for s in subs if s.sha256 not in set(listed)],
+        "missing": missing,
+        "matches": matches,
+        "ok": matches,
+    }
 
 
 # --- 精度の点検(毎週の表) ---------------------------------------------------------------------
@@ -1946,6 +1981,7 @@ __all__ = [
     "accuracy_report",
     "aggregate",
     "build_submission",
+    "bundled_status",
     "community_document",
     "content_hash",
     "gpu_slug",

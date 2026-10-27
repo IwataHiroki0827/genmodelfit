@@ -166,14 +166,14 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 
 ### 受け付けたあと
 
-- メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く)。
+- マージされると data/contrib に入りますが、利用者に**届くのは genmodelfit の次の版から**です(#90)。版を出すときに、メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く。[docs/release.ja.md](docs/release.ja.md))。まだまとめに入っていない提出は `genmodelfit contrib aggregate --check` で見られます。
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
   - PCI の型番 ID が同じ(両方にあるとき)。無ければ、そろえた名前が同じ(汎用の名前は一致としない)。
   - かつ、VRAM の総量の比が 0.97 以上。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
 - その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、件数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
 - 同じ GPU の同じ設定の実測は、段階を決める根拠にもなります。NVIDIA 以外の GPU も、その GPU の実測があれば Good の上限が外れます。詳しくは [docs/accuracy.ja.md](docs/accuracy.ja.md) を見てください。
-- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが実測を取り込むときに `python -m genmodelfit.calibrate` で作り直します。
+- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 ### 作者の実測(measurements.json)
 

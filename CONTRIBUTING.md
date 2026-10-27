@@ -166,14 +166,14 @@ This prints everything in the file in readable form, and prints the result of a 
 
 ### After it is accepted
 
-- The maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD).
+- After the merge, your file is in data/contrib, but it **reaches users with the next version** of genmodelfit (#90). When making a release, the maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD; [docs/release.md](docs/release.md)). `genmodelfit contrib aggregate --check` shows the submissions not in it yet.
 - Only **PCs with the same GPU as the measured one** use the result. Judgments for PCs with other GPUs do not change (0.9.1; the same approach as llmfit). "Same GPU" means:
   - the PCI model ID is the same (when both have it), otherwise the normalized name is the same (a generic name is not counted as a match), and
   - the ratio of total VRAM is 0.97 or more. An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
 - On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured_community` (other users' measurements), and the count (`sample_count`) is shown.
 - The value is used in both directions, lowering or raising the required amount. A value for everything on the GPU is never lowered below weights + fixed part, and never raised above the GPU's total.
 - A measurement of the same GPU and the same settings also becomes grounds for deciding the level. For GPUs other than NVIDIA, the Good cap is lifted if that GPU has a measurement. See [docs/accuracy.md](docs/accuracy.md) for details.
-- For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements.
+- For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements for a release.
 
 ### Maintainer measurements (measurements.json)
 

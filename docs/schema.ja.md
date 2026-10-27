@@ -1138,8 +1138,13 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - グループが `consistent`(較正に入る)になるのは、使った実行が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無いとき。
 - 出力の行は、`origin: "community"` の Measurement の記録(Measurement を参照)で、順は固定。だから同じ入力は常に同じファイルになる。
 
-`--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
+`--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, submissions, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
+- `submissions`(#90)は、まとめに渡した提出(検査を通ったもの)の内容の sha256(`contrib.canonical` の hash。ファイル名の sha8 の元)を並べたもの。
+- 古い版は知らないキーとして読み飛ばす(読むのは `measurements` だけ)。
+
 同梱の写しは `src/genmodelfit/data/measurements_community.json` で、ほかの実測と一緒に読み込まれる。
+- 作り直すのは版を出すとき(docs/release.ja.md「次からの版を出す手順」)。提出の PR は data/contrib だけを変えるので、マージしてもまだ入らない。
+- 試験は、`submissions` の提出がすべて data/contrib にあり、それだけをまとめ直すと同梱のファイルと同じになることを確かめる。まだ入っていない提出が data/contrib にあってもよい。
 
 `--report` は、同梱の保守者の行 + 新しい community の行(ローカルのキャッシュは決して使わない)で較正(`calibrate.calibrate`)をやり直し、`report` を返す: `{threshold_pct, n_fit, coefficients, summary, by_modality, loo, check, breaches, breach, fit_changes}`。
 - `by_modality` は `{<modality>: {loo_n, loo_mean_abs_pct, loo_max_abs_pct, evaluable, check_n, check_mean_abs_pct, check_max_abs_pct}}`。
@@ -1151,6 +1156,15 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 `--json`: 外枠 + `action: "aggregate"`、`dir`、`files`、`valid`、`invalid`、`notices`、`submissions_used`、`groups`、`consistent`、`written_to`、`community`(上の文書)、`--report` のときは `report`。
 終了コード: 0 / 1 エラー(フォルダが無い。`--allow-empty` 無しの `--output` で結果が空)/ 2 使い方の誤り / **3** `--report --fail-on-breach` で上限を超えた。
+
+### `contrib aggregate [DIR] --check [--json]`
+
+何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ提出 0 件)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
+- まだまとめに入っていない、検査を通った提出(マージした後の提出)のパスを出す。
+- まとめの `submissions` にあるのに `DIR` に無い(または検査を通らない)提出と、それだけをまとめ直したときに同梱のファイルと同じになるかも出す。
+
+`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`matches`、`ok`(missing が無く matches)。
+終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、または ok でない / 2 使い方の誤り。
 
 ## download
 

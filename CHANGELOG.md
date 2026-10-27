@@ -20,6 +20,14 @@ All notable changes to this project are documented here. The format is based on
   measurement of the model has a size. The bench no longer reads a `batch_size` outside the size / latent nodes as the
   batch (MoGe's processing batch of 4 was recorded as `batch: 4`); the bundled RTX 3070 MoGe measurement is corrected
   to `batch: 1` (calibration unchanged).
+- **Merging a valid submission PR no longer breaks main's tests** (#90). The test required the bundled
+  `measurements_community.json` to equal the aggregate of all of `data/contrib`, but a submission PR may only change
+  `data/contrib` and the aggregate was a later maintainer step, so every merge turned main red. The aggregate is now
+  rebuilt when making a release (docs/release.md "Releasing later versions"; community measurements reach users only
+  through package releases): `contrib aggregate --output` records the content sha256 of the submissions it used in
+  a new top-level `submissions` list (older versions ignore it), and the test checks that every listed submission is
+  in `data/contrib` and that re-aggregating exactly those reproduces the file; submissions not yet listed are
+  allowed. New `contrib aggregate --check` lists them (exit code 1 if any).
 
 ## [0.10.1] - 2026-10-26
 

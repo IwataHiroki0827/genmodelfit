@@ -2179,6 +2179,65 @@ def format_report(rep: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _contrib_aggregate_check(args: argparse.Namespace) -> int:
+    """aggregate --check: 同梱のまとめに入っていない提出を数える(#90。まとめは版を出すときに作る)。
+    提出のフォルダが無ければ提出 0 件として比べる。"""
+    from .contrib import bundled_status
+    from .db import COMMUNITY_FILE, bundled_text
+
+    if args.output or args.report:
+        raise CliError(
+            tr(
+                "--check は --output・--report と一緒に使えません",
+                "--check cannot be used with --output / --report",
+            )
+        )
+    st = bundled_status(args.dir, json.loads(bundled_text(COMMUNITY_FILE)), _contrib_db(args))
+    code = 0 if st["ok"] and not st["pending"] else 1
+    if args.json:
+        _out(_envelope("contrib", None, None, action="aggregate_check", dir=str(args.dir), **st))
+        return code
+    print(
+        tr(
+            f"同梱のまとめ: 提出 {st['listed']} 件"
+            f"({'それだけをまとめ直すと同じ' if st['matches'] else 'まとめ直すと違う'})",
+            f"Bundled aggregate: {st['listed']} submissions"
+            + (
+                " (re-aggregating them gives the same file)"
+                if st["matches"]
+                else " (re-aggregating them differs)"
+            ),
+        )
+    )
+    for h in st["missing"]:
+        print(
+            tr(
+                f"  {args.dir} に無い(または検査を通らない)提出: {h[:8]}",
+                f"  missing from {args.dir} (or failing the checks): {h[:8]}",
+            )
+        )
+    print(
+        tr(
+            f"{args.dir} の検査を通った提出 {st['valid']} 件のうち、同梱のまとめにまだ入っていないもの"
+            f" {len(st['pending'])} 件",
+            f"{len(st['pending'])} of the {st['valid']} valid submissions in {args.dir}"
+            " are not in the bundled aggregate yet",
+        )
+    )
+    for path in st["pending"]:
+        print(f"  {path}")
+    if st["pending"] or not st["ok"]:
+        print(
+            tr(
+                "版を出すときに genmodelfit contrib aggregate --output"
+                " src/genmodelfit/data/measurements_community.json で入れ直します(docs/release.md)",
+                "Rebuild it when making a release: genmodelfit contrib aggregate --output"
+                " src/genmodelfit/data/measurements_community.json (docs/release.md)",
+            )
+        )
+    return code
+
+
 def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     from .contrib import (
         accuracy_report,
@@ -2190,6 +2249,8 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         write_community,
     )
 
+    if args.check:
+        return _contrib_aggregate_check(args)
     if not Path(args.dir).is_dir():
         raise CliError(
             tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
@@ -2206,7 +2267,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
                 " empty one; use --allow-empty to write it anyway)",
             )
         )
-    written = str(write_community(rows, args.output)) if args.output else None
+    written = str(write_community(rows, args.output, subs)) if args.output else None
     rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
     code = EXIT_BREACH if (rep and rep["breach"] and args.fail_on_breach) else 0
     stats = {
@@ -2221,7 +2282,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     }
     if args.json:
         payload: dict[str, Any] = {"action": "aggregate", **stats, "written_to": written}
-        payload["community"] = community_document(rows)
+        payload["community"] = community_document(rows, subs)
         if rep is not None:
             payload["report"] = rep
         _out(_envelope("contrib", None, None, **payload))
@@ -4908,6 +4969,14 @@ def build_parser() -> argparse.ArgumentParser:
             "write to --output even if the result is empty (by default an empty result does not overwrite)",
         ),
     )
+    c.add_argument(
+        "--check",
+        action="store_true",
+        help=tr(
+            "書き出さず、同梱のまとめにまだ入っていない提出を数える(あれば終了コード 1)",
+            "write nothing; count the submissions not in the bundled aggregate yet (exit code 1 if any)",
+        ),
+    )
     c.set_defaults(func=cmd_contrib_aggregate)
     return p
 
@@ -4981,6 +5050,8 @@ CONTRIBUTING.md)。
   validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
+  aggregate [dir] --check
+            同梱のまとめにまだ入っていない提出を数える(まとめは版を出すときに作る)
 
 副作用:
   通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。
@@ -4989,7 +5060,8 @@ CONTRIBUTING.md)。
   0  成功(validate: すべてのファイルが通った。show: 直すところが無い)
   1  失敗 / validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
      (マージする人向けの確認では失敗にしない)/ show: 直すところがある /
-     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)
+     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)/
+     aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
   2  使い方の誤り
   3  aggregate --report --fail-on-breach: 誤差が閾値を超えた
 
@@ -5009,6 +5081,8 @@ account; CONTRIBUTING.md).
   validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             group by model, settings and GPU, drop outliers by median and MAD, check the calibration error
+  aggregate [dir] --check
+            count the submissions not in the bundled aggregate yet (it is rebuilt for each release)
 
 SIDE EFFECTS:
   No network access. make writes the submission files; aggregate writes only with --output.
@@ -5018,7 +5092,8 @@ EXIT CODES:
   1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
      maintainer who merges never fail) /
      show: something to fix / aggregate: no such folder, or an empty result with --output
-     (unless --allow-empty)
+     (unless --allow-empty) / aggregate --check: submissions not in the bundled aggregate yet, or
+     re-aggregating it differs
   2  Usage error
   3  aggregate --report --fail-on-breach: an error exceeded the threshold
 

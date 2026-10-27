@@ -1147,9 +1147,17 @@ are outliers (only with 3 or more runs; MAD floored at 2% of the median); the re
 `n_used` and `n_oom` (a group of only OOM runs becomes one `outcome: oom` row, never used). A group is `consistent`
 (enters the calibration) with at least 2 used runs whose range is within 15% of the median and no OOM in the group. Output rows are Measurement records
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
-`--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, measurements}`
-(an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake);
-the bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
+`--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, submissions,
+measurements}` (an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake).
+- `submissions` (#90) lists the content sha256 (the hash of `contrib.canonical`, the source of the sha8 in the file
+  name) of the submissions given to the aggregate (those that pass the checks).
+- Older versions skip it as an unknown key (they read only `measurements`).
+
+The bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
+- It is rebuilt when making a release (docs/release.md "Releasing later versions"). A submission PR changes only
+  data/contrib, so merging it does not put it in yet.
+- The test checks that every submission in `submissions` is in data/contrib and that re-aggregating exactly those
+  gives the bundled file. Submissions in data/contrib that are not in it yet are allowed.
 
 `--report` re-runs the calibration (`calibrate.calibrate`) on the bundled maintainer rows plus the new community rows
 (never the local cache) and returns `report`: `{threshold_pct, n_fit, coefficients, summary, by_modality, loo, check,
@@ -1167,6 +1175,19 @@ Text output is Markdown (for the weekly pull request of #19).
 `consistent`, `written_to`, `community` (the document above), and `report` with `--report`.
 Exit codes: 0 / 1 error (no such folder; empty result with `--output` without `--allow-empty`) / 2 usage error /
 **3** a breach with `--report --fail-on-breach`.
+
+### `contrib aggregate [DIR] --check [--json]`
+
+Writes nothing; compares the bundled aggregate with `DIR` (default `data/contrib`; a missing folder counts as 0
+submissions) (#90). It cannot be used with `--output` or `--report`.
+- It lists the valid submissions not in the aggregate yet (submissions merged since the last release).
+- It also shows the submissions in the aggregate's `submissions` that are missing from `DIR` (or fail the checks),
+  and whether re-aggregating exactly those gives the bundled file.
+
+`--json`: envelope + `action: "aggregate_check"`, `dir`, `listed` (submissions in the aggregate), `valid`, `invalid`
+(files that fail the checks), `pending` (paths of submissions not in it yet), `missing` (hashes in the aggregate but
+not found), `matches`, `ok` (nothing missing and matches).
+Exit codes: 0 = nothing pending and ok / 1 = something pending, or not ok / 2 usage error.
 
 ## download
 

@@ -104,10 +104,18 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 
 ## 次からの版を出す手順
 
-1. `src/genmodelfit/_version.py` の `__version__` を上げる(pyproject.toml は hatch がここから読む)。
+1. ほかの利用者の実測(data/contrib)を同梱のまとめに入れる(#90)。
+   - 提出の PR は data/contrib だけを変えるので、マージしただけでは利用者に届かない。届くのは版のリリースだけ
+     (毎週のデータの配布は db.json だけ)。
+   - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。
+   - あれば `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で作り直す
+     (使った提出の sha256 が `submissions` に入る。試験はそれだけをまとめ直して一致を確かめる)。
+   - そろった組(`consistent`)が変わったら `python -m genmodelfit.calibrate` で合わせ直し、
+     docs/accuracy.ja.md と docs/accuracy.md を直す(CLAUDE.md)。
+2. `src/genmodelfit/_version.py` の `__version__` を上げる(pyproject.toml は hatch がここから読む)。
    `CHANGELOG.md` に書いて PR で main に入れる。
    PR では ci.yml が動かないので、PR の説明に `tools/ci_local.py --linux` の結果を書く。
-2. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめる。
+3. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめる。
    そのうえで、main の先頭にタグ `v<版>` を付けて push する(上の 3〜5 と同じ)。
 
 手動実行と PyPI について:

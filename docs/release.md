@@ -104,10 +104,18 @@ Steps:
 
 ## Releasing later versions
 
-1. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
+1. Put other users' measurements (data/contrib) into the bundled aggregate (#90).
+   - A submission PR changes only data/contrib, so merging it does not reach users. Only a package release does
+     (the weekly data release ships db.json only).
+   - `genmodelfit contrib aggregate --check` counts the submissions not in it yet (exit code 1 if any).
+   - If there are any, rebuild it with `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`
+     (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
+   - If the consistent groups (`consistent`) changed, refit with `python -m genmodelfit.calibrate` and update
+     docs/accuracy.ja.md and docs/accuracy.md (CLAUDE.md).
+2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
    Write the change in `CHANGELOG.md` and merge it to main by PR.
    ci.yml does not run on the PR, so put the result of `tools/ci_local.py --linux` in the PR description.
-2. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
+3. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
    Then tag the head of main as `v<version>` and push it (same as steps 3 to 5 above).
 
 About manual runs and PyPI:

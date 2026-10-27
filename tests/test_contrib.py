@@ -550,14 +550,68 @@ def test_wide_spread_is_not_consistent():
     assert rows[0]["n_used"] == 2 and rows[0]["consistent"] is False
 
 
-def test_bundled_community_file_is_regenerated_from_data_contrib(db):
-    """同梱の measurements_community.json は data/contrib から作り直したものと一致する
-    (提出を足したら
-    `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`)。"""
+def test_bundled_community_file_is_regenerated_from_its_listed_submissions(db):
+    """同梱の measurements_community.json は、submissions に並べた data/contrib の提出をまとめ直したものと
+    一致する(版を出すときに
+    `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`。
+    docs/release.md)。マージしてまだまとめていない提出が data/contrib にあってもよい(#90。提出の PR は
+    data/contrib だけを変えるので、マージで main の試験を落とさない)。"""
     root = Path(__file__).parent.parent / "data" / "contrib"
-    subs, reports = contrib.load_dir(root, db)
-    assert all(r.ok for r in reports)
-    assert json.loads(bundled_text(COMMUNITY_FILE)) == contrib.community_document(contrib.aggregate(subs))
+    doc = json.loads(bundled_text(COMMUNITY_FILE))
+    st = contrib.bundled_status(root, doc, db)
+    assert st["invalid"] == [] and st["missing"] == [], st
+    assert st["matches"] and st["ok"], st
+    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in doc["submissions"])
+    assert doc["submissions"] == sorted(doc["submissions"])
+
+
+def test_unlisted_new_submission_keeps_the_bundled_check_green(tmp_path, db):
+    """提出の PR をマージした直後(data/contrib に新しい提出があり、同梱のまとめにはまだ無い)も通る。
+    まとめに入れた提出が消えた・まとめを手で変えたときは通らない。"""
+    root = tmp_path / "data" / "contrib"
+    first, second = SDXL_3070[0], SDXL_3070[1]
+    for f in (first, second):
+        (root / "rtx-3070").mkdir(parents=True, exist_ok=True)
+        shutil.copy(f, root / "rtx-3070" / f.name)
+    subs, _ = contrib.load_dir(root, db)
+    listed = [s for s in subs if s.path.endswith(first.name)]
+    doc = contrib.community_document(contrib.aggregate(listed), listed)
+    st = contrib.bundled_status(root, doc, db)
+    assert st["ok"] and st["listed"] == 1 and [Path(x).name for x in st["pending"]] == [second.name]
+    # 空のまとめ(今の main)と、提出のフォルダが無いとき
+    empty = contrib.community_document([], [])
+    assert contrib.bundled_status(tmp_path / "none", empty, db)["ok"]
+    assert contrib.bundled_status(root, empty, db)["ok"]
+    # まとめに入れた提出が無い・まとめの値が違う
+    (root / "rtx-3070" / first.name).unlink()
+    assert not contrib.bundled_status(root, doc, db)["ok"]
+    shutil.copy(first, root / "rtx-3070" / first.name)
+    bad = copy.deepcopy(doc)
+    bad["measurements"][0]["peak_vram_gb"] += 1
+    assert not contrib.bundled_status(root, bad, db)["matches"]
+    # 古い版の読み方(measurements だけ)で読める
+    assert len(parse_measurements(doc)) == 1
+
+
+def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
+    root = tmp_path / "contrib"
+    (root / "rtx-3070").mkdir(parents=True)
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(tmp_path / "none"), "--check"]) == 0
+    out = capsys.readouterr().out
+    assert "まだ入っていないもの 0 件" in out
+    shutil.copy(SDXL_3070[0], root / "rtx-3070" / SDXL_3070[0].name)
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(root), "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "まだ入っていないもの 1 件" in out and SDXL_3070[0].name in out and "--output" in out
+    assert cli.main(["contrib", "aggregate", str(root), "--check", "--json"]) == 1
+    d = json.loads(capsys.readouterr().out)
+    assert d["action"] == "aggregate_check" and len(d["pending"]) == 1 and d["ok"] is True
+    assert cli.main(["contrib", "aggregate", str(root), "--check", "--output", str(tmp_path / "x.json")]) == 1
+    # aggregate --output は使った提出の hash を残す
+    out_file = tmp_path / "c.json"
+    assert cli.main(["contrib", "aggregate", str(root), "--output", str(out_file)]) == 0
+    doc = json.loads(out_file.read_text(encoding="utf-8"))
+    assert doc["submissions"] == [contrib.content_hash(json.loads(SDXL_3070[0].read_text(encoding="utf-8")))]
 
 
 # --- 根拠の段階 -----------------------------------------------------------------------------------
