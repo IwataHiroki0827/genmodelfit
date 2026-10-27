@@ -2070,36 +2070,55 @@ def _share(path: str | Path, args: argparse.Namespace, *, as_json: bool) -> tupl
         )
         print(
             tr(
-                "ページに中身が出ないときは、下のアップロードのページを使ってください。",
-                "If the page does not show the content, use the upload page below.",
+                "ページに中身が出ないときは、下の「貼り付けて送る」を使ってください。",
+                'If the page does not show the content, use "Paste and share" below.',
             )
         )
     else:
         print(
             tr(
                 f"中身が長いので(URL が {urls['new_file_url_length']} 字。上限 {urls['url_limit']} 字)、"
-                "アップロードのページを使ってください。",
+                "下の「貼り付けて送る」を使ってください。",
                 f"The content is long (the URL would be {urls['new_file_url_length']} characters; limit"
-                f" {urls['url_limit']}), so use the upload page.",
+                f' {urls["url_limit"]}), so use "Paste and share" below.',
             )
         )
-    print(tr("アップロードのページ:", "Upload page:"))
-    print(f"   {urls['upload_url']}")
+    print()
     print(
         tr(
-            f"   1. ファイル {local} をページに引きずって入れる(名前は {urls['file_name']})",
-            f"   1. Drag the file {local} onto the page (named {urls['file_name']})",
+            f"--- 貼り付けて送る: ファイル {local} の中身(下の --- の間をそのまま写す) ---",
+            f"--- Paste and share: the content of the file {local}"
+            " (copy everything between the --- lines) ---",
         )
     )
-    print(tr("   2. 「Propose changes」を押す", '   2. Press "Propose changes"'))
-    print(tr("   3. 「Create pull request」を押す", '   3. Press "Create pull request"'))
+    print(raw.replace("\r\n", "\n"), end="" if raw.endswith("\n") else "\n")
+    print("---")
+    print(
+        tr(
+            "   1. 次のページを開く(ファイルの名前は入力済み):",
+            "   1. Open this page (the file name is filled in):",
+        )
+    )
+    print(f"      {urls['paste_url']}")
+    print(
+        tr(
+            "   2. 上の中身を写して、ページの大きな欄に貼り付ける",
+            "   2. Copy the content above and paste it into the large box",
+        )
+    )
+    print(
+        tr(
+            "   3. 「Propose changes」を押し、次のページで「Create pull request」を押す",
+            '   3. Press "Propose changes", then "Create pull request" on the next page',
+        )
+    )
     print(
         tr(
             "genmodelfit は何も送りません。送られるのは、あなたがブラウザで押したときだけです。",
             "genmodelfit sends nothing. The file is sent only when you press the buttons in the browser.",
         )
     )
-    url = urls["new_file_url"] or urls["upload_url"]
+    url = urls["new_file_url"] or urls["paste_url"]
     if _interactive() and _ask(
         [
             tr(

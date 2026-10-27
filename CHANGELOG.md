@@ -12,9 +12,10 @@ All notable changes to this project are documented here. The format is based on
 - **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90). They run the same checks
   as `contrib show` and `contrib validate` (all fields, the privacy checklist, the mechanical checks), refuse to share
   when a privacy check is NG or the checks have errors (warnings and notices do not stop it), and print the URL of
-  GitHub's "new file" page under `data/contrib/<GPU>` with the file name and content filled in, plus the upload page
-  as a fallback. In a terminal they ask y/N (default No) before opening the browser; with `--json` or without a
-  terminal they only print the URLs. A URL longer than 8000 characters is not offered (upload page only).
+  GitHub's "new file" page under `data/contrib/<GPU>` with the file name and content filled in, plus a fallback: the
+  same page with only the name filled in, with the content printed to copy and paste (GitHub's upload page needs
+  write access, so it is not used). In a terminal they ask y/N (default No) before opening the browser; with `--json` or without a
+  terminal they only print the URLs. A URL longer than 8000 characters is not offered (fallback only).
   `bench --share` without `--submission` writes the submission to `<cache>/submissions/<GPU>/<date>-<sha8>.json`.
   genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
   the alternative.
@@ -24,12 +25,13 @@ All notable changes to this project are documented here. The format is based on
 - **Measurements of templates without a size input are now used** (#90). Templates that work from an input image
   (depth estimation, background removal, MoGe, BiRefNet, …) have no width / height input, so the bench records no
   size; judging used the image default (1024x1024), so such measurements never matched and were never used (the
-  bundled RTX 3070 BiRefNet measurement, and every community one). Now a model whose standard measurements all lack a
-  width and height is taken to have no size input (`estimate.no_size_input`; the bench writes a size only when the
-  template has one, `workflow.size_input`), and when no size is given its judging settings carry no size, so a
-  size-less measurement matches. The working memory is still estimated at the default size, so estimates of models
-  without measurements are unchanged. `contrib validate` warns `settings_missing` only when another standard
-  measurement of the model has a size. The bench no longer reads a `batch_size` outside the size / latent nodes as the
+  bundled RTX 3070 BiRefNet measurement, and every community one). Templates without a size input are now listed in a
+  hand table checked by the maintainer (`estimate.NO_SIZE_INPUT`: BiRefNet background removal and MoGe depth
+  estimation, each with its evidence; never decided by community submissions), and when no size is given their
+  judging settings carry no size, so a size-less measurement matches. The working memory is still estimated at the
+  default size, so the estimated values do not change. `contrib validate` warns `settings_missing` only for models
+  not in the table, and gives the notice `batch_sizeless` for a model in the table with `batch` other than 1. The
+  bench writes a size only when the template has a size input (`workflow.size_input`). The bench no longer reads a `batch_size` outside the size / latent nodes as the
   batch (MoGe's processing batch of 4 was recorded as `batch: 4`); the bundled RTX 3070 MoGe measurement is corrected
   to `batch: 1` (calibration unchanged). A MoGe submission made by 0.10.1 still says `batch: 4` and does not match
   (measure again, or make it again without `batch`).
@@ -41,6 +43,10 @@ All notable changes to this project are documented here. The format is based on
   a new top-level `submissions` list (older versions ignore it), and the test checks that every listed submission is
   in `data/contrib` and that re-aggregating exactly those reproduces the file; submissions not yet listed are
   allowed. New `contrib aggregate --check` lists them (exit code 1 if any).
+- **Tests no longer read the user's real cache** (#90): `tests/conftest.py` points `GENMODELFIT_CACHE_DIR` at an empty
+  folder for the whole session and for each test, so a local bench result no longer breaks the suite. Tests that
+  compare community data no longer assume an empty bundled aggregate. `tools/ci_local.py` shows
+  `contrib aggregate --check` as information (not a failure).
 
 ## [0.10.1] - 2026-10-26
 

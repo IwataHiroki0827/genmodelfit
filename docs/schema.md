@@ -1068,17 +1068,19 @@ submission it writes).
 - `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<content>`,
   with the file content as is (LF line endings), URL-encoded. The sha8 in the name is the hash of
   `contrib.canonical`, so indentation or line endings do not change it.
-- When the URL would be longer than 8000 characters (`contrib.SHARE_URL_LIMIT`), `new_file_url` is null and only the
-  upload page is offered (a long URL may be cut).
-- `upload_url`: `https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<gpu-slug>` (the fallback when
-  the pre-filled page does not show the content: drag the file in, "Propose changes", "Create pull request").
+- When the URL would be longer than 8000 characters (`contrib.SHARE_URL_LIMIT`), `new_file_url` is null and only
+  `paste_url` is offered (a long URL may be cut).
+- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`
+  (the same page with only the name filled in; the fallback when the pre-filled page does not show the content). The
+  text output prints the file content as is just before it, to copy and paste; then "Propose changes", "Create pull
+  request". GitHub's upload page (`/upload/`) needs write access, so it is not used.
 - In a terminal (stdin and stdout are both terminals) it asks y/N (default No) whether to open the page in a
   browser, and opens it only on y. With `--json` or without a terminal it only prints the URLs.
 - No network access; the file is sent only when you press the buttons in the browser. The repository name is in one
   place, `contrib.REPO`.
 
 `--json`: envelope + `action: "share"`, `file`, `ok`, `refused` (the reasons it was refused), `checklist`, `report`,
-`share` (`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, upload_url}`; null when it cannot
+`share` (`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, paste_url}`; null when it cannot
 be shared), `opened` (always false).
 Exit codes: 0 = can be shared / 1 = cannot be shared (or cannot be read) / 2 usage error.
 
@@ -1141,7 +1143,9 @@ Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`).
 
 Notices (the file is valid and is aggregated; shown in the CI summary for the maintainer who merges — merging is
 the review): `unknown_model` (not in the bundled list), `unknown_gpu` (not in the GPU name table, e.g. AMD / Intel /
-Apple), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
+Apple), `batch_sizeless` (a template without a size input, `estimate.NO_SIZE_INPUT`, with `batch` other than 1:
+0.10.1's bench recorded MoGe's processing batch as the batch; judging uses batch 1, so it is not a same-settings
+measurement; #90), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
 `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead; estimates use that floor for
 every submission below it — with dynamic VRAM / partial loading a smaller peak is normal), `fit_change` (this
 submission alone would change the level on a PC with the submitted GPU — same name, PCI model ID and vendor, VRAM =
@@ -1153,7 +1157,9 @@ per-sha8 approval (`--allow-review`, `data/contrib/REVIEWED`); both were removed
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
 `metric_missing`, `driver_missing`, `comfyui_version_missing`, `ram_not_rounded`, `settings_missing` /
-`settings_modality`, `offload_outcome`, `date_old`.
+`settings_modality`, `offload_outcome`, `date_old`. `settings_missing` is given for an image / video model without a
+width and height when the model is not in the hand table of templates without a size input (`estimate.NO_SIZE_INPUT`;
+#90; for a new template the maintainer checks the bench record and adds it to the table).
 
 `--markdown` escapes every cell (`| \` < > [ ] & @`, newlines, and GFM autolinks: `://` and `www.`) so file names
 and values cannot inject Markdown, HTML, links or workflow commands into the CI summary. CI appends genmodelfit's

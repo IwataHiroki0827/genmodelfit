@@ -8,6 +8,22 @@ import pytest
 SNAPSHOT_NOW = datetime(2026, 10, 21, tzinfo=timezone.utc)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_cache_session(tmp_path_factory):
+    """利用者の本物のキャッシュ(この PC の bench の実測・取ってきた一覧)を読まない(#90)。
+    module の fixture(同梱の一覧を読む db など)は関数の fixture より先に作られるので、
+    まず全体で空のフォルダにする。"""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(monkeypatch, tmp_path):
+    """試験ごとに空のキャッシュ(書いたものが次の試験に残らない)。"""
+    monkeypatch.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path / "cache"))
+
+
 @pytest.fixture(autouse=True)
 def _no_real_hardware(monkeypatch):
     """既定の試験では、本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない

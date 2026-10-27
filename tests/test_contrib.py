@@ -594,6 +594,12 @@ def test_unlisted_new_submission_keeps_the_bundled_check_green(tmp_path, db):
 
 
 def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
+    from genmodelfit import db as dbmod
+
+    # 同梱のまとめの中身によらない(版を出すときに提出が入っても通る): 空のまとめに差し替える
+    real = dbmod.bundled_text
+    empty = contrib.dumps(contrib.community_document([], []))
+    monkeypatch.setattr(dbmod, "bundled_text", lambda name: empty if name == COMMUNITY_FILE else real(name))
     root = tmp_path / "contrib"
     (root / "rtx-3070").mkdir(parents=True)
     assert cli.main(["--lang", "ja", "contrib", "aggregate", str(tmp_path / "none"), "--check"]) == 0
@@ -776,23 +782,55 @@ def _sizeless_sub(mid: str, peak: float, gpu: str = "NVIDIA GeForce RTX 3070") -
     return contrib.Submission(path="-", sha256=contrib.content_hash(d), data=d)
 
 
-def test_no_size_input_is_decided_from_the_bench_records(db):
-    from genmodelfit.estimate import no_size_input
+def _own(db) -> list[Measurement]:
+    """同梱の作者の実測だけ(同梱のほかの利用者のまとめの中身によらない試験にする)。"""
+    return [m for m in db.measurements if m.origin != "community"]
 
-    assert no_size_input(db.get("utility_birefnet_remove_background"), db.measurements)
-    # 3d は大きさを持たない種類、実測の無いモデル・幅のある実測のあるモデルは今までどおり
-    assert not no_size_input(db.get("3d_moge_perspective_to_mesh"), db.measurements)
-    assert not no_size_input(db.get("utility_moge_depth_estimation"), db.measurements)
-    assert not no_size_input(db.get("image_sdxl_simple"), db.measurements)
-    moge = db.get("utility_moge_depth_estimation")
-    cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(moge.id, 2.5)])]
-    assert no_size_input(moge, cm)
-    sized = Measurement(
-        model_id=moge.id, gpu_name="x", gpu_vram_gb=8, peak_vram_gb=2, settings=Settings(512, 512)
-    )
-    assert not no_size_input(moge, [*cm, sized])  # 幅・高さのある実測が 1 件でもあれば大きさの入力がある
-    nonstd = Measurement(model_id=moge.id, gpu_name="x", gpu_vram_gb=8, peak_vram_gb=2, standard=False)
-    assert not no_size_input(moge, [nonstd])  # 自分のワークフロー(標準でない)は数えない
+
+def test_no_size_input_is_decided_only_by_the_hand_table(db):
+    from genmodelfit.estimate import NO_SIZE_INPUT, no_size_input
+
+    assert no_size_input(db.get("utility_birefnet_remove_background"))
+    assert no_size_input(db.get("utility_moge_depth_estimation"))
+    # 3d は大きさを持たない種類、表に無いモデルは今までどおり
+    assert not no_size_input(db.get("3d_moge_perspective_to_mesh"))
+    assert not no_size_input(db.get("image_sdxl_simple"))
+    # 表の項目はどれも画像・動画のモデルで、根拠の文がある
+    for mid, why in NO_SIZE_INPUT.items():
+        e = db.get(mid)
+        assert e is not None and e.modality in ("image", "video") and why, mid
+    # 同梱の作者の、標準で大きさの無い画像・動画の実測は、どれも表にある
+    for m in _own(db):
+        e = db.get(m.model_id)
+        if (
+            e
+            and e.modality in ("image", "video")
+            and m.standard
+            and not (m.settings.width or m.settings.height)
+        ):
+            assert m.model_id in NO_SIZE_INPUT, m.model_id
+
+
+def test_one_sizeless_community_row_does_not_change_a_sized_model(db):
+    """チェッカーの再現(flux_schnell): 大きさの入力のあるモデルに大きさの無い提出が 1 件あっても、判定の設定は
+    既定の大きさのまま、段階も上がらない(大きさの入力の有無は手の表だけで決める)。"""
+    e = db.get("flux_schnell")
+    d = good()
+    d["system"]["gpu"].update(name="NVIDIA GeForce RTX 3060", vram_gb=12.0)
+    d["measurement"].update(model_id=e.id, peak_vram_gb=6.0, settings={"steps": 4}, note="x")
+    cm = [
+        Measurement.from_dict(r)
+        for r in contrib.aggregate([contrib.Submission("-", contrib.content_hash(d), d)])
+    ]
+    system = pc(12, "NVIDIA GeForce RTX 3060")
+    before = estimate(e, system, None, _own(db))
+    after = estimate(e, system, None, [*_own(db), *cm])
+    assert after.settings["width"] == before.settings["width"] == 1024
+    assert (after.fit, after.basis, after.fit_from) == (before.fit, before.basis, before.fit_from)
+    assert after.vram_gb >= before.vram_gb - 1e-9 or after.basis_detail != "measured_community"
+    # validate は settings_missing を出す(提出そのものを根拠に数えない)
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
 
 
 def test_bundled_sizeless_author_measurements_match_without_a_size(db):
@@ -803,10 +841,10 @@ def test_bundled_sizeless_author_measurements_match_without_a_size(db):
     for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
         entry = db.get(mid)
         system = pc(8)
-        est = estimate(entry, system, None, db.measurements)
+        est = estimate(entry, system, None, _own(db))
         s = Settings(**est.settings)
         assert s.width is None and s.height is None and s.batch == 1, est.settings
-        prep = _prepare(entry, db.measurements, load_coefficients(), s, system.best_gpu)
+        prep = _prepare(entry, _own(db), load_coefficients(), s, system.best_gpu)
         m = prep.measurement
         assert (
             m is not None
@@ -816,7 +854,7 @@ def test_bundled_sizeless_author_measurements_match_without_a_size(db):
         assert prep.clamped and est.basis_detail == "calibrated" and est.fit == "perfect"
         # 値は今までどおり(作業用メモリは種類の既定の大きさで見積もる)
         if entry.modality == "image":
-            at1024 = estimate(entry, system, Settings(width=1024, height=1024), db.measurements)
+            at1024 = estimate(entry, system, Settings(width=1024, height=1024), _own(db))
             assert at1024.settings["width"] == 1024 and at1024.vram_gb == est.vram_gb
             assert estimate(entry, system, None, []).vram_gb == est.vram_gb
 
@@ -826,10 +864,10 @@ def test_sizeless_community_measurement_is_used_on_the_same_gpu(db):
     (BiRefNet は同じ GPU の作者の実測が先に選ばれる。pick_measurement の並び)。"""
     for mid in ("utility_moge_depth_estimation",):
         entry = db.get(mid)
-        before = estimate(entry, pc(8), None, db.measurements)
+        before = estimate(entry, pc(8), None, _own(db))
         peak = round(_floor(entry, Settings(precision="fp16")) + 0.2, 2)
         cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(mid, peak)])]
-        after = estimate(entry, pc(8), None, [*db.measurements, *cm])
+        after = estimate(entry, pc(8), None, [*_own(db), *cm])
         assert "width" not in after.settings
         assert after.basis == "measured" and after.basis_detail == "measured_community", (mid, after)
         assert after.measured_on == "NVIDIA GeForce RTX 3070 (8 GB)" and after.sample_count == 1
@@ -837,12 +875,12 @@ def test_sizeless_community_measurement_is_used_on_the_same_gpu(db):
         # 別の GPU の PC の判定は変えない
         other = pc(24, "NVIDIA GeForce RTX 4090")
         a, b = (
-            estimate(entry, other, None, db.measurements),
-            estimate(entry, other, None, [*db.measurements, *cm]),
+            estimate(entry, other, None, _own(db)),
+            estimate(entry, other, None, [*_own(db), *cm]),
         )
         assert (a.vram_gb, a.basis, a.fit) == (b.vram_gb, b.basis, b.fit) and b.basis == "estimated"
         # 大きさを指定したときは今までどおり(実測とは違う設定 = 補正した推定)
-        sized = estimate(entry, pc(8), Settings(width=1024, height=1024), [*db.measurements, *cm])
+        sized = estimate(entry, pc(8), Settings(width=1024, height=1024), [*_own(db), *cm])
         assert sized.basis == "estimated" and sized.settings["width"] == 1024
 
 
@@ -857,10 +895,21 @@ def test_settings_missing_only_for_templates_with_a_size_input(db):
     d["measurement"]["settings"] = {"width": 832, "steps": 20}  # 片方だけも
     r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
     assert "settings_missing" in {w["code"] for w in r.warnings}
+    # 表のモデルで batch が 1 でない(0.10.1 の bench が MoGe の batch_size を枚数と記録した)ときは確認を出す
+    sub = _sizeless_sub("utility_moge_depth_estimation", 1.5).data
+    sub["measurement"]["settings"]["batch"] = 4
+    r = contrib.validate_submission(sub, db, today=TODAY, check_filename=False)
+    assert r.ok and "batch_sizeless" in {v["code"] for v in r.notices}
+    r = contrib.validate_submission(
+        _sizeless_sub("utility_moge_depth_estimation", 1.5).data, db, today=TODAY, check_filename=False
+    )
+    assert "batch_sizeless" not in {v["code"] for v in r.notices}
 
 
 def test_unmeasured_models_keep_the_default_size(db):
     """実測の無い画像・動画のモデルの判定の設定と値は今までどおり(種類の既定の大きさ)。"""
+    from genmodelfit.estimate import NO_SIZE_INPUT
+
     measured = {m.model_id for m in db.measurements}
     n = 0
     for e in db.models:
@@ -868,6 +917,10 @@ def test_unmeasured_models_keep_the_default_size(db):
             continue
         est = estimate(e, pc(8), None, db.measurements)
         if est.unknown_size:
+            continue
+        if e.id in NO_SIZE_INPUT:  # 手の表のモデルは大きさを持たないが、値は既定の大きさと同じ
+            at = estimate(e, pc(8), Settings(width=1024, height=1024), db.measurements)
+            assert "width" not in est.settings and est.vram_gb == at.vram_gb, e.id
             continue
         assert est.settings["width"] and est.settings["height"], e.id
         n += 1
@@ -1906,7 +1959,11 @@ def test_share_urls_prefill_the_exact_file(tmp_path):
     )
     q = parse_qs(url.query)
     assert q["filename"] == [path.name] and q["value"] == [text]
-    assert u["upload_url"] == "https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/rtx-3070"
+    # 代わりのページは名前だけを入れた同じページ(/upload/ は書き込みの権限が要るので使わない)
+    assert u["paste_url"] == (
+        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}"
+    )
+    assert "upload" not in json.dumps(u)
     assert u["new_file_url_length"] == len(u["new_file_url"]) <= contrib.SHARE_URL_LIMIT
     # 改行は LF にそろえる。名前の sha8 は内容(canonical)の hash なので字下げでは変わらない
     crlf = contrib.share_urls(data, text.replace("\n", "\r\n"))
@@ -1914,7 +1971,7 @@ def test_share_urls_prefill_the_exact_file(tmp_path):
     assert contrib.share_urls(json.loads(json.dumps(data)), json.dumps(data))["file_name"] == path.name
     # 長すぎる中身は URL に入れず、アップロードのページだけ
     long = contrib.share_urls(data, text + " " * contrib.SHARE_URL_LIMIT)
-    assert long["new_file_url"] is None and long["upload_url"] == u["upload_url"]
+    assert long["new_file_url"] is None and long["paste_url"] == u["paste_url"]
 
 
 def test_share_check_refuses_ng_and_errors_only(db):
@@ -1938,7 +1995,11 @@ def test_cli_share_prints_urls_without_a_terminal(tmp_path, capsys, monkeypatch,
     out = capsys.readouterr().out
     assert "これがファイルの中身のすべてです" in out and "=== 個人の情報の点検 ===" in out
     assert "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename=" in out
-    assert "https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/rtx-3070" in out
+    assert (
+        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}\n"
+        in out
+    )
+    assert path.read_text(encoding="utf-8") in out  # 貼り付ける中身をそのまま出す
     assert "Propose changes" in out and "Create pull request" in out and str(path.resolve()) in out
     assert "genmodelfit は何も送りません" in out and "[y/N]" not in out
     assert browser == []  # 端末でなければ開かない

@@ -128,6 +128,11 @@ def run_tests(r: Runner, ver: str, env_root: Path, cache: Path) -> None:
     smoke_env = child_env(GENMODELFIT_CACHE_DIR=str(cache))
     for args in SMOKE:
         r.step(f"py{ver} CLI {args[0]}", [exe, *args], env=smoke_env, quiet=True)
+    if ver == LINT_VERSION:
+        # 知らせるだけ(失敗にしない。ci.yml には無い): 同梱のまとめにまだ入っていない data/contrib の提出。
+        # 入れるのは版を出すとき(docs/release.md「次からの版を出す手順」。#90)
+        print(f"\n=== [{OS_TAG}] (情報) contrib aggregate --check", flush=True)
+        subprocess.run([exe, "contrib", "aggregate", "--check"], cwd=ROOT, env=smoke_env, check=False)
 
 
 def run_wheel(r: Runner, versions: list[str], tmp: Path) -> None:

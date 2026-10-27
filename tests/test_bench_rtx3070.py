@@ -80,7 +80,8 @@ def test_present_widget_values_are_kept():
 
 def test_rtx3070_rows_are_bundled_but_not_used_for_calibration():
     db = load(use_cache=False)
-    rows3070 = [m for m in db.measurements if "3070" in m.gpu_name]
+    # 作者の実測だけ(同梱のほかの利用者のまとめに RTX 3070 の提出が入っても変わらない)
+    rows3070 = [m for m in db.measurements if "3070" in m.gpu_name and m.origin != "community"]
     assert {m.model_id for m in rows3070} == {
         "utility_birefnet_remove_background",
         "3d_moge_perspective_to_mesh",

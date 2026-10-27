@@ -36,7 +36,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 6. 次のページで「Create pull request」を押します。あとは「[4. Pull Request で送る](#4-pull-request-で送る)」の 3 からと同じです(CI の検査・マージ)。
 
 - 点検に `[NG]` があるか、検査の誤りがあると、URL を出さずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
-- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示されたアップロードのページ(`https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<GPU>`)を使ってください: ファイルをページに引きずって入れ、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます。
+- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示の「貼り付けて送る」を使ってください: 名前だけを入れた同じページ(`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<名前>`)を開き、すぐ上に出たファイルの中身(`---` の間)を写して大きな欄に貼り付け、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます(GitHub のアップロードのページは書き込みの権限が要るので使いません)。
 - 前に作った提出のファイルは `genmodelfit contrib share <ファイル>` で同じように送れます。
 - 端末でないとき・`--json` のときはブラウザを開かず、URL を出すだけです。
 - genmodelfit は通信しません。ブラウザでページを開くだけで、ファイルが送られるのはあなたが GitHub のページでボタンを押したときだけです。

@@ -36,7 +36,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 6. Press "Create pull request" on the next page. The rest is the same as step 3 of "[4. Send a pull request](#4-send-a-pull-request)" (the CI checks and the merge).
 
 - With an `[NG]` in the checklist or an error in the checks, it stops without a URL. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
-- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use the upload page it shows (`https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<GPU>`): drag the file onto the page, then press "Propose changes" and "Create pull request". The file's location is shown too.
+- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use "Paste and share" in the output: open the same page with only the name filled in (`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<name>`), copy the file content printed just above it (between the `---` lines), paste it into the large box, then press "Propose changes" and "Create pull request". The file's location is shown too (GitHub's upload page needs write access, so it is not used).
 - A submission file you made earlier can be sent the same way with `genmodelfit contrib share <file>`.
 - Without a terminal, or with `--json`, it does not open a browser and only prints the URLs.
 - genmodelfit makes no network access. It only opens the page in your browser; the file is sent only when you press the buttons on the GitHub page.

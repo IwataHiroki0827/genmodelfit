@@ -54,7 +54,7 @@ from .estimate import (
 )
 from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, intel_xpu, parse_compute_cap, pci_name_conflict
 from .i18n import tr
-from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, ModelEntry, Settings, SystemInfo
+from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
 CONTRIB_SCHEMA = 1
 CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足す)
@@ -612,7 +612,7 @@ def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Pa
 REPO = "laxshmate/genmodelfit"  # 提出を送るリポジトリ(share の URL はすべてここから作る)
 SHARE_BRANCH = "main"
 # 中身を入れた URL の長さの上限(文字)。ブラウザ・GitHub が受け付ける長さには公の上限が無く、
-# 長い URL は途中で切られることがあるので控えめにした。超えたらアップロードのページだけを案内する
+# 長い URL は途中で切られることがあるので控えめにした。超えたら中身を入れないページ(貼り付ける)だけを案内する
 SHARE_URL_LIMIT = 8000
 
 
@@ -632,8 +632,10 @@ def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
     """GitHub で提出を送るページの URL(通信しない)。
 
     - new_file_url: 「新しいファイル」のページ。data/contrib/<GPU> に <日付>-<sha8>.json の名前で、中身(text。
-      改行は LF にそろえる)を入れたもの。SHARE_URL_LIMIT を超えたら None(アップロードのページを使う)
-    - upload_url: ファイルをアップロードするページ(中身を入れたページに中身が出ないときの代わり)
+      改行は LF にそろえる)を入れたもの。SHARE_URL_LIMIT を超えたら None(paste_url を使う)
+    - paste_url: 同じページで、名前だけを入れたもの(中身は利用者が貼り付ける)。中身を入れたページに中身が
+      出ないとき・URL が長すぎるときの代わり。GitHub のアップロードのページ(/upload/)は書き込みの権限が
+      要るので使わない(権限の無い人は「新しいファイル」のページなら自動でフォークを作れる)
     名前の sha8 は contrib.canonical の hash なので、字下げ・改行の違いでは変わらない。"""
     from urllib.parse import quote
 
@@ -641,14 +643,15 @@ def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
     folder, name = path.rsplit("/", 1)
     body = text.replace("\r\n", "\n")
     base = f"https://github.com/{REPO}"
-    new = f"{base}/new/{SHARE_BRANCH}/{folder}?filename={quote(name, safe='')}&value={quote(body, safe='')}"
+    paste = f"{base}/new/{SHARE_BRANCH}/{folder}?filename={quote(name, safe='')}"
+    new = f"{paste}&value={quote(body, safe='')}"
     return {
         "path_in_repo": path,
         "file_name": name,
         "new_file_url": new if len(new) <= SHARE_URL_LIMIT else None,
         "new_file_url_length": len(new),
         "url_limit": SHARE_URL_LIMIT,
-        "upload_url": f"{base}/upload/{SHARE_BRANCH}/{folder}",
+        "paste_url": paste,
     }
 
 
@@ -1367,13 +1370,29 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         if (
             mod in ("image", "video")
             and (s.get("width") is None or s.get("height") is None)
-            and not _no_size_input(entry, s, db)
+            and not no_size_input(entry)
         ):
             r.warn(
                 "settings_missing",
                 tr(
                     f"{mod} のモデルなのに width / height がありません",
                     f"width / height are missing for a {mod} model",
+                ),
+            )
+        if no_size_input(entry) and s.get("batch") not in (None, 1):
+            # 0.10.1 の bench は、大きさの入力の無いテンプレートで処理の単位(MoGe の batch_size)を
+            # 枚数と記録した。判定は batch 1 なので、この提出は同じ設定の実測にならない(#90)
+            b = s.get("batch")
+            r.notice(
+                "batch_sizeless",
+                tr(
+                    f"大きさの入力の無いテンプレートなのに batch が {b} です"
+                    "(0.10.1 の bench が処理の単位を枚数と記録した値。"
+                    "同じ設定の実測として使われないので、今の版で測り直してください)",
+                    f"batch is {b} for a template without a size input"
+                    " (0.10.1's bench recorded a processing batch as the batch;"
+                    " it is not used as a same-settings measurement,"
+                    " so measure again with the current version)",
                 ),
             )
         if mod != "video" and s.get("frames") is not None:
@@ -1388,19 +1407,6 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
                     f"seconds (length) is missing for a {mod} model",
                 ),
             )
-
-
-def _no_size_input(entry: ModelEntry, s: dict[str, Any], db: Database | None) -> bool:
-    """テンプレートに大きさの入力が無いか(estimate.no_size_input)。この提出も実測の 1 件として数えるので、
-    同じモデルの標準の実測に幅・高さのあるものが無ければ settings_missing を出さない(#90)。"""
-    this = Measurement(
-        model_id=entry.id,
-        gpu_name="",
-        gpu_vram_gb=0.0,
-        peak_vram_gb=0.0,
-        settings=Settings(width=s.get("width"), height=s.get("height")),
-    )
-    return no_size_input(entry, [*(db.measurements if db is not None else []), this])
 
 
 def _check_against_estimate(

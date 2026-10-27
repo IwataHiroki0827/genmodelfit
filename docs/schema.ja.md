@@ -1055,12 +1055,12 @@ bench の結果を読めないときは終了コード 1。
 `show` と同じ点検(中身のすべて・プライバシーのチェックリスト・`validate` の結果。ファイル名は見ない)のあと、GitHub で送るページの URL を出す(#90。`bench … --share` も、書いた提出に同じことをする)。
 - チェックリストに NG があるか、`validate` の誤り(errors)があれば送れない(理由を出して終了コード 1)。注意(warnings)と確認(notices)では断らない。
 - `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<中身>`。中身はファイルのまま(改行は LF)を URL エンコードしたもの。名前の sha8 は `contrib.canonical` の hash なので、字下げ・改行の違いでは変わらない。
-- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、アップロードのページだけを案内する(長い URL は途中で切られることがあるため)。
-- `upload_url`: `https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<gpu-slug>`(入力済みのページに中身が出ないときの代わり。ファイルを引きずって入れ、「Propose changes」「Create pull request」)。
+- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、`paste_url` だけを案内する(長い URL は途中で切られることがあるため)。
+- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`(名前だけを入れた同じページ。入力済みのページに中身が出ないときの代わり)。テキストの出力では、その直前にファイルの中身をそのまま出すので、写して貼り付け、「Propose changes」「Create pull request」を押す。GitHub のアップロードのページ(`/upload/`)は書き込みの権限が要るので使わない。
 - 端末(標準入力と標準出力がどちらも端末)では、ブラウザで開くかを y/N で尋ねる(既定は No)。y のときだけ開く。`--json` と端末でないときは URL を出すだけで、開かない。
 - 通信しない。送られるのは、利用者がブラウザでボタンを押したときだけ。リポジトリの名前は `contrib.REPO` の 1 か所。
 
-`--json`: 外枠 + `action: "share"`、`file`、`ok`、`refused`(断った理由)、`checklist`、`report`、`share`(`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, upload_url}`。送れないときは null)、`opened`(常に false)。
+`--json`: 外枠 + `action: "share"`、`file`、`ok`、`refused`(断った理由)、`checklist`、`report`、`share`(`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, paste_url}`。送れないときは null)、`opened`(常に false)。
 終了コード: 0 = 送れる / 1 = 送れない(または読めない)/ 2 使い方の誤り。
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
@@ -1120,6 +1120,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 通知(ファイルは有効で、集計される。マージする保守者のために CI の要約に出る。マージがレビュー):
 - `unknown_model`: 同梱の一覧に無い。
 - `unknown_gpu`: GPU の名前の表に無い(例: AMD / Intel / Apple)。
+- `batch_sizeless`: 大きさの入力の無いテンプレート(`estimate.NO_SIZE_INPUT`)なのに `batch` が 1 でない(0.10.1 の bench が MoGe の処理の単位を枚数と記録した。判定は batch 1 なので同じ設定の実測にならない。#90)。
 - `deviation`: ピーク VRAM が、その設定での式の全部載せの見積もりから 40% より離れている。
 - `below_weights`: `offload: none` なのにピーク VRAM が 重み + 固定の上乗せより小さい。見積もりは、これより小さいすべての提出に対して、その下限を使う(dynamic VRAM や部分的な読み込みでは、小さなピークは普通)。
 - `fit_change`: この提出だけで、提出された GPU の PC の段階が変わる。
@@ -1129,7 +1130,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
   - ほかの GPU には、0.9.0 から影響しない。
   - 0.8.0 までは これらは「要レビュー」で、sha8 ごとの承認(`--allow-review`、`data/contrib/REVIEWED`)が要った。どちらも廃止した。
 
-警告(受け付けるが報告する。`--strict` では失敗にする): `nonstandard`(記録として残すが、集計はしない)、`metric_missing`、`driver_missing`、`comfyui_version_missing`、`ram_not_rounded`、`settings_missing` / `settings_modality`、`offload_outcome`、`date_old`。
+警告(受け付けるが報告する。`--strict` では失敗にする): `nonstandard`(記録として残すが、集計はしない)、`metric_missing`、`driver_missing`、`comfyui_version_missing`、`ram_not_rounded`、`settings_missing` / `settings_modality`、`offload_outcome`、`date_old`。`settings_missing` は、画像・動画のモデルで幅・高さが無く、モデルが大きさの入力の無いテンプレートの手の表(`estimate.NO_SIZE_INPUT`)に無いときに出す(#90。新しいテンプレートなら、メンテナが bench の記録を確かめて表に足す)。
 
 `--markdown` は、すべてのセルをエスケープする(`| \` < > [ ] & @`、改行、GFM の自動リンク `://` と `www.`)。だからファイル名や値が、CI の要約に Markdown、HTML、リンク、ワークフローコマンドを差し込めない。
 CI は genmodelfit の stderr も、同じエスケープを通して要約に足す。
