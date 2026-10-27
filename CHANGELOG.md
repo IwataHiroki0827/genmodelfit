@@ -125,6 +125,10 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
 
 ### Fixed
 
+- Workstation Ada GPUs named "RTX 4000 SFF Ada Generation" or "RTX 2000E Ada Generation" now get the Ada generation
+  (8.9) from the name when nvidia-smi does not report it, and "RTX 2000E Ada Generation" is a known GPU name.
+  Tests pin how NVIDIA GPUs are matched by name and VRAM, without PCI device IDs (#99).
+
 - **A fake small measurement, or one person submitting many times, can no longer lift a model's level** (#95). A
   single crafted submission such as "Flux ran in 1.0 GB" made the 22 GB Flux Perfect on an 8 GB RTX 3070 while the
   table still showed 22 GB; four near-identical files from one pull request also set the level. Now the level needs two

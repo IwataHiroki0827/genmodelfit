@@ -60,7 +60,9 @@ llmfit の `llmfit-core/src/hardware.rs`(コミット bffd1b6、MIT)は考え方
   - 迷う名前(ノート用の GTX 960M など、同じ型番で世代が混ざるもの)は推さない。
   - 表は NVIDIA の一覧(https://developer.nvidia.com/cuda-gpus 、https://developer.nvidia.com/cuda-legacy-gpus)に合わせた。
   - 例: 「NVIDIA TITAN X」は Pascal(6.1)、「GeForce GTX TITAN X」は Maxwell(5.2)、Quadro K620 / K1200 / K2200 は Maxwell(5.0)、ノート用の RTX 2050 は Ampere(8.6)。
+  - 業務用の Ada は「RTX 4000 Ada Generation」のほか、「RTX 4000 SFF Ada Generation」「RTX 2000E Ada Generation」の書き方も Ada(8.9)にする(NVIDIA の製品ページ https://www.nvidia.com/en-us/design-visualization/rtx-4000-sff/ 、2000E は NVIDIA の製品の正規の販売元 PNY のページ https://www.pny.com/en-tw/rtx-2000e-ada-generation 。2026-10-27)。
   - 名前から推した値は `compute_capability_source: "name"`。
+- NVIDIA の GPU は PCI の型番 ID を読まない(nvidia-smi の GPU の `pci_id` は空)。同じ GPU かは、そろえた名前と VRAM の比で比べる(`estimate.same_gpu`。型番 ID が両方にあるときだけ ID で比べる)。画面の部品(`other_gpus`)には WMI・lspci の型番 ID が出るが、NVIDIA の判定には使わない(`tests/test_nvidia_identity.py`)。
 - 終了コードが 0 でなくても、読める行は使う(1 枚だけ「Unable to determine the device handle … Unknown Error」で読めないときなど)。読めなかった枚数を notes に書く(エラーの文言は PCI の差し場所を含むので写さない)。
 - 複数の GPU: ComfyUI は 1 枚で動くので、判定に使えるもの(backend `cuda`)のうち VRAM が最大の 1 枚を使う。
   - ComfyUI は既定で CUDA の 0 番(`get_torch_device` → `torch.cuda.current_device()`)を使う。
