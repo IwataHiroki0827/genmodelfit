@@ -86,7 +86,7 @@ SNAPSHOTS = (
     "torch_index",
     "comfyui",
 )
-TIMEOUT = (10, 30)  # (接続, 読み込み) 秒
+TIMEOUT = (10, 60)  # (接続, 読み込み) 秒。fetch の既定と同じ
 BASELINE = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "gpu_official"
 
 

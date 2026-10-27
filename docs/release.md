@@ -241,7 +241,7 @@ weekly-data.yml (manual backup; since #42 the scheduled run is a startup script 
      - Only for this manual backup. The startup script on the maintainer's PC does not run it.
      - If data/contrib does not exist yet, it says "0 submissions".
      - The report includes a table of levels that change because of other users' measurements (including a single submission). Since 2026-10-22 it is used in both directions, so both raises and drops appear.
-   - Keep `weekly-out/` (db.json, diff.json, pr_body.md, result.json, gate.json, system.json) as an artifact for 30 days.
+   - Keep `weekly-out/` (db.json, diff.json, pr_body.md, result.json, gpu_watch.json, gate.json, system.json) as an artifact for 30 days.
 2. pr (`contents: write` and `pull-requests: write` only in this job; the signing-key environment is not used):
    - Take in only a list whose `result.json` is ok.
    - Create or update the PR with `peter-evans/create-pull-request` (pinned by commit).
@@ -287,6 +287,30 @@ Read the "Notes" and the tables in the body (same content as `genmodelfit diff`)
 - **If a file of a measured model changed**, make a separate PR to fix it with `python -m genmodelfit.calibrate`.
 - **Entries awaiting review (review)** and the URLs of the `evidence` attached by `review approve` (#42; see [Weekly skill](#weekly-skill-genmodelfit-weekly-42) below).
 - The full differences are in `diff.json` of the artifact (its shape is in [schema.md, "diff"](schema.md#diff)).
+- The candidates of the "GPU table watch" (below). It does not stop the merge, so candidates become separate issues.
+
+### GPU table watch (#103)
+
+After rebuilding the list, the weekly update (`python -m genmodelfit.weekly`) checks the GPU registration tables (`src/genmodelfit/gputables.py`; every row is in [gpu-inventory.md](gpu-inventory.md)) against the official lists (`gpuwatch.py`).
+
+- Sources read (with `fetch`'s HttpFetcher: a User-Agent, never ~/.netrc):
+  - pci.ids (raw from pciutils/pciids)
+  - ROCm GPU hardware specs, and the Radeon / Ryzen Windows and Linux compatibility tables
+  - TheRock `SUPPORTED_GPUS.md` and `RELEASES.md` (GFX target lookup table)
+  - The Hardware Prerequisite tables of PyTorch's "Getting Started on Intel GPU" (stable)
+  - NVIDIA cuda-gpus and cuda-legacy-gpus
+  - The latest PyTorch release (GitHub releases API), its `torch/cuda/__init__.py` (`PYTORCH_RELEASES_CODE_CC`, `DEVICE_REQUIREMENT`; since 2.14 the build_cuda.sh arch list is copied there and PyTorch's own test checks they match) and `.ci/docker/manywheel/build.sh` (`PYTORCH_ROCM_ARCH`)
+  - The torch index on download.pytorch.org (PEP 503 HTML; it does not serve PEP 691 JSON: on 2026-10-27 `Accept: application/vnd.pypi.simple.v1+json` returned text/html)
+  - The "Minimum Required Driver Version for CUDA Minor Version Compatibility" table of the CUDA release notes
+  - `comfy/model_management.py` at ComfyUI's latest tag (releases API), read with ast **without importing it** (GPL-3.0 code is never run)
+- Tables are read by their header words, not column positions. Each source has time limits (10 s connect, 60 s read, 4 attempts); an unreadable source goes to "sources that could not be read" and the rest continues. Whatever fails in the watch, no exception leaves it.
+- Candidates come from two checks:
+  - **Against the tables**: official products whose gfx / compute capability differs from the tables; gfx, CUDA versions (once wheels exist) or CUDA major versions missing from the tables; device IDs whose verdict flips between the new pci.ids name and the device ID table; PyTorch and ComfyUI lists that differ from the tables.
+  - **Against last time**: compared with `tests/fixtures/gpu_official` (the previous official lists, updated together with the tables): new or renamed device IDs, new NVIDIA names, TheRock status changes, additions / removals in the compatibility tables and Intel's table, new wheels.
+- The result goes to the "GPU 表の見張り" (GPU table watch) section of the PR body (a table of candidates and the unreadable sources) and to `weekly-out/gpu_watch.json`.
+- **The tables are never rewritten automatically.** A person checks each candidate against the primary source, adds a row (with its source and date) to `gputables.py` in a separate issue, refreshes the previous lists with `python -m genmodelfit.gpuwatch --save-fixtures tests/fixtures/gpu_official`, and regenerates the inventory with `python tools/gpu_inventory.py`.
+- **It does not stop the automatic data merge.** Candidates and unreadable sources affect neither `ok` in `result.json` nor the weekly skill's safe-week rule (only db.json changed, merge-check, status).
+- To run it by hand: `python -m genmodelfit.gpuwatch [--json]` (uses the network). `--from-dir <dir>` reads saved raw responses (`<source name>.<ext>`) without the network. Skip it in the weekly update with `--no-gpu-watch`.
 
 ### Weekly skill (genmodelfit-weekly, #42)
 

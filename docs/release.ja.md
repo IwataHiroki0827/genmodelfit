@@ -232,7 +232,7 @@ weekly-data.yml(手動の予備。#42 から定期の実行はメンテナの PC
      - この手動の予備だけ。メンテナの PC の起動スクリプトは流さない。
      - data/contrib がまだ無ければ「提出 0 件」と書く。
      - 報告には、ほかの利用者の実測で変わる段階の表(1 件の提出も含む)が入る。2026-10-22 から両方の向きに使うので、上がる・下がるの両方が出る。
-   - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gate.json・system.json)を artifact に残す(30 日)。
+   - `weekly-out/`(db.json・diff.json・pr_body.md・result.json・gpu_watch.json・gate.json・system.json)を artifact に残す(30 日)。
 2. pr(`contents: write`・`pull-requests: write` はこのジョブだけ。署名の鍵の environment は使わない):
    - `result.json` が ok の一覧だけを入れる。
    - `peter-evans/create-pull-request`(コミットで固定)で PR を作る・更新する。
@@ -278,6 +278,30 @@ weekly-data.yml(手動の予備。#42 から定期の実行はメンテナの PC
 - 実測のあるモデルのファイルが変わっていたら、`python -m genmodelfit.calibrate` で直す PR を別に作る。
 - **確認待ち(review)の項目**と、`review approve` で付けた根拠(`evidence`)の URL(#42。下の「[毎週のスキル](#毎週のスキルgenmodelfit-weekly42)」)。
 - 全部の違いは artifact の `diff.json`(形は [schema.ja.md](schema.ja.md#diff)「diff」)。
+- 「GPU 表の見張り」の候補(下)。マージは止めないので、候補は別の Issue にする。
+
+### GPU 表の見張り(#103)
+
+毎週の更新(`python -m genmodelfit.weekly`)は、一覧の作り直しのあとに GPU の登録の表(`src/genmodelfit/gputables.py`。全部の行は [gpu-inventory.ja.md](gpu-inventory.ja.md))を公式の一覧と照らす(`gpuwatch.py`)。
+
+- 読む出典(`fetch` の HttpFetcher。User-Agent を付け、~/.netrc を送らない):
+  - pci.ids(pciutils/pciids の raw)
+  - ROCm の GPU hardware specs と、Radeon・Ryzen の Windows・Linux の互換表
+  - TheRock の `SUPPORTED_GPUS.md`・`RELEASES.md`(GFX target lookup table)
+  - PyTorch の「Getting Started on Intel GPU」(stable)の Hardware Prerequisite の表
+  - NVIDIA の cuda-gpus・cuda-legacy-gpus
+  - PyTorch の最新の版(GitHub の releases API)、その版の `torch/cuda/__init__.py`(`PYTORCH_RELEASES_CODE_CC`・`DEVICE_REQUIREMENT`。2.14 から build_cuda.sh の arch の一覧はここに写され、PyTorch の試験が一致を見る)と `.ci/docker/manywheel/build.sh`(`PYTORCH_ROCM_ARCH`)
+  - download.pytorch.org の torch の索引(PEP 503 の HTML。PEP 691 の JSON は返さない: 2026-10-27 に `Accept: application/vnd.pypi.simple.v1+json` で text/html が返った)
+  - CUDA のリリースノートの「Minimum Required Driver Version for CUDA Minor Version Compatibility」の表
+  - ComfyUI の最新のタグ(releases API)の `comfy/model_management.py`。**import せず** ast で名前の一覧を読む(GPL-3.0 のコードを動かさない)
+- 表は見出しの言葉で読む(列の位置に頼らない)。出典ごとに時間の上限(接続 10 秒・読み込み 60 秒、やり直し 4 回)があり、読めなければ「読めなかった出典」に書いて続ける。見張りが何で失敗しても例外を外に出さない。
+- 候補は 2 つの照らし方で出す:
+  - **表と照らす**: 公式の製品の gfx・compute capability が表と合うか、表に無い gfx・CUDA の版(wheel が出たもの)・CUDA の主番号が無いか、新しい pci.ids の名前と型番 ID の表で判定が逆になっていないか、PyTorch・ComfyUI の一覧が表と同じか。
+  - **前回と比べる**: `tests/fixtures/gpu_official`(表と一緒に直す、前回の公式の一覧)と比べて、新しい型番 ID・名前が変わった ID・新しい NVIDIA の名前・TheRock の状態の変化・互換表と Intel の表の増減・新しい wheel。
+- 結果は PR の本文の「GPU 表の見張り」の節(候補の表と読めなかった出典)と `weekly-out/gpu_watch.json`。
+- **表は自動で書き換えない。** 候補は人が一次資料で確かめ、別の Issue で `gputables.py` に行(出典と確かめた日)を足し、`python -m genmodelfit.gpuwatch --save-fixtures tests/fixtures/gpu_official` で前回の一覧を取り直し、`python tools/gpu_inventory.py` で一覧を作り直す。
+- **データの自動マージは止めない。** 見張りの候補・読めなかった出典は `result.json` の `ok` にも、毎週のスキルの安全な週の判定(変わったファイルが db.json だけ・merge-check・status)にも効かない。
+- 手で動かすとき: `python -m genmodelfit.gpuwatch [--json]`(通信する)。`--from-dir <dir>` は保存した生の応答(`<出典の名前>.<拡張子>`)から読む(通信しない)。毎週の更新で飛ばすなら `--no-gpu-watch`。
 
 ### 毎週のスキル(genmodelfit-weekly、#42)
 

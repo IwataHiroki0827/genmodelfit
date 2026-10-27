@@ -60,6 +60,8 @@ uv venv --python 3.12; uv pip install -e ".[dev]"
 .venv\Scripts\genmodelfit update --heads-only --no-cache --output src\genmodelfit\data\db.json   # 同梱の一覧の HEAD だけやり直す
 .venv\Scripts\genmodelfit diff [<old.json>] [<new.json>] [--all]  # 一覧の違い(引数なし = 同梱 ↔ 取ってきた一覧。--all は毎週の PR と同じ中身)
 .venv\Scripts\python -m genmodelfit.weekly --dry-run --out <dir>   # 毎週の作り直し・確かめ・PR の本文を手元で(#19)
+.venv\Scripts\python -m genmodelfit.gpuwatch [--save-fixtures tests\fixtures\gpu_official]   # GPU の表の見張り(通信する。#103)
+.venv\Scripts\python tools\gpu_inventory.py      # docs/gpu-inventory.md / .ja.md を表から作り直す
 ```
 
 毎週の一覧の更新は、オーナーの PC の起動スクリプト(タスク スケジューラ `genmodelfit-weekly`、月曜 9:00 JST。
@@ -117,11 +119,14 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - NVIDIA の GPU があれば、nvidia-smi で確かめたもの(backend `cuda` の最大の 1 枚)を使う。PyTorch の CUDA 版のビルドが
   どれも対応しない古い世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
   世代・ドライバが分からないとき、表より新しい世代は断らない(#101)。VRAM を返さない NVIDIA は、名前が `NVIDIA GB10` と
-  完全一致の Linux aarch64(DGX Spark)だけ統合メモリ(MemTotal、段階は good まで)で使う。Jetson・GH200 は範囲外。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
-- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(同じ設定の実測で段階が決まれば外す。実測で段階を決める決まりは上の「判定・Score の決まり」)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
+  完全一致の Linux aarch64(DGX Spark)だけ統合メモリ(MemTotal、段階は good まで)で使う。Jetson・GH200 は範囲外。表(`gputables.TORCH_CUDA_BUILDS`・`NAME_CC_RULES`)を変えたら docs/hardware.md の出典も直す
+- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。この種類の GPU で動いた実測がまだ無いので段階は good まで(同じ設定の実測で段階が決まれば外す。実測で段階を決める決まりは上の「判定・Score の決まり」)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
   見つけた GPU は `system --all-gpus` で調べる。WSL2 の AMD・Intel は、/dev/dxg・相互運用・powershell.exe で Windows 側を読み、
   rocminfo / clinfo -l で準備を確かめ、公式の WSL の対応表にあるときだけ使う(#101。docs/hardware.md「WSL2」。
   rocminfo の UUID の行は読まない)。検出は環境ごとに docs/hardware.md「すべての環境」の表に従う
+- GPU の名前・型番 ID・PyTorch の CUDA 版の表は `gputables.py`(1 行 = 出典と確かめた日の付いた `Rule`。全部は docs/gpu-inventory.md)。
+  毎週の更新の「GPU 表の見張り」(gpuwatch。表は自動で書き換えない)が GPU を知らせたら、一次資料で確かめて行を出典と日付つきで足し、
+  `python -m genmodelfit.gpuwatch --save-fixtures tests/fixtures/gpu_official` と `python tools/gpu_inventory.py` で作り直す(#103)
 - 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
   系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す
   (`families.assign`。tests/test_hardware.py が一致を検査)。VRAM の量で変わる動き(fp32・fp16 に広げる)は
