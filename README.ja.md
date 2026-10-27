@@ -194,14 +194,14 @@ PC: VRAM 8.0 GiB と仮定(--vram)、メモリ 32.0 GiB(--ram)
 == 画像 (image): 30 件中 上位 2 件(続きは -m image)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% GPU~     5.4 other
-image ● Good        100 SDXL1.0 Base               gen       fp16   5.5  69% GPU~     6.5 openrail++
+image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
 == 動画 (video): 12 件中 上位 2 件(続きは -m video)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
+video ● Marginal     40 Wan 2.1 1.3B T2V           gen       fp16   7.8  97% GPU~     9.2 apache-2.0
 video ● Marginal     96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
-video ● Marginal     92 Wan 2.1 1.3B T2V           gen       fp16   6.2  78% GPU+RAM  9.2 apache-2.0
 == 音楽 (music): 10 件中 上位 2 件(続きは -m music)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-music ● Good        100 ACE-Step 1.5 Turbo         gen       bf16   5.1  64% GPU~     9.3 mit
+music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
 music ● Good         84 YuE2 3B                    gen,edit  int8   6.5  82% GPU      3.7 cc-by-nc-…
 == 効果音 (sfx): 2 件中 上位 2 件(続きは -m sfx)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
@@ -375,6 +375,8 @@ HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出し
 そのまま確かめられます。入るのは GPU 名・VRAM・ドライバ・vendor / backend・AMD・Intel の GPU では PCI の型番 ID(例 `1002:744c`)・
 ComfyUI の版・OS の種類・GiB に丸めたメモリ・モデル・設定・結果です。`bench` はホスト名・ユーザー名・パス・GPU の UUID・PCI のアドレス・
 IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送りません。Pull Request はご自身で出してください。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
+
+今の NVIDIA の bench の提出(ComfyUI の動的 VRAM、`vram_metric: torch_reserved`)は作業用メモリだけを持つので、段ごとの山を測れるようになるまでは照合だけに使い、見積もりにも段階にも使いません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
 
 ### 送るもの・送らないもの
 

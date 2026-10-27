@@ -199,14 +199,14 @@ Recommended: 12 of 81 (226 hidden: uncensored 26, tools 34, license unknown 28, 
 == image: top 2 of 30  (-m image for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% GPU~     5.4 other
-image ● Good        100 SDXL1.0 Base               gen       fp16   5.5  69% GPU~     6.5 openrail++
+image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
 == video: top 2 of 12  (-m video for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
+video ● Marginal     40 Wan 2.1 1.3B T2V           gen       fp16   7.8  97% GPU~     9.2 apache-2.0
 video ● Marginal     96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
-video ● Marginal     92 Wan 2.1 1.3B T2V           gen       fp16   6.2  78% GPU+RAM  9.2 apache-2.0
 == music: top 2 of 10  (-m music for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-music ● Good        100 ACE-Step 1.5 Turbo         gen       bf16   5.1  64% GPU~     9.3 mit
+music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
 music ● Good         84 YuE2 3B                    gen,edit  int8   6.5  82% GPU      3.7 cc-by-nc-…
 == sfx: top 2 of 2  (-m sfx for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
@@ -386,6 +386,7 @@ shows exactly what it holds: the GPU name, VRAM, driver, vendor / backend, for A
 (such as `1002:744c`), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results. `bench` does
 not write host or user names, paths, GPU UUID, PCI address, IP, CPU name or exact time. genmodelfit does not send
 measurements; you open the pull request yourself. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
+Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
 
 ### Privacy
 

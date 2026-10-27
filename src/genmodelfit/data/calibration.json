@@ -291,23 +291,6 @@
    "quantity": "work",
    "predicted_gb": 0.78,
    "error_pct": 8.9
-  },
-  {
-   "model_id": "utility_moge_depth_estimation",
-   "modality": "image",
-   "gpu_name": "NVIDIA GeForce RTX 3070",
-   "gpu_vram_gb": 8.0,
-   "origin": "maintainer",
-   "n_submissions": null,
-   "vram_metric": "torch_reserved",
-   "settings": {
-    "precision": "fp16"
-   },
-   "measured_gb": 0.78,
-   "censored": false,
-   "quantity": "work",
-   "predicted_gb": 0.96,
-   "error_pct": 22.8
   }
  ]
 }

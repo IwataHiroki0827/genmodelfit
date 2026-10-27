@@ -36,8 +36,9 @@ The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them wi
 - Against the 4 unpinned RTX 5080 measurements of the author (peaks on a GPU with room), the differences are Z-Image int8 +5.1%, SDXL +12.5%,
   Wan 2.1 1.3B −14.7%, ACE-Step 1.5 +9.2% ("Results" below). The formula is not fitted to them, so this is a cross-check, not a fit.
   - 4 measurements, one kind of GPU and dynamic-VRAM peaks, so it does not show that the target is met.
-  - For Wan 2.1 1.3B the measurement is 1.96 GB above the formula (VAE at its tile value). It mixes memory that dynamic VRAM placed in the free space
-    and decoding without tiles (with the untiled VAE the formula gives 14.04 GB, +5.6%).
+  - For Wan 2.1 1.3B the measurement is 1.96 GB above the formula (VAE at its tile value). It is a peak on a GPU with room, where dynamic VRAM
+    kept the parts loaded and decoded the VAE without tiles (with the untiled VAE the formula gives 14.04 GB, +5.6%).
+    This positive shift is added to the all-on-GPU value only ("How measurements are used" 1 below).
 - The 2 3D measurements miss by +6.4% and −4.6% in leave-one-out (fit on all but one, then predict the one left out).
 - **The 3 pinned measurements (Z-Image bf16, Wan2.2 5B × 2) carry no information.**
   - The weights alone already exceed the measurement, so "prediction ≥ measurement" holds by construction and cannot fail.
@@ -167,7 +168,9 @@ The V used for the level is **V_eff = min(V, V_tile)**. When V does not fit (whe
 - When V does not fit the GPU (fixed + decode-stage weights + V > VRAM), the reasons say "ComfyUI splits the VAE into tiles (slower)"
   (the level is not changed). On Windows, NVIDIA may spill into shared memory (sysmem fallback) and only slow down instead of failing with OOM.
 - **V rarely changes the level**: judging the bundled list (329 entries) on 6, 8, 12, 16 and 24 GB NVIDIA GPUs with V and V_tile set to 0
-  changes the level in 9 of the 1,645 cases (4 audio, 2 Qwen Image 2.1, 2 SDXL workflows, VOID).
+  changes the level in 8 of the 1,645 cases (3 audio, 2 Qwen Image 2.1, 2 SDXL workflows, VOID).
+- So SDXL's all-on-GPU value is the same from 512 px to about 2000 px (the heaviest stage is the tiled VAE, 1.06 GB; the denoise stage
+  is 0.26 GB even at 1024 px). Above that the denoise stage takes over and it grows.
   For most models the weights or the denoise stage dominate. V matters mainly through the "split into tiles (slower)" note when V exceeds VRAM.
 
 ### How families are mapped
@@ -242,7 +245,7 @@ Mapping more families is future work ("Known limits" below).
   - 8 GB / 32 GB: Perfect 44 → 23, Good 22 → 32, Marginal 87 → 97, Too tight 188 → 189.
   - 16 GB / 32 GB: Perfect 95 → 66, Good 67 → 76, Marginal 107 → 124, Too tight 72 → 75.
 - At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 uses 94% swapped in turn, so it is Marginal (it runs on the GPU).
-  Since #100 Wan 2.1 1.3B is Marginal with offloading (GPU+RAM) ("Known misses" in "Known limits" below; tests/test_estimate.py).
+  Wan 2.1 1.3B is also Marginal swapped in turn (97% used). tests/test_estimate.py.
 - If offload still does not fit on the GPU, the result is compared with the no-GPU judgment (Marginal for small types that run on CPU), and the better one is taken.
   - Before, adding a small GPU could turn a CPU-capable model into "does not run", so adding VRAM lowered the level (#17).
 
@@ -319,10 +322,19 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
 13.2 GB on a 16 GB card (Z-Image int8) is not a lower bound of what the model needs. So:
 
 1. A measurement is used as the all-on-GPU value (`vram_gb`).
-   - The value is shifted by "measurement − formula value", and the same shift is added to the swapped-in-turn and offload values (`max(a + d, b + d) = max(a, b) + d`).
-   - The formula value is the per-stage formula at the measurement's settings (VAE at its tile value V_eff).
-   - Even after the shift, the all-on-GPU value never goes below weights + fixed part (zero working memory; since #100 also for the author's measurements:
-     a dynamic-VRAM measurement can come out below the floor because part of the weights stayed in main memory).
+   - The working memory is shifted by d = "measurement − formula value". The formula value is the per-stage formula at the measurement's settings (VAE at its tile value V_eff).
+   - **A negative shift** is added to the working memory of each stage of all three amounts and clipped at 0 per stage (#100),
+     so no amount goes below weights + fixed part (zero working memory; the floor of #95).
+   - **A positive shift** is added to the **all-on-GPU value only** when the measuring GPU's VRAM is at least the formula's all-on-GPU value (a peak on a GPU with room).
+     On a GPU with room, dynamic VRAM keeps the parts loaded and decodes the VAE without tiles (Wan 2.1 1.3B's +1.96 GB is nearly the gap between
+     the untiled V of 3.42 GB and the tiled V of 0.27 GB), which does not happen when swapping in turn or offloading.
+     If the measuring GPU's VRAM is below the formula's all-on-GPU value (the measurement ran swapped or offloaded), it is added to all three.
+     Which one applies depends on the measuring GPU, so it is monotonic in the VRAM of the PC being judged.
+   - v3's "the same shift for all three" (`max(a + d, b + d) = max(a, b) + d`) holds only when the shift is an error of the fixed part.
+     Gaps with other causes (dynamic VRAM using free space, no tiling) differ by stage, hence the rules above.
+   - An author's measurement below the floor is raised to the floor (it ran with part of the weights in main memory).
+     Within 0.1 GB or 1% of the floor it is a counting difference: `basis: "measured"` stays, the value is the floor, and the reasons say so
+     (ACE-Step 1.5: 10.80 GB against a floor of 10.82 GB; `estimate.MEASURED_FLOOR_TOLERANCE`).
    - On a small GPU, even if all-on-GPU does not fit, the result **falls to swapped in turn or offload**.
      Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.5 GB swapped in turn. Use is 94%, so the level is Marginal.
    - A measured value larger than the GPU does not by itself make a model Too tight.
@@ -416,16 +428,15 @@ Cross-check (measured differently, so not used for fitting; predicted with the c
 |---|---|---|---|---|---:|---:|---:|
 | utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 1.25 | 0.24 | -81% |
 | 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 0.72 | 0.78 | +9% |
-| utility_moge_depth_estimation | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 0.78 | 0.96 | +23% |
 
 How to read it:
 
 - Rows other than 3D are not fitted, so "fit on all" and "LOO" are the same: they are cross-check errors.
 - For the 2 image rows (Z-Image int8 +5.1%, SDXL +12.5%) the heaviest stage is ComfyUI's VAE figure (tile value 1.06 GB), which leans high
   (the VAE figure is about 1.8× the measurement; "Per-stage working memory (#100)" above).
-- Wan 2.1 1.3B at −14.7% is the gap between the dynamic-VRAM peak and the formula, as in "Summary" above.
+- Wan 2.1 1.3B at −14.7% is the gap between the peak on a GPU with room (VAE not tiled) and the formula, as in "Summary" above.
 - ACE-Step 1.5 at +9.2%: the heaviest stage is the tile value of its VAE (Oobleck), 0.98 GB.
-- The 3 cross-check rows are working-memory-only measurements (#100), so they are compared with the working-memory estimate (the formula for models without a per-stage formula).
+- The 2 cross-check rows are working-memory-only measurements (#100), so they are compared with the working-memory estimate (the formula for models without a per-stage formula).
   BiRefNet at −81% shows that the image coefficient (0.23 GB per megapixel), fitted to diffusion models, is too small for tools.
 
 ## Known limits
@@ -433,7 +444,7 @@ How to read it:
 - **Only one kind of GPU**: the 9 total-amount measurements used for fitting and cross-checking are all RTX 5080 16GB with dynamic VRAM.
   - The swapped-in-turn and offload values on small GPUs are not verified.
 - **Dynamic VRAM**: it uses more when more is free, so a measurement is "what that GPU used", not "what is needed".
-  Since #100 that gap (+1.96 GB for Wan 2.1 1.3B) is also added to the swapped-in-turn and offload values, so small GPUs come out strict ("Known misses" below).
+  Since #100 a positive shift from a peak on a GPU with room (+1.96 GB for Wan 2.1 1.3B) is added to the all-on-GPU value only ("How measurements are used" 1 above).
 - **Pinned measurements**: the all-on-GPU values of Z-Image bf16 and Wan2.2 5B come from the formula only and are not bounded from above by measurements.
 - **Wan aspect ratio**: the video measurements record only the long side (512px / 640px), assumed square.
 - **Unknown dates**: the measurements have no date or ComfyUI version (date in measurements.json is empty).
@@ -446,11 +457,9 @@ How to read it:
 - **CPU-capable families** (#39): the CPU main memory of SD-family and Stable Audio models comes from a formula derived from ComfyUI's code, not measured.
   - The formula widens the main model and VAE to fp32 and doubles the working memory (the heaviest stage × 2 with the per-stage formula).
 - **Known misses** (against the human guidelines, recorded as strict xfail in `tests/test_estimate.py`):
-  - At the app's settings (512px, 49 frames), Wan 2.1 1.3B comes out Too tight on 6GB and offloaded (GPU+RAM) on 8GB (guideline: minimum 6GB, recommended 8GB).
-    - The +1.96 GB shift from the RTX 5080 measurement is also added to the swapped-in-turn value, which includes the text stage (umt5, 6.3 GB) (#100).
-    - It will not be fixed until per-stage peaks are measured (moving coefficients or shifts to match the guideline would make these numbers meaningless).
+  - No misses now: all 8 models are not Too tight at the guideline's minimum VRAM and run on the GPU at the recommended VRAM.
   - The Wan2.2 5B miss (Too tight on 8GB before #100) is fixed by the per-stage formula (ComfyUI's Wan 2.2 VAE estimate).
-  - The other 7 models are not Too tight at the guideline's minimum VRAM and run on the GPU at the recommended VRAM.
+  - At the app's settings (512px, 49 frames), Wan 2.1 1.3B is Marginal offloaded on 6GB and Marginal swapped in turn on 8GB (97% used).
 - **Future work** (#100):
   1. Text-stage working memory ComfyUI does not estimate: image tokens of Qwen2.5-VL, Flux2's Mistral, the YuE2 score stage (8192 tokens),
      the KV of the ACE-Step 1.5 LM, and so on
@@ -685,11 +694,11 @@ With Apple's MPS, ComfyUI's GPU name is `mps`.
 
 ### The author's RTX 3070 8GB measurements (bench, 2026-10-19 UTC)
 
-The 3 bundled rows (BiRefNet, MoGe × 2) are torch reservations measured by bench with dynamic VRAM (`vram_metric: torch_reserved`,
+The 2 bundled rows (BiRefNet, MoGe) are torch reservations measured by bench with dynamic VRAM (`vram_metric: torch_reserved`,
 `offload: dynamic`): working memory only, without the weights (#100; "How measurements are used" 7 above).
 `python -m genmodelfit.calibrate` builds the cross-check below the table in "Results" (compared with the working-memory estimate).
 
-- All 3 are models without a per-stage formula (tools, 3D), so they are compared with the per-modality coefficient formula.
+- Both are models without a per-stage formula (tools, 3D), so they are compared with the per-modality coefficient formula.
 - The miss (BiRefNet −81%) is because the image coefficient was fitted to diffusion models and does not represent a tool's working memory.
 
 ### RTX 3070 sweep (2026-10-27, **not used as evidence**)

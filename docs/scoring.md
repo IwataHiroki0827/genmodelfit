@@ -111,7 +111,8 @@ The four checks:
 
 - Unchanged ([accuracy.md](accuracy.md) "How measurements are used"). Other users' measurements are used from one submission on PCs with the same GPU.
 - Only the models the author measured get more accurate values, and the shift can change the run mode or level (for example HY 3D 2.0 (`3d_hunyuan3d_image_to_model`) on an RTX 4060 8 GB is Good / GPU (6.7 GB) with the measurement and Good / GPU~ (full load 6.85 GB) without). This is accepted as the other side of making values accurate; the table's `m` / `c` marks values that come from measurements.
-- Evidence: llmfit also corrects estimates with measurements (one ratio from a machine's measurements for every model; genmodelfit shifts per model, by about ±0.3 GB).
+- Since #100 a negative shift is clipped at 0 per stage (never below weights + fixed part), and a positive shift from a peak on a GPU with room goes to the all-on-GPU value only ([accuracy.md](accuracy.md) "How measurements are used" 1).
+- Evidence: llmfit also corrects estimates with measurements (one ratio from a machine's measurements for every model; genmodelfit shifts per model, by about −1 to +2 GB with the per-stage formula of #100).
 - Test: `tests/test_scoring.py::test_d_values_shift_by_at_most_the_delta` (the difference with and without measurements is within the shift).
 
 ## Measurements of templates without a size input

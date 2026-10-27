@@ -172,10 +172,13 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   worse / 11 and 11 / 4 and 16 (for example Wan 2.2 5B, LTX-2 / 2.3 and HunyuanVideo improve on 8 to 16 GB; Flux.2
   Klein, Flux Kontext and Z-Image bf16 worsen through the × 4 Flux2 VAE or a large denoise factor; on 24 GB MOSS-Image,
   MageFlow, Klein 4B edit and the SDXL base + refiner workflows go from Perfect to Good). Details: docs/accuracy.md.
-- **The measurement shift is added to all three amounts** (#100): "measurement − formula" now shifts all on GPU,
-  swapped in turn and offload alike, and never pushes all on GPU below weights + fixed part (also for the author's
-  measurements). As a known miss, Wan 2.1 1.3B at the app's settings (512 px, 49 frames) is now Too tight on 6 GB and
-  offloaded on 8 GB (the RTX 5080 measurement is 1.96 GB above the per-stage formula; strict xfail in the tests).
+- **How the measurement shift is applied** (#100): a negative "measurement − formula" is added to the working memory of
+  every stage and clipped at 0 per stage, so all on GPU, swapped in turn and offload never go below weights + fixed
+  part (also for the author's measurements). A positive shift from a peak on a GPU with room (the measuring GPU's VRAM
+  at least the formula's all-on-GPU value: dynamic VRAM kept the parts loaded and decoded the VAE without tiles) goes to
+  all on GPU only; otherwise to all three. An author's measurement within 0.1 GB or 1% below the floor stays
+  `measured` with the floor value and a reason (ACE-Step 1.5: 10.80 against 10.82). Wan 2.1 1.3B at the app's settings
+  (512 px, 49 frames) is Marginal on 6 GB (offloaded) and on 8 GB (swapped in turn, 97%).
 - **Measurements of working memory only are cross-checked only** (#100). `vram_metric: torch_reserved` with
   `offload: dynamic` (bench with dynamic VRAM, including other users' submissions) excludes the weights, so such rows
   no longer shift estimates or set levels until per-stage peaks can be measured. `calibrate` compares them with the
@@ -198,6 +201,8 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   Tests pin how NVIDIA GPUs are matched by name and VRAM, without PCI device IDs (#99).
 - **Wan 2.2 5B is no longer Too tight on 8 GB** (#100): with ComfyUI's Wan 2.2 VAE estimate it runs offloaded on 8 GB
   and on the GPU from 12 GB, matching the AI生成キット catalog (the strict xfail of this known miss was removed).
+- **Bench submissions with dynamic VRAM no longer trigger spurious deviation notices** (#100): `contrib validate`
+  compares working-memory-only submissions with the formula's working memory instead of the full-load value.
 - **A fake small measurement, or one person submitting many times, can no longer lift a model's level** (#95). A
   single crafted submission such as "Flux ran in 1.0 GB" made the 22 GB Flux Perfect on an 8 GB RTX 3070 while the
   table still showed 22 GB; four near-identical files from one pull request also set the level. Now the level needs two
