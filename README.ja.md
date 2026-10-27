@@ -52,13 +52,13 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 - Windows・Linux・macOS、Python 3.10 以上(`uvx` で使うときは、Python が無くても uv が用意します)。
 - GPU: NVIDIA(CUDA)は、NVIDIA の実測で較正した推定で判定します。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、
   Windows 11・Linux)・Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、
-  macOS 14 以降)を各社の対応表で判定します(この種類の GPU で動いた実測がまだ無いので段階は Good まで。実測で段階が決まれば外れます: 同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろったとき)。内蔵 GPU・APU
+  macOS 14 以降)を各社の対応表で判定します(段階は NVIDIA と同じ基準。表の PC の行の「✓ 確認済みの種類」は、別々の 2 つ以上の出どころの実測がある種類の GPU だけに付きます。今は NVIDIA の専用 VRAM の GPU)。内蔵 GPU・APU
   (Radeon 780M / 680M・Steam Deck・Ryzen Z1 など)は共有メモリで判定します。それ以外の GPU(Intel UHD・Iris Xe、2 CU の
-  Radeon 610M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
+  Radeon 610M / 820M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します
   ([docs/hardware.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.ja.md))。
-  NVIDIA 以外の GPU は実測が無いので、段階を控えめにしています。`genmodelfit bench` はこれらの GPU でも測れます。実測を
-  Pull Request で出してもらえると詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md))。
+  NVIDIA 以外の GPU は実測が無いので、✓ が付きません。`genmodelfit bench` はこれらの GPU でも測れます。実測を
+  Pull Request で出してもらえると、確認済みになり見積もりも詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md))。
 
 ### 入れ方
 
@@ -197,8 +197,8 @@ image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% G
 image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
 == 動画 (video): 12 件中 上位 2 件(続きは -m video)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-video ● Marginal     40 Wan 2.1 1.3B T2V           gen       fp16   7.8  97% GPU~     9.2 apache-2.0
-video ● Marginal     96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
+video ● Good         96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
+video ● Good        100 Wan 2.1 1.3B T2V           gen       fp16   4.3  54% GPU+RAM  9.2 apache-2.0
 == 音楽 (music): 10 件中 上位 2 件(続きは -m music)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
@@ -218,8 +218,10 @@ Type  Status      Score Model                      Use       Prec  VRAM Mem% Mod
 並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。
 Score 0〜100 = メモリの余裕(Mem% 70% 以下で 100。速さではない)。VRAM = 要る GiB(m = 実測)。
 Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。
-段階の上限: GPU~ は Good まで、GPU+RAM と CPU は Marginal まで(Mem% が低くても)。
+段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(読み上げ・1 回の計算の道具は Good)。
 Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。
+Perfect は余裕があるという意味で、速さの保証ではない(帯域の狭い GPU でも使用率で決める)。
+GPU+RAM の段階はメモリの量で決まることが多い。逃がす量は決めの値(重みの 4 割を GPU に残す)。
 1 行に 1 モデル: Prec = 載る中で一番高い精度、Use = ワークフローの用途(info、--all-workflows)。
 m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>。アプリは --json(schema.md)。
 --json は自動でおすすめしてよいものを先に並べる(schema.md)。
@@ -259,7 +261,7 @@ Score 0〜100 = メモリの余裕(Mem% 70% 以下で 100。速さではない)�
 | Model | 同じ重みを 1 行にまとめたモデル。長い名前は真ん中を `…` で詰める |
 | Use | `gen`・`edit`・`i2v` など(`genmodelfit types`)。行自身の用途(`--task` で合ったもの)を先頭に、そのモデルのほかのワークフローの用途を重複なく並べる(`gen,edit`。収まらなければ `gen,…`)。ワークフローの一覧は `info`、別々の行は `--all-workflows` |
 | Prec | 載る中で一番良い精度(fp16・bf16・fp8・int8 など) |
-| VRAM | その動かし方で要る GiB。`m` = 作者・この PC の実測、`c` = 同じ GPU のほかの利用者の実測の中央値(出どころの数は `info`・JSON の `sample_count`) |
+| VRAM | その動かし方で要る GiB。`m` = 実測(作者・この PC の実測、または同じ GPU のほかの利用者の実測の中央値。出どころの数は `info`・JSON の `sample_count`) |
 | Mem% | 一番きついメモリの使用率。GPU なら VRAM、CPU ならメモリ、`GPU+RAM` は大きいほう。`RAM` = PC のメモリが足りない |
 | Mode | `GPU` 全部 GPU、`GPU~` 部品を順に載せ替え、`GPU+RAM` メモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない(`GPU req` は使える GPU が無いので動かない、`RAM` はメモリ不足) |
 | Disk | ダウンロードの大きさ(GiB)。幅が足りないと最初に外す(そのときは `info` か `--json` で見る) |
@@ -271,27 +273,28 @@ llmfit と同じく、動かし方で使うメモリ(GPU なら VRAM、CPU な�
 
 | 段階 | 使用率 | 動かし方による上限 |
 |---|---|---|
-| **Perfect** | 60% 以下 | 全部 GPU に載るとき(`GPU`)だけ |
-| **Good** | 85% 以下 | `GPU~` はここまで。AMD・Intel・Apple の GPU も、実測で段階が決まらないうちはここまで(同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろったとき) |
-| **Marginal** | 98% 以下 | `GPU+RAM`・`CPU`・メモリが少し足りないときはここまで(Mem% が低くても) |
-| **Too tight** | 98% 超 | 動かない |
+| **Perfect** | 60% 以下 | 全部 GPU に載るとき(`GPU`)だけ。余裕があるという意味で、速さの保証ではない |
+| **Good** | 85% 以下 | `GPU~`・`GPU+RAM` はここまで(逃がすのは段階が上がるときだけ)。`CPU` の読み上げ・1 回の計算の道具もここまで |
+| **Marginal** | 98% 以下 | `CPU` の生成・メモリが少し足りないときはここまで(Mem% が低くても) |
+| **Too tight** | 98% 超 | 動かない(実測で段階を決めた行は、98% を超えても Good になる) |
 | **?** | — | 判定していない(ダウンロードの大きさが分からない) |
 
-印: VRAM の後ろの `m` = 作者・この PC の実測、`c` = ほかの利用者の実測の中央値。印が無ければ式による推定です。
+GPU の会社による上限はありません。その種類の GPU を別々の 2 つ以上の出どころが測っていれば、PC の行に「✓ 確認済みの種類」と出ます([決まり](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.ja.md#確認済みの-gpu-の種類))。
+印: VRAM の後ろの `m` = 実測(誰が測ったかは分けない)。印が無ければ式による推定です。
 実測は式より優先します。`--width` などを指定しなければ、どのモデルも種類ごとに同じ既定の設定で判定するので、設定の違う実測は
 見積もりをずらすだけです(印は付きません)。ほかの利用者の実測は同じ GPU(PCI の型番 ID、無ければ正規化した名前が同じで、VRAM の
 比が 0.95 以上)にだけ使い、必要量を上下どちらにも動かします。段階を実測で決めるのは、同じ GPU・同じ設定で別々の 2 つ以上の
 出どころがそろったときだけで、そのとき表の VRAM は段階に使った量です(重み + 固定分より小さくしない。`bench` の値
 (`torch_reserved`)は 0.5 GiB を足す)。決まり: [docs/scoring.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.ja.md)。
 `?` = 分からない(精度・ライセンス・大きさ。判定に使っていない)。`-` = 当てはまらない(動かない・CPU なので VRAM が無い など)。
-`recommend` の並びは「動く → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート → 人気(同じ種類・同じ出どころの
+`recommend` の並びは「動く → Perfect/Good(逃がさないものが先)→ Marginal(速い動かし方が先)→ 公式のテンプレート → 人気(同じ種類・同じ出どころの
 中の使用数の順位)→ Score」、`fit` は「種類 → 段階 → 公式 → 人気 → Score」です。
 (`recommend --json` と `gmf.recommend()` は「動く」の次に Verified のモデルを先にします: [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#order-of-recommend--recommend-の並べ方)。)
 
 ### 精度
 
 0.9.1 の時点では、見積もりの較正に使った実測は少なく、GPU も 1 種類(RTX 5080 16 GB)です。照合に RTX 3070 8 GB の実測も
-少し使っています。ほかの利用者の実測はまだ同梱していません。`m`・`c` の無い値は目安として見てください。
+少し使っています。ほかの利用者の実測はまだ同梱していません。`m` の無い値は目安として見てください。
 ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で測ったピークは最低限の必要量ではありません。
 今の件数と詳しい誤差は [docs/accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md)。
 

@@ -53,14 +53,14 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 - Windows, Linux or macOS, Python 3.10 or newer (with `uvx`, uv provides Python if you have none).
 - GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
   newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
-  (MPS, macOS 14 or newer) are judged with the vendors' support tables (at most Good, because no measurement has run on these kinds of GPU yet, unless measurements set the level: two or more
-  independent sources on the same GPU with the same settings). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
-  (Intel UHD / Iris Xe, the 2-CU Radeon 610M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
+  (MPS, macOS 14 or newer) are judged with the vendors' support tables (same level rules as NVIDIA; the PC line shows "✓ verified GPU kind"
+  only for kinds of GPU with measurements from two or more independent sources, today NVIDIA with dedicated VRAM). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
+  (Intel UHD / Iris Xe, the 2-CU Radeon 610M / 820M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
   SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests
   `update-pciids` when lspci does not know the GPU's name
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
-  Non-NVIDIA GPUs have no measurements yet, so their levels are kept low. `genmodelfit bench` works on these GPUs
-  too; your results let us tighten them ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
+  Non-NVIDIA GPUs have no measurements yet, so they get no ✓. `genmodelfit bench` works on these GPUs
+  too; your results verify them and tighten the estimates ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
 
 ### Install
 
@@ -202,8 +202,8 @@ image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% G
 image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
 == video: top 2 of 12  (-m video for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-video ● Marginal     40 Wan 2.1 1.3B T2V           gen       fp16   7.8  97% GPU~     9.2 apache-2.0
-video ● Marginal     96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
+video ● Good         96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
+video ● Good        100 Wan 2.1 1.3B T2V           gen       fp16   4.3  54% GPU+RAM  9.2 apache-2.0
 == music: top 2 of 10  (-m music for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
@@ -223,8 +223,10 @@ Type  Status      Score Model                      Use       Prec  VRAM Mem% Mod
 Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score.
 Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
-Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
+Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (speech and one-pass tools: Good).
 Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.
+Perfect = fits with room to spare, not a speed guarantee (also on low-bandwidth GPUs).
+GPU+RAM: the level is often set by RAM; the offloaded share is assumed (40% of weights on GPU).
 One row per model: Prec = best precision that fits, Use = workflow uses (info, --all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
 --json lists auto-recommendable models first (schema.md).
@@ -264,7 +266,7 @@ Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed,
 | Model | one row per model (same weights); long names are cut in the middle with `…` |
 | Use | `gen`, `edit`, `i2v`, … (`genmodelfit types`); the row's own use (the one matching `--task`) first, then the other uses of the model's workflows, without repeats (`gen,edit`; `gen,…` when they do not fit). The workflows: `info`; one row each: `--all-workflows` |
 | Prec | the best precision that fits (fp16, bf16, fp8, int8, …) |
-| VRAM | GiB needed in that mode; `m` = measured by the maintainer or on this PC, `c` = median of other users' measurements of the same GPU (number of sources: `info`, JSON `sample_count`) |
+| VRAM | GiB needed in that mode; `m` = measured (by the maintainer, on this PC, or the median of other users' measurements of the same GPU; number of sources: `info`, JSON `sample_count`) |
 | Mem% | share of the tightest memory used: VRAM on the GPU, RAM on CPU, the larger of the two for `GPU+RAM`; `RAM` = system RAM is short |
 | Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
 | Disk | download size (GiB); dropped first when the width is short (then see `info` or `--json`) |
@@ -276,21 +278,22 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 
 | level | use of memory | cap by mode |
 |---|---|---|
-| **Perfect** | ≤ 60% | only when all on the GPU (`GPU`) |
-| **Good** | ≤ 85% | highest level for `GPU~`, and for AMD / Intel / Apple GPUs unless measurements set the level (two or more independent sources on the same GPU with the same settings) |
-| **Marginal** | ≤ 98% | highest level for `GPU+RAM`, `CPU` or slightly short RAM (Mem% can be low) |
-| **Too tight** | > 98% | does not run |
+| **Perfect** | ≤ 60% | only when all on the GPU (`GPU`); room to spare, not a speed guarantee |
+| **Good** | ≤ 85% | highest level for `GPU~` and `GPU+RAM` (offloading is chosen only when it raises the level), and for speech and one-pass tools on the `CPU` |
+| **Marginal** | ≤ 98% | highest level for generation on the `CPU` or slightly short RAM (Mem% can be low) |
+| **Too tight** | > 98% | does not run (a level set by measurements can be Good even above 98%) |
 | **?** | — | not judged: the download size is unknown |
 
-Marks: `m` after VRAM = measured by the maintainer or on this PC, `c` = median of other users' measurements; without
-a mark it is a formula estimate. Measurements win over the formula. Without `--width` etc. every model is judged at
+There is no cap by GPU vendor; the PC line shows "✓ verified GPU kind" when two or more independent sources have
+measured that kind of GPU ([rules](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md#verified-gpu-kinds)).
+Marks: `m` after VRAM = measured (whoever measured it); without a mark it is a formula estimate. Measurements win over the formula. Without `--width` etc. every model is judged at
 the same default settings for its type, so measurements taken at other settings only shift the estimate (no mark).
 Other users' measurements apply only to the same GPU (same PCI model ID, else the same normalized name, and a VRAM
 ratio of 0.95 or more) and can move the needs either way. Measurements set the level only when two or more independent sources agree on
 the same GPU with the same settings, and then the table's VRAM is the amount used for the level (at least weights +
 fixed part; `bench` values (`torch_reserved`) get +0.5 GiB). Rules: [docs/scoring.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md).
 `?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
-`recommend` orders rows by: runs, Perfect/Good, Marginal (faster mode first), official templates, popularity (the
+`recommend` orders rows by: runs, Perfect/Good (without offloading first), Marginal (faster mode first), official templates, popularity (the
 rank of the usage count among models of the same type and source), Score. `fit` orders by type, level, official,
 popularity, Score. (`recommend --json` and `gmf.recommend()` put Verified models first after "runs":
 [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#order-of-recommend).)
@@ -298,7 +301,7 @@ popularity, Score. (`recommend --json` and `gmf.recommend()` put Verified models
 ### Accuracy
 
 As of 0.9.1, the estimates are calibrated on a few runs on one GPU (RTX 5080 16 GB) and checked against a few more
-(RTX 3070 8 GB); no measurements from other users are bundled yet. Treat values without `m` / `c` as rough.
+(RTX 3070 8 GB); no measurements from other users are bundled yet. Treat values without `m` as rough.
 ComfyUI uses more VRAM when more is free, so a peak measured on a large GPU is not the minimum.
 Current counts and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md).
 

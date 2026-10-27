@@ -88,6 +88,8 @@ User-Agent は `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit
 | `other_gpus` | Adapter[] | どのベンダーのものでも、ディスプレイアダプタ。AMD / Intel / Apple のものは分類する(`usable`、`reason`)。使える NVIDIA の GPU が無いときは、使えるものを `gpus` にも入れる。調べなかったときは空 |
 | `other_gpus_checked` | bool | `other_gpus` を調べたか。既定では、`nvidia-smi` が NVIDIA の GPU を見つけず `--vram` も無いときだけ。`system --all-gpus` では常に調べる |
 | `notes` | str[] | 検出で分かったこと・分からなかったこと(表示の言語 `en` / `ja`): GPU を CPU として判定する理由、古いドライバ、NVIDIA 以外の GPU、ページファイル、WSL / コンテナの制限 |
+| `platform_verified` | bool | (0.11.0、#108。CLI の JSON の外枠だけ。`SystemInfo.to_dict` には無い)判定に使う GPU の種類(会社 × 専用 / 共有のメモリ)で動いた実測が、同梱の実測に別々の出どころから 2 つ以上あるか。表の PC の行の「✓ 確認済みの種類」と同じ。GPU が無い・`--vram` で仮定したときは false。段階・`auto`(gate)には使わない([scoring.ja.md](scoring.ja.md)「確認済みの GPU の種類」)。ライブラリは `gmf.platform_verification(system)` |
+| `platform_verified_by` | object \| null | 確認済みのときの根拠 `{"kind": "nvidia/dedicated", "sources": 2, "gpus": ["NVIDIA GeForce RTX 3070", …]}`(種類・出どころの数・動いた GPU の名前)。確認済みでなければ null |
 
 `--ram` を付けると、swap / commit の値は null になる(別の PC を仮定するため)。
 検出は失敗しない。分からない値は null にして、理由を `notes` に書く。
@@ -102,7 +104,7 @@ Gpu:
 | `vram_total_gb` | float | nvidia-smi が報告しないときは 0(そのとき `backend` は `none`)。`memory` が `shared` / `unified` のときは、GPU が使うとみなすメモリの量([hardware.md](hardware.ja.md)「共有メモリ」) |
 | `vram_free_gb`、`vram_used_gb` | float \| null | 今の空き / ほかのアプリ(画面、ブラウザなど)が使っている量。置き換えたとき、または報告が無いときは null |
 | `driver` | str \| null | nvidia-smi が出すドライバの版 |
-| `backend` | str | 判定に使う: `cuda` / `rocm`(AMD)/ `xpu`(Intel)/ `mps`(Apple silicon)。`none` は使わない(どの PyTorch CUDA ビルドも対応しない世代、すべてに対してドライバが古い、または VRAM が不明。理由は `notes`)。`rocm` / `xpu` / `mps` は 0.7.0(#22)で追加した推定で、実測が段階を決める(`fit_from`)場合を除き、段階は Good まで |
+| `backend` | str | 判定に使う: `cuda` / `rocm`(AMD)/ `xpu`(Intel)/ `mps`(Apple silicon)。`none` は使わない(どの PyTorch CUDA ビルドも対応しない世代、すべてに対してドライバが古い、または VRAM が不明。理由は `notes`)。`rocm` / `xpu` / `mps` は 0.7.0(#22)で追加した推定。段階は NVIDIA と同じ基準(0.11.0 から上限なし。#108) |
 | `compute_capability` | str \| null | 例: `"8.6"` |
 | `compute_capability_source` | str \| null | `nvidia-smi` / `name`(nvidia-smi が古すぎるとき、GPU の名前から推測) |
 | `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell`(`fermi` / `unknown`) |
@@ -435,7 +437,7 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明で判定していない。0.2.0。0.1.1 まではこれらは `none` だった)(= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU`(全部 GPU)/ `GPU~`(部品を順に載せ替え)/ `GPU+RAM`(逃がす)/ `CPU` / `-`(動かない)/ `?`(大きさが不明) |
-| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `marginal`)、`cpu`(最大 `marginal`)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
+| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `good`。0.11.0 まで `marginal`)、`cpu`(生成は最大 `marginal`、読み上げ・1 回の計算の道具は最大 `good`。0.11.0、#108)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
 | `score` | float | 0–100。メモリの余裕(下の「Score」) |
 | `score_components` | object | `{"memory_fit": …}`(0.11.0。`score` と同じ値。0.10 までの `fit`・`headroom`・`readiness`・`basis`・`popularity` は無くした) |
 | `popularity` | float | (0.11.0)人気の順位 0–100。同じ種類・同じ出どころ(テンプレートの使用数 / Hugging Face の全期間のダウンロード数)の中の百分位で、モデルの値。並びの鍵にだけ使い、`score` には入れない([scoring.ja.md](scoring.ja.md)「人気」) |
@@ -513,7 +515,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `fit_from` | str | (0.7.0、#26)`estimate`(段階が見積もりから来る)か `measurement`。詳しくは下 |
 | `measured_peak_vram_gb` | float \| null | (0.7.0)`fit_from` が `measurement` のときの、そろった実測の VRAM のピークの一番大きいもの(文脈の分を足す前) |
 | `measured_level_vram_gb` | float \| null | (0.11.0)`fit_from` が `measurement` のときの、段階に使った量: max(ピーク + 文脈の分, 重み + 固定分)。表の VRAM の列(`m` / `c` を付ける)・Mem%・`memory_required_gb` はこの値 |
-| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、ID(`source_ids`)の和集合で数えた、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
+| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、ID(`source_ids`)の和集合で数えた、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は `n=3` のように出す。表の VRAM の列は、実測なら誰の実測でも `m` を付ける(0.11.0 で `c` をやめた。#108) |
 | `measured_on` | str \| null | `basis` が `measured` のときの、実測した GPU(GPU 無しで判定したときは null) |
 | `fit` | str | 下の 4 つの段階、または `unknown`(大きさが不明で判定していない) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
@@ -524,12 +526,13 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `unknown_size` | bool | 重みの大きさが不明で、何も判定していない。`fit` は `unknown`(`?` と表示。「Too tight」にはしない)、`run_mode` は `unknown`(0.2.0。以前は `none`)、VRAM / RAM の値は JSON で `null`(`Estimate.to_dict`。Python の属性は 0.0 のまま)、`limits` は null、最初の理由は「大きさが分からないため判定できません」。`recommend` はこれを落とし、`fit` / `search` は最後に並べる |
 
 `basis_detail`(#34)。実測に近い順に並べる(`models.BASIS_DETAILS`):
-1. `measured`: 保守者 / この PC の bench の実測(同じ設定)
-2. `measured_community`: ほかの利用者の提出を `contrib aggregate` でまとめたもの。値には **1 件**の提出から使い、設定は同じ。出どころの数は `sample_count`
-3. `calibrated`: 別の設定の実測でずらしたもの
-4. `estimated`: 式だけ
+1. `measured`: 同じ設定の実測。保守者 / この PC の bench の実測と、ほかの利用者の提出を `contrib aggregate` でまとめたもの(値には **1 件**の提出から使う)を分けない。出どころの数は `sample_count`
+2. `calibrated`: 別の設定の実測でずらしたもの(同じ設定でも、下の上限・下限で切り詰めたもの)
+3. `estimated`: 式だけ
 
-2026-10-22 から(llmfit と同じ)、community の実測は**両方向**に使う(要る量を下げることも上げることもできる。`measured_community` は `measured` と同じ点になる)。
+0.11.0(#108)で `measured_community` を `measured` にまとめた。アプリは `measured_community` を見ていたら `measured` に直す(どの出どころかは `info --json` の `measurements` の `origin` に残る。印には使わない)。
+
+2026-10-22 から(llmfit と同じ)、community の実測は**両方向**に使う(要る量を下げることも上げることもできる)。
 物理的な上限だけで縛る:
 - 全部載せの値は、重み + 固定の上乗せ(作業メモリ 0)より下がらず、実測した GPU の VRAM × 1.02 + 0.25 GiB より上がらない。
 - GPU の上限に張り付いた値は下限。
@@ -544,7 +547,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 - 同じ設定では、そのような行が保守者 / この PC の行より先に来る。
 - 保守者の `torch_reserved` の行は下限のまま(上げるだけ)。
 - 作業用メモリだけの行(`vram_metric: torch_reserved` かつ `offload: dynamic`。#100、`estimate.working_only`)は、ここでは使わない。動的 VRAM は重みを必要なときだけ読み込み・追い出すので、重みを含まない。段ごとの山を測れるようになるまでは [accuracy.ja.md](accuracy.ja.md) の照合にだけ使う(ずらしにも段階にも使わない)。
-- 上限を当てたときは、値は実測そのものではない。`basis` は `estimated` で、`basis_detail` は `measured_community`(または `calibrated`)のまま。
+- 上限を当てたときは、値は実測そのものではない。`basis` は `estimated` で、`basis_detail` は `calibrated`。
 - `basis` が `measured` で、実測が GPU の上限に張り付いていなければ、`vram_gb` は実測の値と等しい。
 - [accuracy.md](accuracy.ja.md)「ほかの利用者の実測」を参照。
 
@@ -555,11 +558,11 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 - **そろっている**: OOM の記録が無い(`outcome: oom` の行・`n_oom`・`runs_evidence: false` が無い)、まとめの行の中もそろっている(`consistent`)、行どうしの幅が中央値の 15% 以内。
 - 段階に使う量 = max(そろった一番大きいピーク + 文脈の分, 重み + 固定分)(`measured_level_vram_gb`)。`torch_reserved` のピークには `estimate.TORCH_RESERVED_CONTEXT_GB`(0.5 GiB)を足す。この量がこの PC の VRAM に収まらなければ決めない。
 - 段階は少なくとも Good。Perfect にするのは、その量がこの VRAM の 60% 以内で、GPU の上限に張り付いた実測が無いときだけ。
-- 実測で決めた段階が見積もりの段階より良いときだけ使う。
+- 実測で決めた段階が見積もりの段階より良いときだけ使う(実測は段階を上げるだけで、下げない。GPU の会社によらない)。
 - 実測のベンダーは、記録があればその `gpu_backend`、無ければ GPU の名前から推す。別のベンダーの GPU の実測は、較正にだけ使う(`basis: estimated`)。
 
-AMD / Intel / Apple の GPU は、段階が実測から来る場合(上の条件)を除き、Good まで。実測から来る場合は、その実測が決める段階まで。
-このとき動かし方は `gpu` で、理由に実測で決めたことが書かれる。
+実測から来る場合、動かし方は `gpu` で、理由に実測で決めたことが書かれる。
+0.11.0 より前は、AMD / Intel / Apple の GPU と DGX Spark は、段階が実測から来る場合を除き Good までだった(#108 で上限をやめ、確認済みの種類の印 `platform_verified` にした)。
 
 設定が与えられないときは、実測の有無によらず種類ごとの既定を使う(image 1024²、video 832×480 × 81 フレーム、music 30 秒、sfx / tts 10 秒。大きさの入力の無いテンプレートは大きさなし)。0.10 までは、実測のあるモデルは実測の設定で判定していた(0.11.0 で変えた。[scoring.ja.md](scoring.ja.md)「判定に使う設定」)。
 
@@ -588,15 +591,17 @@ Limits / 限界(値はすべて、`perfect` か `good` になる最大のもの�
 | ≤ 98% | `marginal` |
 | > 98% | `too_tight` |
 
-動かし方ごとの上限:
+動かし方ごとの上限(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「段階の上限」):
 - 全部 GPU(`GPU`)は上限なし。
-- 部品を順に載せ替える(`GPU~`)は最大 `good`。
-- RAM に逃がす(`GPU+RAM`)と CPU は最大 `marginal`。
+- 部品を順に載せ替える(`GPU~`)と RAM に逃がす(`GPU+RAM`)は最大 `good`(逃がすのは 0.11.0 まで `marginal`)。
+- CPU は、画像・動画・音楽・効果音・3D の生成が最大 `marginal`、読み上げと 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
+- GPU の会社による上限は無い(0.11.0 まで、NVIDIA 以外と DGX Spark は `good` まで)。
 
-最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。
+最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。だから逃がすのは、全部載せ・載せ替えより段階が上がるときだけ(全部載せ・載せ替えが `good` 以上なら逃がさない)。逃がす動かし方の使用率は、逃がしたときの VRAM の使用率と、要るメモリ ÷ メインメモリのきついほう。
+実測で段階を決めた行は、使用率が 98% を超えても `good` になる(例外)。`perfect` は余裕があるという意味で、速さの保証ではない。
 RAM の確認はそのあとに掛ける(足りないが上のページファイルの上限に収まるなら最大 `marginal`、それ以上は `too_tight`)。
 ComfyUI が fp32 で計算する GPU(`compute_dtype: "fp32"`: Maxwell、一部の Pascal、GTX 16xx など)では、判定の前に作業メモリと VAE の重みを 2 倍にする([hardware.md](hardware.ja.md) の「精度」)。
-逃がしても(小さな)GPU に収まらないモデルは、GPU が無いものとしても判定し、良いほうの結果を使う(CPU で動く小さなモデルは `marginal`)。だから VRAM を足しても段階は下がらない(例外: 同じ GPU の実測が決めた段階。VRAM の比が 0.95 以上でだけ効く。「Score」を参照)。
+GPU の判定が、GPU が無いものとした判定(CPU)より悪いときは、CPU の判定を使う(同じなら GPU)。だから VRAM を足しても段階は下がらない(例外: 同じ GPU の実測が決めた段階。VRAM の比が 0.95 以上でだけ効く。「Score」を参照)。
 大きさが不明のモデル(`unknown_size: true`)は、段階の代わりに `unknown` になる。定数は `estimate.FIT_BANDS`。
 
 **1 つのワークフローに拡散モデルが複数ある場合**(0.1.1、Issue #28):
@@ -1335,6 +1340,7 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dict `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (既定 nvidia)}` または `Gpu`。判定するのは、使える NVIDIA の GPU のうち最大のもの。NVIDIA 以外は判定しない。`ram_gb` は 合計 = 空き とし、この PC のページファイルは無視する(`--ram` と同じ)。`gpu_usable`: `None` = 今のどの PyTorch CUDA ビルドも対応しない GPU、またはドライバが古すぎる GPU は CPU として扱う(理由は `notes`、[hardware.md](hardware.ja.md))。`True` = 呼び出し側が確かめた(世代と精度はここで決める)。`False` = CPU。`windows`(既定: この PC): Windows のドライバの表と、Windows の ComfyUI の精度(Pascal は fp16)。OS、CPU、ディスクの空きはこの PC のもの。不正な GPU の dict は `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: id の完全一致は内容によらず使う。そうでなければ `download` の名前の探索(`content` で絞る。1 つのモデルのワークフローが複数あれば、`recommend` の行の代表。ほかは `fit.workflows`)。見つからない / 複数のモデルに合う → `gmf.ModelNotFound`(`.candidates`)。PC は、`system_info`、無ければ `gpu_name` + `vram_gb`(両方必要。そうでなければ `ValueError`)、無ければ `cpu_only=True`(GPU 無し)、無ければこの PC(`gmf.system()`)。`system_info` を GPU の引数と一緒に渡すと `ValueError` |
+| `gmf.platform_verification(system, measurements=None)` | `dict` | (0.11.0、#108)`system` の GPU の種類が確認済みか: `{"verified": bool, "kind": "nvidia/dedicated" など \| None, "sources": int, "gpus": [GPU の名前]}`。`measurements` を省くと同梱の実測(この PC の bench は入れない)。CLI の JSON の `system.platform_verified` と同じ。通信しない |
 | `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | genmodelfit が返す文(`estimate.reasons`・`notes`・gate の `detail`・エラーの文など)の表示の言語。`"en"` か `"ja"`。`None` で取り消す。**既定は英語**で、OS の言語は見ない。決め方(上が優先): CLI の `--lang`、環境変数 `GENMODELFIT_LANG`、`set_language()`、`en`。CLI の `--lang` はその呼び出しの間だけ効き(`contextvars.ContextVar`)、ほかのスレッドのライブラリの呼び出しの言語は変えない。文は、それを持つ値を作ったときの言語で決まる(`ja` で作った `Fit` の `notes` は、後で `set_language("en")` にしても日本語のまま)。変わるのは文の言語だけで、キー・ID・コード・点数・判定は変わらない。一覧に保存された自由記述(`review.note`・`license_evidence`・実測の `source` / `note`)は訳さない。ほかの値は `ValueError`(#73) |
 
 Python から配布の一覧を取ってくる(0.7.1、#58)。`__all__` には `gmf.RemoteError`(`DatabaseError`)も入る:

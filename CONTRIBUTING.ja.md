@@ -50,7 +50,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
    - 使用率は、NVIDIA なら `nvidia-smi`、AMD なら `amd-smi` か `rocm-smi`(Linux)、Intel なら `xpu-smi`(Linux)、Windows の AMD・Intel は Windows の性能カウンタ、Apple は `ioreg` で読みます。
    - GPU の空きを確かめられないときは、黙って進まずに止まります(`--force` で測れます)。例: NVIDIA で `nvidia-smi` が無い、同じ名前の GPU が複数あってどれか分からない、ComfyUI が別の PC。
    - NVIDIA 以外で使用率を読む道具が無いときは、止まらずに測ります。そのときは ComfyUI のキューが空なことと、ComfyUI 以外のアプリが GPU のメモリを半分より多く使っていないことだけを確かめ、注意と `note` に残します。ほかのアプリ(ゲーム・動画の書き出しなど)は閉じてから測ってください。
-   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、見積もりの段階を Good までに控えています。同じ構成の実測が集まると詰められます。
+   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、表の PC の行に「✓ 確認済みの種類」が付きません(段階は NVIDIA と同じ基準で決めます)。別々の出どころから 2 つ以上の実測が集まると、その種類の GPU に ✓ が付き、見積もりも詰められます。
 2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。
    - 足りないときは、bench がどのファイルが無いかを表示します。
    - `genmodelfit download <テンプレート名> --comfyui-dir <ComfyUI のフォルダ>` で、一覧のファイルを ComfyUI の models に落とせます(sha256 で確かめます)。ライセンスが分からないファイルと gated のファイルは落としません。
@@ -207,9 +207,9 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
   - PCI の型番 ID が同じ(両方にあるとき)。無ければ、そろえた名前が同じ(汎用の名前は一致としない)。
   - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
-- その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、出どころの数(`sample_count`)も出ます。
+- その PC では **1 件から**、その構成の見積もりの根拠が `measured`(実測。作者の実測と同じ扱いで、表の VRAM に `m` が付きます)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。出どころは 1 つの PR なので、同じ人の別々の PR は別々に数えます。メンテナはマージのときにそれを確かめます。NVIDIA 以外の GPU も、そうなれば Good の上限が外れます。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。出どころは 1 つの PR なので、同じ人の別々の PR は別々に数えます。メンテナはマージのときにそれを確かめます。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 ### 作者の実測(measurements.json)

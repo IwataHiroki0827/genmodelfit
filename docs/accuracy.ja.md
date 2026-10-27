@@ -236,9 +236,11 @@ SAM3・Depth Anything・フレーム補間などの拡散でない道具が過�
   - それより上 Too tight
 - 動かし方ごとの上限:
   - 全部 GPU は上限なし。
-  - 順に載せ替える(GPU~)は Good まで。
-  - 逃がす(GPU+RAM)と CPU は Marginal まで。
-- 一番良い段階の動かし方を取る。メインメモリの確かめ(下の「メインメモリ」)はそのあと。
+  - 順に載せ替える(GPU~)と逃がす(GPU+RAM)は Good まで(逃がすのは 0.11.0 まで Marginal まで)。
+  - CPU は、生成が Marginal まで、読み上げ・1 回の計算の道具が Good まで(0.11.0、#108)。
+  - GPU の会社による上限は無い(0.11.0 まで、NVIDIA 以外と DGX Spark は Good まで)。
+  - 決まりの全体は [scoring.ja.md](scoring.ja.md)「段階の上限」。
+- 一番良い段階の動かし方を取る(同じなら逃がさない)。メインメモリの確かめ(下の「メインメモリ」)はそのあと。
 - 大きさが分からなければ段階を付けない(`unknown`、表では `?`。下の「大きさが分からないモデル」)。
 - 以前は「全部載せが VRAM の 90% 以内なら Perfect、VRAM 以内なら Good」だった。
 - 同梱の一覧での変わり方(段階を変えた時点の一覧の全 341 件。HF の下限を上げる前。0.9.1 の同梱の一覧(2026-10-21)は 329 件):
@@ -456,7 +458,7 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 - **メインメモリ**: 式も 1.5 倍も実測で確かめていない(上の「メインメモリ」)。
 - **NVIDIA 以外の GPU**(0.7.0、#22): AMD・Intel・Apple の実測は 0 件。
   - 段ごとの作業用メモリは SDPA の式のまま(分割式の GPU では理由に注意を出すだけ)。AMD は KL の VAE を × 2.73。
-  - この種類の GPU で動いた実測がまだ無いので、段階は Good までにした(同じ GPU の実測が 2 つ以上そろえば外れる。2026-10-22。理由の文言は #103 で「推定」から直した)。
+  - この種類の GPU で動いた実測がまだ無い。0.11.0 より前は段階を Good までにしていた(2026-10-22)。0.11.0(#108)で上限をやめ、確認済みの種類の印(✓)を付けないことで示す。
   - GPU のメモリとみなす割合は、一次資料の挙動から決めた目安で、実測していない([hardware.ja.md](hardware.ja.md)「共有メモリ」)。
 - **CPU で動く系統**(#39): SD 系・Stable Audio の CPU のメインメモリは、ComfyUI のコードから決めた式で、実測していない。
   - 式は、本体・VAE を fp32 に広げ、作業用メモリ × 2(段ごとの式では一番重い段 × 2)。
@@ -541,7 +543,7 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 
 - 下限: 全部載せの値は**重み + 固定分**(作業用メモリ 0)より下げない。
   - それより小さい実測は、一部の重みをメインメモリに置いていた(動的 VRAM・partial)か、測り違い。
-  - 見積もりは下限の値にする。`basis` は estimated(`basis_detail` は measured_community)。理由に「下限の値にした」と書く。
+  - 見積もりは下限の値にする。`basis` は estimated(`basis_detail` は calibrated。0.11.0 より前は measured_community)。理由に「下限の値にした」と書く。
   - 以前 validate が要確認にしていた条件(`offload: none` で重み + 固定分より小さい)を、見積もりでの切り詰めにした。
 - 上限: 測った GPU の総量 × 1.02 + 0.25 GiB(validate の「ありえない値」と同じ)。
   - 超えた値はこの上限(総量 × 1.02 + 0.25 GiB)までにする(`estimate._prepare`)。
@@ -578,24 +580,21 @@ GPU 名は `NVIDIA` / `GeForce` の有無・大文字小文字・記号をそろ
   - この量がこの PC の VRAM に収まらなければ決めない(例: Wan2.2 5B は重み + 固定分が約 18.4 GB で、RTX 5080 の 15.9 GB に収まらない)。
   - Perfect は 60% 以内。張り付いた実測があれば Perfect の根拠にしない(Good まで)。
 - `torch_reserved` は、文脈の分 0.5 GiB を足した値で帯を決め、Perfect の根拠にもする(0.9.0)。
-- **NVIDIA 以外の GPU の「Good まで」の上限は、段階を実測で決めたときに外す**。
-  - その実測で決まる段階まで上がる(Perfect になりうる)。
-  - 実測で決まらなければ(出どころが 1 つなど)、これまでどおり Good まで。
+- 実測は段階を上げるだけで、下げない(0.11.0 から NVIDIA 以外の GPU も同じ。NVIDIA 以外の「Good まで」の上限は #108 でやめた)。
 
 **根拠の段階**(`Estimate.basis_detail`)と出どころの数(`Estimate.sample_count`。0.11.0 で提出の件数から変えた):
 
 - `basis` は後方互換のため measured / estimated の 2 値のまま。
 - `sample_count` は JSON に足しただけ。
 - 表示:
-  - `info`: `measured_community n=3`
-  - 表の VRAM の印: `c`
+  - `info`: `measured n=3`
+  - 表の VRAM の印: `m`(作者の実測と同じ。0.11.0 で `c` をやめた。#108)
   - 理由: 「ほかの利用者の実測(出どころ 3。中央値 7.02 GB)」
 
 | 段階 | basis | 意味 |
 |---|---|---|
-| `measured` | measured | 同梱の作者の実測か、この PC で bench が保存した実測で、設定が同じ |
-| `measured_community` | measured(下限・上限で切り詰めたときは estimated) | ほかの利用者の実測(1 件から)で、設定が同じ |
-| `calibrated` | estimated | 設定の違う実測(作者・ほかの利用者)でずらした推定 |
+| `measured` | measured | 設定が同じ実測(同梱の作者の実測・この PC で bench が保存した実測・ほかの利用者の実測(1 件から)を分けない。0.11.0 で measured_community をまとめた) |
+| `calibrated` | estimated | 設定の違う実測(作者・ほかの利用者)でずらした推定。設定が同じでも下限・上限で切り詰めた値 |
 | `estimated` | estimated | 式だけの推定(実測が無い・精度を変えた・GPU が無い) |
 
 **検査**(`contrib validate`、CI の contrib.yml): **機械的な検査だけを失敗にする**。
@@ -609,7 +608,7 @@ GPU 名は `NVIDIA` / `GeForce` の有無・大文字小文字・記号をそろ
 - 「確認」(notices)として、ジョブのまとめの上に出すだけにするもの:
   - 式から 40% より外れる(`deviation`)
   - 全部載せ(`offload: none`)なのに重み + 固定分より小さい(`below_weights`)
-  - 提出と同じ GPU(名前・型番 ID・会社、VRAM は提出の `vram_gb`)× メモリ 16 / 32 / 64 GB の PC で段階を変える(`fit_change`。同じ GPU で段階が上がる・Good の上限が外れるのも出す)
+  - 提出と同じ GPU(名前・型番 ID・会社、VRAM は提出の `vram_gb`)× メモリ 16 / 32 / 64 GB の PC で段階を変える(`fit_change`。同じ GPU で段階が上がるのも出す)
   - 一覧に無いモデル
   - 表に無い GPU
 - 人が sha8 ごとに確かめる仕組み(`--allow-review`・`data/contrib/REVIEWED`)は外した。
@@ -651,7 +650,7 @@ GPU 名は `NVIDIA` / `GeForce` の有無・大文字小文字・記号をそろ
 
 ### NVIDIA 以外の GPU の bench(0.9.0)
 
-NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、この種類の GPU で動いた実測がまだ無いので段階を Good までにしています([hardware.ja.md](hardware.ja.md))。
+NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、確認済みの種類の印(✓)が付きません(段階は同じ基準。[scoring.ja.md](scoring.ja.md)「確認済みの GPU の種類」)。
 実測を集めやすくするため、bench の「GPU が空いているか」の確かめを各社の道具でも行います(`gpustat.py`)。
 
 - Linux の AMD: amd-smi → rocm-smi

@@ -78,8 +78,11 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - HF のモデルは全期間のダウンロード数 10,000 以上(trendingScore・likes30d で拾ったものは 1,000 以上)、merge のタグ・
   試験用の名前は入れない(llmfit の scrape_hf_models.py にならう。2026-10-20)。利用者のテンプレート(index の username が
   ComfyUI でない)は `community`。公式の仲間があれば表の代表にしない
-- 段階は動かし方で使うメモリの使用率(60 / 85 / 98%。載せ替えは good まで、逃がす・CPU は marginal まで。
-  llmfit にならう。2026-10-20 に利用者が決めた。`estimate.FIT_BANDS`)
+- 段階は動かし方で使うメモリの使用率(60 / 85 / 98%。2026-10-20 に利用者が決めた。`estimate.FIT_BANDS`)。
+  上限は 載せ替え・逃がすは good まで(llmfit と同じ)、CPU は読み上げ・1 回の計算の道具が good まで・生成が marginal まで
+  (llmfit は CPU を good まで。拡散は計算で決まり CPU でとても遅いので分けた)。逃がすのは段階が上がるときだけ
+  (llmfit の「98% を超えるときだけ」にすると VRAM を増やして段階が下がる)。GPU の会社による上限は無く、実測は段階を上げるだけ。
+  確認済みの GPU の種類は表の ✓ と JSON の `platform_verified`(gate には入れない)。#108、docs/scoring.md「段階の上限」
 - 表・JSON では同じモデル(本体の系統 + 大きさ。精度・使い方だけ違う項目)を 1 行にまとめる(`groups.py`。
   鍵の決め方を変えたら docs/schema.md「Models」と tests/test_groups.py の名前の表を直す)。用途の表は `tasks.py`
 - データの形は `src/genmodelfit/models.py` が正本。変えたら `docs/schema.md` と `SCHEMA_VERSION` も直す
@@ -119,8 +122,8 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - NVIDIA の GPU があれば、nvidia-smi で確かめたもの(backend `cuda` の最大の 1 枚)を使う。PyTorch の CUDA 版のビルドが
   どれも対応しない古い世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
   世代・ドライバが分からないとき、表より新しい世代は断らない(#101)。VRAM を返さない NVIDIA は、名前が `NVIDIA GB10` と
-  完全一致の Linux aarch64(DGX Spark)だけ統合メモリ(MemTotal、段階は good まで)で使う。Jetson・GH200 は範囲外。表(`gputables.TORCH_CUDA_BUILDS`・`NAME_CC_RULES`)を変えたら docs/hardware.md の出典も直す
-- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。この種類の GPU で動いた実測がまだ無いので段階は good まで(同じ設定の実測で段階が決まれば外す。実測で段階を決める決まりは上の「判定・Score の決まり」)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
+  完全一致の Linux aarch64(DGX Spark)だけ統合メモリ(MemTotal。段階は同じ基準)で使う。Jetson・GH200 は範囲外。表(`gputables.TORCH_CUDA_BUILDS`・`NAME_CC_RULES`)を変えたら docs/hardware.md の出典も直す
+- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。段階は NVIDIA と同じ基準(0.11.0 から上限なし。#108)、NVIDIA の実測は較正だけに使う。2 CU の内蔵 GPU(610M・820M)は CPU より速い見込みが無いので CPU、TheRock で Release Ready でない gfx は対応の根拠が無いので CPU(docs/hardware.md「断る理由」)。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
   見つけた GPU は `system --all-gpus` で調べる。WSL2 の AMD・Intel は、/dev/dxg・相互運用・powershell.exe で Windows 側を読み、
   rocminfo / clinfo -l で準備を確かめ、公式の WSL の対応表にあるときだけ使う(#101。docs/hardware.md「WSL2」。
   rocminfo の UUID の行は読まない)。検出は環境ごとに docs/hardware.md「すべての環境」の表に従う
