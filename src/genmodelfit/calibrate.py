@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import i18n
-from .db import Database
+from .db import Database, load_measurements
 from .db import load as load_db
 from .estimate import (
     FITTED,
@@ -280,8 +280,17 @@ def summarize(loo: list[dict], target_pct: float = 20.0) -> dict:
     }
 
 
+def bundled_db() -> tuple[Database, int]:
+    """同梱の一覧と同梱の実測だけの Database と、除いたこの PC の bench の実測(キャッシュ)の件数。
+    calibration.json はどの PC で作っても同じにする(#100。オーナーの PC のキャッシュの実測が混ざっていた)。"""
+    db = load_db(use_cache=False)
+    every = len(db.measurements)
+    db.measurements = load_measurements(include_cache=False)
+    return db, every - len(db.measurements)
+
+
 def calibrate(db: Database | None = None, date: str | None = None) -> dict:
-    db = db or load_db(use_cache=False)
+    db = db or bundled_db()[0]
     rows = build_rows(db)
     theta = fit(rows)
     loo = leave_one_out(rows)
@@ -442,7 +451,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _main(args: argparse.Namespace) -> int:
-    result = calibrate(date=args.date)
+    db, excluded = bundled_db()
+    if excluded:
+        print(f"この PC の bench の実測(キャッシュ){excluded} 件は使わない(同梱の実測だけで合わせる)")
+    result = calibrate(db, date=args.date)
     if not args.dry_run:
         args.output.write_text(
             json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n"

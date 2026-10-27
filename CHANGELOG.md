@@ -174,10 +174,12 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   MageFlow, Klein 4B edit and the SDXL base + refiner workflows go from Perfect to Good). Details: docs/accuracy.md.
 - **How the measurement shift is applied** (#100): a negative "measurement − formula" is added to the working memory of
   every stage and clipped at 0 per stage, so all on GPU, swapped in turn and offload never go below weights + fixed
-  part (also for the author's measurements). A positive shift from a peak on a GPU with room (the measuring GPU's VRAM
-  at least the formula's all-on-GPU value: dynamic VRAM kept the parts loaded and decoded the VAE without tiles) goes to
-  all on GPU only; otherwise to all three. An author's measurement within 0.1 GB or 1% below the floor stays
-  `measured` with the floor value and a reason (ACE-Step 1.5: 10.80 against 10.82). Wan 2.1 1.3B at the app's settings
+  part (also for the author's measurements). A positive shift goes to all on GPU only (an unpinned measurement above
+  the formula is a peak on a GPU with room: dynamic VRAM kept the parts loaded and decoded the VAE without tiles), also
+  for models without a per-stage formula; a shift from a measurement pinned at the GPU limit goes to all three. A
+  measurement (author or other users) within 0.1 GB below the floor stays `measured` with the floor value and a
+  reason (rounding or measurement noise; ACE-Step 1.5: 10.80 against 10.82). `calibrate` uses only the bundled
+  measurements (this PC's bench results in the cache are excluded and reported). Wan 2.1 1.3B at the app's settings
   (512 px, 49 frames) is Marginal on 6 GB (offloaded) and on 8 GB (swapped in turn, 97%).
 - **Measurements of working memory only are cross-checked only** (#100). `vram_metric: torch_reserved` with
   `offload: dynamic` (bench with dynamic VRAM, including other users' submissions) excludes the weights, so such rows

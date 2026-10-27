@@ -1355,11 +1355,19 @@ class _Model:
             if prec is not None and prec.vae_factor != 1:
                 parts.decode *= prec.vae_factor
             return need_staged(parts, st, self.c, delta, full_only=self.full_only)
-        act = activation_gb(self.entry, s, self.c) + delta
+        # 当てられないモデル: 正のずらしは段ごとの式と同じく全部載せにだけ足す(full_only)
+        extra = delta if (self.full_only and delta > 0) else 0.0
+        act = activation_gb(self.entry, s, self.c) + delta - extra
+        f = 1.0
         if prec is not None and (prec.act_factor != 1 or prec.vae_factor != 1):
             parts.decode *= prec.vae_factor
             act = max(0.0, act) * prec.act_factor
-        return need(parts, act, self.c)
+            f = prec.act_factor
+        n = need(parts, act, self.c)
+        if extra:
+            n.full += extra * f
+            n.act += extra * f
+        return n
 
 
 def _prepare(
@@ -1389,7 +1397,9 @@ def _prepare(
         own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu)
         lo = 0.0 if is_censored(m) else -max(0.0, act_m)
         hi = max(lo, peak_vram_cap(m) - est)
-        clamp = "floor" if delta < lo else ("cap" if delta > hi else None)
+        # 下限との差が MEASURED_FLOOR_TOLERANCE 以内なら、作者の実測と同じく数え方の誤差として実測のまま扱う
+        near = delta < lo and lo - delta <= MEASURED_FLOOR_TOLERANCE
+        clamp = "floor" if (delta < lo and not near) else ("cap" if delta > hi else None)
         delta = min(max(delta, lo), hi)
         # 設定の違う推定へは、実測 ÷ 式 を COMMUNITY_CALIBRATION_RANGE に収めて広げる
         r_lo, r_hi = COMMUNITY_CALIBRATION_RANGE
@@ -1406,6 +1416,7 @@ def _prepare(
             clamp,
             other,
             _full_only(m, est, delta),
+            near,
         )
     clamped = near = False
     if is_censored(m) or lower_bound_only(m):
@@ -1416,7 +1427,7 @@ def _prepare(
         # 動的 VRAM の実測が下限より小さく出ることがある: 重みの一部をメインメモリに置いていた)。
         # 下限との差が MEASURED_FLOOR_TOLERANCE 以内なら、数え方の誤差として実測のまま扱う
         # (値は下限、理由に出す)
-        near = -max(0.0, act_m) - delta <= floor_tolerance(est - max(0.0, act_m))
+        near = -max(0.0, act_m) - delta <= MEASURED_FLOOR_TOLERANCE
         clamped = not near
         delta = -max(0.0, act_m)
     return _Model(
@@ -1433,21 +1444,17 @@ def _prepare(
     )
 
 
-# 作者の実測が下限(重み + 固定分)を下回っても、この幅以内なら数え方の誤差として実測のまま扱う(#100)。
-# 0.1 GiB か下限の 1% の大きいほう(GiB と GB の丸め、ファイルの大きさと VRAM 上の大きさの小さな違い)
-MEASURED_FLOOR_TOLERANCE = (0.1, 0.01)
-
-
-def floor_tolerance(floor_gb: float) -> float:
-    return max(MEASURED_FLOOR_TOLERANCE[0], MEASURED_FLOOR_TOLERANCE[1] * floor_gb)
+# 実測(作者・ほかの利用者)が下限(重み + 固定分)を下回っても、この幅(GiB)以内なら丸め・測りの揺れとして
+# 実測のまま扱う(値は下限、理由に出す。#100。例: ACE-Step 1.5 の 10.80 GB と下限 10.82 GB の 0.02 GB)
+MEASURED_FLOOR_TOLERANCE = 0.1
 
 
 def _full_only(m: Measurement, est_full: float, delta: float) -> bool:
-    """正のずらしを全部載せにだけ足すか(#100。docs/accuracy.md「実測の使い方」)。実測した GPU の VRAM が
-    式の全部載せの値以上なら、その実測は余裕のある GPU の山(動的 VRAM が部品を載せたままにし、VAE もタイルに
-    分けずに仕上げた)で、式との差は順に載せ替え・逃がすでは起きない。そうでなければ(実測が載せ替え・逃がしで
-    動いた)3 つに足す。実測した GPU で決まるので、判定する PC の VRAM について単調。"""
-    return delta > 0 and m.gpu_vram_gb >= est_full
+    """正のずらしを全部載せにだけ足すか(#100。docs/accuracy.md「実測の使い方」)。正のずらしは全部載せにだけ足す
+    (張り付いていない実測が式より大きいのは、余裕のある GPU で動的 VRAM が部品を載せたままにし、VAE もタイルに
+    分けずに仕上げた山: 順に載せ替え・逃がすでは起きない)。GPU の上限に張り付いた実測(これ以上としてだけ使う)
+    からのずらしは 3 つに足す。実測で決まるので、判定する PC の VRAM について単調。"""
+    return delta > 0 and not is_censored(m)
 
 
 @dataclass(frozen=True)
@@ -1795,11 +1802,11 @@ def _estimate(
                     tr(
                         f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限(重み + 固定分 "
                         f"{n.full:.2f} GB)をわずかに下回るので下限の値にした(差が "
-                        f"{floor_tolerance(n.full):.2f} GB 以内なら数え方の誤差として実測のまま扱う)",
+                        f"{MEASURED_FLOOR_TOLERANCE:g} GB 以内なら丸め・測りの揺れとして実測のまま扱う)",
                         f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) is slightly below the full-load"
                         f" floor (weights + fixed {n.full:.2f} GB), so the floor is used (within"
-                        f" {floor_tolerance(n.full):.2f} GB it still counts as measured: a counting"
-                        " difference)",
+                        f" {MEASURED_FLOOR_TOLERANCE:g} GB it still counts as measured: rounding or"
+                        " measurement noise)",
                     )
                 )
             if is_censored(m):

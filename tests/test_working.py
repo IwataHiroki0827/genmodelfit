@@ -484,7 +484,7 @@ def test_measurement_slightly_below_the_floor_stays_measured(db):
         est = E.estimate(e, nv(16.0), s, db.measurements)
     assert est.basis == "measured" and est.vram_gb == pytest.approx(10.82, abs=0.01)
     assert any("わずかに下回る" in r for r in est.reasons)
-    assert E.floor_tolerance(10.82) == pytest.approx(0.1082)
+    assert E.MEASURED_FLOOR_TOLERANCE == 0.1  # 下限の大きさによらない(#100 の再チェック)
 
 
 def test_working_only_community_rows_never_set_the_level(db):
@@ -513,3 +513,83 @@ def test_working_only_community_rows_never_set_the_level(db):
     assert lvl is None
     est = E.estimate(e, system, None, [row])
     assert est.fit_from == "estimate" and est.basis_detail == "estimated"
+
+
+# --- #100 の再チェック: 下限の許しは作者・ほかの利用者で同じ。当てられないモデルも正のずらしは全部載せ ---
+
+
+@pytest.mark.parametrize("origin", [None, "community"])
+def test_floor_tolerance_is_the_same_for_author_and_community(db, origin):
+    e = db.get("image_sdxl_simple")
+    s = E.settings_for(e, None)
+    fl = round(_floor_need(e, s).full, 2)
+    extra = (
+        {
+            "origin": "community",
+            "n_submissions": 2,
+            "n_used": 2,
+            "n_sources": 2,
+            "n_oom": 0,
+            "consistent": True,
+        }
+        if origin
+        else {}
+    )
+
+    def row(peak):
+        return Measurement(
+            model_id=e.id,
+            gpu_name="NVIDIA GeForce RTX 3060",
+            gpu_vram_gb=12.0,
+            peak_vram_gb=peak,
+            settings=Settings(width=1024, height=1024),
+            offload="none",
+            **extra,
+        )
+
+    near = E.estimate(e, nv(12.0), None, [row(round(fl - 0.05, 2))])
+    assert near.basis == "measured" and near.vram_gb == pytest.approx(fl, abs=0.01)
+    assert any("下限" in r for r in near.reasons) or any("floor" in r for r in near.reasons)
+    far = E.estimate(e, nv(12.0), None, [row(round(fl - 0.5, 2))])
+    assert far.basis == "estimated" and far.vram_gb == pytest.approx(fl, abs=0.01)
+
+
+def test_fallback_positive_shift_goes_to_full_load_only(db):
+    """当てられないモデル(3D)も、張り付いていない実測からの正のずらしは全部載せにだけ足す。"""
+    e = db.get("3d_hunyuan3d-v2.1")
+    assert E.stages_for(e, E.settings_for(e, None)) is None
+    a = E.estimate(e, nv(16.0), None, db.measurements)
+    b = E.estimate(e, nv(16.0), None, [])
+    assert a.vram_gb == 9.4 and a.vram_gb > b.vram_gb
+    assert (a.vram_sequential_gb, a.vram_offload_gb) == (b.vram_sequential_gb, b.vram_offload_gb)
+    # GPU の上限に張り付いた実測(これ以上としてだけ使う)からのずらしは 3 つに足す
+    m = next(x for x in db.measurements if x.model_id == e.id)
+    assert not E._full_only(Measurement(**{**vars(m), "peak_vram_gb": 15.5}), 9.12, 6.0)
+
+
+def test_calibrate_uses_bundled_measurements_only(tmp_path, monkeypatch, capsys):
+    """この PC の bench の実測(キャッシュ)は合わせ直しに入れない(どの PC でも calibration.json が同じ)。"""
+    import json
+
+    from genmodelfit import calibrate as cal
+    from genmodelfit.db import bundled_text
+
+    cache = tmp_path / "cache"
+    (cache / "measurements").mkdir(parents=True)
+    extra = {
+        "model_id": "utility_moge_depth_estimation",
+        "gpu_name": "NVIDIA GeForce RTX 3070",
+        "gpu_vram_gb": 8.0,
+        "peak_vram_gb": 0.78,
+        "settings": {"precision": "fp16"},
+        "offload": "dynamic",
+        "vram_metric": "torch_reserved",
+    }
+    (cache / "measurements" / "x.json").write_text(json.dumps({"measurements": [extra]}), encoding="utf-8")
+    monkeypatch.setenv("GENMODELFIT_CACHE_DIR", str(cache))
+    committed = json.loads(bundled_text("calibration.json"))
+    again = cal.calibrate(date=committed["date"])
+    assert again["check"] == committed["check"] and again["coefficients"] == committed["coefficients"]
+    assert all(x["model_id"] != "utility_moge_depth_estimation" for x in again["check"])
+    assert cal.main(["--dry-run", "--date", committed["date"]]) == 0
+    assert "1 件は使わない" in capsys.readouterr().out

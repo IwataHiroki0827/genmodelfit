@@ -377,11 +377,16 @@ def parse_measurements(data: Any) -> list[Measurement]:
 COMMUNITY_FILE = "measurements_community.json"
 
 
-def load_measurements(extra_dirs: list[Path] | None = None) -> list[Measurement]:
-    """同梱の実測(作者)+ 同梱のほかの利用者の実測のまとめ + この PC の bench の実測(キャッシュ)。"""
+def load_measurements(
+    extra_dirs: list[Path] | None = None, *, include_cache: bool = True
+) -> list[Measurement]:
+    """同梱の実測(作者)+ 同梱のほかの利用者の実測のまとめ + この PC の bench の実測(キャッシュ)。
+    include_cache=False なら同梱の 2 つだけ(calibrate が使う。どの PC で作っても calibration.json が
+    同じになる。#100)。"""
     out = parse_measurements(_loads_measurements(bundled_text("measurements.json")))
     out.extend(parse_measurements(_loads_measurements(bundled_text(COMMUNITY_FILE))))
-    for d in [cache_dir() / "measurements", *(extra_dirs or [])]:
+    dirs = [cache_dir() / "measurements"] if include_cache else []
+    for d in [*dirs, *(extra_dirs or [])]:
         if d.is_dir():
             for p in sorted(d.glob("*.json")):
                 try:

@@ -325,16 +325,17 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
    - The working memory is shifted by d = "measurement − formula value". The formula value is the per-stage formula at the measurement's settings (VAE at its tile value V_eff).
    - **A negative shift** is added to the working memory of each stage of all three amounts and clipped at 0 per stage (#100),
      so no amount goes below weights + fixed part (zero working memory; the floor of #95).
-   - **A positive shift** is added to the **all-on-GPU value only** when the measuring GPU's VRAM is at least the formula's all-on-GPU value (a peak on a GPU with room).
-     On a GPU with room, dynamic VRAM keeps the parts loaded and decodes the VAE without tiles (Wan 2.1 1.3B's +1.96 GB is nearly the gap between
-     the untiled V of 3.42 GB and the tiled V of 0.27 GB), which does not happen when swapping in turn or offloading.
-     If the measuring GPU's VRAM is below the formula's all-on-GPU value (the measurement ran swapped or offloaded), it is added to all three.
-     Which one applies depends on the measuring GPU, so it is monotonic in the VRAM of the PC being judged.
+   - **A positive shift goes to the all-on-GPU value only** (for models with and without a per-stage formula). An unpinned measurement above
+     the formula is a peak on a GPU with room, where dynamic VRAM kept the parts loaded and decoded the VAE without tiles
+     (Wan 2.1 1.3B's +1.96 GB is nearly the gap between the untiled V of 3.42 GB and the tiled V of 0.27 GB);
+     this does not happen when swapping in turn or offloading.
+   - **A shift from a measurement pinned at the GPU limit** (used only as a lower bound) goes to all three.
+     Which one applies depends on the measurement, so it is monotonic in the VRAM of the PC being judged.
    - v3's "the same shift for all three" (`max(a + d, b + d) = max(a, b) + d`) holds only when the shift is an error of the fixed part.
      Gaps with other causes (dynamic VRAM using free space, no tiling) differ by stage, hence the rules above.
-   - An author's measurement below the floor is raised to the floor (it ran with part of the weights in main memory).
-     Within 0.1 GB or 1% of the floor it is a counting difference: `basis: "measured"` stays, the value is the floor, and the reasons say so
-     (ACE-Step 1.5: 10.80 GB against a floor of 10.82 GB; `estimate.MEASURED_FLOOR_TOLERANCE`).
+   - A measurement (the author's or other users') below the floor is raised to the floor (it ran with part of the weights in main memory).
+     Within 0.1 GB it is rounding or measurement noise: `basis: "measured"` stays, the value is the floor, and the reasons say so
+     (ACE-Step 1.5: 10.80 GB against a floor of 10.82 GB, 0.02 GB; `estimate.MEASURED_FLOOR_TOLERANCE`).
    - On a small GPU, even if all-on-GPU does not fit, the result **falls to swapped in turn or offload**.
      Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.5 GB swapped in turn. Use is 94%, so the level is Marginal.
    - A measured value larger than the GPU does not by itself make a model Too tight.
@@ -377,6 +378,8 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
     and the fixed part `overhead_gb` are frozen at the values fitted to the 9 measurements in 0.10 (`calibrate.FROZEN`; `frozen` in calibration.json).
   - The fixed part will be refitted after the RTX 3070 is measured again ("Cross-check" below).
 - Fixed: the weight factor (1.0), the offload share (0.4), the video exponent (0.5), the main-memory fixed part (3.0), the memory factor (1.5).
+- Only the bundled measurements are used (`measurements.json`, `measurements_community.json`). This PC's bench results in the cache are excluded
+  and their count is printed (calibration.json is the same whichever PC builds it; #100).
 - What is minimized (over the 2 3D measurements):
   - **The sum of squared relative errors** (a pinned measurement counts only when the prediction is below it: a one-sided square)
   - A weak penalty on the relative distance from the prior values (the placeholders from #1), weight 1e-4
@@ -444,7 +447,7 @@ How to read it:
 - **Only one kind of GPU**: the 9 total-amount measurements used for fitting and cross-checking are all RTX 5080 16GB with dynamic VRAM.
   - The swapped-in-turn and offload values on small GPUs are not verified.
 - **Dynamic VRAM**: it uses more when more is free, so a measurement is "what that GPU used", not "what is needed".
-  Since #100 a positive shift from a peak on a GPU with room (+1.96 GB for Wan 2.1 1.3B) is added to the all-on-GPU value only ("How measurements are used" 1 above).
+  Since #100 a positive shift (+1.96 GB for Wan 2.1 1.3B) is added to the all-on-GPU value only ("How measurements are used" 1 above).
 - **Pinned measurements**: the all-on-GPU values of Z-Image bf16 and Wan2.2 5B come from the formula only and are not bounded from above by measurements.
 - **Wan aspect ratio**: the video measurements record only the long side (512px / 640px), assumed square.
 - **Unknown dates**: the measurements have no date or ComfyUI version (date in measurements.json is empty).
