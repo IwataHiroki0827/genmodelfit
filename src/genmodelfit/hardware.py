@@ -328,8 +328,23 @@ _NAME_SUFFIXES: tuple[str, ...] = (
 # その量でなければ当たらない(contrib.gpu_known が estimate.nvidia_nominal_vram で見る)
 _NAME_SIZE = re.compile(r"(.*?) ?\b(\d{1,3}) ?gb$")
 _KNOWN_SIZES = {2, 3, 4, 5, 6, 8, 10, 11, 12, 16, 20, 24, 32, 40, 48, 64, 80, 94, 96, 141, 180, 192, 288, 480}
-# 系列だけの表の行に型番を付けた名前(Quadro RTX 3000〜8000)
-_NAME_EXTRA = (r"quadro rtx (3000|4000|5000|6000|8000)",)
+# 系列だけの表の行に型番を付けた名前(Quadro RTX 3000〜8000)と、表の形に入らない実在の名前
+# (RTX 3050 A Laptop GPU。Ampere の GA107 の版)
+_NAME_EXTRA = (r"quadro rtx (3000|4000|5000|6000|8000)", r"rtx 3050 a")
+# 一緒には付かない語の組(#90): D(中国向けの版。RTX 4090・5090 だけ)は Ti・SUPER と、v2 は 5090 D の外と、
+# データセンターの載せ方(PCIe・SXM・NVL・HBM)は GeForce・ノート用の名前(RTX・GTX・MX、Laptop・Max-Q)
+# とは付かない
+_DATACENTER_SUFFIXES = {r"pcie", r"sxm\d?", r"nvl", r"hbm\d?e?"}
+_CONSUMER_SUFFIXES = {r"laptop gpu", r"laptop", r"max q", r"with max q design"}
+
+
+def _suffixes_possible(used: set[str], base: str) -> bool:
+    if "d" in used and (({"ti", "super"} & used) or base not in ("rtx 4090", "rtx 5090")):
+        return False  # D の版は RTX 4090 D・RTX 5090 D だけ
+    if "v2" in used and ("d" not in used or base != "rtx 5090"):
+        return False  # v2 は RTX 5090 D v2 だけ
+    consumer = bool(re.match(r"(rtx \d|gtx|mx)", base)) or bool(_CONSUMER_SUFFIXES & used)
+    return not (consumer and _DATACENTER_SUFFIXES & used)
 
 
 def _name_matches(n: str) -> bool:
@@ -345,7 +360,9 @@ def _name_matches(n: str) -> bool:
 def nvidia_name_known(name: str) -> bool:
     """NVIDIA の GPU 名が名前の表(_NAME_CC)の 1 つに丸ごと当たるか(#90)。名前の後ろの決まった語
     (_NAME_SUFFIXES。Ti・SUPER・Laptop GPU・with Max-Q Design・OEM・D・v2 など)と量(_NAME_SIZE)は 1 回ずつ
-    外してよい。「RTX 3070」「RTX 4060 Ti」「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」
+    外してよい(一緒に付かない組は断る: _suffixes_possible)。量が名前の GPU の版の量かは、デスクトップの
+    GeForce RTX 20〜50 系だけ見る(estimate.NVIDIA_NOMINAL_VRAM。ほかの系列は名前だけで当てる)。
+    「RTX 3070」「RTX 4060 Ti」「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」「RTX 3060 Ti D」
     「RTX 3060 1234」「NVIDIA Graphics Device」は当たらない。ほかの利用者の提出で、表に無い名前の行を判定に
     使わないための見分け。"""
     n = name.lower()
@@ -356,7 +373,7 @@ def nvidia_name_known(name: str) -> bool:
     used: set[str] = set()
     while True:
         if _name_matches(n):
-            return True
+            return _suffixes_possible(used, n)
         for suf in _NAME_SUFFIXES:
             if suf in used:
                 continue

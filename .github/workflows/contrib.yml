@@ -49,8 +49,9 @@ jobs:
         with:
           path: pr
           persist-credentials: false
-          # PR のマージのコミットとその 1 つ目の親(マージする先の今の先頭)を比べる(#90)。base.sha と比べると、
-          # 走らせ直したときに、その後に main で外した提出が「消した」に見えて提出の PR が落ちる
+          # pull_request のワークフローが取るのは PR のマージのコミット(GITHUB_SHA)で、その 1 つ目の親(HEAD^1)は
+          # マージを作った時点のマージ先の先頭。PR が足した・変えたものだけを見るため、HEAD^1 と HEAD を比べる
+          # (#90。event の base.sha はマージ先がその後に進むと古くなり、比べるとほかの PR の変更まで混ざる)
           fetch-depth: 2
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
@@ -77,7 +78,7 @@ jobs:
         # 提出の PR は新しいファイルを足すだけ(消す・書き換える・名前を変えるのはメンテナの PR)。
         # 足すファイルは data/contrib/<GPU>/<日付>-<sha8>.json だけ(.json は小文字)。1 件も無ければ失敗。
         # ファイル名は PR から来る文字なので、ログにもまとめにも出さない(件数だけ)。
-        # 比べるのは HEAD^1(マージのコミットの 1 つ目の親 = マージする先の今の先頭)と HEAD。
+        # 比べるのは HEAD^1(マージのコミットの 1 つ目の親 = マージを作った時点のマージ先の先頭)と HEAD。
         # 提出を外すメンテナの PR はここで失敗するが、それでよい(メンテナが確かめてマージする。docs/release.md)
         working-directory: pr
         run: |

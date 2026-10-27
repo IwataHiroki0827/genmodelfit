@@ -150,8 +150,9 @@ However, the automatic check reads patterns, not meaning. It misses things like 
 - PC names without a fixed form (`yamada-desktop`, `yamada-ws`)
 - letters separated by spaces (`t a r o @ g m a i l`), short base64 (`dGFybw==`) and base64 that looks like words
 - addresses, postal codes and IDs of other services (Discord, Steam, ...)
+- user names under public domains (`github.com/taro`, `hf.co/yamada`; the domains are treated as public places)
 
-On the other hand, ComfyUI node names (such as `HunyuanVideo15ImageToVideo`), 40-digit git commits and public domains (huggingface.co, hf.co, github.com, comfy.org, pytorch.org, nvidia.com, python.org) are not treated as personal information.
+On the other hand, ComfyUI node names (such as `HunyuanVideo15ImageToVideo`), 40-digit git commits, 64-digit sha256 and public domains (huggingface.co, hf.co, github.com, comfy.org, pytorch.org, nvidia.com, python.org) are not treated as personal information.
 
 ## 3. Check the contents
 

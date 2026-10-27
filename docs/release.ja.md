@@ -107,7 +107,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 1. ほかの利用者の実測(data/contrib)を同梱のまとめに入れる(#90)。
    - 提出の PR は data/contrib だけを変えるので、マージしただけでは利用者に届かない。届くのは版のリリースだけ
      (毎週のデータの配布は db.json だけ)。
-   - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。
+   - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。最初の提出をマージするまでは data/contrib が無いので、`--check` は終了コード 1(フォルダが無い)になる。それで正しい。
    - あれば `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で作り直す
      (使った提出の sha256 が `submissions` に入る。試験はそれだけをまとめ直して一致を確かめる)。
    - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ PR で足した提出は 1 つ)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。

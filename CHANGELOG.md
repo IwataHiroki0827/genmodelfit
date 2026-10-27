@@ -52,6 +52,9 @@ All notable changes to this project are documented here. The format is based on
     local path outside the `---` lines; `contrib.yml` compares the merge commit with its first parent and refuses
     links / submodules; `aggregate --check` errors on a missing folder and lists bundled rows whose `files_fp` no
     longer matches.
+    Public domains count only when the host name ends with them; 32+ hex digits are caught again except exactly 40
+    (git commit) and 64 (sha256); padded base64 is caught from 16 characters; tests never run the real `nvidia-smi`
+    from bench.
 
 ### Fixed
 

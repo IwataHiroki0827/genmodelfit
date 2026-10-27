@@ -2070,11 +2070,16 @@ def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, n
 
 
 def test_bench_share_writes_to_the_cache_and_shows_the_urls(tmp_path, capsys, monkeypatch, browser):
-    from test_bench import FakeComfy
+    from test_bench import GPU0, FakeComfy
 
     from genmodelfit import bench
     from genmodelfit.db import cache_dir
 
+    # 本物の GPU には触らない(偽の GPU が 1 枚あり、空いていることにする。tests/test_bench.py と同じ)
+    monkeypatch.setattr(bench, "smi_gpus", lambda: [dict(GPU0)])
+    monkeypatch.setattr(bench, "smi_compute_apps", lambda: [])
+    monkeypatch.setattr(bench, "gpu_used_now", lambda gpu_id: (1024.0, 0.0))
+    monkeypatch.setattr(bench.time, "sleep", lambda s: None)
     real_run = bench.run
 
     def run(*a, **k):  # 偽の ComfyUI はすぐ終わり、時間が 0.1 秒未満(検査の誤り)になることがあるので

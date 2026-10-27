@@ -1063,18 +1063,21 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
 - **Empty**: a PR or folder without any submission file fails (`contrib validate` exits 1).
 - **Unreadable forms**: a UTF-8 BOM is refused with the reason (not stripped), and JSON with the same key twice in
   one object is refused (the later value would silently win).
-- **Personal information**: base64-like runs of 20+ characters, 32+ hex digits, domain names, phone numbers, dotted
+- **Personal information**: base64-like runs (from 16 characters with `=` padding, else from 20), 32+ hex digits
+  (except exactly 40, a git commit, and 64, a sha256), domain names, phone numbers, dotted
   MAC addresses, obfuscated e-mail (`[at]`, アット) and words like 「製品番号」 are errors. Base64, hex, domain and
   phone patterns are not applied to fixed-form fields such as the model id (those are bound by their form and the
-  list).
+  list). Public domains (`contrib.PUBLIC_DOMAINS`) are skipped only when the host name ends with them
+  (`nvidia.com.taro.jp` is still caught).
 - **Measured files**: bench writes `files_fp`, the fingerprint of the model's files in the list when measured (the
   sha256 of the lowercased file sha256s, sorted and joined with newlines; omitted if any file has no sha256), and a
   measurement whose fingerprint differs from the current list is not used.
 - **GPU names**: an NVIDIA GPU is used for judging only when its name fully matches the name table
-  (`hardware.nvidia_name_known`); rows with other names (`NVIDIA Graphics Device` etc.) are kept as records with
+  (`hardware.nvidia_name_known`; known trailing words may be removed once each, and impossible combinations such as
+  `RTX 3060 Ti D` are refused); rows with other names (`NVIDIA Graphics Device` etc.) are kept as records with
   `gpu_known: false` (notice `unknown_gpu`).
-- **GPU memory**: for NVIDIA GPUs whose VRAM follows from the name (`estimate.NVIDIA_NOMINAL_VRAM`; desktop RTX 20–50
-  series), a `vram_gb` outside 0.95–1.03 times every version's amount is the error `gpu_inconsistent` (CUDA on
+- **GPU memory**: for NVIDIA GPUs whose VRAM follows from the name (`estimate.NVIDIA_NOMINAL_VRAM`; desktop GeForce
+  RTX 20–50 only; other families (laptop, workstation, data center) are matched by name only, without a size check), a `vram_gb` outside 0.95–1.03 times every version's amount is the error `gpu_inconsistent` (CUDA on
   Linux reports a 6 GB card as 5.80 GiB, so the lower side is wider).
 - **Error runs**: `outcome: error` submissions are not used for a row's value and only counted (`n_error`; a group of
   only errors makes no row).
@@ -1243,7 +1246,8 @@ measurements}` (an empty result is not written unless `--allow-empty`, so the bu
   history).
 - `contrib aggregate --check` and the test re-aggregate with these recorded sources, never reading git history (same
   result in a shallow clone or outside git). The first form (plain sha256 strings) is still read (one source per
-  submission).
+  submission), but `--check` reports it as not matching (`matches: false`) until it is re-aggregated in the current
+  form (the written form differs).
 - Older versions skip it as an unknown key (they read only `measurements`).
 
 The bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.

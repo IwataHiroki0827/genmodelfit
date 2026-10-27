@@ -1050,10 +1050,10 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **置き場所**: 置けるのは `data/contrib/<GPU>/<日付>-<sha8>.json`(小文字の `.json`)だけで、ほかの形・場所のファイルは CI でも `contrib validate <フォルダ>` でも誤り `layout` になる。
 - **空の提出**: 提出のファイルが 1 件も無い PR・フォルダは失敗にする(`contrib validate` は終了コード 1)。
 - **読めない形**: UTF-8 の BOM は消さずに理由を出して断り、同じオブジェクトの中に同じキーが 2 回ある JSON も断る(後の値が黙って勝つため)。
-- **個人の情報**: base64 らしい 20 字以上の続き・32 桁以上の 16 進・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。
+- **個人の情報**: base64 らしい続き(`=` の詰め物があれば 16 字から、無ければ 20 字から)・32 桁以上の 16 進(ちょうど 40 桁の git のコミットと 64 桁の sha256 は除く)・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。公開の置き場のドメイン(`contrib.PUBLIC_DOMAINS`)は、ホスト名がその名前で終わるときだけ外す(`nvidia.com.taro.jp` は当てる)。
 - **測ったファイル**: bench は測った時点の一覧のモデルのファイルの指紋 `files_fp`(ファイルの sha256 を小文字にして並べ替え、改行でつないだ文字列の sha256。sha256 の無いファイルが 1 つでもあれば書かない)を書き、一覧のファイルが変わった(指紋が違う)実測は使わない。
-- **GPU の名前**: NVIDIA の GPU は名前の表(`hardware.nvidia_name_known`)に丸ごと当たる名前だけを判定に使い、当たらない名前(`NVIDIA Graphics Device` など)の行は `gpu_known: false` の記録として残すだけにする(確認 `unknown_gpu`)。
-- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの RTX 20〜50 系)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ誤り `gpu_inconsistent`(Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
+- **GPU の名前**: NVIDIA の GPU は名前の表(`hardware.nvidia_name_known`。後ろの決まった語は 1 回ずつ外してよく、一緒に付かない組(`RTX 3060 Ti D` など)は断る)に丸ごと当たる名前だけを判定に使い、当たらない名前(`NVIDIA Graphics Device` など)の行は `gpu_known: false` の記録として残すだけにする(確認 `unknown_gpu`)。
+- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は名前だけで当て、量は見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ誤り `gpu_inconsistent`(Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
 - **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
@@ -1182,7 +1182,7 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 `--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, submissions, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
 - `submissions`(#90)は、まとめに渡した提出(検査を通ったもの)ごとの `{sha256, source}` を sha256 の順に並べたもの。`sha256` は内容の hash(`contrib.canonical`。ファイル名の sha8 の元)、`source` はまとめたときの出どころ(足したコミット、git の履歴が無ければ `file:<sha256>`)。
-- `contrib aggregate --check` と試験は、git の履歴を読まずに、この記録した出どころでまとめ直して比べる(浅い clone・git の外でも同じ結果)。最初の形(sha256 の文字列だけ)も読む(出どころは提出ごと)。
+- `contrib aggregate --check` と試験は、git の履歴を読まずに、この記録した出どころでまとめ直して比べる(浅い clone・git の外でも同じ結果)。最初の形(sha256 の文字列だけ)も読む(出どころは提出ごと)が、今の形で作り直すまで `--check` は「まとめ直すと違う」(`matches: false`)と出す(書き出す形が違うため)。
 - 古い版は知らないキーとして読み飛ばす(読むのは `measurements` だけ)。
 
 同梱の写しは `src/genmodelfit/data/measurements_community.json` で、ほかの実測と一緒に読み込まれる。

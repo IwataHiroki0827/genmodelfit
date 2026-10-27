@@ -107,7 +107,8 @@ Steps:
 1. Put other users' measurements (data/contrib) into the bundled aggregate (#90).
    - A submission PR changes only data/contrib, so merging it does not reach users. Only a package release does
      (the weekly data release ships db.json only).
-   - `genmodelfit contrib aggregate --check` counts the submissions not in it yet (exit code 1 if any).
+   - `genmodelfit contrib aggregate --check` counts the submissions not in it yet (exit code 1 if any). Until the first
+     submission is merged there is no data/contrib, so `--check` exits 1 (no such folder); that is expected.
    - If there are any, rebuild it with `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`
      (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
    - Make the aggregate in a clone with git history (not shallow): sources (submissions added by the same PR count as

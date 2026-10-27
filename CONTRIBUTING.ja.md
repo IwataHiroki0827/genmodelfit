@@ -150,8 +150,9 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 - 形の決まっていない PC の名前(`yamada-desktop`、`yamada-ws`)
 - 1 字ずつ空けた文字(`t a r o @ g m a i l`)・短い base64(`dGFybw==`)・語に見える base64
 - 住所・郵便番号・ほかのサービスの ID(Discord・Steam など)
+- 公開のドメインの下のユーザ名(`github.com/taro`・`hf.co/yamada`。ドメインは公開の置き場として扱うため)
 
-逆に、ComfyUI のノードの名前(`HunyuanVideo15ImageToVideo` など)、40 桁の git のコミット、公開のドメイン(huggingface.co・hf.co・github.com・comfy.org・pytorch.org・nvidia.com・python.org)は個人の情報として扱いません。
+逆に、ComfyUI のノードの名前(`HunyuanVideo15ImageToVideo` など)、40 桁の git のコミット・64 桁の sha256、公開のドメイン(huggingface.co・hf.co・github.com・comfy.org・pytorch.org・nvidia.com・python.org)は個人の情報として扱いません。
 
 ## 3. 中身を確かめる
 

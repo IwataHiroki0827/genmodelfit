@@ -164,7 +164,7 @@ PUBLIC_DOMAINS = (
     "nvidia.com",
     "python.org",
 )
-_B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}(={0,2})(?![A-Za-z0-9+/=])")
+_B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{16,}(={0,2})(?![A-Za-z0-9+/=])")
 
 
 def _char_class(c: str) -> int:
@@ -172,8 +172,9 @@ def _char_class(c: str) -> int:
 
 
 class _Base64Like:
-    """base64 らしい続き(#90): [A-Za-z0-9+/] が 20 字以上続き、次のどれか。
-    (1) 末尾に = の詰め物がある、(2) 中に + がある、(3) 大文字・小文字・数字がどれも入り、語の形をしていない:
+    """base64 らしい続き(#90): [A-Za-z0-9+/] の続きで、次のどれか。
+    (1) 16 字以上で末尾に = の詰め物がある(「C:\\Users\\taro」の base64 も当たる)、
+    20 字以上で (2) 中に + がある、(3) 大文字が 2 割以上・小文字・数字がどれも入り、語の形をしていない:
     3 字以上の小文字の語(先頭だけ大文字可)が 2 つ未満、その語の 4 分の 1 より多くが母音(aeiou)を含まない、
     または隣り合う文字の種類(大文字・小文字・数字)の切り替わりが半分以上。ComfyUI のノードの名前
     (HunyuanVideo15ImageToVideo・Qwen2VLForConditionalGeneration)は語の並びなので当たらない。
@@ -183,15 +184,20 @@ class _Base64Like:
     def search(self, text: str) -> bool:
         for m in _B64_RUN.finditer(text):
             run, pad = m.group(0).rstrip("="), m.group(1)
-            if pad or "+" in run:
+            if pad:
+                return True
+            if len(run) < 20:
+                continue
+            if "+" in run:
                 return True
             letters = run.replace("/", "")
+            upper = sum(c.isupper() for c in letters)
             if not (
-                any(c.isupper() for c in letters)
+                upper >= 0.2 * len(letters)
                 and any(c.islower() for c in letters)
                 and any(c.isdigit() for c in letters)
             ):
-                continue
+                continue  # base64 は大文字が 4 割ほど。ファイル名の略記(t2v14Bfp8e4m3fnscaledKJ)は少ない
             words = [w for w in re.findall(r"[A-Z]?[a-z]{2,}", letters) if len(w) >= 3]
             voweled = sum(bool(re.search("[aeiouAEIOU]", w)) for w in words)
             switches = sum(_char_class(a) != _char_class(b) for a, b in itertools.pairwise(letters))
@@ -319,17 +325,22 @@ PRIVACY_PATTERNS: tuple[tuple[str, Any, tuple[str, str]], ...] = (
     ),
     (
         "hex_id",
-        # ちょうど 32 桁(ダッシュの無い UUID・個体の ID)。40 桁の git のコミットは当てない
-        re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{32}(?![0-9A-Za-z])"),
-        ("32 桁の 16 進(UUID・個体の ID など)", "32 hex digits (a UUID or device ID)"),
+        # 32 桁以上の続き(ダッシュの無い UUID・個体の ID・16 進で書き換えた文字)。
+        # ちょうど 40 桁(git のコミット)と 64 桁(sha256)は当てない
+        re.compile(
+            r"(?<![0-9A-Za-z])(?![0-9A-Fa-f]{40}(?![0-9A-Za-z]))(?![0-9A-Fa-f]{64}(?![0-9A-Za-z]))"
+            r"[0-9A-Fa-f]{32,}(?![0-9A-Za-z])"
+        ),
+        ("32 桁以上の 16 進(UUID・個体の ID など)", "32 or more hex digits (a UUID or device ID)"),
     ),
     (
         "domain",
-        # 公開の道具・モデルの置き場(PUBLIC_DOMAINS とそのサブドメイン)は当てない
+        # 公開の道具・モデルの置き場(PUBLIC_DOMAINS とそのサブドメイン)は当てない。ホスト名の最後が
+        # その名前で終わるときだけ(nvidia.com.taro.jp・evil.github.com.attacker.jp は当てる)
         re.compile(
             r"(?<![\w.-])(?!(?:[A-Za-z0-9-]+\.)*(?:"
             + "|".join(re.escape(d) for d in PUBLIC_DOMAINS)
-            + r")\b)"
+            + r")(?![\w-]|\.[A-Za-z0-9]))"
             r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|net|org|jp|io|dev|me|info|biz|co|ai|app|xyz"
             r"|us|uk|de|cn|kr|tw|ru|fr|eu|tv|cc|ne|or|ac|go|ed)\b(?![.-]\w)",
             re.I,

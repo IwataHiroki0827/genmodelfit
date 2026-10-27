@@ -619,6 +619,11 @@ UNKNOWN_NVIDIA = [
     "NVIDIA GeForce RTX 3070 99GB",
     "NVIDIA Quadro RTX 31337",
     "NVIDIA GeForce GTX 1660 SUPER generation design with",
+    "NVIDIA GeForce RTX 3060 Ti D",  # D の版は 4090・5090 だけ
+    "NVIDIA GeForce RTX 3070 D v2 OEM",
+    "NVIDIA GeForce RTX 3070 8GB 8GB",
+    "NVIDIA GeForce RTX 3070 sxm5",  # データセンターの載せ方は GeForce に付かない
+    "NVIDIA GeForce RTX 4090 48GB",  # 名前の量が版の量でない(デスクトップの RTX 20〜50 系だけ見る)
     "NVIDIA CMP 30HX",  # 実在するが表に無い(足すまでは知らない GPU。hardware._NAME_SUFFIXES の説明)
 ]
 
@@ -717,3 +722,55 @@ def test_workflow_add_only_step_in_a_real_repo(tmp_path):
     assert case(lambda r: (r / good.replace(".json", ".JSON")).write_text("{}")) == 1
     assert case(lambda r: (r / "data/contrib/README.md").write_text("x")) == 1
     assert case(lambda r: None) == 1  # 何も足していない
+
+
+# --- 3 回目の仕上げ ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "nvidia.com.taro.jp",
+        "evil.github.com.attacker.jp",
+        "pytorch.org.example.com",
+        "github.company.jp",
+        "taro.github.io",
+    ],
+)
+def test_public_domains_must_end_the_host(text):
+    assert "domain" in {k for k, _ in contrib._hits(text)}, text
+
+
+def test_hex_runs():
+    """32 桁以上の 16 進は当てる(16 進で書き換えたパスも)。ちょうど 40 桁(git のコミット)・
+    64 桁(sha256)は当てない。"""
+    assert "hex_id" in {k for k, _ in contrib._hits(rb"C:\Users\yamada.taro\ComfyUI".hex())}
+    assert "hex_id" in {k for k, _ in contrib._hits("1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d")}
+    assert not contrib._hits("commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0")
+    assert not contrib._hits("sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")
+
+
+def test_short_padded_base64():
+    """= の詰め物があれば 16 字から当てる(「C:\\Users\\taro」の base64)。"""
+    enc = base64.b64encode(rb"C:\Users\taro").decode()
+    assert enc.endswith("=") and "encoded" in {k for k, _ in contrib._hits(enc)}
+    for name in (
+        "t2v14Bfp8e4m3fnscaledKJ",
+        "Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16",
+        "SDXL1.0VAEFix0.9",
+    ):
+        assert not contrib._hits(name), name
+
+
+def test_known_misses_include_user_names_under_public_domains():
+    for text in ("github.com/taro", "hf.co/yamada"):
+        assert not contrib._hits(text), text
+    assert "github.com/taro" in Path("CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert "github.com/taro" in Path("CONTRIBUTING.ja.md").read_text(encoding="utf-8")
+
+
+def test_bench_gpu_tools_are_blocked_in_tests():
+    """試験では bench が本物の nvidia-smi を動かさない(tests/conftest.py の _no_real_hardware)。"""
+    from genmodelfit import bench
+
+    assert bench._nvidia_smi() is None and bench.smi_gpus() == [] and bench.gpu_used_now("0") is None
