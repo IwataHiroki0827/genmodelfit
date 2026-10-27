@@ -75,6 +75,7 @@ FIT = {
     "level_cap",
     "score",
     "score_components",
+    "popularity",  # #95: 人気の順位(並びの鍵。Score には入れない)
     "memory_kind",
     "memory_required_gb",
     "memory_available_gb",
@@ -100,7 +101,7 @@ FIT = {
     "estimate",
     "gate",
 }
-SCORE_COMPONENTS = {"fit", "headroom", "readiness", "basis", "popularity"}
+SCORE_COMPONENTS = {"memory_fit"}  # #95: Score = 収まり(docs/scoring.md)
 ESTIMATE = {
     "vram_gb",
     "vram_sequential_gb",
@@ -119,6 +120,7 @@ ESTIMATE = {
     "unknown_size",
     "fit_from",  # 0.7.0(#26。後から足した項目)
     "measured_peak_vram_gb",
+    "measured_level_vram_gb",  # #95: 段階に使った量
     "sample_count",  # 2026-10-22: 見積もりに使った実測の件数
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる
@@ -325,11 +327,17 @@ def check_fit(item: dict) -> None:
     assert item["estimate_confidence"] == e["basis"] and item["notes"] == e["reasons"]
     assert item["auto"] == g["auto"] and item["held_reasons"] == g["held_by"]
     assert set(item["score_components"]) == SCORE_COMPONENTS
-    assert 0 <= item["score"] <= 100 and all(0 <= v <= 100 for v in item["score_components"].values())
+    assert 0 <= item["score"] <= 100 and item["score"] == item["score_components"]["memory_fit"]
+    assert 0 <= item["popularity"] <= 100
+    if item["fit_level"] in ("perfect", "good", "marginal"):
+        assert item["score"] >= 37.5
+    else:
+        assert item["score"] == 0
     assert item["memory_kind"] in ("vram", "ram")
-    if item["utilization_pct"] is not None:
+    if item["utilization_pct"] is not None and item["memory_available_gb"]:
+        # 一番きつい資源の使用率(GPU+RAM・メモリ不足の行はメインメモリのほうが大きいことがある)
         pct = 100 * item["memory_required_gb"] / item["memory_available_gb"]
-        assert abs(item["utilization_pct"] - pct) < 0.2
+        assert item["utilization_pct"] >= pct - 0.2  # 動かし方ごとの値は tests/test_scoring.py
     assert isinstance(item["licenses"], list) and item["files_count"] >= 0
     assert item["ram_required_gb"] == (None if e["unknown_size"] else e["ram_gb"])
     assert item["use"] in ("gen", "edit", "i2v", "lipsync", "motion", "voice", "upscale", "tool")
@@ -340,18 +348,22 @@ def check_fit(item: dict) -> None:
 
 
 def check_order(models: list[dict], by_type: bool = False) -> None:
-    """動くもの → auto → 段階 → 公式 → 点数 → ID の順(by_type なら種類の順に分けたうえで)。"""
+    """動く → 判定できない → 動かない → auto → 段階(Marginal の中は動かし方の速い順)→ 公式 → 人気 → Score
+    → ID の順(by_type なら種類の順に分けたうえで。docs/scoring.md「並び」)。"""
     order = ["image", "video", "music", "sfx", "tts", "3d"]
     levels = ["perfect", "good", "marginal", "too_tight", "unknown"]
+    modes = ["GPU", "GPU~", "GPU+RAM", "CPU"]
     keys = [
         (
             order.index(m["modality"]) if by_type else 0,
-            {"unknown": 2, "too_tight": 1}.get(m["fit_level"], 0),
+            {"unknown": 1, "too_tight": 2}.get(m["fit_level"], 0),
             not m["auto"],
             0
             if m["fit_level"] in ("perfect", "good") and m["run_mode"] == "gpu"
             else levels.index(m["fit_level"]),
+            modes.index(m["run_mode_label"]) if m["fit_level"] == "marginal" else 0,
             m["community"],  # 利用者のテンプレートは同じ段階の中で公式の後
+            -m["popularity"],
             -m["score"],
             m["id"],
         )
@@ -362,7 +374,7 @@ def check_order(models: list[dict], by_type: bool = False) -> None:
 
 def check_list_order(models: list[dict], sort: str = "type") -> None:
     """fit / search の既定(--sort type): 種類 → 段階(判定できないものは too_tight の前)→ 同じ段階の中で公式
-    → 点数 → 名前。自動のおすすめを先にしない。"""
+    → 人気 → Score → ID。自動のおすすめを先にしない。"""
     order = ["image", "video", "music", "sfx", "tts", "3d"]
     levels = ["perfect", "good", "marginal", "unknown", "too_tight"]
     keys = [
@@ -370,8 +382,8 @@ def check_list_order(models: list[dict], sort: str = "type") -> None:
             order.index(m["modality"]),
             levels.index(m["fit_level"]),
             m["community"],
+            -m["popularity"],
             -m["score"],
-            m["model_name"].lower(),
             m["id"],
         )
         for m in models

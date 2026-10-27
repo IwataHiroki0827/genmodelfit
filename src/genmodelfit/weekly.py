@@ -293,6 +293,13 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         warn.append(f"新しく無検閲の印が付いた項目: {s['newly_uncensored']} 件")
     if s["unauthorized_added"]:
         warn.append(f"匿名の API が 401 になったリポジトリ: {s['unauthorized_added']} 件")
+    for b in result.get("popularity_bias") or []:
+        if b.get("flagged"):
+            warn.append(
+                f"**人気のかたより: {b['modality']} で要る VRAM と使用数の順位の相関が {b['rho']}"
+                f"({b['models']} モデル。-0.3 を下回った)**。軽いモデルほど人気になっているので、"
+                "人気を並びの鍵から外すかを考える(docs/scoring.md「人気」)"
+            )
     cl = d.get("classification") or {}
     if cl and not cl.get("safe"):
         warn.append(
@@ -339,6 +346,18 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
     lines.append("")
 
     lines += review_section(d, result.get("review_pending") or [])
+
+    bias = [b for b in result.get("popularity_bias") or [] if b.get("checked")]
+    if bias:
+        lines += [
+            "<details><summary>人気のかたよりの確認"
+            "(要る VRAM と使用数の順位の相関。-0.3 未満で注意)</summary>",
+            "",
+        ]
+        lines += _table(
+            ["種類", "モデル", "相関(Spearman)"], [[b["modality"], b["models"], b["rho"]] for b in bias]
+        )
+        lines += ["", "</details>", ""]
 
     if d["license_changes"]:
         rows = sorted(d["license_changes"], key=lambda c: (not c["permissive_side"], c["id"]))
@@ -539,7 +558,11 @@ def run(
         )
         (warnings if allow_many_uncensored else problems).append(msg)
     pending = review_list(new)
+    from .popularity import vram_bias
+
+    bias = vram_bias(new)  # 人気のかたより(#95。docs/scoring.md「人気」)
     result.update(
+        popularity_bias=bias,
         review_pending=pending,
         classification={
             "safe": d["classification"]["safe"],

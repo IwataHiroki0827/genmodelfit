@@ -2,11 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""おすすめ順に並べる。
+"""おすすめ順に並べる・Score(#95。決まりは docs/scoring.md)。
 
-並べ方(Issue #17、#28): 動くもの(too_tight でない。判定できないものは一番後ろ)→ 自動でおすすめに出せるもの
-(gate の auto)→ 段階 → 公式(利用者のテンプレートは同じ段階の中で後ろ)→ 点数の高い順 → ID。
-点数(0〜100)は 5 つの内訳の重み付きの和(式は docs/schema.md「Score」)。VRAM・メモリを増やしても下がらない。
+並べ方(docs/scoring.md「並び」): 動く → 判定できない → 動かない →(--json・ライブラリは自動でおすすめに出せる
+もの)→ 段階(逃がさずに載る / Marginal。Marginal の中は動かし方の速い順)→ 公式 → 人気の順位 → Score → ID。
+Score(0〜100)= memory_fit: その動かし方で一番きつい資源の使用率 r の曲線(llmfit の fit_score と同じ式・定数。
+docs/scoring.md「Score」)。段階・準備・実測の有無・人気は入れない。
 """
 
 from __future__ import annotations
@@ -48,72 +49,35 @@ FIT_LABEL = {
     FIT_UNKNOWN: "?",  # 大きさが分からず判定できない(Too tight とは言わない。#28)
 }
 
-# 点数の内訳の重み(合計 1)。docs/schema.md「Score」と合わせる
-WEIGHTS = {"fit": 0.45, "headroom": 0.15, "readiness": 0.20, "basis": 0.10, "popularity": 0.10}
-FIT_POINTS = {"perfect": 100, "good": 70, "marginal": 35, "too_tight": 0, FIT_UNKNOWN: 0}
-# 準備のできぐあい: gate の条件ごとの重み(通った条件の和。全部通れば 100)
-READINESS_POINTS = {
-    "license": 25,
-    "gated": 15,
-    "official_workflow": 15,
-    "custom_nodes": 15,
-    "comfyui_version": 10,
-    "url_reachable": 5,
-    "sha256": 5,
-    "content": 5,
-    "size_known": 5,
-    # runtime が ComfyUI 以外のモデルで、上の ComfyUI の 3 条件(15 + 15 + 10)の代わり(常に保留)
-    "app_runtime": 40,
-    # 確認の印(#42)。点数には入れない(確認待ちは auto にならないので 100 にはならない)
-    "reviewed": 0,
-}
-HEADROOM_FULL = 0.5  # 全部載せで VRAM の半分以上が空けば余裕 100
+# Score の曲線の定数(llmfit の fit_score。llmfit-core/src/fit.rs:2335-2349、AlexsJones/llmfit 2f35825)。
+# r がこれ以下なら 100、超えたら正規分布の片側の形で下がる(docs/scoring.md「Score」)
+SCORE_FLAT_UNTIL = 0.70
+SCORE_WIDTH = 0.20
+# 動く行(perfect / good / marginal)の下限。r = 0.98(marginal の端)の値
+SCORE_RUNNABLE_FLOOR = 37.5
+RUNNABLE_LEVELS = ("perfect", "good", "marginal")
 
 
-def headroom(e: Estimate, system: SystemInfo) -> float:
-    """VRAM の余裕(0〜100)。全部載せの VRAM(PC によらない値)と比べるので、VRAM が増えれば下がらない。"""
-    v = system.vram_gb
-    if v <= 0 or e.unknown_size or e.vram_gb <= 0 or e.vram_gb >= v:
+def memory_fit(r: float | None, level: str) -> float:
+    """収まり(0〜100。丸める前の値)。r はその動かし方で一番きつい資源の使用率(usage_ratio)。
+    動かない・判定できない・r が分からないときは 0。動く行は SCORE_RUNNABLE_FLOOR を下限にする
+    (実測で段階を決めた行・ページファイルで動く CPU の行は r が 0.98 を超えても動く)。"""
+    if level not in RUNNABLE_LEVELS or r is None:
         return 0.0
-    return min(100.0, 100.0 * (1 - e.vram_gb / v) / HEADROOM_FULL)
+    if r <= SCORE_FLAT_UNTIL:
+        v = 100.0
+    else:
+        v = 100.0 * math.exp(-0.5 * ((r - SCORE_FLAT_UNTIL) / SCORE_WIDTH) ** 2)
+    return max(v, SCORE_RUNNABLE_FLOOR)
 
 
-def popularity(m: ModelEntry) -> float:
-    """使われた回数(テンプレート)か HF のダウンロード数(÷100)。10 万で 100。"""
-    usage = (m.template.usage or 0) if m.template else 0
-    if not m.template and m.downloads:
-        usage = m.downloads / 100  # HF のダウンロード数を、テンプレートの使用回数と同じくらいの目盛りに直す
-    return min(100.0, 20 * math.log10(1 + usage))
-
-
-def readiness(gate: dict[str, Any] | None) -> float:
-    if not gate:
-        return 0.0
-    if gate.get("auto"):
-        return 100.0
-    return float(sum(READINESS_POINTS.get(c.get("id"), 0) for c in gate.get("checks", []) if c.get("passed")))
-
-
-def _basis_points(e: Estimate) -> float:
-    """根拠の点数。実測 100、推定 0。ほかの利用者の実測(measured_community)も実測として数える
-    (2026-10-22、llmfit に合わせた。docs/accuracy.md「ほかの利用者の実測」)。"""
-    return 100.0 if e.basis == "measured" else 0.0
-
-
-def score_components(
-    m: ModelEntry, e: Estimate, system: SystemInfo, gate: dict[str, Any] | None = None
-) -> dict[str, float]:
-    return {
-        "fit": float(FIT_POINTS[e.fit]),
-        "headroom": round(headroom(e, system), 1),
-        "readiness": readiness(gate),
-        "basis": _basis_points(e),
-        "popularity": round(popularity(m), 1),
-    }
+def score_components(e: Estimate, system: SystemInfo | None) -> dict[str, float]:
+    """JSON の score_components(#95 から memory_fit だけ)。"""
+    return {"memory_fit": round(memory_fit(usage_ratio(e, system), e.fit), 1)}
 
 
 def total_score(components: dict[str, float]) -> float:
-    return round(sum(WEIGHTS[k] * components[k] for k in WEIGHTS), 1)
+    return round(components["memory_fit"], 1)
 
 
 def _sum_licenses(m: ModelEntry) -> list[str | None]:
@@ -179,12 +143,11 @@ def vram_need(e: Estimate, system: SystemInfo | None) -> float | None:
     vram = system.vram_gb if system is not None else 0.0
     if e.unknown_size or e.run_mode == "cpu" or vram <= 0:
         return None
-    if (
-        getattr(e, "fit_from", "estimate") == "measurement"
-        and e.measured_peak_vram_gb
-        and e.fit != "too_tight"
-    ):
-        return e.measured_peak_vram_gb  # 段階を決めた実測の VRAM(#26)
+    if getattr(e, "fit_from", "estimate") == "measurement" and e.fit != "too_tight":
+        # 段階に使った量(#95: max(実測のピーク + 文脈の分, 重み + 固定分))。古い Estimate はピーク
+        level_gb = getattr(e, "measured_level_vram_gb", None) or e.measured_peak_vram_gb
+        if level_gb:
+            return level_gb
     level, how = _how(e, vram, system)
     pick = {"full": e.vram_gb, "seq": e.vram_sequential_gb or e.vram_gb, "offload": e.vram_offload_gb}
     if e.fit == "too_tight":
@@ -226,6 +189,24 @@ def memory_use(e: Estimate, system: SystemInfo | None) -> tuple[str, float | Non
     return "vram", need, system.vram_gb if system is not None else None
 
 
+def usage_ratio(e: Estimate, system: SystemInfo | None) -> float | None:
+    """その動かし方で一番きつい資源の使用率 r(丸める前。表の Mem% と JSON の utilization_pct。
+    docs/scoring.md「Score」)。
+    GPU / GPU~ / 実測で段階を決めた行 = 判定に使った VRAM ÷ VRAM(memory_use)、
+    CPU = 要るメモリ ÷ メインメモリ、
+    GPU+RAM = max(逃がしたときの VRAM ÷ VRAM, 要るメモリ ÷ メインメモリ)。メインメモリが足りない行は
+    どの動かし方でも max(上の値, 要るメモリ ÷ メインメモリ)。大きさ不明・割る相手が無いときは None。"""
+    if e.unknown_size:
+        return None
+    _kind, need, avail = memory_use(e, system)
+    r = need / avail if need is not None and avail else None
+    ram_total = system.ram_total_gb if system is not None else 0.0
+    if ram_total and (e.run_mode == "offload" or _ram_short(e, system)):
+        ram_r = e.ram_gb / ram_total
+        r = ram_r if r is None else max(r, ram_r)
+    return r
+
+
 @dataclass
 class Fit:
     model: ModelEntry
@@ -239,6 +220,7 @@ class Fit:
     model_name: str = ""  # モデルの表示名(groups.ModelIndex。一覧の中で重ならない)
     workflows: list[dict[str, Any]] = field(default_factory=list)  # 同じモデルのほかの項目
     variants: list[dict[str, Any]] = field(default_factory=list)  # 精度ごとの一番良い項目
+    popularity: float = 0.0  # 人気の順位(0〜100。モデルの値。popularity.py。並びの鍵だけに使う)
 
     @property
     def auto(self) -> bool:
@@ -252,7 +234,8 @@ class Fit:
         """JSON の 1 件(CLI の recommend / fit / search の models と同じ形。docs/schema.md)。"""
         m, e = self.model, self.estimate
         kind, need, avail = memory_use(e, self.system)
-        util = round(100 * need / avail, 1) if need is not None and avail else None
+        r = usage_ratio(e, self.system)
+        util = round(100 * r, 1) if r is not None else None
         gneed = gpu_need(e, self.system)
         d: dict[str, Any] = {
             "id": m.id,
@@ -272,6 +255,7 @@ class Fit:
             "level_cap": level_cap(e, self.system),
             "score": round(self.score, 1),
             "score_components": dict(self.score_components),
+            "popularity": round(self.popularity, 1),
             "memory_kind": kind,
             "memory_required_gb": round(need, 2) if need is not None else None,
             "memory_available_gb": round(avail, 2) if avail is not None else None,
@@ -368,17 +352,37 @@ def _check_limit(limit: int | None, name: str = "limit") -> None:
         )
 
 
-def sort_key(f: Fit) -> tuple:
-    """おすすめ順: 動くもの(判定できないものは一番後ろ)→ auto → 段階 → 公式(利用者のテンプレートは
-    同じ段階の中で後ろ)→ 点数 → ID。"""
-    fit = f.estimate.fit
-    runs = 2 if fit == FIT_UNKNOWN else (1 if fit == "too_tight" else 0)
-    return (runs, not f.auto, fit_rank(fit), is_community(f.model), -round(f.score, 1), f.model.id)
-
-
 def _runs(f: Fit) -> int:
-    """動くもの 0 → too_tight 1 → 判定できない 2。"""
-    return {FIT_UNKNOWN: 2, "too_tight": 1}.get(f.estimate.fit, 0)
+    """並びの鍵 1: 動くもの 0 → 判定できない 1 → 動かない 2(表・--json・ライブラリで同じ。#95)。"""
+    return {FIT_UNKNOWN: 1, "too_tight": 2}.get(f.estimate.fit, 0)
+
+
+# Marginal の中の動かし方の順(速い順。docs/scoring.md「並び」)
+MODE_ORDER = {"GPU": 0, "GPU~": 1, "GPU+RAM": 2, "CPU": 3}
+
+
+def _tier(f: Fit) -> tuple[int, int]:
+    """並びの鍵 2・3: 逃がさずに載る(perfect / good で GPU・GPU~)→ marginal。marginal の中だけ動かし方の
+    速い順(GPU → GPU~ → GPU+RAM → CPU)。逃がさずに載る中では動かし方を使わない(24 GB の Z-Image で
+    bf16 の good・GPU~ を代表にした行が沈まないように。#28)。"""
+    if runs_clean(f.estimate):
+        return (0, 0)
+    mode = MODE_ORDER.get(mode_label(f.estimate, f.system), len(MODE_ORDER))
+    return (fit_rank(f.estimate.fit), mode if f.estimate.fit == "marginal" else 0)
+
+
+def sort_key(f: Fit) -> tuple:
+    """1 項目ずつの並び(evaluate。variant_key の最後の鍵): 動く → 判定できない → 動かない → auto → 段階 →
+    公式(利用者のテンプレートは後)→ 人気の順位 → Score → ID。"""
+    return (
+        _runs(f),
+        not f.auto,
+        fit_rank(f.estimate.fit),
+        is_community(f.model),
+        -round(f.popularity, 1),
+        -round(f.score, 1),
+        f.model.id,
+    )
 
 
 # 表の中の段階の順(判定できないものは too_tight より前。動かないと分かったものを一番後ろに)
@@ -386,44 +390,39 @@ LIST_LEVEL_ORDER = {"perfect": 0, "good": 1, "marginal": 2, FIT_UNKNOWN: 3, "too
 
 
 def list_key(f: Fit, sort: str = "score", auto_first: bool = True, verified_first: bool = True) -> tuple:
-    """表の並べ方(fit / search の --sort、recommend)。
+    """表の並べ方(fit / search の --sort、recommend。docs/scoring.md「並び」)。鍵 1 は どれも 動く →
+    判定できない → 動かない。
 
+    auto_first=True(recommend)なら sort は使わず: 鍵 1 →(verified_first なら自動のおすすめに出せるもの)→
+        段階(逃がさずに載る → marginal。marginal の中は動かし方の速い順)→ 公式 → 人気の順位 → Score → ID。
+        verified_first=False(CLI の recommend の表。#84)なら自動のおすすめに出せるかを並びに使わない。
+        ライブラリと --json は True(使う側のアプリが人の確認なしにおすすめを出すため)
     type(fit / search の既定): 種類(image → video → music → sfx → tts → 3d)→ 段階(perfect → good →
-        marginal → 判定できない → too_tight)→ 同じ段階の中で公式(利用者のテンプレートは後)
-        → 点数の高い順 → 名前
-    score: 種類をまたいだ 1 つの順位。動くもの → 判定できない → too_tight で分け、段階 → 公式 → 点数 → 名前
-        (点数は段階の重みが一番大きいが、ほかの内訳で段階が逆になることがあるので、段階を先に見る)
+        marginal → 判定できない → too_tight)→ 公式 → 人気の順位 → Score → ID
+    score: 種類をまたいだ 1 つの順位。鍵 1 → 段階(逃がさずに載る / marginal)→ Score → 人気の順位 → ID
     vram: 判定に使ったメモリ(表の VRAM)の少ない順 / disk: ダウンロードの小さい順 / name: 名前の順
-        (どれも、動くもの → 判定できない → too_tight で分けてから)
-    auto_first=True(recommend)なら sort は使わず、動くもの → 自動のおすすめに出せるもの → 逃がさずに載るもの
-    (perfect / good を 1 つの段階に)→ marginal → 公式 → 点数 → ID。
-    verified_first=False(CLI の recommend の表。#84)なら、自動のおすすめに出せるかを並びに使わない
-    (ほかの鍵は同じ)。ライブラリと --json は True のまま(並びを変えない)。"""
+        (どれも鍵 1 で分けてから)"""
     level = LIST_LEVEL_ORDER.get(f.estimate.fit, 4)
     score = -round(f.score, 1)
+    pop = -round(f.popularity, 1)
     name = (f.model_name or f.model.name or f.model.id).lower()
     if auto_first:
-        # recommend: 逃がさずに載るもの(perfect / good で GPU・GPU~。row_tier の clean)は 1 つの段階として
-        # 点数で並べる。代表を高い精度に替えて good になったモデル(24 GB の Z-Image Turbo の bf16)が、
-        # int8 の perfect のときより下がらないように(行の点数と同じ考え方。#28 のレビュー)
-        tier = 0 if runs_clean(f.estimate) else fit_rank(f.estimate.fit)
         verified = (not f.auto,) if verified_first else ()
-        return (_runs(f), *verified, tier, is_community(f.model), score, f.model.id)
+        return (_runs(f), *verified, *_tier(f), is_community(f.model), pop, score, f.model.id)
     if sort == "type":
         mod = MODALITIES.index(f.model.modality) if f.model.modality in MODALITIES else len(MODALITIES)
-        return (mod, level, is_community(f.model), score, name, f.model.id)
-    runs = 0 if level <= 2 else level - 2
+        return (mod, level, is_community(f.model), pop, score, f.model.id)
+    if sort == "score":
+        return (_runs(f), 0 if runs_clean(f.estimate) else 1, score, pop, f.model.id)
     if sort == "vram":
         _kind, need, _avail = memory_use(f.estimate, f.system)
         rest: tuple = (need is None, need or 0.0, level, score)
     elif sort == "disk":
         d = f.estimate.disk_gb
         rest = (d is None, d or 0.0, level, score)
-    elif sort == "name":
+    else:  # name
         rest = ()
-    else:
-        rest = (level, is_community(f.model), score)
-    return (runs, *rest, name, f.model.id)
+    return (_runs(f), *rest, name, f.model.id)
 
 
 # 同じモデルの中で表に出す 1 件を選ぶときの用途の順(生成を先に。補助ツール・高解像度化は最後)
@@ -437,11 +436,6 @@ CLEAN_LEVELS = ("perfect", "good")
 def runs_clean(e: Estimate) -> bool:
     """GPU に逃がさずに載る(GPU か GPU~ で good 以上)か。"""
     return e.fit in CLEAN_LEVELS and e.run_mode == "gpu"
-
-
-def row_tier(e: Estimate) -> str:
-    """行の点数を比べる仲間の段階。逃がさずに載るもの(runs_clean)は perfect / good をまとめて "clean"。"""
-    return "clean" if runs_clean(e) else e.fit
 
 
 def variant_key(f: Fit) -> tuple:
@@ -487,14 +481,27 @@ def judge(
     policy: GatePolicy | None = None,
 ) -> Fit:
     """1 モデルの判定・gate・点数。"""
+    from .popularity import for_db
+
     c = coefficients or load_coefficients()
     e = estimate(m, system, settings, db.measurements, c, with_limits=with_limits)
     g = _gate(m, policy, db)
-    comps = score_components(m, e, system, g)
+    comps = score_components(e, system)
     idx = index_for(db)
     key = idx.key_of.get(m.id) or group_key(m)
     name = idx.name_of.get(key) or m.name
-    return Fit(m, e, total_score(comps), g, comps, system, group_key=key, use=main_use(m), model_name=name)
+    return Fit(
+        m,
+        e,
+        total_score(comps),
+        g,
+        comps,
+        system,
+        group_key=key,
+        use=main_use(m),
+        model_name=name,
+        popularity=for_db(db).get(key, 0.0),
+    )
 
 
 def evaluate(
@@ -702,14 +709,8 @@ def select(
         reps = fits[:1] if group else fits
         hidden["same_model"] += len(fits) - len(reps)
         if group:
-            # 行の点数 = 代表と同じ用途・同じ段階の仲間(絞り込みに合うもの)の点数の一番高いもの。
-            # 「逃がさずに載る」(perfect / good で GPU・GPU~)ものは 1 つの段階とみなす(代表は精度で選ぶので、
-            # VRAM が増えて perfect の int8 から good の bf16 へ替わっても点数が下がらないように。#28)。
-            # ほかの値はすべて代表のもの
-            tier = row_tier(reps[0].estimate)
-            same = [x for x in fits if x.use == reps[0].use and row_tier(x.estimate) == tier]
-            top = max(same, key=lambda x: x.score)
-            reps = [replace(reps[0], score=top.score, score_components=dict(top.score_components))]
+            # 行の値はすべて代表のもの(Score も。表の Mem% と合う。#95 で「仲間の一番高い点」をやめた)
+            reps = [replace(reps[0])]
         for rep in reps:
             others = [get(m) for m in members[key] if m.id != rep.model.id]
             others.sort(key=lambda x: (x.model.id not in passed_ids, *variant_key(x)))

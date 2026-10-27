@@ -3485,8 +3485,7 @@ _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, databa
   matched, hidden: {reason: count}, groups: [{modality, matched, shown}],
   models: [{ id, name, model_name,
   modality, tasks, use, content, source, runtime, languages, description, fit_level, fit_label,
-  run_mode, run_mode_label, score,
-  score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
+  run_mode, run_mode_label, score, score_components { memory_fit }, popularity, memory_kind,
   memory_required_gb, memory_available_gb, utilization_pct, gpu_memory_required_gb,
   ram_required_gb, disk_size_gb, total_size_gb, license, licenses, auto,
   held_reasons, estimate_confidence, notes,
@@ -3527,8 +3526,10 @@ _HELP_EN = {
 Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
 (default 3) each. With -m or --task: one table (default 10).
 One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
-Order: models that run, then Perfect/Good, then Marginal, then Score (0-100), then id
-(--json puts auto-recommendable ones, gate: auto, before the levels). Uncensored models and
+Order: models that run, then Perfect/Good, then Marginal (faster mode first), official
+templates, popularity (rank among the same type and source), Score, id (--json puts
+auto-recommendable ones, gate: auto, before the levels). Score 0-100 is the memory headroom
+(100 up to 70% use; not speed). Rules: docs/scoring.md. Uncensored models and
 utility tools are hidden unless asked. The default output is a table (llmfit uses JSON by
 default); add --json for apps.
 
@@ -3774,8 +3775,10 @@ _HELP_JA = {
 -m も --task も無ければ、種類(image, video, music, sfx, tts, 3d)ごとに上位 -n 件(既定 3 件)。
 -m か --task があれば 1 つの表(既定 10 件)。
 同じモデルは 1 行にまとめ、一番合う精度とワークフローを選ぶ(--all-workflows で全部)。
-並べ方: 動くもの → Perfect/Good → Marginal → Score(0〜100)の高い順 → ID
+並べ方: 動くもの → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート →
+人気(同じ種類・同じ出どころの中の順位)→ Score → ID
 (--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
+Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。決まりは docs/scoring.md。
 無検閲のモデルと補助ツールは、指定しなければ出さない。既定の出力は表(llmfit の既定は JSON)。
 アプリは --json を付ける。
 
@@ -4472,9 +4475,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SORTS,
         default="type",
         help=tr(
-            "並べ方: type(既定。種類 → 段階 → 点数)、score(種類をまたいだ順位)、vram / disk(少ない順)、name",
-            "order: type (default; type -> fit level -> score), score (ranked across types),"
-            " vram / disk (smallest first), name",
+            "並べ方: type(既定。種類 → 段階 → 公式 → 人気 → Score)、score(種類をまたいで段階 → Score)、"
+            "vram / disk(少ない順)、name",
+            "order: type (default; type -> fit level -> official -> popularity -> Score),"
+            " score (across types; level -> Score), vram / disk (smallest first), name",
         ),
     )
     listing.add_argument(

@@ -11,6 +11,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 |---|---|
 | Know how your PC is detected and judged | [hardware.md](hardware.md) |
 | Know how far to trust the memory estimates | [accuracy.md](accuracy.md) |
+| Know how the order and the Score are decided, and when measurements set the level | [scoring.md](scoring.md) |
 | Download a model's files safely | [download.md](download.md) |
 | Use genmodelfit from an app (`--json` or Python) | [schema.md](schema.md), then [gate.md](gate.md) and [download.md](download.md) |
 | Send your measurements | [CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -23,6 +24,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 |---|---|
 | [hardware.md](hardware.md) | How genmodelfit detects GPUs, memory and drivers, and the primary-source rules behind each verdict. |
 | [accuracy.md](accuracy.md) | How the VRAM / RAM estimates are built and fitted, how accurate they are, and how other users' measurements are used. |
+| [scoring.md](scoring.md) | Fairness of the verdicts, the order of the lists, the Score (memory headroom) and popularity: rules, evidence, differences from llmfit and tests. |
 | [download.md](download.md) | The rules of `genmodelfit download` (consent, refusals, safety, network) and its Python API. |
 | [schema.md](schema.md) | The JSON output of every `--json` command, the stable Python API and the `db.json` format. |
 | [gate.md](gate.md) | When a model may be recommended automatically (`auto: true`): checks, license allowlist, link-check age, ComfyUI version. |

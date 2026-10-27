@@ -276,15 +276,6 @@ def test_representative_prefers_generation_over_tools(db):
     assert all(f.use == "gen" for f in music)
 
 
-def test_row_score_never_drops_with_more_vram(db):
-    """行の点数 = 仲間の一番高い点数。代表が高い精度へ替わっても下がらない。"""
-    prev: dict[str, float] = {}
-    for v in (0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48):
-        rows = {f.group_key: f.score for f in select(db, pc(v, 64)).fits}
-        assert all(rows[k] >= prev[k] for k in prev if k in rows), v
-        prev = rows
-
-
 PRECISION_FIXED = {  # 本体のファイル名(0.1.1 からは読めればファイルの見出し)から読む精度(同梱の一覧も直した)
     "templates_mjm_airt_machIne": "fp8",
     "template_rob_split_stack_qwen_multi_wan22": "bf16",
@@ -478,24 +469,16 @@ def test_sha_merge_needs_the_whole_set_of_main_weights():
     assert k["e"] != k["f"]
 
 
-def test_row_score_comes_from_the_same_use_and_level(db):
-    """行の点数は、代表と同じ用途・同じ段階の仲間の一番高い点数(ほかの値はすべて代表のもの)。
-    逃がさずに載るもの(perfect / good で GPU・GPU~)は 1 つの段階とみなす(recommend.row_tier。#28)。"""
-    from genmodelfit.recommend import row_tier
-
+def test_row_score_is_the_representatives(db):
+    """行の Score は代表の値(#95。表の Mem% と合う。前の「仲間の一番高い点」はやめた)。VRAM を増やして
+    代表が高い精度へ替わると Score は下がることがある(docs/scoring.md「Score」)。"""
     for v in (8, 16, 24):
         sel = select(db, pc(v))
-        idx = build_index(db.models)
         every = {f.model.id: f for f in select(db, pc(v), group=False).fits}
         for row in sel.fits:
-            same = [
-                every[m.id]
-                for m in idx.members[row.group_key]
-                if m.id in every
-                and every[m.id].use == row.use
-                and row_tier(every[m.id].estimate) == row_tier(row.estimate)
-            ]
-            assert row.score == max(f.score for f in same), (v, row.model.id)
+            rep = every[row.model.id]
+            assert row.score == rep.score and row.score_components == rep.score_components, (v, row.model.id)
+            assert row.to_dict()["utilization_pct"] == rep.to_dict()["utilization_pct"]
 
 
 def test_community_template_is_never_the_representative(db):

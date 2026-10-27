@@ -99,13 +99,10 @@ def test_more_ram_never_worse(levels):
     assert not bad, f"メモリを増やすと段階が下がる: {bad}"
 
 
-def test_score_never_drops_with_more_vram_or_ram(levels):
-    """点数は VRAM・メモリを増やしても下がらない(docs/schema.md「Score」)。"""
+def test_score_never_drops_with_more_ram(levels):
+    """Score はメモリを増やしても下がらない。VRAM を増やすと下がることはある(GPU+RAM → GPU~ に替わると
+    VRAM の使用率が上がる。llmfit と同じ。約束は段階だけ。docs/scoring.md「Score」)。"""
     bad = []
-    for r in RAMS:
-        for lo, hi in pairwise(VRAMS):
-            a, b = scores[(lo, r)], scores[(hi, r)]
-            bad += [("vram", lo, hi, r, mid) for mid in a if b[mid] < a[mid]]
     for v in VRAMS:
         for lo, hi in pairwise(RAMS):
             a, b = scores[(v, lo)], scores[(v, hi)]
@@ -114,15 +111,17 @@ def test_score_never_drops_with_more_vram_or_ram(levels):
 
 
 def test_order_is_runs_then_auto_then_score(db, levels):
-    """動くもの(判定できないものは最後)→ auto → 段階 → 公式(同じ段階の中で利用者のテンプレートは後)→ 点数。"""
+    """動く → 判定できない → 動かない → auto → 段階 → 公式(同じ段階の中で利用者のテンプレートは後)→ 人気
+    → Score → ID(evaluate の 1 項目ずつの並び。docs/scoring.md「並び」)。"""
     for v in (0, 8, 24):
         fits = evaluate(db, pc(v, 32), content="all")
         keys = [
             (
-                {FIT_UNKNOWN: 2, "too_tight": 1}.get(f.estimate.fit, 0),
+                {FIT_UNKNOWN: 1, "too_tight": 2}.get(f.estimate.fit, 0),
                 not f.auto,
                 fit_rank(f.estimate.fit),
                 is_community(f.model),
+                -round(f.popularity, 1),
                 -f.score,
                 f.model.id,
             )

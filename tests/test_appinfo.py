@@ -646,9 +646,8 @@ def test_merge_manual_keeps_measured_file_values():
 
 def test_gate_holds_non_comfyui_runtimes_with_its_own_reason():
     """runtime が ComfyUI 以外の手のモデルは、ComfyUI の 3 条件ではなく app_runtime で保留
-    (点数の重みは同じ)。"""
+    (#95 から Score に準備の点は無い)。"""
     from genmodelfit.gate import CHECK_IDS, evaluate_offline
-    from genmodelfit.recommend import READINESS_POINTS
 
     ms = {e.id: e for e in appinfo.manual_entries()}
     for mid in ("manual:tsukuyomi-chan-piper-plus", "manual:irodori-tts-v4.1-small"):
@@ -658,9 +657,6 @@ def test_gate_holds_non_comfyui_runtimes_with_its_own_reason():
     sa = evaluate_offline(ms["manual:stable-audio-3-small-music"]).held_by  # comfyui は今までどおり
     assert "official_workflow" in sa and "app_runtime" not in sa
     assert "app_runtime" in CHECK_IDS
-    assert READINESS_POINTS["app_runtime"] == sum(
-        READINESS_POINTS[k] for k in ("official_workflow", "custom_nodes", "comfyui_version")
-    )
 
 
 def test_license_tier_reads_use_restrictions_in_the_name():
