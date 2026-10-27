@@ -2053,9 +2053,9 @@ def count_sources(rows: Iterable[Measurement]) -> int:
 
 # --- 確認済みの GPU の種類(#108。docs/scoring.md「確認済みの GPU の種類」) -------------------------------
 # 種類 = 会社 × メモリの形(専用の VRAM / メインメモリと共有)。段階はどの種類も同じ基準で決め、
-# この種類の GPU で動いた実測が別々の出どころから 2 つ以上あれば「確認済み」(表の ✓、JSON の
-# platform_verified)にする。段階・自動のおすすめ(gate)には使わない
-MIN_PLATFORM_SOURCES = 2
+# この種類の GPU で動いた実測が 2 機種以上にあれば「確認済み」(表の ✓、JSON の platform_verified)にする。
+# 段階・自動のおすすめ(gate)には使わない
+MIN_PLATFORM_MODELS = 2
 
 
 def gpu_kind(g: Any) -> str | None:
@@ -2086,26 +2086,47 @@ def measurement_kind(m: Measurement) -> str:
     return f"{vendor}/{'shared' if shared else 'dedicated'}"
 
 
-def kind_sources(rows: Iterable[Measurement]) -> int:
-    """種類の確認に使う、別々の出どころの数。ほかの利用者のまとめは count_sources と同じ(出どころの ID の
-    和集合)。作者の実測は、測った GPU(gpu_key)ごとに 1 つ(別々の機械で動いたことの記録。同じ GPU の何行も
-    1 つ)。段階を決める条件(count_sources: 作者の実測は合わせて 1 つ)より緩いのは、確かめるのが
-    「その種類の GPU で動くか」で、1 台の GPU の値の確かさではないから"""
-    rows = list(rows)
-    own = {gpu_key(m.gpu_name) for m in rows if not is_community(m)}
-    return len(own) + count_sources([m for m in rows if is_community(m)])
+# 実測で「GPU で動いた」と言えない逃がし方(重みを CPU 側に置いた)。種類の確認に使わない
+CPU_SIDE_OFFLOADS = ("lowvram", "novram", "cpu")
+
+
+def _same_model(a: Measurement, b: Measurement) -> bool:
+    """2 つの実測の GPU が同じ機種か(same_gpu と同じ決め方: 両方に PCI の型番 ID があれば ID、無ければ
+    そろえた名前。専用の VRAM なら VRAM の比 0.95 以上も)。"""
+    pa, pb = _pci(getattr(a, "gpu_pci_id", None)), _pci(getattr(b, "gpu_pci_id", None))
+    same = pa == pb if pa and pb else gpu_key(a.gpu_name) == gpu_key(b.gpu_name)
+    if not same:
+        return False
+    va, vb = a.gpu_vram_gb, b.gpu_vram_gb
+    if measurement_kind(a).endswith("/shared") or not va or not vb or va <= 0 or vb <= 0:
+        return True
+    return min(va, vb) / max(va, vb) >= MEASURED_VRAM_TOLERANCE
+
+
+def kind_models(rows: Iterable[Measurement]) -> list[str]:
+    """種類の確認に使う、動いた GPU の機種(1 機種に 1 つの名前)。作者・この PC・ほかの利用者の実測を
+    分けない。汎用の名前(型番 ID も無いもの)は機種が決まらないので数えない。同じ機種の何件・何人の実測も
+    1 つ(#108。確かめるのは「この種類の GPU で、2 機種以上で動いた記録がある」こと)"""
+    models: list[Measurement] = []
+    for m in rows:
+        if generic_gpu_name(m.gpu_name) and not _pci(getattr(m, "gpu_pci_id", None)):
+            continue
+        if not any(_same_model(m, r) for r in models):
+            models.append(m)
+    return sorted(m.gpu_name for m in models)
 
 
 def platform_verification(system: SystemInfo, measurements: Iterable[Measurement] | None = None) -> dict:
-    """この PC の GPU の種類が確認済みか(#108)。measurements を省くと同梱の実測(作者 + ほかの利用者の
-    まとめ。この PC の bench は入れない)。--vram で VRAM を仮定した PC(overrides に vram)は、GPU が
-    仮定なので確認済みにしない。
+    """この PC の GPU の種類が確認済みか(#108。docs/scoring.md「確認済みの GPU の種類」): 同梱の実測に、
+    この種類(会社 × 専用 / 共有のメモリ)の GPU で最後まで動いた標準の実測が 2 機種以上あるか。
+    measurements を省くと同梱の実測(作者 + ほかの利用者のまとめ。この PC の bench は入れない)。
+    --vram で VRAM を仮定した PC(overrides に vram)は、GPU が仮定なので確認済みにしない。
 
-    返す値: {"verified": bool, "kind": 種類か None, "sources": 出どころの数, "gpus": 動いた GPU の名前}"""
+    返す値: {"verified": bool, "kind": 種類か None, "models": 動いた機種の名前(1 機種に 1 つ)}"""
     g = system.best_gpu if system.vram_gb > 0 and "vram" not in system.overrides else None
     kind = gpu_kind(g)
     if kind is None:
-        return {"verified": False, "kind": None, "sources": 0, "gpus": []}
+        return {"verified": False, "kind": None, "models": []}
     if measurements is None:
         from .db import load_measurements
 
@@ -2115,16 +2136,12 @@ def platform_verification(system: SystemInfo, measurements: Iterable[Measurement
         for m in measurements
         if (m.outcome or "ok") == "ok"
         and m.standard is not False
+        and (m.offload or "").lower() not in CPU_SIDE_OFFLOADS
         and (not is_community(m) or (m.gpu_known is not False and m.runs_evidence is not False))
         and measurement_kind(m) == kind
     ]
-    n = kind_sources(rows)
-    return {
-        "verified": n >= MIN_PLATFORM_SOURCES,
-        "kind": kind,
-        "sources": n,
-        "gpus": sorted({m.gpu_name for m in rows}),
-    }
+    models = kind_models(rows)
+    return {"verified": len(models) >= MIN_PLATFORM_MODELS, "kind": kind, "models": models}
 
 
 @dataclass(frozen=True)

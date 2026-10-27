@@ -70,8 +70,9 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
     NVIDIA 16 GB). Measurements only raise the level (the #95 branch that lowered Perfect to Good from measurements on
     non-NVIDIA GPUs was removed).
   - **"✓ verified GPU kind"**: the PC line of the tables (`recommend` / `fit` / `search`), `info` and `system` show it
-    when the bundled measurements include two or more independent sources on the same kind of GPU (vendor × dedicated /
-    shared memory); nothing otherwise. Today only NVIDIA with dedicated VRAM. JSON: new `system.platform_verified`
+    when the bundled measurements have records of running on two or more GPU models of the same kind (vendor ×
+    dedicated / shared memory; author and community measurements alike); nothing otherwise. Today only NVIDIA with
+    dedicated VRAM (RTX 5080, RTX 3070). JSON: new `system.platform_verified`
     and `system.platform_verified_by`; the library: new `gmf.platform_verification(system)`. Not used for the gate
     (`auto`), which stays independent of the PC.
   - **Refusals in three groups**: used without the mark (non-NVIDIA, DGX Spark), refused for lack of support evidence

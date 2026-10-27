@@ -279,7 +279,7 @@ Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel 
 
 - **The NVIDIA judgment does not change.** If an NVIDIA GPU is usable, other GPUs are only listed with `--all-gpus`.
 - Whether it runs is decided by the support table below (primary sources).
-- **The level uses the same rules as NVIDIA GPUs with dedicated VRAM** (0.11.0, #108; no cap). Before 0.11.0 it was capped at Good because no measurement had run on this kind of GPU (#101, #103). Instead, when measurements from two or more independent sources ran on this kind of GPU, the PC line of the tables shows "✓ verified GPU kind" ([scoring.md](scoring.md) "Verified GPU kinds"). The notes say "The level uses the same rules as NVIDIA GPUs with dedicated VRAM (<vendor>; whether this kind of GPU has run in measurements is shown by the ✓ verified GPU kind mark on the PC line of the tables)" (`hardware.unverified_kind_text`).
+- **The level uses the same rules as NVIDIA GPUs with dedicated VRAM** (0.11.0, #108; no cap). Before 0.11.0 it was capped at Good because no measurement had run on this kind of GPU (#101, #103). Instead, when this kind of GPU has records of running on two or more GPU models, the PC line of the tables shows "✓ verified GPU kind" ([scoring.md](scoring.md) "Verified GPU kinds"). The notes say "The level uses the same rules as NVIDIA GPUs with dedicated VRAM (<vendor>; whether this kind of GPU has run in measurements is shown by the ✓ verified GPU kind mark on the PC line of the tables)" (`hardware.unverified_kind_text`).
 - Measurements on the same GPU with the same settings (other users' too; see "Other users' measurements" in [accuracy.md](accuracy.md#other-users-measurements-34-2026-10-21-handling-aligned-with-llmfit-on-2026-10-22)) only raise the level and never lower it ("Measurements that succeeded on the same GPU" below).
 - Measurements on NVIDIA GPUs are used only to shift the working memory (`basis_detail: calibrated`); `basis` stays `estimated`.
 - Combinations that are not supported are judged as CPU, with a reason (`Adapter.reason`; "Reasons for refusing" below).
@@ -290,7 +290,7 @@ Non-NVIDIA GPUs fall into three groups (0.11.0, #108).
 
 | Treatment | Which | Reason text |
 |---|---|---|
-| Used (not verified; no mark) | Combinations that run per the support table below; DGX Spark (GB10) too | "The level uses the same rules as NVIDIA GPUs with dedicated VRAM …". Once measurements arrive: ✓ verified GPU kind |
+| Used (not verified; no mark) | Combinations that run per the support table below; DGX Spark (GB10) too | "The level uses the same rules as NVIDIA GPUs with dedicated VRAM …". Once two or more GPU models have measurements: ✓ verified GPU kind |
 | Refused for lack of support evidence (judged as CPU) | Generations AMD does not support yet: gfx1170, gfx1171, gfx1250 (not Release Ready in TheRock). Also anything outside ComfyUI's instructions (RDNA 1 and older, Windows 10, …) | "… is not Release Ready … (Build Passing / Sanity Tested only), so there is no evidence that PyTorch runs, so it is judged as CPU" |
 | Judged as CPU because it is not expected to beat the CPU | 2-CU integrated GPUs: Radeon 610M (gfx1036; Raphael, Granite Ridge, Dragon Range, Fire Range, Mendocino) and Radeon 820M (Ryzen AI 5 330) | "… is a small 2-CU integrated GPU for the display; even if it runs, it is not expected to generate faster than the CPU, so it is judged as CPU" |
 

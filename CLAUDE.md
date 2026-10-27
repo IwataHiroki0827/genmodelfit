@@ -82,7 +82,8 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
   上限は 載せ替え・逃がすは good まで(llmfit と同じ)、CPU は読み上げ・1 回の計算の道具が good まで・生成が marginal まで
   (llmfit は CPU を good まで。拡散は計算で決まり CPU でとても遅いので分けた)。逃がすのは段階が上がるときだけ
   (llmfit の「98% を超えるときだけ」にすると VRAM を増やして段階が下がる)。GPU の会社による上限は無く、実測は段階を上げるだけ。
-  確認済みの GPU の種類は表の ✓ と JSON の `platform_verified`(gate には入れない)。#108、docs/scoring.md「段階の上限」
+  確認済みの GPU の種類(その種類の GPU で 2 機種以上で動いた記録。作者・ほかの利用者を分けない)は表の ✓ と
+  JSON の `platform_verified`(gate には入れない)。#108、docs/scoring.md「段階の上限」
 - 表・JSON では同じモデル(本体の系統 + 大きさ。精度・使い方だけ違う項目)を 1 行にまとめる(`groups.py`。
   鍵の決め方を変えたら docs/schema.md「Models」と tests/test_groups.py の名前の表を直す)。用途の表は `tasks.py`
 - データの形は `src/genmodelfit/models.py` が正本。変えたら `docs/schema.md` と `SCHEMA_VERSION` も直す

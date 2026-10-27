@@ -212,31 +212,61 @@ def test_cpu_level_uses_the_ram_band(db):
 
 def test_platform_verified_with_the_bundled_data():
     v = E.platform_verification(nv(8.0))
-    assert v["verified"] is True and v["kind"] == "nvidia/dedicated" and v["sources"] >= 2
+    assert v["verified"] is True and v["kind"] == "nvidia/dedicated"
+    assert v["models"] == ["NVIDIA GeForce RTX 3070", "NVIDIA GeForce RTX 5080"]  # 2 機種
     for system in (amd(16.0), apple(24.0), gb10(119.7)):
         v = E.platform_verification(system)
-        assert v["verified"] is False and v["sources"] == 0, system.best_gpu.name
+        assert v["verified"] is False and v["models"] == [], system.best_gpu.name
     assert E.platform_verification(_sys(None))["kind"] is None
     over = nv(8.0)
     over.overrides.append("vram")
     assert E.platform_verification(over)["verified"] is False  # GPU が仮定(--vram)
 
 
-def test_kind_counts_sources_and_memory_form():
-    def m(name: str, **kw) -> Measurement:
-        return Measurement(**{"model_id": "x", "gpu_name": name, "gpu_vram_gb": 16, "peak_vram_gb": 8, **kw})
+def _m(name: str, **kw) -> Measurement:
+    return Measurement(**{"model_id": "x", "gpu_name": name, "gpu_vram_gb": 16, "peak_vram_gb": 8, **kw})
 
-    rows = [m("AMD Radeon RX 7800 XT"), m("AMD Radeon RX 7800 XT", peak_vram_gb=9)]
-    assert E.platform_verification(amd(16.0), rows)["sources"] == 1  # 同じ GPU の作者の行は 1 つ
-    rows.append(m("AMD Radeon RX 7600"))
-    assert E.platform_verification(amd(16.0), rows)["verified"] is True  # 別々の GPU 2 つ
-    assert E.measurement_kind(m("AMD Radeon 890M")) == "amd/shared"  # 内蔵 GPU は共有
-    assert E.measurement_kind(m("NVIDIA GB10")) == "nvidia/shared"
-    assert E.measurement_kind(m("mps", gpu_backend="mps")) == "apple/shared"
-    community = m("AMD Radeon RX 7800 XT", origin="community", n_sources=1, source_ids=["a" * 12])
-    assert E.platform_verification(amd(16.0), [community])["sources"] == 1
-    failed = m("AMD Radeon RX 7600", outcome="oom")
-    assert E.platform_verification(amd(16.0), [rows[0], failed])["verified"] is False
+
+def test_one_model_with_many_sources_is_not_verified():
+    """1 機種の実測は、何件・何人・どの出どころでも 1 つ(#108)。"""
+    author = [_m("AMD Radeon RX 7800 XT"), _m("AMD Radeon RX 7800 XT", peak_vram_gb=9)]
+    community = _m("AMD Radeon RX 7800 XT", origin="community", n_sources=5, source_ids=list("abcde"))
+    v = E.platform_verification(amd(16.0), [*author, community])
+    assert v["verified"] is False and v["models"] == ["AMD Radeon RX 7800 XT"]
+    # 同じ型番 ID なら名前の書き方が違っても同じ機種
+    pci = [_m("AMD Radeon RX 7800 XT", gpu_pci_id="1002:747e"), _m("Navi 32", gpu_pci_id="1002:747e")]
+    assert E.platform_verification(amd(16.0), pci)["verified"] is False
+    # 同じ名前でも VRAM の違う版(比 0.95 未満)は別の機種
+    assert E.platform_verification(amd(16.0), [author[0], _m("AMD Radeon RX 7800 XT", gpu_vram_gb=8)])[
+        "verified"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [({}, {}), ({"origin": "community", "n_sources": 1}, {}), ({}, {"origin": "community", "n_sources": 1})],
+)
+def test_two_models_are_verified_whatever_the_origin(first, second):
+    """2 機種で動いた記録があれば確認済み。作者・ほかの利用者を分けない。"""
+    rows = [_m("AMD Radeon RX 7800 XT", **first), _m("AMD Radeon RX 7600", **second)]
+    v = E.platform_verification(amd(16.0), rows)
+    assert v["verified"] is True and v["models"] == ["AMD Radeon RX 7600", "AMD Radeon RX 7800 XT"]
+
+
+def test_kind_rows_and_memory_form():
+    ok = _m("AMD Radeon RX 7800 XT")
+    for bad in (
+        _m("AMD Radeon RX 7600", outcome="oom"),
+        _m("AMD Radeon RX 7600", standard=False),
+        _m("AMD Radeon RX 7600", offload="lowvram"),  # 重みを CPU 側に置いた
+        _m("AMD Radeon RX 7600", origin="community", runs_evidence=False),
+        _m("AMD Radeon(TM) Graphics"),  # 汎用の名前は機種が決まらない
+        _m("AMD Radeon 890M"),  # 内蔵 GPU は amd/shared(別の種類)
+    ):
+        assert E.platform_verification(amd(16.0), [ok, bad])["verified"] is False, bad
+    assert E.measurement_kind(_m("AMD Radeon 890M")) == "amd/shared"
+    assert E.measurement_kind(_m("NVIDIA GB10")) == "nvidia/shared"
+    assert E.measurement_kind(_m("mps", gpu_backend="mps")) == "apple/shared"
 
 
 def test_mark_only_when_verified():

@@ -54,7 +54,7 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 - GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
   newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
   (MPS, macOS 14 or newer) are judged with the vendors' support tables (same level rules as NVIDIA; the PC line shows "✓ verified GPU kind"
-  only for kinds of GPU with measurements from two or more independent sources, today NVIDIA with dedicated VRAM). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
+  only for kinds of GPU with records of running on two or more GPU models, today NVIDIA with dedicated VRAM). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
   (Intel UHD / Iris Xe, the 2-CU Radeon 610M / 820M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
   SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests
   `update-pciids` when lspci does not know the GPU's name
@@ -284,8 +284,8 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 | **Too tight** | > 98% | does not run (a level set by measurements can be Good even above 98%) |
 | **?** | — | not judged: the download size is unknown |
 
-There is no cap by GPU vendor; the PC line shows "✓ verified GPU kind" when two or more independent sources have
-measured that kind of GPU ([rules](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md#verified-gpu-kinds)).
+There is no cap by GPU vendor; the PC line shows "✓ verified GPU kind" when that kind of GPU has records of
+running on two or more GPU models ([rules](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md#verified-gpu-kinds)).
 Marks: `m` after VRAM = measured (whoever measured it); without a mark it is a formula estimate. Measurements win over the formula. Without `--width` etc. every model is judged at
 the same default settings for its type, so measurements taken at other settings only shift the estimate (no mark).
 Other users' measurements apply only to the same GPU (same PCI model ID, else the same normalized name, and a VRAM

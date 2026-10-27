@@ -279,7 +279,7 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 
 - **NVIDIA の判定は変えない**。NVIDIA の GPU が使えれば、ほかの GPU は `--all-gpus` で一覧に出すだけ。
 - 動くかどうかは下の対応表(一次資料)で決める。
-- **段階は NVIDIA の専用 VRAM の GPU と同じ基準で決める**(0.11.0、#108。上限なし)。0.11.0 より前は、この種類の GPU で動いた実測がまだ無いことを理由に Good までにしていた(#101・#103)。今は代わりに、この種類の GPU で動いた実測が別々の出どころから 2 つ以上あれば、表の PC の行に「✓ 確認済みの種類」を出す([scoring.ja.md](scoring.ja.md)「確認済みの GPU の種類」)。理由(notes)には「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた(<会社>。この種類の GPU で動いた実測があるかは、表の PC の行の ✓ 確認済みの種類で分かる)」と書く(`hardware.unverified_kind_text`)。
+- **段階は NVIDIA の専用 VRAM の GPU と同じ基準で決める**(0.11.0、#108。上限なし)。0.11.0 より前は、この種類の GPU で動いた実測がまだ無いことを理由に Good までにしていた(#101・#103)。今は代わりに、この種類の GPU で 2 機種以上で動いた記録があれば、表の PC の行に「✓ 確認済みの種類」を出す([scoring.ja.md](scoring.ja.md)「確認済みの GPU の種類」)。理由(notes)には「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた(<会社>。この種類の GPU で動いた実測があるかは、表の PC の行の ✓ 確認済みの種類で分かる)」と書く(`hardware.unverified_kind_text`)。
 - 同じ GPU・同じ設定の実測(ほかの利用者の実測も。[accuracy.ja.md](accuracy.ja.md)「ほかの利用者の実測」)は、段階を上げるだけで下げない(下の「同じ GPU で成功した実測」)。
 - NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
 - 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する(下の「断る理由」)。
@@ -290,7 +290,7 @@ NVIDIA 以外の GPU の扱いは 3 つに分かれる(0.11.0、#108)。
 
 | 扱い | どれ | 理由の文 |
 |---|---|---|
-| 使う(未確認。印なし) | 下の対応表で動く組み合わせ。DGX Spark(GB10)も | 「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた …」。実測が集まれば ✓ 確認済みの種類 |
+| 使う(未確認。印なし) | 下の対応表で動く組み合わせ。DGX Spark(GB10)も | 「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた …」。2 機種以上の実測が集まれば ✓ 確認済みの種類 |
 | 対応の根拠が無いので断る(CPU として判定) | AMD がまだ対応を出していない世代: gfx1170・gfx1171・gfx1250(TheRock で Release Ready でない)。RDNA 1 以前・Windows 10 など、ComfyUI の案内の外のもの | 「… Release Ready でない(Build Passing・Sanity Tested まで。PyTorch が動く根拠が無い)ので、CPU として判定した」 |
 | 動いても CPU より速い見込みが無いので CPU として判定 | 2 CU の内蔵 GPU: Radeon 610M(gfx1036。Raphael・Granite Ridge・Dragon Range・Fire Range・Mendocino)・Radeon 820M(Ryzen AI 5 330) | 「… 画面を出すための 2 CU の小さな内蔵 GPU で、動いても生成では CPU より速い見込みが無いので、CPU として判定した」 |
 

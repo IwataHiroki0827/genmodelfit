@@ -151,7 +151,7 @@ def _envelope(command: str, system: SystemInfo | None, db: Database | None, **pa
         pv = platform_verification(system)
         d["system"]["platform_verified"] = pv["verified"]
         d["system"]["platform_verified_by"] = (
-            {"kind": pv["kind"], "sources": pv["sources"], "gpus": pv["gpus"]} if pv["verified"] else None
+            {"kind": pv["kind"], "models": pv["models"]} if pv["verified"] else None
         )
     if db is not None:
         d["database"] = {
@@ -377,8 +377,8 @@ def cmd_system(args: argparse.Namespace) -> int:
     if pv["verified"]:  # 確認済みの種類だけ印を出す(#108。docs/scoring.md「確認済みの GPU の種類」)
         print(
             tr(
-                f"✓ 確認済みの種類({pv['kind']}。同梱の実測の出どころ {pv['sources']})",
-                f"✓ verified GPU kind ({pv['kind']}; {pv['sources']} sources in the bundled measurements)",
+                f"✓ 確認済みの種類({pv['kind']}。動いた機種: {'、'.join(pv['models'])})",
+                f"✓ verified GPU kind ({pv['kind']}; ran on: {', '.join(pv['models'])})",
             )
         )
     if s.overrides:

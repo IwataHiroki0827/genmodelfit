@@ -50,7 +50,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
    - 使用率は、NVIDIA なら `nvidia-smi`、AMD なら `amd-smi` か `rocm-smi`(Linux)、Intel なら `xpu-smi`(Linux)、Windows の AMD・Intel は Windows の性能カウンタ、Apple は `ioreg` で読みます。
    - GPU の空きを確かめられないときは、黙って進まずに止まります(`--force` で測れます)。例: NVIDIA で `nvidia-smi` が無い、同じ名前の GPU が複数あってどれか分からない、ComfyUI が別の PC。
    - NVIDIA 以外で使用率を読む道具が無いときは、止まらずに測ります。そのときは ComfyUI のキューが空なことと、ComfyUI 以外のアプリが GPU のメモリを半分より多く使っていないことだけを確かめ、注意と `note` に残します。ほかのアプリ(ゲーム・動画の書き出しなど)は閉じてから測ってください。
-   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、表の PC の行に「✓ 確認済みの種類」が付きません(段階は NVIDIA と同じ基準で決めます)。別々の出どころから 2 つ以上の実測が集まると、その種類の GPU に ✓ が付き、見積もりも詰められます。
+   - **AMD・Intel・Apple の GPU の実測は特に歓迎します**。まだ実測が無いので、表の PC の行に「✓ 確認済みの種類」が付きません(段階は NVIDIA と同じ基準で決めます)。2 機種以上の実測が集まると、その種類の GPU に ✓ が付き、見積もりも詰められます。
 2. テンプレートが使うモデルのファイルを ComfyUI の `models` フォルダに置きます。
    - 足りないときは、bench がどのファイルが無いかを表示します。
    - `genmodelfit download <テンプレート名> --comfyui-dir <ComfyUI のフォルダ>` で、一覧のファイルを ComfyUI の models に落とせます(sha256 で確かめます)。ライセンスが分からないファイルと gated のファイルは落としません。

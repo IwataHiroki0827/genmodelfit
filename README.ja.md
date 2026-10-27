@@ -52,7 +52,7 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 - Windows・Linux・macOS、Python 3.10 以上(`uvx` で使うときは、Python が無くても uv が用意します)。
 - GPU: NVIDIA(CUDA)は、NVIDIA の実測で較正した推定で判定します。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、
   Windows 11・Linux)・Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、
-  macOS 14 以降)を各社の対応表で判定します(段階は NVIDIA と同じ基準。表の PC の行の「✓ 確認済みの種類」は、別々の 2 つ以上の出どころの実測がある種類の GPU だけに付きます。今は NVIDIA の専用 VRAM の GPU)。内蔵 GPU・APU
+  macOS 14 以降)を各社の対応表で判定します(段階は NVIDIA と同じ基準。表の PC の行の「✓ 確認済みの種類」は、2 機種以上で動いた記録がある種類の GPU だけに付きます。今は NVIDIA の専用 VRAM の GPU)。内蔵 GPU・APU
   (Radeon 780M / 680M・Steam Deck・Ryzen Z1 など)は共有メモリで判定します。それ以外の GPU(Intel UHD・Iris Xe、2 CU の
   Radeon 610M / 820M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します
@@ -279,7 +279,7 @@ llmfit と同じく、動かし方で使うメモリ(GPU なら VRAM、CPU な�
 | **Too tight** | 98% 超 | 動かない(実測で段階を決めた行は、98% を超えても Good になる) |
 | **?** | — | 判定していない(ダウンロードの大きさが分からない) |
 
-GPU の会社による上限はありません。その種類の GPU を別々の 2 つ以上の出どころが測っていれば、PC の行に「✓ 確認済みの種類」と出ます([決まり](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.ja.md#確認済みの-gpu-の種類))。
+GPU の会社による上限はありません。その種類の GPU で 2 機種以上で動いた記録があれば、PC の行に「✓ 確認済みの種類」と出ます([決まり](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.ja.md#確認済みの-gpu-の種類))。
 印: VRAM の後ろの `m` = 実測(誰が測ったかは分けない)。印が無ければ式による推定です。
 実測は式より優先します。`--width` などを指定しなければ、どのモデルも種類ごとに同じ既定の設定で判定するので、設定の違う実測は
 見積もりをずらすだけです(印は付きません)。ほかの利用者の実測は同じ GPU(PCI の型番 ID、無ければ正規化した名前が同じで、VRAM の

@@ -672,7 +672,7 @@ def legend(
             else []
         ),
         *(
-            ["✓ verified GPU kind = runs on this kind of GPU are measured (no ✓: none yet; same rules)."]
+            ["✓ verified GPU kind = measured runs on 2+ GPU models of this kind (no ✓: not yet; same rules)."]
             if marks["verified"]
             else []
         ),
@@ -738,8 +738,8 @@ def _legend_ja(
         ),
         *(
             [
-                "✓ 確認済みの種類 = この種類の GPU で動くことを実測で確かめてある"
-                "(✓ が無い種類はまだ実測が無い。判定の基準は同じ)。"
+                "✓ 確認済みの種類 = この種類の GPU で、2 機種以上で動いた記録がある"
+                "(✓ が無い種類はまだ無い。判定の基準は同じ)。"
             ]
             if marks["verified"]
             else []

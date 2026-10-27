@@ -327,7 +327,7 @@ def test_gb10_level_has_no_platform_cap_and_is_not_verified(monkeypatch, tmp_pat
     e = estimate(entry(6.0), system, coefficients=Coefficients())
     assert e.fit == "perfect" and e.run_mode == "gpu"
     pv = platform_verification(system)
-    assert (pv["verified"], pv["kind"], pv["sources"]) == (False, "nvidia/shared", 0)
+    assert (pv["verified"], pv["kind"], pv["models"]) == (False, "nvidia/shared", [])
 
 
 @pytest.mark.parametrize(

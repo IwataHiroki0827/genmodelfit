@@ -109,14 +109,14 @@
 
 ## 確認済みの GPU の種類
 
-**1 文で**: この PC の GPU と同じ種類の GPU で動いた実測が別々の出どころから 2 つ以上あれば「✓ 確認済みの種類」と出す(段階には使わない)。
+**1 文で**: この種類の GPU で、2 機種以上で動いた記録があれば「✓ 確認済みの種類」と出す(段階には使わない)。
 
 - 種類 = 会社 × メモリの形(専用の VRAM / メインメモリと共有)。例: `nvidia/dedicated`、`amd/dedicated`、`amd/shared`(内蔵 GPU)、`apple/shared`、`nvidia/shared`(DGX Spark)。実測にはメモリの形の記録が無いので、GPU 名から決める(GB10・Apple は共有、AMD・Intel は名前の表の内蔵の印)。
-- 使う実測: 同梱の実測(作者の `measurements.json` とほかの利用者のまとめ。この PC の bench の保存は入れない)のうち、最後まで動いた(`outcome: ok`)標準の実測。ほかの利用者のまとめは、名前の表にある GPU で、`runs_evidence` が false でないもの。
-- 出どころの数(`estimate.kind_sources`): ほかの利用者は「実測で段階を決める条件」3 と同じ(出どころの ID の和集合)。作者の実測は、測った GPU ごとに 1 つ(別々の機械で動いたことの記録)。段階を決める条件(作者は合わせて 1 つ)より緩いのは、確かめるのが「その種類の GPU で動くか」で、1 台の値の確かさではないから。
-- 今(0.11.0)確認済みなのは `nvidia/dedicated` だけ(作者の RTX 5080 と RTX 3070 の実測)。NVIDIA 以外の GPU・DGX Spark は印なしで、段階は同じ基準で決める。
+- 使う実測: 同梱の実測(作者の `measurements.json` とほかの利用者のまとめ。この PC の bench の保存は入れない)のうち、最後まで動いた(`outcome: ok`)標準の実測で、重みを CPU 側に置いた逃がし方(`offload` が lowvram・novram・cpu)でないもの。ほかの利用者のまとめは、名前の表にある GPU で、`runs_evidence` が false でないもの。作業用メモリだけの値(bench の動的 VRAM)も、最後まで GPU で動いた記録なので数える。
+- 数えるのは**機種**(`estimate.kind_models`): 2 つの実測は、`same_gpu` と同じ決め方(両方に PCI の型番 ID があれば ID、無ければそろえた名前。専用の VRAM なら VRAM の比 0.95 以上も)で同じなら同じ機種。作者・この PC・ほかの利用者の実測を分けない。1 機種の実測は何件・何人でも 1 つ。汎用の名前(型番 ID も無い)は機種が決まらないので数えない。
+- 今(0.11.0)確認済みなのは `nvidia/dedicated` だけ(RTX 5080 と RTX 3070 の 2 機種)。NVIDIA 以外の GPU・DGX Spark は印なしで、段階は同じ基準で決める。
 - 出し方: 表(`recommend` / `fit` / `search`)の PC の行に「✓ 確認済みの種類」、`info` の段階の行、`system` の行。確認済みでなければ何も出さない。表の凡例に意味を 1 行。`--vram` で VRAM を仮定したときは GPU が仮定なので出さない。
-- JSON: `system.platform_verified`(true / false)と `system.platform_verified_by`(確認済みのとき `{"kind", "sources", "gpus"}`、そうでなければ null)。ライブラリは `gmf.platform_verification(system)`。
+- JSON: `system.platform_verified`(true / false)と `system.platform_verified_by`(確認済みのとき `{"kind", "models"}`。`models` は動いた機種の名前。そうでなければ null)。ライブラリは `gmf.platform_verification(system)`。
 - 自動のおすすめ(gate)には入れない。gate は PC によらない作り(モデルの情報だけ)で、入れると AMD・Apple などで自動のおすすめが 0 になる。使う側のアプリが自分で判断に使う。
 - 0.11.0 より前は、NVIDIA 以外の GPU と DGX Spark の段階を、この種類の GPU で動いた実測が無いことを理由に Good までにしていた。ほかの利用者の提出が集まらないと外れないので、上限をやめて印にした(llmfit も確からしさは段階でなく印で示す)。同じ GPU の実測は段階を上げるだけで、下げない(#95 の「実測で perfect → good に下げる」分岐も外した)。
 - 影響: AMD 16 GB で 65 行、Apple 16 GB で 46 行、Apple 32 GB で 87 行、DGX Spark で 317 行が Good → Perfect。AMD 16 GB の段階の分布(Perfect 65・Good 117・Marginal 96・動かない 47)は NVIDIA 16 GB(69・113・96・47)とほぼ同じ。
@@ -335,7 +335,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 | 作り物の 1.0 GB の Flux で Perfect にならない・1 人の 4 件では決めない・作者 1 + 提出 1 で決まる・作者の 2 行は 1 つ | `test_fake_small_submission_does_not_make_flux_perfect`、`test_one_source_with_many_files_does_not_set_the_level`、`test_author_one_and_community_one_agree`、`test_author_rows_are_one_source` |
 | 逃がすのは Good まで・段階が上がるときだけ・GPU の Perfect / Good は替わらない・メインメモリも見る・限界は GPU の行だけ(#108) | `tests/test_levels.py`(`test_offload_is_capped_at_good_and_chosen_only_when_it_raises_the_level` ほか) |
 | CPU の上限(読み上げ・道具は Good、生成は Marginal)・メインメモリの帯 | `tests/test_levels.py::test_cpu_only_caps`、`test_cpu_top_table`、`test_cpu_level_uses_the_ram_band` |
-| 確認済みの種類(NVIDIA の専用 VRAM は true、AMD・Apple・GB10 は false)・✓ は確認済みだけ・gate は種類によらない・AMD と NVIDIA の分布が近い・VRAM とメモリを増やして段階が下がらない | `tests/test_levels.py` |
+| 確認済みの種類(NVIDIA の専用 VRAM は true、AMD・Apple・GB10 は false。1 機種は何件でも未確認、2 機種で確認済み、出どころを分けない)・✓ は確認済みだけ・gate は種類によらない・AMD と NVIDIA の分布が近い・VRAM とメモリを増やして段階が下がらない | `tests/test_levels.py` |
 
 `SCHEMA_VERSION`(同梱・配布の db.json の形の版)は変えていません。出力の意味が変わったので、パッケージは 0.11.0 です([CHANGELOG.md](../CHANGELOG.md))。
 
