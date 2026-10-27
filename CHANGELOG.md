@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Measurements of templates without a size input are now used** (#90). Templates that work from an input image
+  (depth estimation, background removal, MoGe, BiRefNet, …) have no width / height input, so the bench records no
+  size; judging used the image default (1024x1024), so such measurements never matched and were never used (the
+  bundled RTX 3070 BiRefNet measurement, and every community one). Now a model whose standard measurements all lack a
+  width and height is taken to have no size input (`estimate.no_size_input`; the bench writes a size only when the
+  template has one, `workflow.size_input`), and when no size is given its judging settings carry no size, so a
+  size-less measurement matches. The working memory is still estimated at the default size, so estimates of models
+  without measurements are unchanged. `contrib validate` warns `settings_missing` only when another standard
+  measurement of the model has a size. The bench no longer reads a `batch_size` outside the size / latent nodes as the
+  batch (MoGe's processing batch of 4 was recorded as `batch: 4`); the bundled RTX 3070 MoGe measurement is corrected
+  to `batch: 1` (calibration unchanged).
+
 ## [0.10.1] - 2026-10-26
 
 ### Changed

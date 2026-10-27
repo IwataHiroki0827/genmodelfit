@@ -801,6 +801,10 @@ def apply_precision(parts: Parts, entry: ModelEntry, s: Settings) -> Parts:
 def activation_features(modality: str, s: Settings, c: Coefficients) -> dict[str, float]:
     """作業用メモリの係数に掛ける量。calibrate も同じものを使う。負の値は 0 に切り上げる。"""
     mp = max(0.0, s.megapixels or 0.0)
+    if not s.width and not s.height and modality in ("image", "video"):
+        # 大きさの入力の無いテンプレート(no_size_input。入力の画像から作る)の設定は大きさを持たない。
+        # 作業用メモリは今までどおり種類の既定の大きさで見積もる(#90)
+        mp = DEFAULT_SETTINGS[modality].megapixels or 0.0
     batch = max(1, s.batch or 1)
     if modality == "image":
         return {"act_image_gb_per_mp": mp * batch}
@@ -1093,11 +1097,37 @@ def pick_measurement(
 _POSITIVE = ("width", "height", "frames", "seconds", "steps")
 
 
-def settings_for(entry: ModelEntry, settings: Settings | None, base: Settings | None = None) -> Settings:
+def no_size_input(entry: ModelEntry, measurements: Iterable[Measurement]) -> bool:
+    """テンプレートに大きさ(幅・高さ)の入力が無いか(入力の画像から作る深度推定・背景除去など。#90)。
+
+    bench は、テンプレートの大きさを決めるノードに幅・高さの入力があるときだけ設定に幅・高さを書く
+    (workflow.size_input)。なので画像・動画のモデルで、そのモデルの標準の実測(結果によらない。作者・この PC・
+    ほかの利用者)に幅・高さの無いものがあり、幅・高さのあるものが 1 件も無ければ、大きさの入力は無い。
+    実測の無いモデル・幅・高さのある実測が 1 件でもあるモデルは False
+    (今までどおり種類の既定の大きさで判定する)。
+    判定(_prepare の設定)と contrib validate の settings_missing がこれを使う。"""
+    if entry.modality not in ("image", "video"):
+        return False
+    found = False
+    for m in measurements:
+        if m.model_id != entry.id or m.standard is False:
+            continue
+        if m.settings.width or m.settings.height:
+            return False
+        found = True
+    return found
+
+
+def settings_for(
+    entry: ModelEntry, settings: Settings | None, base: Settings | None = None, *, sized: bool = True
+) -> Settings:
     """指定の無い項目を埋める。base(実測の設定)があればそれを、無ければ種類ごとの既定を使う。
-    0 以下の解像度・コマ数・長さは指定が無いものとして扱う。"""
+    0 以下の解像度・コマ数・長さは指定が無いものとして扱う。sized が False(大きさの入力の無いテンプレート。
+    no_size_input)なら、既定の大きさは入れない(指定があれば使う。#90)。"""
     src = base or DEFAULT_SETTINGS.get(entry.modality, Settings())
     merged = Settings(**vars(src))
+    if not sized and base is None:
+        merged.width = merged.height = None
     if settings is not None:
         for k, v in vars(settings).items():
             if v is None or (k in _POSITIVE and not v > 0):
@@ -1167,13 +1197,16 @@ def _prepare(
     c: Coefficients,
     s: Settings | None = None,
     gpu: Any = None,
+    sized: bool | None = None,
 ) -> _Model:
     measurements = list(measurements)
+    if sized is None:  # 大きさの入力があるか(ほかの利用者の実測も含めた全部の実測で決める。#90)
+        sized = not no_size_input(entry, measurements)
     parts = components(entry)
     m = None if parts.unknown else pick_measurement(measurements, entry, s, gpu)
     if m is None:
-        return _Model(entry, c, None, 0.0, settings_for(entry, None), parts)
-    at = settings_for(entry, m.settings)
+        return _Model(entry, c, None, 0.0, settings_for(entry, None, sized=sized), parts)
+    at = settings_for(entry, m.settings, sized=sized)
     act_m = activation_gb(entry, at, c)
     est = need(parts, act_m, c).full
     delta = m.peak_vram_gb - est
@@ -1183,7 +1216,7 @@ def _prepare(
         # GPU の総量を超えた値は使わない。張り付いた実測(動的 VRAM が空きを使い切った)は
         # 「これ以上」としてだけ使う。
         # 判定する既定の設定は own のまま(小さな設定の提出で、既定の設定そのものを小さくしない)
-        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu)
+        own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu, sized)
         lo = 0.0 if is_censored(m) else -max(0.0, act_m)
         hi = max(lo, peak_vram_cap(m) - est)
         clamp = "floor" if delta < lo else ("cap" if delta > hi else None)

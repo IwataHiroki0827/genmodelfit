@@ -90,3 +90,25 @@ def test_rtx3070_rows_are_bundled_but_not_used_for_calibration():
     used = {r.m.model_id for r in build_rows(db)}
     assert not used & {m.model_id for m in rows3070}
     assert len(build_rows(db)) == 9
+
+
+def test_sizeless_template_records_no_size_and_batch_one():
+    """大きさの入力の無いテンプレート(MoGe)は幅・高さを書かず、MoGe の batch_size(処理の単位)を枚数と
+    読まない(#90)。大きさの入力のあるテンプレートは今までどおり。"""
+    conv = w.ui_to_api(_ui([9, 0, 4, True, True, 3]), {"MoGeInference": MOGE_INFO, "SaveGeom": SAVE_INFO})
+    assert not w.size_input(conv.workflow)
+    s = w.effective_settings(conv.workflow, precision="fp16")
+    assert (s.width, s.height, s.batch) == (None, None, 1)
+    sized = {
+        "1": {"class_type": "EmptyLatentImage", "inputs": {"width": 832, "height": 640, "batch_size": 2}},
+        "2": {"class_type": "ImageScale", "inputs": {"image": ["9", 0], "width": ["7", 0], "height": 512}},
+    }
+    assert w.size_input(sized)
+    s = w.effective_settings(sized)
+    assert (s.width, s.height, s.batch) == (832, 640, 2)
+    linked = {
+        "2": {"class_type": "ImageScale", "inputs": {"image": ["9", 0], "width": ["7", 0], "height": 512}}
+    }
+    assert not w.size_input(linked) and w.effective_settings(linked).width is None
+    audio = {"1": {"class_type": "EmptyAceStep1.5LatentAudio", "inputs": {"seconds": 20.0, "batch_size": 2}}}
+    assert w.effective_settings(audio).batch == 2  # 音声の潜在の枚数は今までどおり読む

@@ -214,6 +214,10 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
    - **So in the `fit` list, models with a measurement (768–832px and so on) and models without (1024px and so on) are compared at different settings**
      (shown in each row's `estimate.settings` and in the reason's 「設定:」 ("Settings:") line).
    - To compare at the same settings, give `--width` and the like.
+   - A template without a size input (depth estimation, background removal and the like, which work from an input image) has no size in its judging settings (#90).
+     - The bench writes a width and height into a measurement only when the template has a size input, so if the model's standard measurements all lack a width and height, the template is taken to have no size input (`estimate.no_size_input`).
+     - A size-less measurement then has the same settings as a judgment without settings. With `--width` and the like, things work as before.
+     - The working memory is still estimated at the default size for the type (image 1024px and so on).
 5. Without a GPU (`--vram 0` and so on), GPU measurements are not used: `basis: "estimated"`, `measured_on: null`.
 6. These measurements are used neither for estimates nor for refitting (written by the bench in #5):
    - `outcome` is not `ok` (OOM, error).

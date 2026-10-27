@@ -49,11 +49,12 @@ from .estimate import (
     PEAK_VRAM_SLACK_GB,
     PRECISION_BYTES,
     gpu_key,
+    no_size_input,
     norm_precision,
 )
 from .hardware import APPLE_CHIP_NAME, arch_of, cc_from_name, intel_xpu, parse_compute_cap, pci_name_conflict
 from .i18n import tr
-from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
+from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, ModelEntry, Settings, SystemInfo
 
 CONTRIB_SCHEMA = 1
 CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足す)
@@ -1316,7 +1317,11 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
         mod = entry.modality
         if mod not in MODALITIES:
             return
-        if mod in ("image", "video") and (s.get("width") is None or s.get("height") is None):
+        if (
+            mod in ("image", "video")
+            and (s.get("width") is None or s.get("height") is None)
+            and not _no_size_input(entry, s, db)
+        ):
             r.warn(
                 "settings_missing",
                 tr(
@@ -1336,6 +1341,19 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
                     f"seconds (length) is missing for a {mod} model",
                 ),
             )
+
+
+def _no_size_input(entry: ModelEntry, s: dict[str, Any], db: Database | None) -> bool:
+    """テンプレートに大きさの入力が無いか(estimate.no_size_input)。この提出も実測の 1 件として数えるので、
+    同じモデルの標準の実測に幅・高さのあるものが無ければ settings_missing を出さない(#90)。"""
+    this = Measurement(
+        model_id=entry.id,
+        gpu_name="",
+        gpu_vram_gb=0.0,
+        peak_vram_gb=0.0,
+        settings=Settings(width=s.get("width"), height=s.get("height")),
+    )
+    return no_size_input(entry, [*(db.measurements if db is not None else []), this])
 
 
 def _check_against_estimate(

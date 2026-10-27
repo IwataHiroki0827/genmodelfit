@@ -707,6 +707,119 @@ def test_torch_reserved_is_a_lower_bound(db):
         assert with_m.basis == "estimated" and with_m.basis_detail == "calibrated"
 
 
+# --- 大きさの入力の無いテンプレート(#90) -----------------------------------------------------------
+
+SIZELESS = ("utility_birefnet_remove_background", "utility_moge_depth_estimation")
+
+
+def _sizeless_sub(mid: str, peak: float, gpu: str = "NVIDIA GeForce RTX 3070") -> contrib.Submission:
+    """bench が大きさの入力の無いテンプレートで書く提出(settings に幅・高さが無い)。"""
+    d = good()
+    d["system"]["gpu"]["name"] = gpu
+    d["measurement"].update(
+        model_id=mid, peak_vram_gb=peak, settings={"precision": "fp16"}, offload="dynamic"
+    )
+    return contrib.Submission(path="-", sha256=contrib.content_hash(d), data=d)
+
+
+def test_no_size_input_is_decided_from_the_bench_records(db):
+    from genmodelfit.estimate import no_size_input
+
+    assert no_size_input(db.get("utility_birefnet_remove_background"), db.measurements)
+    # 3d は大きさを持たない種類、実測の無いモデル・幅のある実測のあるモデルは今までどおり
+    assert not no_size_input(db.get("3d_moge_perspective_to_mesh"), db.measurements)
+    assert not no_size_input(db.get("utility_moge_depth_estimation"), db.measurements)
+    assert not no_size_input(db.get("image_sdxl_simple"), db.measurements)
+    moge = db.get("utility_moge_depth_estimation")
+    cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(moge.id, 2.5)])]
+    assert no_size_input(moge, cm)
+    sized = Measurement(
+        model_id=moge.id, gpu_name="x", gpu_vram_gb=8, peak_vram_gb=2, settings=Settings(512, 512)
+    )
+    assert not no_size_input(moge, [*cm, sized])  # 幅・高さのある実測が 1 件でもあれば大きさの入力がある
+    nonstd = Measurement(model_id=moge.id, gpu_name="x", gpu_vram_gb=8, peak_vram_gb=2, standard=False)
+    assert not no_size_input(moge, [nonstd])  # 自分のワークフロー(標準でない)は数えない
+
+
+def test_bundled_sizeless_author_measurements_match_without_a_size(db):
+    """同梱の作者の実測(RTX 3070、大きさ無し)が、指定の無い判定と同じ設定になって使われる。作者の
+    torch_reserved は下限としてだけ使う(test_torch_reserved_is_a_lower_bound)ので、値は式のまま。"""
+    from genmodelfit.estimate import _prepare, _settings_match, load_coefficients
+
+    for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
+        entry = db.get(mid)
+        system = pc(8)
+        est = estimate(entry, system, None, db.measurements)
+        s = Settings(**est.settings)
+        assert s.width is None and s.height is None and s.batch == 1, est.settings
+        prep = _prepare(entry, db.measurements, load_coefficients(), s, system.best_gpu)
+        m = prep.measurement
+        assert (
+            m is not None
+            and m.gpu_name == "NVIDIA GeForce RTX 3070"
+            and _settings_match(m.settings, s, entry)
+        )
+        assert prep.clamped and est.basis_detail == "calibrated" and est.fit == "perfect"
+        # 値は今までどおり(作業用メモリは種類の既定の大きさで見積もる)
+        if entry.modality == "image":
+            at1024 = estimate(entry, system, Settings(width=1024, height=1024), db.measurements)
+            assert at1024.settings["width"] == 1024 and at1024.vram_gb == est.vram_gb
+            assert estimate(entry, system, None, []).vram_gb == est.vram_gb
+
+
+def test_sizeless_community_measurement_is_used_on_the_same_gpu(db):
+    """#90 の通し試験: 大きさの無い提出(MoGe 深度推定。PR #92)が、同じ GPU の PC の判定に使われる
+    (BiRefNet は同じ GPU の作者の実測が先に選ばれる。pick_measurement の並び)。"""
+    for mid in ("utility_moge_depth_estimation",):
+        entry = db.get(mid)
+        before = estimate(entry, pc(8), None, db.measurements)
+        peak = round(_floor(entry, Settings(precision="fp16")) + 0.2, 2)
+        cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(mid, peak)])]
+        after = estimate(entry, pc(8), None, [*db.measurements, *cm])
+        assert "width" not in after.settings
+        assert after.basis == "measured" and after.basis_detail == "measured_community", (mid, after)
+        assert after.measured_on == "NVIDIA GeForce RTX 3070 (8 GB)" and after.sample_count == 1
+        assert after.vram_gb == peak and after.vram_gb < before.vram_gb
+        # 別の GPU の PC の判定は変えない
+        other = pc(24, "NVIDIA GeForce RTX 4090")
+        a, b = (
+            estimate(entry, other, None, db.measurements),
+            estimate(entry, other, None, [*db.measurements, *cm]),
+        )
+        assert (a.vram_gb, a.basis, a.fit) == (b.vram_gb, b.basis, b.fit) and b.basis == "estimated"
+        # 大きさを指定したときは今までどおり(実測とは違う設定 = 補正した推定)
+        sized = estimate(entry, pc(8), Settings(width=1024, height=1024), [*db.measurements, *cm])
+        assert sized.basis == "estimated" and sized.settings["width"] == 1024
+
+
+def test_settings_missing_only_for_templates_with_a_size_input(db):
+    for mid in SIZELESS:
+        r = contrib.validate_submission(_sizeless_sub(mid, 1.5).data, db, today=TODAY, check_filename=False)
+        assert r.ok and "settings_missing" not in {w["code"] for w in r.warnings}, (mid, r.warnings)
+    d = good()  # image_sdxl_simple は作者の実測に大きさがある(大きさの入力のあるテンプレート)
+    d["measurement"]["settings"] = {"steps": 20}
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
+    d["measurement"]["settings"] = {"width": 832, "steps": 20}  # 片方だけも
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
+
+
+def test_unmeasured_models_keep_the_default_size(db):
+    """実測の無い画像・動画のモデルの判定の設定と値は今までどおり(種類の既定の大きさ)。"""
+    measured = {m.model_id for m in db.measurements}
+    n = 0
+    for e in db.models:
+        if e.modality not in ("image", "video") or e.id in measured:
+            continue
+        est = estimate(e, pc(8), None, db.measurements)
+        if est.unknown_size:
+            continue
+        assert est.settings["width"] and est.settings["height"], e.id
+        n += 1
+    assert n > 100
+
+
 ORDER = ["too_tight", "marginal", "good", "perfect", "unknown"]
 
 
