@@ -65,9 +65,9 @@ An item goes into the verdict, the score or the order only if it passes all four
    - Up to 0.10, the author's measurements counted on any GPU of the same vendor with at least 0.97 × the measured VRAM (for example, Wan2.2 5B measured on an RTX 5080 was Good / GPU on an RTX 4060 Ti 16 GB). That favoured the author and was dropped.
 2. **Same settings**: resolution, frames, length, batch and precision match. Same vendor (`gpu_backend`, else the GPU name). Measured with the current list's files (`files_fp`) on a GPU in the name table (`gpu_known`).
 3. **Two or more independent sources** (`MIN_LEVEL_SOURCES`):
-   - The author's measurements (`measurements.json`): **each row is one source**. The rows are separate runs by the author (for example Wan2.2 5B "image to video" and "text to video").
+   - The author's measurements (`measurements.json`; this PC's saved bench results are treated the same): **however many rows there are for the same model, GPU and settings, together they are one source** (`estimate.count_sources`). The author alone never sets the level.
    - Other users' measurements: the aggregated row's `n_sources` (one per commit = pull request that added submissions, #90). Older rows without `n_sources` count as one.
-   - Author rows and other users' rows for the same GPU and settings are added up (one author row + one submission = 2).
+   - The author and other users are added up for the same GPU and settings (the author + one submission = 2).
    - With only one source, the level is not set and the values are only shifted ("Shifting values with measurements" below). The reasons say "only one source".
 4. **They agree** (`CONSISTENT_REL`; the same definition as `consistent` in `contrib aggregate`):
    - No OOM record: no row with `outcome: oom` for the same setup, no aggregated row with `n_oom`, and none with `runs_evidence: false` (OOM sources at least as many as ok sources).
@@ -80,10 +80,10 @@ An item goes into the verdict, the score or the order only if it passes all four
    - If the amount exceeds this PC's VRAM, the level is not set.
 6. **Level** = the band of this amount ÷ VRAM, at least Good (the runs finished). If any agreeing measurement hit the GPU limit (dynamic VRAM used up the free space), at most Good. The run mode is GPU.
 
-`Estimate.sample_count` is the number of independent sources behind the value (1 for an author measurement, `n_sources` for other users, the sum of agreeing sources when measurements set the level). Up to 0.10 it was the number of submissions (`n_used`).
+`Estimate.sample_count` is the number of independent sources behind the value (1 for the author's measurements however many rows, `n_sources` for other users, the sum of agreeing sources when measurements set the level). Up to 0.10 it was the number of submissions (`n_used`).
 
 Examples (bundled measurements):
-- Wan2.2 5B on an RTX 5080 16 GB (with 640x640, 73 frames): two author rows (15.8 / 15.0 GB) agree, but weights + fixed part is about 18.4 GB and does not fit in 15.9 GB (the measurement offloaded part of the weights with dynamic VRAM), so the level comes from the estimate (Marginal, GPU+RAM). Up to 0.10 it was Good, GPU (#26).
+- **Example: Wan2.2 5B on an RTX 5080 16 GB** (with 640x640, 73 frames; the author's two rows, 15.8 / 15.0 GB, are one source together). Weights + fixed part is about 18.4 GB, which cannot all fit in 15.9 GB. The measurement ran to the end with ComfyUI's dynamic VRAM keeping part of the weights in system RAM (offload: dynamic, a value at the GPU limit). So it is a record of "runs by offloading", and the right level is the offload level (Marginal, GPU+RAM). Even with agreeing submissions from other users, the floor of the amount (weights + fixed part) exceeds the VRAM, so measurements never make it a GPU level. From 0.7.0 to 0.10 it was Good, GPU (#26).
 - SDXL on an RTX 5080 (with 832px): only one author row, so no level from measurements. One agreeing submission from another user on the same GPU and settings would set it.
 
 The four checks:
@@ -256,7 +256,7 @@ Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fi
 | (e) The run date does not change the table order or Score | `test_e_run_date_does_not_change_table_order_or_score` |
 | (f) The allowlist does not change the table order or Score | `test_f_allowlist_does_not_change_table_order_or_score` |
 | (g) Measurements without a size are used | `test_g_measurements_without_size_are_used` |
-| A fake 1.0 GB Flux is not Perfect; one person's four files do not set the level; one author row + one submission do | `test_fake_small_submission_does_not_make_flux_perfect`, `test_one_source_with_many_files_does_not_set_the_level`, `test_author_one_and_community_one_agree` |
+| A fake 1.0 GB Flux is not Perfect; one person's four files do not set the level; the author + one submission do; two author rows are one source | `test_fake_small_submission_does_not_make_flux_perfect`, `test_one_source_with_many_files_does_not_set_the_level`, `test_author_one_and_community_one_agree`, `test_author_rows_are_one_source` |
 
 `SCHEMA_VERSION` (the shape version of the bundled and released db.json) is unchanged. The meaning of the output changed, so the package is 0.11.0 ([CHANGELOG.md](../CHANGELOG.md)).
 

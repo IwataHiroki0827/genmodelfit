@@ -507,7 +507,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `fit_from` | str | (0.7.0、#26)`estimate`(段階が見積もりから来る)か `measurement`。詳しくは下 |
 | `measured_peak_vram_gb` | float \| null | (0.7.0)`fit_from` が `measurement` のときの、そろった実測の VRAM のピークの一番大きいもの(文脈の分を足す前) |
 | `measured_level_vram_gb` | float \| null | (0.11.0)`fit_from` が `measurement` のときの、段階に使った量: max(ピーク + 文脈の分, 重み + 固定分)。表の VRAM の列(`m` / `c` を付ける)・Mem%・`memory_required_gb` はこの値 |
-| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は 1 行で 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
+| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
 | `measured_on` | str \| null | `basis` が `measured` のときの、実測した GPU(GPU 無しで判定したときは null) |
 | `fit` | str | 下の 4 つの段階、または `unknown`(大きさが不明で判定していない) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
@@ -544,7 +544,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 `fit_from`(0.7.0、#26。条件は 0.11.0 で変えた): `estimate`(段階が見積もりから来る)か `measurement`。
 `measurement` になる条件と段階(`estimate.measured_level`。詳しくは [scoring.ja.md](scoring.ja.md)「実測で段階を決める条件」):
 - この PC と**同じ GPU**(`estimate.same_gpu`: PCI 型番 ID が同じ、無ければ正規化した名前が同じ。かつ VRAM の比が 0.95 以上。汎用の名前は決して合わない)の、同じ設定・同じベンダーの標準の実測。保守者の実測もほかの利用者の実測も同じ規則(0.10 までは、保守者の実測は同じベンダーで VRAM が測った GPU 以上ならどの GPU にも効いた)。
-- **別々の出どころが 2 つ以上**: 保守者の実測は 1 行で 1 つ、ほかの利用者はまとめの `n_sources`。足して数える。
+- **別々の出どころが 2 つ以上**: 保守者 / この PC の実測は何行あっても合わせて 1 つ(保守者だけでは決めない)、ほかの利用者はまとめの `n_sources`。足して数える(`estimate.count_sources`)。
 - **そろっている**: OOM の記録が無い(`outcome: oom` の行・`n_oom`・`runs_evidence: false` が無い)、まとめの行の中もそろっている(`consistent`)、行どうしの幅が中央値の 15% 以内。
 - 段階に使う量 = max(そろった一番大きいピーク + 文脈の分, 重み + 固定分)(`measured_level_vram_gb`)。`torch_reserved` のピークには `estimate.TORCH_RESERVED_CONTEXT_GB`(0.5 GiB)を足す。この量がこの PC の VRAM に収まらなければ決めない。
 - 段階は少なくとも Good。Perfect にするのは、その量がこの VRAM の 60% 以内で、GPU の上限に張り付いた実測が無いときだけ。

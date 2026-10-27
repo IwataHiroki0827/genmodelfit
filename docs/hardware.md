@@ -459,7 +459,7 @@ The level is decided by measurements (`Estimate.fit_from: measurement`) when all
 
 - There is a measurement that succeeded (`outcome: ok`) at the same settings with the standard workflow.
 - Its GPU is **the same GPU** as this PC's (`estimate.same_gpu`: the model ID or the normalized name, and a VRAM ratio of 0.95 or more). The same rule for the author's and other users' measurements (up to 0.10 the author's counted on any same-vendor GPU with at least the measured VRAM).
-- There are two or more independent sources (each author row is one, other users' rows count their `n_sources`) and they agree (no OOM record, spread within 15% of the median).
+- There are two or more independent sources (the author's rows are one together, however many; other users' rows count their `n_sources`) and they agree (no OOM record, spread within 15% of the median).
 - The amount used for the level = max(largest peak + context, weights + fixed part) fits in this PC's VRAM.
 
 How the level is decided:
@@ -484,7 +484,7 @@ Other points:
 - The main memory check is done as usual.
 - The reason starts with "N independent sources ran to the end on the same GPU as this PC (...) with the same settings and agree ... (level from the measurements)", and the VRAM in the table is the amount used for the level (m / c).
 - If the measurement is from another GPU, has only one source or does not agree, the reason says "the level comes from the estimate (...)".
-- Example: Wan 2.2 5B (two author rows on an RTX 5080 16 GB: 15.8 / 15.0 GB) does not fit with weights + fixed part (about 18.4 GB) in 15.9 GB even at 640x640 with 73 frames, so from 0.11.0 the level comes from the estimate (Marginal / offload; Good / GPU from 0.7.0 to 0.10). It stays Marginal / offload on an RTX 3060 12 GB.
+- Example: Wan 2.2 5B (two author rows on an RTX 5080 16 GB: 15.8 / 15.0 GB; one source together, and a record of running by offloading part of the weights with dynamic VRAM) does not fit with weights + fixed part (about 18.4 GB) in 15.9 GB even at 640x640 with 73 frames, so from 0.11.0 the level comes from the estimate (Marginal / offload; Good / GPU from 0.7.0 to 0.10). It stays Marginal / offload on an RTX 3060 12 GB.
 
 ## Memory and virtual memory
 

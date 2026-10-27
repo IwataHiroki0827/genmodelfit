@@ -59,21 +59,23 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
 - **Measurements set the level only on the same GPU, and only when two or more independent sources agree** (#95).
   The maintainer's measurements now follow the same rule as other users' (`estimate.same_gpu`; before, they counted on
   any same-vendor GPU with at least the measured VRAM, e.g. Wan2.2 5B measured on an RTX 5080 was Good / GPU on an
-  RTX 4060 Ti 16 GB). Each maintainer row is one source; an aggregated community row counts its `n_sources` (one per
+  RTX 4060 Ti 16 GB). The maintainer's rows are one source together, however many (the maintainer alone never sets
+  the level); an aggregated community row counts its `n_sources` (one per
   pull request); they are added up. They must agree (no OOM record, aggregated rows `consistent`, spread across rows
   within 15% of the median). The amount used for the level is max(largest peak + context, weights + fixed part), the
   same physical floor as the values; the table's VRAM, Mem% and `memory_required_gb` show it (new
   `estimate.measured_level_vram_gb`; `measured_peak_vram_gb` keeps the raw peak). With one source the values are
   still shifted (from one submission) but the level comes from the estimate, and the reasons say why. The same applies
   to lifting the Good cap of AMD / Intel / Apple GPUs. Wan2.2 5B on an RTX 5080 at 640x640 / 73 frames is no longer
-  Good / GPU from the maintainer's two rows: its weights + fixed part (about 18.4 GB) does not fit 15.9 GB (the
-  measurement offloaded part of the weights with dynamic VRAM).
+  Good / GPU (#26): the maintainer's two rows are one source, and its weights + fixed part (about 18.4 GB) does not
+  fit 15.9 GB. The measurement finished by offloading part of the weights with dynamic VRAM, so the right level is
+  the offload level (Marginal, GPU+RAM); docs/scoring.md works through this example.
 - **The same GPU now allows a VRAM ratio of 0.95 (was 0.97)** (#95; `estimate.MEASURED_VRAM_TOLERANCE`). Linux CUDA
   reports the total minus a reservation (a 6 GB card as 5934 MiB = 5.80 GiB, e.g. an RTX 2060 on the NVIDIA developer
   forum; 7.79 for 8 GB, 11.77 for 12 GB, 23.69 for 24 GB) while Windows reports about 6.0, so Linux and Windows owners
   of the same 6 GB card (5.80 / 6.0 = 0.967) never shared measurements. Variants with another amount still never match
   (ratio 0.83 or less: RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RTX 2060 6 / 12 GB, RTX 3080 10 / 12 GB).
-- `Estimate.sample_count` is now the number of independent sources (1 per maintainer row, `n_sources` for community
+- `Estimate.sample_count` is now the number of independent sources (1 for the maintainer's rows together, `n_sources` for community
   rows, the sum when measurements set the level), not the number of submissions; the reasons say
   "measurements by other users (N source(s); median … GB)".
 - The table legend, `--help` and the Python docstrings explain the new Score and order. CONTRIBUTING recommends

@@ -1538,8 +1538,10 @@ def test_measurement_vendor_prefers_the_recorded_backend(db):
     )
     prec = gpu_precision(entry, apple, s)
     chip = Measurement(**{**vars(mps), "gpu_name": "Apple M2 Pro"})
-    chip2 = Measurement(**{**vars(chip), "peak_vram_gb": 8.2})
-    assert measured_level([chip, chip2], entry, s, apple, prec, 0.0)[0] is not None
+    chip2 = Measurement(**{**vars(chip), "peak_vram_gb": 8.2})  # 作者・この PC の行は何行あっても 1 つ
+    assert measured_level([chip, chip2], entry, s, apple, prec, 0.0)[0] is None
+    other = Measurement(**{**vars(chip2), "origin": "community", "n_sources": 1, "n_oom": 0})
+    assert measured_level([chip, other], entry, s, apple, prec, 0.0)[0] is not None
     assert measured_level([chip], entry, s, apple, prec, 0.0)[0] is None  # 出どころ 1 つ
     assert measured_level([mps, mps], entry, s, apple, prec, 0.0)[0] is None
 
@@ -1830,8 +1832,10 @@ def test_good_cap_needs_the_same_gpu_name(db):
     assert e.fit == "good" and not any("上限(good)を外した" in x for x in e.reasons)
     same = Measurement(**{**vars(other), "gpu_name": FAKE_AMD})
     assert estimate(entry, amd_pc(), None, [*maint, same]).fit == "good"  # 出どころ 1 つ(#95)
-    same2 = Measurement(**{**vars(same), "peak_vram_gb": 5.2})
-    assert estimate(entry, amd_pc(), None, [*maint, same, same2]).fit == "perfect"
+    same2 = Measurement(**{**vars(same), "peak_vram_gb": 5.2})  # 作者・この PC の行は何行あっても 1 つ
+    assert estimate(entry, amd_pc(), None, [*maint, same, same2]).fit == "good"
+    other = Measurement(**{**vars(same2), "origin": "community", "n_sources": 1, "n_oom": 0})
+    assert estimate(entry, amd_pc(), None, [*maint, same, other]).fit == "perfect"
 
 
 @pytest.mark.parametrize(

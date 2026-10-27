@@ -516,3 +516,25 @@ def test_author_one_and_community_one_agree(db):
     assert measured_level([*own, oom], entry, s, system, prec, 0.0)[0] is None
     no_run = Measurement(**{**vars(other), "runs_evidence": False})
     assert measured_level([*own, no_run], entry, s, system, prec, 0.0)[0] is None
+
+
+def test_author_rows_are_one_source(db):
+    """作者の実測(measurements.json)は何行あっても合わせて 1 つの出どころ。作者だけでは段階を決めない
+    (Wan2.2 5B の作者の 2 行がそろっても 1 つ。docs/scoring.md「実測で段階を決める条件」)。"""
+    from genmodelfit.estimate import count_sources
+
+    wan = [m for m in db.measurements if m.model_id == "video_wan2_2_5B_ti2v"]
+    assert len(wan) == 2 and count_sources(wan) == 1
+    entry = db.get("image_sdxl_simple")
+    system = nvidia(RTX_5080, 15.9)
+    s = Settings(width=832, height=832)
+    own = next(m for m in db.measurements if m.model_id == entry.id)
+    twin = Measurement(**{**vars(own), "peak_vram_gb": 8.1})  # そろった作者の 2 行目
+    lvl, why = measured_level([own, twin], entry, s, system, gpu_precision(entry, system, s), 0.0)
+    assert lvl is None and "出どころが 1 つだけ" in why
+    e = estimate(entry, system, s, [own, twin])
+    assert e.fit_from == "estimate" and e.sample_count == 1
+    community = Measurement(
+        **{**vars(twin), "origin": "community", "n_sources": 2, "consistent": True, "n_oom": 0}
+    )
+    assert count_sources([own, twin, community]) == 3

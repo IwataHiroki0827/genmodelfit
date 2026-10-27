@@ -482,8 +482,9 @@ class Estimate:
     # 表の VRAM と Mem% はこの値
     measured_level_vram_gb: float | None = None
     # 値の元になった実測の、別々の出どころの数(2026-10-22。llmfit の sample_count。#95 で件数から出どころの
-    # 数に)。作者・この PC の実測は 1 行で 1、ほかの利用者のまとめは n_sources。段階を実測で決めたときは
-    # そろった出どころの合計。実測を使っていない(basis_detail が estimated)ときは None
+    # 数に)。作者・この PC の実測は 1(何行あっても合わせて 1)、ほかの利用者のまとめは n_sources。
+    # 段階を実測で決めたときは、そろった出どころの合計。実測を使っていない(basis_detail が estimated)
+    # ときは None
     sample_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:

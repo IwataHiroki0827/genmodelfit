@@ -65,9 +65,9 @@
    - 0.10 までは、作者の実測は「同じ会社で、VRAM が測った GPU の 0.97 倍以上」ならどの GPU にも効いていた(例: RTX 4060 Ti 16 GB で、RTX 5080 で測った Wan2.2 5B が good・GPU)。作者だけ有利なのでやめた。
 2. **同じ設定**: 解像度・コマ数・長さ・枚数・精度が同じ。会社が同じ(`gpu_backend`、無ければ GPU 名)。今の一覧のファイルで測ったもの(`files_fp`)、名前の表にある GPU のもの(`gpu_known`)。
 3. **別々の出どころが 2 つ以上**(`MIN_LEVEL_SOURCES`):
-   - 作者の実測(`measurements.json`)は **1 行で 1 つ**。行は作者が別々に動かした記録(例: Wan2.2 5B の「画像から動画」と「文章から動画」)。
+   - 作者の実測(`measurements.json`。この PC の bench の保存も同じ扱い)は、同じモデル・GPU・設定なら**何行あっても合わせて 1 つ**(`estimate.count_sources`)。作者だけでは段階を決めない。
    - ほかの利用者の実測は、まとめの行の `n_sources`(提出をリポジトリに足したコミット = PR ごとに 1 つ。#90)。`n_sources` の無い古い行は 1 つ。
-   - 作者の行とほかの利用者の行は、同じ GPU・同じ設定なら足して数える(作者 1 行 + 提出 1 つ = 2)。
+   - 作者とほかの利用者は、同じ GPU・同じ設定なら足して数える(作者 + 提出 1 つ = 2)。
    - 1 つだけのときは段階を決めず、値をずらすだけ(下の「実測で値をずらすこと」)。理由に「出どころが 1 つだけ」と出る。
 4. **そろっている**(`CONSISTENT_REL`。`contrib aggregate` の `consistent` と同じ定義):
    - OOM の記録が無い: 同じ構成で `outcome: oom` の行、`n_oom` のあるまとめ、`runs_evidence: false`(OOM の出どころが ok の出どころ以上)のまとめが無い。
@@ -80,10 +80,10 @@
    - この量がこの PC の VRAM を超えれば決めない。
 6. **段階** = この量 ÷ VRAM の帯で、少なくとも Good(最後まで動いた記録なので)。GPU の上限に張り付いた実測(動的 VRAM が空きを使い切った)があれば Good まで。動かし方は GPU。
 
-`Estimate.sample_count` は、値の元になった別々の出どころの数です(作者の実測は 1、ほかの利用者は `n_sources`、段階を実測で決めたときはそろった出どころの合計)。0.10 までは提出の件数(`n_used`)でした。
+`Estimate.sample_count` は、値の元になった別々の出どころの数です(作者の実測は何行あっても 1、ほかの利用者は `n_sources`、段階を実測で決めたときはそろった出どころの合計)。0.10 までは提出の件数(`n_used`)でした。
 
 例(同梱の実測):
-- RTX 5080 16 GB の Wan2.2 5B(640x640・73 コマを指定): 作者の行が 2 つ(15.8 / 15.0 GB)そろうが、重み + 固定分が約 18.4 GB で 15.9 GB に収まらない(実測は動的 VRAM で重みの一部を逃がしていた)ので、段階は見積もり(Marginal・GPU+RAM)。0.10 までは Good・GPU だった(#26)。
+- **例: RTX 5080 16 GB の Wan2.2 5B**(640x640・73 コマを指定。作者の実測は 15.8 / 15.0 GB の 2 行で、合わせて 1 つの出どころ)。重み + 固定分は約 18.4 GB で、15.9 GB に全部は載らない。実測は ComfyUI の動的 VRAM で重みの一部をメインメモリに逃がして最後まで動いた(offload: dynamic、GPU の上限に張り付いた値)。つまり「逃がせば動く」記録なので、段階は逃がす動かし方の段階(Marginal・GPU+RAM)が正しい。ほかの利用者の提出がそろっても、量の下限(重み + 固定分)が VRAM を超えるので、実測で GPU の段階にはならない。0.7.0〜0.10 は Good・GPU だった(#26)。
 - RTX 5080 の SDXL(832px を指定): 作者の行は 1 つなので決めない。同じ GPU・同じ設定のほかの利用者の提出が 1 つそろえば決まる。
 
 4 つの確認:
@@ -257,7 +257,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 | (e) 実行した日で表の並びと Score が変わらない | `test_e_run_date_does_not_change_table_order_or_score` |
 | (f) 許可リストで表の並びと Score が変わらない | `test_f_allowlist_does_not_change_table_order_or_score` |
 | (g) 大きさの無い実測が使われる | `test_g_measurements_without_size_are_used` |
-| 作り物の 1.0 GB の Flux で Perfect にならない・1 人の 4 件では決めない・作者 1 + 提出 1 で決まる | `test_fake_small_submission_does_not_make_flux_perfect`、`test_one_source_with_many_files_does_not_set_the_level`、`test_author_one_and_community_one_agree` |
+| 作り物の 1.0 GB の Flux で Perfect にならない・1 人の 4 件では決めない・作者 1 + 提出 1 で決まる・作者の 2 行は 1 つ | `test_fake_small_submission_does_not_make_flux_perfect`、`test_one_source_with_many_files_does_not_set_the_level`、`test_author_one_and_community_one_agree`、`test_author_rows_are_one_source` |
 
 `SCHEMA_VERSION`(同梱・配布の db.json の形の版)は変えていません。出力の意味が変わったので、パッケージは 0.11.0 です([CHANGELOG.md](../CHANGELOG.md))。
 
