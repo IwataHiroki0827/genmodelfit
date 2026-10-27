@@ -304,7 +304,7 @@ def test_gb10_is_used_as_unified_memory(monkeypatch, tmp_path):
     assert g.vram_free_gb == round((119876544 + 16777212) / 2**20, 2)  # MemAvailable + SwapFree
     assert g.compute_capability == "12.1" and g.arch == "blackwell"
     assert g.torch_cuda == ["cu132", "cu130", "cu129", "cu128"]  # sm_121 は sm_120 の機械語で動く
-    assert any("GB10" in n and "good まで" in n for n in g.notes)
+    assert any("GB10" in n and "段階は Good まで" in n and "DGX Spark" in n for n in g.notes)
     assert any("sm_121" in n for n in g.notes)
     assert not any("判定に使わない" in n for n in g.notes)
 
@@ -321,7 +321,9 @@ def test_gb10_level_is_capped_at_good(monkeypatch, tmp_path):
     )
     e = estimate(entry(6.0), system, coefficients=Coefficients())
     assert e.fit == "good" and e.run_mode == "gpu"
-    assert any("good までにした" in r for r in e.reasons)
+    assert any(
+        "この種類の GPU(NVIDIA の統合メモリ、DGX Spark)で動いた実測がまだ無いので" in r for r in e.reasons
+    )
 
 
 @pytest.mark.parametrize(

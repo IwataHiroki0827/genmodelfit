@@ -103,7 +103,7 @@
 - フェア: 誰の実測にも同じ値を使う。Linux と Windows の持ち主が、同じカードの実測を互いに使える。
 - 試験: `tests/test_scoring.py::test_same_vram_ratio_linux_and_windows`(Linux 5.80 と Windows 6.0 は同じ、8 GB と 16 GB の版は別)。
 
-**NVIDIA 以外の GPU**: 推定だけなら段階は Good まで。上の条件で段階を実測で決めたときだけ、その段階まで上げます([hardware.ja.md](hardware.ja.md))。
+**NVIDIA 以外の GPU**: この種類の GPU で動いた実測がまだ無いので、段階は Good まで(理由の文言は「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」。#101・#103)。上の条件で段階を実測で決めたときだけ、その段階まで上げます([hardware.ja.md](hardware.ja.md))。
 
 ## 実測で値をずらすこと
 

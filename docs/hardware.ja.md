@@ -278,8 +278,8 @@ VAE(`comfy/sd.py` の `working_dtypes`。○ は fp16 を持つ、× は持た�
 NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、画面の部品の一覧から AMD・Intel・Apple の GPU を下の対応表で判定に使う(`hardware.classify_adapter`)。
 
 - **NVIDIA の判定は変えない**。NVIDIA の GPU が使えれば、ほかの GPU は `--all-gpus` で一覧に出すだけ。
-- 実測は 0 件なので、段階は推定で、理由に「推定(<会社>・実測なし)」を書く。
-- **段階は Good まで**にする。外れるのは、同じ会社の GPU の、同じ設定で成功した実測があるときだけ(下の「同じ GPU で成功した実測」)。
+- 動くかどうかは下の対応表(一次資料)で決める。
+- **段階は Good まで**にする。理由は推定だからではなく、この種類の GPU で動いた実測がまだ無いから(#101・#103)。理由に「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」と書く(`hardware.good_cap_text`)。外れるのは、同じ会社の GPU の、同じ設定で成功した実測があるときだけ(下の「同じ GPU で成功した実測」)。
 - 2026-10-22 から、この GPU と同じ GPU のほかの利用者の実測もその根拠になる([accuracy.ja.md](accuracy.ja.md)「ほかの利用者の実測」)。
 - NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
 - 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
@@ -428,7 +428,7 @@ GPU の名前から世代を決める表:
   - ROCm on Radeon/Ryzen の Windows の表は gfx1200/1201/1100/1101 と gfx1150/1151 だけ(https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)。
   - ComfyUI の README は RDNA 2〜4 とする。
   - TheRock(ComfyUI が使う ROCm)は RDNA 2・780M(gfx1103)も Windows でリリースの対象にしている(https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md)。
-  - RX 6000 系と 780M は ComfyUI に合わせて使うが、段階は Good までの推定。
+  - RX 6000 系と 780M は ComfyUI に合わせて使うが、この種類の GPU で動いた実測がまだ無いので段階は Good まで。
 - **RDNA 1・Vega・Polaris**: llmfit は名前と VRAM が取れれば GPU 扱い、Ollama・llama.cpp は Vulkan で動かせる。ただ ComfyUI の README の対象外なので CPU。
 - **2 CU の内蔵 GPU(gfx1036)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU(対応の有無ではなく性能の判断。理由の文もそう書く)。
 - **Van Gogh(Steam Deck、gfx1033)**:
@@ -537,7 +537,7 @@ ComfyUI の CPU での動き:
 - メモリ(`memory: shared`):
   - 総量は `/proc/meminfo` の MemTotal(段階は総量で決める決まり)。割り引かない(Apple の 3/4 は Metal の目安の代わりで、GB10 に当てる根拠が無い)。メインメモリと共有で、二重に数えない(`carveout_gb` 0。逃がす動かし方は無い)。
   - 空きは NVIDIA の known-issues の例どおり MemAvailable + SwapFree(HugePages を使っていれば空きの HugePages × 大きさ、swap は数えない)で、今の空きの注意(`vram_free_short`)だけに使う。
-- 段階は推定なので **Good まで**(同じ GPU の実測が 2 つ以上そろえば外れる。上の「同じ GPU で成功した実測」)。理由に「GB10 は統合メモリ。GPU だけの上限は NVIDIA の文書に無い」と書く。
+- この種類の GPU(NVIDIA の統合メモリ、DGX Spark)で動いた実測がまだ無いので **Good まで**(同じ GPU の実測が 2 つ以上そろえば外れる。上の「同じ GPU で成功した実測」)。理由に「GB10 は統合メモリ。GPU だけの上限は NVIDIA の文書に無い」と書く。
 - PyTorch の表: compute capability 12.1 は今の `_code_runs`(同じ主番号で下位が小さい機械語は動く)で sm_120 の機械語が動くと判定する(新しい規則は要らない)。cu128 の aarch64(PyTorch 2.7〜2.11)を表に足した。
 - 注意: 「sm_121 では CUTLASS・xformers の fmha のカーネルが失敗した報告があり、直ったかは確かめていない」。
 - 名前が GB10 でない、VRAM を返さない NVIDIA の GPU は、理由(Jetson は上の表、ほかは「共有メモリの NVIDIA の GPU は ComfyUI の公式の手順を確かめた GB10 だけ」)を書いて CPU。
@@ -558,7 +558,7 @@ ComfyUI の CPU での動き:
 2. **Windows 側の GPU を読む**: 相互運用で `powershell.exe`(PATH に無ければ `/etc/wsl.conf` の `[automount] root`(既定 `/mnt/`)の下の `c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`)を `-NoProfile -NonInteractive`・時間切れ 8 秒で呼ぶ。台本(`hardware._PS_WSL`)は WMI の Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode・DriverVersion と、レジストリの画面の部品のクラスキー(`0###`)の DriverDesc・MatchingDeviceId・`HardwareInformation.qwMemorySize`・`MemorySize`(REG_BINARY はバイト列から変換)だけを読み、UTF-8 の JSON で返す。PNPDeviceID は Windows と同じく後半(差し場所)を捨てる。失敗(相互運用が無効・時間切れ)は例外にせず注意にする。
 3. **WSL の中の準備**: AMD は `rocminfo`(PATH か `/opt/rocm/bin`)が通り、GPU のエージェントの `Name: gfx…` が読めること(一番強い証拠)。読むのは行の頭で照合した `Name: gfx…`・`Marketing Name:`・`Device Type:` だけで、UUID などほかの行は読まない・notes・ログ・例外に出さない。Intel は `clinfo -l` に Intel の GPU の Device が出ること。
 
-使う条件(段階は推定で Good まで):
+使う条件(この種類の GPU で動いた実測がまだ無いので、段階は Good まで):
 
 - AMD: AMD の WSL の対応表(ROCm 7.2.1)の製品名と完全に一致するもの(`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE、AI PRO R9700 / R9600D、RX 9060 / 9060 XT、RX 7900 XTX / XT / GRE、PRO W7900(Dual Slot)/ W7800(48GB)/ W7700、RX 7800 XT、RX 7700 / 7700 XT)。APU は公式の表に無い(librocdxg の README だけで、リポジトリは deprecated)ので使わない。
 - Intel: Arc A・B、Core Ultra の Arc Graphics(`_INTEL_XPU`)で、Windows のドライバが 32.0.101.8801 以上(3 つ目と 4 つ目の欄をつないだ 7 桁で比べる。`int(f"{p3}{p4:04d}") >= 1018801`)。版が読めなければ断らず注意。内蔵の Arc Graphics は WSL のメモリ(Windows の搭載量以下)の半分を共有の分とみなす(少なめの見積もり)。
@@ -596,7 +596,7 @@ ComfyUI の CPU での動き:
 - Windows で時間切れのコマンドは子だけを止める(孫のプロセスは残りうる)。読む口は閉じず(閉じると孫が終わるまで止まる)、1 秒だけ待って返す。
 - WSL の中の VRAM の空き(約 3 GB 少ない報告)は値に入れていない。
 - MIG の区画の大きさは自動では読まない(`--vram` で指定する)。
-- GB10 の段階は推定(Good まで)。GPU だけで使える上限の数字は NVIDIA の文書に無い。
+- GB10 の段階は Good まで(この種類の GPU で動いた実測がまだ無い)。GPU だけで使える上限の数字は NVIDIA の文書に無い。
 - Jetson・GH200 / GB200 の統合メモリは扱わない(別の Issue)。
 - WSL2 の内蔵 GPU(Intel の Arc Graphics)の共有の分は、WSL のメモリから少なめに見積もる。
 

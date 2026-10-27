@@ -646,8 +646,8 @@ def legend(
         "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
         *(
             [  # 実測を送ってもらう案内(1 行だけ。#56 の後の 0.9.0)
-                "Level caps: AMD / Intel / Apple GPUs are estimates, at most Good until measured"
-                " (CONTRIBUTING.md)."
+                "Level caps: AMD / Intel / Apple GPUs at most Good (no measurement on them yet;"
+                " CONTRIBUTING.md)."
             ]
             if non_nvidia
             else []
@@ -705,8 +705,8 @@ def _legend_ja(
         "段階の上限: GPU~ は Good まで、GPU+RAM と CPU は Marginal まで(Mem% が低くても)。",
         *(
             [
-                "段階の上限: AMD / Intel / Apple の GPU は推定なので、実測が入るまで Good まで"
-                "(CONTRIBUTING.md)。"
+                "段階の上限: AMD / Intel / Apple の GPU は、この種類の GPU で動いた実測がまだ無いので"
+                " Good まで(CONTRIBUTING.md)。"
             ]
             if non_nvidia
             else []

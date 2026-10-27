@@ -456,7 +456,7 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 - **メインメモリ**: 式も 1.5 倍も実測で確かめていない(上の「メインメモリ」)。
 - **NVIDIA 以外の GPU**(0.7.0、#22): AMD・Intel・Apple の実測は 0 件。
   - 段ごとの作業用メモリは SDPA の式のまま(分割式の GPU では理由に注意を出すだけ)。AMD は KL の VAE を × 2.73。
-  - 段階は Good までにした(この GPU のほかの利用者の実測が来れば外れる。2026-10-22)。
+  - この種類の GPU で動いた実測がまだ無いので、段階は Good までにした(同じ GPU の実測が 2 つ以上そろえば外れる。2026-10-22。理由の文言は #103 で「推定」から直した)。
   - GPU のメモリとみなす割合は、一次資料の挙動から決めた目安で、実測していない([hardware.ja.md](hardware.ja.md)「共有メモリ」)。
 - **CPU で動く系統**(#39): SD 系・Stable Audio の CPU のメインメモリは、ComfyUI のコードから決めた式で、実測していない。
   - 式は、本体・VAE を fp32 に広げ、作業用メモリ × 2(段ごとの式では一番重い段 × 2)。
@@ -651,7 +651,7 @@ GPU 名は `NVIDIA` / `GeForce` の有無・大文字小文字・記号をそろ
 
 ### NVIDIA 以外の GPU の bench(0.9.0)
 
-NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、段階を Good までにしています([hardware.ja.md](hardware.ja.md))。
+NVIDIA 以外の GPU(AMD・Intel・Apple)は実測が 0 件で、この種類の GPU で動いた実測がまだ無いので段階を Good までにしています([hardware.ja.md](hardware.ja.md))。
 実測を集めやすくするため、bench の「GPU が空いているか」の確かめを各社の道具でも行います(`gpustat.py`)。
 
 - Linux の AMD: amd-smi → rocm-smi

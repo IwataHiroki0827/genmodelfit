@@ -1102,7 +1102,7 @@ def test_non_nvidia_good_cap_is_lifted_by_a_same_gpu_measurement(db):
     entry = db.get("image_sdxl_simple")
     maint = [m for m in db.measurements if m.model_id == entry.id]
     a = estimate(entry, amd_pc(), None, maint)
-    assert a.fit == "good" and any("推定(AMD・実測なし)なので" in r for r in a.reasons)
+    assert a.fit == "good" and any("この種類の GPU(AMD)で動いた実測がまだ無いので" in r for r in a.reasons)
     sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
     # 出どころが 1 つだけの提出では上限を外さない(段階を決めるのは別々の 2 つ以上。#95)
     one = _community(

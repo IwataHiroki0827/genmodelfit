@@ -53,7 +53,7 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 - Windows, Linux or macOS, Python 3.10 or newer (with `uvx`, uv provides Python if you have none).
 - GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
   newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
-  (MPS, macOS 14 or newer) are judged as estimates (at most Good, unless measurements set the level: two or more
+  (MPS, macOS 14 or newer) are judged with the vendors' support tables (at most Good, because no measurement has run on these kinds of GPU yet, unless measurements set the level: two or more
   independent sources on the same GPU with the same settings). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
   (Intel UHD / Iris Xe, the 2-CU Radeon 610M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
   SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests

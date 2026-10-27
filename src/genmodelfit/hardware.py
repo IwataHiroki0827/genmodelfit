@@ -849,6 +849,22 @@ def _no_vram_note() -> str:
 # DGX Spark(GB10)。nvidia-smi の名前がこれと完全に一致するときだけ、統合メモリの GPU として判定に使う
 # (#101。docs/hardware.md「DGX Spark(GB10)」。ASUS・Dell・MSI などの GB10 機も同じ名前)
 GB10_NAME = "NVIDIA GB10"
+GB10_KIND = ("NVIDIA の統合メモリ、DGX Spark", "NVIDIA unified memory, DGX Spark")
+
+
+def good_cap_text(kind: str | tuple[str, str]) -> tuple[str, str]:
+    """段階を Good までにする理由(日本語, 英語)。NVIDIA 以外の GPU と統合メモリの GB10 の上限は、
+    推定だからではなく、この種類の GPU で動いた実測がまだ無いから
+    (#101・#103。docs/hardware.md「NVIDIA 以外の GPU」)。"""
+    ja, en = (kind, kind) if isinstance(kind, str) else kind
+    return (
+        f"この種類の GPU({ja})で動いた実測がまだ無いので、段階は Good まで"
+        "(同じ GPU の実測が 2 つ以上そろえば外れる)",
+        f"No measurement has run on this kind of GPU ({en}) yet, so the level is capped at Good"
+        " (lifted once two or more measurements of the same GPU agree)",
+    )
+
+
 _JETSON = re.compile(r"orin|thor|xavier|nvgpu|tegra|jetson", re.I)
 
 
@@ -913,17 +929,18 @@ def apply_gb10(g: Gpu, *, system: str, machine: str, meminfo: dict[str, int] | N
     g.backend = "cuda"
     g.memory = "shared"
     g.carveout_gb = 0.0
+    cap = good_cap_text(GB10_KIND)
     g.notes += [
         tr(
             "DGX Spark(GB10)は統合メモリ: メインメモリ"
             f" {g.vram_total_gb:g} GB(MemTotal)を GPU と共有するとみなした"
             "(GPU だけの上限は NVIDIA"
-            " の文書に無いので割り引かない。逃がす動かし方は無い)。推定なので段階は good まで",
+            f" の文書に無いので割り引かない。逃がす動かし方は無い)。{cap[0]}",
             "DGX Spark (GB10) has unified memory: the GPU is"
             f" taken to share the {g.vram_total_gb:g} GB main memory"
             " (MemTotal) (NVIDIA documents no GPU-only limit, so"
             " it is not discounted; there is no offload mode)."
-            " Estimated, so the level is capped at good",
+            f" {cap[1]}",
         ),
         tr(
             "sm_121(GB10)では CUTLASS・xformers の"
@@ -1683,7 +1700,7 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
 #
 # ComfyUI(Comfy-Org/ComfyUI 426f5ee の README「AMD GPUs (Linux)」「AMD GPUs (Windows, ROCm 10.0)」
 # 「Intel GPUs (Windows and Linux)」「Apple Mac silicon」)が案内する PyTorch で動く組み合わせだけを使う。
-# 実測は 0 件なので、段階は推定で、印は「推定(<会社>・実測なし)」。段階は good までにする(estimate.py)。
+# この種類の GPU で動いた実測がまだ無いので、段階は Good までにする(good_cap_text・estimate.py)。
 
 # AMD: ComfyUI の Windows の案内は「RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」(AMD の multi-arch 版 PyTorch、
 # Windows 11)。TheRock の SUPPORTED_GPUS.md(4639f91)は Linux・Windows とも RDNA 1〜4 を Release Ready にして
@@ -2068,16 +2085,12 @@ def _shared_pool(a: Adapter, ram_gb: float) -> tuple[float, str]:
 
 def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     """NVIDIA 以外の画面の部品を対応表で判定し、a.usable・a.integrated・a.reason を書く。
-    ComfyUI + PyTorch が動く組み合わせなら判定に使う Gpu を返す(推定で、段階は good まで)。
+    ComfyUI + PyTorch が動く組み合わせなら判定に使う Gpu を返す(段階は Good まで。good_cap_text)。
     ram_gb は内蔵 GPU・Apple の共有の分を決めるメインメモリ(--ram で上書きしたらその値)。"""
     if a.vendor == "nvidia":
         return None  # NVIDIA は nvidia-smi で決める
     a.needs = None  # 判定し直すたびに消す(同じ部品を別の PC の条件で判定し直すことがある)
-    label = VENDOR_LABEL.get(a.vendor, "")
-    if label:
-        tag = tr(f"推定({label}・実測なし)", f"Estimated ({label}, no measurement)")
-    else:
-        tag = tr("推定(実測なし)", "Estimated (no measurement)")
+    cap = good_cap_text(VENDOR_LABEL.get(a.vendor, "") or "?")
 
     def refuse(why: str, why_en: str) -> None:
         a.usable = False
@@ -2109,7 +2122,7 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         )
         return None
     if a.source == "wsl":
-        return _classify_wsl(a, ram_gb, tag, refuse)
+        return _classify_wsl(a, ram_gb, cap, refuse)
 
     gfx = None
     arch = None
@@ -2208,9 +2221,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             return None
         notes = [
             tr(
-                f"{tag}: ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで",
-                f"{tag}: judged as a combination that runs with the ROCm build of PyTorch ({gfx}, {arch})."
-                " Level up to good",
+                f"ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして対応表で判定した。{cap[0]}",
+                f"Support table: runs with the ROCm build of PyTorch ({gfx}, {arch}). {cap[1]}",
             )
         ]
         if arch == AMD_NEW_ARCH:
@@ -2285,9 +2297,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             return None
         notes = [
             tr(
-                f"{tag}: XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで",
-                f"{tag}: judged as a combination that runs with the XPU build of PyTorch ({series})."
-                " Level up to good",
+                f"XPU 版 PyTorch({series})で動く組み合わせとして対応表で判定した。{cap[0]}",
+                f"Support table: runs with the XPU build of PyTorch ({series}). {cap[1]}",
             )
         ]
         if not a.integrated and not a.vram_gb and floor:
@@ -2324,8 +2335,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             return None
         notes = [
             tr(
-                f"{tag}: MPS 版 PyTorch で動く組み合わせとして判定した。段階は good まで",
-                f"{tag}: judged as a combination that runs with the MPS build of PyTorch. Level up to good",
+                f"MPS 版 PyTorch で動く組み合わせとして対応表で判定した。{cap[0]}",
+                f"Support table: runs with the MPS build of PyTorch. {cap[1]}",
             )
         ]
         backend, bf16 = "mps", True
@@ -2363,10 +2374,11 @@ def _guess_integrated(a: Adapter) -> bool:
     return bool(a.shared_gb) and (a.vram_gb or 0.0) < 2.0
 
 
-def _classify_wsl(a: Adapter, ram_gb: float, tag: str, refuse) -> Gpu | None:
+def _classify_wsl(a: Adapter, ram_gb: float, cap: tuple[str, str], refuse) -> Gpu | None:
     """WSL2 の中から読んだ Windows 側の AMD・Intel の GPU(#101。docs/hardware.md「WSL2」)。
     使うのは、WSL の中の
-    準備(rocminfo / clinfo)ができていて、公式の WSL の対応表にあるときだけ。段階は推定で good まで。"""
+    準備(rocminfo / clinfo)ができていて、公式の WSL の対応表にあるときだけ。
+    段階は Good まで(good_cap_text)。"""
     vram_note = tr(
         "WSL の中では、Windows 側の VRAM より空きが約 3 GB 少ないという報告がある(値は変えていない)",
         "Inside WSL, free VRAM is reported to be about 3 GB less than on Windows (the value is not changed)",
@@ -2396,10 +2408,8 @@ def _classify_wsl(a: Adapter, ram_gb: float, tag: str, refuse) -> Gpu | None:
         arch = AMD_ARCH.get(gfx) or _new_amd_arch(gfx)
         notes = [
             tr(
-                f"{tag}: WSL2 の ROCm 版"
-                f" PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで",
-                f"{tag}: judged as a combination that runs with the ROCm build of PyTorch in WSL2"
-                f" ({gfx}, {arch}). Level up to good",
+                f"WSL2 の ROCm 版 PyTorch({gfx}、{arch})で動く組み合わせとして対応表で判定した。{cap[0]}",
+                f"Support table: runs with the ROCm build of PyTorch in WSL2 ({gfx}, {arch}). {cap[1]}",
             ),
             vram_note,
         ]
@@ -2436,9 +2446,8 @@ def _classify_wsl(a: Adapter, ram_gb: float, tag: str, refuse) -> Gpu | None:
         series, a.integrated, floor = found
         notes = [
             tr(
-                f"{tag}: WSL2 の XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで",
-                f"{tag}: judged as a combination that runs with the XPU build of PyTorch in WSL2 ({series})."
-                " Level up to good",
+                f"WSL2 の XPU 版 PyTorch({series})で動く組み合わせとして対応表で判定した。{cap[0]}",
+                f"Support table: runs with the XPU build of PyTorch in WSL2 ({series}). {cap[1]}",
             )
         ]
         if build is None:

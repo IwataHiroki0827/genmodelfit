@@ -278,8 +278,8 @@ Unknown entries do not change the estimate, and the reason mentions it only on G
 Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel and Apple GPUs from the list of display adapters are judged with the support table below (`hardware.classify_adapter`).
 
 - **The NVIDIA judgment does not change.** If an NVIDIA GPU is usable, other GPUs are only listed with `--all-gpus`.
-- There are no measurements yet, so the level is an estimate, and the reason says "estimate (<vendor>, no measurement)".
-- **The level is capped at Good.** It is lifted only when there is a measurement from a GPU of the same vendor that succeeded at the same settings (see "Measurements that succeeded on the same GPU" below).
+- Whether it runs is decided by the support table below (primary sources).
+- **The level is capped at Good.** The reason is not that it is an estimate but that no measurement has run on this kind of GPU yet (#101, #103). The reason says "No measurement has run on this kind of GPU (<vendor>) yet, so the level is capped at Good (lifted once two or more measurements of the same GPU agree)" (`hardware.good_cap_text`). It is lifted only when there is a measurement from a GPU of the same vendor that succeeded at the same settings (see "Measurements that succeeded on the same GPU" below).
 - Since 2026-10-22, measurements by other users of the same GPU as this one also count as that basis (see "Other users' measurements" in [accuracy.md](accuracy.md#other-users-measurements-34-2026-10-21-handling-aligned-with-llmfit-on-2026-10-22)).
 - Measurements on NVIDIA GPUs are used only to shift the working memory (`basis_detail: calibrated`); `basis` stays `estimated`.
 - Combinations that are not supported are judged as CPU, with a reason (`Adapter.reason`).
@@ -428,7 +428,7 @@ The standard is "does it run with ComfyUI + PyTorch", so it follows ComfyUI's RE
   - The Windows table of ROCm on Radeon/Ryzen has only gfx1200/1201/1100/1101 and gfx1150/1151 (https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html).
   - ComfyUI's README says RDNA 2 to 4.
   - TheRock (the ROCm ComfyUI uses) also covers RDNA 2 and 780M (gfx1103) for releases on Windows (https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md).
-  - RX 6000 series and 780M are used to match ComfyUI, but the level is an estimate capped at Good.
+  - RX 6000 series and 780M are used to match ComfyUI, but no measurement has run on this kind of GPU yet, so the level is capped at Good.
 - **RDNA 1, Vega, Polaris**: llmfit treats them as GPU if the name and VRAM can be read, and Ollama / llama.cpp can run them via Vulkan. But they are outside ComfyUI's README, so CPU.
 - **2-CU integrated GPUs (gfx1036)**: TheRock covers them, but they are not expected to beat the CPU for generation, so CPU (a performance judgment, not a support judgment; the reason text says so).
 - **Van Gogh (Steam Deck, gfx1033)**:
@@ -537,7 +537,7 @@ The sources were read on 2026-10-27.
 - Memory (`memory: shared`):
   - The total is MemTotal in `/proc/meminfo` (the rule is that the level comes from the total). It is not discounted (Apple's 3/4 stands in for Metal's guide value and has no basis for GB10). It is shared with main memory and not counted twice (`carveout_gb` 0; there is no offload mode).
   - Free is MemAvailable + SwapFree as in NVIDIA's known-issues example (when HugePages are used, free HugePages × size and no swap), used only for the current-free notice (`vram_free_short`).
-- The level is an estimate, so **up to Good** (lifted when two or more sources measured the same GPU; "Measurements that succeeded on the same GPU" above). The reason says "GB10 has unified memory; NVIDIA documents no GPU-only limit".
+- No measurement has run on this kind of GPU (NVIDIA unified memory, DGX Spark) yet, so **up to Good** (lifted when two or more sources measured the same GPU; "Measurements that succeeded on the same GPU" above). The reason says "GB10 has unified memory; NVIDIA documents no GPU-only limit".
 - PyTorch table: the current `_code_runs` (machine code for the same major with a lower minor runs) already judges that sm_120 code runs on compute capability 12.1 (no new rule needed). cu128 for aarch64 (PyTorch 2.7–2.11) was added to the table.
 - Note: "CUTLASS / xformers fmha kernels were reported to fail on sm_121 (GB10); whether this is fixed is unverified".
 - An NVIDIA GPU that reports no VRAM and is not named GB10 is CPU, with the reason (Jetson: the table above; others: "of the NVIDIA GPUs with shared memory, only GB10, which has an official ComfyUI guide, is used").
@@ -558,7 +558,7 @@ Three steps (NVIDIA in WSL is judged with nvidia-smi as before):
 2. **Read the Windows-side GPUs**: through interop, `powershell.exe` (if not on PATH, `c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe` under `[automount] root` of `/etc/wsl.conf`, default `/mnt/`) is run with `-NoProfile -NonInteractive` and an 8-second timeout. The script (`hardware._PS_WSL`) reads only the WMI Name, AdapterRAM, PNPDeviceID, ConfigManagerErrorCode and DriverVersion, and DriverDesc, MatchingDeviceId, `HardwareInformation.qwMemorySize` and `MemorySize` (REG_BINARY converted from bytes) of the display class keys (`0###`) in the registry, and returns UTF-8 JSON. As on Windows, the second half of PNPDeviceID (the slot) is dropped. Failures (interop disabled, timeout) do not raise; they become notes.
 3. **Is WSL ready**: AMD needs `rocminfo` (PATH or `/opt/rocm/bin`) to run and show `Name: gfx…` for a GPU agent (the strongest evidence). Only `Name: gfx…`, `Marketing Name:` and `Device Type:` matched at the start of a line are read; other lines such as the UUID are never read or put in notes, logs or exceptions. Intel needs an Intel GPU device in `clinfo -l`.
 
-Conditions for using it (the level is an estimate, up to Good):
+Conditions for using it (no measurement has run on this kind of GPU yet, so the level is up to Good):
 
 - AMD: an exact product name in AMD's WSL support table (ROCm 7.2.1) (`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE, AI PRO R9700 / R9600D, RX 9060 / 9060 XT, RX 7900 XTX / XT / GRE, PRO W7900 (Dual Slot) / W7800 (48GB) / W7700, RX 7800 XT, RX 7700 / 7700 XT). APUs are not in the official table (only in the librocdxg README, and that repository is deprecated), so they are not used.
 - Intel: Arc A and B, Arc Graphics of Core Ultra (`_INTEL_XPU`), with a Windows driver of 32.0.101.8801 or later (compared as the 7-digit number made of the third and fourth fields: `int(f"{p3}{p4:04d}") >= 1018801`). If the version cannot be read, it is not refused (a note). For integrated Arc Graphics, half of the memory inside WSL (at most the Windows amount) is taken as the shared part (a low estimate).
@@ -596,7 +596,7 @@ GPU names in other users' submissions (contrib) are checked by form (`hardware.n
 - On Windows a command that times out has only the child killed (grandchildren may remain). The pipe is not closed (closing it blocks until the grandchild ends); it waits 1 more second and returns.
 - The reported ~3 GB less free VRAM inside WSL is not put in the value.
 - The MIG partition size is not read automatically (give it with `--vram`).
-- The GB10 level is an estimate (up to Good). NVIDIA documents no number for a GPU-only limit.
+- The GB10 level is up to Good (no measurement has run on this kind of GPU yet). NVIDIA documents no number for a GPU-only limit.
 - Unified memory of Jetson and GH200 / GB200 is not handled (another issue).
 - The shared part of an integrated GPU in WSL2 (Intel Arc Graphics) is estimated low from the memory inside WSL.
 

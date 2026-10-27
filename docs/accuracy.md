@@ -455,7 +455,7 @@ How to read it:
 - **Main memory**: neither the formula nor the 1.5× factor is checked by measurement ("Main memory (RAM)" above).
 - **Non-NVIDIA GPUs** (0.7.0, #22): there are 0 measurements on AMD, Intel or Apple.
   - The per-stage working memory keeps the SDPA formula (GPUs with split attention only get a note). AMD multiplies the KL VAE by 2.73.
-  - Levels are capped at Good (lifted when other users measure this GPU; 2026-10-22).
+  - No measurement has run on this kind of GPU yet, so levels are capped at Good (lifted once two or more measurements of the same GPU agree; 2026-10-22. The reason text was corrected from "estimate" in #103).
   - The share of memory treated as GPU memory is a guideline from primary sources, not measured ([hardware.md](hardware.md), "Shared memory").
 - **CPU-capable families** (#39): the CPU main memory of SD-family and Stable Audio models comes from a formula derived from ComfyUI's code, not measured.
   - The formula widens the main model and VAE to fp32 and doubles the working memory (the heaviest stage × 2 with the per-stage formula).
@@ -650,7 +650,7 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
 
 ### Bench on non-NVIDIA GPUs (0.9.0)
 
-Non-NVIDIA GPUs (AMD, Intel, Apple) have 0 measurements, and their level is capped at Good (see [hardware.md](hardware.md)).
+Non-NVIDIA GPUs (AMD, Intel, Apple) have 0 measurements; since no measurement has run on this kind of GPU yet, their level is capped at Good (see [hardware.md](hardware.md)).
 To make measurements easier to collect, the bench's "is the GPU idle?" check also uses each vendor's tools (`gpustat.py`).
 
 - AMD on Linux: amd-smi → rocm-smi
