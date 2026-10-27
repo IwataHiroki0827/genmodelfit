@@ -989,6 +989,11 @@ GENERIC_GPU_KEYS = frozenset(
         "video-controller",
         "microsoft-basic-display-adapter",
         "display-adapter",
+        # #101: 名前の代わりの値(llmfit の share.rs と同じく、空・n/a・none・null・unknown・- は名前ではない)
+        "n-a",
+        "na",
+        "none",
+        "null",
     }
 )
 
@@ -1061,21 +1066,13 @@ NOMINAL_VRAM_TOLERANCE = (0.95, 1.03)
 
 def nvidia_nominal_vram(name: str | None) -> tuple[float, ...]:
     """名前の表で分かる NVIDIA の GPU の公称の VRAM(GB)。表に無ければ空。名前に量が付いている
-    (「RTX 3050 6GB」)ときは、表にその量の版があればその量だけ、無ければ空(contrib.gpu_size_ok が断る)。"""
+    (「RTX 3050 6GB」)ときは、表にその量の版があればその量だけ、無ければ空(contrib は量を見ない)。"""
     k = gpu_key(name)
     m = re.fullmatch(r"(.+)-(\d+)gb", k)
     if m and m.group(1) in NVIDIA_NOMINAL_VRAM:
         size = float(m.group(2))
         return (size,) if size in NVIDIA_NOMINAL_VRAM[m.group(1)] else ()
     return NVIDIA_NOMINAL_VRAM.get(k, ())
-
-
-def nvidia_size_ok(name: str | None) -> bool:
-    """名前に付いた量(「RTX 3060 16GB」)が、名前の表のその GPU の量のどれかか(表に無い GPU は True)。"""
-    m = re.fullmatch(r"(.+)-(\d+)gb", gpu_key(name))
-    return not (
-        m and m.group(1) in NVIDIA_NOMINAL_VRAM and float(m.group(2)) not in NVIDIA_NOMINAL_VRAM[m.group(1)]
-    )
 
 
 def nvidia_vram_variants(name: str | None) -> tuple[float, ...]:
@@ -1664,8 +1661,10 @@ def _estimate(
         elif not_why and band is None:
             reasons.append(not_why)
     g = system.best_gpu
-    if g is not None and g.vendor != "nvidia" and system.vram_gb > 0 and mode in ("gpu", "offload"):
-        # NVIDIA 以外の GPU は、推定だけなら段階を good までにする。この PC と同じ名前の GPU の同じ設定の
+    capped_gpu = g is not None and (g.vendor != "nvidia" or g.memory != "dedicated")
+    if capped_gpu and system.vram_gb > 0 and mode in ("gpu", "offload"):
+        # NVIDIA 以外の GPU と統合メモリの NVIDIA(DGX Spark の GB10。#101)は、推定だけなら段階を
+        # good までにする。この PC と同じ名前の GPU の同じ設定の
         # 実測があれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
         label = _vendor_label(g.vendor)
         own = band  # 同じ GPU の実測だけ(measured_level)

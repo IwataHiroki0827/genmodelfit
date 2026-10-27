@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import configparser
 import contextlib
 import ctypes
 import json
@@ -27,6 +28,8 @@ import os
 import platform
 import re
 import shutil
+import signal
+import struct
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,33 +45,75 @@ MIB = 1024**2
 NVSMI_TIMEOUT = 10.0  # nvidia-smi(普段は 0.1〜0.5 秒。ドライバが固まっているときに待ち続けない)
 OTHER_GPU_TIMEOUT = 8.0  # PowerShell の WMI・lspci(PowerShell の起動だけで約 1 秒)
 
-# nvidia-smi で聞く項目。compute_cap を知らない古い nvidia-smi には QUERY_OLD で聞き直す
-QUERY = ("name", "memory.total", "memory.free", "memory.used", "driver_version", "compute_cap")
+# nvidia-smi で聞く項目。読めなければ mig.mode.current を除いた QUERY_CC、compute_cap を知らない古い
+# nvidia-smi には QUERY_OLD で聞き直す(知らない項目が 1 つあると問い合わせ全体が失敗するため。#101)
+QUERY = (
+    "name",
+    "memory.total",
+    "memory.free",
+    "memory.used",
+    "driver_version",
+    "compute_cap",
+    "mig.mode.current",
+)
+QUERY_CC = QUERY[:-1]
 QUERY_OLD = ("name", "memory.total", "memory.free", "memory.used", "driver_version")
+_OPTIONAL_LAST = "mig.mode.current"  # 行に無くても読む(QUERY_CC の行・試験の 6 項目の行)
 
 
 # --- 外のコマンド・レジストリ(試験ではここを差し替える) -----------------------------------------
 
 
+# 読むファイルの根(試験では一時ディレクトリの木に差し替える。/proc・/sys・/dev・/mnt・/etc・/opt を読むとき)
+_ROOT = ""
+
+
+def _p(path: str) -> str:
+    return _ROOT + path
+
+
+def _windows() -> bool:
+    """Windows か(試験で Linux・macOS の読み方を Windows の上でも確かめるために差し替える)。"""
+    return os.name == "nt"
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    """時間切れのコマンドを止める。POSIX は組(セッション)ごと止める(孫のプロセスが出力の口を持ったまま
+    残って待ち続けないように。#101)。Windows は子だけ止める(孫は残りうる: docs/hardware.md「既知の限界」)。"""
+    with contextlib.suppress(OSError, ValueError):
+        if os.name != "nt" and hasattr(os, "killpg"):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+
+
 def _run(args: list[str], timeout: float) -> tuple[int, str] | None:
     """コマンドを動かして (終了コード, 標準出力) を返す。見つからない・時間切れ・失敗は None。
-    Windows では窓を出さない(GUI のアプリから呼ばれても黒い窓が開かないように)。"""
+    Windows では窓を出さない(GUI のアプリから呼ばれても黒い窓が開かないように)。
+    時間切れのときは組ごと止め、さらに 1 秒だけ待って返す(出力の口が閉じなくても待ち続けない)。"""
     kw: dict = {}
     if os.name == "nt":
-        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+    else:
+        kw["start_new_session"] = True
     try:
-        r = subprocess.run(
-            args,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=timeout,
-            check=False,
-            **kw,
+        proc = subprocess.Popen(
+            args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw
         )
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
-    return r.returncode, r.stdout.decode("utf-8", errors="replace")
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except (subprocess.SubprocessError, OSError, ValueError):
+        _kill_group(proc)
+        # 口を閉じない(Windows では読みかけの口を閉じると、孫が終わるまで止まる)。
+        # 読む糸は daemon なので残っても終了を妨げない
+        with contextlib.suppress(subprocess.SubprocessError, OSError, ValueError):
+            proc.communicate(timeout=1.0)
+        return None
+    return proc.returncode, (out or b"").decode("utf-8", errors="replace")
 
 
 def _winreg():
@@ -302,92 +347,103 @@ _NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
 )
 
 
-# 名前の表に当てるときに、名前の後ろから 1 回ずつ外してよい語(#90)。版・形・載せ方を表す決まった語だけ
-# (並びは問わない。同じ語を 2 回は外さない: 「RTX 3060 Ti Ti」は当たらない)。新しい言い方の GPU は、
-# 名前の表(_NAME_CC)かここに足す(足すまでは「知らない GPU」= 提出の行を判定に使わない。
-# docs/schema.md「contrib」)
-_NAME_SUFFIXES: tuple[str, ...] = (
-    r"with max q design",
-    r"max q workstation edition",
-    r"workstation edition",
-    r"server edition",
-    r"laptop gpu",
-    r"laptop",
-    r"max q",
-    r"oem",
-    r"v2",
-    r"d",
-    r"super",
-    r"ti",
-    r"\(pascal\)",
-    r"hbm\d?e?",
-    r"nvl",
-    r"pcie",
-    r"sxm\d?",
+# NVIDIA の GPU 名の形(#101。docs/hardware.md「GPU 名の形」)。名前の表(_NAME_CC)は古いドライバのときの世代の
+# 推定だけに使い、提出の GPU 名は表でなく形で見る(llmfit と同じく、断るのは名前の代わりの値と汎用の名前だけ。
+# 形に合わない名前はメンテナが確かめる)。大文字小文字は区別しない。語は 10 個まで:
+#   NAME := [NVIDIA] BRAND* CORE SUFFIX*
+# 新しい系列の語が出たら、製品ごとではなく語を 1 つ足す
+_NAME_BRANDS = frozenset(
+    [
+        "geforce",
+        "quadro",
+        "tesla",
+        "grid",
+        "titan",
+        "rtx",
+        "pro",
+        "gtx",
+        "gts",
+        "gt",
+        "mx",
+        "cmp",
+        "nvs",
+        "fx",
+        "dgx",
+    ]
 )
-# VRAM を名前に入れる GPU の量(GB)の言い方(「GTX 1060 6GB」「A100 80GB」)。名前の表に量のある GPU は、
-# その量でなければ当たらない(contrib.gpu_known が estimate.nvidia_nominal_vram で見る)
-_NAME_SIZE = re.compile(r"(.*?) ?\b(\d{1,3}) ?gb$")
-_KNOWN_SIZES = {2, 3, 4, 5, 6, 8, 10, 11, 12, 16, 20, 24, 32, 40, 48, 64, 80, 94, 96, 141, 180, 192, 288, 480}
-# 系列だけの表の行に型番を付けた名前(Quadro RTX 3000〜8000)と、表の形に入らない実在の名前
-# (RTX 3050 A Laptop GPU。Ampere の GA107 の版)
-_NAME_EXTRA = (r"quadro rtx (3000|4000|5000|6000|8000)", r"rtx 3050 a")
-# 一緒には付かない語の組(#90): D(中国向けの版。RTX 4090・5090 だけ)は Ti・SUPER と、v2 は 5090 D の外と、
-# データセンターの載せ方(PCIe・SXM・NVL・HBM)は GeForce・ノート用の名前(RTX・GTX・MX、Laptop・Max-Q)
-# とは付かない
-_DATACENTER_SUFFIXES = {r"pcie", r"sxm\d?", r"nvl", r"hbm\d?e?"}
-_CONSUMER_SUFFIXES = {r"laptop gpu", r"laptop", r"max q", r"with max q design"}
+_NAME_CORE = re.compile(r"[a-z]{0,3}\d{1,4}[a-z]{0,3}(?:-(?:sxm\d?|pcie|\d{1,3}gb|\d{1,3}[abcq]|\d{1,2}))*")
+_NAME_TITAN_CORE = frozenset({"v", "x", "xp", "z", "black", "rtx"})  # TITAN の直後だけ
+_NAME_SUFFIX_WORDS = frozenset(
+    [
+        "ti",
+        "super",
+        "d",
+        "v2",
+        "ultra",
+        "gtx",
+        "gts",
+        "gt",
+        "gx2",
+        "oem",
+        "laptop",
+        "gpu",
+        "max-q",
+        "with",
+        "design",
+        "workstation",
+        "server",
+        "edition",
+        "generation",
+        "ada",
+        "blackwell",
+        "embedded",
+        "sff",
+        "active",
+        "pcie",
+        "nvl",
+        "a",
+        "ac",
+    ]
+)
+_NAME_SUFFIX = re.compile(r"sxm\d?|hbm\d+e?|\d{1,4}(?:gb|mb)?|\([a-z]+\)")
+_NAME_MAX_WORDS = 10
 
 
-def _suffixes_possible(used: set[str], base: str) -> bool:
-    if "d" in used and (({"ti", "super"} & used) or base not in ("rtx 4090", "rtx 5090")):
-        return False  # D の版は RTX 4090 D・RTX 5090 D だけ
-    if "v2" in used and ("d" not in used or base != "rtx 5090"):
-        return False  # v2 は RTX 5090 D v2 だけ
-    consumer = bool(re.match(r"(rtx \d|gtx|mx)", base)) or bool(_CONSUMER_SUFFIXES & used)
-    return not (consumer and _DATACENTER_SUFFIXES & used)
-
-
-def _name_matches(n: str) -> bool:
-    # 系列の語(Quadro・Tesla)の付く名前と付かない名前の両方を試す(Quadro T1000・Quadro P4000・Tesla T4)
-    for cand in {n, re.sub(r"^(quadro|tesla) ", "", n)}:
-        if any(re.fullmatch(pat, cand) for pat in _NAME_EXTRA):
-            return True
-        if any(re.fullmatch(f"(?:{pat})", cand) for pat, _cc in _NAME_CC):
-            return True
-    return False
-
-
-def nvidia_name_known(name: str) -> bool:
-    """NVIDIA の GPU 名が名前の表(_NAME_CC)の 1 つに丸ごと当たるか(#90)。名前の後ろの決まった語
-    (_NAME_SUFFIXES。Ti・SUPER・Laptop GPU・with Max-Q Design・OEM・D・v2 など)と量(_NAME_SIZE)は 1 回ずつ
-    外してよい(一緒に付かない組は断る: _suffixes_possible)。量が名前の GPU の版の量かは、デスクトップの
-    GeForce RTX 20〜50 系だけ見る(estimate.NVIDIA_NOMINAL_VRAM。ほかの系列は名前だけで当てる)。
-    「RTX 3070」「RTX 4060 Ti」「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」「RTX 3060 Ti D」
-    「RTX 3060 1234」「NVIDIA Graphics Device」は当たらない。ほかの利用者の提出で、表に無い名前の行を判定に
-    使わないための見分け。"""
-    n = name.lower()
-    for word in ("nvidia", "geforce", "(tm)", "(r)", "™", "®"):
-        n = n.replace(word, " ")
-    n = re.sub(r"\s+", " ", n.replace("-", " ")).strip()
-    n = re.sub(r"\b(sff )?ada generation\b", "ada", n)  # RTX 4000 SFF Ada Generation → rtx 4000 ada
-    used: set[str] = set()
-    while True:
-        if _name_matches(n):
-            return _suffixes_possible(used, n)
-        for suf in _NAME_SUFFIXES:
-            if suf in used:
-                continue
-            m = re.fullmatch(rf"(.+?) {suf}", n)
-            if m:
-                n, _ = m.group(1), used.add(suf)
-                break
-        else:
-            m = _NAME_SIZE.fullmatch(n)
-            if m and "size" not in used and int(m.group(2)) in _KNOWN_SIZES and m.group(1):
-                n, _ = m.group(1).strip(), used.add("size")
-                continue
+def _suffixes_ok(words: list[str]) -> bool:
+    plain_numbers = 0
+    for w in words:
+        if w in _NAME_SUFFIX_WORDS:
+            continue
+        if not _NAME_SUFFIX.fullmatch(w):
             return False
+        plain_numbers += w.isdigit()
+    return plain_numbers <= 1  # 数字だけの語は 1 個まで(「RTX 4090 090 1234 5678」は通さない)
+
+
+def nvidia_name_well_formed(name: str | None) -> bool:
+    """NVIDIA の GPU 名が名前の形(上の文法)に合うか(#101)。「NVIDIA GeForce RTX 4090 D」
+    「NVIDIA TITAN X (Pascal)」「GRID A100-40C」「NVIDIA A800 40GB Active」は合い、
+    「NVIDIA GeForce RTX 3070 taro yamada」「RTX 4090 ABC123 XYZ99」は合わない。合わない名前も提出を断らない
+    (contrib の確認 gpu_name_form)。"""
+    if not isinstance(name, str):
+        return False
+    n = name.lower()
+    for mark in ("(tm)", "(r)", "™", "®"):
+        n = n.replace(mark, " ")
+    words = n.split()
+    if words[:1] == ["nvidia"]:
+        words = words[1:]
+    if not words or len(words) > _NAME_MAX_WORDS:
+        return False
+    for i, w in enumerate(words):
+        head = words[:i]
+        if not all(x in _NAME_BRANDS for x in head):
+            break
+        core = _NAME_CORE.fullmatch(w) or (head[-1:] == ["titan"] and w in _NAME_TITAN_CORE)
+        if core and _suffixes_ok(words[i + 1 :]):
+            return True
+    # 「GeForce GTX TITAN」(型番の語の無い初代の TITAN)
+    return all(x in _NAME_BRANDS for x in words) and words[-1] == "titan"
 
 
 def cc_from_name(name: str) -> tuple[int, int] | None:
@@ -438,7 +494,17 @@ TORCH_CUDA_BUILDS: tuple[CudaBuild, ...] = (
         _CU12_LINUX,
         "2.8〜2.13",
     ),
-    CudaBuild("cu128", "12.8", {"x86_64": _CU13_X86}, _CU12_WIN, _CU12_LINUX, "2.7〜2.11"),
+    # cu128 の aarch64 は v2.11.0 の .ci/manywheel/build_cuda.sh(12.8 に 12.0 を足し、aarch64 は 8.0 未満と
+    # 8.6 を除く)。download.pytorch.org/whl/cu128/torch/ に 2.7.0〜2.11.0 の manylinux_2_28_aarch64 がある
+    # (2026-10-27 に確かめた。DGX Spark の GB10 などの道。#101)
+    CudaBuild(
+        "cu128",
+        "12.8",
+        {"x86_64": _CU13_X86, "aarch64": frozenset({80, 90, 100, 120})},
+        _CU12_WIN,
+        _CU12_LINUX,
+        "2.7〜2.11",
+    ),
     CudaBuild(
         "cu126",
         "12.6",
@@ -470,8 +536,24 @@ def _code_runs(code: int, cc: tuple[int, int]) -> bool:
 
 
 def _machine() -> str:
+    """CPU の種類("x86_64" / "aarch64"。ほかは小文字の生の値で、表に無いので CUDA 版が無いと判定する。
+    #101)。"""
     m = platform.machine().lower()
-    return "aarch64" if m in ("aarch64", "arm64") else "x86_64"
+    if m in ("aarch64", "arm64"):
+        return "aarch64"
+    if m in ("x86_64", "amd64", "x64"):
+        return "x86_64"
+    return m or "unknown"
+
+
+def torch_platform(windows: bool, machine: str) -> str:
+    """PyTorch の CUDA 版の表(TORCH_CUDA_BUILDS の ccs)の鍵。表は (OS, 機械) で引く: Windows の Arm64 向けの
+    CUDA 版は無いので、Windows の x86_64 以外は表に無い鍵("windows-aarch64" など)にする(#101)。"""
+    return machine if not windows or machine == "x86_64" else f"windows-{machine}"
+
+
+def python_is_32bit() -> bool:
+    return struct.calcsize("P") == 4
 
 
 def _fmt_ver(v: tuple[int, ...]) -> str:
@@ -492,6 +574,14 @@ def torch_support(
     """PyTorch の CUDA 版のビルド(TORCH_CUDA_BUILDS)のうち、この GPU(compute capability)と
     ドライバで動くもの。分からない項目(cc・ドライバ)では断らない(分からないことを notes に書く)。"""
     notes: list[str] = []
+    if not any(b.ccs.get(machine) for b in TORCH_CUDA_BUILDS):
+        notes.append(
+            tr(
+                f"この機械({machine})向けの PyTorch の CUDA 版は無いので、CPU として判定した",
+                f"There is no CUDA build of PyTorch for this machine ({machine}), so it is judged as CPU",
+            )
+        )
+        return Support([], [], False, notes)
     if cc is None:
         arch_builds = [b for b in TORCH_CUDA_BUILDS if b.ccs.get(machine)]
         notes.append(
@@ -502,6 +592,19 @@ def torch_support(
         )
     else:
         arch_builds = [b for b in TORCH_CUDA_BUILDS if any(_code_runs(c, cc) for c in b.ccs.get(machine, ()))]
+        newest = max(c for b in TORCH_CUDA_BUILDS for c in b.ccs.get(machine, ()))
+        if not arch_builds and cc[0] * 10 + cc[1] > newest:
+            # 表より新しい世代は断らない(世代が分からないときと同じ。断るのは表より古い世代だけ。#101)
+            notes.append(
+                tr(
+                    f"compute capability {cc[0]}.{cc[1]} は PyTorch の CUDA 版の表"
+                    f"(PyTorch {TORCH_RELEASE}"
+                    " まで)より新しい世代なので、断っていない。最新の PyTorch を使う",
+                    f"Compute capability {cc[0]}.{cc[1]} is newer than the table of PyTorch CUDA builds"
+                    f" (up to PyTorch {TORCH_RELEASE}), so it is not refused. Use the latest PyTorch",
+                )
+            )
+            return Support([], [], True, notes)
         if not arch_builds:
             arch = arch_of(cc)
             label = {"fermi": "Fermi 以前の", "kepler": "Kepler ", "unknown": "この"}.get(
@@ -682,14 +785,15 @@ def parse_nvidia_smi(text: str, fields: tuple[str, ...] = QUERY) -> list[Gpu]:
         line = raw.strip().lstrip("\ufeff")
         if not line:
             continue
+        n_ok = {len(fields)} | ({len(fields) - 1} if fields[-1:] == (_OPTIONAL_LAST,) else set())
         parts = [p.strip() for p in line.split(", ")]
-        if len(parts) != len(fields):
+        if len(parts) not in n_ok:
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) != len(fields):
+            if len(parts) not in n_ok:
                 continue
 
         def get(key: str, parts: list[str] = parts) -> str:
-            return parts[idx[key]] if key in idx else ""
+            return parts[idx[key]] if key in idx and idx[key] < len(parts) else ""
 
         name = _clean(get("name")) or "NVIDIA GPU"
         total = _number(get("memory.total"))
@@ -701,11 +805,16 @@ def parse_nvidia_smi(text: str, fields: tuple[str, ...] = QUERY) -> list[Gpu]:
             free = max(0.0, total - used)
         notes: list[str] = []
         if total is None or total <= 0:
+            notes.append(_no_vram_note())
+        if (_clean(get(_OPTIONAL_LAST)) or "").lower() == "enabled":
+            # MIG の区画は nvidia-smi の総量より小さい。実機で確かめていないので値は変えない(#101)
             notes.append(
                 tr(
-                    "nvidia-smi が VRAM の量を返さない(メモリを CPU と共有する GPU など)ので、判定に使わない",
-                    "nvidia-smi returns no VRAM amount (e.g. a GPU sharing memory with the CPU), so it is "
-                    "not used",
+                    "MIG が有効: ComfyUI が使えるのは区画(MIG"
+                    " のインスタンス)の大きさで、nvidia-smi の VRAM は GPU "
+                    "全体の量。区画の大きさを --vram で指定する",
+                    "MIG is enabled: ComfyUI can use only the size of its partition (MIG instance), while "
+                    "nvidia-smi reports the whole GPU. Give the partition size with --vram",
                 )
             )
         cc = parse_compute_cap(get("compute_cap")) if "compute_cap" in idx else None
@@ -724,6 +833,102 @@ def parse_nvidia_smi(text: str, fields: tuple[str, ...] = QUERY) -> list[Gpu]:
             )
         )
     return gpus
+
+
+def _no_vram_note() -> str:
+    return tr(
+        "nvidia-smi が VRAM の量を返さない(メモリを CPU と共有する GPU など)ので、判定に使わない",
+        "nvidia-smi returns no VRAM amount (e.g. a GPU sharing memory with the CPU), so it is not used",
+    )
+
+
+# DGX Spark(GB10)。nvidia-smi の名前がこれと完全に一致するときだけ、統合メモリの GPU として判定に使う
+# (#101。docs/hardware.md「DGX Spark(GB10)」。ASUS・Dell・MSI などの GB10 機も同じ名前)
+GB10_NAME = "NVIDIA GB10"
+_JETSON = re.compile(r"orin|thor|xavier|nvgpu|tegra|jetson", re.I)
+
+
+def apply_gb10(g: Gpu, *, system: str, machine: str, meminfo: dict[str, int] | None) -> bool:
+    """VRAM の量を返さない NVIDIA の GPU のうち、DGX Spark(GB10)を統合メモリの GPU にする(#101)。
+    条件: 名前が GB10_NAME と完全に一致・memory.total が [N/A] / Not Supported・Linux の aarch64。
+    総量は /proc/meminfo の MemTotal(割り引かない。メインメモリと共有で、二重に数えない)、空きは
+    NVIDIA の known-issues の例どおり MemAvailable + SwapFree(HugePages を使っていれば空きの HugePages)で、
+    今の空きの注意(vram_free_short)だけに使う。ほかの共有メモリの NVIDIA は理由を書いて使わない。"""
+    if g.vram_total_gb > 0:
+        return False
+    with contextlib.suppress(ValueError):
+        g.notes.remove(_no_vram_note())
+    if g.name.strip() != GB10_NAME:
+        if _JETSON.search(g.name):
+            g.notes.append(
+                tr(
+                    "Jetson は PyTorch が JetPack 専用の版(jp6"
+                    " の cu126 など)で、ここの PyTorch の CUDA 版の表と"
+                    "別の系統。メモリの扱いも確かめていないので判定に使わない(対象外。CPU として判定した)",
+                    "Jetson uses JetPack-only PyTorch builds (jp6"
+                    " cu126 etc.), separate from the PyTorch CUDA "
+                    "build table here, and its memory handling is"
+                    " unverified, so it is not used (out of scope;"
+                    " judged as CPU)",
+                )
+            )
+        else:
+            g.notes.append(
+                tr(
+                    "nvidia-smi が VRAM の量を返さない(メモリを"
+                    " CPU と共有する GPU など)。共有メモリの NVIDIA の"
+                    " GPU は、ComfyUI の公式の手順を確かめた DGX Spark(GB10)だけを判定に使う",
+                    "nvidia-smi returns no VRAM amount (e.g. a GPU"
+                    " sharing memory with the CPU). Of the NVIDIA"
+                    " GPUs with shared memory, only DGX Spark (GB10), which has an official ComfyUI guide, is"
+                    " used",
+                )
+            )
+        return False
+    if system != "Linux" or machine != "aarch64":
+        g.notes.append(
+            tr(
+                "GB10 は Linux の aarch64(DGX OS など)でだけ判定に使う",
+                "GB10 is used only on aarch64 Linux (DGX OS etc.)",
+            )
+        )
+        return False
+    total = (meminfo or {}).get("MemTotal")
+    if not total:
+        g.notes.append(
+            tr(
+                "GB10 の統合メモリの量(/proc/meminfo の MemTotal)が読めないので、判定に使わない",
+                "The unified memory of GB10 (MemTotal in /proc/meminfo) cannot be read, so it is not used",
+            )
+        )
+        return False
+    free = unified_free(meminfo or {})
+    g.vram_total_gb = round(total / GIB, 2)
+    g.vram_free_gb = round(free / GIB, 2) if free is not None else None
+    g.vram_used_gb = None
+    g.backend = "cuda"
+    g.memory = "shared"
+    g.carveout_gb = 0.0
+    g.notes += [
+        tr(
+            "DGX Spark(GB10)は統合メモリ: メインメモリ"
+            f" {g.vram_total_gb:g} GB(MemTotal)を GPU と共有するとみなした"
+            "(GPU だけの上限は NVIDIA"
+            " の文書に無いので割り引かない。逃がす動かし方は無い)。推定なので段階は good まで",
+            "DGX Spark (GB10) has unified memory: the GPU is"
+            f" taken to share the {g.vram_total_gb:g} GB main memory"
+            " (MemTotal) (NVIDIA documents no GPU-only limit, so"
+            " it is not discounted; there is no offload mode)."
+            " Estimated, so the level is capped at good",
+        ),
+        tr(
+            "sm_121(GB10)では CUTLASS・xformers の"
+            " fmha のカーネルが失敗した報告があり、直ったかは確かめていない",
+            "CUTLASS / xformers fmha kernels were reported to fail on sm_121 (GB10); whether this is fixed is"
+            " unverified",
+        ),
+    ]
+    return True
 
 
 def classify_gpu(g: Gpu, *, windows_driver: bool, comfy_windows: bool, machine: str = "x86_64") -> Gpu:
@@ -806,6 +1011,12 @@ def query_nvidia_smi(exe: str) -> tuple[list[Gpu], list[str]]:
     gpus = parse_nvidia_smi(first[1], QUERY)
     if gpus:  # 1 枚だけ読めない(「Unable to determine the device handle」)ときも、読めた行は使う
         return gpus, _partial_notes(first)
+    # mig.mode.current を知らない nvidia-smi(「Field "mig.mode.current" is not a valid field」と名指しする)
+    middle = _ask(exe, QUERY_CC) if _OPTIONAL_LAST in first[1] else None
+    if middle is not None:
+        gpus = parse_nvidia_smi(middle[1], QUERY_CC)
+        if gpus:
+            return gpus, _partial_notes(middle)
     second = _ask(exe, QUERY_OLD)
     if second is not None:
         gpus = parse_nvidia_smi(second[1], QUERY_OLD)
@@ -818,7 +1029,7 @@ def query_nvidia_smi(exe: str) -> tuple[list[Gpu], list[str]]:
                 ),
                 *_partial_notes(second),
             ]
-    text = first[1] + (second[1] if second else "")
+    text = first[1] + (middle[1] if middle else "") + (second[1] if second else "")
     if "No devices were found" in text:
         return [], [
             tr("nvidia-smi は動いたが NVIDIA の GPU が見つからない", "nvidia-smi ran but found no NVIDIA GPU")
@@ -854,11 +1065,14 @@ def detect_gpus(
             )
         ]
     gpus, notes = query_nvidia_smi(exe)
-    wd = (os.name == "nt" or is_wsl()) if windows_driver is None else windows_driver
-    cw = (os.name == "nt") if comfy_windows is None else comfy_windows
+    wd = (_windows() or is_wsl()) if windows_driver is None else windows_driver
+    cw = (_windows()) if comfy_windows is None else comfy_windows
     machine = _machine()
+    system = platform.system()
+    meminfo = read_meminfo() if any(g.vram_total_gb <= 0 for g in gpus) else None
     for g in gpus:
-        classify_gpu(g, windows_driver=wd, comfy_windows=cw, machine=machine)
+        apply_gb10(g, system=system, machine=machine, meminfo=meminfo)
+        classify_gpu(g, windows_driver=wd, comfy_windows=cw, machine=torch_platform(_windows(), machine))
     return gpus, notes
 
 
@@ -872,9 +1086,37 @@ _MIN_PLAUSIBLE_VRAM = 64 * MIB  # これより小さい「VRAM」は単位の違
 _PS_WMI = (
     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
     "$a=@(Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop | "
-    "Select-Object Name,AdapterRAM,PNPDeviceID,ConfigManagerErrorCode);"
+    "Select-Object Name,AdapterRAM,PNPDeviceID,ConfigManagerErrorCode,DriverVersion);"
     "ConvertTo-Json -InputObject $a -Compress"
 )
+# WSL2 から Windows 側の GPU を読む台本(#101)。WMI は _PS_WMI と同じ項目、レジストリは画面の部品のクラスキー
+# (0000, 0001 …)の DriverDesc・MatchingDeviceId・qwMemorySize・MemorySize(REG_BINARY はバイト列から変換)
+# だけを読み、{"video": [...], "registry": [...]} の JSON で返す。PC 名などは読まない
+_PS_WSL = (
+    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
+    "$v=@(Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop | "
+    "Select-Object Name,AdapterRAM,PNPDeviceID,ConfigManagerErrorCode,DriverVersion);"
+    "$k='HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}';"
+    "$r=@(Get-ChildItem -LiteralPath $k -ErrorAction SilentlyContinue | "
+    "Where-Object {$_.PSChildName -match '^[0-9]{4}$'} | ForEach-Object {"
+    "$q=Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue;"
+    "$m=$q.'HardwareInformation.MemorySize';"
+    "if($m -is [byte[]]){if($m.Length -ge 4){$m=[BitConverter]::ToUInt32($m,0)}else{$m=$null}};"
+    "[pscustomobject]@{DriverDesc=$q.DriverDesc;MatchingDeviceId=$q.MatchingDeviceId;"
+    "'HardwareInformation.qwMemorySize'=$q.'HardwareInformation.qwMemorySize';"
+    "'HardwareInformation.MemorySize'=$m}});"
+    "ConvertTo-Json -InputObject @{video=$v;registry=$r} -Compress -Depth 3"
+)
+# デバイス マネージャーのエラー コード(Microsoft「Device Manager error messages」
+# https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages)
+_CM_ERRORS = {
+    22: ("無効にしてある(デバイス マネージャーで有効にする)", "is disabled (enable it in Device Manager)"),
+    28: ("ドライバが入っていない", "has no driver installed"),
+    43: (
+        "問題を報告して Windows が止めた(ドライバ・GPU の不調)",
+        "was stopped by Windows because it reported problems (driver or GPU trouble)",
+    ),
+}
 
 
 def _norm_name(name: str) -> str:
@@ -950,23 +1192,17 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
             if isinstance(raw, int) and _MIN_PLAUSIBLE_VRAM <= raw < _ADAPTER_RAM_CAP:
                 vram, src = raw, "wmi"
         err = d.get("ConfigManagerErrorCode")
-        if vendor == "nvidia" and "microsoft basic" in name.lower():
+        # ドライバの無い NVIDIA の GPU は、名前(言語で変わる「Microsoft 基本ディスプレイ アダプター」)に
+        # 頼らず _other_gpu_notes が知らせる(#101)
+        if isinstance(err, int) and err != 0:
+            ja, en = _CM_ERRORS.get(err, ("問題がある状態", "has a problem"))
             notes.append(
                 tr(
-                    "NVIDIA の GPU があるが、NVIDIA のドライバが入っていない(標準の画面ドライバで動いている)"
-                    "。"
-                    "ドライバを入れると GPU で判定できる",
-                    "There is an NVIDIA GPU but no NVIDIA driver (it runs on the basic display driver)."
-                    " Install the driver to judge with the GPU",
+                    f"{name} は Windows のデバイス マネージャーで{ja}(コード {err})",
+                    f"{name} {en} in Windows Device Manager (code {err})",
                 )
             )
-        elif isinstance(err, int) and err != 0:
-            notes.append(
-                tr(
-                    f"{name} は Windows のデバイスマネージャーで問題がある状態(コード {err})",
-                    f"{name} has a problem in Windows Device Manager (code {err})",
-                )
-            )
+        driver = d.get("DriverVersion")
         ids = re.search(r"ven_([0-9a-f]{4})&dev_([0-9a-f]{4})", hwid)
         out.append(
             Adapter(
@@ -976,6 +1212,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
                 vram_source=src,
                 source="wmi",
                 pci_id=f"{ids.group(1)}:{ids.group(2)}" if ids else None,
+                driver=driver.strip() if isinstance(driver, str) and driver.strip() else None,
             )
         )
     return out, notes
@@ -1029,12 +1266,20 @@ def parse_lspci(text: str, vram_of=None, gtt_of=None) -> list[Adapter]:
     return out
 
 
-def _sysfs_value(slot: str, leaf: str) -> int | None:
-    if not re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", slot, flags=re.I):
+_SLOT = re.compile(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", re.I)
+
+
+def _sysfs_text(slot: str, leaf: str) -> str | None:
+    """sysfs の PCI の部品の値。差し場所(slot)は形を確かめて読むのに使うだけで、残さない・出さない。"""
+    if not _SLOT.fullmatch(slot):
         return None
-    text = _read_text(f"/sys/bus/pci/devices/{slot}/{leaf}")
+    text = _read_text(_p(f"/sys/bus/pci/devices/{slot}/{leaf}"))
+    return text.strip() if text is not None else None
+
+
+def _sysfs_value(slot: str, leaf: str) -> int | None:
     try:
-        v = int((text or "").strip())
+        v = int(_sysfs_text(slot, leaf) or "")
     except ValueError:
         return None
     return v if v >= _MIN_PLAUSIBLE_VRAM else None
@@ -1048,6 +1293,246 @@ def _sysfs_vram(slot: str) -> int | None:
 def _sysfs_gtt(slot: str) -> int | None:
     """Linux の amdgpu の GTT(GPU がメインメモリから使える分。mem_info_gtt_total)。"""
     return _sysfs_value(slot, "mem_info_gtt_total")
+
+
+def _sysfs_slots() -> list[str]:
+    """/sys/bus/pci/devices の部品の差し場所(試験では conftest が塞ぐ)。読めなければ空。"""
+    try:
+        names = sorted(os.listdir(_p("/sys/bus/pci/devices")))
+    except OSError:
+        return []
+    return [n for n in names if _SLOT.fullmatch(n)]
+
+
+def sysfs_display_adapters() -> list[Adapter]:
+    """lspci が無いときの画面の部品(#101): /sys/bus/pci/devices/*/class が 0x03xxxx のもの。名前は lspci の
+    pci.ids が古いときと同じ「<会社> Device <型番の ID>」にし、classify_adapter が PCI_DEVICE_NAMES で引く。
+    差し場所は読むのに使うだけで Adapter に入れない。"""
+    out: list[Adapter] = []
+    for slot in _sysfs_slots():
+        cls = (_sysfs_text(slot, "class") or "").lower()
+        ven = (_sysfs_text(slot, "vendor") or "").lower().removeprefix("0x")
+        dev = (_sysfs_text(slot, "device") or "").lower().removeprefix("0x")
+        if (
+            not re.fullmatch(r"0x03[0-9a-f]{4}", cls)
+            or not re.fullmatch(r"[0-9a-f]{4}", ven + "")
+            or not re.fullmatch(r"[0-9a-f]{4}", dev)
+        ):
+            continue
+        vendor = _VENDOR_IDS.get(ven, "unknown")
+        label = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}.get(vendor)
+        vram, gtt = _sysfs_vram(slot), _sysfs_gtt(slot)
+        out.append(
+            Adapter(
+                name=f"{label} Device {dev}" if label else f"Device {ven}:{dev}",
+                vendor=vendor,
+                vram_gb=round(vram / GIB, 2) if vram else None,
+                vram_source="sysfs" if vram else None,
+                source="sysfs",
+                shared_gb=round(gtt / GIB, 2) if gtt else None,
+                pci_id=f"{ven}:{dev}",
+            )
+        )
+    return out
+
+
+_KFD_NODES = "/sys/class/kfd/kfd/topology/nodes"
+
+
+def gfx_from_target_version(v: int) -> str | None:
+    """amdkfd の gfx_target_version(10 進で 主×10000 + 下位×100 + stepping)→ gfx の名前。stepping は
+    16 進 1 文字(90010 → gfx90a、110000 → gfx1100、120001 → gfx1201)。0(CPU のノード)は None。"""
+    if v <= 0:
+        return None
+    major, minor, step = v // 10000, (v // 100) % 100, v % 100
+    if minor > 9 or step > 15:
+        return None
+    return f"gfx{major}{minor}{step:x}"
+
+
+def kfd_gfx_targets() -> dict[str, str]:
+    """Linux の amdkfd が出す GPU の世代(#101): /sys/class/kfd/kfd/topology/nodes/*/properties の
+    gfx_target_version を、ノードの vendor_id・device_id(10 進)で PCI の型番 ID("1002:744c")に当てる。
+    amdkfd(drivers/gpu/drm/amd/amdkfd/kfd_topology.c)は amdgpu の GPU にだけ出す。読めなければ空。"""
+    out: dict[str, str] = {}
+    try:
+        nodes = sorted(os.listdir(_p(_KFD_NODES)))
+    except OSError:
+        return out
+    for node in nodes:
+        if not node.isdigit():
+            continue
+        props: dict[str, int] = {}
+        for line in (_read_text(_p(f"{_KFD_NODES}/{node}/properties")) or "").splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[1].isdigit():
+                props[parts[0]] = int(parts[1])
+        gfx = gfx_from_target_version(props.get("gfx_target_version", 0))
+        ven, dev = props.get("vendor_id"), props.get("device_id")
+        if gfx and ven and dev is not None and 0 <= ven < 0x10000 and 0 <= dev < 0x10000:
+            out[f"{ven:04x}:{dev:04x}"] = gfx
+    return out
+
+
+# --- WSL2 の AMD・Intel(#101。docs/hardware.md「WSL2」) ---------------------------------------------
+
+
+@dataclass(frozen=True)
+class WslState:
+    interop: bool  # Windows のプログラムを動かせるか(binfmt_misc の WSLInterop・WSLInterop-late)
+    container: bool  # WSL の上のコンテナの中か(/.dockerenv・/run/.containerenv)
+
+
+def _exists(path: str) -> bool:
+    try:
+        return os.path.exists(_p(path))
+    except (OSError, ValueError):
+        return False
+
+
+def wsl_state() -> WslState | None:
+    """WSL2 の中なら、相互運用とコンテナの状態(試験では conftest が塞ぐ)。WSL2 でなければ None。
+    WSL2 = /dev/dxg(GPU の準仮想化の口)があり、カーネルの版に microsoft がある。プロセスは起こさない。"""
+    if platform.system() != "Linux" or "microsoft" not in platform.release().lower():
+        return None
+    if not _exists("/dev/dxg"):
+        return None
+    return WslState(
+        interop=_exists("/proc/sys/fs/binfmt_misc/WSLInterop")
+        or _exists("/proc/sys/fs/binfmt_misc/WSLInterop-late"),
+        container=_exists("/.dockerenv") or _exists("/run/.containerenv"),
+    )
+
+
+def _wsl_powershell() -> str | None:
+    """WSL から呼ぶ powershell.exe。PATH に無ければ、wsl.conf の automount の根(既定 /mnt/)の下の
+    C ドライブ。"""
+    found = shutil.which("powershell.exe")
+    if found:
+        return found
+    root = "/mnt/"
+    text = _read_text(_p("/etc/wsl.conf"))
+    if text:
+        cp = configparser.ConfigParser(strict=False, interpolation=None)
+        with contextlib.suppress(configparser.Error):
+            cp.read_string(text)
+            root = cp.get("automount", "root", fallback=root).strip().strip('"') or root
+    path = root.rstrip("/") + "/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    return path if _exists(path) else None
+
+
+def _find_tool(name: str, extra: tuple[str, ...] = ()) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in extra:
+        if _exists(f"{d}/{name}"):
+            return _p(f"{d}/{name}")
+    return None
+
+
+def parse_rocminfo(text: str) -> list[tuple[str, str]]:
+    """rocminfo の GPU のエージェント([(gfx, Marketing Name)])。読むのは行の頭で照合した `Name: gfx…`・
+    `Marketing Name:`・`Device Type:` だけで、ほかの行(UUID など)は読まない・残さない(#101)。"""
+    out: list[tuple[str, str]] = []
+    gfx = market = kind = None
+
+    def flush() -> None:
+        if gfx and kind == "GPU":
+            out.append((gfx, market or ""))
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("*******") or line.startswith("Agent "):
+            flush()
+            gfx = market = kind = None
+            continue
+        m = re.match(r"^Name:\s+(gfx[0-9a-f]{3,5})\s*$", line)
+        if m:
+            gfx = m.group(1)
+            continue
+        m = re.match(r"^Marketing Name:\s+([A-Za-z0-9 ()._-]{1,64})\s*$", line)
+        if m:
+            market = m.group(1).strip()
+            continue
+        m = re.match(r"^Device Type:\s+(GPU|CPU|DSP)\s*$", line)
+        if m:
+            kind = m.group(1)
+    flush()
+    return out
+
+
+def parse_clinfo_devices(text: str) -> list[str]:
+    """`clinfo -l` の Intel の GPU の名前(「`-- Device #0: Intel(R) Arc(TM) A770 Graphics」の行)。"""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^\s*[`|+\\-]*\s*Device #\d+:\s*(.{1,80}?)\s*$", line)
+        if (
+            m
+            and re.search(r"intel", m.group(1), re.I)
+            and not re.search(r"\bcpu\b|core\(tm\) i|xeon", m.group(1), re.I)
+        ):
+            out.append(m.group(1))
+    return out
+
+
+def _wsl_note_unreadable(why_ja: str, why_en: str) -> str:
+    return tr(
+        f"WSL2 の中: {why_ja}ので、Windows 側の GPU(AMD・Intel)を読めない",
+        f"Inside WSL2: {why_en}, so the Windows-side GPUs (AMD, Intel) cannot be read",
+    )
+
+
+def wsl_windows_adapters(state: WslState) -> tuple[list[Adapter], list[str]]:
+    """WSL2 の中から、相互運用で Windows 側の GPU を読み(WMI + レジストリ。Windows と同じ読み方)、
+    AMD は rocminfo、Intel は clinfo -l で WSL の中の準備を確かめる(#101)。失敗は例外にせず注意にする。"""
+    if state.container:
+        return [], [_wsl_note_unreadable("WSL の上のコンテナの中な", "this is a container on WSL")]
+    if not state.interop:
+        return [], [
+            _wsl_note_unreadable(
+                "Windows のプログラムを動かす相互運用(wsl.conf の [interop] enabled)が無効な",
+                "interop for running Windows programs ([interop] enabled in wsl.conf) is disabled",
+            )
+        ]
+    exe = _wsl_powershell()
+    r = _run([exe, "-NoProfile", "-NonInteractive", "-Command", _PS_WSL], OTHER_GPU_TIMEOUT) if exe else None
+    data = None
+    if r is not None and r[0] == 0:
+        with contextlib.suppress(ValueError):
+            data = json.loads(r[1].strip().lstrip("\ufeff") or "null")
+    if not isinstance(data, dict):
+        return [], [
+            _wsl_note_unreadable(
+                "powershell.exe が無い・失敗した・時間内に終わらない",
+                "powershell.exe is missing, failed or did not finish in time",
+            )
+        ]
+    registry = [e for e in data.get("registry") or [] if isinstance(e, dict)]
+    adapters, notes = parse_wmi_video(json.dumps(data.get("video") or []), registry)
+    for a in adapters:
+        a.source = "wsl"
+    if any(a.vendor == "amd" for a in adapters):
+        tool = _find_tool("rocminfo", ("/opt/rocm/bin",))
+        rr = _run([tool], OTHER_GPU_TIMEOUT) if tool else None
+        agents = parse_rocminfo(rr[1]) if rr is not None and rr[0] == 0 else []
+        for a in adapters:
+            if a.vendor != "amd":
+                continue
+            a.wsl_runtime = bool(agents)
+            mine = [g for g, mk in agents if mk and _norm_name(mk) == _norm_name(a.name)]
+            by_name = amd_gfx(a.name)
+            same = [g for g, _ in agents if by_name and g == by_name[0]]
+            pick = mine or same or ([agents[0][0]] if len(agents) == 1 else [])
+            a.gfx_target = pick[0] if pick else None
+    if any(a.vendor == "intel" for a in adapters):
+        tool = _find_tool("clinfo")
+        rr = _run([tool, "-l"], OTHER_GPU_TIMEOUT) if tool else None
+        ok = bool(parse_clinfo_devices(rr[1])) if rr is not None and rr[0] == 0 else False
+        for a in adapters:
+            if a.vendor == "intel":
+                a.wsl_runtime = ok
+    return adapters, notes
 
 
 # Apple silicon のチップ名(system_profiler の sppci_model。例 "Apple M2 Pro")。bench の実測の GPU 名に使うのは
@@ -1117,23 +1602,60 @@ def parse_system_profiler(text: str) -> list[Adapter]:
     return out
 
 
-def detect_other_gpus() -> tuple[list[Adapter], list[str]]:
-    """NVIDIA 以外も含めた画面の部品。Windows は PowerShell の WMI + レジストリ、Linux は lspci + sysfs、
-    macOS は system_profiler。失敗・時間切れは黙って飛ばす(空のまま)。"""
-    if os.name == "nt":
+def _unreadable(how: str) -> str:
+    return tr(
+        f"画面の部品の一覧を読めなかった({how} が無い・失敗した・時間内に終わらない)。"
+        "NVIDIA 以外の GPU は判定に使っていない",
+        f"The display adapter list could not be read ({how} is missing, failed or did not finish in time)."
+        " GPUs other than NVIDIA are not used",
+    )
+
+
+def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[str]]:
+    """NVIDIA 以外も含めた画面の部品。Windows は PowerShell の WMI + レジストリ、Linux は lspci(無ければ
+    sysfs)+ sysfs・amdkfd、macOS は system_profiler。WSL2 では wsl_windows のとき Windows 側の GPU も読む
+    (使える NVIDIA の GPU があるときは呼ぶ側が False にする)。読めなかったときは注意を返す(#101)。"""
+    if _windows():
         r = _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _PS_WMI], OTHER_GPU_TIMEOUT)
         if r is None or r[0] != 0:
-            return [], []
+            return [], [_unreadable("PowerShell")]
         return parse_wmi_video(r[1], _reg_display_entries() or [])
     if platform.system() == "Linux":
+        notes: list[str] = []
         r = _run(["lspci", "-Dnn"], OTHER_GPU_TIMEOUT)
-        if r is None or r[0] != 0:
-            return [], []
-        return parse_lspci(r[1], _sysfs_vram, _sysfs_gtt), []
+        if r is not None and r[0] == 0:
+            adapters = parse_lspci(r[1], _sysfs_vram, _sysfs_gtt)
+        else:
+            adapters = sysfs_display_adapters()
+            if adapters:
+                notes.append(
+                    tr(
+                        "lspci が使えないので、画面の部品を sysfs(/sys/bus/pci/devices)から読んだ"
+                        "(製品名は型番の ID から引く)",
+                        "lspci is unavailable, so the display adapters were read from sysfs"
+                        " (/sys/bus/pci/devices; product names come from the device IDs)",
+                    )
+                )
+        kfd = kfd_gfx_targets()
+        for a in adapters:
+            if a.vendor == "amd" and a.pci_id in kfd:
+                a.gfx_target = kfd[a.pci_id]
+        state = wsl_state()
+        if state is not None:
+            # WSL2 の lspci・sysfs に見える部品は GPU の準仮想化の口(Microsoft 1414:008e)で、
+            # 計算の GPU ではない
+            adapters = [a for a in adapters if not (a.pci_id or "").startswith("1414:")]
+            if wsl_windows:
+                win, win_notes = wsl_windows_adapters(state)
+                adapters += win
+                notes += win_notes
+        elif not adapters:
+            notes.append(_unreadable("lspci・sysfs"))
+        return adapters, notes
     if platform.system() == "Darwin":
         r = _run(["system_profiler", "SPDisplaysDataType", "-json"], OTHER_GPU_TIMEOUT)
         if r is None or r[0] != 0:
-            return [], []
+            return [], [_unreadable("system_profiler")]
         return parse_system_profiler(r[1]), []
     return [], []
 
@@ -1343,6 +1865,8 @@ _VENDOR_PCI = {"amd": "1002", "intel": "8086"}
 def pci_device_name(vendor: str, name: str) -> tuple[str, str] | None:
     """「AMD Device 7551」のような名前 → (型番の ID, 表の名前。表に無ければ空)。
     その形でない名前(製品名があるとき)は None。"""
+    if vendor not in _VENDOR_PCI:  # 型番の ID で引くのは AMD・Intel だけ(#101)
+        return None
     m = re.fullmatch(r"(amd |intel )?device ([0-9a-f]{4})", _low(name))
     if not m:
         return None
@@ -1386,6 +1910,62 @@ MACOS_MIN_FOR_MPS = (14, 0)  # Apple「Accelerated PyTorch training on Mac」: m
 
 VENDOR_LABEL = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}
 
+# 計算に使う GPU ではない画面の部品の会社(PCI の会社の ID → 名前。pci.ids の会社名)。仮想マシンの画面と、
+# サーバーの管理用(BMC)の画面(#101)
+DISPLAY_ONLY_VENDORS = {
+    "1234": "QEMU",
+    "1af4": "virtio",
+    "15ad": "VMware",
+    "80ee": "VirtualBox",
+    "1414": "Microsoft Hyper-V",
+    "1013": "Cirrus Logic",
+    "1b36": "QEMU (Red Hat)",
+    "1a03": "ASPEED",
+    "102b": "Matrox",
+}
+
+# WSL2 で使える AMD の GPU(AMD「WSL compatibility」の ROCm 7.2.1 の表の製品名。#101。
+# https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html
+# 2026-10-27 に読んだ)。名前は _wsl_amd_key の形(会社名・Radeon・(TM) を除いた小文字)。APU は表に無い
+WSL_AMD_SUPPORTED = frozenset(
+    {
+        "rx 9070",
+        "rx 9070 xt",
+        "rx 9070 gre",
+        "ai pro r9700",
+        "ai pro r9600d",
+        "rx 9060",
+        "rx 9060 xt",
+        "rx 7900 xtx",
+        "rx 7900 xt",
+        "rx 7900 gre",
+        "pro w7900",
+        "pro w7900 dual slot",
+        "pro w7800",
+        "pro w7800 48gb",
+        "pro w7700",
+        "rx 7800 xt",
+        "rx 7700",
+        "rx 7700 xt",
+    }
+)
+# Intel の WSL2 の Windows のドライバの下限(Intel「PyTorch Prerequisites for Intel GPUs」2.14 の Windows の節
+# 「32.0.101.8801 or higher」。版の比べ方は Intel support 000005654: 3 つ目と 4 つ目の欄をつないだ 7 桁)
+INTEL_WSL_MIN_BUILD = 1018801
+
+
+def _wsl_amd_key(name: str) -> str:
+    n = _low(name).replace("amd ", " ").replace("radeon ", " ")
+    return " ".join(n.split())
+
+
+def intel_driver_build(version: str | None) -> int | None:
+    """Intel の画面ドライバの版("32.0.101.8801")→ 7 桁の build 番号(1018801)。読めなければ None。"""
+    parts = (version or "").strip().split(".")
+    if len(parts) != 4 or not all(x.isdigit() for x in parts):
+        return None
+    return int(f"{int(parts[2])}{int(parts[3]):04d}")
+
 
 @dataclass(frozen=True)
 class Host:
@@ -1406,6 +1986,13 @@ def host_info() -> Host:
         build = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else None
     elif system == "Darwin":
         mac = parse_version(platform.mac_ver()[0]) or None
+        if mac == (10, 16):
+            # 古い SDK で作った Python は macOS 11 以降でも 10.16 を返す(互換の版)。本当の版を読み直す(#101)
+            r = _run(
+                ["/usr/bin/env", "SYSTEM_VERSION_COMPAT=0", "sw_vers", "-productVersion"], OTHER_GPU_TIMEOUT
+            )
+            again = parse_version(r[1]) if r is not None and r[0] == 0 else None
+            mac = again if again and again >= (11,) else None
     return Host(system=system, windows_build=build, mac_version=mac, cpu=_cpu_name())
 
 
@@ -1477,6 +2064,26 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         a.usable = False
         a.reason = tr(why + "ので、CPU として判定した", why_en + ", so it is judged as CPU")
 
+    if host.system == "Darwin" and a.vendor != "apple":
+        # 項目 7: macOS の Apple 以外の GPU は、世代を引く前に対象外と言う(Apple の Metal の PyTorch のページ:
+        # Apple silicon と macOS 14 以降)
+        refuse(
+            f"macOS の Apple 以外の GPU({a.name})は PyTorch の MPS 版の対象ではない(Apple silicon だけ)",
+            f"GPUs other than Apple on macOS ({a.name}) are not covered by the MPS build of PyTorch"
+            " (Apple silicon only)",
+        )
+        return None
+    ven_id = (a.pci_id or "").partition(":")[0]
+    if a.vendor not in VENDOR_LABEL and ven_id in DISPLAY_ONLY_VENDORS:
+        refuse(
+            f"{a.name} は計算に使う GPU ではない(仮想マシン・管理用の画面: {DISPLAY_ONLY_VENDORS[ven_id]})",
+            f"{a.name} is not a GPU for computing (a virtual machine or management display:"
+            f" {DISPLAY_ONLY_VENDORS[ven_id]})",
+        )
+        return None
+    if a.source == "wsl":
+        return _classify_wsl(a, ram_gb, tag, refuse)
+
     gfx = None
     arch = None
     # Linux の pci.ids が古いと「AMD Device 7551」「Intel Device e20b」になる。
@@ -1484,47 +2091,70 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     name = a.name
     pci_note = None
     pci = pci_device_name(a.vendor, a.name)
-    if pci is not None:
-        dev, known = pci
-        if not known:
+    if pci is not None and not (pci[1] or a.gfx_target):  # amdkfd の世代があれば名前は要らない
+        if a.source == "sysfs":
+            refuse(
+                f"{a.name} は製品名が分からない(lspci が無く、型番の ID が表に無い。lspci を入れると分かる)",
+                f"The product name of {a.name} is unknown (no lspci, and the device ID is not in the table;"
+                " installing lspci shows it)",
+            )
+        else:
             refuse(
                 f"{a.name} は製品名が分からない(lspci の pci.ids が古い。update-pciids で新しくすると分かる)",
                 f"The product name of {a.name} is unknown (the pci.ids of lspci is old; update-pciids fixes "
                 "it)",
             )
-            return None
+        return None
+    if pci is not None and pci[1]:
+        dev, known = pci
         name = known
-        pci_note = tr(
-            f"lspci の pci.ids が古く製品名が出ないので、型番の ID({dev})から {known} とみなした"
-            "(update-pciids で新しくすると製品名が出る)",
-            f"The pci.ids of lspci is old and shows no product name, so it was taken as {known}"
-            f" from the device ID ({dev}) (update-pciids shows the product name)",
-        )
+        if a.source == "sysfs":
+            pci_note = tr(
+                f"lspci が無いので、型番の ID({dev})から {known} とみなした",
+                f"There is no lspci, so it was taken as {known} from the device ID ({dev})",
+            )
+        else:
+            pci_note = tr(
+                f"lspci の pci.ids が古く製品名が出ないので、型番の ID({dev})から {known} とみなした"
+                "(update-pciids で新しくすると製品名が出る)",
+                f"The pci.ids of lspci is old and shows no product name, so it was taken as {known}"
+                f" from the device ID ({dev}) (update-pciids shows the product name)",
+            )
     if a.vendor == "amd":
         found = amd_gfx(name, host.cpu)
-        if found is None:
-            if re.fullmatch(r"(amd )?radeon graphics", _low(a.name)):
+        if a.gfx_target:  # 項目 10: amdkfd の gfx_target_version を名前より先に使う
+            gfx, a.integrated = a.gfx_target, (found[1] if found else _guess_integrated(a))
+            arch = AMD_ARCH.get(gfx) or _new_amd_arch(gfx)
+        elif found is None:
+            generic = bool(re.fullmatch(r"(amd )?radeon graphics", _low(a.name)))
+            if generic:
                 a.integrated = True  # CPU の名前でも世代が決まらない内蔵 GPU
-            refuse(
-                f"{a.name} は世代(gfx)が名前から分からない",
-                f"The generation (gfx) of {a.name} is unknown from its name",
-            )
+                refuse(
+                    f"{a.name} は世代(gfx)が名前から分からない",
+                    f"The generation (gfx) of {a.name} is unknown from its name",
+                )
+            else:  # 項目 11: 表に無い新しい GPU
+                refuse(
+                    f"{a.name} は名前の表に無い GPU(新しい GPU?)で、世代(gfx)が確かめられない",
+                    f"{a.name} is not in the name table (a new GPU?),"
+                    " so its generation (gfx) cannot be checked",
+                )
+                a.reason += _vram_hint()
             return None
-        gfx, a.integrated = found
-        arch = AMD_ARCH.get(gfx, "?")
-        if host.system == "Darwin":
-            refuse(
-                "macOS の AMD の GPU は PyTorch の MPS 版の対象ではない(Apple silicon だけ)",
-                "AMD GPUs on macOS are not covered by the MPS build of PyTorch (Apple silicon only)",
-            )
-            return None
+        else:
+            gfx, a.integrated = found
+            arch = AMD_ARCH.get(gfx, "?")
         if host.system not in ("Windows", "Linux"):
             refuse(
                 f"{host.system} の ROCm 版 PyTorch は無い",
                 f"There is no ROCm build of PyTorch for {host.system}",
             )
             return None
-        if not (arch in AMD_SUPPORTED_ARCH or (host.system == "Linux" and arch in AMD_LINUX_ONLY_ARCH)):
+        if not (
+            arch in AMD_SUPPORTED_ARCH
+            or arch == AMD_NEW_ARCH
+            or (host.system == "Linux" and arch in AMD_LINUX_ONLY_ARCH)
+        ):
             refuse(
                 f"{a.name}({arch}・{gfx})は ComfyUI が案内する ROCm 版 PyTorch の対象(RDNA 2 以降)に入らない",
                 f"{a.name} ({arch}, {gfx}) is not covered by the ROCm build of PyTorch that ComfyUI "
@@ -1556,6 +2186,21 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 " Level up to good",
             )
         ]
+        if arch == AMD_NEW_ARCH:
+            notes.append(
+                tr(
+                    f"{gfx} は表に無い新しい世代。RDNA 2 以降の決まりに照らして使える側とみなした(推定)",
+                    f"{gfx} is a newer generation than the table; taken as usable under the RDNA 2-or-later"
+                    " rule (estimate)",
+                )
+            )
+        if a.gfx_target and host.system == "Linux":
+            notes.append(
+                tr(
+                    f"世代は Linux の amdkfd の gfx_target_version({gfx})で決めた",
+                    f"The generation was taken from gfx_target_version of the Linux amdkfd ({gfx})",
+                )
+            )
         if host.system == "Linux" and gfx not in PYTORCH_ROCM_LINUX_GFX:
             notes.append(
                 tr(
@@ -1576,6 +2221,14 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         backend, bf16 = "rocm", arch not in AMD_NO_BF16_ARCH
     elif a.vendor == "intel":
         found_i = intel_xpu(name)
+        if found_i is None and re.search(r"\barc\b", _low(name)):  # 項目 11: 表に無い新しい Arc
+            refuse(
+                f"{a.name} は名前の表に無い Arc(新しい GPU?)で、PyTorch の XPU 版の対象か確かめられない",
+                f"{a.name} is an Arc not in the name table (a new GPU?), so whether the XPU build of PyTorch"
+                " covers it cannot be checked",
+            )
+            a.reason += _vram_hint()
+            return None
         if found_i is None:
             if re.search(r"uhd|iris|hd graphics|^intel graphics$", _low(name)):
                 a.integrated = True
@@ -1626,6 +2279,16 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         if host.system != "Darwin":
             refuse("Apple の GPU は macOS でだけ使える", "Apple GPUs can be used only on macOS")
             return None
+        if not APPLE_CHIP_NAME.fullmatch(a.name.strip()):
+            # 項目 2: macOS の仮想マシンの「Apple Paravirtual device」など。PyTorch #111576「[MPS] Skip
+            # virtualized devices」(この部品では最初の確保が失敗する)
+            refuse(
+                f"{a.name} は Apple silicon のチップ名でない(仮想マシンの画面など)。MPS で動かない",
+                f"{a.name} is not an Apple silicon chip name (e.g."
+                " a virtual machine display) and does not run"
+                " MPS",
+            )
+            return None
         if host.mac_version is None or host.mac_version < MACOS_MIN_FOR_MPS:
             refuse(
                 "PyTorch の MPS 版は macOS 14.0 以降が要る(この PC の macOS は 14 より前か、版が分からない)",
@@ -1644,6 +2307,147 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         return None
     if pci_note:
         notes.insert(1, pci_note)
+    return _usable_gpu(a, ram_gb, notes, backend, bf16, arch, gfx)
+
+
+AMD_NEW_ARCH = "RDNA (new)"
+
+
+def _vram_hint() -> str:
+    return tr(
+        "(--vram で VRAM を指定すれば判定できる。名前の表は毎週の更新で足す)",
+        " (give the VRAM with --vram to judge; the name table is extended by the weekly update)",
+    )
+
+
+def _new_amd_arch(gfx: str) -> str:
+    """表(AMD_ARCH)に無い gfx の世代。gfx10.3 以降(RDNA 2 以降)と主番号 13 以上は新しい世代
+    (AMD_NEW_ARCH。今の決まり「RDNA 2 以降」に照らして断らない)、ほかは分からない("?")。"""
+    m = re.fullmatch(r"gfx(\d{1,2})(\d)([0-9a-f])", gfx)
+    if not m:
+        return "?"
+    major, minor = int(m.group(1)), int(m.group(2))
+    return AMD_NEW_ARCH if (major, minor) >= (10, 3) else "?"
+
+
+def _guess_integrated(a: Adapter) -> bool:
+    """名前で決まらない AMD の GPU が内蔵 GPU か: sysfs の VRAM が 2 GiB 未満で GTT が読めたとき
+    内蔵とみなす。"""
+    return bool(a.shared_gb) and (a.vram_gb or 0.0) < 2.0
+
+
+def _classify_wsl(a: Adapter, ram_gb: float, tag: str, refuse) -> Gpu | None:
+    """WSL2 の中から読んだ Windows 側の AMD・Intel の GPU(#101。docs/hardware.md「WSL2」)。
+    使うのは、WSL の中の
+    準備(rocminfo / clinfo)ができていて、公式の WSL の対応表にあるときだけ。段階は推定で good まで。"""
+    vram_note = tr(
+        "WSL の中では、Windows 側の VRAM より空きが約 3 GB 少ないという報告がある(値は変えていない)",
+        "Inside WSL, free VRAM is reported to be about 3 GB less than on Windows (the value is not changed)",
+    )
+    if a.vendor == "amd":
+        if _wsl_amd_key(a.name) not in WSL_AMD_SUPPORTED:
+            refuse(
+                f"{a.name} は AMD の WSL の対応表(ROCm 7.2.1)に無い",
+                f"{a.name} is not in AMD's WSL support table (ROCm 7.2.1)",
+            )
+            return None
+        if not a.wsl_runtime or not a.gfx_target:
+            refuse(
+                f"Windows 側に {a.name} があるが、WSL の中の rocminfo で GPU が見えない。WSL2 で使うには、"
+                "Windows に AMD Software: Adrenalin Edition for WSL2 を、WSL の中に ROCm の WSL 版を入れる",
+                f"{a.name} is on the Windows side, but rocminfo"
+                " inside WSL does not see the GPU. To use it in WSL2,"
+                " install AMD Software: Adrenalin Edition for WSL2"
+                " on Windows and the WSL build of ROCm inside WSL",
+            )
+            return None
+        if not a.vram_gb:
+            refuse(f"{a.name} の VRAM の量が読めない", f"The VRAM amount of {a.name} cannot be read")
+            return None
+        a.integrated = False
+        gfx = a.gfx_target
+        arch = AMD_ARCH.get(gfx) or _new_amd_arch(gfx)
+        notes = [
+            tr(
+                f"{tag}: WSL2 の ROCm 版"
+                f" PyTorch({gfx}、{arch})で動く組み合わせとして判定した。段階は good まで",
+                f"{tag}: judged as a combination that runs with the ROCm build of PyTorch in WSL2"
+                f" ({gfx}, {arch}). Level up to good",
+            ),
+            vram_note,
+        ]
+        return _usable_gpu(a, 0.0, notes, "rocm", arch not in AMD_NO_BF16_ARCH, arch, gfx)
+    if a.vendor == "intel":
+        found = intel_xpu(a.name)
+        if found is None:
+            refuse(
+                f"{a.name} は PyTorch の XPU 版が WSL2 で確かめた Intel の GPU"
+                "(Arc A / B シリーズ、Core Ultra の Arc Graphics)に入らない",
+                f"{a.name} is not one of the Intel GPUs the XPU build of PyTorch verifies on WSL2"
+                " (Arc A / B series, Arc Graphics of Core Ultra)",
+            )
+            return None
+        build = intel_driver_build(a.driver)
+        if build is not None and build < INTEL_WSL_MIN_BUILD:
+            refuse(
+                f"Windows の Intel のドライバ {a.driver} は古い(WSL2"
+                " の XPU 版 PyTorch は 32.0.101.8801 以上)",
+                f"The Windows Intel driver {a.driver} is too old (the XPU build of PyTorch on WSL2 needs"
+                " 32.0.101.8801 or later)",
+            )
+            return None
+        if not a.wsl_runtime:
+            refuse(
+                f"Windows 側に {a.name} があるが、WSL の中の clinfo"
+                " -l に Intel の GPU が出ない。WSL の中に Intel の"
+                " compute runtime(libze1・intel-opencl-icd など)を入れる",
+                f"{a.name} is on the Windows side, but clinfo -l"
+                " inside WSL lists no Intel GPU. Install the Intel"
+                " compute runtime (libze1, intel-opencl-icd etc.) inside WSL",
+            )
+            return None
+        series, a.integrated, floor = found
+        notes = [
+            tr(
+                f"{tag}: WSL2 の XPU 版 PyTorch({series})で動く組み合わせとして判定した。段階は good まで",
+                f"{tag}: judged as a combination that runs with the XPU build of PyTorch in WSL2 ({series})."
+                " Level up to good",
+            )
+        ]
+        if build is None:
+            notes.append(
+                tr(
+                    "Windows の Intel"
+                    " のドライバの版が読めないので、ドライバでは断っていない(32.0.101.8801 以上が要る)",
+                    "The Windows Intel driver version cannot be read, so it is not refused by driver"
+                    " (32.0.101.8801 or later is needed)",
+                )
+            )
+        if a.integrated:
+            notes.append(
+                tr(
+                    "WSL の中のメモリ(Windows の搭載量以下)から共有の分を見積もった(少なめの見積もり)",
+                    "The shared share was estimated from the memory inside WSL (at most the Windows amount;"
+                    " a low estimate)",
+                )
+            )
+        elif not a.vram_gb and floor:
+            a.vram_gb, a.vram_source = floor, "name"
+        notes.append(vram_note)
+        return _usable_gpu(a, ram_gb, notes, "xpu", True, None, None)
+    refuse(
+        f"{a.name} は WSL2 で判定に使う GPU(AMD・Intel)ではない",
+        f"{a.name} is not a GPU used in WSL2 (AMD, Intel)",
+    )
+    return None
+
+
+def _usable_gpu(
+    a: Adapter, ram_gb: float, notes: list[str], backend: str, bf16: bool, arch: str | None, gfx: str | None
+) -> Gpu | None:
+    def refuse(why: str, why_en: str) -> None:
+        a.usable = False
+        a.reason = tr(why + "ので、CPU として判定した", why_en + ", so it is judged as CPU")
 
     if a.vendor == "apple":
         pool, memory = ram_gb * UNIFIED_MEMORY_SHARE, "unified"
@@ -1700,9 +2504,9 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
     notes = []
     for a in adapters:
         if a.vendor == "nvidia":
-            if (
-                not judged_gpu and a.source == "lspci"
-            ):  # Windows はドライバの無いときの注意を WMI の読みで出す
+            # 項目 8: どの読み方(WMI・lspci・sysfs・WSL)でも、名前(言語で変わる「Microsoft 基本ディスプレイ
+            # アダプター」など)に頼らず、型番の会社 ID が NVIDIA の部品で知らせる
+            if not judged_gpu:
                 notes.append(
                     tr(
                         f"{a.name} があるが、nvidia-smi で確かめられないので CPU として判定した"
@@ -1733,8 +2537,8 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
 
 @dataclass
 class Memory:
-    total: int  # バイト
-    available: int
+    total: int | None  # バイト。None は読めない(#101: psutil も OS の読み方も失敗)
+    available: int | None
     swap_total: int | None = None  # 今のページファイル・スワップの大きさ
     swap_max: int | None = None  # 伸びる上限(None は分からない・システム管理で伸びる)
     swap_auto: bool | None = None
@@ -1780,23 +2584,138 @@ def _linux_swaps(text: str) -> int:
     return total
 
 
-def _cgroup_limit() -> int | None:
-    """コンテナ(cgroup)のメモリ上限。無ければ None。"""
-    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
-        text = _read_text(path)
-        if text and text.strip().isdigit():
-            return int(text.strip())
+def read_meminfo() -> dict[str, int] | None:
+    """/proc/meminfo(バイト。HugePages_* は数そのもの)。読めなければ None。"""
+    text = _read_text(_p("/proc/meminfo"))
+    if text is None:
+        return None
+    out: dict[str, int] = {}
+    for line in text.splitlines():
+        m = re.match(r"^([A-Za-z0-9_()]+):\s+(\d+)(\s+kB)?\s*$", line.strip())
+        if m:
+            out[m.group(1)] = int(m.group(2)) * (1024 if m.group(3) else 1)
+    return out or None
+
+
+def meminfo_available(mi: dict[str, int]) -> int | None:
+    """空きのメインメモリ。MemAvailable の無い古いカーネルは MemFree + Cached(#101)。"""
+    if "MemAvailable" in mi:
+        return mi["MemAvailable"]
+    if "MemFree" in mi:
+        return mi["MemFree"] + mi.get("Cached", 0)
     return None
+
+
+def unified_free(mi: dict[str, int]) -> int | None:
+    """統合メモリの GPU(GB10)が今使える量。NVIDIA の DGX Spark の known-issues「Guidance for reporting memory
+    resources with unified memory architecture」の例どおり: HugePages を使っていれば空きの HugePages × 大きさ
+    (swap は数えない)、使っていなければ MemAvailable + SwapFree。"""
+    if mi.get("HugePages_Total", 0) > 0 and mi.get("Hugepagesize"):
+        return mi.get("HugePages_Free", 0) * mi["Hugepagesize"]
+    avail = meminfo_available(mi)
+    return None if avail is None else avail + mi.get("SwapFree", 0)
+
+
+_CGROUP_V2 = "/sys/fs/cgroup"
+_CGROUP_V1 = "/sys/fs/cgroup/memory"
+
+
+def _cgroup_chain(base: str, path: str) -> list[str]:
+    """cgroup のパスから根までのフォルダ(自分 → 親 → … → 根)。"." ".." を含むパスは根だけを見る。"""
+    parts = [x for x in path.split("/") if x]
+    if any(x in (".", "..") for x in parts):
+        return [base]
+    return [base + "".join("/" + x for x in parts[:i]) for i in range(len(parts), -1, -1)]
+
+
+def _cgroup_number(path: str) -> int | None:
+    text = (_read_text(_p(path)) or "").strip()
+    return int(text) if text.isdigit() else None  # v2 の "max"(上限なし)は None
+
+
+def cgroup_memory() -> tuple[int | None, int | None]:
+    """このプロセスの cgroup のメモリ上限と今の使用量(バイト。無ければ None)。/proc/self/cgroup の自分の
+    cgroup から根へたどり、上限の一番小さいものを使う(#101。cgroup v2: `0::/path` の memory.max・
+    memory.current、v1: `N:memory:/path` の memory.limit_in_bytes・memory.usage_in_bytes。Linux の
+    Documentation/admin-guide/cgroup-v2.rst・cgroup-v1/memory.rst)。名前空間の中ではパスが `/` になり、
+    根の値だけを読む。/proc/self/cgroup が読めなければ根の値だけを読む(以前の読み方)。"""
+    text = _read_text(_p("/proc/self/cgroup"))
+    v2: str | None = None
+    v1: str | None = None
+    for line in (text or "").splitlines():
+        parts = line.strip().split(":", 2)
+        if len(parts) != 3:
+            continue
+        if parts[0] == "0" and parts[1] == "":
+            v2 = parts[2]
+        elif "memory" in parts[1].split(","):
+            v1 = parts[2]
+    if text is None:
+        v2 = v1 = "/"
+    limits: list[int] = []
+    current: int | None = None
+    for base, path, max_leaf, cur_leaf in (
+        (_CGROUP_V2, v2, "memory.max", "memory.current"),
+        (_CGROUP_V1, v1, "memory.limit_in_bytes", "memory.usage_in_bytes"),
+    ):
+        if path is None:
+            continue
+        chain = _cgroup_chain(base, path)
+        limits += [v for v in (_cgroup_number(f"{d}/{max_leaf}") for d in chain) if v]
+        if current is None:
+            current = _cgroup_number(f"{chain[0]}/{cur_leaf}")
+    return (min(limits) if limits else None), current
 
 
 def is_wsl() -> bool:
     return platform.system() == "Linux" and "microsoft" in platform.release().lower()
 
 
+def _fallback_memory() -> tuple[int | None, int | None, str]:
+    """psutil が失敗したときの搭載量・空き(#101)。Windows は GlobalMemoryStatusEx、Linux は /proc/meminfo、
+    macOS は sysctl hw.memsize(空きは分からない)。(搭載量, 空き, 読んだもの)。"""
+    if _windows():
+        st = _global_memory_status()
+        if st:
+            return st["total_phys"], st["avail_phys"], "GlobalMemoryStatusEx"
+        return None, None, ""
+    if platform.system() == "Linux":
+        mi = read_meminfo()
+        if mi and mi.get("MemTotal"):
+            return mi["MemTotal"], meminfo_available(mi), "/proc/meminfo"
+        return None, None, ""
+    if platform.system() == "Darwin":
+        r = _run(["sysctl", "-n", "hw.memsize"], OTHER_GPU_TIMEOUT)
+        text = (r[1] if r and r[0] == 0 else "").strip()
+        if text.isdigit():
+            return int(text), None, "sysctl hw.memsize"
+    return None, None, ""
+
+
 def read_memory() -> Memory:
-    vm = psutil.virtual_memory()
-    mem = Memory(total=int(vm.total), available=int(vm.available))
-    if os.name == "nt":
+    try:
+        vm = psutil.virtual_memory()
+        mem = Memory(total=int(vm.total), available=int(vm.available))
+    except Exception:
+        total, avail, how = _fallback_memory()
+        mem = Memory(total=total, available=avail)
+        if total is None:
+            mem.notes.append(
+                tr(
+                    "メモリの量が読めない(psutil が失敗し、OS の読み方でも読めない)。--ram で指定する",
+                    "The memory amount cannot be read (psutil failed"
+                    " and so did the OS reading). Give it with "
+                    "--ram",
+                )
+            )
+        else:
+            mem.notes.append(
+                tr(
+                    f"psutil でメモリが読めなかったので、{how} で読んだ",
+                    f"psutil could not read the memory, so it was read with {how}",
+                )
+            )
+    if _windows():
         st = _global_memory_status()
         if st:
             mem.commit_limit = st["commit_limit"]
@@ -1821,12 +2740,12 @@ def read_memory() -> Memory:
                     )
                 )
     elif platform.system() == "Linux":
-        text = _read_text("/proc/swaps")
+        text = _read_text(_p("/proc/swaps"))
         if text is not None:
             mem.swap_total = mem.swap_max = _linux_swaps(text)
             mem.swap_auto = False
-        limit = _cgroup_limit()
-        if limit and limit < mem.total:
+        limit, current = cgroup_memory()
+        if limit and (mem.total is None or limit < mem.total):
             mem.notes.append(
                 tr(
                     f"コンテナのメモリ上限 {limit / GIB:.1f} GB を、搭載量の代わりに使った",
@@ -1834,7 +2753,8 @@ def read_memory() -> Memory:
                 )
             )
             mem.total = limit
-            mem.available = min(mem.available, limit)
+            room = max(0, limit - current) if current is not None else limit
+            mem.available = room if mem.available is None else min(mem.available, room)
         if is_wsl():
             mem.notes.append(
                 tr(
@@ -1865,7 +2785,7 @@ def _cpu_name() -> str:
             except OSError:
                 return name
         return name
-    text = _read_text("/proc/cpuinfo")
+    text = _read_text(_p("/proc/cpuinfo"))
     for line in (text or "").splitlines():
         if line.startswith("model name"):
             return line.split(":", 1)[1].strip()
@@ -1935,6 +2855,13 @@ def detect(
         )
     mem = memory or read_memory()
     notes += mem.notes
+    if python_is_32bit():
+        notes.append(
+            tr(
+                "32 ビットの Python で動いている。PyTorch は 64 ビットの Python にしか無い",
+                "Running on 32-bit Python. PyTorch exists only for 64-bit Python",
+            )
+        )
 
     overrides: list[str] = []
     if vram_gb is not None:
@@ -1971,7 +2898,8 @@ def detect(
         else:
             found = []
 
-    ram_total = mem.total / GIB
+    # メモリが読めない(#101)ときは 0 として判定する(notes に「--ram で指定する」とある)
+    ram_total = (mem.total or 0) / GIB
     if ram_gb is not None:
         ram_total = ram_gb
 
@@ -1983,7 +2911,8 @@ def detect(
         other_gpus if other_gpus is not None else (gpus is None and not usable_nvidia and vram_gb is None)
     )
     if want_other:
-        adapters, other_notes = detect_other_gpus()
+        # 使える NVIDIA の GPU があれば、WSL2 で Windows 側(powershell.exe・rocminfo・clinfo)は読まない
+        adapters, other_notes = detect_other_gpus(wsl_windows=False) if usable_nvidia else detect_other_gpus()
         notes += other_notes
         judged = any(g.backend == "cuda" for g in found)
         if (
@@ -2009,8 +2938,8 @@ def detect(
                     )
         notes += _other_gpu_notes(adapters, judged)
 
-    ram_total = mem.total / GIB
-    ram_avail = mem.available / GIB
+    ram_total = (mem.total or 0) / GIB
+    ram_avail = (mem.available if mem.available is not None else mem.total or 0) / GIB
     swap = dict(
         swap_total_gb=_gb(mem.swap_total),
         swap_max_gb=_gb(mem.swap_max),

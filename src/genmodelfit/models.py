@@ -408,6 +408,14 @@ class Adapter:
     )
     needs: str | None = None  # 使えるようにする条件(今は "Windows 11" だけ。OS の版だけで断ったとき)
     pci_id: str | None = None  # PCI の型番 ID("1002:744c"。0.9.0。Gpu.pci_id)
+    # 以下は 0.11.0 で足した項目(#101。docs/hardware.md「すべての環境」)
+    driver: str | None = None  # Windows の WMI の DriverVersion(Intel の WSL2 の条件に使う)
+    # AMD の世代(gfx1100 など)を名前より確かな所から読めたとき: Linux の amdkfd の gfx_target_version、
+    # WSL2 の rocminfo の Name: gfx…
+    gfx_target: str | None = None
+    # WSL2 で Windows 側から読んだ部品のとき、WSL の中の準備(AMD は rocminfo、Intel は clinfo -l)が
+    # できているか
+    wsl_runtime: bool | None = None
 
 
 @dataclass

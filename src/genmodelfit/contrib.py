@@ -57,7 +57,6 @@ from .estimate import (
     no_size_input,
     norm_precision,
     nvidia_nominal_vram,
-    nvidia_size_ok,
 )
 from .estimate import CONSISTENT_REL as _LEVEL_AGREE_REL
 from .hardware import (
@@ -65,7 +64,7 @@ from .hardware import (
     arch_of,
     cc_from_name,
     intel_xpu,
-    nvidia_name_known,
+    nvidia_name_well_formed,
     parse_compute_cap,
     pci_name_conflict,
 )
@@ -988,9 +987,13 @@ _DRIVER = re.compile(r"\d{2,4}(\.\d{1,3}){1,3}")
 _VERSION = re.compile(r"v?\d{1,3}\.\d{1,3}\.\d{1,4}")  # ComfyUI の版(厳密な x.y.z。後ろに何も付けない)
 _TOOL_VERSION = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,4}((a|b|rc|\.dev|\.post)\d{1,4})?")
 # GPU の名前: 英数字・空白・. - と、ComfyUI・PyTorch・Windows の名前に入る (R)・(TM)・™・® だけ
-# と、Intel の内蔵 GPU の名前に付く大きさ「(16GB)」(「Intel(R) Arc(TM) 140V GPU (16GB)」)
+# と、Intel の内蔵 GPU の名前に付く大きさ「(16GB)」(「Intel(R) Arc(TM) 140V GPU (16GB)」)、
+# NVIDIA の括弧の世代名「(Pascal)」(「NVIDIA TITAN X (Pascal)」。世代の名前だけ。#101)
 # (ほかの括弧・記号・自由な文は入れられない。0.9.0 で (R) などを許した)
-_GPU_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 .-]|\((?:R|TM|r|tm)\)|\(\d{1,3} ?GB\)|[™®]){1,63}")
+_GENERATION_WORD = r"\((?i:pascal|maxwell|kepler|volta|turing|ampere|ada|hopper|blackwell)\)"
+_GPU_NAME = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9 .-]|\((?:R|TM|r|tm)\)|\(\d{1,3} ?GB\)|" + _GENERATION_WORD + r"|[™®]){1,63}"
+)
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,199}")
 _PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
 # 式の見積もりから 40% より外れた値は注意(マージするメンテナが見る)。
@@ -1049,14 +1052,16 @@ def _check_versions(r: Report, data: dict[str, Any], db: Database | None) -> Non
 
 
 def gpu_known(name: str | None, vendor: str | None = None) -> bool:
-    """判定に使える GPU 名か(#90)。NVIDIA は名前の表に丸ごと当たる名前(hardware.nvidia_name_known)で、
-    汎用の名前(NVIDIA Graphics Device など)でないもの。AMD・Intel・Apple は今までどおり(PCI の型番 ID・
-    チップ名で照合するので、ここでは断らない)。"""
-    if not isinstance(name, str) or not name:
+    """判定に使える GPU 名か(#90、#101)。断るのは名前の代わりの値(空・n/a・none・null・unknown・-)と汎用の名前
+    (NVIDIA Graphics Device など。estimate.generic_gpu_name)だけ。名前の表には頼らない
+    (表に無い新しい GPU の人を締め出さない。作った名前は同じ文字列を返す PC にしか当たらない:
+    estimate.same_gpu)。AMD・Intel・Apple は今までどおり(PCI の型番 ID・チップ名で照合するので、
+    ここでは断らない)。"""
+    if not isinstance(name, str) or not name.strip():
         return False
     if (vendor or name_vendor(name) or "nvidia") != "nvidia":
         return True
-    return nvidia_name_known(name) and not generic_gpu_name(name) and nvidia_size_ok(name)
+    return not generic_gpu_name(name)
 
 
 def validate_submission(
@@ -1360,28 +1365,50 @@ def validate_submission(
             r.gpu_name = name
             known = cc_from_name(name)
             nvidia = (gpu.get("vendor") or name_vendor(name) or "nvidia") == "nvidia"
-            if known is None or (nvidia and not gpu_known(name, gpu.get("vendor"))):
-                # NVIDIA は名前の表に丸ごと当たる名前だけを知っている GPU とする(#90。当たらない行は記録として
-                # 残すが、判定には使わない: aggregate の gpu_known)
+            # #101: NVIDIA の名前は表でなく形で見る。断るのは名前の代わりの値・汎用の名前だけ(gpu_known)で、
+            # 形に合わない名前・表に無い名前はメンテナが確かめる(docs/schema.md「contrib」)
+            if nvidia and not gpu_known(name, gpu.get("vendor")):
                 r.notice(
                     "unknown_gpu",
                     tr(
-                        f"GPU 名が知っている表にありません(NVIDIA 以外・新しい GPU?): {name}"
-                        + ("。NVIDIA の名前の表に無いので、判定には使いません" if nvidia else ""),
-                        f"The GPU name is not in the known table (non-NVIDIA or a new GPU?): {name}"
-                        + (". Not in the NVIDIA name table, so it is not used for judging" if nvidia else ""),
+                        f"GPU 名が汎用の名前・名前の代わりの値なので、判定には使いません: {name}",
+                        "The GPU name is a generic name or a placeholder,"
+                        f" so it is not used for judging: {name}",
+                    ),
+                )
+            elif nvidia and not nvidia_name_well_formed(name):
+                r.notice(
+                    "gpu_name_form",
+                    tr(
+                        f"GPU 名が NVIDIA の名前の形に合いません(メンテナが確かめます。個人の名前などが入って"
+                        f"いないか contrib show で見てください): {name}",
+                        f"The GPU name does not fit the NVIDIA name form (a maintainer checks it; look with"
+                        f" contrib show that no personal names are in it): {name}",
+                    ),
+                )
+            elif known is None:
+                r.notice(
+                    "unknown_gpu",
+                    tr(
+                        "GPU 名が知っている表にありません(NVIDIA"
+                        f" 以外・新しい GPU?。判定には使います): {name}",
+                        f"The GPU name is not in the known table (non-NVIDIA or a new GPU?; it is used for"
+                        f" judging): {name}",
                     ),
                 )
             nominal = nvidia_nominal_vram(name) if nvidia else ()
             lo, hi = NOMINAL_VRAM_TOLERANCE
             if nominal and _num(vram) and not any(lo <= vram / v <= hi for v in nominal):
-                r.error(
-                    "gpu_inconsistent",
+                # #101: 改造品(4090 の 48 GB など)があるので誤りにしない。
+                # 混ざる心配は same_gpu の VRAM の比が防ぐ
+                r.notice(
+                    "gpu_vram_nominal",
                     tr(
-                        f"{name} の VRAM は {' / '.join(f'{v:g}' for v in nominal)} GB ですが、"
-                        f"system.gpu.vram_gb が {vram:g} です",
-                        f"{name} has {' / '.join(f'{v:g}' for v in nominal)} GB of VRAM,"
-                        f" but system.gpu.vram_gb is {vram:g}",
+                        f"{name} の公称の VRAM は {' / '.join(f'{v:g}' for v in nominal)} GB ですが、"
+                        f"system.gpu.vram_gb が {vram:g} です(改造品でなければ誤り。メンテナが確かめます)",
+                        f"{name} has {' / '.join(f'{v:g}' for v in nominal)} GB of VRAM nominally,"
+                        f" but system.gpu.vram_gb is {vram:g} (an error unless a modified card; a maintainer"
+                        " checks it)",
                     ),
                 )
             if known is not None and cc and parse_compute_cap(cc) != known:
@@ -2252,7 +2279,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
                 # Apple の MPS は GPU 名が "mps" になる)
                 "gpu_backend": _mode([m.gpu_backend for m in ms]),
                 "gpu_pci_id": _mode([getattr(m, "gpu_pci_id", None) for m in ms]),
-                # 名前の表に無い NVIDIA の GPU は記録として残すだけで、判定に使わない(#90)
+                # 汎用の名前・名前の代わりの値の GPU は記録として残すだけで、判定に使わない(#90、#101)
                 "gpu_known": gpu_known(gpu_name, vendor),
                 "files_fp": getattr(first, "files_fp", None),
                 "peak_vram_gb": round(med, 2),
@@ -2320,7 +2347,7 @@ def community_document(
             "(件数は n_used、出どころは n_sources、同じ構成の OOM は n_oom。"
             "OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが "
             f"{MIN_CONSISTENT} 以上で、幅が中央値の {CONSISTENT_REL:.0%} 以内で、OOM が無ければ consistent"
-            "(係数の合わせ直しに入れる)。名前の表に無い NVIDIA の GPU の行は gpu_known が false で、"
+            "(係数の合わせ直しに入れる)。GPU 名が汎用の名前・名前の代わりの値の行は gpu_known が false で、"
             "判定に使わない"
         ),
         "submissions": [

@@ -1706,6 +1706,7 @@ def test_nan_is_refused_when_reading_and_writing(tmp_path):
         ("NVIDIA(R) GeForce(TM) RTX 3070", True),
         ("NVIDIA GeForce RTX™ 3070®", True),
         ("NVIDIA GeForce RTX 3070 (bob)", False),
+        ("NVIDIA TITAN X (Pascal)", True),  # #101: 括弧の世代名だけは許す
         ("NVIDIA GeForce RTX 3070 [x]", False),
     ],
 )
