@@ -2356,6 +2356,8 @@ def bundled_status(
       (git の履歴は読まない。浅い clone・git の外でも同じ結果になる)
     - stale: 測ったときの一覧のファイル(files_fp)が今の一覧(db)と違う行([model_id, gpu_name])。
       判定には使われない(estimate.files_match)。知らせるだけ
+    - file_sources: git のコミットでなく提出のファイルごとに数えた出どころ(file:…)の数。版を出すまとめでは
+      0 でなければならない(1 人が何件も出すと何人分にも数えられるため。#95。docs/release.md)
     - ok: missing が無く matches(pending・stale は ok を落とさない。数えて知らせるだけ)"""
     p = Path(root)
     subs, reports = load_dir(p, db) if p.is_dir() else ([], [])
@@ -2383,8 +2385,23 @@ def bundled_status(
         "missing": missing,
         "stale": stale,
         "matches": matches,
+        "file_sources": file_source_count(document),
         "ok": matches,
     }
+
+
+def file_source_count(document: dict[str, Any] | None) -> int:
+    """まとめ(document)の中の、ファイルごとに数えた出どころ(file:…)の数(提出の記録と行の source_ids)。"""
+    ids = set()
+    for e in (document or {}).get("submissions") or []:
+        src = f"file:{e}" if isinstance(e, str) else (e.get("source") or f"file:{e.get('sha256')}")
+        if str(src).startswith("file:"):
+            ids.add(str(src))
+    for row in (document or {}).get("measurements") or []:
+        for sid in (row.get("source_ids") or []) if isinstance(row, dict) else []:
+            if str(sid).startswith("file:"):
+                ids.add("file:" + str(sid)[5:17])
+    return len({i[:17] for i in ids})
 
 
 # --- 精度の点検(毎週の表) ---------------------------------------------------------------------

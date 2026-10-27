@@ -2376,10 +2376,19 @@ def _contrib_aggregate_check(args: argparse.Namespace) -> int:
             tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
         )
     st = bundled_status(args.dir, json.loads(bundled_text(COMMUNITY_FILE)), _contrib_db(args))
-    code = 0 if st["ok"] and not st["pending"] else 1
+    code = 0 if st["ok"] and not st["pending"] and not st["file_sources"] else 1
     if args.json:
         _out(_envelope("contrib", None, None, action="aggregate_check", dir=str(args.dir), **st))
         return code
+    if st["file_sources"]:
+        print(
+            tr(
+                f"同梱のまとめに、ファイルごとに数えた出どころが {st['file_sources']} 件ある"
+                "(版のまとめは git の履歴で作り直す。docs/release.md)",
+                f"The bundled aggregate has {st['file_sources']} source(s) counted per file"
+                " (rebuild it from git history for a release; docs/release.md)",
+            )
+        )
     print(
         tr(
             f"同梱のまとめ: 提出 {st['listed']} 件"
@@ -2462,6 +2471,20 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
                 " --allow-empty)",
                 "the result is empty, so nothing is written (so as not to overwrite the bundled data with an"
                 " empty one; use --allow-empty to write it anyway)",
+            )
+        )
+    file_ids = sorted({s for r in rows for s in r.get("source_ids") or [] if s.startswith("file:")})
+    if args.output and file_ids and not args.allow_file_sources:
+        # 版を出すまとめは、出どころを git のコミット(PR)で数える。提出のファイルごとに数えると、1 人が何件も
+        # 出すと何人分にも数えられ、段階を決められてしまう(#95。docs/release.md)
+        raise CliError(
+            tr(
+                "出どころを git の履歴(浅くない clone)で数えられないので書き出しません"
+                f"(ファイルごとの出どころ {len(file_ids)} 件)。版を出すときは main の"
+                " 浅くない clone で動かしてください。試験・手元の確かめだけなら --allow-file-sources",
+                "sources cannot be counted from git history (a non-shallow clone), so nothing is written"
+                f" ({len(file_ids)} per-file source(s)). For a release, run it in a non-shallow"
+                " clone of main. For tests or local experiments only, use --allow-file-sources",
             )
         )
     written = str(write_community(rows, args.output, subs, sources)) if args.output else None
@@ -5206,6 +5229,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "まとめが空でも --output に書き出す(既定は、空のまとめで上書きしない)",
             "write to --output even if the result is empty (by default an empty result does not overwrite)",
+        ),
+    )
+    c.add_argument(
+        "--allow-file-sources",
+        action="store_true",
+        help=tr(
+            "git の履歴が無くても(出どころを提出のファイルごとに数えても)--output に書き出す。"
+            "試験・手元の確かめだけ。版を出すときは使わない",
+            "write to --output even without git history (sources counted per file). For tests and local"
+            " experiments only; never for a release",
         ),
     )
     c.add_argument(

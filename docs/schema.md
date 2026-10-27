@@ -1242,6 +1242,10 @@ there is no submission at all (#90) / 2 usage error.
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
+`--output` refuses (exit code 1) when any source is counted per file (`file:…`, no git history), unless
+`--allow-file-sources` is given (tests and local experiments only, never for a release; #95). `--report` and
+`--check` only display and work without git history.
+
 Reads `DIR` (default `data/contrib`; a missing folder is an error), keeps the files that pass `validate` (notices
 allowed), and groups standard submissions by model id, the GPU (PCI model ID when present, else
 the name normalized by `estimate.gpu_key`: case, spaces / symbols, `(R)` `(TM)` `™` `®`, `NVIDIA` / `GeForce`), GPU VRAM rounded to 1 GB (an RTX 4060 Ti 8 GB and 16 GB are different groups),
@@ -1296,7 +1300,9 @@ Exit codes: 0 / 1 error (no such folder; empty result with `--output` without `-
 ### `contrib aggregate [DIR] --check [--json]`
 
 Writes nothing; compares the bundled aggregate with `DIR` (default `data/contrib`; a missing folder is an error,
-exit code 1) (#90). It cannot be used with `--output` or `--report`.
+exit code 1) (#90). It cannot be used with `--output` or `--report`. It also reports `file_sources`, the number of
+sources in the aggregate counted per file (`file:…`) instead of per git commit; the bundled aggregate must have 0
+(#95).
 - It lists the valid submissions not in the aggregate yet (submissions merged since the last release).
 - It also shows the submissions in the aggregate's `submissions` that are missing from `DIR` (or fail the checks),
   and whether re-aggregating exactly those gives the bundled file.
@@ -1305,8 +1311,8 @@ exit code 1) (#90). It cannot be used with `--output` or `--report`.
 
 `--json`: envelope + `action: "aggregate_check"`, `dir`, `listed` (submissions in the aggregate), `valid`, `invalid`
 (files that fail the checks), `pending` (paths of submissions not in it yet), `missing` (hashes in the aggregate but
-not found), `stale` ([model_id, gpu_name]), `matches`, `ok` (nothing missing and matches).
-Exit codes: 0 = nothing pending and ok / 1 = something pending, or not ok / 2 usage error.
+not found), `stale` ([model_id, gpu_name]), `file_sources` (#95), `matches`, `ok` (nothing missing and matches).
+Exit codes: 0 = nothing pending and ok / 1 = something pending, sources counted per file, or not ok / 2 usage error.
 
 ## download
 

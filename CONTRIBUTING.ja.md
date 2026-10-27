@@ -207,7 +207,7 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
 - その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。NVIDIA 以外の GPU も、そうなれば Good の上限が外れます。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。出どころは 1 つの PR なので、同じ人の別々の PR は別々に数えます。メンテナはマージのときにそれを確かめます。NVIDIA 以外の GPU も、そうなれば Good の上限が外れます。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 ### 作者の実測(measurements.json)

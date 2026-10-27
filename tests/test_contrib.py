@@ -560,6 +560,7 @@ def test_bundled_community_file_is_regenerated_from_its_listed_submissions(db):
     st = contrib.bundled_status(root, doc, db)
     assert st["invalid"] == [] and st["missing"] == [], st
     assert st["matches"] and st["ok"], st
+    assert st["file_sources"] == 0, st  # 版のまとめは出どころを git のコミットで数える(#95)
     hashes = [e["sha256"] for e in doc["submissions"]]
     assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes) and hashes == sorted(hashes)
     assert all(isinstance(e["source"], str) and e["source"] for e in doc["submissions"])
@@ -618,7 +619,12 @@ def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
     assert cli.main(["contrib", "aggregate", str(root), "--check", "--output", str(tmp_path / "x.json")]) == 1
     # aggregate --output は使った提出の hash を残す
     out_file = tmp_path / "c.json"
-    assert cli.main(["contrib", "aggregate", str(root), "--output", str(out_file)]) == 0
+    # git の履歴が無い(出どころを提出のファイルごとに数える)ので、版のまとめとしては書き出さない(#95)
+    assert cli.main(["contrib", "aggregate", str(root), "--output", str(out_file)]) == 1
+    assert not out_file.exists()
+    assert (
+        cli.main(["contrib", "aggregate", str(root), "--output", str(out_file), "--allow-file-sources"]) == 0
+    )
     doc = json.loads(out_file.read_text(encoding="utf-8"))
     h = contrib.content_hash(json.loads(SDXL_3070[0].read_text(encoding="utf-8")))
     assert doc["submissions"] == [{"sha256": h, "source": f"file:{h}"}]  # git の外なので提出ごと
@@ -1323,7 +1329,7 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
     fix = tmp_path / "fix"
     shutil.copytree(FIX, fix)
     out = tmp_path / "community.json"
-    args = ["contrib", "aggregate", str(fix), "--output", str(out), "--json"]
+    args = ["contrib", "aggregate", str(fix), "--output", str(out), "--json", "--allow-file-sources"]
     assert cli.main(args) == 0
     d = json.loads(capsys.readouterr().out)
     keys = {

@@ -113,7 +113,10 @@ Steps:
      (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
    - Make the aggregate in a clone with git history (not shallow): sources (submissions added by the same PR count as
      one) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
-     and the output says so).
+     and the output says so). Since 0.11.0 `--output` refuses (exit code 1) when any source would be counted per file
+     (`file:…`), because one person's many files would then count as many sources and could set a level (#95).
+     `--allow-file-sources` overrides this for tests and local experiments only; never use it for a release.
+     `--check` shows `file_sources` (the bundled file must have 0; a test checks it).
    - If someone resubmitted a fixed submission, remove the old file in a maintainer PR (write the reason in the PR
      description; a submission PR only adds files and cannot remove them). The "add only" check of the `Contrib`
      workflow fails on this PR, which is expected (it is a check for submission PRs; the maintainer reviews and merges).

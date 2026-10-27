@@ -624,3 +624,14 @@ def test_popularity_cache_follows_the_list():
     db.models = [_tmpl(f"t{i}", u) for i, u in enumerate((0, 0, 0, 0, 10))]
     second = for_db(db)
     assert first != second and max(second, key=second.get).endswith("t4")
+
+
+def test_file_sources_are_counted_in_bundled_status(db):
+    """git の履歴なしでまとめた(出どころが file:…)まとめは、bundled_status の file_sources に出る
+    (版のまとめは 0 でなければならない。docs/release.md)。"""
+    subs = [_sub(6.0), _sub(6.05)]
+    doc = contrib.community_document(contrib.aggregate(subs), subs)
+    assert contrib.file_source_count(doc) == 2
+    srcs = {s.sha256: "e" * 40 for s in subs}
+    doc = contrib.community_document(contrib.aggregate(subs, srcs), subs, srcs)
+    assert contrib.file_source_count(doc) == 0

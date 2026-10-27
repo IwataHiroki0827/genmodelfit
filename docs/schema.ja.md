@@ -1171,6 +1171,8 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
+`--output` は、出どころをファイルごとに数える(`file:…`。git の履歴が無い)ときは書き出さない(終了コード 1)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない(#95)。`--report`・`--check` は表示だけなので git の履歴が無くても動く。
+
 `DIR`(既定 `data/contrib`。フォルダが無ければエラー)を読み、`validate` を通ったファイル(通知は許す)を残し、標準の提出を次でグループにする。
 - モデル id
 - GPU(PCI 型番 ID があればそれ、無ければ `estimate.gpu_key` で正規化した名前: 大文字小文字、空白・記号、`(R)` `(TM)` `™` `®`、`NVIDIA` / `GeForce`)
@@ -1209,13 +1211,13 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 ### `contrib aggregate [DIR] --check [--json]`
 
-何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
+何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。git のコミットでなくファイルごとに数えた出どころ(`file:…`)の数 `file_sources` も出す(同梱のまとめは 0 でなければならない。#95)。
 - まだまとめに入っていない、検査を通った提出(マージした後の提出)のパスを出す。
 - まとめの `submissions` にあるのに `DIR` に無い(または検査を通らない)提出と、それだけをまとめ直したときに同梱のファイルと同じになるかも出す。
 - 同梱のまとめのうち、測ったときの一覧のファイル(`files_fp`)が今の一覧と違い、判定に使われない行(`stale`)も出す(知らせるだけ。毎週の一覧の更新で上流のファイルが変わると起きる)。
 
-`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`matches`、`ok`(missing が無く matches)。
-終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、または ok でない / 2 使い方の誤り。
+`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`file_sources`(#95)、`matches`、`ok`(missing が無く matches)。
+終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、ファイルごとの出どころがある、または ok でない / 2 使い方の誤り。
 
 ## download
 

@@ -70,6 +70,9 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   Good / GPU (#26): the maintainer's two rows are one source, and its weights + fixed part (about 18.4 GB) does not
   fit 15.9 GB. The measurement finished by offloading part of the weights with dynamic VRAM, so the right level is
   the offload level (Marginal, GPU+RAM); docs/scoring.md works through this example.
+- `contrib aggregate --output` refuses (exit code 1) when sources would be counted per file (no git history),
+  unless `--allow-file-sources` (tests and local experiments only); `--check` reports `file_sources`, which must be 0
+  for the bundled aggregate (#95).
 - Aggregated community rows now carry `source_ids` (short IDs of the sources used), and measured levels count
   sources as the union of the IDs across rows, so one pull request whose submissions land in two rows (with and
   without a GPU device ID, or by measuring method) is still one source (#95). A measurement whose peak + context is

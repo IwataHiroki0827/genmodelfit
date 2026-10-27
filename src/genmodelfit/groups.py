@@ -435,7 +435,7 @@ def build_index(models: Iterable[ModelEntry]) -> ModelIndex:
 
 def index_for(db) -> ModelIndex:
     """一覧(Database)ごとに 1 回だけ作る。項目が入れ替わったら(同じ件数でも)作り直す(#95)。"""
-    key = tuple(id(m) for m in db.models)
+    key = tuple((id(m), m.id) for m in db.models)
     idx = getattr(db, "_model_index", None)
     if idx is None or idx[0] != key:
         idx = (key, build_index(db.models))
