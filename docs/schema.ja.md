@@ -594,7 +594,7 @@ Limits / 限界(値はすべて、逃がさずに GPU で `perfect` か `good` �
 動かし方ごとの上限(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「段階の上限」):
 - 全部 GPU(`GPU`)は上限なし。
 - 部品を順に載せ替える(`GPU~`)と RAM に逃がす(`GPU+RAM`)は最大 `good`(逃がすのは 0.11.0 まで `marginal`)。
-- CPU は、画像・動画・音楽・効果音・3D の生成と、言語モデル・フローマッチング・拡散で音を作る読み上げが最大 `marginal`、CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`)と 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
+- CPU は、画像・動画・音楽・効果音・3D の生成と、CPU で実時間に動くと作者が書いていない読み上げが最大 `marginal`、作者が CPU で実時間に動くと書いている読み上げ(`estimate.CPU_REALTIME_TTS`)と 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
 - GPU の会社による上限は無い(0.11.0 まで、NVIDIA 以外と DGX Spark は `good` まで)。
 
 最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。だから逃がすのは、全部載せ・載せ替えより段階が上がるときだけ(全部載せ・載せ替えが `good` 以上なら逃がさない)。逃がす動かし方の使用率は、逃がしたときの VRAM の使用率と、要るメモリ ÷ メインメモリのきついほう。

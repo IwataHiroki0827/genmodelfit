@@ -99,7 +99,7 @@
 |---|---|---|
 | CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`。下の表) | Good | MeloTTS・Piper・VieNeu-TTS |
 | 用途がすべて 1 回の計算の道具(`tool`・`estimate`・`matting`・`interp`・`segment`・`separate`) | Good | 背景除去(BiRefNet)・深度・ポーズ・切り抜き・音の分離 |
-| それ以外(画像・動画・音楽・効果音・3D の生成、言語モデル・フローマッチング・拡散で音を作る読み上げ、高解像度化 `upscale`) | Marginal | SDXL・Stable Audio・Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS・Kokoro・HiFi-GAN |
+| それ以外(画像・動画・音楽・効果音・3D の生成、CPU で実時間に動くと作者が書いていない読み上げ、高解像度化 `upscale`) | Marginal | SDXL・Stable Audio・Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS・Kokoro・HiFi-GAN |
 
 CPU で実時間に動く設計の読み上げ(作者の資料の文。理由にも出す):
 
@@ -111,7 +111,7 @@ CPU で実時間に動く設計の読み上げ(作者の資料の文。理由に
 
 作者が CPU で実時間に動く・CPU に向くと書いていない読み上げ(Kokoro・HiFi-GAN など)は表に入れず、生成と同じ Marginal まで。
 
-- 根拠: 拡散の生成は手順(20〜50 回)ごとに本体の全部を計算する。Hugging Face のブログ「Accelerating Stable Diffusion Inference on Intel CPUs」で、SD 1.5 の 20 手順は r7iz.metal-16xl(Sapphire Rapids)の fp32 で 32.3 秒(最適化の前)。言語モデル・フローマッチング・拡散で音を作る読み上げも、トークンや手順を何十〜何百回も回し、CPU で実時間に動くと作者が書いていないので Marginal まで。1 回の計算の道具は手順を回さない。
+- 根拠: 拡散の生成は手順(20〜50 回)ごとに本体の全部を計算する。Hugging Face のブログ「Accelerating Stable Diffusion Inference on Intel CPUs」で、SD 1.5 の 20 手順は r7iz.metal-16xl(Sapphire Rapids)の fp32 で 32.3 秒(最適化の前)。CPU で実時間に動くと作者が書いていない読み上げは Marginal まで(Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS などは言語モデル・フローマッチング・拡散でトークンや手順を何十〜何百回も回す。Kokoro・HiFi-GAN は小さいが、作者が CPU の数字を書いていない)。1 回の計算の道具は手順を回さない。
 - 高解像度化は一覧のものが拡散の系統なので、生成と同じ Marginal まで(SeedVR2 は 1 手順の拡散だが 3B・7B の DiT を高い解像度で回す。SUPIR・Z-Image は手順を何十回も回す)。
 - llmfit は CPU を Good まで(LLM の生成はメモリの帯域で決まり、CPU でも実用の速さが出る)。拡散の生成は計算の量で決まるので分けた。
 - GPU のある PC でも、GPU の判定が CPU の判定より悪ければ CPU の判定を取る(VRAM を足して段階が下がらないように。同じ段階なら GPU)。

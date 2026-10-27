@@ -580,8 +580,8 @@ GPU, RAM on the CPU), as in llmfit (llmfit's `docs/how-it-works.md`, "Fit analys
 
 Caps per run mode (0.11.0, #108; [scoring.md](scoring.md) "Level caps"): all on the GPU (`GPU`) none; parts swapped
 in turn (`GPU~`) and offload to RAM (`GPU+RAM`) at most `good` (offload was `marginal` up to 0.11.0); on the CPU,
-image, video, music, sound effect and 3D generation and speech made with a language model, flow matching or diffusion
-at most `marginal`, speech built for real-time CPU use (`estimate.CPU_REALTIME_TTS`) and one-pass tools (all uses in `tool` /
+image, video, music, sound effect and 3D generation and speech whose authors do not say it runs in real time on a CPU
+at most `marginal`, speech whose authors say it runs in real time on a CPU (`estimate.CPU_REALTIME_TTS`) and one-pass tools (all uses in `tool` /
 `estimate` / `matting` / `interp` / `segment` / `separate`) at most `good`, with system RAM as the pool. No cap by GPU
 vendor (up to 0.11.0 non-NVIDIA GPUs and DGX Spark were capped at `good`). The run mode with the best level is used
 (ties: all-in → swapped → offload), so offloading is chosen only when it raises the level (never when all-in or

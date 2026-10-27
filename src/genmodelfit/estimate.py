@@ -2461,10 +2461,9 @@ def cpu_top_text(entry: ModelEntry) -> tuple[str, str]:
         )
     if entry.modality == "tts":
         return (
-            "CPU で生成するので段階は marginal まで(言語モデル・フローマッチング・拡散で音を作る読み上げは、"
-            "CPU で実時間に動くと作者が書いていない)",
-            "Generates on the CPU, so the level is capped at marginal (speech made with a language model,"
-            " flow matching or diffusion; the authors do not say it runs in real time on a CPU)",
+            "CPU で生成するので段階は marginal まで(この読み上げは、CPU で実時間に動くと作者が書いていない)",
+            "Generates on the CPU, so the level is capped at marginal (the authors of this speech model"
+            " do not say it runs in real time on a CPU)",
         )
     return (
         "CPU で生成するので段階は marginal まで(手順を何十回も回す生成は CPU ではとても遅い)",

@@ -99,7 +99,7 @@ The level is the band of system RAM use, capped as follows (`estimate.cpu_top`):
 |---|---|---|
 | Speech built to run in real time on a CPU (`estimate.CPU_REALTIME_TTS`; table below) | Good | MeloTTS, Piper, VieNeu-TTS |
 | All uses are one-pass tools (`tool`, `estimate`, `matting`, `interp`, `segment`, `separate`) | Good | background removal (BiRefNet), depth, pose, segmentation, audio separation |
-| Everything else (image, video, music, sound effect and 3D generation; speech made with a language model, flow matching or diffusion; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS, Kokoro, HiFi-GAN |
+| Everything else (image, video, music, sound effect and 3D generation; speech whose authors do not say it runs in real time on a CPU; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS, Kokoro, HiFi-GAN |
 
 Speech built to run in real time on a CPU (the authors' own statements; also shown in the reasons):
 
@@ -111,7 +111,7 @@ Speech built to run in real time on a CPU (the authors' own statements; also sho
 
 Speech whose authors do not say it runs in real time on or suits a CPU (Kokoro, HiFi-GAN and others) is not listed and is capped at Marginal like generation.
 
-- Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take 32.3 s on an r7iz.metal-16xl (Sapphire Rapids) in fp32 before optimization. Speech made with a language model, flow matching or diffusion also runs tokens or steps dozens to hundreds of times, and its authors do not say it runs in real time on a CPU, so it is capped at Marginal. One-pass tools run no steps.
+- Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take 32.3 s on an r7iz.metal-16xl (Sapphire Rapids) in fp32 before optimization. Speech whose authors do not say it runs in real time on a CPU is capped at Marginal (many of them, such as Fun-CosyVoice3, Chatterbox, VibeVoice and Qwen3-TTS, run a language model, flow matching or diffusion for tokens or steps dozens to hundreds of times; Kokoro and HiFi-GAN are smaller, but their authors give no CPU figure). One-pass tools run no steps.
 - The upscalers in the list are diffusion families, so upscaling is capped at Marginal like generation (SeedVR2 is one-step diffusion but runs a 3B / 7B DiT at high resolution; SUPIR and Z-Image run dozens of steps).
 - llmfit caps the CPU at Good (LLM generation is bound by memory bandwidth and is usable on a CPU). Diffusion generation is bound by compute, so it is separated.
 - On a PC with a GPU too, the CPU judgement is used when the GPU judgement is worse (so adding VRAM never lowers the level; on a tie the GPU wins).
