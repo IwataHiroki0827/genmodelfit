@@ -21,8 +21,8 @@ All notable changes to this project are documented here. The format is based on
   the alternative.
 - **DGX Spark (GB10) is judged as a unified-memory GPU** (#101). Only when nvidia-smi names it exactly `NVIDIA GB10`,
   reports no VRAM (`[N/A]`) and runs on Linux aarch64: the total is MemTotal (not discounted, not counted twice with
-  RAM; `memory: shared`), current free is MemAvailable + SwapFree (or free HugePages), and the level is capped at
-  Good until two sources measured the same GPU. cu128 for aarch64 was added to the PyTorch table. Jetson and
+  RAM; `memory: shared`), current free is MemAvailable + SwapFree (or free HugePages), and the level follows the
+  same rules as other GPUs (no cap since #108). cu128 for aarch64 was added to the PyTorch table. Jetson and
   GH200 / GB200 stay out of scope (with a reason).
 - **AMD and Intel GPUs in WSL2** (#101). With `/dev/dxg` and a `microsoft` kernel, interop and container are checked
   without starting a process, the Windows-side GPUs are read through `powershell.exe` (WMI + registry, as on
@@ -49,6 +49,42 @@ All notable changes to this project are documented here. The format is based on
 
 The meaning of the output changed (#95), so this is 0.11.0. `SCHEMA_VERSION` (the shape of db.json) is unchanged.
 The rules, their one-sentence explanations, evidence and tests are in the new docs/scoring.md (English and Japanese).
+
+- **Level caps reviewed** (#108; docs/scoring.md "Level caps", "Verified GPU kinds"):
+  - **Offloading (GPU+RAM) goes up to Good** (was Marginal; as in llmfit). Offloading is chosen only when it raises the
+    level (ties stay on the GPU), so a GPU Perfect or Good row never switches to offloading; GPU / GPU~ rows at 85–98%
+    switch when offloading makes them Good, and the reason says "On the GPU alone it is tight at 9x%, so part of the
+    weights is offloaded". (llmfit offloads only above 98%; that would break "more VRAM never lowers the level" for 136
+    bundled models.) The level of an offloaded row uses the tighter of the offloaded VRAM use and RAM ÷ system RAM
+    (the same as Mem%). Non-NVIDIA GPUs get a note that ComfyUI's Dynamic VRAM (NVIDIA on Windows / Linux only) is
+    missing, so offloading is slower still. The limits (`limits`) count only rows that run on the GPU without
+    offloading. Rows that switched from GPU / GPU~ Marginal to GPU+RAM Good: 8 at 6 GB, 6 at 8 GB, 18 at 12 GB, 19 at
+    16 GB, 49 at 24 GB (bundled list); Marginal → Good overall: 49 / 71 / 68 / 43 / 108 rows.
+  - **CPU only**: speech and one-pass tools (depth, pose, segmentation, background removal, audio separation) go up to
+    Good by the band of RAM use; image, video, music, sound effect and 3D generation and upscaling stay at most
+    Marginal (diffusion runs dozens of steps; HF's Intel CPU blog, ComfyUI's README). 18 rows Marginal → Good on a
+    CPU-only PC. When the GPU judgement is worse than the CPU one, the CPU one is used (adding VRAM never lowers the
+    level).
+  - **No cap by GPU vendor**: AMD / Intel / Apple GPUs and DGX Spark are judged by the same rules as NVIDIA (Good →
+    Perfect for 65 rows on AMD 16 GB, 87 on Apple 32 GB, 317 on DGX Spark; the AMD 16 GB distribution is close to
+    NVIDIA 16 GB). Measurements only raise the level (the #95 branch that lowered Perfect to Good from measurements on
+    non-NVIDIA GPUs was removed).
+  - **"✓ verified GPU kind"**: the PC line of the tables (`recommend` / `fit` / `search`), `info` and `system` show it
+    when the bundled measurements include two or more independent sources on the same kind of GPU (vendor × dedicated /
+    shared memory); nothing otherwise. Today only NVIDIA with dedicated VRAM. JSON: new `system.platform_verified`
+    and `system.platform_verified_by`; the library: new `gmf.platform_verification(system)`. Not used for the gate
+    (`auto`), which stays independent of the PC.
+  - **Refusals in three groups**: used without the mark (non-NVIDIA, DGX Spark), refused for lack of support evidence
+    (gfx1170 / 1171 / 1250), and judged as CPU because not expected to beat the CPU (2-CU iGPUs). **The Radeon 820M
+    (2 CU, AMD's Ryzen AI 5 330 page) is now judged as CPU**, like the 610M; "Radeon 820M / 840M" stays used.
+  - Legend: the level caps line changed; new lines say Perfect is not a speed guarantee, GPU+RAM levels are often set
+    by RAM and the offloaded share is assumed (40% of weights on the GPU), a level set by measurements can be Good above
+    98% Mem%, and what ✓ means.
+- **One mark for measured values** (#108): the table's VRAM shows `m` for any measured value (the `c` for other
+  users' measurements is gone), and **`estimate.basis_detail` `measured_community` is merged into `measured`** (apps
+  that check `measured_community` should check `measured`; `sample_count` still gives the number of sources, and
+  `info --json` still lists each measurement's `origin`). A same-settings value clamped by the bounds is
+  `calibrated` (was `measured_community`). `info` prints `n=` for every measured basis.
 
 - **Score is now only the memory headroom (`memory_fit`)** (#95). It uses llmfit's `fit_score` curve (100 while
   r ≤ 0.70, then `100 × exp(−0.5 × ((r − 0.70) / 0.20)²)`), where r is the use of the tightest resource of the run
@@ -231,7 +267,7 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   Fermi run; the cu129 range notes that Windows wheels exist only for 2.8 and 2.9, and cu128 for aarch64 for 2.7 and
   2.9 to 2.11. AMD's Windows policy (AMD's official table vs TheRock's Release Ready) and why Jetson Orin 8.7 with
   CUDA 13.2 is not used are documented in docs/hardware.md.
-- **The reason for the Good cap on non-NVIDIA GPUs and DGX Spark** (#101) now says what it is: no measurement has
+- **The reason for the Good cap on non-NVIDIA GPUs and DGX Spark** (#101; the cap itself was removed in #108) now says what it is: no measurement has
   run on this kind of GPU yet (lifted once two or more measurements of the same GPU agree), not "an estimate".
   When one source has measured this GPU with these settings, it says that there are not yet enough measurements to
   set the level (two independent sources) instead (#103).
