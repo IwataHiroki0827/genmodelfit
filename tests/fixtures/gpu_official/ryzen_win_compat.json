@@ -1,0 +1,20 @@
+[
+ {
+  "gfx": [
+   "gfx1150",
+   "gfx1151"
+  ],
+  "products": [
+   "AMD Ryzen AI Max+ 395",
+   "AMD Ryzen AI Max 390",
+   "AMD Ryzen AI Max 385",
+   "AMD Ryzen AI 9 HX 375",
+   "AMD Ryzen AI 9 HX 370",
+   "AMD Ryzen AI 9 365",
+   "AMD Ryzen AI 9 HX 475",
+   "AMD Ryzen AI 9 HX 470",
+   "AMD Ryzen AI 9 465"
+  ],
+  "rocm": "7.2.1"
+ }
+]

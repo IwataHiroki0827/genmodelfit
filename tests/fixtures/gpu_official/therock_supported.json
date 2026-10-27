@@ -1,0 +1,515 @@
+[
+ {
+  "arch": "CDNA5",
+  "build": true,
+  "gfx": "gfx1250",
+  "os": "linux",
+  "release": false,
+  "sanity": true,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "CDNA4",
+  "build": true,
+  "gfx": "gfx950",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "CDNA3",
+  "build": true,
+  "gfx": "gfx942",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "CDNA2",
+  "build": true,
+  "gfx": "gfx90a",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "CDNA",
+  "build": true,
+  "gfx": "gfx908",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "GCN5.1",
+  "build": true,
+  "gfx": "gfx906",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "GCN5.0",
+  "build": true,
+  "gfx": "gfx900",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Instinct - Linux"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx1201",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx1200",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx117x",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1153",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1152",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1151",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1150",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1103",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1102",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1101",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1100",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1036",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1035",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1034",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1033",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1032",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1031",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1030",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1012",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1011",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1010",
+  "os": "linux",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "GCN5.1",
+  "build": true,
+  "gfx": "gfx906",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "GCN5.0",
+  "build": true,
+  "gfx": "gfx90c",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "GCN5.0",
+  "build": true,
+  "gfx": "gfx900",
+  "os": "linux",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Linux"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx1201",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx1200",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA4",
+  "build": true,
+  "gfx": "gfx117x",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1153",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1152",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1151",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3.5",
+  "build": true,
+  "gfx": "gfx1150",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1103",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1102",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1101",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA3",
+  "build": true,
+  "gfx": "gfx1100",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1036",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1035",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1034",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1033",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1032",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1031",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA2",
+  "build": true,
+  "gfx": "gfx1030",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1012",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1011",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "RDNA1",
+  "build": true,
+  "gfx": "gfx1010",
+  "os": "windows",
+  "release": true,
+  "sanity": true,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "GCN5.1",
+  "build": true,
+  "gfx": "gfx906",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "GCN5.0",
+  "build": true,
+  "gfx": "gfx90c",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "GCN5.0",
+  "build": true,
+  "gfx": "gfx900",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Radeon - Windows"
+ },
+ {
+  "arch": "CDNA2",
+  "build": true,
+  "gfx": "gfx90a",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Instinct - Windows"
+ },
+ {
+  "arch": "CDNA",
+  "build": true,
+  "gfx": "gfx908",
+  "os": "windows",
+  "release": false,
+  "sanity": false,
+  "section": "AMD Instinct - Windows"
+ }
+]

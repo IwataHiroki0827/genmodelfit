@@ -1,0 +1,15 @@
+#	List of PCI IDs
+# Version: 2026.11.03
+1002  Advanced Micro Devices, Inc. [AMD/ATI]
+	1586  Strix Halo [Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics]
+	12b8  Strix Halo Data Fabric; Function 0
+	7487  Navi 33 [Radeon Graphics]
+	7499  Navi 33 [Radeon RX 7400/7300/Pro W7400]
+	7590  Navi 44 [Radeon RX 9060 XT]
+	75b0  Navi 50 [Radeon RX 10070 XT]
+8086  Intel Corporation
+	e220  Battlemage G31 [Intel Graphics]
+	e223  Battlemage G31 [Arc Pro B70]
+	e2ff  Celestial [Arc C770]
+	a0ed  Tiger Lake-LP USB 3.2 Gen 2x1 xHCI Host Controller
+C 00  Unclassified device

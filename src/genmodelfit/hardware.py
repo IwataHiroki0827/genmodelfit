@@ -36,6 +36,30 @@ from pathlib import Path
 
 import psutil
 
+from .gputables import (
+    AMD_ARCH_RULES,
+    AMD_CPU_IGPU_RULES,
+    AMD_DISPLAY_ONLY,
+    AMD_LINUX_ONLY_ARCH,
+    AMD_NAME_RULES,
+    AMD_NO_BF16_ARCH,
+    AMD_SUPPORTED_ARCH,
+    AMD_UNVERIFIED,
+    ARCH_MIN_DRIVER_RULES,
+    COMFY_FP16_BROKEN,
+    COMFY_FP16_PASCAL,
+    INTEL_LINUX_ONLY,
+    INTEL_XPU_RULES,
+    NAME_CC_RULES,
+    PCI_DEVICE_RULES,
+    PYTORCH_ROCM_LINUX,
+    SOLO_CC,
+    TORCH_CUDA_BUILDS,
+    TORCH_RELEASE,
+    WSL_AMD,
+    CudaBuild,
+    Rule,
+)
 from .i18n import tr
 from .models import USABLE_BACKENDS, Adapter, Gpu, SystemInfo
 
@@ -290,61 +314,8 @@ def arch_of(cc: tuple[int, int]) -> str:
     return "unknown"
 
 
-# compute_cap を返さない古い nvidia-smi のための、GPU 名 → compute capability の表(上から順に試す)。
-# 迷う名前(同じ型番で世代が混ざるノート用の GT/GTX 7xx・8xx など)は入れない(None = 分からない)
-_NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
-    # Blackwell
-    (r"\brtx\s*50[5-9]0\b|\brtx pro \d{4}\b.*\bblackwell\b", (12, 0)),
-    (r"\bgb10\b", (12, 1)),
-    (r"\bg?b300\b", (10, 3)),
-    (r"\bg?b[12]00\b", (10, 0)),
-    # Hopper
-    (r"\bg?h(100|200|800|20)\b", (9, 0)),
-    # Ada Lovelace
-    # 業務用は「RTX 4000 Ada Generation」「RTX 4000 SFF Ada Generation」「RTX 2000E Ada Generation」
-    (r"\brtx\s*40[5-9]0\b|\brtx\s*\d{4}e?\s*(?:sff\s*)?ada\b|\bl40s?\b|\bl4\b|\bl20\b", (8, 9)),
-    # Ampere(RTX 2050 のノート用は GA107 で Ampere)
-    (r"\ba100\b|\ba800\b|\ba30\b", (8, 0)),
-    (
-        r"\brtx\s*30[5-9]0\b|\brtx\s*2050\b|\brtx\s*a\d{3,4}\b|\ba10g?\b|\ba16\b|\ba40\b|\ba2\b|\bmx570\b",
-        (8, 6),
-    ),
-    # Turing
-    (
-        r"\brtx\s*20[6-8]0\b|\btitan rtx\b|\bquadro rtx\b|\bgtx\s*16[3-6]0\b|\bt4\b"
-        r"|\bt(400|500|550|600|1000|1200|2000)\b|\bmx(450|550)\b",
-        (7, 5),
-    ),
-    # Volta
-    (r"\bv100\b|\btitan v\b|\bgv100\b", (7, 0)),
-    # Pascal
-    (r"\bp100\b|\bgp100\b", (6, 0)),
-    (
-        r"\bgtx\s*10[5-8]0\b|\bgt\s*1030\b|\btitan xp\b|(?<!gtx )\btitan x\b|\bquadro p\d{3,4}\b"
-        r"|\btesla p(4|40)\b|\bmx(150|230|250|330|350)\b",
-        (6, 1),
-    ),
-    # Maxwell(Quadro K620 / K1200 / K2200 は名前は K だが Maxwell の GM107)。
-    # 「GeForce GTX TITAN X」は Maxwell、「NVIDIA TITAN X」は Pascal(NVIDIA の一覧どおり)
-    (
-        r"\bgtx\s*(745|750)\b|\bquadro k(620|1200|2200)\b|\bquadro m(520|1200)\b"
-        r"|\bmx1[13]0\b|\b940mx\b|\btesla m10\b",
-        (5, 0),
-    ),
-    (
-        r"\bgtx\s*(950|960|970|980)\b|\bgtx titan x\b|\bquadro m(620|2000|2200|4000|5000|6000)\b"
-        r"|\btesla m(4|6|40|60)\b",
-        (5, 2),
-    ),
-    # Kepler(デスクトップの GTX 6xx・7xx、GTX TITAN / Black / Z、Quadro K・Tesla K)
-    (r"\btesla k80\b", (3, 7)),
-    (
-        r"\bgtx\s*780\b|\bgtx titan( black| z)?$|\btesla k(20|40)\w*\b|\bgt\s*(710|720)\b"
-        r"|\bquadro k(5200|6000)\b",
-        (3, 5),
-    ),
-    (r"\bgtx\s*(6[3-9]0|760|770)\b|\bquadro k\d{3,4}\b", (3, 0)),
-)
+# compute_cap を返さない古い nvidia-smi のための、GPU 名 → compute capability の表(gputables.NAME_CC_RULES)
+_NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = tuple((r.key, r.value) for r in NAME_CC_RULES)
 
 
 # NVIDIA の GPU 名の形(#101。docs/hardware.md「GPU 名の形」)。名前の表(_NAME_CC)は古いドライバのときの世代の
@@ -461,73 +432,11 @@ def cc_from_name(name: str) -> tuple[int, int] | None:
 
 # --- 今の PyTorch が対応する世代とドライバ ---------------------------------------------------------
 
-# PyTorch の CUDA 版のビルドが入れている compute capability と、要るドライバ(docs/hardware.md の表)。
-# 今の版(2.14.1、2026-09-30)は cu126 / cu130 / cu132。cu128(2.7〜2.11)・cu129(2.8〜2.13)は
-# 今の版には無いが、配布先(download.pytorch.org)に残っていて、ComfyUI の同梱版や
-# AI生成キットのように版を固定して使う側があるので数える(ドライバ 580 未満の Blackwell が動く道)。
-# 出典: 各版の torch/cuda/__init__.py の PYTORCH_RELEASES_CODE_CC と
-# .ci/pytorch/windows/internal/cuda_config.bat・build_env_setup.py。Windows の cu126 は 6.1 も入れている
-# (Linux は 6.0 の機械語が 6.1 でも動く)。最低のドライバは NVIDIA CUDA Toolkit のリリースノートの
-# 表 3「CUDA Toolkit and Minimum Required Driver Version for CUDA Minor Version Compatibility」
-# (12.x は 525 以上、13.x は 580 以上。OS で分けていない)。世代ごとの最低は ARCH_MIN_DRIVER
-TORCH_RELEASE = "2.14.1"
-
-
-@dataclass(frozen=True)
-class CudaBuild:
-    tag: str  # cu132 など
-    cuda: str
-    ccs: dict[str, frozenset[int]]  # 機械("x86_64" / "aarch64")ごとの compute capability(86 = 8.6)
-    min_driver_windows: tuple[int, ...]
-    min_driver_linux: tuple[int, ...]
-    torch: str  # このビルドがある PyTorch の版
-
-
-_CU13_X86 = frozenset({75, 80, 86, 90, 100, 120})
-_CU13_ARM = frozenset({80, 90, 100, 110, 120})
-_CU12_WIN = (525,)
-_CU12_LINUX = (525,)
-TORCH_CUDA_BUILDS: tuple[CudaBuild, ...] = (
-    CudaBuild("cu132", "13.2", {"x86_64": _CU13_X86, "aarch64": _CU13_ARM}, (580,), (580,), "2.12〜2.14"),
-    CudaBuild("cu130", "13.0", {"x86_64": _CU13_X86, "aarch64": _CU13_ARM}, (580,), (580,), "2.9〜2.14"),
-    CudaBuild(
-        "cu129",
-        "12.9",
-        {"x86_64": _CU13_X86, "aarch64": frozenset({80, 90, 100, 120})},
-        _CU12_WIN,
-        _CU12_LINUX,
-        "2.8〜2.13",
-    ),
-    # cu128 の aarch64 は v2.11.0 の .ci/manywheel/build_cuda.sh(12.8 に 12.0 を足し、aarch64 は 8.0 未満と
-    # 8.6 を除く)。download.pytorch.org/whl/cu128/torch/ に 2.7.0〜2.11.0 の manylinux_2_28_aarch64 がある
-    # (2026-10-27 に確かめた。DGX Spark の GB10 などの道。#101)
-    CudaBuild(
-        "cu128",
-        "12.8",
-        {"x86_64": _CU13_X86, "aarch64": frozenset({80, 90, 100, 120})},
-        _CU12_WIN,
-        _CU12_LINUX,
-        "2.7〜2.11",
-    ),
-    CudaBuild(
-        "cu126",
-        "12.6",
-        {"x86_64": frozenset({50, 60, 61, 70, 75, 80, 86, 90}), "aarch64": frozenset({80, 90})},
-        _CU12_WIN,
-        _CU12_LINUX,
-        "2.6〜2.14",
-    ),
-)
-
-# 世代ごとの最低のドライバ。Blackwell(10.x・12.x)の機械語が入るのは CUDA 12.8 からで(PyTorch の cu128 以降。
-# 上の表)、CUDA 12.8 GA のドライバは Linux 570.26 / Windows 570.65(CUDA のリリースノートの表 4)。
-# それより古いドライバは Blackwell を知らない(nvidia-smi に出ること自体がまれ)
-ARCH_MIN_DRIVER: dict[str, tuple[tuple[int, ...], str]] = {
-    "blackwell": ((570,), "CUDA 12.8 GA(Linux 570.26 / Windows 570.65)"),
-}
-
+# PyTorch の CUDA 版のビルドが入れている compute capability と、要るドライバ(gputables.TORCH_CUDA_BUILDS。
+# docs/hardware.md の表)。世代ごとの最低のドライバは ARCH_MIN_DRIVER
+ARCH_MIN_DRIVER: dict[str, tuple[tuple[int, ...], str]] = {r.key: r.value for r in ARCH_MIN_DRIVER_RULES}
 # Jetson など、同じ世代の機械語が動かない compute capability(PyTorch の DEVICE_REQUIREMENT と同じ)
-_SOLO_CC = {53, 62, 72, 87, 101, 110}
+_SOLO_CC = SOLO_CC.values
 
 
 def _code_runs(code: int, cc: tuple[int, int]) -> bool:
@@ -658,14 +567,22 @@ def torch_support(
     ok = [b for b in arch_builds if ver >= need(b)]
     if not ok:
         easiest = min(arch_builds, key=need)
+        if cc is None:
+            # 世代が分からない(古い nvidia-smi で名前の表にも無い)とき、Kepler・Fermi などは新しいドライバも
+            # PyTorch の CUDA 版も無いので、「更新すれば動く」とは言い切らない(#103)
+            after = tr(
+                "(Maxwell 以降ならドライバを更新すれば GPU で動く。Kepler・Fermi 以前は更新しても動かない)",
+                " (on Maxwell or newer it runs on the GPU after a driver update; Kepler, Fermi and older"
+                " do not run even after an update)",
+            )
+        else:
+            after = tr("(ドライバを更新すれば GPU で動く)", " (it runs on the GPU after a driver update)")
         notes.append(
             tr(
                 f"ドライバ {driver} は古く、この GPU で動く PyTorch(CUDA {easiest.cuda} 版など)には "
-                f"{_fmt_ver(need(easiest))} 以上が要るので、CPU として判定した(ドライバを更新すれば GPU "
-                "で動く)",
+                f"{_fmt_ver(need(easiest))} 以上が要るので、CPU として判定した{after}",
                 f"Driver {driver} is too old: PyTorch for this GPU (CUDA {easiest.cuda} build etc.) needs "
-                f"{_fmt_ver(need(easiest))} or later, so it is judged as CPU (it runs on the GPU after a "
-                "driver update)",
+                f"{_fmt_ver(need(easiest))} or later, so it is judged as CPU{after}",
             )
         )
         return Support([], [b.tag for b in arch_builds], False, notes)
@@ -687,41 +604,11 @@ def torch_support(
 
 # --- ComfyUI が選ぶ精度 --------------------------------------------------------------------------
 
-# ComfyUI の comfy/model_management.py(should_use_fp16)の名前の一覧と同じもの(docs/hardware.md の版)。
-# Pascal のこれらは Windows では fp16 で動かし、Linux では fp32 で計算する。
-# 下の一覧(GTX 16 系など)は fp16 が壊れているとして fp32 で計算する(こちらは大文字・小文字を区別する)
-_COMFY_FP16_PASCAL = (
-    "1080",
-    "1070",
-    "titan x",
-    "p3000",
-    "p3200",
-    "p4000",
-    "p4200",
-    "p5000",
-    "p5200",
-    "p6000",
-    "1060",
-    "1050",
-    "p40",
-    "p100",
-    "p6",
-    "p4",
-)
-_COMFY_FP16_BROKEN = (
-    "1660",
-    "1650",
-    "1630",
-    "T500",
-    "T550",
-    "T600",
-    "MX550",
-    "MX450",
-    "CMP 30HX",
-    "T2000",
-    "T1000",
-    "T1200",
-)
+# ComfyUI の comfy/model_management.py(should_use_fp16)の名前の一覧(gputables)。Pascal のこれらは Windows では
+# fp16 で動かし、Linux では fp32 で計算する。下の一覧(GTX 16 系など)は fp16 が壊れているとして fp32 で計算する
+# (こちらは大文字・小文字を区別する)
+_COMFY_FP16_PASCAL = COMFY_FP16_PASCAL.values
+_COMFY_FP16_BROKEN = COMFY_FP16_BROKEN.values
 
 
 def comfy_precision(
@@ -1708,193 +1595,20 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
 # pytorch.org の ROCm 版(Linux だけ。ComfyUI の Linux の案内)は v2.14.1 の .ci/docker/manywheel/build.sh の
 # PYTORCH_ROCM_ARCH の gfx だけを入れる。それ以外の RDNA 2(gfx1031〜1036 など)は TheRock の版を使う、
 # と notes に書く
-AMD_ARCH: dict[str, str] = {
-    **dict.fromkeys(("gfx1200", "gfx1201"), "RDNA 4"),
-    **dict.fromkeys(("gfx1150", "gfx1151", "gfx1152", "gfx1153"), "RDNA 3.5"),
-    **dict.fromkeys(("gfx1100", "gfx1101", "gfx1102", "gfx1103"), "RDNA 3"),
-    **dict.fromkeys(("gfx1030", "gfx1031", "gfx1032", "gfx1033", "gfx1034", "gfx1035", "gfx1036"), "RDNA 2"),
-    **dict.fromkeys(("gfx1010", "gfx1011", "gfx1012"), "RDNA 1"),
-    **dict.fromkeys(("gfx908", "gfx90a", "gfx942", "gfx950"), "CDNA"),
-    **dict.fromkeys(("gfx900", "gfx906", "gfx90c"), "GCN 5"),
-}
-AMD_SUPPORTED_ARCH = ("RDNA 2", "RDNA 3", "RDNA 3.5", "RDNA 4")  # Windows・Linux
-# 対象の世代でも使わない gfx: 画面を出すための 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 の
-# デスクトップ、Mendocino の 610M)。生成では CPU より速い見込みが無い(判断。実測なし)。
-# Van Gogh(Steam Deck、gfx1033)は 8 CU(Valve の仕様 https://www.steamdeck.com/en/tech 「8 RDNA 2 CUs」)で、
-# TheRock の SUPPORTED_GPUS.md が Linux・Windows とも Release Ready にしているので、ほかの RDNA 2 の内蔵 GPU
-# (680M / 660M)と同じく GPU として使う(0.9.0 で直した。以前は 2 CU と誤ってここに入れていた)
-AMD_DISPLAY_ONLY_GFX = frozenset({"gfx1036"})
-AMD_LINUX_ONLY_ARCH = ("CDNA",)  # Instinct は Linux だけ(ComfyUI の Windows の案内は Radeon だけ)
-PYTORCH_ROCM_LINUX_GFX = frozenset(
-    {
-        "gfx900",
-        "gfx906",
-        "gfx908",
-        "gfx90a",
-        "gfx942",
-        "gfx950",
-        "gfx1030",
-        "gfx1100",
-        "gfx1101",
-        "gfx1102",
-        "gfx1103",
-        "gfx1200",
-        "gfx1201",
-        "gfx1150",
-        "gfx1151",
-    }
+AMD_ARCH: dict[str, str] = {r.key: r.value for r in AMD_ARCH_RULES}
+# 対象の世代でも使わない gfx(画面を出すための 2 CU の内蔵 GPU)と、TheRock で Release Ready でない gfx
+AMD_DISPLAY_ONLY_GFX = AMD_DISPLAY_ONLY.values
+AMD_UNVERIFIED_GFX = AMD_UNVERIFIED.values
+PYTORCH_ROCM_LINUX_GFX = PYTORCH_ROCM_LINUX.values
+# AMD の GPU 名 → (gfx, 内蔵か)、CPU の名前 → 内蔵 GPU の gfx、Intel の GPU 名 → (系統, 内蔵か, VRAM の下限)
+_AMD_NAMES: tuple[tuple[str, str, bool], ...] = tuple((r.key, *r.value) for r in AMD_NAME_RULES)
+_AMD_CPU_IGPU: tuple[tuple[str, str], ...] = tuple((r.key, r.value) for r in AMD_CPU_IGPU_RULES)
+_INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = tuple(
+    (r.key, *r.value) for r in INTEL_XPU_RULES
 )
-# RDNA 2 以前は bf16 を持たない。ComfyUI は fp16 を持たない系統でも bf16 で計算する(should_use_bf16 の
-# manual_cast。model_management.py の AMD_RDNA2_AND_OLDER_ARCH)ので、作業用メモリは倍にならない。VAE は fp32
-AMD_NO_BF16_ARCH = ("RDNA 2", "RDNA 1", "GCN 5")
-
-# AMD の GPU 名(Windows の WMI・Linux の lspci の製品名・開発名)→ (gfx, 内蔵か)。上から順に試す。
-# 製品名と gfx は TheRock の RELEASES.md「GFX target lookup table」(4639f91)による
-_AMD_NAMES: tuple[tuple[str, str, bool], ...] = (
-    (r"rx\s*9070|ai pro r9[67]00|navi\s*48", "gfx1201", False),
-    (r"rx\s*90[456]0|navi\s*44", "gfx1200", False),  # RX 9060 / 9060 XT は Navi 44
-    (r"8060s|8050s|8040s|strix halo", "gfx1151", True),
-    (r"890m|880m|strix(?! halo)", "gfx1150", True),
-    (r"860m|840m|krackan", "gfx1152", True),
-    (r"820m", "gfx1153", True),
-    (r"rx\s*7[67]00[sm]\b|rx\s*7600m xt", "gfx1102", False),  # ノート用の RX 7700S / 7600S / 7600M は Navi 33
-    (r"rx\s*7900|pro w7[89]00|navi\s*31", "gfx1100", False),
-    (r"rx\s*7[78]00|pro w7700|pro v710|navi\s*32", "gfx1101", False),
-    (r"rx\s*76[05]0|pro w7[56]00|navi\s*33", "gfx1102", False),
-    (r"780m|760m|740m|phoenix|hawk ?point", "gfx1103", True),
-    # ノート用(M・S)は同じ番号でも石が違う: RX 6850M XT / 6800M / 6700M は Navi 22、RX 6800S / 6700S / 6650M /
-    # 6600M / 6600S は Navi 23、RX 6550M / 6500M / 6450M / 6300M は Navi 24
-    (r"rx\s*6[78][05]0m\b", "gfx1031", False),
-    (r"rx\s*6[678]00s\b|rx\s*66[05]0m\b", "gfx1032", False),
-    (r"rx\s*6[345][05]0m\b", "gfx1034", False),
-    (r"rx\s*6[89]\d0|pro w6800|pro v620|navi\s*21", "gfx1030", False),
-    (r"rx\s*67\d0|navi\s*22", "gfx1031", False),
-    (r"rx\s*66\d0|pro w6600|navi\s*23", "gfx1032", False),
-    # デスクトップの RX 6300 も Navi 24(pci.ids「7424 Navi 24 [Radeon RX 6300]」、Pro W6300 / W6400 も同じ)
-    (r"rx\s*6[345]00|pro w6[345]00|navi\s*24", "gfx1034", False),
-    (r"680m|660m|rembrandt", "gfx1035", True),
-    (r"610m|raphael|granite ridge|mendocino", "gfx1036", True),
-    # Steam Deck(Van Gogh、OLED 版の Sephiroth も gfx1033)。Windows のドライバの名前は「AMD Custom GPU 0405」
-    # (pci.ids「163f VanGogh [AMD Custom GPU 0405]」「1435 Sephiroth [AMD Custom GPU 0405]」)
-    (r"van ?gogh|sephiroth|custom gpu 0405", "gfx1033", True),
-    (r"rx\s*5[67]\d0|navi\s*10", "gfx1010", False),
-    (r"rx\s*5[35]00|pro w5500|navi\s*14", "gfx1012", False),
-    (r"mi35\dx?", "gfx950", False),
-    (r"mi3[02]\dx?|mi300a", "gfx942", False),
-    (r"mi2[15]0x?", "gfx90a", False),
-    (r"mi100", "gfx908", False),
-    (r"radeon vii|radeon pro vii|mi[56]0\b|vega\s*20", "gfx906", False),
-)
-# 名前が「AMD Radeon(TM) Graphics」だけの内蔵 GPU は、CPU の名前で決める(上から順に試す。迷うものは入れない)
-_AMD_CPU_IGPU: tuple[tuple[str, str], ...] = (
-    (r"ryzen ai max", "gfx1151"),
-    (r"ryzen ai 9 (hx )?3[67]\d", "gfx1150"),
-    (r"ryzen ai [57] (pro )?3[3-5]\d", "gfx1152"),
-    # Dragon Range(7945HX・7940HX・7840HX・7745HX・7645HX など)・Fire Range(9955HX・9850HX など)は
-    # Radeon 610M(2 CU)の内蔵 GPU(gfx1036、AMD_DISPLAY_ONLY_GFX)。AMD の製品ページの「Graphics Model:
-    # AMD Radeon 610M」「Graphics Core Count: 2」(2026-10-22 に読んだ。例
-    # https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html)
-    (r"ryzen [3579] (pro )?7\d4[05]hx3?d?\b|ryzen [3579] (pro )?9\d5[05]hx3?d?\b", "gfx1036"),
-    # 携帯機の Ryzen Z1 Extreme(12 CU)・Z1(4 CU)は RDNA 3 の「AMD Radeon Graphics」(AMD の製品ページ
-    # https://www.amd.com/en/products/processors/handhelds/ryzen-z-series/z1-series/z1-extreme.html
-    # ・…/z1.html)。12 CU・Zen 4 8 個は Phoenix1(780M)、4 CU・Zen 4 2 個 + Zen 4c 4 個は
-    # Phoenix2(740M)と同じ石とみなした(推定)。
-    # どちらも gfx1103(Linux の amdkfd kfd_device.c: GC 11.0.1・11.0.4 → gfx_target_version 110003)
-    (r"ryzen z1\b", "gfx1103"),
-    (r"ryzen [3579] (pro )?[78]\d4\d(u|hs|h)\b|ryzen [3579] (pro )?8[5-7]00g", "gfx1103"),
-    (r"ryzen [3579] (pro )?(6[89]\d0|7[37]35)(u|hs|h|hx)\b", "gfx1035"),
-)
-
-# Intel: PyTorch 2.14 の「Getting Started on Intel GPU」(https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html)
-# の Client GPUs(Windows 11・Ubuntu 24.04/26.04・WSL2)の検証済みの部品だけ。
-# UHD・Iris Xe・「Intel(R) Graphics」
-# (Arrow Lake-S などの Xe-LPG)は入らない。(名前の形, 系統, 内蔵か, 名前から推す VRAM の下限 GiB)
-_INTEL_XPU: tuple[tuple[str, str, bool, float | None], ...] = (
-    (r"arc.*\ba770\b", "Arc A-Series (Alchemist)", False, 8.0),  # 8 GB 版と 16 GB 版があるので少ないほう
-    (r"arc.*\ba750\b|arc.*\ba580\b", "Arc A-Series (Alchemist)", False, 8.0),
-    (r"arc.*\ba380\b", "Arc A-Series (Alchemist)", False, 6.0),
-    (r"arc.*\ba310\b", "Arc A-Series (Alchemist)", False, 4.0),
-    # ノート用も Alchemist の外付け。公称の VRAM は Intel の表
-    # (https://www.intel.com/content/www/us/en/support/articles/000091109.html: A770M 16GB・A730M 12GB・
-    # A550M 8GB・A370M 4GB・A350M 4GB)。Linux の xe・i915 は VRAM の量を sysfs に出さない
-    # (docs/hardware.md)ので、Linux ではこの公称の値を使う。A570M・A530M・Pro の M・組み込み用(E)は
-    # Intel の資料で確かめられなかったので値を持たない
-    (r"arc.*\ba770m\b", "Arc A-Series (Alchemist)", False, 16.0),
-    (r"arc.*\ba730m\b", "Arc A-Series (Alchemist)", False, 12.0),
-    (r"arc.*\ba550m\b", "Arc A-Series (Alchemist)", False, 8.0),
-    (r"arc.*\ba3[57]0m\b", "Arc A-Series (Alchemist)", False, 4.0),
-    (r"arc.*\bpro a\d{2}m?\b|arc.*\ba\d{3}[me]\b|\bdg2\b", "Arc A-Series (Alchemist)", False, None),
-    (r"arc.*\bb580\b", "Arc B-Series (Battlemage)", False, 12.0),
-    (r"arc.*\bb570\b", "Arc B-Series (Battlemage)", False, 10.0),
-    (r"arc.*\bpro b60\b", "Arc B-Series (Battlemage)", False, 24.0),
-    (r"arc.*\bpro b50\b", "Arc B-Series (Battlemage)", False, 16.0),
-    (r"battlemage|\bbmg\b", "Arc B-Series (Battlemage)", False, None),
-    (r"arc.*\bb3\d0\b|panther lake", "Core Ultra Series 3 (Panther Lake)", True, None),
-    (r"arc.*\b1[34]0v\b|lunar lake", "Core Ultra Series 2 (Lunar Lake)", True, None),
-    (r"arc.*\b1[34]0t\b|arrow lake-[hp]", "Core Ultra Series 2 (Arrow Lake-H)", True, None),
-    (r"^(intel )?arc graphics$|meteor lake", "Core Ultra (Meteor Lake-H)", True, None),
-)
-
-# Linux の pci.ids が古く、lspci が「AMD Device 7551」のように型番の ID しか出さないときの表
-# ((会社の ID, 型番の ID) → 上の名前の表で引ける名前)。pci.ids 2026.10.22(pciutils/pciids 86e7077e4b79、
-# https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids)の行から、判定に使う GPU と、使わないと
-# 決めている内蔵 GPU(610M など)だけを写した。石の名前(Navi 31 など)で引くので、ノート用・Pro の違いは
-# gfx に効かない。
-# 「Intel Graphics」とだけある ID(Arc でない内蔵 GPU など)は入れない
-PCI_DEVICE_NAMES: dict[tuple[str, str], str] = {
-    **{("1002", d): "Navi 48" for d in ("7550", "7551")},
-    ("1002", "7590"): "Navi 44",
-    **{("1002", d): "Navi 31" for d in ("744c", "7448", "7449", "744a", "744b", "745e")},
-    **{("1002", d): "Navi 32" for d in ("7460", "7461", "7470", "747e")},
-    **{
-        ("1002", d): "Navi 33"
-        for d in ("7480", "7481", "7483", "7487", "7489", "748b", "7499", "749f", "73f0")
-    },
-    **{("1002", d): "Navi 21" for d in ("73a1", "73a2", "73a3", "73a5", "73ab", "73ae", "73af", "73bf")},
-    **{("1002", d): "Navi 22" for d in ("73c3", "73df")},
-    **{("1002", d): "Navi 23" for d in ("73e0", "73e1", "73e3", "73ef", "73ff")},
-    **{("1002", d): "Navi 24" for d in ("7421", "7422", "7423", "7424", "743f")},
-    **{("1002", d): "Phoenix" for d in ("15bf", "15c8")},
-    **{("1002", d): "Hawk Point" for d in ("1900", "1901")},
-    ("1002", "1681"): "Rembrandt",
-    ("1002", "164e"): "Raphael",
-    ("1002", "13c0"): "Granite Ridge",
-    ("1002", "1506"): "Mendocino",
-    ("1002", "163f"): "Van Gogh",
-    ("1002", "1435"): "Van Gogh (Sephiroth)",
-    ("1002", "150e"): "Strix",
-    ("1002", "1586"): "Strix Halo",
-    ("1002", "1114"): "Krackan",
-    ("8086", "56a0"): "Arc A770",
-    ("8086", "56a1"): "Arc A750",
-    ("8086", "56a2"): "Arc A580",
-    ("8086", "56a5"): "Arc A380",
-    ("8086", "56a6"): "Arc A310",
-    ("8086", "5690"): "Arc A770M",
-    ("8086", "5691"): "Arc A730M",
-    ("8086", "5692"): "Arc A550M",
-    ("8086", "5693"): "Arc A370M",
-    ("8086", "5694"): "Arc A350M",
-    ("8086", "5696"): "Arc A570M",
-    ("8086", "5697"): "Arc A530M",
-    ("8086", "56b0"): "Arc Pro A30M",
-    ("8086", "56b1"): "Arc Pro A40",
-    ("8086", "56b2"): "Arc Pro A60M",
-    ("8086", "56b3"): "Arc Pro A60",
-    ("8086", "e20b"): "Arc B580",
-    ("8086", "e20c"): "Arc B570",
-    ("8086", "e211"): "Arc Pro B60",
-    ("8086", "e212"): "Arc Pro B50",
-    **{
-        ("8086", d): "Battlemage"
-        for d in ("e202", "e20d", "e210", "e215", "e216", "e220", "e221", "e222", "e223")
-    },
-    ("8086", "7d55"): "Arc Graphics",  # Meteor Lake-P [Intel Arc Graphics]
-    ("8086", "7d51"): "Arc 140T",  # Arrow Lake-P [Arc Pro 130T/140T]
-    ("8086", "64a0"): "Arc 140V",  # Lunar Lake の Arc Graphics 130V/140V
-    **{("8086", d): "Arc B390" for d in ("b080", "b082", "b084", "b086")},  # Panther Lake
-    **{("8086", d): "Arc B370" for d in ("b081", "b083", "b085", "b087")},
-}
+# 古い pci.ids の lspci の「AMD Device 7551」、汎用の製品名(「Radeon Graphics」)のときに型番の ID で引く表
+# ((会社の ID, 型番の ID) → 上の名前の表で引ける名前)
+PCI_DEVICE_NAMES: dict[tuple[str, str], str] = {tuple(r.key.split(":")): r.value for r in PCI_DEVICE_RULES}
 _VENDOR_PCI = {"amd": "1002", "intel": "8086"}
 
 
@@ -1963,28 +1677,7 @@ DISPLAY_ONLY_VENDORS = {
 # WSL2 で使える AMD の GPU(AMD「WSL compatibility」の ROCm 7.2.1 の表の製品名。#101。
 # https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html
 # 2026-10-27 に読んだ)。名前は _wsl_amd_key の形(会社名・Radeon・(TM) を除いた小文字)。APU は表に無い
-WSL_AMD_SUPPORTED = frozenset(
-    {
-        "rx 9070",
-        "rx 9070 xt",
-        "rx 9070 gre",
-        "ai pro r9700",
-        "ai pro r9600d",
-        "rx 9060",
-        "rx 9060 xt",
-        "rx 7900 xtx",
-        "rx 7900 xt",
-        "rx 7900 gre",
-        "pro w7900",
-        "pro w7900 dual slot",
-        "pro w7800",
-        "pro w7800 48gb",
-        "pro w7700",
-        "rx 7800 xt",
-        "rx 7700",
-        "rx 7700 xt",
-    }
-)
+WSL_AMD_SUPPORTED = WSL_AMD.values
 # Intel の WSL2 の Windows のドライバの下限(Intel「PyTorch Prerequisites for Intel GPUs」2.14 の Windows の節
 # 「32.0.101.8801 or higher」。版の比べ方は Intel support 000005654: 3 つ目と 4 つ目の欄をつないだ 7 桁)
 INTEL_WSL_MIN_BUILD = 1018801
@@ -2039,28 +1732,52 @@ def _low(name: str) -> str:
     return " ".join(n.split())
 
 
+def amd_rule(name: str, cpu: str = "") -> Rule | None:
+    """AMD の GPU 名に当たる表の行(gputables の AMD_NAME_RULES、名前が「AMD Radeon(TM) Graphics」だけなら
+    CPU の名前で AMD_CPU_IGPU_RULES)。当たらなければ None。"""
+    n = _low(name)
+    for r in AMD_NAME_RULES:
+        if re.search(r.key, n):
+            return r
+    if re.fullmatch(r"(amd )?radeon graphics", n):
+        c = _low(cpu)
+        for r in AMD_CPU_IGPU_RULES:
+            if re.search(r.key, c):
+                return r
+    return None
+
+
 def amd_gfx(name: str, cpu: str = "") -> tuple[str, bool] | None:
     """AMD の GPU 名 → (gfx, 内蔵か)。
     名前が「AMD Radeon(TM) Graphics」だけの内蔵 GPU は CPU の名前で決める。"""
+    r = amd_rule(name, cpu)
+    if r is None:
+        return None
+    return (r.value, True) if r in AMD_CPU_IGPU_RULES else r.value
+
+
+def intel_rule(name: str) -> Rule | None:
     n = _low(name)
-    for pat, gfx, integrated in _AMD_NAMES:
-        if re.search(pat, n):
-            return gfx, integrated
-    if re.fullmatch(r"(amd )?radeon graphics", n):
-        c = _low(cpu)
-        for pat, gfx in _AMD_CPU_IGPU:
-            if re.search(pat, c):
-                return gfx, True
+    for r in INTEL_XPU_RULES:
+        if re.search(r.key, n):
+            return r
     return None
 
 
 def intel_xpu(name: str) -> tuple[str, bool, float | None] | None:
     """Intel の GPU 名 → (系統, 内蔵か, 名前から推す VRAM の下限)。PyTorch の XPU 版の対象でなければ None。"""
-    n = _low(name)
-    for pat, label, integrated, floor in _INTEL_XPU:
-        if re.search(pat, n):
-            return label, integrated, floor
-    return None
+    r = intel_rule(name)
+    return r.value if r else None
+
+
+# 製品名が汎用で世代が決まらない名前(新しい pci.ids の「Navi 33 [Radeon Graphics]」「Battlemage G31 [Intel
+# Graphics]」など)。このときは型番の ID の表(PCI_DEVICE_NAMES)を先に引く(#103: 古い pci.ids では使え、
+# 新しい pci.ids では断る、という逆転を無くす)
+_GENERIC_NAME = re.compile(r"(amd )?(radeon|intel) graphics|intel graphics")
+
+
+def _rule_note(r: Rule | None) -> str | None:
+    return tr(*r.note) if r is not None and r.note[0] else None
 
 
 def _windows_ok(host: Host) -> bool:
@@ -2160,8 +1877,21 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 f"The pci.ids of lspci is old and shows no product name, so it was taken as {known}"
                 f" from the device ID ({dev}) (update-pciids shows the product name)",
             )
+    if pci is None and not a.gfx_target and a.pci_id and _GENERIC_NAME.fullmatch(_low(a.name)):
+        # 汎用の製品名(新しい pci.ids の「Navi 33 [Radeon Graphics]」など)は型番の ID の表を先に引く(#103)
+        ven, _, dev = a.pci_id.lower().partition(":")
+        known = PCI_DEVICE_NAMES.get((ven, dev))
+        if known:
+            name = known
+            pci_note = tr(
+                f"製品名が汎用({a.name})なので、型番の ID({dev})から {known} とみなした",
+                f"The product name is generic ({a.name}), so it was taken as {known}"
+                f" from the device ID ({dev})",
+            )
+    rule_note = None
     if a.vendor == "amd":
         found = amd_gfx(name, host.cpu)
+        rule_note = _rule_note(amd_rule(name, host.cpu)) if not a.gfx_target else None
         if a.gfx_target:  # 項目 10: amdkfd の gfx_target_version を名前より先に使う
             gfx, a.integrated = a.gfx_target, (found[1] if found else _guess_integrated(a))
             arch = AMD_ARCH.get(gfx) or _new_amd_arch(gfx)
@@ -2199,6 +1929,14 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
                 f"{a.name}({arch}・{gfx})は ComfyUI が案内する ROCm 版 PyTorch の対象(RDNA 2 以降)に入らない",
                 f"{a.name} ({arch}, {gfx}) is not covered by the ROCm build of PyTorch that ComfyUI "
                 "recommends (RDNA 2 and later)",
+            )
+            return None
+        if gfx in AMD_UNVERIFIED_GFX:
+            refuse(  # gfx1170 / gfx1171 / gfx1250(#103)
+                f"{a.name}({gfx})は AMD の TheRock(ROCm)の対応表で Release Ready でない"
+                "(Build Passing・Sanity Tested まで。動くと確かめられていない)",
+                f"{a.name} ({gfx}) is not Release Ready in AMD's TheRock (ROCm) support table"
+                " (Build Passing / Sanity Tested only; not verified to run)",
             )
             return None
         if gfx in AMD_DISPLAY_ONLY_GFX:
@@ -2279,6 +2017,13 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             )
             return None
         series, a.integrated, floor = found_i
+        rule_note = _rule_note(intel_rule(name))
+        if series in INTEL_LINUX_ONLY and host.system != "Linux":
+            refuse(  # Data Center GPU Max(#103)
+                f"{a.name}({series})の XPU 版 PyTorch は Linux だけ(PyTorch の Intel GPU の表)",
+                f"The XPU build of PyTorch for {a.name} ({series}) is Linux only (PyTorch's Intel GPU table)",
+            )
+            return None
         if host.system not in ("Windows", "Linux"):
             refuse(
                 f"{host.system} の XPU 版 PyTorch は無い",
@@ -2345,6 +2090,8 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         return None
     if pci_note:
         notes.insert(1, pci_note)
+    if rule_note:
+        notes.append(rule_note)
     return _usable_gpu(a, ram_gb, notes, backend, bf16, arch, gfx)
 
 
@@ -2444,6 +2191,12 @@ def _classify_wsl(a: Adapter, ram_gb: float, cap: tuple[str, str], refuse) -> Gp
             )
             return None
         series, a.integrated, floor = found
+        if series in INTEL_LINUX_ONLY:
+            refuse(
+                f"{a.name}({series})は PyTorch の XPU 版が WSL2 で確かめた GPU ではない(Linux だけ)",
+                f"{a.name} ({series}) is not a GPU the XPU build of PyTorch verifies on WSL2 (Linux only)",
+            )
+            return None
         notes = [
             tr(
                 f"WSL2 の XPU 版 PyTorch({series})で動く組み合わせとして対応表で判定した。{cap[0]}",

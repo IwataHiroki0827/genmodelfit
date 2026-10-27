@@ -10,6 +10,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 | You want to… | Read |
 |---|---|
 | Know how your PC is detected and judged | [hardware.md](hardware.md) |
+| Find the table row your GPU matches and its source | [gpu-inventory.md](gpu-inventory.md) |
 | Know how far to trust the memory estimates | [accuracy.md](accuracy.md) |
 | Know how the order and the Score are decided, and when measurements set the level | [scoring.md](scoring.md) |
 | Download a model's files safely | [download.md](download.md) |
@@ -23,6 +24,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 | Page | What it covers |
 |---|---|
 | [hardware.md](hardware.md) | How genmodelfit detects GPUs, memory and drivers, and the primary-source rules behind each verdict. |
+| [gpu-inventory.md](gpu-inventory.md) | Every row of the GPU registration tables (name / device ID → generation, PyTorch CUDA builds) with the official product names it matches, the verdict, the source and the date checked (generated). |
 | [accuracy.md](accuracy.md) | How the VRAM / RAM estimates are built and fitted, how accurate they are, and how other users' measurements are used. |
 | [scoring.md](scoring.md) | Fairness of the verdicts, the order of the lists, the Score (memory headroom) and popularity: rules, evidence, differences from llmfit and tests. |
 | [download.md](download.md) | The rules of `genmodelfit download` (consent, refusals, safety, network) and its Python API. |

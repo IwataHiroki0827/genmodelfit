@@ -1,0 +1,6 @@
+AMD_RDNA2_AND_OLDER_ARCH = ["gfx1030", "gfx803"]
+def should_use_fp16():
+    nvidia_10_series = ["1080", "1070", "titan x", "p3000", "p3200", "p4000", "p4200", "p5000", "p5200", "p6000", "1060", "1050", "p40", "p100", "p6", "p4"]
+    nvidia_16_series = ["1660", "1650", "1630", "T500", "T550", "T600", "MX550", "MX450", "CMP 30HX", "T2000", "T1000", "T1200", "T300"]
+    if any((a in arch) for a in ["gfx1200", "gfx1201", "gfx1300"]):
+        pass

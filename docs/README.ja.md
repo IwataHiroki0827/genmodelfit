@@ -10,6 +10,7 @@
 | したいこと | 読むページ |
 |---|---|
 | この PC をどう調べて判定するかを知る | [hardware.ja.md](hardware.ja.md) |
+| 自分の GPU が登録の表のどの行に当たり、出典は何かを知る | [gpu-inventory.ja.md](gpu-inventory.ja.md) |
 | メモリの見積もりをどこまで信じてよいかを知る | [accuracy.ja.md](accuracy.ja.md) |
 | 並び・Score の決め方と、実測で段階を決める条件を知る | [scoring.ja.md](scoring.ja.md) |
 | モデルのファイルを安全にダウンロードする | [download.ja.md](download.ja.md) |
@@ -23,6 +24,7 @@
 | ページ | 中身 |
 |---|---|
 | [hardware.ja.md](hardware.ja.md) | GPU・メモリ・ドライバの検出方法と、判定の根拠にした一次資料の規則。 |
+| [gpu-inventory.ja.md](gpu-inventory.ja.md) | GPU の登録の表(名前・型番 ID → 世代、PyTorch の CUDA 版)の全部の行と、当たる公式の製品名・判定・出典・確かめた日(自動で作る)。 |
 | [accuracy.ja.md](accuracy.ja.md) | VRAM・メモリの見積もりの式・合わせ方・精度と、ほかの利用者の実測の扱い。 |
 | [scoring.ja.md](scoring.ja.md) | 判定の公平さ・一覧の並び・Score(メモリの余裕)・人気の決まり、根拠、llmfit との違い、試験。 |
 | [download.ja.md](download.ja.md) | `genmodelfit download` の決まり(同意・断るもの・安全・通信)と Python の関数。 |

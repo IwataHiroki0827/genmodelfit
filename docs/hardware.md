@@ -82,14 +82,14 @@ PyTorch ships machine code (SASS) only (`_ptx_arches` in `.ci/manywheel/build_en
 
 - Machine code runs only on GPUs with the same major and a minor equal to or larger (CUDA Programming Guide 1.3.4.1 Binary Compatibility: https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/cuda-platform.html).
 - Example: code for 8.6 runs on 8.6 and 8.9, but not on 8.0 or 9.0.
-- Jetson 5.3, 6.2, 7.2, 8.7 and similar are handled separately (`DEVICE_REQUIREMENT` in PyTorch).
+- Jetson 5.3, 6.2, 7.2, 8.7 and similar are handled separately (`DEVICE_REQUIREMENT` in PyTorch). For 8.7 with CUDA 13.2 or later, see "GPU registration tables and the official lists" below.
 
 | Build | PyTorch versions | x86_64 compute capabilities | Source |
 |---|---|---|---|
 | cu132 | 2.12 to 2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.14.1 `torch/cuda/__init__.py` `PYTORCH_RELEASES_CODE_CC`, `.ci/pytorch/windows/build_env_setup.py` |
 | cu130 | 2.9 to 2.14 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | same |
-| cu129 | 2.8 to 2.13 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.13.0 `PYTORCH_RELEASES_CODE_CC`, `.ci/pytorch/windows/internal/cuda_config.bat` |
-| cu128 | 2.7 to 2.11 | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.11.0 `.ci/manywheel/build_cuda.sh`, `cuda_config.bat` |
+| cu129 | 2.8 to 2.13 (Windows: 2.8, 2.9) | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.13.0 `PYTORCH_RELEASES_CODE_CC`, `.ci/pytorch/windows/internal/cuda_config.bat` |
+| cu128 | 2.7 to 2.11 (aarch64: 2.7, 2.9 to 2.11) | 7.5, 8.0, 8.6, 9.0, 10.0, 12.0 | v2.11.0 `.ci/manywheel/build_cuda.sh`, `cuda_config.bat` |
 | cu126 | 2.6 to 2.14 | 5.0, 6.0, 6.1 (Windows), 7.0, 7.5, 8.0, 8.6, 9.0 | v2.14.1, same as above |
 
 The CUDA versions of each PyTorch version are in `CUDA_ARCHES` of `.github/scripts/generate_binary_build_matrix.py`:
@@ -289,17 +289,19 @@ Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel 
 | Vendor / part | OS | Verdict | Primary sources |
 |---|---|---|---|
 | AMD Radeon RDNA 4 (RX 9070 / 9060, gfx1200, 1201) | Windows 11, Linux | **GPU** (`rocm`) | ComfyUI README "AMD GPUs (Windows, ROCm 10.0)" (Comfy-Org/ComfyUI 426f5ee: "supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4", "Use Windows 11"), ROCm/TheRock `SUPPORTED_GPUS.md`, `RELEASES.md` (4639f91, "GFX target lookup table", Release Ready) |
-| AMD RDNA 3.5 APUs (Ryzen AI Max = gfx1151, Ryzen AI 9 HX 37x = gfx1150, Ryzen AI 7 350 = gfx1152, Radeon 820M = gfx1153) | Windows 11, Linux | **GPU** (`rocm`, shared memory) | same |
-| AMD Radeon RDNA 3 (RX 7900 = gfx1100, 7800 / 7700 = gfx1101, 7600 = gfx1102), Radeon 780M / 760M / 740M, Ryzen Z1 Extreme / Z1 (gfx1103) | Windows 11, Linux | **GPU** (`rocm`) | same. On Linux, the ROCm build from pytorch.org is also installed (ComfyUI's Linux instructions use `--index-url .../rocm7.2`) |
+| AMD RDNA 3.5 APUs (Ryzen AI Max = gfx1151, Ryzen AI 9 HX 37x = gfx1150, Ryzen AI 7 350 = gfx1152, Radeon 820M = gfx1153 (official sources disagree; below), Radeon 8065S = gfx1151) | Windows 11, Linux | **GPU** (`rocm`, shared memory) | same |
+| AMD Radeon RDNA 3 (RX 7900 = gfx1100, 7800 / 7700 = gfx1101, 7600, 7500, 7400, 7300, PRO W7400 = gfx1102), Radeon 780M / 760M / 740M, Ryzen Z1 Extreme / Z1 (gfx1103) | Windows 11, Linux | **GPU** (`rocm`) | same. On Linux, the ROCm build from pytorch.org is also installed (ComfyUI's Linux instructions use `--index-url .../rocm7.2`) |
 | AMD Radeon RDNA 2 (RX 6900 to 6800 = gfx1030, 6700 = gfx1031, 6600 = gfx1032, 6500 / 6400 / 6300, Pro W6400 / W6300 = gfx1034), Radeon 680M / 660M (gfx1035), Van Gogh, Sephiroth (Steam Deck and OLED model; Windows name AMD Custom GPU 0405; 8 CU, gfx1033; shared memory) | Windows 11, Linux | **GPU** (`rocm`; no bf16) | same. The ROCm build on pytorch.org covers gfx1030 only (`PYTORCH_ROCM_ARCH` in pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh`), so notes says to use AMD's multi-arch build (TheRock) for the others |
 | AMD Instinct (MI100 to MI355X, gfx908, 90a, 942, 950) | Linux | **GPU** (`rocm`) | `PYTORCH_ROCM_ARCH` of the pytorch.org ROCm build, TheRock's Instinct - Linux table |
 | AMD 2-CU integrated GPUs (Raphael, Granite Ridge = Ryzen 7000 / 9000 desktop; Dragon Range, Fire Range = 7x40HX / 7x45HX / 9x5xHX; Mendocino; 610M = gfx1036) | — | CPU | The generation is covered, but these are small GPUs for driving a display and are not expected to beat the CPU for generation (a judgment; no measurement) |
+| AMD gfx1170, gfx1171 (RDNA 4 APUs), gfx1250 (CDNA 5) | — | CPU | Not Release Ready in TheRock ("GPU registration tables and the official lists" below) |
 | AMD RDNA 1 (RX 5700 / 5500), GCN (Vega, Polaris and older) | — | CPU | ComfyUI's instructions start at RDNA 2 (TheRock lists RDNA 1 as Release Ready too, but we follow ComfyUI) |
 | AMD (any) | Windows 10, or version unknown | CPU | ComfyUI's instructions: "Use Windows 11" (unknown goes to the not-used side) |
 | AMD | macOS | CPU | Apple's MPS build is for Apple silicon only (below) |
 | Intel Arc A series (Alchemist: A770 / A750 / A580 / A380 / A310, Pro A) | Windows 11, Linux | **GPU** (`xpu`) | PyTorch 2.14 "Getting Started on Intel GPU" (https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html), Client GPUs table ("Windows 11 & Ubuntu 24.04/26.04 & WSL2"); ComfyUI README "Intel GPUs (Windows and Linux)" |
-| Intel Arc B series (Battlemage: B580 / B570, Pro B60 / B50) | Windows 11, Linux | **GPU** (`xpu`) | same |
+| Intel Arc B series (Battlemage: B580 / B570, Pro B70 / B65 / B60 / B50) | Windows 11, Linux | **GPU** (`xpu`) | same |
 | Intel Core Ultra Arc Graphics (Meteor Lake-H, Arrow Lake-H 140T / 130T, Lunar Lake 140V / 130V, Panther Lake B390, etc.) | Windows 11, Linux | **GPU** (`xpu`, shared memory) | same (Panther Lake: Ubuntu 26.04) |
+| Intel Data Center GPU Max (Ponte Vecchio) | Linux | **GPU** (`xpu`) | PyTorch 2.14's Intel Data Center GPU table (RHEL 9.2, SLES 15 SP5, Ubuntu Server 22.04). Windows and WSL2 are CPU |
 | Intel UHD, Iris Xe, "Intel(R) Graphics" (Arrow Lake-S etc.), HD Graphics | — | CPU | not in the table above |
 | Intel (any) | Windows 10, or version unknown | CPU | the table above is for Windows 11 |
 | Apple silicon (M1 to M4 etc.) | macOS 14 or newer | **GPU** (`mps`, unified memory) | Apple "Accelerated PyTorch training on Mac" (https://developer.apple.com/metal/pytorch/: "Mac computer with Apple silicon", "macOS 14.0 or later"); ComfyUI README "Apple Mac silicon" |
@@ -307,8 +309,8 @@ Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel 
 
 Tables that map a GPU name to a generation:
 
-- `hardware._AMD_NAMES` (product names and lspci development names such as Navi 31) and `_INTEL_XPU`.
-- An integrated GPU whose name is only "AMD Radeon(TM) Graphics" is decided by the CPU name (`_AMD_CPU_IGPU`: Ryzen AI Max -> gfx1151, Ryzen 7 8845HS -> gfx1103, and so on). If that does not decide it, it is CPU (generation unknown).
+- `gputables.AMD_NAME_RULES` (product names and lspci development names such as Navi 31) and `INTEL_XPU_RULES`.
+- An integrated GPU whose name is only "AMD Radeon(TM) Graphics" is decided by the CPU name (`gputables.AMD_CPU_IGPU_RULES`: Ryzen AI Max -> gfx1151, Ryzen 7 8845HS -> gfx1103, and so on). If that does not decide it, it is CPU (generation unknown).
 - Dragon Range (Ryzen 7x40HX, 7x45HX) and Fire Range (9x50HX, 9x55HX) are 2-CU gfx1036, so CPU.
 - Laptop Radeons with the same number can be different chips: RX 6800M and 6850M XT are gfx1031, RX 6800S is gfx1032, RX 6550M is gfx1034, RX 7700S is gfx1102.
 
@@ -327,7 +329,7 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
   - It has 2 GB of VRAM, so almost no model runs (the amount of VRAM decides the verdict).
 - **Linux with an old pci.ids**:
   - lspci -nn prints "Advanced Micro Devices, Inc. [AMD/ATI] Device [1002:7551]" (pciutils `lib/names.c`, format_name_pair).
-  - The name is kept as "AMD Device 7551" and mapped back to a chip / product name with `hardware.PCI_DEVICE_NAMES`. This table copies only the AMD and Intel IDs that matter for judging, from pci.ids 2026.10.22 (pciutils/pciids 86e7077e4b79).
+  - The name is kept as "AMD Device 7551" and mapped back to a chip / product name with `hardware.PCI_DEVICE_NAMES` (`gputables.PCI_DEVICE_RULES`). This table copies only the AMD and Intel IDs that matter for judging, from pci.ids 2026.10.22 (pciutils/pciids 86e7077e4b79; rechecked against 2026.10.27 on 2026-10-27).
   - The reason says "taken as ... from the model ID (update pci.ids with update-pciids to get the product name)".
   - An ID not in the table is CPU (for both AMD and Intel), with a pointer to `update-pciids`.
   - A model ID shows only the kind of product, not the individual unit or slot, so it is kept in the name.
@@ -337,6 +339,31 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
   - Nominal values for laptops come from Intel's table (https://www.intel.com/content/www/us/en/support/articles/000091109.html): A770M 16 GB, A730M 12 GB, A550M 8 GB, A370M 4 GB, A350M 4 GB.
   - A770 has 8 GB and 16 GB versions, so 8 GB.
   - A570M, A530M and the Pro M models could not be confirmed in Intel's documents, so they have no value and stay CPU on Linux.
+
+### GPU registration tables and the official lists (0.11.0, #103)
+
+Only what the OS does not tell us needs registering: AMD on Windows (name → gfx), Intel (XPU coverage), NVIDIA with an old driver (name → generation; a miss does not refuse), and the PyTorch CUDA build table (per version). NVIDIA (nvidia-smi returns the generation), AMD on Linux (amdkfd) and Apple (the chip-name pattern) need no registration.
+
+- The tables live in `src/genmodelfit/gputables.py`; each row is a `Rule` (key, value, source, date verified, version added, note). Source URLs and read dates are written once in `SOURCES`.
+- Every row, the official product names it matches, the verdict and the source are listed in [gpu-inventory.md](gpu-inventory.md) (made by `tools/gpu_inventory.py`; a test checks it matches).
+- The official lists (fetched 2026-10-27) are fixed under `tests/fixtures/gpu_official`, and a test checks that every official product matches a row with the same gfx / compute capability (`tests/test_gpu_tables.py`; no network).
+- New GPUs are reported by the "GPU table watch" in the weekly update ([release.md](release.md), "Weekly list update"). The tables are never rewritten automatically.
+
+**AMD on Windows** (both sources are given):
+
+- AMD's official Windows compatibility tables (ROCm 7.2.1; Radeon: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html , Ryzen: …/compatibilityryz/windows/windows_compatibility.html) list only gfx1100, 1101, 1200, 1201 (Radeon) and gfx1150, 1151 (Ryzen).
+- genmodelfit follows ComfyUI's instructions (RDNA 2 to 4) and **Release Ready** in the Windows table of TheRock's `SUPPORTED_GPUS.md` (which also includes RDNA 2, gfx1102, gfx1103, gfx1152 and gfx1153). ComfyUI's AMD portable and AMD's multi-arch PyTorch are TheRock builds, so we follow TheRock. A gfx missing from AMD's official table is outside AMD's official guarantee.
+- gfx that are not Release Ready in TheRock (gfx1170, gfx1171: Build Passing only; gfx1250: up to Sanity Tested) are judged as CPU (`gputables.AMD_UNVERIFIED`). TheRock says that until Sanity Tested, packages may install but not run. When they become Release Ready, the watch reports it and they are taken off the list.
+
+**Gaps and errors fixed in #103** (sources are on each row of the inventory):
+
+- AMD: Radeon 8065S (Ryzen AI Max+ PRO 495, gfx1151 in ROCm hw specs), RX 7500 / 7400 / 7300 and PRO W7400 (pci.ids 749f, 7499 "Navi 33" = gfx1102), Steam Machine (pci.ids 7481 "Navi 33"), Radeon Pro W6900X and Pro V520 (gfx1030, gfx1011), Instinct MI25, MI6, MI8 (unsupported generations; for display), CPU names of Ryzen AI 4xx and PRO (when the iGPU name is generic), Ryzen 9 270 (gfx1103 in TheRock's RELEASES.md).
+- Device IDs whose product name becomes generic in a newer pci.ids ("Navi 33 [Radeon Graphics]", "Battlemage G31 [Intel Graphics]") used to work with an old pci.ids and be refused with a new one. Without amdkfd, the device ID table is now looked up first for generic names too (the reason says "The product name is generic, so it was taken as … from the device ID").
+- Intel: Arc Pro B65 / B70 (Battlemage G31, e222, e223; the nominal VRAM could not be confirmed, so none is stored), Data Center GPU Max (Ponte Vecchio; Linux only in PyTorch's table, so Windows and WSL2 are CPU).
+- **gfx of the 820M**: TheRock's RELEASES.md says gfx1153, ROCm hw specs says gfx1152 for the Radeon 820M of the Ryzen AI 5 330, and pci.ids puts the 820M and 840M on another die (1902 "Krackan2 [Radeon 820M / 840M]"). The name alone does not decide it, so we follow TheRock (which picks the ROCm wheel) with gfx1153 and add a note about the disagreement. Both are RDNA 3.5 and the verdict is the same. On Linux the amdkfd value comes first.
+- **Jetson Orin (8.7) and CUDA 13.2 or later**: PyTorch v2.14.1 says 8.0 / 8.6 code runs on 8.7 in builds for CUDA 13.2 or later (`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`). genmodelfit does not judge Jetson (JetPack-only builds, unified memory; "All environments" below), so the table (`SOLO_CC`) is unchanged.
+- Version range of cu129: Windows wheels exist only for 2.8 and 2.9 (2.10 and later are Linux only). cu128 for aarch64 is 2.7 and 2.9 to 2.11 (no 2.8). Only the guidance text changes, not the verdict.
+- With an old driver and an unknown generation (no compute_cap and not in the name table), the reason used to promise "it runs on the GPU after a driver update". Kepler and Fermi have neither a new driver nor PyTorch, so it now says "on Maxwell or newer it runs after a driver update; Kepler, Fermi and older do not".
 
 ### Precision (`comfy/model_management.py` of ComfyUI 426f5ee)
 
@@ -561,7 +588,7 @@ Three steps (NVIDIA in WSL is judged with nvidia-smi as before):
 Conditions for using it (no measurement has run on this kind of GPU yet, so the level is up to Good):
 
 - AMD: an exact product name in AMD's WSL support table (ROCm 7.2.1) (`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE, AI PRO R9700 / R9600D, RX 9060 / 9060 XT, RX 7900 XTX / XT / GRE, PRO W7900 (Dual Slot) / W7800 (48GB) / W7700, RX 7800 XT, RX 7700 / 7700 XT). APUs are not in the official table (only in the librocdxg README, and that repository is deprecated), so they are not used.
-- Intel: Arc A and B, Arc Graphics of Core Ultra (`_INTEL_XPU`), with a Windows driver of 32.0.101.8801 or later (compared as the 7-digit number made of the third and fourth fields: `int(f"{p3}{p4:04d}") >= 1018801`). If the version cannot be read, it is not refused (a note). For integrated Arc Graphics, half of the memory inside WSL (at most the Windows amount) is taken as the shared part (a low estimate).
+- Intel: Arc A and B, Arc Graphics of Core Ultra (`gputables.INTEL_XPU_RULES`), with a Windows driver of 32.0.101.8801 or later (compared as the 7-digit number made of the third and fourth fields: `int(f"{p3}{p4:04d}") >= 1018801`). If the version cannot be read, it is not refused (a note). For integrated Arc Graphics, half of the memory inside WSL (at most the Windows amount) is taken as the shared part (a low estimate).
 - Otherwise it is CPU, with what is missing (e.g. "AMD Radeon RX 7900 XTX is on the Windows side, but rocminfo inside WSL does not see the GPU. Install AMD Software: Adrenalin Edition for WSL2 on Windows and the WSL build of ROCm inside WSL", "not in AMD's WSL support table (ROCm 7.2.1)").
 - VRAM is the Windows-side registry amount (WMI AdapterRAM stops at 4 GB). A (secondary) report says about 3 GB less is free inside WSL, so this is a note (the value is not changed).
 - The Microsoft device seen by lspci and sysfs in WSL2 (`1414:008e` Basic Render Driver) is not a compute GPU and is dropped from the list.
