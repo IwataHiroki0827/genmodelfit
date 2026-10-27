@@ -37,6 +37,7 @@ from pathlib import Path
 import psutil
 
 from .gputables import (
+    AMD_820M_840M,
     AMD_ARCH_RULES,
     AMD_CPU_IGPU_RULES,
     AMD_DISPLAY_ONLY,
@@ -1951,7 +1952,19 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             )
             return None
         small = amd_rule(name, host.cpu)
-        if gfx in AMD_DISPLAY_ONLY_GFX or (small is not None and small.key in AMD_DISPLAY_ONLY_NAMES.values):
+        small_cpu = (
+            small is not None
+            and small.key == AMD_820M_840M
+            and any(
+                r.key in AMD_DISPLAY_ONLY_NAMES.values and re.search(r.key, _low(host.cpu))
+                for r in AMD_CPU_IGPU_RULES
+            )
+        )  # 「Radeon 820M / 840M」(pci.ids 1902)で、CPU の名前が 820M の Ryzen AI 5 330 なら 820M
+        if (
+            gfx in AMD_DISPLAY_ONLY_GFX
+            or (small is not None and small.key in AMD_DISPLAY_ONLY_NAMES.values)
+            or small_cpu
+        ):
             # 断る理由の 3 つ目(#108。docs/hardware.md「断る理由」): 動くが CPU より速い見込みが無い。
             # Radeon 610M(gfx1036。Dragon Range・Raphael など)と Radeon 820M(名前で決める)
             refuse(

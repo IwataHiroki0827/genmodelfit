@@ -60,10 +60,13 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
     missing, so offloading is slower still. The limits (`limits`) count only rows that run on the GPU without
     offloading. Rows that switched from GPU / GPU~ Marginal to GPU+RAM Good: 8 at 6 GB, 6 at 8 GB, 18 at 12 GB, 19 at
     16 GB, 49 at 24 GB (bundled list); Marginal → Good overall: 49 / 71 / 68 / 43 / 108 rows.
-  - **CPU only**: speech and one-pass tools (depth, pose, segmentation, background removal, audio separation) go up to
-    Good by the band of RAM use; image, video, music, sound effect and 3D generation and upscaling stay at most
-    Marginal (diffusion runs dozens of steps; HF's Intel CPU blog, ComfyUI's README). 18 rows Marginal → Good on a
-    CPU-only PC. When the GPU judgement is worse than the CPU one, the CPU one is used (adding VRAM never lowers the
+  - **CPU only**: one-pass tools (depth, pose, segmentation, background removal, audio separation) and speech built to
+    run in real time on a CPU (`estimate.CPU_REALTIME_TTS`: MeloTTS, Piper, VieNeu-TTS, Kokoro, HiFi-GAN, each with
+    the authors' statement) go up to Good by the band of RAM use; image, video, music, sound effect and 3D generation,
+    speech made with a language model, flow matching or diffusion (Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS)
+    and upscaling stay at most Marginal (diffusion runs dozens of steps; HF's Intel CPU blog: SD 1.5, 20 steps, 32.3 s
+    on r7iz.metal-16xl in fp32). 13 rows Marginal → Good on a CPU-only PC. The limits (`limits`) are not given on a
+    PC without a GPU, and their text says "Good on the GPU without offloading". When the GPU judgement is worse than the CPU one, the CPU one is used (adding VRAM never lowers the
     level).
   - **No cap by GPU vendor**: AMD / Intel / Apple GPUs and DGX Spark are judged by the same rules as NVIDIA (Good →
     Perfect for 65 rows on AMD 16 GB, 87 on Apple 32 GB, 317 on DGX Spark; the AMD 16 GB distribution is close to
@@ -77,7 +80,8 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
     (`auto`), which stays independent of the PC.
   - **Refusals in three groups**: used without the mark (non-NVIDIA, DGX Spark), refused for lack of support evidence
     (gfx1170 / 1171 / 1250), and judged as CPU because not expected to beat the CPU (2-CU iGPUs). **The Radeon 820M
-    (2 CU, AMD's Ryzen AI 5 330 page) is now judged as CPU**, like the 610M; "Radeon 820M / 840M" stays used.
+    (2 CU, AMD's Ryzen AI 5 330 page) is now judged as CPU**, like the 610M; "Radeon 820M / 840M" stays used unless
+    the CPU name is the Ryzen AI 5 330.
   - Legend: the level caps line changed; new lines say Perfect is not a speed guarantee, GPU+RAM levels are often set
     by RAM and the offloaded share is assumed (40% of weights on the GPU), a level set by measurements can be Good above
     98% Mem%, and what ✓ means.

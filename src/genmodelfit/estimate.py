@@ -2072,16 +2072,27 @@ def measurement_kind(m: Measurement) -> str:
     from .hardware import GB10_NAME, amd_gfx, intel_xpu
 
     vendor = measurement_vendor(m)
+    name = m.gpu_name
+    if vendor in ("amd", "intel") and generic_gpu_name(name):
+        # 汎用の名前(「AMD Radeon(TM) Graphics」「Intel(R) Arc(TM) Graphics」)は内蔵 GPU の名前。型番 ID が
+        # 表にあればその名前で引き、無ければ共有とみなす(専用の VRAM の GPU はこの名前を使わない)
+        from .hardware import PCI_DEVICE_NAMES
+
+        pci = _pci(getattr(m, "gpu_pci_id", None))
+        known = PCI_DEVICE_NAMES.get(tuple(pci.split(":"))) if pci else None
+        if not known:
+            return f"{vendor}/shared"
+        name = known
     shared = False
     if vendor == "apple":
         shared = True
     elif vendor == "nvidia":
         shared = gpu_key(m.gpu_name) == gpu_key(GB10_NAME)
     elif vendor == "amd":
-        found = amd_gfx(m.gpu_name)
+        found = amd_gfx(name)
         shared = bool(found and found[1])
     elif vendor == "intel":
-        found = intel_xpu(m.gpu_name)
+        found = intel_xpu(name)
         shared = bool(found and found[1])
     return f"{vendor}/{'shared' if shared else 'dedicated'}"
 
@@ -2366,31 +2377,107 @@ def cpu_family(entry: ModelEntry):
 
 
 # CPU だけで動かすときの段階の上限(#108。docs/scoring.md「CPU で動かすとき」)。
-# - 読み上げ(tts)と、1 回の計算で終わる補助ツール(深度・ポーズ・切り抜き・背景除去・音の分離・コマの補間。
-#   tasks.TOOL_TASKS から upscale を除いたもの)は good まで。手順を何十回も回さないので、CPU でも実用の
-#   速さに近い(Kokoro・Piper は CPU で実時間に動く設計)
-# - それ以外(画像・動画・音楽・効果音・3D の生成。拡散の系統で手順を何十回も回す)は marginal まで。
-#   HF の Intel CPU のブログ(huggingface.co/blog/stable-diffusion-inference-intel)で SD 1.5 の 20 手順が
-#   サーバーの CPU で約 32 秒(最適化の前)、ComfyUI の README は CPU だけの実行を「not recommended」とする
-# - 高解像度化(upscale)は生成と同じ marginal まで(一覧の高解像度化は SeedVR2・SUPIR などの拡散の系統)
+# - 1 回の計算で終わる補助ツール(深度・ポーズ・切り抜き・背景除去・音の分離・コマの補間。tasks.TOOL_TASKS から
+#   upscale を除いたもの)と、CPU で実時間に動くと作者が書いている読み上げ(下の CPU_REALTIME_TTS)は good まで
+# - それ以外は marginal まで: 画像・動画・音楽・効果音・3D の生成(拡散の系統で手順を何十回も回す。
+#   HF の Intel の CPU のブログ(huggingface.co/blog/stable-diffusion-inference-intel)で、SD 1.5 の
+#   20 手順が r7iz.metal-16xl(Sapphire Rapids)の fp32 で 32.3 秒)、
+#   言語モデル・フローマッチング・拡散で音を作る読み上げ(Fun-CosyVoice3・Chatterbox・VibeVoice・
+#   Qwen3-TTS など。手順やトークンを何十〜何百回も回す)、
+#   高解像度化(一覧のものは拡散の系統。SeedVR2 は 1 手順だが 3B・7B の DiT を高い解像度で回し、SUPIR・
+#   Z-Image は手順を何十回も回す)
 # llmfit は CPU を good まで(LLM の生成はメモリの帯域で決まる)。拡散は計算で決まるので分けた
 CPU_ONE_PASS_TASKS = frozenset({"tool", "estimate", "matting", "interp", "segment", "separate"})
 
 
+@dataclass(frozen=True)
+class CpuRealtimeTts:
+    """CPU で実時間に動くと作者が書いている読み上げ(1 行)。pattern は一覧の ID(小文字)に当てる正規表現、
+    runtime はその動かし方なら当てる。evidence は作者の資料の文(英語の原文)と出典。"""
+
+    name: str
+    pattern: str | None
+    runtime: str | None
+    evidence: str
+
+
+CPU_REALTIME_TTS: tuple[CpuRealtimeTts, ...] = (
+    CpuRealtimeTts(
+        "MeloTTS",
+        r"^hf:myshell-ai/melotts",
+        None,
+        'model card: "Fast enough for CPU real-time inference" (huggingface.co/myshell-ai/MeloTTS-English)',
+    ),
+    CpuRealtimeTts(
+        "Piper",
+        None,
+        "piper",
+        'README: "A fast, local neural text to speech system"'
+        " (github.com/rhasspy/piper; ONNX Runtime on CPU)",
+    ),
+    CpuRealtimeTts(
+        "VieNeu-TTS",
+        r"^hf:pnnbao-ump/vieneu-tts",
+        None,
+        'model card: "on CPU everything runs on ONNX Runtime", "RTF < 1, one stream"'
+        " (huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo)",
+    ),
+    CpuRealtimeTts(
+        "Kokoro",
+        r"^hf:hexgrad/kokoro",
+        None,
+        'model card: "82 million parameters", "Decoder only: no diffusion" (StyleTTS 2 + iSTFTNet;'
+        " huggingface.co/hexgrad/Kokoro-82M. No explicit CPU figure)",
+    ),
+    CpuRealtimeTts(
+        "HiFi-GAN vocoder",
+        r"^hf:speechbrain/tts-hifigan",
+        None,
+        'model card: "takes in input a spectrogram and produces a waveform" (one GAN pass;'
+        " huggingface.co/speechbrain/tts-hifigan-libritts-22050Hz)",
+    ),
+)
+
+
+def cpu_realtime_tts(entry: ModelEntry) -> CpuRealtimeTts | None:
+    """CPU_REALTIME_TTS の当たる行(読み上げだけ)。"""
+    if entry.modality != "tts":
+        return None
+    mid = entry.id.lower()
+    for row in CPU_REALTIME_TTS:
+        if (row.pattern and re.search(row.pattern, mid)) or (row.runtime and entry.runtime == row.runtime):
+            return row
+    return None
+
+
 def cpu_top(entry: ModelEntry) -> str:
     """CPU だけで動かすときの段階の上限(good / marginal。#108)。"""
-    if entry.modality == "tts":
+    if cpu_realtime_tts(entry) is not None:
         return "good"
-    if entry.tasks and all(t in CPU_ONE_PASS_TASKS for t in entry.tasks):
+    if entry.modality != "tts" and entry.tasks and all(t in CPU_ONE_PASS_TASKS for t in entry.tasks):
         return "good"
     return "marginal"
 
 
 def cpu_top_text(entry: ModelEntry) -> tuple[str, str]:
+    tts = cpu_realtime_tts(entry)
+    if tts is not None:
+        return (
+            f"CPU で実時間に動く設計の読み上げ({tts.name})なので段階は good まで(根拠: {tts.evidence})",
+            f"Speech built to run in real time on a CPU ({tts.name}), so the level is capped at good"
+            f" (evidence: {tts.evidence})",
+        )
     if cpu_top(entry) == "good":
         return (
-            "CPU で動かすので段階は good まで(読み上げ・1 回の計算で終わる道具)",
-            "Runs on the CPU, so the level is capped at good (text to speech or a one-pass tool)",
+            "CPU で動かすので段階は good まで(1 回の計算で終わる道具)",
+            "Runs on the CPU, so the level is capped at good (a one-pass tool)",
+        )
+    if entry.modality == "tts":
+        return (
+            "CPU で生成するので段階は marginal まで(言語モデル・フローマッチング・拡散で音を作る読み上げは、"
+            "CPU で実時間に動くと作者が書いていない)",
+            "Generates on the CPU, so the level is capped at marginal (speech made with a language model,"
+            " flow matching or diffusion; the authors do not say it runs in real time on a CPU)",
         )
     return (
         "CPU で生成するので段階は marginal まで(手順を何十回も回す生成は CPU ではとても遅い)",
@@ -2726,8 +2813,8 @@ LIMIT_CAPS = {"image_side": 2048, "video_side": 1280, "frames": 241, "seconds": 
 def limits(prep: _Model, system: SystemInfo, s: Settings) -> dict | None:
     """この PC で good 以上になる最大の解像度(長辺)・長さ。縦横比とほかの設定は s のまま。
     どの値も、それより小さくしても good にならないときは None。大きさが分からないモデルは None。"""
-    if prep.parts.unknown:
-        return None
+    if prep.parts.unknown or system.vram_gb <= 0:
+        return None  # 限界は逃がさずに GPU で good になる設定。GPU の無い PC では出さない(#108)
     mod = prep.entry.modality
     out: dict = {"level": "good"}
     caps: list[str] = []

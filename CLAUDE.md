@@ -79,7 +79,7 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
   試験用の名前は入れない(llmfit の scrape_hf_models.py にならう。2026-10-20)。利用者のテンプレート(index の username が
   ComfyUI でない)は `community`。公式の仲間があれば表の代表にしない
 - 段階は動かし方で使うメモリの使用率(60 / 85 / 98%。2026-10-20 に利用者が決めた。`estimate.FIT_BANDS`)。
-  上限は 載せ替え・逃がすは good まで(llmfit と同じ)、CPU は読み上げ・1 回の計算の道具が good まで・生成が marginal まで
+  上限は 載せ替え・逃がすは good まで(llmfit と同じ)、CPU は実時間で動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`。作者の資料の文つき)・1 回の計算の道具が good まで・生成が marginal まで
   (llmfit は CPU を good まで。拡散は計算で決まり CPU でとても遅いので分けた)。逃がすのは段階が上がるときだけ
   (llmfit の「98% を超えるときだけ」にすると VRAM を増やして段階が下がる)。GPU の会社による上限は無く、実測は段階を上げるだけ。
   確認済みの GPU の種類(その種類の GPU で 2 機種以上で動いた記録。作者・ほかの利用者を分けない)は表の ✓ と

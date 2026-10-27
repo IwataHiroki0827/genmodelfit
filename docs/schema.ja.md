@@ -437,7 +437,7 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明で判定していない。0.2.0。0.1.1 まではこれらは `none` だった)(= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU`(全部 GPU)/ `GPU~`(部品を順に載せ替え)/ `GPU+RAM`(逃がす)/ `CPU` / `-`(動かない)/ `?`(大きさが不明) |
-| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `good`。0.11.0 まで `marginal`)、`cpu`(生成は最大 `marginal`、読み上げ・1 回の計算の道具は最大 `good`。0.11.0、#108)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
+| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `good`。0.11.0 まで `marginal`)、`cpu`(生成は最大 `marginal`、CPU で実時間に動く設計の読み上げ・1 回の計算の道具は最大 `good`。0.11.0、#108)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
 | `score` | float | 0–100。メモリの余裕(下の「Score」) |
 | `score_components` | object | `{"memory_fit": …}`(0.11.0。`score` と同じ値。0.10 までの `fit`・`headroom`・`readiness`・`basis`・`popularity` は無くした) |
 | `popularity` | float | (0.11.0)人気の順位 0–100。同じ種類・同じ出どころ(テンプレートの使用数 / Hugging Face の全期間のダウンロード数)の中の百分位で、モデルの値。並びの鍵にだけ使い、`score` には入れない([scoring.ja.md](scoring.ja.md)「人気」) |
@@ -594,7 +594,7 @@ Limits / 限界(値はすべて、`perfect` か `good` になる最大のもの�
 動かし方ごとの上限(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「段階の上限」):
 - 全部 GPU(`GPU`)は上限なし。
 - 部品を順に載せ替える(`GPU~`)と RAM に逃がす(`GPU+RAM`)は最大 `good`(逃がすのは 0.11.0 まで `marginal`)。
-- CPU は、画像・動画・音楽・効果音・3D の生成が最大 `marginal`、読み上げと 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
+- CPU は、画像・動画・音楽・効果音・3D の生成と、言語モデル・フローマッチング・拡散で音を作る読み上げが最大 `marginal`、CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`)と 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
 - GPU の会社による上限は無い(0.11.0 まで、NVIDIA 以外と DGX Spark は `good` まで)。
 
 最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。だから逃がすのは、全部載せ・載せ替えより段階が上がるときだけ(全部載せ・載せ替えが `good` 以上なら逃がさない)。逃がす動かし方の使用率は、逃がしたときの VRAM の使用率と、要るメモリ ÷ メインメモリのきついほう。

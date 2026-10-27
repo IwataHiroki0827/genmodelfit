@@ -151,6 +151,25 @@ def test_non_nvidia_offload_mentions_dynamic_vram(db):
     assert n.run_mode == "offload" and not any("Dynamic VRAM" in r for r in n.reasons)
 
 
+def test_no_limits_without_a_gpu(db):
+    """限界は逃がさずに GPU で good になる設定なので、GPU の無い PC では出さない(#108)。"""
+    m = db.get("hf:hexgrad/Kokoro-82M")
+    assert E.estimate(m, _sys(None, 64.0), None, db.measurements, with_limits=True).limits is None
+
+
+def test_limits_text_says_gpu_without_offloading():
+    from genmodelfit.cli import format_limits
+
+    none = {"level": "good", "max_side_px": None, "max_frames": None, "at_cap": []}
+    with i18n.forced("ja"):
+        assert format_limits(none) == "逃がさずに GPU で Good になる設定は無い(解像度や長さを下げても)"
+    with i18n.forced("en"):
+        assert "Good on the GPU without offloading" in format_limits(none)
+        assert format_limits({"level": "good", "max_seconds": 30, "at_cap": []}).startswith(
+            "Good on this PC's GPU without offloading up to 30 s"
+        )
+
+
 def test_limits_count_only_rows_that_run_on_the_gpu(db):
     """限界は逃がさずに GPU で good 以上の行だけで数える。逃がして good の行があっても限界は変わらない。"""
     e = db.get("text_to_video_wan")
@@ -174,8 +193,12 @@ def test_limits_count_only_rows_that_run_on_the_gpu(db):
 @pytest.mark.parametrize(
     ("mid", "level"),
     [
-        ("hf:hexgrad/Kokoro-82M", "good"),  # 読み上げ
+        ("hf:hexgrad/Kokoro-82M", "good"),  # 読み上げ(CPU_REALTIME_TTS)
         ("manual:tsukuyomi-chan-piper-plus", "good"),  # 読み上げ(Piper)
+        ("hf:myshell-ai/MeloTTS-English", "good"),  # 「Fast enough for CPU real-time inference」
+        ("hf:FunAudioLLM/Fun-CosyVoice3-0.5B-2512", "marginal"),  # 言語モデル + フローマッチングの読み上げ
+        ("hf:ResembleAI/chatterbox", "marginal"),
+        ("hf:microsoft/VibeVoice-Realtime-0.5B", "marginal"),  # 拡散の頭の読み上げ
         ("utility_birefnet_remove_background", "good"),  # 背景除去(matting)
         ("audio_melbandroformer_audio_separation", "good"),  # 音の分離
         ("image_sdxl_simple", "marginal"),  # 画像の生成(拡散)
@@ -186,10 +209,19 @@ def test_cpu_only_caps(db, mid, level):
     e = E.estimate(db.get(mid), _sys(None, 64.0), None, db.measurements)
     assert (e.fit, e.run_mode) == (level, "cpu")
     assert any(f"段階は {level} まで" in r for r in e.reasons)
+    if E.cpu_realtime_tts(db.get(mid)) is not None:
+        assert any("根拠: " in r for r in e.reasons)  # 作者の資料の文を出す
 
 
 def test_cpu_top_table():
-    assert E.cpu_top(model(1.0, "tts", ("tts",))) == "good"
+    assert E.cpu_top(model(1.0, "tts", ("tts",))) == "marginal"  # 表に無い読み上げは生成と同じ
+    kokoro = model(1.0, "tts", ("tts",))
+    kokoro.id = "hf:hexgrad/Kokoro-82M"
+    assert E.cpu_top(kokoro) == "good" and E.cpu_realtime_tts(kokoro).name == "Kokoro"
+    piper = model(1.0, "tts", ("tts",))
+    piper.runtime = "piper"
+    assert E.cpu_top(piper) == "good"
+    assert all(row.evidence for row in E.CPU_REALTIME_TTS)  # どの行にも作者の資料の文
     for task in ("estimate", "matting", "segment", "separate", "interp"):
         assert E.cpu_top(model(1.0, "image", (task,))) == "good", task
     assert E.cpu_top(model(1.0, "image", ("upscale",))) == "marginal"  # 一覧の高解像度化は拡散の系統
@@ -265,6 +297,10 @@ def test_kind_rows_and_memory_form():
     ):
         assert E.platform_verification(amd(16.0), [ok, bad])["verified"] is False, bad
     assert E.measurement_kind(_m("AMD Radeon 890M")) == "amd/shared"
+    # 汎用の名前は内蔵 GPU の名前: 型番 ID が表にあればその名前で、無ければ共有
+    assert E.measurement_kind(_m("AMD Radeon(TM) Graphics")) == "amd/shared"
+    assert E.measurement_kind(_m("AMD Radeon(TM) Graphics", gpu_pci_id="1002:15bf")) == "amd/shared"
+    assert E.measurement_kind(_m("Intel(R) Arc(TM) Graphics")) == "intel/shared"
     assert E.measurement_kind(_m("NVIDIA GB10")) == "nvidia/shared"
     assert E.measurement_kind(_m("mps", gpu_backend="mps")) == "apple/shared"
 
@@ -355,6 +391,11 @@ def test_refusal_categories():
         small = Adapter(name="AMD Radeon 820M Graphics", vendor="amd", vram_gb=0.5)
         assert classify_adapter(small, WIN11, 32.0) is None
         assert "CPU より速い見込みが無い" in small.reason and "CPU として判定" in small.reason
+        both = Adapter(name="Krackan2 [Radeon 820M / 840M]", vendor="amd", vram_gb=0.5, shared_gb=16.0)
+        linux330 = Host("Linux", None, cpu="AMD Ryzen AI 5 330 w/ Radeon 820M")
+        assert classify_adapter(both, linux330, 32.0) is None and "2 CU" in both.reason  # CPU の名前で 820M
+        both = Adapter(name="Krackan2 [Radeon 820M / 840M]", vendor="amd", vram_gb=0.5, shared_gb=16.0)
+        assert classify_adapter(both, Host("Linux", None, cpu="AMD Ryzen AI 5 340"), 32.0) is not None
         new = Adapter(
             name="AMD Radeon Graphics", vendor="amd", vram_gb=0.5, shared_gb=16.0, gfx_target="gfx1170"
         )
@@ -385,6 +426,8 @@ def test_legend_lines(db):
 
 def test_measured_rows_mark_m_only(db):
     """表の VRAM の印は m だけ(作者・ほかの利用者を分けない。#108)。"""
-    assert "measured_community" not in E.Estimate.__dataclass_fields__["basis_detail"].default
+    from genmodelfit.models import BASIS_DETAILS
+
+    assert BASIS_DETAILS == ("measured", "calibrated", "estimated")
     fits = [f for f in evaluate(db, nv(16.0)) if f.estimate.basis == "measured"]
     assert fits and all(mode_label(f.estimate, nv(16.0)) for f in fits)

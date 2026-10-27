@@ -601,7 +601,9 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score.",
+    "auto": (
+        "Order: runs, Perfect/Good (GPU+RAM, CPU last), Marginal (faster first), official, popularity, Score."
+    ),
     "type": "Order: Type, Status, official, popularity, Score (--sort).",
     "score": "Order: runs, Perfect/Good, Marginal, Score, popularity (all types).",
     "vram": "Order: runs, VRAM (least first).",
@@ -610,7 +612,7 @@ ORDER_TEXT = {
 }
 # 日本語(#76。列の名前・段階の名前・Mode の印は表と同じ英語のまま)
 ORDER_TEXT_JA = {
-    "auto": "並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。",
+    "auto": "並び: 動く → Perfect/Good(GPU+RAM・CPU は後)→ Marginal(速い Mode が先)→ 公式 → 人気 → Score。",
     "type": "並び: Type → Status → 公式 → 人気 → Score(--sort)。",
     "score": "並び: 動く → Perfect/Good → Marginal → Score → 人気(種類をまたいで)。",
     "vram": "並び: 動くもの → VRAM の少ない順。",
@@ -655,7 +657,7 @@ def legend(
             if system_marks
             else []
         ),
-        "Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (speech and one-pass tools: Good).",
+        "Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (CPU-ready TTS, tools: Good).",
         "Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.",
         "Perfect = fits with room to spare, not a speed guarantee (also on low-bandwidth GPUs).",
         *(
@@ -723,7 +725,7 @@ def _legend_ja(
             if system_marks
             else []
         ),
-        "段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(読み上げ・1 回の計算の道具は Good)。",
+        "段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(CPU 向けの読み上げ・道具は Good)。",
         "Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。",
         "Perfect は余裕があるという意味で、速さの保証ではない(帯域の狭い GPU でも使用率で決める)。",
         *(

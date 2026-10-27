@@ -74,7 +74,7 @@ Caps per run mode (`estimate.gpu_choice`, `cpu_top`):
 |---|---|---|
 | GPU (all on the GPU) | none | |
 | GPU~ (parts swapped in turn) | Good | The parts are loaded again for each stage. Perfect means "everything stays loaded with room to spare" (the same idea as llmfit's "Perfect has room and runs on the GPU") |
-| GPU+RAM (part offloaded to system RAM) | Good | Slow, so never Perfect, but Good when there is room (as in llmfit). In the diffusers comparison (PR #11682) offloading slowed Wan by 1.14× and FLUX by 3–10× |
+| GPU+RAM (part offloaded to system RAM) | Good | Slow, so never Perfect, but Good when there is room (as in llmfit). In the diffusers comparison (PR #11682) offloading slowed Wan by 1.14–1.5× (model-level and group offloading) and FLUX by 3.3–10.4× |
 | CPU: speech and one-pass tools | Good | "Running on the CPU" below |
 | CPU: image, video, music, sound effect and 3D generation | Marginal | "Running on the CPU" below |
 
@@ -91,21 +91,31 @@ Caps per run mode (`estimate.gpu_choice`, `cpu_top`):
 
 ### Running on the CPU
 
-**In one sentence**: on the CPU only, speech and one-pass tools go up to Good, and generation that runs dozens of steps up to Marginal.
+**In one sentence**: on the CPU only, speech built to run in real time on a CPU and one-pass tools go up to Good, and generation that runs dozens of steps up to Marginal.
 
 The level is the band of system RAM use, capped as follows (`estimate.cpu_top`):
 
 | Type / use | Cap | Examples |
 |---|---|---|
-| Speech (`tts`) | Good | Kokoro, Piper, MeloTTS |
+| Speech built to run in real time on a CPU (`estimate.CPU_REALTIME_TTS`; table below) | Good | Kokoro, Piper, MeloTTS, VieNeu-TTS, HiFi-GAN |
 | All uses are one-pass tools (`tool`, `estimate`, `matting`, `interp`, `segment`, `separate`) | Good | background removal (BiRefNet), depth, pose, segmentation, audio separation |
-| Everything else (image, video, music, sound effect and 3D generation; upscaling `upscale`) | Marginal | SDXL, Stable Audio |
+| Everything else (image, video, music, sound effect and 3D generation; speech made with a language model, flow matching or diffusion; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS |
 
-- Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take about 32 s even on a server Xeon before optimization. The ComfyUI README also calls CPU-only runs "not recommended" (slow). Speech models (Kokoro, Piper) are built to run in real time on a CPU, and one-pass tools run no steps.
-- The upscalers in the list are diffusion families (SeedVR2, SUPIR, Z-Image), so upscaling is capped at Marginal like generation.
+Speech built to run in real time on a CPU (the authors' own statements; also shown in the reasons):
+
+| Speech | Matched by | Authors' statement |
+|---|---|---|
+| MeloTTS | `hf:myshell-ai/MeloTTS-*` | model card: "Fast enough for CPU real-time inference" |
+| Piper | run with `piper` | README: "A fast, local neural text to speech system" (runs on ONNX Runtime on the CPU) |
+| VieNeu-TTS | `hf:pnnbao-ump/VieNeu-TTS*` | model card: "on CPU everything runs on ONNX Runtime", "RTF < 1, one stream" |
+| Kokoro | `hf:hexgrad/Kokoro*` | model card: "82 million parameters", "Decoder only: no diffusion" (StyleTTS 2 + iSTFTNet; no CPU figure is given) |
+| HiFi-GAN (the part that makes the waveform) | `hf:speechbrain/tts-hifigan*` | model card: "takes in input a spectrogram and produces a waveform" (one GAN pass) |
+
+- Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take 32.3 s on an r7iz.metal-16xl (Sapphire Rapids) in fp32 before optimization. Speech made with a language model, flow matching or diffusion also runs tokens or steps dozens to hundreds of times, and its authors do not say it runs in real time on a CPU, so it is capped at Marginal. One-pass tools run no steps.
+- The upscalers in the list are diffusion families, so upscaling is capped at Marginal like generation (SeedVR2 is one-step diffusion but runs a 3B / 7B DiT at high resolution; SUPIR and Z-Image run dozens of steps).
 - llmfit caps the CPU at Good (LLM generation is bound by memory bandwidth and is usable on a CPU). Diffusion generation is bound by compute, so it is separated.
 - On a PC with a GPU too, the CPU judgement is used when the GPU judgement is worse (so adding VRAM never lowers the level; on a tie the GPU wins).
-- Impact: on CPU-only PCs (32 / 64 GB), 18 rows went from Marginal to Good (10 speech, 8 tools).
+- Impact: on CPU-only PCs (32 / 64 GB), 13 rows went from Marginal to Good (5 speech, 8 tools).
 
 ## Verified GPU kinds
 
@@ -114,6 +124,8 @@ The level is the band of system RAM use, capped as follows (`estimate.cpu_top`):
 - Kind = vendor × memory form (dedicated VRAM / shared with system RAM). For example `nvidia/dedicated`, `amd/dedicated`, `amd/shared` (integrated GPUs), `apple/shared`, `nvidia/shared` (DGX Spark). Measurements do not record the memory form, so it comes from the GPU name (GB10 and Apple are shared; AMD and Intel use the integrated flag of the name tables).
 - Measurements used: the bundled ones (the author's `measurements.json` and the aggregated rows from other users; this PC's saved bench results are not included) that ran to the end (`outcome: ok`) as standard measurements, without offloading weights to the CPU side (`offload` lowvram, novram or cpu). Aggregated rows must be on a GPU in the name table and not have `runs_evidence: false`. Working-memory-only values (bench with dynamic VRAM) count too: they are records of running to the end on the GPU.
 - What is counted is **GPU models** (`estimate.kind_models`): two measurements are on the same model when `same_gpu`'s rule matches (the PCI device ID when both have one, else the normalized name; for dedicated VRAM also a VRAM ratio of 0.95 or more). The author's, this PC's and other users' measurements are treated the same. One model counts once however many measurements or people. Generic names without a device ID do not identify a model and are not counted.
+- Measurements with a generic name ("AMD Radeon(TM) Graphics" and the like) are taken as integrated GPUs: by the device ID's table name when there is one, otherwise as the shared-memory kind.
+- Only the bundled measurements are used (as in calibrate: the same inputs give the same answer on everyone's PC). With `--vram` it is false, because the assumed GPU is not the measured one.
 - Today (0.11.0) only `nvidia/dedicated` is verified (two models: RTX 5080 and RTX 3070). Non-NVIDIA GPUs and DGX Spark have no mark, and their levels follow the same rules.
 - Where it shows: after the GPU on the PC line of the tables (`recommend` / `fit` / `search`), on the level line of `info`, and in `system`. Nothing is shown when the kind is not verified. The table legend explains the mark in one line. With `--vram` the GPU is assumed, so nothing is shown.
 - JSON: `system.platform_verified` (true / false) and `system.platform_verified_by` (`{"kind", "models"}` when verified, with `models` the names of the GPU models that ran; otherwise null). The library has `gmf.platform_verification(system)`.

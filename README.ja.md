@@ -215,10 +215,10 @@ tts   ● Perfect     100 Chatterbox                 gen       fp32   3.5  44% G
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 3d    ● Good         99 TripoSplat                 gen       fp16   5.8  72% GPU      3.5 other
 3d    ● Good        100 HY 3D 2.0 MV               gen       fp16   4.3  54% GPU~     4.6 other
-並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。
+並び: 動く → Perfect/Good(GPU+RAM・CPU は後)→ Marginal(速い Mode が先)→ 公式 → 人気 → Score。
 Score 0〜100 = メモリの余裕(Mem% 70% 以下で 100。速さではない)。VRAM = 要る GiB(m = 実測)。
 Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。
-段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(読み上げ・1 回の計算の道具は Good)。
+段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(CPU 向けの読み上げ・道具は Good)。
 Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。
 Perfect は余裕があるという意味で、速さの保証ではない(帯域の狭い GPU でも使用率で決める)。
 GPU+RAM の段階はメモリの量で決まることが多い。逃がす量は決めの値(重みの 4 割を GPU に残す)。
@@ -274,7 +274,7 @@ llmfit と同じく、動かし方で使うメモリ(GPU なら VRAM、CPU な�
 | 段階 | 使用率 | 動かし方による上限 |
 |---|---|---|
 | **Perfect** | 60% 以下 | 全部 GPU に載るとき(`GPU`)だけ。余裕があるという意味で、速さの保証ではない |
-| **Good** | 85% 以下 | `GPU~`・`GPU+RAM` はここまで(逃がすのは段階が上がるときだけ)。`CPU` の読み上げ・1 回の計算の道具もここまで |
+| **Good** | 85% 以下 | `GPU~`・`GPU+RAM` はここまで(逃がすのは段階が上がるときだけ)。`CPU` で実時間に動く設計の読み上げ(Kokoro・Piper・MeloTTS など)と 1 回の計算の道具もここまで |
 | **Marginal** | 98% 以下 | `CPU` の生成・メモリが少し足りないときはここまで(Mem% が低くても) |
 | **Too tight** | 98% 超 | 動かない(実測で段階を決めた行は、98% を超えても Good になる) |
 | **?** | — | 判定していない(ダウンロードの大きさが分からない) |

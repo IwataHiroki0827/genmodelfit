@@ -299,9 +299,9 @@ def test_no_verified_column(lang):
         cells = row_of(out, mid).split()
         assert cells[-1] == "apache-2.0" and not {"workflow", "held", "yes"} & set(cells)
     order = (
-        "Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score."
+        "Order: runs, Perfect/Good (GPU+RAM, CPU last), Marginal (faster first), official, popularity, Score."
         if lang == "en"
-        else "並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。"
+        else "並び: 動く → Perfect/Good(GPU+RAM・CPU は後)→ Marginal(速い Mode が先)→ 公式 → 人気 → Score。"
     )
     assert order in out
 

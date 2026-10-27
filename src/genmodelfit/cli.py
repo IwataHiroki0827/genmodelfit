@@ -165,13 +165,14 @@ def _envelope(command: str, system: SystemInfo | None, db: Database | None, **pa
 
 
 def format_limits(lim: dict) -> str:
-    """「この PC なら 長辺 640px・133 コマまで good」の形にする。"""
+    """「この PC の GPU なら(逃がさずに)長辺 640px・133 コマまで good」の形にする。限界は逃がさずに GPU で
+    good になる設定だけ(#108。逃がす・CPU の行の段階とは別)。"""
     caps = set(lim.get("at_cap") or [])
     keys = [k for k in ("max_side_px", "max_frames", "max_seconds") if k in lim]
     if keys and all(lim[k] is None for k in keys):
         return tr(
-            "この PC では、解像度や長さを下げても good にならない",
-            "not good on this PC even at a lower resolution or length",
+            "逃がさずに GPU で Good になる設定は無い(解像度や長さを下げても)",
+            "no setting is Good on the GPU without offloading (even at a lower resolution or length)",
         )
     ja = i18n.get_language() == "ja"
     parts = []
@@ -186,16 +187,20 @@ def format_limits(lim: dict) -> str:
         if not ja:
             name = (label_en or unit_en).strip()
             if v is None:
-                parts.append(f"{name}: not good even when lowered")
+                parts.append(f"{name}: not Good on the GPU without offloading even when lowered")
             else:
                 parts.append(f"{label_en}{v}{unit_en}{' (the highest checked)' if key in caps else ''}")
         elif v is None:
-            parts.append(f"{label or unit.strip() + ' '}は下げても good にならない")
+            parts.append(f"{label or unit.strip() + ' '}は下げても逃がさずに GPU で good にならない")
         else:
             parts.append(f"{label}{v}{unit}{'(調べた上限)' if key in caps else ''}")
     if not ja:
-        return "good on this PC up to " + ", ".join(parts) + " (other settings unchanged)"
-    return "この PC なら " + "・".join(parts) + "まで good(ほかの設定はそのまま)"
+        return (
+            "Good on this PC's GPU without offloading up to "
+            + ", ".join(parts)
+            + " (other settings unchanged)"
+        )
+    return "この PC なら逃がさずに GPU で " + "・".join(parts) + "まで good(ほかの設定はそのまま)"
 
 
 # --- コマンド ---------------------------------------------------------------------------------

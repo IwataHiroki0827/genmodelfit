@@ -220,10 +220,10 @@ tts   ● Perfect     100 Chatterbox                 gen       fp32   3.5  44% G
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 3d    ● Good         99 TripoSplat                 gen       fp16   5.8  72% GPU      3.5 other
 3d    ● Good        100 HY 3D 2.0 MV               gen       fp16   4.3  54% GPU~     4.6 other
-Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score.
+Order: runs, Perfect/Good (GPU+RAM, CPU last), Marginal (faster first), official, popularity, Score.
 Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
-Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (speech and one-pass tools: Good).
+Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (CPU-ready TTS, tools: Good).
 Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.
 Perfect = fits with room to spare, not a speed guarantee (also on low-bandwidth GPUs).
 GPU+RAM: the level is often set by RAM; the offloaded share is assumed (40% of weights on GPU).
@@ -279,7 +279,7 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 | level | use of memory | cap by mode |
 |---|---|---|
 | **Perfect** | ≤ 60% | only when all on the GPU (`GPU`); room to spare, not a speed guarantee |
-| **Good** | ≤ 85% | highest level for `GPU~` and `GPU+RAM` (offloading is chosen only when it raises the level), and for speech and one-pass tools on the `CPU` |
+| **Good** | ≤ 85% | highest level for `GPU~` and `GPU+RAM` (offloading is chosen only when it raises the level), and on the `CPU` for speech built for real-time CPU use (Kokoro, Piper, MeloTTS, …) and one-pass tools |
 | **Marginal** | ≤ 98% | highest level for generation on the `CPU` or slightly short RAM (Mem% can be low) |
 | **Too tight** | > 98% | does not run (a level set by measurements can be Good even above 98%) |
 | **?** | — | not judged: the download size is unknown |

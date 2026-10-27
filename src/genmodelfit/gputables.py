@@ -497,6 +497,9 @@ PYTORCH_ROCM_LINUX = ValueSet(
 # が先(#101)なので、名前が要るのは主に Windows
 _TRR = ("therock-releases", "rocm-hw-specs")
 _PCI = ("pci-ids",)
+# 新しい pci.ids の「Radeon 820M / 840M」(1902)。名前では 820M か 840M か決まらない(CPU の名前で 820M と
+# 分かれば 2 CU として CPU。hardware.classify_adapter。#108)
+AMD_820M_840M = r"820m\s*/\s*840m"
 AMD_NAME_RULES: tuple[Rule, ...] = (
     _r(r"rx\s*9070|ai pro r9[67]00|navi\s*48\b", ("gfx1201", False), *_TRR),
     _r(r"rx\s*90[456]0|navi\s*44\b", ("gfx1200", False), *_TRR),  # RX 9060 / 9060 XT は Navi 44
@@ -513,7 +516,7 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
     # 「Radeon 820M / 840M」(新しい pci.ids の 1902)は 820M か 840M か決まらないので使う(840M は 4 CU)。
     # 820M だけの名前は下の行で断る(2 CU。AMD_DISPLAY_ONLY_NAMES。#108)
     _r(
-        r"820m\s*/\s*840m",
+        AMD_820M_840M,
         ("gfx1153", True),
         "therock-releases",
         "rocm-hw-specs",

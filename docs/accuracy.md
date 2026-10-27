@@ -237,7 +237,7 @@ Mapping more families is future work ("Known limits" below).
 - Caps by mode:
   - All on GPU: no cap.
   - Swapped in turn (GPU~) and offload (GPU+RAM): up to Good (offload was up to Marginal until 0.11.0).
-  - CPU: generation up to Marginal, speech and one-pass tools up to Good (0.11.0, #108).
+  - CPU: generation up to Marginal, speech built for real-time CPU use and one-pass tools up to Good (0.11.0, #108).
   - No cap by GPU vendor (until 0.11.0, non-NVIDIA GPUs and DGX Spark were capped at Good).
   - The full rules are in [scoring.md](scoring.md) "Level caps".
 - The mode with the best level is taken (no offloading on a tie). The main-memory check ("Main memory (RAM)" below) comes after that.

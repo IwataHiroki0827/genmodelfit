@@ -295,7 +295,7 @@ NVIDIA 以外の GPU の扱いは 3 つに分かれる(0.11.0、#108)。
 | 動いても CPU より速い見込みが無いので CPU として判定 | 2 CU の内蔵 GPU: Radeon 610M(gfx1036。Raphael・Granite Ridge・Dragon Range・Fire Range・Mendocino)・Radeon 820M(Ryzen AI 5 330) | 「… 画面を出すための 2 CU の小さな内蔵 GPU で、動いても生成では CPU より速い見込みが無いので、CPU として判定した」 |
 
 - CU の数の出典: AMD の製品ページの「Graphics Core Count」(Ryzen 9 7940HX の Radeon 610M は 2、Ryzen AI 5 330 の Radeon 820M は 2(https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-5-330.html 、2026-10-28 に確かめた)。同じ石の 840M は 4、860M は 8)。
-- 820M は gfx(gfx1152・1153)では 840M・860M と分けられないので、名前で決める(`gputables.AMD_DISPLAY_ONLY_NAMES`: 名前の「820M」と、名前が「AMD Radeon(TM) Graphics」だけのときの CPU の名前「Ryzen AI 5 330」)。新しい pci.ids の lspci の名前「Radeon 820M / 840M」(1902)は 820M か 840M か決まらないので、使う側にする。
+- 820M は gfx(gfx1152・1153)では 840M・860M と分けられないので、名前で決める(`gputables.AMD_DISPLAY_ONLY_NAMES`: 名前の「820M」と、名前が「AMD Radeon(TM) Graphics」だけのときの CPU の名前「Ryzen AI 5 330」)。新しい pci.ids の lspci の名前「Radeon 820M / 840M」(1902)は、CPU の名前が Ryzen AI 5 330(820M だけの CPU)なら 820M として CPU にし、それ以外は 820M か 840M か決まらないので使う側にする。
 - 0.11.0 より前は 820M を使っていた(gfx1153 の RDNA 3.5 として)。
 
 ### 対応表(一次資料は 2026-10-21 に読んだ)
@@ -375,7 +375,7 @@ GPU の名前から世代を決める表:
 - 新しい pci.ids で製品名が汎用(「Navi 33 [Radeon Graphics]」「Battlemage G31 [Intel Graphics]」)になる型番 ID は、古い pci.ids では使えて新しい pci.ids では断る、という逆転があった。amdkfd が無いときは、汎用の名前でも型番 ID の表を先に引くようにした(理由に「製品名が汎用なので、型番の ID から … とみなした」)。
 - Intel: Arc Pro B65 / B70(Battlemage G31、e222・e223。公称の VRAM は確かめられなかったので持たない)、Data Center GPU Max(Ponte Vecchio。PyTorch の表で Linux だけなので、Windows・WSL2 は CPU)。
 - **Windows の「Intel(R) Graphics」と Core Ultra の Arc**: Intel はメモリが 1 チャンネルのとき、同じ石の Arc Graphics をデバイス マネージャーで「Intel Graphics」と表示する(Intel support 000102144「Intel Arc Graphics Appears As Intel Graphics in Device Manager and Task Manager」https://www.intel.com/content/www/us/en/support/articles/000102144/graphics.html 。解決は 2 チャンネルのメモリ。2026-10-27 に読んだ)。汎用の名前のときに型番 ID の表を引く決まりは Windows の WMI にも効くので、型番 ID が Meteor Lake 7d55・Arrow Lake-H 7d51・Lunar Lake 64a0 なら「Intel(R) Graphics」でも XPU として使う(Linux は前から型番 ID で使っていた)。理由に「1 チャンネルでは 2 チャンネルより遅い」と書く。型番 ID が表に無い「Intel(R) Graphics」(Arrow Lake-S など)は今までどおり CPU。
-- **820M の gfx**: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は Ryzen AI 5 330 の Radeon 820M を gfx1152、pci.ids は別の石(1902「Krackan2 [Radeon 820M / 840M]」)に 820M と 840M を載せる。名前だけでは決まらないので、ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、理由に食い違いの注意を出す。どちらも RDNA 3.5 で判定は同じ。Linux は amdkfd の値が先。
+- **820M の gfx**: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は Ryzen AI 5 330 の Radeon 820M を gfx1152、pci.ids は別の石(1902「Krackan2 [Radeon 820M / 840M]」)に 820M と 840M を載せる。名前だけでは決まらないので、ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、理由に食い違いの注意を出す。どちらも RDNA 3.5。Linux は amdkfd の値が先。0.11.0(#108)から、820M だけの名前(と、CPU の名前が Ryzen AI 5 330 の「Radeon 820M / 840M」)は 2 CU として CPU と判定する(上の「断る理由」)。
 - **Jetson Orin(8.7)と CUDA 13.2 以降**: PyTorch v2.14.1 は CUDA 13.2 以降のビルドで 8.0 / 8.6 の機械語を 8.7 でも動くとする(`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`)。genmodelfit は Jetson を判定に使わない(JetPack 専用の版・統合メモリ。下の「すべての環境」)ので、表(`SOLO_CC`)は変えない。
 - cu129 の版の範囲: Windows の wheel は 2.8・2.9 だけ(2.10 以降は Linux だけ)。cu128 の aarch64 は 2.7・2.9〜2.11(2.8 は無い)。案内の文言だけで、判定は変わらない。
 - 古いドライバで世代が分からないとき(compute_cap を返さず名前の表にも無い)、「ドライバを更新すれば GPU で動く」と言い切っていた。Kepler・Fermi は新しいドライバも PyTorch も無いので、「Maxwell 以降なら更新すれば動く。Kepler・Fermi 以前は更新しても動かない」と書く。
@@ -499,7 +499,7 @@ ComfyUI の CPU での動き:
 
 必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
 
-- 搭載量に収まれば、メインメモリの使用率の帯(60 / 85 / 98%)で決め、生成は Marginal まで(CPU、遅い)。読み上げ・1 回の計算の道具は Good まで(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「CPU で動かすとき」)。
+- 搭載量に収まれば、メインメモリの使用率の帯(60 / 85 / 98%)で決め、生成は Marginal まで(CPU、遅い)。CPU で実時間に動く設計の読み上げ・1 回の計算の道具は Good まで(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「CPU で動かすとき」)。
 - 仮想メモリの範囲なら Marginal(遅い)。
 - 超えたら Too tight。
 - CPU で動くこと自体が推定なので、理由に「CPU は推定・実測なし」と書く(AI生成キットのカタログの `cpu_ok` は設計の印で、実測ではない)。

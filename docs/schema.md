@@ -416,7 +416,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped in turn) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) / `?` (size unknown) |
-| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `good`; `marginal` up to 0.11.0), `cpu` (generation at most `marginal`, speech and one-pass tools at most `good`; 0.11.0, #108); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
+| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `good`; `marginal` up to 0.11.0), `cpu` (generation at most `marginal`, speech built for real-time CPU use and one-pass tools at most `good`; 0.11.0, #108); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100: the memory headroom ("Score" below) |
 | `score_components` | object | `{"memory_fit": …}` (0.11.0; the same value as `score`. The keys up to 0.10, `fit`, `headroom`, `readiness`, `basis`, `popularity`, were removed) |
 | `popularity` | float | (0.11.0) popularity rank 0–100: the percentile within the same type and source (template usage / Hugging Face all-time downloads), the model's value. Only an order key, not part of `score` ([scoring.md](scoring.md) "Popularity") |
@@ -580,7 +580,8 @@ GPU, RAM on the CPU), as in llmfit (llmfit's `docs/how-it-works.md`, "Fit analys
 
 Caps per run mode (0.11.0, #108; [scoring.md](scoring.md) "Level caps"): all on the GPU (`GPU`) none; parts swapped
 in turn (`GPU~`) and offload to RAM (`GPU+RAM`) at most `good` (offload was `marginal` up to 0.11.0); on the CPU,
-image, video, music, sound effect and 3D generation at most `marginal`, speech and one-pass tools (all uses in `tool` /
+image, video, music, sound effect and 3D generation and speech made with a language model, flow matching or diffusion
+at most `marginal`, speech built for real-time CPU use (`estimate.CPU_REALTIME_TTS`) and one-pass tools (all uses in `tool` /
 `estimate` / `matting` / `interp` / `segment` / `separate`) at most `good`, with system RAM as the pool. No cap by GPU
 vendor (up to 0.11.0 non-NVIDIA GPUs and DGX Spark were capped at `good`). The run mode with the best level is used
 (ties: all-in → swapped → offload), so offloading is chosen only when it raises the level (never when all-in or

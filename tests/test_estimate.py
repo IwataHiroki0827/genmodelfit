@@ -339,7 +339,7 @@ def test_calibration_is_reproducible():
 def test_cli_info_shows_limits(capsys):
     assert cli.main(["info", "text_to_video_wan", "--vram", "10", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
-    assert "この PC なら 長辺" in out and "コマまで good" in out
+    assert "この PC なら逃がさずに GPU で 長辺" in out and "コマまで good" in out
     assert (
         cli.main(
             ["fit", "--json", "--limits", "--vram", "10", "--ram", "32", "--no-cache", "--all-workflows"]
