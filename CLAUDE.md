@@ -94,12 +94,29 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
   出た表で docs/accuracy.ja.md(出力をそのまま貼る)と docs/accuracy.md(同じ数で英語に訳す)を直す**(tests/test_estimate.py が calibration.json と合わせ直した結果の一致を検査する)
 - キャッシュ: platformdirs の user_cache_dir(`GENMODELFIT_CACHE_DIR` で変えられる)
 
+## 判定・Score の決まり(2026-10-27、#95。docs/scoring.md が正本)
+
+- **指標(項目・重み・式・並びの鍵)を足す・変えるときは、先に docs/scoring の仕様を直し、項目ごとに 4 つを確かめる**:
+  説明(1 文で書ける)・根拠(一次資料・実測・llmfit の実装と経緯)・フェア(作者の PC・作者が測ったかどうか・作者のアプリの都合・
+  実行した日で、ほかの利用者の判定・点・順位が変わらない)・試験(期待値を決めて自動の試験にできる)。満たさないものは印・注意・絞り込みに回す。
+  llmfit を手本にし、違えるところは docs/scoring に理由を書く。独立した検証(別のモデル)を通してから実装する
+- 判定の設定は、指定が無ければ全モデル種類ごとの既定(実測の設定は、実測からずらす量の計算だけに使う)
+- 実測で段階を決めるのは、同じ GPU(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)、
+  かつ VRAM の比 0.95 以上。`estimate.same_gpu`)・同じ設定で、別々の出どころ 2 つ以上がそろったときだけ
+  (作者の実測は何行あっても 1 つ、ほかの利用者は提出を足した PR ごとに 1 つ。`estimate.count_sources`)。
+  段階に使う量は表の VRAM と同じ(実測のピーク + 文脈の分と、重み + 固定分の大きい方)。1 つだけなら値をずらすだけ
+- Score は収まり(`memory_fit`。llmfit の fit_score と同じ曲線)だけ。人気は Score に混ぜず並びの鍵(`popularity.py`)。
+  並び・Score・人気の式は docs/scoring にある
+- 実測の提出(`data/contrib`)の受け付けの決まり(足すだけ・置き場所・個人の情報・`files_fp`・GPU 名)は docs/schema.md「contrib」。
+  同梱のまとめ(`measurements_community.json`)は版を出す手順で作る(docs/release.md)。大きさの入力が無いテンプレートは手の表
+  `estimate.NO_SIZE_INPUT`(ほかの利用者の提出では決めない)
+
 ## ハードウェアの検出(2026-10-20、#21。docs/hardware.md が正本)
 
 - NVIDIA の GPU があれば、nvidia-smi で確かめたもの(backend `cuda` の最大の 1 枚)を使う。PyTorch の CUDA 版のビルドが
   どれも対応しない世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
   世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
-- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(同じ設定の実測で段階が決まれば外す: 同じ会社の GPU での作者・この PC の実測か、同じ GPU(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)で、VRAM の比 0.97 以上。`estimate.same_gpu`)のほかの利用者の実測。2026-10-22・0.9.1)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
+- 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(同じ設定の実測で段階が決まれば外す。実測で段階を決める決まりは下の「判定・Score の決まり」)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
   見つけた GPU は `system --all-gpus` で調べる
 - 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
   系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す
