@@ -312,9 +312,8 @@ def _vram_cell(e, system) -> Text:
             return Text(_gb(e.vram_offload_gb), style="red")
         return Text("-", style="dim")
     if e.basis == "measured":
-        # c = ほかの利用者の実測(件数は info・JSON の sample_count)、m = 作者・この PC の実測
-        mark = "c" if e.basis_detail == "measured_community" else "m"
-        return Text.assemble(_gb(need), (mark, "bold"))
+        # m = 実測(作者・この PC・ほかの利用者を分けない。#108。出どころの数は info・JSON の sample_count)
+        return Text.assemble(_gb(need), ("m", "bold"))
     return Text(_gb(need))
 
 
@@ -540,7 +539,16 @@ def pc_line(system) -> str:
             f"メモリ {system.ram_total_gb:.1f} GiB(空き {system.ram_available_gb:.1f})",
             f"RAM {system.ram_total_gb:.1f} GiB ({system.ram_available_gb:.1f} available)",
         )
+    if platform_verified(system):
+        gpu += tr(" ✓ 確認済みの種類", " ✓ verified GPU kind")
     return tr(f"PC: {gpu}、{ram}", f"PC: {gpu}, {ram}")
+
+
+def platform_verified(system) -> bool:
+    """この PC の GPU の種類が、同梱の実測で確かめてあるか(#108。estimate.platform_verification)。"""
+    from .estimate import platform_verification
+
+    return system is not None and platform_verification(system)["verified"]
 
 
 def no_gpu_line(system, hidden: Mapping[str, int], fits: Sequence = ()) -> str:
@@ -611,6 +619,15 @@ ORDER_TEXT_JA = {
 }
 
 
+def _legend_marks(fits: Sequence, system) -> dict[str, bool]:
+    """凡例に出す条件つきの行(#108): 逃がす行・実測で段階を決めた行・確認済みの種類の印があるか。"""
+    return {
+        "offload": any(f.estimate.run_mode == "offload" for f in fits),
+        "measured_level": any(getattr(f.estimate, "fit_from", "") == "measurement" for f in fits),
+        "verified": platform_verified(system),
+    }
+
+
 def legend(
     fits: Sequence,
     hidden: Mapping[str, int],
@@ -625,34 +642,40 @@ def legend(
     if json_first is None:
         json_first = order == "auto"
     system_marks = any(mode_cell(f.estimate, system) in ("GPU req", "RAM") for f in fits)
-    best = system.best_gpu if system is not None else None
-    non_nvidia = best is not None and best.vendor != "nvidia"
-    community = any(getattr(f.estimate, "basis_detail", "") == "measured_community" for f in fits)
+    marks = _legend_marks(fits, system)
     shown = content_column_wanted(fits) if with_content is None else with_content
     if i18n.get_language() == "ja":
-        return _legend_ja(
-            fits, hidden, grouped, order, shown, system_marks, non_nvidia, community, json_first
-        )
+        return _legend_ja(fits, hidden, grouped, order, shown, system_marks, marks, json_first)
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
         ORDER_TEXT.get(order, ORDER_TEXT["auto"]),
         "Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.",
-        *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
         *(
             ["Mode for no run: GPU req = needs a GPU (none usable here), RAM = not enough system RAM."]
             if system_marks
             else []
         ),
-        "Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).",
+        "Level caps: GPU~ and GPU+RAM at most Good; CPU at most Marginal (speech and one-pass tools: Good).",
+        "Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.",
+        "Perfect = fits with room to spare, not a speed guarantee (also on low-bandwidth GPUs).",
         *(
-            [  # 実測を送ってもらう案内(1 行だけ。#56 の後の 0.9.0)
-                "Level caps: AMD / Intel / Apple GPUs at most Good (no measurement on them yet;"
-                " CONTRIBUTING.md)."
+            [
+                "GPU+RAM: the level is often set by RAM;"
+                " the offloaded share is assumed (40% of weights on GPU)."
             ]
-            if non_nvidia
+            if marks["offload"]
             else []
         ),
-        "Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.",
+        *(
+            ["Exception: a level set by measurements (m) can be Good even above 98% Mem%."]
+            if marks["measured_level"]
+            else []
+        ),
+        *(
+            ["✓ verified GPU kind = runs on this kind of GPU are measured (no ✓: none yet; same rules)."]
+            if marks["verified"]
+            else []
+        ),
     ]
     if grouped:
         out.append(
@@ -687,31 +710,40 @@ def _legend_ja(
     order: str,
     shown: bool,
     system_marks: bool,
-    non_nvidia: bool,
-    community: bool,
+    marks: Mapping[str, bool],
     json_first: bool = False,
 ) -> list[str]:
     """表の下の説明の日本語(#76)。英語と同じ項目を同じ順に、1 項目 1 行で。"""
     out = [
         ORDER_TEXT_JA.get(order, ORDER_TEXT_JA["auto"]),
         "Score 0〜100 = メモリの余裕(Mem% 70% 以下で 100。速さではない)。VRAM = 要る GiB(m = 実測)。",
-        *(["VRAM の c = ほかの利用者の実測(件数は genmodelfit info <id>)。"] if community else []),
         "Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。",
         *(
             ["動かないときの Mode: GPU req = GPU が要る(ここでは使えない)、RAM = メインメモリが足りない。"]
             if system_marks
             else []
         ),
-        "段階の上限: GPU~ は Good まで、GPU+RAM と CPU は Marginal まで(Mem% が低くても)。",
+        "段階の上限: GPU~ と GPU+RAM は Good まで、CPU は Marginal まで(読み上げ・1 回の計算の道具は Good)。",
+        "Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。",
+        "Perfect は余裕があるという意味で、速さの保証ではない(帯域の狭い GPU でも使用率で決める)。",
         *(
-            [
-                "段階の上限: AMD / Intel / Apple の GPU は、この種類の GPU で動いた実測がまだ無いので"
-                " Good まで(CONTRIBUTING.md)。"
-            ]
-            if non_nvidia
+            ["GPU+RAM の段階はメモリの量で決まることが多い。逃がす量は決めの値(重みの 4 割を GPU に残す)。"]
+            if marks["offload"]
             else []
         ),
-        "Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。",
+        *(
+            ["例外: 実測(m)で段階を決めた行は、Mem% が 98% を超えても Good になる。"]
+            if marks["measured_level"]
+            else []
+        ),
+        *(
+            [
+                "✓ 確認済みの種類 = この種類の GPU で動くことを実測で確かめてある"
+                "(✓ が無い種類はまだ実測が無い。判定の基準は同じ)。"
+            ]
+            if marks["verified"]
+            else []
+        ),
     ]
     if grouped:
         out.append(

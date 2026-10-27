@@ -130,7 +130,8 @@ def test_levels_full_sequential_offload():
     seq = estimate(e, pc(16), s, coefficients=c)  # 全部(21 GB)は載らないが、本体の段(13 GB)は載る
     assert seq.fit == "good" and seq.run_mode == "gpu" and "順に載せ替え" in seq.reasons[0]
     off = estimate(e, pc(8), s, coefficients=c)  # 本体も載らない → 一部を逃がす
-    assert off.fit == "marginal" and off.run_mode == "offload"
+    assert off.fit == "good" and off.run_mode == "offload"  # 逃がすのは good まで(#108)
+    assert "段階は good まで" in off.reasons[0]
     assert off.vram_offload_gb <= 8 < off.vram_sequential_gb <= off.vram_gb
     assert estimate(e, pc(4), s, coefficients=c).fit == "too_tight"
 
@@ -162,10 +163,12 @@ def test_measured_on_16gb_falls_through_on_smaller_gpu(db):
     at = Settings(width=768, height=768)  # 実測の設定(#95 から、指定しなければ既定の 1024x1024)
     on8 = estimate(e, pc(8), at, db.measurements)
     assert on8.basis == "measured" and on8.vram_gb == pytest.approx(13.2)
-    # 順に載せ替えて 7.6 / 8 GB = 96%: 動くが余裕が無いので marginal(使用率の段階。docs/accuracy.md)
-    assert on8.fit == "marginal" and on8.run_mode == "gpu" and on8.vram_sequential_gb <= 8
+    # 順に載せ替えて 7.6 / 8 GB = 96%: 余裕が無い(marginal)。逃がせば余裕があるので、逃がして good(#108。
+    # 逃がすのは全部載せ・順に載せ替えより段階が上がるときだけ。docs/scoring.md「逃がす動かし方を選ぶとき」)
+    assert on8.fit == "good" and on8.run_mode == "offload" and on8.vram_sequential_gb <= 8
     assert estimate(e, pc(12), at, db.measurements).fit == "good"  # 64%。載せ替えは good まで
-    assert estimate(e, pc(6), at, db.measurements).fit == "marginal"
+    on6 = estimate(e, pc(6), at, db.measurements)
+    assert (on6.fit, on6.run_mode) == ("good", "offload")  # 逃がして good(#108)
     # 指定しなければ既定の設定(1024x1024)で判定し、実測は値をずらすのに使うだけ(#95)
     d = estimate(e, pc(8), None, db.measurements)
     assert d.basis == "estimated" and d.basis_detail == "calibrated" and d.settings["width"] == 1024
@@ -228,6 +231,11 @@ def test_settings_scaling_is_monotonic(db, coef):
     assert secs_seq == sorted(secs_seq) and secs_seq[0] < secs_seq[-1]
 
 
+def gpu_good(e) -> bool:
+    """逃がさずに GPU で good 以上(限界に数える行。#108)。"""
+    return e.fit in ("perfect", "good") and e.run_mode == "gpu"
+
+
 def test_limits_are_the_largest_good_settings(db):
     e = db.get("text_to_video_wan")
     base = Settings(width=512, height=512, frames=49)  # 実測の設定(縦横比を正方形にそろえる)
@@ -236,7 +244,7 @@ def test_limits_are_the_largest_good_settings(db):
     at = Settings(width=lim["max_side_px"], height=lim["max_side_px"], frames=49)
     over = Settings(width=lim["max_side_px"] + 32, height=lim["max_side_px"] + 32, frames=49)
     assert estimate(e, pc(10), at, db.measurements).fit in ("perfect", "good")
-    assert estimate(e, pc(10), over, db.measurements).fit not in ("perfect", "good")
+    assert not gpu_good(estimate(e, pc(10), over, db.measurements))  # 限界は逃がさない行だけ(#108)
     # #100: 512px ではコマ数は調べる範囲の上限まで good(段ごとの式では Wan 2.1 の VAE はコマ数で増えない)。
     # 768px で、限界のすぐ上が good でないことを見る
     assert lim["at_cap"] == ["max_frames"]
@@ -245,7 +253,7 @@ def test_limits_are_the_largest_good_settings(db):
     more = estimate(
         e, pc(10), Settings(width=768, height=768, frames=lim768["max_frames"] + 4), db.measurements
     )
-    assert more.fit not in ("perfect", "good")
+    assert not gpu_good(more)
     # 大きな GPU ほど限界は上がる
     lim16 = limits_for(e, pc(24), base, db.measurements)
     assert lim16["max_side_px"] >= lim["max_side_px"] and lim16["max_frames"] >= lim["max_frames"]
@@ -288,11 +296,12 @@ def test_curated_min_is_not_too_tight(db, model_id):
 
 @pytest.mark.parametrize("model_id", CURATED_IDS)
 def test_curated_recommended_runs_on_gpu(db, model_id):
-    """推奨の VRAM では GPU で動く(逃がさない)。段階は使用率で決めるので、推奨ぎりぎり(85% 超)なら
-    marginal のこともある(Z-Image Turbo int8 は 8 GB で 94%)。"""
+    """推奨の VRAM では GPU に載る(全部か順に載せ替えて 98% 以内)。推奨ぎりぎり(85% 超。Z-Image Turbo int8 は
+    8 GB で 94%)なら、逃がしたほうが段階が上がるので逃がして good(#108)。"""
     _, vrec = CURATED[model_id]
     e = estimate(db.get(model_id), pc(vrec), app_settings(db, model_id), db.measurements)
-    assert e.run_mode == "gpu" and e.fit != "too_tight"
+    assert e.fit in ("perfect", "good") and e.run_mode in ("gpu", "offload")
+    assert e.run_mode == "gpu" or e.vram_sequential_gb <= 0.98 * vrec
 
 
 def test_curated_8gb_and_4gb(db):
@@ -565,7 +574,7 @@ def test_failed_or_nonstandard_measurements_are_ignored():
         model_id="m12", gpu_name="g", gpu_vram_gb=8, peak_vram_gb=7.6, settings=s, outcome="oom"
     )
     est = estimate(e, pc(8), s, [oom])
-    assert est.basis == "estimated" and est.measured_on is None and est.fit not in ("perfect", "good")
+    assert est.basis == "estimated" and est.measured_on is None and est == estimate(e, pc(8), s, [])
     custom = Measurement(
         model_id="m12", gpu_name="g", gpu_vram_gb=8, peak_vram_gb=7.6, settings=s, standard=False
     )

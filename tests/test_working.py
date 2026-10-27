@@ -282,7 +282,7 @@ FALLBACK_BEFORE = {
     "manual:tsukuyomi-chan-piper-plus": (1.52, "perfect"),
     "3d_hunyuan3d_image_to_model": (6.7, "good"),
     "utility_birefnet_remove_background": (2.13, "perfect"),
-    "image_flux3_klein_t2i": (18.22, "marginal"),
+    "image_flux3_klein_t2i": (18.22, "good"),  # 逃がして good(#108 で逃がすのは good まで)
 }
 
 
@@ -466,10 +466,10 @@ def test_positive_shift_from_a_roomy_gpu_goes_to_full_load_only(db):
     b = E.estimate(e, nv(16.0), s, [])
     assert a.vram_gb == 13.3 and a.vram_sequential_gb == b.vram_sequential_gb
     assert a.vram_offload_gb == b.vram_offload_gb
-    # 6 GB は逃がして marginal、8 GB は順に載せ替えて GPU で marginal(使用率 97%)
+    # 6 GB は逃がして good。8 GB は順に載せ替えて 97% でぎりぎりなので、逃がして good(#108)
     six, eight = E.estimate(e, nv(6.0), s, db.measurements), E.estimate(e, nv(8.0), s, db.measurements)
-    assert (six.fit, six.run_mode) == ("marginal", "offload")
-    assert (eight.fit, eight.run_mode) == ("marginal", "gpu")
+    assert (six.fit, six.run_mode) == ("good", "offload")
+    assert (eight.fit, eight.run_mode) == ("good", "offload") and eight.vram_sequential_gb <= 8.0 * 0.98
     # 小さな GPU の実測(式の全部載せより VRAM が小さい)からの正のずらしは 3 つに足す
     small = Measurement(**{**vars(prep.measurement), "gpu_vram_gb": 8.0, "peak_vram_gb": 7.9})
     assert not E._full_only(small, 11.34, 0.5)

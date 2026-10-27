@@ -103,15 +103,19 @@ def license_matches(m: ModelEntry, allowed: Iterable[str] | None) -> bool:
 
 
 def _how(e: Estimate, vram: float, system: SystemInfo | None = None) -> tuple[str, str]:
-    """(段階, 載せ方 full / seq / offload)。estimate.gpu_choice と同じ選び方。"""
-    return gpu_choice(
-        e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram, allow_offload=not shared_memory(system)
-    )
+    """(段階, 載せ方 full / seq / offload)。estimate.gpu_choice と同じ選び方。逃がさずに GPU で動く行
+    (run_mode が gpu)は全部載せ・順に載せ替えから選ぶ(逃がす段階はメインメモリにもよるので、
+    判定で選ばなかった逃がす載せ方をここで選び直さない。#108)。"""
+    if e.run_mode == "offload":
+        return e.fit, "offload"
+    allow = not shared_memory(system) and e.run_mode != "gpu"
+    return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram, allow_offload=allow)
 
 
 def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:
     """動かし方で段階に上限があるとき、その動かし方(JSON の level_cap)。sequential(GPU~、good まで)/
-    offload(GPU+RAM、marginal まで)/ cpu(marginal まで)。
+    offload(GPU+RAM、good まで)/ cpu(生成は marginal まで、読み上げ・1 回の計算の道具は good まで。
+    estimate.cpu_top)。
     全部 GPU に載る・動かない・判定できないときは None。"""
     label = mode_label(e, system)
     return {"GPU~": "sequential", "GPU+RAM": "offload", "CPU": "cpu"}.get(label)

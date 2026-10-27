@@ -113,13 +113,16 @@ def test_wan22_14b_sequential_counts_one_expert(db, mid):
 
 
 def test_wan22_14b_i2v_on_24_and_16_gb(db):
-    """24 GB では部品を順に載せ替えて GPU で動く(逃がさない)。0.1.0 は 35.5 GB で GPU+RAM だった。"""
+    """24 GB では部品を順に載せ替えれば GPU に載る(0.1.0 は 35.5 GB で GPU+RAM だった)。載せ替えは 91% で
+    余裕が無い(marginal)ので、メインメモリに余裕があれば逃がして good、無ければ GPU~ の marginal(#108)。"""
     m = db.get("video_wan2_2_14B_i2v")
     e24 = estimate(m, pc(24), measurements=db.measurements)
-    assert e24.run_mode == "gpu" and e24.fit in ("good", "marginal")
     assert 19 < e24.vram_sequential_gb < 23
+    assert (e24.fit, e24.run_mode) == ("good", "offload")
+    tight = estimate(m, pc(24, 32), measurements=db.measurements)  # 逃がすとメモリ 38 GB > 32 GB
+    assert (tight.fit, tight.run_mode) == ("marginal", "gpu")
     e16 = estimate(m, pc(16, 64), measurements=db.measurements)
-    assert e16.run_mode == "offload" and e16.fit == "marginal"  # 0.1.0 は too_tight(逃がしても 18.1 GB)
+    assert e16.run_mode == "offload" and e16.fit == "good"  # 0.1.0 は too_tight(逃がしても 18.1 GB)
 
 
 def test_graph_and_name_rule_agree_for_wan22(db):
@@ -634,10 +637,10 @@ def test_level_cap_in_json_and_legend(capsys):
     assert {m["level_cap"] for m in every["models"] if m["run_mode_label"] == "GPU+RAM"} == {"offload"}
     assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
     out = capsys.readouterr().out
-    assert "GPU~ は Good まで、GPU+RAM と CPU は Marginal まで" in out
+    assert "GPU~ と GPU+RAM は Good まで、CPU は Marginal まで" in out
     assert all(len(x) <= 100 for x in out.splitlines())
     assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--lang", "en"]) == 0
-    assert "GPU~ is at most Good; GPU+RAM and CPU are at most Marginal" in capsys.readouterr().out
+    assert "GPU~ and GPU+RAM at most Good; CPU at most Marginal" in capsys.readouterr().out
 
 
 def test_fit_and_min_fit_together_is_a_usage_error(tmp_path):

@@ -135,7 +135,8 @@ class CpuRun:
 
 
 # CPU で動く系統。重みの大きさの一律の上限(estimate.CPU_MAX_WEIGHTS_GB)より大きくても、メインメモリが足りれば
-# marginal(CPU、遅い)にする。ComfyUI は CPU では本体と VAE を fp32 で持つ(model_management.py の
+# CPU で動くとする(段階は estimate.cpu_top: 生成は marginal まで。#108)。
+# ComfyUI は CPU では本体と VAE を fp32 で持つ(model_management.py の
 # should_use_fp16 / should_use_bf16 が CPU では False: 426f5ee の 1912-1913・1979-1980 行。
 # unet_dtype・vae_dtype が float32)。
 # テキストエンコーダは fp16 のまま(text_encoder_dtype の 1261 行)。見積もりは estimate._judge_cpu

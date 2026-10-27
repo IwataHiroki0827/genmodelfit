@@ -185,9 +185,18 @@ def test_gfx_not_release_ready_is_refused(gfx):
     assert not a.usable and "Release Ready でない" in a.reason
 
 
-def test_820m_follows_therock_with_a_note():
+def test_820m_is_judged_as_cpu_and_820m_840m_follows_therock_with_a_note():
+    """Radeon 820M は 2 CU(AMD の製品ページ)で、610M と同じく CPU として判定する(#108)。
+    「820M / 840M」(pci.ids の 1902)は決まらないので使い、gfx は TheRock に合わせて注意を出す。"""
     with i18n.forced("ja"):
-        g = classify_adapter(Adapter(name="AMD Radeon 820M Graphics", vendor="amd", vram_gb=0.5), WIN11, 32.0)
+        a = Adapter(name="AMD Radeon 820M Graphics", vendor="amd", vram_gb=0.5)
+        assert classify_adapter(a, WIN11, 32.0) is None
+        assert not a.usable and "2 CU" in a.reason and "CPU より速い見込みが無い" in a.reason
+        c = Adapter(name="AMD Radeon(TM) Graphics", vendor="amd", vram_gb=0.5)
+        host = Host(**{**vars(WIN11), "cpu": "AMD Ryzen AI 5 330 w/ Radeon 820M"})
+        assert classify_adapter(c, host, 32.0) is None and "2 CU" in c.reason
+        both = Adapter(name="Krackan2 [Radeon 820M / 840M]", vendor="amd", vram_gb=0.5)
+        g = classify_adapter(both, WIN11, 32.0)
     assert g.gfx_target == "gfx1153"
     assert any("食い違う" in n for n in g.notes)
     assert (

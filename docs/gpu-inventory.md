@@ -15,7 +15,7 @@ Official names are taken from the fixed lists (186 pci.ids GPU lines, 116 AMD pr
 | `NAME_CC_RULES` | 17 | 17 |
 | `ARCH_MIN_DRIVER_RULES` | 1 | 0 |
 | `AMD_ARCH_RULES` | 31 | 27 |
-| `AMD_NAME_RULES` | 33 | 30 |
+| `AMD_NAME_RULES` | 34 | 31 |
 | `AMD_CPU_IGPU_RULES` | 8 | 5 |
 | `INTEL_XPU_RULES` | 20 | 20 |
 | `PCI_DEVICE_RULES` | 106 | 106 |
@@ -100,7 +100,8 @@ AMD: GPU name → gfx
 | AMD | `AMD_NAME_RULES` | `rx\s*90[456]0\|navi\s*44\b` | Radeon RX 9060 XT LP, Radeon RX 9060 XT, Radeon RX 9060, Radeon RX 9050, Radeon RX 9050 (4GB), AMD Radeon RX 9060 / XT; 3 more | gfx1200 | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.10 or earlier |
 | AMD | `AMD_NAME_RULES` | `8065s\|8060s\|8050s\|8040s\|strix halo` | Radeon 8065S, Radeon 8050S, Radeon 8040S, Radeon 8060S, AMD Radeon Graphics / Radeon 8050S Graphics / Radeon 8060S Graphics (1002:1586) | gfx1151, integrated | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.11.0 |
 | AMD | `AMD_NAME_RULES` | `890m\|880m\|strix(?! halo)` | Radeon 890M, Radeon 880M, AMD Radeon 880M / 890M (1002:150e) | gfx1150, integrated | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.10 or earlier |
-| AMD | `AMD_NAME_RULES` | `820m` | Radeon 820M, AMD Radeon 820M iGPU, AMD Radeon 820M / 840M Graphics (1002:1902) | gfx1153, integrated | used (Windows 11, Linux; TheRock) (The gfx of the 820M differs between official sources (TheRock RELEASES.md: gfx1153; ROCm hw specs: gfx1152). If the TheRock wheel does not work, try the gfx1152 one) | `therock-releases`, `rocm-hw-specs`, `pci-ids` | 2026-10-27 | 0.10 or earlier |
+| AMD | `AMD_NAME_RULES` | `820m\s*/\s*840m` | AMD Radeon 820M / 840M Graphics (1002:1902) | gfx1153, integrated | used (Windows 11, Linux; TheRock) (The gfx of the 820M differs between official sources (TheRock RELEASES.md: gfx1153; ROCm hw specs: gfx1152). If the TheRock wheel does not work, try the gfx1152 one) | `therock-releases`, `rocm-hw-specs`, `pci-ids` | 2026-10-27 | 0.10 or earlier |
+| AMD | `AMD_NAME_RULES` | `820m` | Radeon 820M, AMD Radeon 820M iGPU | gfx1153, integrated | refused: 2-CU display iGPU | `therock-releases`, `rocm-hw-specs`, `amd-ryzen-ai-5-330` | 2026-10-27 | 0.11.0 |
 | AMD | `AMD_NAME_RULES` | `860m\|840m\|krackan` | Radeon 860M, Radeon 840M, AMD Radeon 840M / 860M Graphics (1002:1114) | gfx1152, integrated | used (Windows 11, Linux; TheRock) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.10 or earlier |
 | AMD | `AMD_NAME_RULES` | `rx\s*7[67]00[sm]\b\|rx\s*7600m xt` | AMD Radeon RX 7600M XT (1002:73f0), AMD Radeon RX 7600M/7600M XT (1002:7483) | gfx1102 | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `pci-ids` | 2026-10-27 | 0.10 or earlier |
 | AMD | `AMD_NAME_RULES` | `rx\s*7900\|pro w7[89]00\|navi\s*31\b` | Radeon PRO W7900 Dual Slot, Radeon PRO W7900, Radeon PRO W7800 48GB, Radeon PRO W7800, Radeon RX 7900 XTX, Radeon RX 7900 XT; 15 more | gfx1100 | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.10 or earlier |
@@ -138,7 +139,7 @@ AMD: CPU name → iGPU gfx
 |---|---|---|---|---|---|---|---|---|
 | AMD | `AMD_CPU_IGPU_RULES` | `ryzen ai max` | Ryzen AI Max+ PRO 495, Ryzen AI Max PRO 490, Ryzen AI Max PRO 485, Ryzen AI Max PRO 390, Ryzen AI Max PRO 385, Ryzen AI Max PRO 380; 6 more | gfx1151, integrated | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `rocm-hw-specs` | 2026-10-27 | 0.10 or earlier |
 | AMD | `AMD_CPU_IGPU_RULES` | `ryzen ai 9 (hx )?(pro )?[34][67]\d` | Ryzen AI 9 HX PRO 475, Ryzen AI 9 HX PRO 470, Ryzen AI 9 PRO 465, Ryzen AI 9 HX 475, Ryzen AI 9 HX 470, Ryzen AI 9 465; 5 more | gfx1150, integrated | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `rocm-hw-specs` | 2026-10-27 | 0.11.0 |
-| AMD | `AMD_CPU_IGPU_RULES` | `ryzen ai 5 (pro )?330\b` | Ryzen AI 5 330 | gfx1153, integrated | used (Windows 11, Linux; TheRock) (The gfx of the 820M in the Ryzen AI 5 330 differs between official sources (TheRock: gfx1153; ROCm hw specs: gfx1152)) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.11.0 |
+| AMD | `AMD_CPU_IGPU_RULES` | `ryzen ai 5 (pro )?330\b` | Ryzen AI 5 330 | gfx1153, integrated | refused: 2-CU display iGPU (The gfx of the 820M in the Ryzen AI 5 330 differs between official sources (TheRock: gfx1153; ROCm hw specs: gfx1152)) | `therock-releases`, `rocm-hw-specs` | 2026-10-27 | 0.11.0 |
 | AMD | `AMD_CPU_IGPU_RULES` | `ryzen ai [57] (pro )?[34][3-5]\d` | Ryzen AI 7 PRO 450, Ryzen AI 5 PRO 440, Ryzen AI 5 PRO 435, Ryzen AI 5 435, Ryzen AI 5 430, Ryzen AI 7 445; 6 more | gfx1152, integrated | used (Windows 11, Linux; TheRock) | `rocm-hw-specs` | 2026-10-27 | 0.11.0 |
 | AMD | `AMD_CPU_IGPU_RULES` | `ryzen [3579] (pro )?7\d4[05]hx3?d?\b\|ryzen [3579] (pro )?9\d5[05]hx3?d?\b` | - | gfx1036, integrated | refused: 2-CU display iGPU | `amd-product-pages` | 2026-10-22 | 0.10 or earlier |
 | AMD | `AMD_CPU_IGPU_RULES` | `ryzen z1\b` | - | gfx1103, integrated | used (Windows 11, Linux; pytorch.org ROCm and TheRock) | `amd-product-pages`, `linux-amdkfd` | 2026-10-22 | 0.10 or earlier |
@@ -303,6 +304,7 @@ AMD / Intel: PCI device ID → name
 | `nvidia_10_series` | 1080, 1070, titan x, p3000, p3200, p4000, p4200, p5000, p5200, p6000, 1060, 1050, p40, p100, p6, p4 | `comfyui-mm` | 2026-10-27 | - |
 | `nvidia_16_series` | 1660, 1650, 1630, T500, T550, T600, MX550, MX450, CMP 30HX, T2000, T1000, T1200 | `comfyui-mm` | 2026-10-27 | - |
 | `display_only_gfx` | gfx1036 | `amd-product-pages`, `therock-supported` | 2026-10-22 | 2-CU display-only integrated GPU (a judgment; no measurement) |
+| `display_only_name_rules` | 820m, ryzen ai 5 (pro )?330\b | `amd-ryzen-ai-5-330` | 2026-10-28 | 2-CU integrated GPU (Radeon 820M; a judgment, no measurement) |
 | `unverified_gfx` | gfx1170, gfx1171, gfx1250 | `therock-supported` | 2026-10-27 | Not Release Ready in TheRock (gfx117x: Build Passing only; gfx1250: up to Sanity Tested) |
 | `pytorch_rocm_linux_gfx` | gfx1030, gfx1100, gfx1101, gfx1102, gfx1103, gfx1150, gfx1151, gfx1200, gfx1201, gfx900, gfx906, gfx908, gfx90a, gfx942, gfx950 | `torch-build-rocm` | 2026-10-27 | - |
 | `wsl_amd_supported` | ai pro r9600d, ai pro r9700, pro w7700, pro w7800, pro w7800 48gb, pro w7900, pro w7900 dual slot, rx 7700, rx 7700 xt, rx 7800 xt, rx 7900 gre, rx 7900 xt, rx 7900 xtx, rx 9060, rx 9060 xt, rx 9070, rx 9070 gre, rx 9070 xt | `amd-wsl-compat` | 2026-10-27 | - |
@@ -333,6 +335,7 @@ AMD / Intel: PCI device ID → name
 - `ryzen-linux-compat`: AMD Ryzen: Linux compatibility (ROCm 7.2.1) — https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityryz/native_linux/native_linux_compatibility.html (2026-10-27)
 - `amd-wsl-compat`: AMD Radeon: WSL compatibility (ROCm 7.2.1) — https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html (2026-10-27)
 - `amd-product-pages`: AMD product pages (Graphics Model / Graphics Core Count), e.g. Ryzen 9 7940HX, Ryzen Z1 / Z1 Extreme — https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html (2026-10-22)
+- `amd-ryzen-ai-5-330`: AMD product page: Ryzen AI 5 330 (Graphics Model: AMD Radeon 820M, Graphics Core Count: 2) — https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-5-330.html (2026-10-28)
 - `linux-amdkfd`: Linux drivers/gpu/drm/amd/amdkfd/kfd_device.c (GC IP version → gfx_target_version) — https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/amd/amdkfd/kfd_device.c (2026-10-22)
 - `steam-deck-spec`: Valve Steam Deck tech specs (8 RDNA 2 CUs) — https://www.steamdeck.com/en/tech (2026-10-21)
 - `pci-ids`: pci.ids (pciutils/pciids, version 2026.10.27) — https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids (2026-10-27)

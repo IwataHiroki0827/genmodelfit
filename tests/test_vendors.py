@@ -80,7 +80,7 @@ def test_rx7900xtx_linux_rocm(monkeypatch):
         24.0,
     )
     assert g.bf16 is True and g.fp8 is False and g.compute_dtype == "fp16"
-    assert any("この種類の GPU(AMD)で動いた実測がまだ無い" in n for n in s.notes)
+    assert any("NVIDIA の専用 VRAM の GPU と同じ基準で決めた(AMD" in n for n in s.notes)  # #108
     # gfx1100 は pytorch.org の ROCm 版に入っているので、TheRock の注意は出さない
     assert not any("TheRock" in n for n in s.notes)
     assert pc_line_en(s).startswith(
@@ -309,14 +309,19 @@ def vendor_system(kind: str, vram: float, ram: float = 32.0) -> SystemInfo:
 
 
 @pytest.mark.parametrize("kind", ["amd", "intel", "apple", "apu"])
-def test_non_nvidia_is_capped_at_good_and_marked_estimated(kind):
-    e = estimate(small_image(1.0), vendor_system(kind, 48.0, 64.0), coefficients=Coefficients())
-    assert e.fit == "good" and e.basis == "estimated"
-    label = {"amd": "AMD", "apu": "AMD", "intel": "Intel", "apple": "Apple"}[kind]
-    assert any(f"この種類の GPU({label})で動いた実測がまだ無いので、段階は Good まで" in r for r in e.reasons)
-    assert not any("推定(" in r for r in e.reasons)  # 上限の理由は推定ではない(#101・#103)
-    nv = estimate(small_image(1.0), vendor_system("nvidia", 48.0, 64.0), coefficients=Coefficients())
-    assert nv.fit == "perfect"  # NVIDIA は変えない
+def test_non_nvidia_is_not_capped_and_not_verified(kind):
+    """#108: NVIDIA 以外も同じ基準(上限なし)。同梱の実測が無いので確認済みの種類ではない(✓ を出さない)。"""
+    from genmodelfit.estimate import platform_verification
+
+    system = vendor_system(kind, 48.0, 64.0)
+    e = estimate(small_image(1.0), system, coefficients=Coefficients())
+    nv_system = vendor_system("nvidia", 48.0, 64.0)
+    nv = estimate(small_image(1.0), nv_system, coefficients=Coefficients())
+    assert e.fit == nv.fit == "perfect" and e.basis == "estimated"
+    assert not any("Good まで" in r for r in e.reasons)
+    assert platform_verification(system)["verified"] is False
+    assert platform_verification(nv_system)["verified"] is True
+    assert "✓" not in pc_line(system) and "✓" in pc_line(nv_system)
 
 
 @pytest.mark.parametrize("kind", ["apple", "apu"])
@@ -477,8 +482,9 @@ def test_issue_26_smaller_gpu_stays_estimated(db):
     e = judge(
         db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 3060", 12.0), db, settings=WAN22_AT
     ).estimate
-    # #100 の段ごとの式で、逃がさずに載る(全部載せ・順に載せ替えの使用率が 85% を超えて marginal)
-    assert (e.fit, e.run_mode, e.fit_from) == ("marginal", "gpu", "estimate")
+    # #100 の段ごとの式で、全部載せ・順に載せ替えの使用率が 85% を超えて marginal。逃がせば good なので
+    # 逃がす(#108)。段階は見積もりで決める(同じ GPU の実測ではない)
+    assert (e.fit, e.run_mode, e.fit_from) == ("good", "offload", "estimate")
     assert any("段階は見積もりで決めた" in r for r in e.reasons)
 
 
@@ -626,13 +632,17 @@ def test_pc_line_hides_unknown_vendor_and_legend_caps(db, monkeypatch):
     sel = select(db, vendor_system("amd", 24.0, 64.0), min_fit="marginal", drop_unknown_size=True, limit=3)
     with i18n.forced("en"):
         lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
-    cap = [x for x in lines if "AMD / Intel / Apple GPUs at most Good (no measurement" in x]
-    assert len(cap) == 1 and len(cap[0]) <= 100
-    lines = legend(sel.fits, sel.hidden, system=vendor_system("amd", 24.0, 64.0))
-    assert (
-        len([x for x in lines if "AMD / Intel / Apple の GPU は、この種類の GPU で動いた実測がまだ無い" in x])
-        == 1
-    )
+    # #108: 会社の上限の行は無くした。確認済みでない種類には ✓ の行も出さない
+    assert not any("AMD / Intel / Apple" in x or "✓" in x for x in lines)
+    assert all(len(x) <= 100 for x in lines)
+    nv = vendor_system("nvidia", 24.0, 64.0)
+    sel = select(db, nv, min_fit="marginal", drop_unknown_size=True, limit=3)
+    with i18n.forced("en"):
+        lines = legend(sel.fits, sel.hidden, system=nv)
+    assert len([x for x in lines if x.startswith("✓ verified GPU kind")]) == 1
+    assert all(len(x) <= 100 for x in lines)
+    lines = legend(sel.fits, sel.hidden, system=nv)
+    assert len([x for x in lines if x.startswith("✓ 確認済みの種類")]) == 1
 
 
 # --- #56: 安全側に倒れすぎていた名前 --------------------------------------------------------------

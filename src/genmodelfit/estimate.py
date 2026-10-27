@@ -42,7 +42,6 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .db import bundled_text
-from .hardware import GB10_KIND, good_cap_text
 from .i18n import tr
 from .models import (
     FIT_UNKNOWN,
@@ -1756,7 +1755,7 @@ def _estimate(
             )
         elif same_settings and prep.clamped:
             # 実測の値をそのまま使わなかった(下限・上限で切り詰めた): 値は実測ではないので basis は estimated
-            detail = "measured_community" if is_community(m) else "calibrated"
+            detail = "calibrated"
             if not is_community(m) and lower_bound_only(m):
                 reasons.append(
                     tr(
@@ -1797,7 +1796,7 @@ def _estimate(
                 n.ram_gpu = max(n.ram_gpu, m.peak_ram_gb)
         elif same_settings:
             basis, measured_on = "measured", on
-            detail = "measured_community" if is_community(m) else "measured"
+            detail = "measured"  # 作者・ほかの利用者の実測を分けない(#108。出どころの数は sample_count)
             if prep.near_floor:
                 reasons.append(
                     tr(
@@ -1859,49 +1858,18 @@ def _estimate(
             )
         elif not_why and band is None:
             reasons.append(not_why)
-    g = system.best_gpu
-    capped_gpu = g is not None and (g.vendor != "nvidia" or g.memory != "dedicated")
-    if capped_gpu and system.vram_gb > 0 and mode in ("gpu", "offload"):
-        # NVIDIA 以外の GPU と統合メモリの NVIDIA(DGX Spark の GB10。#101)は、この種類の GPU で動いた実測が
-        # まだ無いので段階を good までにする(#103 で理由の文言を直した)。この PC と同じ GPU の同じ設定の
-        # 実測で段階が決まれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
-        label = _vendor_label(g.vendor)
-        kind = GB10_KIND if g.vendor == "nvidia" else label
-        own = band  # 同じ GPU の実測だけ(measured_level)
-        if own is not None:
-            if fit == "perfect" and fit_from != "measurement":
-                if own.level == "perfect":
-                    why = [
-                        *why,
-                        tr(
-                            f"{label} のこの GPU で同じ設定の実測があるので、段階の上限(good)を外した",
-                            f"A measurement with the same settings exists on this {label} GPU,"
-                            " so the level cap (good) was lifted",
-                        ),
-                    ]
-                else:
-                    fit = own.level
-                    why = [
-                        *why,
-                        tr(
-                            f"{label} のこの GPU の同じ設定の実測で決まる段階 {own.level} までにした",
-                            f"Capped at {own.level}, the level from a measurement with the same settings"
-                            f" on this {label} GPU",
-                        ),
-                    ]
-        elif fit == "perfect" and fit_from != "measurement":
-            fit = "good"
-            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
-        elif fit_from != "measurement":
-            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
+    # GPU の種類(NVIDIA 以外・DGX Spark)による段階の上限は無い(#108)。どの GPU も同じ基準で判定し、
+    # 実測で確かめた種類かは platform_verification(表の PC の行の ✓、JSON の platform_verified)で知らせる。
+    # 実測は段階を上げるだけ(measured_level。下げない)
     reasons.extend(prec.notes)
     reasons.extend(_stage_notes(n, parts, system, prec, prep.c))
     free_short = False
     g = system.best_gpu
     if g is not None and g.vram_free_gb is not None and mode in ("gpu", "offload") and system.vram_gb > 0:
-        _lvl, how = gpu_choice(
-            n.full, n.sequential, n.offload, system.vram_gb, allow_offload=not shared_memory(system)
-        )
+        if mode == "offload":
+            how = "offload"
+        else:
+            _lvl, how = gpu_choice(n.full, n.sequential, n.offload, system.vram_gb, allow_offload=False)
         use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
         if fit_from == "measurement" and level_gb is not None:
             use = level_gb
@@ -2081,6 +2049,82 @@ def count_sources(rows: Iterable[Measurement]) -> int:
         else:
             legacy = max(legacy, measurement_sources(m))
     return own + max(len(ids), legacy)
+
+
+# --- 確認済みの GPU の種類(#108。docs/scoring.md「確認済みの GPU の種類」) -------------------------------
+# 種類 = 会社 × メモリの形(専用の VRAM / メインメモリと共有)。段階はどの種類も同じ基準で決め、
+# この種類の GPU で動いた実測が別々の出どころから 2 つ以上あれば「確認済み」(表の ✓、JSON の
+# platform_verified)にする。段階・自動のおすすめ(gate)には使わない
+MIN_PLATFORM_SOURCES = 2
+
+
+def gpu_kind(g: Any) -> str | None:
+    """判定に使う GPU の種類("nvidia/dedicated" など)。GPU が無ければ None。"""
+    if g is None:
+        return None
+    memory = "shared" if getattr(g, "memory", "dedicated") in ("shared", "unified") else "dedicated"
+    return f"{g.vendor}/{memory}"
+
+
+def measurement_kind(m: Measurement) -> str:
+    """実測の GPU の種類。実測にはメモリの形の記録が無いので、GPU 名から決める(DGX Spark の GB10・Apple は
+    共有、AMD・Intel は名前の表の内蔵の印。分からなければ専用)。"""
+    from .hardware import GB10_NAME, amd_gfx, intel_xpu
+
+    vendor = measurement_vendor(m)
+    shared = False
+    if vendor == "apple":
+        shared = True
+    elif vendor == "nvidia":
+        shared = gpu_key(m.gpu_name) == gpu_key(GB10_NAME)
+    elif vendor == "amd":
+        found = amd_gfx(m.gpu_name)
+        shared = bool(found and found[1])
+    elif vendor == "intel":
+        found = intel_xpu(m.gpu_name)
+        shared = bool(found and found[1])
+    return f"{vendor}/{'shared' if shared else 'dedicated'}"
+
+
+def kind_sources(rows: Iterable[Measurement]) -> int:
+    """種類の確認に使う、別々の出どころの数。ほかの利用者のまとめは count_sources と同じ(出どころの ID の
+    和集合)。作者の実測は、測った GPU(gpu_key)ごとに 1 つ(別々の機械で動いたことの記録。同じ GPU の何行も
+    1 つ)。段階を決める条件(count_sources: 作者の実測は合わせて 1 つ)より緩いのは、確かめるのが
+    「その種類の GPU で動くか」で、1 台の GPU の値の確かさではないから"""
+    rows = list(rows)
+    own = {gpu_key(m.gpu_name) for m in rows if not is_community(m)}
+    return len(own) + count_sources([m for m in rows if is_community(m)])
+
+
+def platform_verification(system: SystemInfo, measurements: Iterable[Measurement] | None = None) -> dict:
+    """この PC の GPU の種類が確認済みか(#108)。measurements を省くと同梱の実測(作者 + ほかの利用者の
+    まとめ。この PC の bench は入れない)。--vram で VRAM を仮定した PC(overrides に vram)は、GPU が
+    仮定なので確認済みにしない。
+
+    返す値: {"verified": bool, "kind": 種類か None, "sources": 出どころの数, "gpus": 動いた GPU の名前}"""
+    g = system.best_gpu if system.vram_gb > 0 and "vram" not in system.overrides else None
+    kind = gpu_kind(g)
+    if kind is None:
+        return {"verified": False, "kind": None, "sources": 0, "gpus": []}
+    if measurements is None:
+        from .db import load_measurements
+
+        measurements = load_measurements(include_cache=False)
+    rows = [
+        m
+        for m in measurements
+        if (m.outcome or "ok") == "ok"
+        and m.standard is not False
+        and (not is_community(m) or (m.gpu_known is not False and m.runs_evidence is not False))
+        and measurement_kind(m) == kind
+    ]
+    n = kind_sources(rows)
+    return {
+        "verified": n >= MIN_PLATFORM_SOURCES,
+        "kind": kind,
+        "sources": n,
+        "gpus": sorted({m.gpu_name for m in rows}),
+    }
 
 
 @dataclass(frozen=True)
@@ -2263,21 +2307,29 @@ def _judge(
 ) -> tuple[str, str, list[str], float]:
     """(段階, 動かし方, 理由, その動かし方で要るメインメモリ)。
 
-    GPU に載らない(逃がしても足りない・メモリが足りない)ときは、GPU が無いときの判定(CPU)とも比べて
-    良いほうを取る。小さな GPU を足すと、CPU で動くものまで動かない判定になるのを防ぐ
-    (VRAM を増やして段階が下がらない)。"""
+    GPU の判定が CPU の判定(GPU が無いとき)より悪ければ(GPU に載らない・ぎりぎり)、CPU の判定を取る。
+    小さな GPU を足すと、CPU で動くものまで動かない(または CPU より悪い)判定になるのを防ぐ
+    (VRAM を増やして段階が下がらない。同じ段階なら GPU)。"""
     vram = system.vram_gb
     if vram <= 0:
         return _judge_cpu(n, system, entry, weights_gb)
     gpu = _judge_gpu(n, system, c)
-    if gpu[0] != "too_tight":
+    if gpu[0] in ("perfect", "good"):  # CPU は良くても good(cpu_top)なので比べなくてよい
         return gpu
     cpu = _judge_cpu(n, system, entry, weights_gb)
-    if cpu[0] != "too_tight":
+    if _LEVELS.index(cpu[0]) < _LEVELS.index(gpu[0]):
         return (
             cpu[0],
             cpu[1],
-            [*cpu[2], tr(f"GPU では動かない: {gpu[2][0]}", f"Does not run on the GPU: {gpu[2][0]}")],
+            [
+                *cpu[2],
+                tr(f"GPU では動かない: {gpu[2][0]}", f"Does not run on the GPU: {gpu[2][0]}")
+                if gpu[0] == "too_tight"
+                else tr(
+                    f"GPU では段階が {gpu[0]}({gpu[2][0]})なので、CPU の判定を取った",
+                    f"On the GPU the level is {gpu[0]} ({gpu[2][0]}), so the CPU judgement is used",
+                ),
+            ],
             cpu[3],
         )
     return gpu
@@ -2296,10 +2348,57 @@ def cpu_family(entry: ModelEntry):
     return run
 
 
+# CPU だけで動かすときの段階の上限(#108。docs/scoring.md「CPU で動かすとき」)。
+# - 読み上げ(tts)と、1 回の計算で終わる補助ツール(深度・ポーズ・切り抜き・背景除去・音の分離・コマの補間。
+#   tasks.TOOL_TASKS から upscale を除いたもの)は good まで。手順を何十回も回さないので、CPU でも実用の
+#   速さに近い(Kokoro・Piper は CPU で実時間に動く設計)
+# - それ以外(画像・動画・音楽・効果音・3D の生成。拡散の系統で手順を何十回も回す)は marginal まで。
+#   HF の Intel CPU のブログ(huggingface.co/blog/stable-diffusion-inference-intel)で SD 1.5 の 20 手順が
+#   サーバーの CPU で約 32 秒(最適化の前)、ComfyUI の README は CPU だけの実行を「not recommended」とする
+# - 高解像度化(upscale)は生成と同じ marginal まで(一覧の高解像度化は SeedVR2・SUPIR などの拡散の系統)
+# llmfit は CPU を good まで(LLM の生成はメモリの帯域で決まる)。拡散は計算で決まるので分けた
+CPU_ONE_PASS_TASKS = frozenset({"tool", "estimate", "matting", "interp", "segment", "separate"})
+
+
+def cpu_top(entry: ModelEntry) -> str:
+    """CPU だけで動かすときの段階の上限(good / marginal。#108)。"""
+    if entry.modality == "tts":
+        return "good"
+    if entry.tasks and all(t in CPU_ONE_PASS_TASKS for t in entry.tasks):
+        return "good"
+    return "marginal"
+
+
+def cpu_top_text(entry: ModelEntry) -> tuple[str, str]:
+    if cpu_top(entry) == "good":
+        return (
+            "CPU で動かすので段階は good まで(読み上げ・1 回の計算で終わる道具)",
+            "Runs on the CPU, so the level is capped at good (text to speech or a one-pass tool)",
+        )
+    return (
+        "CPU で生成するので段階は marginal まで(手順を何十回も回す生成は CPU ではとても遅い)",
+        "Generates on the CPU, so the level is capped at marginal (generation runs many steps and is"
+        " very slow on a CPU)",
+    )
+
+
+def _cpu_level(entry: ModelEntry, ram_gb: float, system: SystemInfo) -> str:
+    """CPU で動かすときの段階: メインメモリの使用率の帯を cpu_top で抑える。98% を超える・総量が分からない
+    ときは marginal(足りない分は _ram_check が仮想メモリの判定をする)。"""
+    top = cpu_top(entry)
+    total = system.ram_total_gb
+    if not total:
+        return "marginal"
+    band = fit_band(ram_gb, total)
+    return "marginal" if band == "too_tight" else _cap(band, top)
+
+
 def _judge_cpu(
     n: Need, system: SystemInfo, entry: ModelEntry, weights_gb: float | None = None
 ) -> tuple[str, str, list[str], float]:
-    """GPU を使わない判定。小さく CPU で動く種類と、CPU で動く系統(families.CPU_FAMILIES)だけ marginal。"""
+    """GPU を使わない判定。小さく CPU で動く種類と、CPU で動く系統(families.CPU_FAMILIES)だけ動く。
+    段階はメインメモリの使用率の帯(FIT_BANDS)で、上限は cpu_top(生成は marginal、読み上げ・1 回の計算の
+    道具は good。#108)。"""
     w = weights_gb if weights_gb is not None else (entry.total_size_bytes or 0) / GIB
     why = tr("GPU なし", "No GPU") if system.vram_gb <= 0 else tr("GPU に載らない", "Does not fit on the GPU")
     run = cpu_family(entry)
@@ -2323,12 +2422,12 @@ def _judge_cpu(
             ),
             tr(f"CPU で動く根拠: {evidence}", f"Evidence that it runs on CPU: {evidence}"),
         ]
-        fit, mode, reasons = _ram_check("marginal", "cpu", reasons, ram, system)
-        return fit, mode, reasons, ram
+        fit, mode, reasons = _ram_check(_cpu_level(entry, ram, system), "cpu", reasons, ram, system)
+        return fit, mode, [*reasons, tr(*cpu_top_text(entry))], ram
     if 0 < w <= CPU_MAX_WEIGHTS_GB and entry.modality in CPU_MODALITIES:
         line = tr(f"{why}: CPU で動く見込み(遅い)", f"{why}: should run on the CPU (slow)")
-        fit, mode, reasons = _ram_check("marginal", "cpu", [line], n.ram, system)
-        return fit, mode, reasons, n.ram
+        fit, mode, reasons = _ram_check(_cpu_level(entry, n.ram, system), "cpu", [line], n.ram, system)
+        return fit, mode, [*reasons, tr(*cpu_top_text(entry))], n.ram
     return (
         "too_tight",
         "none",
@@ -2345,9 +2444,19 @@ def _judge_cpu(
 # 段階は、動かし方で使う置き場所(GPU なら VRAM)の使用率で決める
 # (llmfit の docs/how-it-works.md「Fit analysis」にならう。2026-10-20 に利用者が決めた):
 # 60% 以下 perfect / 85% 以下 good / 98% 以下 marginal / それより上 too_tight。
-# 動かし方ごとの上限: 全部 GPU は上限なし、部品を順に載せ替える(GPU~)は good まで、
-# メインメモリへ逃がす(GPU+RAM)と CPU は marginal まで
+# 動かし方ごとの上限: 全部 GPU は上限なし、部品を順に載せ替える(GPU~)とメインメモリへ逃がす(GPU+RAM)は
+# good まで、CPU は cpu_top(生成は marginal、読み上げ・1 回の計算の道具は good)。
+# GPU の会社による上限は無い(#108)
 FIT_BANDS = ((0.60, "perfect"), (0.85, "good"), (0.98, "marginal"))
+# 逃がす動かし方の、NVIDIA 以外の GPU の注意(#108)。ComfyUI の Dynamic VRAM(comfy-aimdo。重みを必要なときに
+# だけ GPU に読み、追い出す)は NVIDIA の Windows・Linux だけ(ComfyUI のブログ「Dynamic VRAM」、
+# github.com/Comfy-Org/comfy-aimdo)。それ以外は昔の lowvram の逃がし方になり、さらに遅い
+OFFLOAD_NO_DYNAMIC_VRAM = (
+    "NVIDIA 以外の GPU には ComfyUI の Dynamic VRAM(comfy-aimdo。NVIDIA の Windows・Linux だけ)が無いので、"
+    "逃がすとさらに遅い",
+    "GPUs other than NVIDIA lack ComfyUI's Dynamic VRAM (comfy-aimdo; NVIDIA on Windows and Linux only),"
+    " so offloading is slower still",
+)
 _LEVELS = ("perfect", "good", "marginal", "too_tight")
 
 
@@ -2366,10 +2475,23 @@ def _cap(level: str, top: str) -> str:
 
 
 def gpu_choice(
-    full: float, sequential: float | None, offload: float, vram: float, *, allow_offload: bool = True
+    full: float,
+    sequential: float | None,
+    offload: float,
+    vram: float,
+    *,
+    allow_offload: bool = True,
+    ram_ratio: float | None = None,
 ) -> tuple[str, str]:
     """(段階, 載せ方)。載せ方は full(全部 GPU)/ seq(部品を順に載せ替え)/ offload(逃がす)。
-    一番良い段階の載せ方を選ぶ(同じなら full → seq → offload)。表の VRAM の値もこれで決める。
+    全部載せ・順に載せ替えの良いほうを選び、逃がす載せ方はそれより段階が上がるときだけ選ぶ
+    (同じ段階なら full → seq → offload。#108)。全部載せ・順に載せ替えが Good 以上なら逃がさない。
+    逃がすのは、全部載せも順に載せ替えも 98% を超えるか、85〜98%(Marginal)で逃がせば Good になるとき
+    (docs/scoring.md「逃がす動かし方を選ぶとき」。llmfit は 98% を超えるときだけ逃がすが、それだと VRAM を
+    増やして段階が下がる場合がある(Good の逃がす行が、VRAM を少し増やすと Marginal の順に載せ替えになる))。
+    逃がす載せ方の段階は、VRAM と メインメモリ(ram_ratio = 逃がすときに要るメモリ ÷ メインメモリ)の
+    きついほうの帯(表の Mem% と同じ。98% を超えるメモリは marginal として、足りない分は _ram_check が
+    仮想メモリで判定する)。表の VRAM の値もこれで決める。
     allow_offload=False(メインメモリと共有する GPU。逃がす先が同じメモリ)なら逃がす載せ方は使わない。"""
     seq = full if sequential is None else sequential
     options = [
@@ -2377,7 +2499,11 @@ def gpu_choice(
         (_cap(fit_band(seq, vram), "good"), "seq"),
     ]
     if allow_offload:
-        options.append((_cap(fit_band(offload, vram), "marginal"), "offload"))
+        level = fit_band(offload, vram)
+        if ram_ratio is not None and level != "too_tight":
+            ram_band = fit_band(ram_ratio, 1.0)
+            level = _cap(level, "marginal" if ram_band == "too_tight" else ram_band)
+        options.append((_cap(level, "good"), "offload"))
     return min(options, key=lambda o: _LEVELS.index(o[0]))
 
 
@@ -2390,7 +2516,15 @@ def shared_memory(system: SystemInfo | None) -> bool:
 def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, list[str], float]:
     vram = system.vram_gb
     shared = shared_memory(system)
-    fit, how = gpu_choice(n.full, n.sequential, n.offload, vram, allow_offload=not shared)
+    ram_total = system.ram_total_gb
+    fit, how = gpu_choice(
+        n.full,
+        n.sequential,
+        n.offload,
+        vram,
+        allow_offload=not shared,
+        ram_ratio=n.ram / ram_total if ram_total else None,
+    )
     pct = {
         k: round(100 * round(v, 2) / vram)
         for k, v in (("full", n.full), ("seq", n.sequential), ("offload", n.offload))
@@ -2425,15 +2559,32 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
         ]
     else:
         mode = "offload"
-        reasons = [
-            tr(
+        seq = min(n.sequential, n.full)
+        g = system.best_gpu
+        tail = (
+            f"遅い。逃がすと {n.offload:.1f} GB({pct['offload']}%)。段階は good まで",
+            f"slow; {n.offload:.1f} GB with offload ({pct['offload']}%); level capped at good",
+        )
+        if fit_band(seq, vram) == "too_tight":
+            first = tr(
                 f"VRAM {n.full:.1f} GB 必要 > {vram:.1f} GB: 重みの一部をメインメモリに逃がせば動く"
-                f"(遅い。逃がすと {n.offload:.1f} GB、{pct['offload']}%。段階は marginal まで)",
-                f"VRAM {n.full:.1f} GB needed > {vram:.1f} GB: runs by offloading part of the weights to "
-                "main memory"
-                f" (slow; {n.offload:.1f} GB offloaded, {pct['offload']}%; level capped at marginal)",
+                f"({tail[0]})",
+                f"VRAM {n.full:.1f} GB needed > {vram:.1f} GB: runs by offloading part of the weights to"
+                f" main memory ({tail[1]})",
             )
-        ]
+        else:
+            # GPU だけでも載る(85〜98%)が、逃がしたほうが段階が上がる(#108。docs/scoring.md
+            # 「逃がす動かし方を選ぶとき」。ComfyUI の Dynamic VRAM もこの状況では重みを逃がす)
+            used = round(100 * round(seq, 2) / vram)
+            first = tr(
+                f"GPU だけでは {used}%(VRAM {seq:.1f} / {vram:.1f} GB)でぎりぎりなので、"
+                f"一部をメインメモリへ逃がす({tail[0]})",
+                f"On the GPU alone it is tight at {used}% (VRAM {seq:.1f} / {vram:.1f} GB),"
+                f" so part of the weights is offloaded to main memory ({tail[1]})",
+            )
+        reasons = [first]
+        if g is not None and g.vendor != "nvidia":
+            reasons.append(tr(*OFFLOAD_NO_DYNAMIC_VRAM))
     ram_need = n.ram_gpu if mode == "gpu" else n.ram
     fit, mode, reasons = _ram_check(fit, mode, reasons, ram_need, system)
     return fit, mode, reasons, ram_need
@@ -2527,9 +2678,10 @@ GOOD = ("perfect", "good")
 
 
 def _ok(prep: _Model, system: SystemInfo, s: Settings) -> bool:
+    """逃がさずに GPU で good 以上か(限界は GPU に載る行だけで数える。逃がす・CPU は数えない。#108)。"""
     n = prep.need(s, gpu_precision(prep.entry, system, s))
-    fit, _mode, _, _ram = _judge(n, system, prep.c, prep.entry, prep.parts.total)
-    return fit in GOOD
+    fit, mode, _, _ram = _judge(n, system, prep.c, prep.entry, prep.parts.total)
+    return fit in GOOD and mode == "gpu"
 
 
 def _largest(candidates: Iterable, ok) -> object | None:

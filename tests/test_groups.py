@@ -434,7 +434,13 @@ def test_fit_bands():
     ]
     assert gpu_choice(5, 5, 2, 10) == ("perfect", "full")  # 50%
     assert gpu_choice(12, 5, 2, 10) == ("good", "seq")  # 載せ替えは 50% でも good まで
-    assert gpu_choice(12, 11, 5, 10) == ("marginal", "offload")  # 逃がすのは marginal まで
+    assert gpu_choice(12, 11, 5, 10) == ("good", "offload")  # 逃がすのは good まで(#108)
+    # 順に載せ替えが 85〜98%(marginal)で逃がせば good なら逃がす。good で並べば逃がさない(GPU が先)
+    assert gpu_choice(12, 9, 5, 10) == ("good", "offload")
+    assert gpu_choice(12, 8, 5, 10) == ("good", "seq")
+    # 逃がす段階はメインメモリにもよる(ram_ratio。表の Mem% と同じ)。marginal で並べば逃がさない
+    assert gpu_choice(12, 9, 5, 10, ram_ratio=0.9) == ("marginal", "seq")
+    assert gpu_choice(12, 11, 5, 10, ram_ratio=1.2) == ("marginal", "offload")  # 足りない分は仮想メモリ
     assert gpu_choice(12, 11, 9.9, 10) == ("too_tight", "full")
 
 

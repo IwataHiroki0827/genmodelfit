@@ -34,6 +34,8 @@ SYSTEM = {
     "other_gpus",
     "other_gpus_checked",
     "notes",
+    "platform_verified",  # #108。--vram で仮定した PC は false
+    "platform_verified_by",
 }
 GPU = {
     "name",
@@ -313,6 +315,7 @@ def check_system(d: dict) -> None:
     assert s["best_gpu"] is None or set(s["best_gpu"]) == GPU
     assert "vram" in s["overrides"] and "ram" in s["overrides"]
     assert s["best_gpu"]["vram_total_gb"] == 8 and s["ram_total_gb"] == 32
+    assert s["platform_verified"] is False and s["platform_verified_by"] is None  # GPU が仮定(#108)
 
 
 def check_fit(item: dict) -> None:
@@ -405,8 +408,8 @@ def check_counts(d: dict) -> None:
 def check_estimate(e: dict) -> None:
     assert set(e) == ESTIMATE
     assert e["basis"] in ("measured", "estimated")
-    assert e["basis_detail"] in ("measured", "measured_community", "calibrated", "estimated")
-    assert (e["basis"] == "measured") == (e["basis_detail"] in ("measured", "measured_community"))
+    assert e["basis_detail"] in ("measured", "calibrated", "estimated")
+    assert (e["basis"] == "measured") == (e["basis_detail"] == "measured")
     assert e["fit"] in ("perfect", "good", "marginal", "too_tight")
     assert e["run_mode"] in ("gpu", "offload", "cpu", "none", "unknown")
     if e["limits"] is not None:
