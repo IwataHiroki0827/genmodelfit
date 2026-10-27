@@ -850,20 +850,26 @@ class Need:
     stages: StageMem | None = None
 
 
-def need_staged(parts: Parts, st: StageMem, c: Coefficients, delta: float = 0.0) -> Need:
+def need_staged(
+    parts: Parts, st: StageMem, c: Coefficients, delta: float = 0.0, *, full_only: bool = False
+) -> Need:
     """段ごとの作業用メモリ(#100。docs/accuracy.md「式」)での必要量。
 
-    全部載せ      = 固定分 + 全部品の重み + max(S, V_eff, T)
-    順に載せ替え  = 固定分 + max(文章の段の重み + T, 生成の段の重み + S, 仕上げの段の重み + V_eff, その他)
-    逃がす        = 固定分 + max(各段の重み × offload_fraction + その段の作業用メモリ)
-    実測からのずらし delta は 3 つに同じ量を足す(max(a + d, b + d) = max(a, b) + d)。"""
+    全部載せ      = 固定分 + 全部品の重み + max(0, max(S, V_eff, T) + d)
+    順に載せ替え  = 固定分 + max(各段の重み + max(0, その段の作業用メモリ + d_段))
+    逃がす        = 固定分 + max(各段の重み × offload_fraction + max(0, その段の作業用メモリ + d_段))
+    実測からのずらし d は作業用メモリに足し、段ごとに 0 で切る(どの量も重み + 固定分の下限より下げない。#95)。
+    full_only(余裕のある GPU の山からの正のずらし。_prepare)なら、ずらしは全部載せにだけ足す(d_段 = 0)。
+    そうでなければ d_段 = d(固定分の誤差なら max(a + d, b + d) = max(a, b) + d)。"""
     w = c.weight_factor
     work = st.peak
+    d_stage = 0.0 if (full_only and delta > 0) else delta
     stage_work = {"encode": st.T, "denoise": st.S, "decode": st.V_eff, "other": 0.0}
+    stage_work = {k: max(0.0, v + d_stage) for k, v in stage_work.items()}
     peak = {s: (parts.denoise_peak if s == "denoise" else parts.stage(s)) for s in STAGES}
-    full = c.overhead_gb + parts.total * w + work + delta
-    seq = c.overhead_gb + max(peak[s] * w + stage_work[s] for s in STAGES) + delta
-    off = c.overhead_gb + max(peak[s] * w * c.offload_fraction + stage_work[s] for s in STAGES) + delta
+    full = c.overhead_gb + parts.total * w + max(0.0, work + delta)
+    seq = c.overhead_gb + max(peak[s] * w + stage_work[s] for s in STAGES)
+    off = c.overhead_gb + max(peak[s] * w * c.offload_fraction + stage_work[s] for s in STAGES)
     return Need(
         full=full,
         sequential=min(seq, full),
@@ -1324,6 +1330,11 @@ class _Model:
     # ほかの利用者の実測を設定の違う推定に広げるときのずらし(COMMUNITY_CALIBRATION_RANGE で抑えたもの)。
     # None は delta と同じ
     delta_other: float | None = None
+    # 正のずらしを全部載せにだけ足すか(#100): 実測した GPU の VRAM が式の全部載せ以上(余裕のある GPU の山。
+    # 動的 VRAM が部品を載せたままにし、VAE もタイルに分けずに仕上げた)なら True
+    full_only: bool = False
+    # 作者の実測が下限(重み + 固定分)をわずかに下回った(MEASURED_FLOOR_TOLERANCE 以内)ので下限にした
+    near_floor: bool = False
 
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
@@ -1340,10 +1351,10 @@ class _Model:
         st = stages_for(self.entry, s, prec)
         if st is not None:
             # 段ごとに当てられるモデル(#100): GPU の精度・会社は stages_for が作業用メモリに入れる。
-            # 実測からのずらしは全部載せ・順に載せ替え・逃がすに同じ量を足す
+            # 実測からのずらしは段ごとに 0 で切る。余裕のある GPU の山からの正のずらしは全部載せにだけ足す
             if prec is not None and prec.vae_factor != 1:
                 parts.decode *= prec.vae_factor
-            return need_staged(parts, st, self.c, delta)
+            return need_staged(parts, st, self.c, delta, full_only=self.full_only)
         act = activation_gb(self.entry, s, self.c) + delta
         if prec is not None and (prec.act_factor != 1 or prec.vae_factor != 1):
             parts.decode *= prec.vae_factor
@@ -1383,17 +1394,60 @@ def _prepare(
         # 設定の違う推定へは、実測 ÷ 式 を COMMUNITY_CALIBRATION_RANGE に収めて広げる
         r_lo, r_hi = COMMUNITY_CALIBRATION_RANGE
         other = min(max(delta, est * (r_lo - 1), lo), max(lo, est * (r_hi - 1)))
-        return _Model(entry, c, m, delta, own.base, parts, clamp is not None, own, clamp, other)
-    clamped = False
+        return _Model(
+            entry,
+            c,
+            m,
+            delta,
+            own.base,
+            parts,
+            clamp is not None,
+            own,
+            clamp,
+            other,
+            _full_only(m, est, delta),
+        )
+    clamped = near = False
     if is_censored(m) or lower_bound_only(m):
         clamped = delta < 0 and lower_bound_only(m)
         delta = max(0.0, delta)  # 張り付いた実測・下限の実測は「これ以上」としてだけ使う
     elif delta < -max(0.0, act_m):
         # 全部載せの値は重み + 固定分(作業用メモリ 0)より下げない(#95 の下限。#100 で段ごとの式にして、作者の
-        # 動的 VRAM の実測が下限より小さく出ることがある: 重みの一部をメインメモリに置いていた)
-        clamped = True
+        # 動的 VRAM の実測が下限より小さく出ることがある: 重みの一部をメインメモリに置いていた)。
+        # 下限との差が MEASURED_FLOOR_TOLERANCE 以内なら、数え方の誤差として実測のまま扱う
+        # (値は下限、理由に出す)
+        near = -max(0.0, act_m) - delta <= floor_tolerance(est - max(0.0, act_m))
+        clamped = not near
         delta = -max(0.0, act_m)
-    return _Model(entry, c, m, delta, at, parts, clamped, clamp="floor" if clamped else None)
+    return _Model(
+        entry,
+        c,
+        m,
+        delta,
+        at,
+        parts,
+        clamped,
+        clamp="floor" if clamped else None,
+        full_only=_full_only(m, est, delta),
+        near_floor=near,
+    )
+
+
+# 作者の実測が下限(重み + 固定分)を下回っても、この幅以内なら数え方の誤差として実測のまま扱う(#100)。
+# 0.1 GiB か下限の 1% の大きいほう(GiB と GB の丸め、ファイルの大きさと VRAM 上の大きさの小さな違い)
+MEASURED_FLOOR_TOLERANCE = (0.1, 0.01)
+
+
+def floor_tolerance(floor_gb: float) -> float:
+    return max(MEASURED_FLOOR_TOLERANCE[0], MEASURED_FLOOR_TOLERANCE[1] * floor_gb)
+
+
+def _full_only(m: Measurement, est_full: float, delta: float) -> bool:
+    """正のずらしを全部載せにだけ足すか(#100。docs/accuracy.md「実測の使い方」)。実測した GPU の VRAM が
+    式の全部載せの値以上なら、その実測は余裕のある GPU の山(動的 VRAM が部品を載せたままにし、VAE もタイルに
+    分けずに仕上げた)で、式との差は順に載せ替え・逃がすでは起きない。そうでなければ(実測が載せ替え・逃がしで
+    動いた)3 つに足す。実測した GPU で決まるので、判定する PC の VRAM について単調。"""
+    return delta > 0 and m.gpu_vram_gb >= est_full
 
 
 @dataclass(frozen=True)
@@ -1736,6 +1790,18 @@ def _estimate(
         elif same_settings:
             basis, measured_on = "measured", on
             detail = "measured_community" if is_community(m) else "measured"
+            if prep.near_floor:
+                reasons.append(
+                    tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限(重み + 固定分 "
+                        f"{n.full:.2f} GB)をわずかに下回るので下限の値にした(差が "
+                        f"{floor_tolerance(n.full):.2f} GB 以内なら数え方の誤差として実測のまま扱う)",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) is slightly below the full-load"
+                        f" floor (weights + fixed {n.full:.2f} GB), so the floor is used (within"
+                        f" {floor_tolerance(n.full):.2f} GB it still counts as measured: a counting"
+                        " difference)",
+                    )
+                )
             if is_censored(m):
                 reasons.append(
                     tr(

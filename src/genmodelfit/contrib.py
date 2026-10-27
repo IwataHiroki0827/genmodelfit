@@ -1704,10 +1704,28 @@ def _check_against_estimate(
     try:
         settings = settings_for(entry, Settings.from_dict({k: v for k, v in s.items() if k in SETTINGS_KEYS}))
         parts = apply_precision(parts, entry, settings)
-        full = formula_need(entry, settings, c, parts).full
+        n = formula_need(entry, settings, c, parts)
+        full = n.full
     except (TypeError, ValueError):
         return
-    if full > 0 and abs(peak - full) / full > NOTICE_DEVIATION:
+    # 作業用メモリだけの実測(torch_reserved かつ動的 VRAM。#100、estimate.working_only)は重みを含まないので、
+    # 式の作業用メモリ(一番重い段)と比べる。見積もりにも段階にも使わず、照合だけに使う
+    if mm.get("vram_metric") == "torch_reserved" and mm.get("offload") == "dynamic":
+        work = n.act
+        if work > 0 and abs(peak - work) / work > NOTICE_DEVIATION:
+            r.notice(
+                "deviation",
+                tr(
+                    f"作業用メモリだけの実測(動的 VRAM の torch の確保量。照合だけに使う){peak} GB が、式の"
+                    f"作業用メモリ {work:.2f} GB から {abs(peak - work) / work:.0%} 外れています"
+                    f"(±{NOTICE_DEVIATION:.0%} を超えた。見積もりにも段階にも使わない)",
+                    "The working-memory-only measurement (torch reservation with dynamic VRAM; cross-check"
+                    f" only), {peak} GB, is {abs(peak - work) / work:.0%} off the formula's working memory"
+                    f" of {work:.2f} GB"
+                    f" (beyond ±{NOTICE_DEVIATION:.0%}; not used for estimates or levels)",
+                ),
+            )
+    elif full > 0 and abs(peak - full) / full > NOTICE_DEVIATION:
         r.notice(
             "deviation",
             tr(

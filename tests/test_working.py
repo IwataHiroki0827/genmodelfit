@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from genmodelfit import families
+from genmodelfit import families, i18n
 from genmodelfit.db import load
 from genmodelfit.models import Gpu, Measurement, Settings, SystemInfo
 from genmodelfit.working import LATENTS, VAE_WORK, WORKS, stage_memory
@@ -409,3 +409,107 @@ def test_size_bins(db):
     # 大きさの分からない Flux3・Stable Audio 3 は当てない(今までの式)
     assert _st(db, "image_flux3_klein_t2i") is None
     assert _st(db, "audio_stable_audio_3_medium") is None
+
+
+# --- 下限と実測のずらし(#100 のチェッカーの M1・S1・S3) -------------------------------------------
+
+
+def _floor_need(entry, s):
+    c = E.load_coefficients()
+    return E.need(E.apply_precision(E.components(entry), entry, s), 0.0, c)
+
+
+@pytest.mark.parametrize(
+    ("mid", "kw"),
+    [
+        ("image_sdxl_simple", {"width": 256, "height": 256}),
+        ("image_sdxl_simple", {}),
+        ("audio_ace_step_1_5_checkpoint", {"seconds": 5}),
+        ("audio_ace_step_1_5_checkpoint", {}),
+        ("image_z_image_turbo_int8", {"width": 256, "height": 256}),
+        ("text_to_video_wan", {"width": 256, "height": 256, "frames": 17}),
+    ],
+)
+def test_shift_never_goes_below_the_floor(db, mid, kw):
+    """実測からの負のずらしは段ごとに 0 で切る: 実測と違う設定でも、3 つの量は重み + 固定分(作業用メモリ 0)の
+    値を下回らない(#95 の下限)。"""
+    e = db.get(mid)
+    s = E.settings_for(e, Settings(**kw) if kw else None)
+    fl = _floor_need(e, s)
+    for vram in (6.0, 8.0, 16.0, 24.0):
+        est = E.estimate(e, nv(vram), Settings(**kw) if kw else None, db.measurements)
+        assert est.vram_gb >= round(fl.full, 2) - 0.005, (mid, vram)
+        assert est.vram_sequential_gb >= round(fl.sequential, 2) - 0.005, (mid, vram)
+        assert est.vram_offload_gb >= round(fl.offload, 2) - 0.005, (mid, vram)
+
+
+def test_all_staged_models_respect_the_floor(db):
+    for m in db.models:
+        s = E.settings_for(m, None, sized=not E.no_size_input(m))
+        if E.stages_for(m, s) is None or E.components(m).unknown:
+            continue
+        fl = _floor_need(m, s)
+        est = E.estimate(m, nv(12.0), None, db.measurements)
+        assert est.vram_gb >= round(fl.full, 2) - 0.005, m.id
+        assert est.vram_sequential_gb >= round(fl.sequential, 2) - 0.005, m.id
+        assert est.vram_offload_gb >= round(fl.offload, 2) - 0.005, m.id
+
+
+def test_positive_shift_from_a_roomy_gpu_goes_to_full_load_only(db):
+    """RTX 5080(16 GB)は Wan 2.1 1.3B の式の全部載せ(11.34 GB)以上なので、+1.96 GB は全部載せにだけ足す
+    (余裕のある GPU で VAE をタイルに分けずに仕上げた山。順に載せ替え・逃がすでは起きない)。"""
+    e = db.get("text_to_video_wan")
+    s = Settings(width=512, height=512, frames=49)
+    prep = E._prepare(e, db.measurements, E.load_coefficients(), E.settings_for(e, s), None)
+    assert prep.delta == pytest.approx(13.3 - 11.34, abs=0.01) and prep.full_only
+    a = E.estimate(e, nv(16.0), s, db.measurements)
+    b = E.estimate(e, nv(16.0), s, [])
+    assert a.vram_gb == 13.3 and a.vram_sequential_gb == b.vram_sequential_gb
+    assert a.vram_offload_gb == b.vram_offload_gb
+    # 6 GB は逃がして marginal、8 GB は順に載せ替えて GPU で marginal(使用率 97%)
+    six, eight = E.estimate(e, nv(6.0), s, db.measurements), E.estimate(e, nv(8.0), s, db.measurements)
+    assert (six.fit, six.run_mode) == ("marginal", "offload")
+    assert (eight.fit, eight.run_mode) == ("marginal", "gpu")
+    # 小さな GPU の実測(式の全部載せより VRAM が小さい)からの正のずらしは 3 つに足す
+    small = Measurement(**{**vars(prep.measurement), "gpu_vram_gb": 8.0, "peak_vram_gb": 7.9})
+    assert not E._full_only(small, 11.34, 0.5)
+
+
+def test_measurement_slightly_below_the_floor_stays_measured(db):
+    """作者の ACE-Step 1.5 の実測 10.80 GB は下限 10.82 GB を 0.02 GB 下回る(数え方の誤差)。値は下限、
+    根拠は measured のまま、理由に出す。"""
+    e = db.get("audio_ace_step_1_5_checkpoint")
+    s = Settings(seconds=20)
+    with i18n.forced("ja"):
+        est = E.estimate(e, nv(16.0), s, db.measurements)
+    assert est.basis == "measured" and est.vram_gb == pytest.approx(10.82, abs=0.01)
+    assert any("わずかに下回る" in r for r in est.reasons)
+    assert E.floor_tolerance(10.82) == pytest.approx(0.1082)
+
+
+def test_working_only_community_rows_never_set_the_level(db):
+    """今の NVIDIA の bench の提出(動的 VRAM の torch_reserved)は、出どころが 2 つ以上そろっても段階を決めない
+    (照合だけ。#100)。"""
+    e = db.get("image_sdxl_simple")
+    system = nv(12.0)
+    s = E.settings_for(e, None)
+    row = Measurement(
+        model_id=e.id,
+        gpu_name="NVIDIA GeForce RTX 3060",
+        gpu_vram_gb=12.0,
+        peak_vram_gb=2.3,
+        settings=Settings(width=1024, height=1024),
+        offload="dynamic",
+        vram_metric="torch_reserved",
+        origin="community",
+        n_submissions=3,
+        n_used=3,
+        n_sources=3,
+        source_ids=["a" * 12, "b" * 12, "c" * 12],
+        n_oom=0,
+        consistent=True,
+    )
+    lvl, _ = E.measured_level([row], e, s, system, E.gpu_precision(e, system, s), 0.0)
+    assert lvl is None
+    est = E.estimate(e, system, None, [row])
+    assert est.fit_from == "estimate" and est.basis_detail == "estimated"

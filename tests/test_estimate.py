@@ -187,11 +187,10 @@ def test_measurement_corrects_other_settings(db):
     other = estimate(e, pc(16), Settings(width=1024, height=1024), db.measurements)
     assert other.basis == "estimated" and any("実測" in r and "補正" in r for r in other.reasons)
     # 832px の実測 8.0 GB より小さくならない。#100 から全部載せの作業用メモリは一番重い段
-    # (SDXL は 512px 以上で VAE のタイルの 1.06 GB が一番重く、生成の段は 1024px でも 0.26 GB)なので同じ値で、
-    # 生成の段が効く順に載せ替えの量が増える
+    # (SDXL は 512px から 2000px ほどまで VAE のタイルの 1.06 GB が一番重い)なので同じ値
     at = estimate(e, pc(16), Settings(width=832, height=832), db.measurements)
     assert other.vram_gb >= at.vram_gb == 8.0
-    assert other.vram_sequential_gb > at.vram_sequential_gb
+    assert other.vram_sequential_gb >= at.vram_sequential_gb
 
 
 # --- 設定と単調さ --------------------------------------------------------------------------------
@@ -213,38 +212,38 @@ def test_settings_scaling_is_monotonic(db, coef):
 
     # 全部載せは増えるか同じ(#100: 一番重い段が VRAM によらないタイルの VAE なら同じ)。生成の段が効く
     # 順に載せ替えの量は増える
-    sides = [v(img, width=px, height=px) for px in (512, 768, 1024, 1536)]
-    assert sides == sorted(sides)
-    sides_seq = [seq(img, width=px, height=px) for px in (512, 768, 1024, 1536)]
+    # 作者の SDXL の実測のずらし(−1.0 GB)は段ごとに 0 で切るので、生成の段の作業用メモリが 1 GB を超える
+    # 2048px より上で初めて増える
+    sides = [v(img, width=px, height=px) for px in (512, 768, 1024, 1536, 4096)]
+    assert sides == sorted(sides) and sides[0] < sides[-1]
+    sides_seq = [seq(img, width=px, height=px) for px in (512, 768, 1024, 1536, 4096)]
     assert sides_seq == sorted(sides_seq) and sides_seq[0] < sides_seq[-1]
-    assert v(img, width=1024, height=1024, batch=1) <= v(img, width=1024, height=1024, batch=4)
-    assert seq(img, width=1024, height=1024, batch=1) < seq(img, width=1024, height=1024, batch=4)
+    assert v(img, width=1024, height=1024, batch=1) <= v(img, width=1024, height=1024, batch=16)
+    assert seq(img, width=1024, height=1024, batch=1) < seq(img, width=1024, height=1024, batch=16)
     frames = [v(vid, width=512, height=512, frames=n) for n in (17, 49, 81, 121)]
     assert frames == sorted(frames) and frames[0] < frames[-1]
-    secs = [v(aud, seconds=t) for t in (10, 30, 120)]
+    secs = [v(aud, seconds=t) for t in (10, 30, 600)]
     assert secs == sorted(secs)
-    secs_seq = [seq(aud, seconds=t) for t in (10, 30, 120)]
+    secs_seq = [seq(aud, seconds=t) for t in (10, 30, 600)]
     assert secs_seq == sorted(secs_seq) and secs_seq[0] < secs_seq[-1]
 
 
 def test_limits_are_the_largest_good_settings(db):
     e = db.get("text_to_video_wan")
     base = Settings(width=512, height=512, frames=49)  # 実測の設定(縦横比を正方形にそろえる)
-    lim = limits_for(
-        e, pc(12), base, db.measurements
-    )  # #100 から 10 GB では good にならない(Wan 1.3B の外れ)
+    lim = limits_for(e, pc(10), base, db.measurements)  # 8 GB では標準の設定でも 97% で good にならない
     assert lim["level"] == "good" and lim["max_side_px"] and lim["max_frames"]
     at = Settings(width=lim["max_side_px"], height=lim["max_side_px"], frames=49)
     over = Settings(width=lim["max_side_px"] + 32, height=lim["max_side_px"] + 32, frames=49)
-    assert estimate(e, pc(12), at, db.measurements).fit in ("perfect", "good")
-    assert estimate(e, pc(12), over, db.measurements).fit not in ("perfect", "good")
-    # 512px ではコマ数は調べる範囲の上限まで good(段ごとの式では Wan 2.1 の VAE はコマ数で増えない)。
+    assert estimate(e, pc(10), at, db.measurements).fit in ("perfect", "good")
+    assert estimate(e, pc(10), over, db.measurements).fit not in ("perfect", "good")
+    # #100: 512px ではコマ数は調べる範囲の上限まで good(段ごとの式では Wan 2.1 の VAE はコマ数で増えない)。
     # 768px で、限界のすぐ上が good でないことを見る
     assert lim["at_cap"] == ["max_frames"]
     wide = Settings(width=768, height=768, frames=49)
-    lim768 = limits_for(e, pc(12), wide, db.measurements)
+    lim768 = limits_for(e, pc(10), wide, db.measurements)
     more = estimate(
-        e, pc(12), Settings(width=768, height=768, frames=lim768["max_frames"] + 4), db.measurements
+        e, pc(10), Settings(width=768, height=768, frames=lim768["max_frames"] + 4), db.measurements
     )
     assert more.fit not in ("perfect", "good")
     # 大きな GPU ほど限界は上がる
@@ -269,13 +268,8 @@ CURATED = {  # id: (最低, 推奨)
     "3d_hunyuan3d_image_to_model": (6, 8),
     "3d_hunyuan3d-v2.1": (8, 12),
 }
-# #100(段ごとの作業用メモリ)から、Wan 2.1 1.3B は厳しめに出る: RTX 5080 の実測 13.3 GB(動的 VRAM)と
-# 式の 11.34 GB(VAE はタイルの値)の差 +1.96 GB を、順に載せ替え・逃がすにも足すため(v3 F)。
-# 直ったら strict の xfail が知らせる。Wan 2.2 5B の外れは #100 で直った
-KNOWN_MISS = pytest.mark.xfail(
-    strict=True, reason="Wan 2.1 1.3B は厳しめに出る(docs/accuracy.md の「分かっている限界」)"
-)
-CURATED_IDS = [pytest.param(i, marks=KNOWN_MISS) if i == "text_to_video_wan" else i for i in sorted(CURATED)]
+# #100 で Wan 2.2 5B と Wan 2.1 1.3B の外れは直った(strict の xfail を外した)
+CURATED_IDS = sorted(CURATED)
 
 
 def app_settings(db, model_id):
@@ -326,17 +320,20 @@ def test_calibration_is_reproducible():
     assert again["summary"] == committed["summary"]
     assert again["n"] == committed["n"] == 9
     assert again["frozen"] == committed["frozen"]  # #100: 合わせ直すのは act_3d_gb だけ
+    # 照合の行も同じ(空のキャッシュで作る: この PC の bench の実測を混ぜない。#100 のチェッカーの M2)
+    assert again["check"] == committed["check"]
+    assert again["loo"] == committed["loo"]
     assert set(again["coefficients"]) - set(again["frozen"]) == {"act_3d_gb"}
     assert load_coefficients().overhead_gb == committed["coefficients"]["overhead_gb"]
 
 
 def test_cli_info_shows_limits(capsys):
-    assert cli.main(["info", "text_to_video_wan", "--vram", "12", "--ram", "32", "--no-cache"]) == 0
+    assert cli.main(["info", "text_to_video_wan", "--vram", "10", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "この PC なら 長辺" in out and "コマまで good" in out
     assert (
         cli.main(
-            ["fit", "--json", "--limits", "--vram", "12", "--ram", "32", "--no-cache", "--all-workflows"]
+            ["fit", "--json", "--limits", "--vram", "10", "--ram", "32", "--no-cache", "--all-workflows"]
         )
         == 0
     )

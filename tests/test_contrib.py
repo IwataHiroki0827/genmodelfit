@@ -1021,7 +1021,9 @@ def test_upward_submissions_raise_needs_and_are_noticed(db):
     """+39% の提出 2 件: 同じ設定では値をそのまま使い(必要量を上げる)、validate は失敗にしない。
     よくある PC で段階を変える提出は確認(fit_change)としてマージする人に知らせる。"""
     measured = {m.model_id for m in db.measurements}
-    models = [t for t in _sized(db) if t.id not in measured][::12]
+    # #100: 余裕のある GPU(RTX 4090)の山からの正のずらしは全部載せにだけ足すので、段階が変わるのは全部載せで
+    # 帯をまたぐモデルだけ。まばらに選ぶと 0 件になりうるので 4 件に 1 件
+    models = [t for t in _sized(db) if t.id not in measured][::4]
     changed = 0
     for t, subs in _upward(db, 1.39, models):
         cm = [Measurement.from_dict(x) for x in contrib.aggregate(subs)]
