@@ -157,7 +157,7 @@ r per run mode (the table's Mem% and JSON's `utilization_pct` are this r):
 
 ### The promise changed
 
-Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo: 100 with int8 at 12 GB, 82.6 with bf16 on GPU~ at 16 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
+Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo int8: 100 on GPU~ at 14 GB, 82.3 all on GPU at 16 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
 
 ### Left out
 

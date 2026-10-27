@@ -46,7 +46,7 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   and `popularity` were removed. A model row's Score is now the representative's (it was the best score among the
   members). The table's Mem% and JSON `utilization_pct` show r (for `GPU+RAM` and rows short of RAM this can be the
   RAM share). **The Score can now drop when VRAM grows** and a heavier precision or run mode takes over (Z-Image
-  Turbo: 100 at 12 GB, 82.6 at 16 GB; llmfit behaves the same); the promise "more VRAM never lowers it" now covers
+  Turbo int8: 100 at 14 GB, 82.3 at 16 GB; llmfit behaves the same); the promise "more VRAM never lowers it" now covers
   levels only. More RAM still never lowers the Score.
 - **Popularity is an order key, not part of the Score** (#95). New JSON field `popularity` (0–100): the percentile
   (mid-rank) of the model's count among all models of the same type and source in the list (before filters): ComfyUI
@@ -155,12 +155,49 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   `hardware.nvidia_name_known` was replaced by `hardware.nvidia_name_well_formed`; `estimate.nvidia_size_ok` was
   removed.
 
+- **Working memory now uses ComfyUI's own per-stage estimates** (#100; docs/accuracy.md "Formulas"). For each model
+  family the working memory of the denoise stage (S: `memory_required` of model_base.py, SDPA path, 1×, packed latents
+  and reference latents counted), the decode stage (V: each VAE's `memory_used_decode` / `memory_used_encode`, one
+  image, encode counted for image/video/audio inputs) and the text stage (T: only the 4 text encoders with a
+  `memory_estimation_function`) comes from the formulas in ComfyUI's code, cited as `file:line@426f5ee` in the new
+  `src/genmodelfit/working.py` (no ComfyUI code is imported or copied). All on GPU = fixed + all weights +
+  max(S, V_eff, T); swapped in turn = fixed + max(stage weights + that stage's working memory); offload as before
+  with the stage values. V_eff = min(V, V_tile) with VRAM-independent tile sizes, so more VRAM still never lowers a
+  level; when V does not fit, the reasons say ComfyUI will split the VAE into tiles (slower). Vendor rules: the SDPA
+  formula on every vendor (a note only where ComfyUI uses split attention: Apple, CPU, AMD outside the SDPA list),
+  KL VAEs × 2.73 on AMD, VAEs without fp16 × 2 on GPUs without bf16, the Flux2 VAE × 4 (ComfyUI 0.40; 0.43 drops it
+  with the fused norm). Model sizes come from `header_params` bins (Wan dim, Flux2 hidden size, LTXV / LTXAV, SDXL vs
+  SD1.5). 86 of the 329 bundled models (text to speech, 3D, unknown family / size, no VAE formula) keep the earlier
+  per-modality formula for the whole model. Level changes against 0.10 on NVIDIA 8 / 16 / 24 GB: 9 better and 12
+  worse / 11 and 11 / 4 and 16 (for example Wan 2.2 5B, LTX-2 / 2.3 and HunyuanVideo improve on 8 to 16 GB; Flux.2
+  Klein, Flux Kontext and Z-Image bf16 worsen through the × 4 Flux2 VAE or a large denoise factor; on 24 GB MOSS-Image,
+  MageFlow, Klein 4B edit and the SDXL base + refiner workflows go from Perfect to Good). Details: docs/accuracy.md.
+- **The measurement shift is added to all three amounts** (#100): "measurement − formula" now shifts all on GPU,
+  swapped in turn and offload alike, and never pushes all on GPU below weights + fixed part (also for the author's
+  measurements). As a known miss, Wan 2.1 1.3B at the app's settings (512 px, 49 frames) is now Too tight on 6 GB and
+  offloaded on 8 GB (the RTX 5080 measurement is 1.96 GB above the per-stage formula; strict xfail in the tests).
+- **Measurements of working memory only are cross-checked only** (#100). `vram_metric: torch_reserved` with
+  `offload: dynamic` (bench with dynamic VRAM, including other users' submissions) excludes the weights, so such rows
+  no longer shift estimates or set levels until per-stage peaks can be measured. `calibrate` compares them with the
+  working-memory estimate (new column "Compared"), and `contrib aggregate --report` does not count them as breaches.
+- **`calibrate` fits only `act_3d_gb`** (#100). The fixed part and the image / video / audio coefficients are frozen at
+  the 0.10 values (`calibrate.FROZEN`, `frozen` in calibration.json; the fixed part waits for new RTX 3070
+  measurements). docs/accuracy (English and Japanese) is rewritten: formulas with sources, tiles, family mapping,
+  the 86 models without a per-stage formula, the cross-check (RTX 3070 sweep marked as not evidence, HunyuanVideo and
+  CogVideoX public figures) and future work.
+- **New VAE kinds in the list** (#100): `comfy_vae` splits `wan22`, `qwen21`, `flux2`, `oobleck`, `yue2` and `pixel`
+  out of `wan` / `kl` / null (52 bundled entries changed; `SCHEMA_VERSION` unchanged; older lists are mapped to the
+  family's VAE).
+- **ComfyUI citations unified to commit 426f5ee (v0.43.0)** (#100): families.py, docs/hardware and docs/schema now
+  cite line numbers of 426f5ee instead of b1a247c; differences from 0.40.0 are noted.
+
 ### Fixed
 
 - Workstation Ada GPUs named "RTX 4000 SFF Ada Generation" or "RTX 2000E Ada Generation" now get the Ada generation
   (8.9) from the name when nvidia-smi does not report it, and "RTX 2000E Ada Generation" is a known GPU name.
   Tests pin how NVIDIA GPUs are matched by name and VRAM, without PCI device IDs (#99).
-
+- **Wan 2.2 5B is no longer Too tight on 8 GB** (#100): with ComfyUI's Wan 2.2 VAE estimate it runs offloaded on 8 GB
+  and on the GPU from 12 GB, matching the AI生成キット catalog (the strict xfail of this known miss was removed).
 - **A fake small measurement, or one person submitting many times, can no longer lift a model's level** (#95). A
   single crafted submission such as "Flux ran in 1.0 GB" made the 22 GB Flux Perfect on an 8 GB RTX 3070 while the
   table still showed 22 GB; four near-identical files from one pull request also set the level. Now the level needs two
