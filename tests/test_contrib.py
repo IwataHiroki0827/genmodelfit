@@ -1895,7 +1895,7 @@ def test_fit_change_also_checks_the_nominal_vram(db, monkeypatch):
 def test_same_gpu_requires_close_vram():
     """同じ名前・同じ型番 ID でも VRAM が違えば別の GPU(RTX 4060 Ti の 8 / 16 GB、
     PCI ID 744c の XT・XTX・GRE)。
-    公称 16 と nvidia-smi の 15.9 のような数え方の違い(97% 以上)は同じ。"""
+    公称 16 と nvidia-smi の 15.9、Linux の 5.80 と Windows の 6.0 のような数え方の違い(95% 以上)は同じ。"""
     from genmodelfit.estimate import nvidia_vram_variants, same_gpu
 
     nv = "NVIDIA GeForce RTX 4060 Ti"

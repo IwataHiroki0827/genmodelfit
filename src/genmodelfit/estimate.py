@@ -1094,7 +1094,7 @@ def same_vram(m_vram: float | None, gpu: Any) -> bool:
     RTX 3060 の 8 GB と 12 GB、
     PCI ID 744c の RX 7900 XT・XTX・GRE)。VRAM が違うと同じ設定の最大 VRAM・段階が変わるので、同じ GPU の
     実測として使わない。近いとみなす幅は 実測の VRAM ÷ この PC の総量(小さいほう ÷ 大きいほう)が
-    MEASURED_VRAM_TOLERANCE(0.97。公称 16 と nvidia-smi の 15.9 などの数え方の違い)以上。VRAM の違う版の
+    MEASURED_VRAM_TOLERANCE(0.95。同じカードの OS・ドライバによる総量の数え方の違い)以上。VRAM の違う版の
     比は実際には 0.83 以下(RTX 3080 の 10 GB と 12 GB、
     RX 7900 GRE の 16 GB と XT の 20 GB など)なので、間に十分な余裕がある。
     共有メモリ・統合メモリの GPU(内蔵 GPU・APU・Apple)は総量が PC のメインメモリで決まり、GPU の違いを
@@ -1755,8 +1755,14 @@ def _estimate(
     return est
 
 
-# 実測の GPU の VRAM(m.gpu_vram_gb は公称の 16 など)と nvidia-smi の総量(15.9 など)の違いを許す割合(#26)
-MEASURED_VRAM_TOLERANCE = 0.97
+# 同じ GPU とみなす VRAM の比(小さい ÷ 大きい)の下限(#26、0.9.1。0.11.0 で 0.97 → 0.95。
+# docs/scoring.md「実測で段階を決める条件」)。同じカードでも OS・ドライバで総量の数え方が違う:
+# Linux の CUDA は予約の分を引いて 6 GB のカードを 5934 MiB = 5.80 GiB と報告する(NVIDIA の開発者フォーラムの
+# RTX 2060 の報告。Linux の総量は 5.80 / 7.79 / 9.78 / 10.76 / 11.77 / 23.69 GiB、Windows は 6.0 / 7.99 /
+# 15.92 など)。5.80 ÷ 6.0 = 0.967 で 0.97 に届かず、同じカードの Linux と Windows が別の GPU になっていた。
+# 量の違う版の比は 0.83 以下(RTX 4060 Ti の 8 / 16 GB、RTX 3060 の 8 / 12 GB、RTX 2060 の 6 / 12 GB、
+# RTX 3080 の 10 / 12 GB)なので 0.95 でも混ざらない
+MEASURED_VRAM_TOLERANCE = 0.95
 
 
 # 実測の backend(bench が書く。提出の system.gpu.backend)→ 会社

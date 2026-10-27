@@ -608,7 +608,7 @@ def test_shared_igpu_ram_includes_gpu_share(db):
 
 
 def test_issue_26_peak_must_fit_this_vram(db):
-    """公称 16 GB の実測 15.8 GB は、15.6 GB(97% 以上)の GPU では段階の根拠にしない(収まらない)。"""
+    """公称 16 GB の実測 15.8 GB は、15.6 GB(95% 以上)の GPU では段階の根拠にしない(収まらない)。"""
     e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 5080", 15.6), db).estimate
     assert e.fit_from == "estimate"
 

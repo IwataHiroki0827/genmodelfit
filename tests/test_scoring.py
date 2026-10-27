@@ -408,6 +408,34 @@ def test_g_measurements_without_size_are_used(db):
         assert any("RTX 3070" in r for r in e.reasons), mid
 
 
+def test_same_vram_ratio_linux_and_windows():
+    """同じカードは OS が違っても同じ GPU(Linux の CUDA は 6 GB のカードを 5.80 GiB と報告する。
+    Windows は 6.0)。
+    量の違う版(8 / 16 GB など)は決して同じにしない(0.11.0。docs/scoring.md「実測で段階を決める条件」)。"""
+    from genmodelfit.estimate import MEASURED_VRAM_TOLERANCE, same_gpu
+
+    assert MEASURED_VRAM_TOLERANCE == 0.95
+    for name, linux, windows in (
+        ("NVIDIA GeForce RTX 2060", 5.80, 6.0),
+        ("NVIDIA GeForce RTX 3070", 7.79, 7.99),
+        ("NVIDIA GeForce RTX 3080", 9.78, 10.0),
+        ("NVIDIA GeForce RTX 3060", 11.77, 12.0),
+        ("NVIDIA GeForce RTX 4090", 23.69, 23.99),
+    ):
+        for a, b in ((linux, windows), (windows, linux)):
+            g = Gpu(name=name, vendor="nvidia", vram_total_gb=a, backend="cuda")
+            assert same_gpu(name, None, g, b), (name, a, b)
+    for name, small, big in (
+        ("NVIDIA GeForce RTX 4060 Ti", 7.79, 15.92),
+        ("NVIDIA GeForce RTX 3060", 8.0, 11.77),
+        ("NVIDIA GeForce RTX 2060", 5.80, 12.0),
+        ("NVIDIA GeForce RTX 3080", 10.0, 11.77),
+    ):
+        for a, b in ((small, big), (big, small)):
+            g = Gpu(name=name, vendor="nvidia", vram_total_gb=a, backend="cuda")
+            assert not same_gpu(name, None, g, b), (name, a, b)
+
+
 # --- §3.5 実測で段階を決める条件 -------------------------------------------------------------------
 
 
