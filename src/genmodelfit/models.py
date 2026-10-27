@@ -416,6 +416,8 @@ class Adapter:
     # WSL2 で Windows 側から読んだ部品のとき、WSL の中の準備(AMD は rocminfo、Intel は clinfo -l)が
     # できているか
     wsl_runtime: bool | None = None
+    # Windows の WMI の ConfigManagerErrorCode(0 以外のとき。22・28・43 の部品は判定に使わない)
+    config_error: int | None = None
 
 
 @dataclass

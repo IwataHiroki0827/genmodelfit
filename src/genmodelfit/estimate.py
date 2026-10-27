@@ -994,13 +994,23 @@ GENERIC_GPU_KEYS = frozenset(
         "na",
         "none",
         "null",
+        "nil",
+        # nvidia-smi が名前の代わりに出す値(「[Not Supported]」「[Unknown Error]」「ERR!」)
+        "not-supported",
+        "unknown-error",
+        "err",
     }
 )
 
 
 def generic_gpu_name(name: str | None) -> bool:
     k = gpu_key(name)
-    return k in GENERIC_GPU_KEYS or bool(re.fullmatch(r"\d+(-\d+)?-gb-gpu", k))  # --vram の仮の GPU
+    return (
+        k in GENERIC_GPU_KEYS
+        or bool(re.fullmatch(r"\d+(-\d+)?-gb-gpu", k))  # --vram の仮の GPU
+        # 型番の ID しか分からない名前(lspci の pci.ids が古いときの「NVIDIA Corporation Device 2684」)。#101
+        or bool(re.fullmatch(r"(corporation-)?device-[0-9a-f]{4}", k))
+    )
 
 
 # 同じ名前で VRAM の量が違うデスクトップの NVIDIA GPU(gpu_key の形 → VRAM の GB)。

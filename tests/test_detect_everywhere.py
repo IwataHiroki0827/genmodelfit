@@ -360,6 +360,15 @@ def test_adapter_list_unreadable_is_noted(monkeypatch, tmp_path):
     assert any("system_profiler" in n for n in hardware.detect_other_gpus()[1])
 
 
+def test_headless_lspci_with_no_display_is_not_unreadable(monkeypatch):
+    """lspci が動いて画面の部品が 0 個(画面の無いサーバー)は「読めなかった」と言わない(Checker の指摘)。"""
+    linux(monkeypatch)
+    monkeypatch.setattr(
+        hardware, "_run", Router({"lspci": (0, "0000:00:00.0 Host bridge [0600]: Intel [8086:1234]\n")})
+    )
+    assert hardware.detect_other_gpus() == ([], [])
+
+
 SLOT = "0000:03:00.0"
 
 
@@ -436,17 +445,45 @@ def test_nvidia_without_driver_is_noted_whatever_the_name():
     adapters, _ = parse_wmi_video(fx("wmi_basic_display_ja.json"))
     assert adapters[0].vendor == "nvidia"
     notes = hardware._other_gpu_notes(adapters, judged_gpu=False)
-    assert any("nvidia-smi で確かめられない" in n for n in notes)
+    assert any(
+        "NVIDIA の GPU(Microsoft 基本ディスプレイ アダプター として見えている)" in n
+        and "nvidia-smi で確かめられない" in n
+        for n in notes
+    ), notes
     assert hardware._other_gpu_notes(adapters, judged_gpu=True) == []
 
 
 def test_device_manager_error_codes():
+    """S6: 22・28・43 の AMD・Intel の部品は理由を付けて判定に使わない(Checker の指摘: 以前は使っていた)。
+    NVIDIA の部品は nvidia-smi で決めるので、注意だけ出す。"""
     adapters, notes = parse_wmi_video(fx("wmi_error_codes.json"))
-    joined = "\n".join(notes)
-    assert "無効にしてある" in joined and "(コード 22)" in joined
-    assert "ドライバが入っていない" in joined and "(コード 28)" in joined
-    assert "Windows が止めた" in joined and "(コード 43)" in joined
+    assert [a.config_error for a in adapters] == [22, 28, 43]
     assert adapters[0].driver == "32.0.21025.1024" and adapters[1].driver is None
+    assert len(notes) == 1 and "Windows が止めた" in notes[0] and "(コード 43)" in notes[0]  # NVIDIA の分
+    want = {
+        "AMD Radeon RX 7800 XT": ("無効にしてある", "22"),
+        "Intel(R) Arc(TM) A770 Graphics": ("ドライバが入っていない", "28"),
+    }
+    for a in adapters[:2]:
+        a.vram_gb = 16.0
+        assert classify_adapter(a, WIN11, 32.0) is None
+        why, code = want[a.name]
+        assert why in a.reason and f"(コード {code})" in a.reason, a.reason
+    adapters[1].config_error = None  # 直れば使う
+    assert classify_adapter(adapters[1], WIN11, 32.0) is not None
+
+
+def test_wsl_device_with_error_code_is_not_used(monkeypatch, tmp_path):
+    d = json.loads(_arc("32.0.101.8801"))
+    d["video"][0]["ConfigManagerErrorCode"] = 43
+    _wsl(
+        monkeypatch,
+        tmp_path,
+        table={"powershell.exe": (0, json.dumps(d)), "clinfo": (0, fx("clinfo_l_arc.txt"))},
+    )
+    monkeypatch.setattr(hardware, "_find_tool", lambda name, extra=(): name)
+    a = hardware.detect_other_gpus()[0][0]
+    assert classify_adapter(a, LINUX, 32.0) is None and "(コード 43)" in a.reason
 
 
 # --- 9・S7. コンテナのメモリ上限 ----------------------------------------------------------------------
@@ -818,3 +855,70 @@ def test_run_returns_output():
 
 def test_gb_constant():
     assert GIB == GB
+
+
+# --- 壊れた・思わぬ形の出力でも例外を出さない(Checker の fuzz の材料) ------------------------------------
+
+WSL_SHAPES = [
+    '{"video":5,"registry":5}',
+    '{"video":[1,"a",null],"registry":[1,"x"]}',
+    '{"video":{"Name":"AMD Radeon RX 7900 XTX","PNPDeviceID":"PCI\\\\VEN_1002&DEV_744C\\\\x"},'
+    '"registry":{"a":1}}',
+    '{"video":[{"Name":5,"PNPDeviceID":["x"],"AdapterRAM":"big","ConfigManagerErrorCode":"28","DriverVersion":32}],'
+    '"registry":"abc"}',
+    '{"video":[{"Name":"Intel(R) Arc(TM) A770 Graphics","PNPDeviceID":"PCI\\\\VEN_8086&DEV_56A0\\\\x",'
+    '"DriverVersion":"32.0.101.\u00b2","ConfigManagerErrorCode":[1]}],"registry":[]}',
+    '{"video":[],"registry":[{"MatchingDeviceId":5,"DriverDesc":[1],"HardwareInformation.qwMemorySize":1e30}]}',
+    "[]",
+    '"x"',
+    "null",
+    "[" * 100000 + "]" * 100000,
+]
+
+
+@pytest.mark.parametrize("text", WSL_SHAPES, ids=range(len(WSL_SHAPES)))
+def test_wsl_odd_powershell_json_does_not_raise(monkeypatch, tmp_path, text):
+    _wsl(monkeypatch, tmp_path, table={"powershell.exe": (0, text), "rocminfo": (0, "garbage \u00b2")})
+    adapters, _ = hardware.detect_other_gpus()  # 例外にしない
+    for a in adapters:
+        classify_adapter(a, LINUX, 32.0)
+
+
+def test_deep_json_does_not_raise():
+    deep = "[" * 100000 + "]" * 100000
+    assert parse_wmi_video(deep) == ([], [])
+    assert parse_system_profiler(deep) == []
+
+
+@pytest.mark.parametrize("v", ["32.0.101.\u00b2", "32.0.101.\u0663", "x.y.z.w", "", None])
+def test_intel_driver_build_odd_values(v):
+    assert hardware.intel_driver_build(v) is None
+
+
+def test_odd_digits_in_cgroup_kfd_meminfo(monkeypatch, tmp_path):
+    files = {
+        "/proc/self/cgroup": "0::/a/../b\n3:memory:/x\n1:name=systemd:/y\nbad\n",
+        "/sys/fs/cgroup/memory.max": "\u00b2\n",
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes": "9223372036854771712\n",
+        "/sys/class/kfd/kfd/topology/nodes/0/properties": "gfx_target_version \u00b2\nvendor_id 4098\n",
+        "/sys/class/kfd/kfd/topology/nodes/1/properties": (
+            "gfx_target_version 110000\nvendor_id 99999999\ndevice_id -1\n"
+        ),
+        "/proc/meminfo": "MemTotal: \u0663\u0663 kB\nHugePages_Total: 5\nHugepagesize: 0 kB\n",
+    }
+    linux(monkeypatch, tree(tmp_path, files))
+    monkeypatch.setattr(hardware, "kfd_gfx_targets", REAL_KFD)
+    assert hardware.cgroup_memory() == (9223372036854771712, None)
+    assert hardware.kfd_gfx_targets() == {}
+    assert hardware.read_meminfo() == {"HugePages_Total": 5, "Hugepagesize": 0}
+    hardware.unified_free(hardware.read_meminfo())
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Not Supported", "[Not Supported]", "Unknown Error", "ERR!", "nil", "NVIDIA Corporation Device 2684"],
+)
+def test_nvidia_smi_placeholders_are_generic(name):
+    from genmodelfit.estimate import generic_gpu_name, same_gpu_name
+
+    assert generic_gpu_name(name) and not same_gpu_name(name, name)

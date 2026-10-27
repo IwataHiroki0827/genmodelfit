@@ -499,7 +499,7 @@ ComfyUI の CPU での動き:
 
 | 環境 | genmodelfit がすること | 出典(引いた節) |
 |---|---|---|
-| psutil がメモリを読めない | Windows は `GlobalMemoryStatusEx`、Linux は `/proc/meminfo`、macOS は `sysctl -n hw.memsize` で読む。どれも読めなければ量は「分からない」(`Memory.total` が None)とし、「--ram で指定する」と notes に書く(判定は 0 GB として進む) | psutil の失敗は OS ごとに違う(実装の判断) |
+| psutil がメモリを読めない | Windows は `GlobalMemoryStatusEx`、Linux は `/proc/meminfo`、macOS は `sysctl -n hw.memsize` で読む。どれも読めなければ量は「分からない」(`Memory.total` が None。出力の `ram_total_gb` は 0 = 不明)とし、「--ram で指定する」と notes に書く。見積もりは 0 を「分からない」として扱い、メインメモリでは断らない。内蔵 GPU・APU・Apple は、メインメモリの分が分からないので、取り分けた VRAM・GTT が読めなければ理由を書いて CPU で判定する | psutil の失敗は OS ごとに違う(実装の判断) |
 | MemAvailable の無い古いカーネル | 空き = MemFree + Cached | Linux `Documentation/filesystems/proc.rst`「MemAvailable」 |
 | コンテナ(cgroup v2・v1) | `/proc/self/cgroup` の自分の cgroup(v2 は `0::/path`、v1 は `N:memory:/path`)から根へたどり、上限(`memory.max`・`memory.limit_in_bytes`)の一番小さいものを搭載量に、空きは 上限 − 使用量(`memory.current`・`memory.usage_in_bytes`)。`max` は上限なし。名前空間の中ではパスが `/` なので根だけを読む | https://docs.kernel.org/admin-guide/cgroup-v2.html 「memory.max」「memory.current」、https://docs.kernel.org/admin-guide/cgroup-v1/memory.html 「memory.limit_in_bytes」 |
 | PyTorch の表より新しい compute capability(13.0 など) | 断らない(`cuda` のまま)。「表より新しい世代。最新の PyTorch を使う」と注意。断るのは表より古い世代だけ | CLAUDE.md の決まり「世代が分からないときは断らない」と同じ扱い |
@@ -512,7 +512,7 @@ ComfyUI の CPU での動き:
 | Jetson(Orin・Thor) | 対象外(CPU)。「Jetson は PyTorch が JetPack 専用の版(jp6 の cu126 など)で表の CUDA 版と別系統、メモリの扱いも確かめていない」と書く。この Issue の範囲外 | Jetson AI Lab の ComfyUI の手順 https://www.jetson-ai-lab.com/tutorial_comfyui_flux.html (別の Issue で扱う) |
 | GH200 / GB200 | この Issue の範囲外(nvidia-smi が返す HBM の量でこれまでどおり判定する) | — |
 | ドライバの無い NVIDIA(Windows の「Microsoft 基本ディスプレイ アダプター」、Linux の nouveau) | 名前(言語で変わる)に頼らず、型番の会社 ID が NVIDIA(`10de`)の部品で「nvidia-smi で確かめられないので CPU。NVIDIA のドライバを入れる」と知らせる | — |
-| デバイス マネージャーのエラー(WMI の ConfigManagerErrorCode) | 22 は「無効にしてある」、28 は「ドライバが入っていない」、43 は「問題を報告して Windows が止めた」、ほかは「問題がある状態」 | Microsoft「Device Manager error messages」 https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages (Code 22・28・43) |
+| デバイス マネージャーのエラー(WMI の ConfigManagerErrorCode) | 22 は「無効にしてある」、28 は「ドライバが入っていない」、43 は「問題を報告して Windows が止めた」、ほかは「問題がある状態」。22・28・43 の AMD・Intel の部品は、この理由で判定に使わない(WSL2 から読んだ部品も同じ。`Adapter.config_error`) | Microsoft「Device Manager error messages」 https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages (Code 22・28・43) |
 | PowerShell・lspci・system_profiler が無い・失敗・時間切れ | 「画面の部品の一覧を読めなかった」と注意(以前は黙っていた) | — |
 | lspci が無い Linux(最小のコンテナ・Flatpak・Snap など) | `/sys/bus/pci/devices/*/{class,vendor,device}` を読み(class が 0x03xxxx のもの)、名前は「AMD Device 744c」の形にして型番 ID の表(`PCI_DEVICE_NAMES`)で引く。差し場所は形を確かめて読むのに使うだけで、残さない・出さない。読めないファイル(SELinux など)は None | https://docs.kernel.org/PCI/sysfs-pci.html 「Accessing PCI device resources through sysfs」 |
 | 仮想マシン・管理用(BMC)の画面(QEMU `1234`・virtio `1af4`・VMware `15ad`・VirtualBox `80ee`・Hyper-V `1414`・Cirrus `1013`・QEMU(Red Hat)`1b36`・ASPEED `1a03`・Matrox `102b`) | 「計算に使う GPU ではない(仮想マシン・管理用の画面)」で CPU。型番 ID の読み替え(pci.ids が古いときの案内)は AMD・Intel だけ | pci.ids の会社名(pciutils/pciids) |
@@ -572,17 +572,17 @@ ComfyUI の CPU での動き:
 
 ほかの利用者の提出(contrib)の GPU 名は、名前の表(#90 の `nvidia_name_known`)でなく形で見る(`hardware.nvidia_name_well_formed`)。
 
-- 断る(`gpu_known: false`。記録として残し、判定には使わない)のは、名前の代わりの値(空・`n/a`・`none`・`null`・`unknown`・`-`)と汎用の名前(`NVIDIA Graphics Device` など。`estimate.GENERIC_GPU_KEYS`)だけ。llmfit も名前は大文字小文字を無視した完全一致で比べ、断るのは代わりの値だけ(llmfit `share.rs`・`benchmarks.rs` の `hardware_payload_matches`)。
+- 断る(`gpu_known: false`。記録として残し、判定には使わない)のは、名前の代わりの値(空・`n/a`・`none`・`null`・`nil`・`unknown`・`-`、nvidia-smi の `[Not Supported]`・`[Unknown Error]`・`ERR!`)と汎用の名前(`NVIDIA Graphics Device`、型番 ID だけの `NVIDIA Corporation Device 2684` など。`estimate.GENERIC_GPU_KEYS`・`generic_gpu_name`)だけ。llmfit も名前は大文字小文字を無視した完全一致で比べ、断るのは代わりの値だけ(llmfit `share.rs`・`benchmarks.rs` の `hardware_payload_matches`)。
 - 照合(`estimate.same_gpu`)はもともと、そろえた名前の完全一致と VRAM の比 0.95 以上を求める。作った名前・知らない名前は、同じ文字列を返す PC にしか当たらない。∴ 名前の表は照合の安全をほとんど増やさず、逆に実在の名前(TITAN X (Pascal)・vGPU・A800 40GB Active・CMP 30HX など)を断っていた。
 - 形(大文字小文字を区別しない。語は 10 個まで): `NAME := [NVIDIA] BRAND* CORE SUFFIX*`
   - BRAND: GeForce, Quadro, Tesla, GRID, TITAN, RTX, PRO, GTX, GTS, GT, MX, CMP, NVS, FX, DGX
-  - CORE はちょうど 1 つ: `[A-Z]{0,3}\d{1,4}[A-Z]{0,3}` に `(-(SXM\d?|PCIE|\d{1,3}GB|\d{1,3}[ABCQ]|\d{1,2}))*` を許す。TITAN の直後だけ `V|X|Xp|Z|Black|RTX` も。型番の語の無い初代の「GeForce GTX TITAN」も通す
-  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)?`(数字だけの語は 1 個まで)、`\([A-Za-z]+\)`、A, AC
+  - CORE はちょうど 1 つ: `PREFIX? \d{1,4}[A-Z]{0,3}` に `(-(SXM\d?|PCIE|DGXS|FHHL|Ada|\d{1,3}GB|\d{1,3}[ABCQE]|\d{1,3}))*` を許す。PREFIX は NVIDIA の系列の頭だけ(A・B・H・L・T・P・V・K・M・MX・GB・GH・GA・GP・GV・GK・GM、vGPU の RTX6000-24Q の RTX)。「TY1985」「KEN1990」「tom99」は型番にならない。TITAN の直後だけ `V|X|Xp|Z|Black|RTX` も。型番の語の無い初代の「GeForce GTX TITAN」も通す
+  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)`、括弧の世代名(`(Pascal)` など)、A, AC。数字だけの語(「RTX 4090 A 1985」の 1985)と同じ語の繰り返し(「Ti Ti」「8GB 8GB」)は通さない(v2 の「数字だけの語は 1 個まで」から締めた。Checker の指摘)
 - 形に合わない名前は誤りではなく確認 `gpu_name_form`(メンテナが確かめる。人名などは本人が `contrib show` で見る。今の個人の情報の点検が受け止める)。形に合うが表(`_NAME_CC`)に無い名前は確認 `unknown_gpu`(判定には使う)。新しい系列の語は語の表に 1 語足す(製品ごとではない)。
 - 名前の公称の VRAM(`estimate.NVIDIA_NOMINAL_VRAM`)に合わない量は誤りから確認 `gpu_vram_nominal` に下げた(中国の改造品の 4090 48 GB などがあるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る)。
 - `_NAME_CC`(名前 → compute capability)は古いドライバのときの世代の推定と、提出の compute capability の食い違いの点検だけに使う。
 - 提出の名前の文字に、括弧の世代名(`(Pascal)` など、世代の名前だけ)を許した。
-- 試験: 実在の名前(検証の 35 個と hwaudit の一覧)は通り、作った名前(電話番号・イニシャル + 年・名前 + 数字・「ABC123 XYZ99」)は通らない(`tests/test_contrib_robust.py`)。一覧のうち `NVIDIA Graphics Device`(汎用)・`Orin (nvgpu)`・`NVIDIA Thor`(Jetson の語は BRAND に無い)・人名入りの名前は通らない。
+- 試験: 実在の名前(検証の 35 個と hwaudit の一覧、Checker の約 140 個。Tesla V100-DGXS-32GB・P106-100・RTX6000-Ada-48Q・MX450 など)は通り、作った名前(電話番号・イニシャル + 年・名前 + 数字・「ABC123 XYZ99」)は通らない(`tests/test_contrib_robust.py`)。一覧のうち `NVIDIA Graphics Device`(汎用)・`Orin (nvgpu)`・`NVIDIA Thor`(Jetson の語は BRAND に無い)・人名入りの名前は通らない。
 
 ### 既知の限界
 

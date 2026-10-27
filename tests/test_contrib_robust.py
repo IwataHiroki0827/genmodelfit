@@ -635,17 +635,29 @@ KNOWN_NVIDIA = [
 # 1 つの「RTX 3060 3060」など)は確認もなく使い、形に合わないもの(人名・数字の続き・知らない語)は確認
 # gpu_name_form にして使う(作った名前は同じ文字列を返す PC にしか当たらない)
 FORMED_NVIDIA = [
-    "NVIDIA GeForce RTX 3060 3060",
     "NVIDIA GeForce RTX 3060 16GB",
     "NVIDIA GeForce RTX 3070 99GB",
     "NVIDIA GeForce GTX 1660 SUPER generation design with",
     "NVIDIA GeForce RTX 3060 Ti D",
     "NVIDIA GeForce RTX 3070 D v2 OEM",
-    "NVIDIA GeForce RTX 3070 8GB 8GB",
     "NVIDIA GeForce RTX 3070 sxm5",
     "NVIDIA GeForce RTX 4090 48GB",
     "NVIDIA CMP 30HX",
-    "NVIDIA GeForce RTX 3060 Ti Ti super",
+    # Checker の指摘で通すようにした実在の名前
+    "Tesla V100-DGXS-32GB",
+    "Tesla V100-FHHL-16GB",
+    "NVIDIA P106-100",
+    "NVIDIA P104-100",
+    "NVIDIA P102-100",
+    "NVIDIA RTX6000-Ada-48Q",
+    "NVIDIA RTX 6000-Ada-48Q",
+    "NVIDIA H20-3e",
+    "NVIDIA GeForce MX450",
+    "GRID RTX8000-48Q",
+    "NVIDIA H100XM-80C",
+    "NVIDIA A100-1-5C",
+    "Tesla K20Xm",
+    "Quadro GV100",
 ]
 ILL_FORMED_NVIDIA = [
     "NVIDIA GeForce RTX 3070 taro",
@@ -654,6 +666,18 @@ ILL_FORMED_NVIDIA = [
     "NVIDIA GeForce RTX 3070 TY1990",
     "NVIDIA GeForce RTX 4090 ABC123 XYZ99",
     "NVIDIA Quadro RTX 31337",
+    # Checker の指摘で通さないようにした作った名前(型番の頭の文字は NVIDIA の系列だけ・数字だけの語・繰り返し)
+    "TY1985",
+    "NVIDIA KEN1990",
+    "NVIDIA tom99",
+    "NVIDIA abc123def",
+    "NVIDIA GeForce RTX 4090 A 1985",
+    "NVIDIA GeForce RTX 4090 1985 AC",
+    "NVIDIA GeForce RTX 3060 3060",
+    "NVIDIA GeForce RTX 3070 8GB 8GB",
+    "NVIDIA GeForce RTX 3060 Ti Ti super",
+    "NVIDIA GeForce RTX 4090 (Taro)",
+    "NVIDIA GeForce kay12 d",
 ]
 
 
@@ -662,7 +686,7 @@ def test_non_generic_nvidia_names_are_used(name):
     assert contrib.gpu_known(name), name
 
 
-@pytest.mark.parametrize("name", KNOWN_NVIDIA)
+@pytest.mark.parametrize("name", KNOWN_NVIDIA + FORMED_NVIDIA)
 def test_known_nvidia_names_are_well_formed(name):
     assert nvidia_name_well_formed(name), name
 

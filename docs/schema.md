@@ -76,7 +76,7 @@ credentials never attached (tests/test_privacy.py).
 |---|---|---|
 | `os`, `cpu` | str | |
 | `cpu_cores` | int | logical threads |
-| `ram_total_gb`, `ram_available_gb` | float | GiB |
+| `ram_total_gb`, `ram_available_gb` | float | GiB. 0 = unknown (0.11.0: memory could not be read; the estimate does not refuse by main memory) |
 | `gpus` | Gpu[] | NVIDIA GPUs confirmed by `nvidia-smi`, and (0.7.0, #22) AMD / Intel / Apple GPUs that the support table in [hardware.md](hardware.md) accepts when no NVIDIA GPU is usable |
 | `best_gpu` | Gpu \| null | the GPU used for judging: the largest-VRAM GPU whose `backend` is `cuda`; without one, a `rocm` / `xpu` / `mps` GPU (dedicated VRAM first, then the largest). null → judged as CPU |
 | `disk_free_gb` | float \| null | free space at the home directory (or `--disk-path`) |
@@ -129,6 +129,7 @@ Added in 0.11.0 (#101; [hardware.md](hardware.md), "Every environment"):
 - `driver` (str | null: DriverVersion from Windows WMI; used for the Intel condition in WSL2)
 - `gfx_target` (str | null: the AMD generation read from a source more reliable than the name: `gfx_target_version` of the Linux amdkfd, or `Name: gfx…` of rocminfo in WSL2)
 - `wsl_runtime` (bool | null: for an adapter read from WSL2, whether WSL is ready (rocminfo for AMD, `clinfo -l` for Intel))
+- `config_error` (int | null: WMI ConfigManagerErrorCode when not 0; AMD and Intel adapters with 22, 28 or 43 are not used)
 
 ## Data status
 

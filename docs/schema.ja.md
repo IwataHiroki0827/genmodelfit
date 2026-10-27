@@ -76,7 +76,7 @@ User-Agent は `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit
 |---|---|---|
 | `os`、`cpu` | str | |
 | `cpu_cores` | int | 論理スレッド数 |
-| `ram_total_gb`、`ram_available_gb` | float | GiB |
+| `ram_total_gb`、`ram_available_gb` | float | GiB。0 = 不明(0.11.0。メモリが読めないとき。見積もりはメインメモリで断らない) |
 | `gpus` | Gpu[] | `nvidia-smi` で確かめた NVIDIA の GPU。使える NVIDIA の GPU が無いときは、[hardware.md](hardware.ja.md) の対応表が受け付ける(0.7.0、#22) AMD / Intel / Apple の GPU も入る |
 | `best_gpu` | Gpu \| null | 判定に使う GPU。`backend` が `cuda` の GPU のうち VRAM が最大のもの。無ければ `rocm` / `xpu` / `mps` の GPU(専用 VRAM のものが先、次に最大のもの)。null は CPU として判定する |
 | `disk_free_gb` | float \| null | ホームディレクトリ(または `--disk-path`)の空き容量 |
@@ -133,6 +133,7 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 - `driver`(str | null。Windows の WMI の DriverVersion。Intel の WSL2 の条件に使う)
 - `gfx_target`(str | null。名前より確かな所から読んだ AMD の世代: Linux の amdkfd の `gfx_target_version`、WSL2 の rocminfo の `Name: gfx…`)
 - `wsl_runtime`(bool | null。WSL2 から読んだ部品で、WSL の中の準備(AMD は rocminfo、Intel は `clinfo -l`)ができているか)
+- `config_error`(int | null。WMI の ConfigManagerErrorCode が 0 以外のとき。22・28・43 の AMD・Intel の部品は判定に使わない)
 
 ## Data status / 一覧の新しさ
 

@@ -401,12 +401,15 @@ def test_registry_ambiguous_and_binary_values():
 
 
 def test_wmi_notes_for_missing_driver_and_device_errors():
-    adapters, notes = parse_wmi_video(fx("wmi_basic_nvidia.json"), [])
+    adapters, _ = parse_wmi_video(fx("wmi_basic_nvidia.json"), [])
     assert [a.vendor for a in adapters] == ["nvidia", "amd"]
     assert adapters[1].vram_gb == 0.5 and adapters[1].vram_source == "wmi"
     # #101: ドライバの無い NVIDIA の注意は名前に頼らず _other_gpu_notes が出す(nvidia-smi で判定しないとき)
     assert any("nvidia-smi で確かめられない" in n for n in hardware._other_gpu_notes(adapters, False))
-    assert any("コード 43" in n for n in notes)
+    # #101: AMD・Intel のコード 43 の部品は classify_adapter が理由にして断る(注意を 2 回出さない)
+    assert adapters[1].config_error == 43
+    assert hardware.classify_adapter(adapters[1], hardware.Host("Windows", 26100), 32.0) is None
+    assert "コード 43" in adapters[1].reason
 
 
 @pytest.mark.parametrize("text", ["", "null", "not json", "[1, 2]", '{"Name": "x"}'])

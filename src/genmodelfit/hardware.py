@@ -371,7 +371,13 @@ _NAME_BRANDS = frozenset(
         "dgx",
     ]
 )
-_NAME_CORE = re.compile(r"[a-z]{0,3}\d{1,4}[a-z]{0,3}(?:-(?:sxm\d?|pcie|\d{1,3}gb|\d{1,3}[abcq]|\d{1,2}))*")
+# 型番の頭の文字は NVIDIA の系列の頭だけ(A100・B200・H100・L40・T4・P100・V100・K80・M60・GB10・GH200・GA102・
+# GP100・GV100・GK110・GM200、vGPU の RTX6000-24Q)。「TY1985」「KEN1990」「tom99」は型番にならない。
+# 後ろのハイフンの部分は載せ方・大きさ・vGPU の型(-SXM2・-PCIE・-DGXS・-FHHL・-16GB・-40C・-Ada・-100・-3e)
+_NAME_CORE = re.compile(
+    r"(?:a|b|h|l|t|p|v|k|m|mx|gb|gh|ga|gp|gv|gk|gm|rtx)?\d{1,4}[a-z]{0,3}"
+    r"(?:-(?:sxm\d?|pcie|dgxs|fhhl|ada|\d{1,3}gb|\d{1,3}[abcqe]|\d{1,3}))*"
+)
 _NAME_TITAN_CORE = frozenset({"v", "x", "xp", "z", "black", "rtx"})  # TITAN の直後だけ
 _NAME_SUFFIX_WORDS = frozenset(
     [
@@ -405,19 +411,17 @@ _NAME_SUFFIX_WORDS = frozenset(
         "ac",
     ]
 )
-_NAME_SUFFIX = re.compile(r"sxm\d?|hbm\d+e?|\d{1,4}(?:gb|mb)?|\([a-z]+\)")
+# 数字だけの語(「RTX 4090 A 1985」の 1985)は後ろの語にしない。括弧は世代の名前だけ(「(Pascal)」)
+_NAME_SUFFIX = re.compile(
+    r"sxm\d?|hbm\d+e?|\d{1,4}(?:gb|mb)|\((?:pascal|maxwell|kepler|volta|turing|ampere|ada|hopper|blackwell)\)"
+)
 _NAME_MAX_WORDS = 10
 
 
 def _suffixes_ok(words: list[str]) -> bool:
-    plain_numbers = 0
-    for w in words:
-        if w in _NAME_SUFFIX_WORDS:
-            continue
-        if not _NAME_SUFFIX.fullmatch(w):
-            return False
-        plain_numbers += w.isdigit()
-    return plain_numbers <= 1  # 数字だけの語は 1 個まで(「RTX 4090 090 1234 5678」は通さない)
+    if len(set(words)) != len(words):  # 同じ語の繰り返し(「Ti Ti」「8GB 8GB」)は実在しない
+        return False
+    return all(w in _NAME_SUFFIX_WORDS or _NAME_SUFFIX.fullmatch(w) for w in words)
 
 
 def nvidia_name_well_formed(name: str | None) -> bool:
@@ -1107,7 +1111,8 @@ _PS_WSL = (
     "'HardwareInformation.MemorySize'=$m}});"
     "ConvertTo-Json -InputObject @{video=$v;registry=$r} -Compress -Depth 3"
 )
-# デバイス マネージャーのエラー コード(Microsoft「Device Manager error messages」
+# デバイス マネージャーのエラー コード(この 3 つの部品は判定に使わない: REFUSED_CM_ERRORS。
+# Microsoft「Device Manager error messages」
 # https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages)
 _CM_ERRORS = {
     22: ("無効にしてある(デバイス マネージャーで有効にする)", "is disabled (enable it in Device Manager)"),
@@ -1117,6 +1122,9 @@ _CM_ERRORS = {
         "was stopped by Windows because it reported problems (driver or GPU trouble)",
     ),
 }
+
+
+REFUSED_CM_ERRORS = frozenset(_CM_ERRORS)
 
 
 def _norm_name(name: str) -> str:
@@ -1166,7 +1174,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
     無ければ 4 GiB 未満の AdapterRAM だけを使う。(部品, 分かったこと)。"""
     try:
         data = json.loads(text.strip().lstrip("\ufeff") or "null")
-    except ValueError:
+    except (ValueError, RecursionError):
         return [], []
     if isinstance(data, dict):
         data = [data]
@@ -1194,7 +1202,9 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
         err = d.get("ConfigManagerErrorCode")
         # ドライバの無い NVIDIA の GPU は、名前(言語で変わる「Microsoft 基本ディスプレイ アダプター」)に
         # 頼らず _other_gpu_notes が知らせる(#101)
-        if isinstance(err, int) and err != 0:
+        # AMD・Intel の部品の 22・28・43 は classify_adapter が理由にして断る(注意を 2 回出さない)
+        refused_later = vendor in ("amd", "intel") and isinstance(err, int) and err in REFUSED_CM_ERRORS
+        if isinstance(err, int) and err != 0 and not refused_later:
             ja, en = _CM_ERRORS.get(err, ("問題がある状態", "has a problem"))
             notes.append(
                 tr(
@@ -1203,6 +1213,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
                 )
             )
         driver = d.get("DriverVersion")
+        code = err if isinstance(err, int) and not isinstance(err, bool) and err != 0 else None
         ids = re.search(r"ven_([0-9a-f]{4})&dev_([0-9a-f]{4})", hwid)
         out.append(
             Adapter(
@@ -1213,6 +1224,7 @@ def parse_wmi_video(text: str, registry: list[dict] | None = None) -> tuple[list
                 source="wmi",
                 pci_id=f"{ids.group(1)}:{ids.group(2)}" if ids else None,
                 driver=driver.strip() if isinstance(driver, str) and driver.strip() else None,
+                config_error=code,
             )
         )
     return out, notes
@@ -1365,7 +1377,7 @@ def kfd_gfx_targets() -> dict[str, str]:
         props: dict[str, int] = {}
         for line in (_read_text(_p(f"{_KFD_NODES}/{node}/properties")) or "").splitlines():
             parts = line.split()
-            if len(parts) == 2 and parts[1].isdigit():
+            if len(parts) == 2 and parts[1].isascii() and parts[1].isdigit():
                 props[parts[0]] = int(parts[1])
         gfx = gfx_from_target_version(props.get("gfx_target_version", 0))
         ven, dev = props.get("vendor_id"), props.get("device_id")
@@ -1499,7 +1511,7 @@ def wsl_windows_adapters(state: WslState) -> tuple[list[Adapter], list[str]]:
     r = _run([exe, "-NoProfile", "-NonInteractive", "-Command", _PS_WSL], OTHER_GPU_TIMEOUT) if exe else None
     data = None
     if r is not None and r[0] == 0:
-        with contextlib.suppress(ValueError):
+        with contextlib.suppress(ValueError, RecursionError):
             data = json.loads(r[1].strip().lstrip("\ufeff") or "null")
     if not isinstance(data, dict):
         return [], [
@@ -1508,8 +1520,13 @@ def wsl_windows_adapters(state: WslState) -> tuple[list[Adapter], list[str]]:
                 "powershell.exe is missing, failed or did not finish in time",
             )
         ]
-    registry = [e for e in data.get("registry") or [] if isinstance(e, dict)]
-    adapters, notes = parse_wmi_video(json.dumps(data.get("video") or []), registry)
+    # 台本の出力の形を確かめる(項目の型が違えば読まない。例外にしない)
+    reg_raw, video = data.get("registry"), data.get("video")
+    registry = [e for e in reg_raw if isinstance(e, dict)] if isinstance(reg_raw, list) else []
+    if isinstance(video, dict):
+        video = [video]
+    video = [v for v in video if isinstance(v, dict)] if isinstance(video, list) else []
+    adapters, notes = parse_wmi_video(json.dumps(video), registry)
     for a in adapters:
         a.source = "wsl"
     if any(a.vendor == "amd" for a in adapters):
@@ -1576,7 +1593,7 @@ def parse_system_profiler(text: str) -> list[Adapter]:
     「Apple M2 Pro」などで、メモリは統合メモリ(大きさは psutil の搭載量 = sysctl hw.memsize で見る)。"""
     try:
         data = json.loads(text.strip() or "null")
-    except ValueError:
+    except (ValueError, RecursionError):
         return []
     items = data.get("SPDisplaysDataType") if isinstance(data, dict) else None
     out: list[Adapter] = []
@@ -1623,9 +1640,11 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
     if platform.system() == "Linux":
         notes: list[str] = []
         r = _run(["lspci", "-Dnn"], OTHER_GPU_TIMEOUT)
-        if r is not None and r[0] == 0:
+        listed = r is not None and r[0] == 0
+        if listed:
             adapters = parse_lspci(r[1], _sysfs_vram, _sysfs_gtt)
         else:
+            listed = bool(_sysfs_slots())  # sysfs の一覧が読めれば、画面の部品が 0 個でも「読めた」
             adapters = sysfs_display_adapters()
             if adapters:
                 notes.append(
@@ -1649,7 +1668,7 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
                 win, win_notes = wsl_windows_adapters(state)
                 adapters += win
                 notes += win_notes
-        elif not adapters:
+        elif not listed:
             notes.append(_unreadable("lspci・sysfs"))
         return adapters, notes
     if platform.system() == "Darwin":
@@ -1962,7 +1981,7 @@ def _wsl_amd_key(name: str) -> str:
 def intel_driver_build(version: str | None) -> int | None:
     """Intel の画面ドライバの版("32.0.101.8801")→ 7 桁の build 番号(1018801)。読めなければ None。"""
     parts = (version or "").strip().split(".")
-    if len(parts) != 4 or not all(x.isdigit() for x in parts):
+    if len(parts) != 4 or not all(x.isascii() and x.isdigit() for x in parts):
         return None
     return int(f"{int(parts[2])}{int(parts[3]):04d}")
 
@@ -2071,6 +2090,14 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
             f"macOS の Apple 以外の GPU({a.name})は PyTorch の MPS 版の対象ではない(Apple silicon だけ)",
             f"GPUs other than Apple on macOS ({a.name}) are not covered by the MPS build of PyTorch"
             " (Apple silicon only)",
+        )
+        return None
+    if a.config_error in REFUSED_CM_ERRORS:
+        # S6: デバイス マネージャーで無効・ドライバ無し・止まった部品は動かない(WSL2 から読んだ部品も同じ)
+        ja, en = _CM_ERRORS[a.config_error]
+        refuse(
+            f"{a.name} は Windows のデバイス マネージャーで{ja}(コード {a.config_error})",
+            f"{a.name} {en} in Windows Device Manager (code {a.config_error})",
         )
         return None
     ven_id = (a.pci_id or "").partition(":")[0]
@@ -2507,11 +2534,14 @@ def _other_gpu_notes(adapters: list[Adapter], judged_gpu: bool) -> list[str]:
             # 項目 8: どの読み方(WMI・lspci・sysfs・WSL)でも、名前(言語で変わる「Microsoft 基本ディスプレイ
             # アダプター」など)に頼らず、型番の会社 ID が NVIDIA の部品で知らせる
             if not judged_gpu:
+                named = "nvidia" in a.name.lower()
+                seen = a.name if named else f"NVIDIA の GPU({a.name} として見えている)"
+                seen_en = a.name if named else f"An NVIDIA GPU (seen as {a.name})"
                 notes.append(
                     tr(
-                        f"{a.name} があるが、nvidia-smi で確かめられないので CPU として判定した"
+                        f"{seen} があるが、nvidia-smi で確かめられないので CPU として判定した"
                         "(NVIDIA のドライバを入れると GPU で判定できる)",
-                        f"{a.name} is present but cannot be checked with nvidia-smi, so judged as CPU"
+                        f"{seen_en} is present but cannot be checked with nvidia-smi, so judged as CPU"
                         " (install the NVIDIA driver to judge with the GPU)",
                     )
                 )
@@ -2591,7 +2621,7 @@ def read_meminfo() -> dict[str, int] | None:
         return None
     out: dict[str, int] = {}
     for line in text.splitlines():
-        m = re.match(r"^([A-Za-z0-9_()]+):\s+(\d+)(\s+kB)?\s*$", line.strip())
+        m = re.match(r"^([A-Za-z0-9_()]+):\s+([0-9]+)(\s+kB)?\s*$", line.strip())
         if m:
             out[m.group(1)] = int(m.group(2)) * (1024 if m.group(3) else 1)
     return out or None
@@ -2630,7 +2660,7 @@ def _cgroup_chain(base: str, path: str) -> list[str]:
 
 def _cgroup_number(path: str) -> int | None:
     text = (_read_text(_p(path)) or "").strip()
-    return int(text) if text.isdigit() else None  # v2 の "max"(上限なし)は None
+    return int(text) if text.isascii() and text.isdigit() else None  # v2 の "max"(上限なし)は None
 
 
 def cgroup_memory() -> tuple[int | None, int | None]:
