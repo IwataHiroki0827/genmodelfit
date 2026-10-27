@@ -53,8 +53,8 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 - Windows, Linux or macOS, Python 3.10 or newer (with `uvx`, uv provides Python if you have none).
 - GPU: NVIDIA (CUDA); the estimates are calibrated on NVIDIA runs. Without a usable NVIDIA GPU, AMD (ROCm: RDNA 2 or
   newer, Windows 11 / Linux), Intel (XPU: Arc A / B, Core Ultra Arc Graphics, Windows 11 / Linux) and Apple silicon
-  (MPS, macOS 14 or newer) are judged as estimates (at most Good, unless a measurement at the same settings sets the
-  level: by the maintainer or on this PC on a same-vendor GPU, or by other users on the same GPU). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
+  (MPS, macOS 14 or newer) are judged as estimates (at most Good, unless measurements set the level: two or more
+  independent sources on the same GPU with the same settings). Integrated GPUs and APUs (e.g. Radeon 780M / 680M, Steam Deck, Ryzen Z1) use shared memory. Other GPUs
   (Intel UHD / Iris Xe, the 2-CU Radeon 610M, RDNA 1 and older) and PCs without a GPU are judged as CPU-only;
   SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests
   `update-pciids` when lspci does not know the GPU's name
@@ -162,8 +162,8 @@ Only names in `gmf.__all__` are stable API ([docs/schema.md](https://github.com/
 
 `--vram` and `--ram` (GiB) replace the detected sizes, e.g. `genmodelfit recommend --vram 12 --ram 32`.
 With a usable NVIDIA GPU, its generation is kept and only the VRAM changes. On a non-NVIDIA GPU (or without a usable
-GPU), `--vram` judges a hypothetical NVIDIA GPU of unknown generation. Other users' measurements apply only when
-`--vram` is within 3% of the measured card's VRAM. `--width`, `--height`, `--frames`, `--length` and `--precision` judge a specific
+GPU), `--vram` judges a hypothetical NVIDIA GPU of unknown generation. Other users' measurements, and measurements
+that set the level, apply only when `--vram` and the measured card's VRAM have a ratio (smaller ÷ larger) of 0.95 or more. `--width`, `--height`, `--frames`, `--length` and `--precision` judge a specific
 setting.
 
 ### Language
@@ -198,32 +198,33 @@ Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, 
     more workflows merged into their models)
 == image: top 2 of 37  (-m image for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Good         62 SDXL1.0 Base               gen       fp16  6.3m  79% GPU~     6.5 openrail++
-image ● Good         56 Anima Base 1.0             gen,edit  bf16   5.8  72% GPU~     5.4 other
+image ● Good        100 Anima Base 1.0             gen,edit  bf16   5.8  72% GPU~     5.4 other
+image ● Good         88 SDXL1.0 Base               gen       fp16   6.4  80% GPU~     6.5 openrail++
 == video: top 2 of 4  (-m video for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-video ● Marginal     50 Wan 2.1 1.3B T2V           gen       fp16  7.8m  97% GPU~     9.2 apache-2.0
-video ● Marginal     39 Wan 2.1 ControlNet 1.3B    edit      bf16   7.7  96% GPU+RAM 10.6 apache-2.0
+video ● Marginal     43 Wan 2.1 1.3B T2V           gen       fp16   7.7  96% GPU+RAM  9.2 apache-2.0
+video ● Marginal     42 Wan 2.1 ControlNet 1.3B    edit      bf16   7.7  96% GPU+RAM 10.6 apache-2.0
 == music: top 2 of 10  (-m music for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-music ● Good         65 ACE-Step 1.5 Turbo         gen       bf16  6.0m  76% GPU~     9.3 mit
-music ● Perfect      64 Stable Audio 3 Small music gen       fp32   4.7  59% GPU      3.2 other
+music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
+music ● Good        100 YuE2 3B                    gen,edit  int8   5.2  65% GPU      3.7 cc-by-nc-…
 == sfx: top 2 of 2  (-m sfx for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-sfx   ● Perfect      66 stable-audio-3-small-sfx   gen       fp32   4.7  59% GPU      3.2 other
-sfx   ● Good         54 stable-audio-open-1.0      gen       fp32   4.9  61% GPU~     5.3 other
+sfx   ● Good        100 stable-audio-open-1.0      gen       fp32   4.9  61% GPU~     5.3 other
+sfx   ● Perfect     100 stable-audio-3-small-sfx   gen       fp32   4.7  59% GPU      3.2 other
 == tts: top 2 of 20  (-m tts for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-tts   ● Perfect      80 Chatterbox                 gen       fp32   3.5  44% GPU      2.0 mit
-tts   ● Perfect      80 VieNeu-TTS-v3-Turbo        gen       q8     1.6  21% GPU      0.2 apache-2.0
+tts   ● Perfect     100 MeloTTS-English            gen       ?      1.7  21% GPU      0.2 mit
+tts   ● Perfect     100 Chatterbox                 gen       fp32   3.5  44% GPU      2.0 mit
 == 3d: top 2 of 7  (-m 3d for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-3d    ● Good         64 HY 3D 2.0                  gen       fp16  6.7m  84% GPU      4.6 other
-3d    ● Good         57 TripoSplat                 gen       fp16   5.8  72% GPU      3.5 other
-Order: runs, Perfect/Good, Marginal, Score. Score 0-100. VRAM: GiB needed, m = measured.
+3d    ● Good         99 TripoSplat                 gen       fp16   5.8  72% GPU      3.5 other
+3d    ● Good        100 HY 3D 2.0 MV               gen       fp16   4.3  54% GPU~     4.6 other
+Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score.
+Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.
 Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.
 Level caps: GPU~ is at most Good; GPU+RAM and CPU are at most Marginal (Mem% can be low).
-Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short.
+Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.
 One row per model: Prec = best precision that fits, Use = workflow uses (info, --all-workflows).
 Estimates without m are rough. Details: genmodelfit info <name or id>. Apps: --json (schema.md).
 --json lists auto-recommendable models first (schema.md).
@@ -241,13 +242,14 @@ PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
 All models: 6 of 60 (218 hidden: other types 166, uncensored 21, tools 19, license unknown 12; 51
     more workflows merged into their models)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Perfect      90 SDXL1.0 Base               gen       fp16  8.0m  33% GPU      6.5 openrail++
-image ● Perfect      84 MOSS-Image SFT             gen       int8  13.8  58% GPU     12.1 apache-2.0
-image ● Perfect      83 FLUX.2 [Klein] 4B Base     edit      fp8   13.2  55% GPU     11.5 apache-2.0
-image ● Perfect      82 MOSS-Image Base            gen       int8  13.8  58% GPU     12.1 apache-2.0
-image ● Perfect      81 Anima Base 1.0             gen,edit  bf16   7.1  30% GPU      5.4 other
-image ● Perfect      80 Anima Preview 3 Base       gen       bf16   7.0  29% GPU      5.2 other
-Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured.
+image ● Perfect     100 MOSS-Image SFT             gen       int8  13.8  58% GPU     12.1 apache-2.0
+image ● Perfect     100 Anima Base 1.0             gen,edit  bf16   7.1  30% GPU      5.4 other
+image ● Perfect     100 SDXL1.0 Base               gen       fp16   8.1  34% GPU      6.5 openrail++
+image ● Perfect     100 FLUX.2 [Klein] 4B Base     edit      fp8   13.2  55% GPU     11.5 apache-2.0
+image ● Perfect     100 MOSS-Image Base            gen       int8  13.8  58% GPU     12.1 apache-2.0
+image ● Perfect     100 Anima Preview 3 Base       gen       bf16   7.0  29% GPU      5.2 other
+Order: Type, Status, official, popularity, Score (--sort).
+Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.
 …
 ```
 
@@ -257,13 +259,13 @@ Order: Type, Status, Score (--sort). Score 0-100. VRAM: GiB needed, m = measured
 |---|---|
 | Type | image, video, music, sfx, tts, 3d |
 | Status | fit level (below) |
-| Score | 0–100: fit level, VRAM headroom, Verified (each check: `info`), measured or not, popularity ([formula](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#score)) |
+| Score | 0–100: memory headroom. 100 while the tightest memory of the mode is at most 70% used (Mem%), lower above that; not speed, quality or popularity ([rules](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md#score)) |
 | Censored | `Y` censored / `N` uncensored; only with `--uncensored` (or `--content all|uncensored`) |
 | Model | one row per model (same weights); long names are cut in the middle with `…` |
 | Use | `gen`, `edit`, `i2v`, … (`genmodelfit types`); the row's own use (the one matching `--task`) first, then the other uses of the model's workflows, without repeats (`gen,edit`; `gen,…` when they do not fit). The workflows: `info`; one row each: `--all-workflows` |
 | Prec | the best precision that fits (fp16, bf16, fp8, int8, …) |
-| VRAM | GiB needed in that mode; `m` = measured by the maintainer or on this PC, `c` = median of other users' measurements of the same GPU (count: `info`, JSON `sample_count`) |
-| Mem% | share of VRAM used (of RAM on CPU); `RAM` = system RAM is short |
+| VRAM | GiB needed in that mode; `m` = measured by the maintainer or on this PC, `c` = median of other users' measurements of the same GPU (number of sources: `info`, JSON `sample_count`) |
+| Mem% | share of the tightest memory used: VRAM on the GPU, RAM on CPU, the larger of the two for `GPU+RAM`; `RAM` = system RAM is short |
 | Mode | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
 | Disk | download size (GiB); dropped first when the width is short (then see `info` or `--json`) |
 | License | license of the files (`other` = read it yourself) |
@@ -275,18 +277,23 @@ The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM 
 | level | use of memory | cap by mode |
 |---|---|---|
 | **Perfect** | ≤ 60% | only when all on the GPU (`GPU`) |
-| **Good** | ≤ 85% | highest level for `GPU~`, and for AMD / Intel / Apple GPUs unless a measurement at the same settings sets the level (by the maintainer or on this PC on a same-vendor GPU, or by other users on the same GPU) |
+| **Good** | ≤ 85% | highest level for `GPU~`, and for AMD / Intel / Apple GPUs unless measurements set the level (two or more independent sources on the same GPU with the same settings) |
 | **Marginal** | ≤ 98% | highest level for `GPU+RAM`, `CPU` or slightly short RAM (Mem% can be low) |
 | **Too tight** | > 98% | does not run |
 | **?** | — | not judged: the download size is unknown |
 
 Marks: `m` after VRAM = measured by the maintainer or on this PC, `c` = median of other users' measurements; without
-a mark it is a formula estimate. Measurements win over the formula. Other users' measurements apply only to the same
-GPU (same PCI model ID, else the same normalized name, and VRAM within 3%) and can move the needs either way. `bench`
-values (`torch_reserved`) get +0.5 GiB when they set the level.
+a mark it is a formula estimate. Measurements win over the formula. Without `--width` etc. every model is judged at
+the same default settings for its type, so measurements taken at other settings only shift the estimate (no mark).
+Other users' measurements apply only to the same GPU (same PCI model ID, else the same normalized name, and a VRAM
+ratio of 0.95 or more) and can move the needs either way. Measurements set the level only when two or more independent sources agree on
+the same GPU with the same settings, and then the table's VRAM is the amount used for the level (at least weights +
+fixed part; `bench` values (`torch_reserved`) get +0.5 GiB). Rules: [docs/scoring.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/scoring.md).
 `?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
-`recommend` orders rows by: runs, Perfect/Good, Marginal, Score. `fit` orders by type, level, Score.
-(`recommend --json` and `gmf.recommend()` keep their order, with Verified models first: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#order-of-recommend).)
+`recommend` orders rows by: runs, Perfect/Good, Marginal (faster mode first), official templates, popularity (the
+rank of the usage count among models of the same type and source), Score. `fit` orders by type, level, official,
+popularity, Score. (`recommend --json` and `gmf.recommend()` put Verified models first after "runs":
+[docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#order-of-recommend).)
 
 ### Accuracy
 

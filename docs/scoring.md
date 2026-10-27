@@ -61,7 +61,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 
 1. **Same GPU**: the same rule for the author's measurements and other users' (`estimate.same_gpu`).
    - The PCI device IDs match when both have one; otherwise the normalized names match (generic names never match).
-   - For dedicated-VRAM GPUs, the VRAM ratio (smaller ÷ larger) must also be 0.97 or more.
+   - For dedicated-VRAM GPUs, the VRAM ratio (smaller ÷ larger) must also be 0.95 or more (`MEASURED_VRAM_TOLERANCE`; "VRAM ratio for the same GPU" below).
    - Up to 0.10, the author's measurements counted on any GPU of the same vendor with at least 0.97 × the measured VRAM (for example, Wan2.2 5B measured on an RTX 5080 was Good / GPU on an RTX 4060 Ti 16 GB). That favoured the author and was dropped.
 2. **Same settings**: resolution, frames, length, batch and precision match. Same vendor (`gpu_backend`, else the GPU name). Measured with the current list's files (`files_fp`) on a GPU in the name table (`gpu_known`).
 3. **Two or more independent sources** (`MIN_LEVEL_SOURCES`):
@@ -93,7 +93,14 @@ The four checks:
 - Testable ("Tests").
 - Of the 2026-10-22 decision "other users' measurements are used from one submission", the part that sets the level changed (values are still used from one submission).
 
-**With `--vram`**: `--vram` keeps the real GPU's name, so once the VRAM ratio drops below 0.97 it is no longer the same GPU and measurements no longer set the level (for example `--vram 17` on an RTX 5080 PC). That is a judgement for a GPU with a different amount, so this is correct. The [schema.md](schema.md) promise "more VRAM never lowers the level" carries this exception.
+**With `--vram`**: `--vram` keeps the real GPU's name, so once the VRAM ratio drops below 0.95 it is no longer the same GPU and measurements no longer set the level (for example `--vram 17.5` on an RTX 5080 PC). That is a judgement for a GPU with a different amount, so this is correct. The [schema.md](schema.md) promise "more VRAM never lowers the level" carries this exception.
+
+**VRAM ratio for the same GPU** (0.97 → 0.95 in 0.11.0; `estimate.MEASURED_VRAM_TOLERANCE`)
+
+- **In one sentence**: the same card counts as the same GPU whatever the OS, and variants with another amount (8 GB and 16 GB, for example) count as different GPUs.
+- Evidence: Linux CUDA reports the total minus a reservation (5934 MiB = 5.80 GiB for a 6 GB card; an RTX 2060 report on the NVIDIA developer forum). Linux totals are 5.80 / 7.79 / 9.78 / 10.76 / 11.77 / 23.69 GiB; Windows reports 6.0 / 7.99 / 15.92 and so on. For 6 GB, 5.80 ÷ 6.0 = 0.967 missed 0.97. Variants with another amount differ by a ratio of 0.83 or less (RTX 4060 Ti 8 / 16 GB 0.5, RTX 3060 8 / 12 GB 0.67, RTX 2060 6 / 12 GB 0.5, RTX 3080 10 / 12 GB 0.83), well below 0.95.
+- Fair: the same value for everyone's measurements; Linux and Windows owners of the same card share each other's measurements.
+- Test: `tests/test_scoring.py::test_same_vram_ratio_linux_and_windows` (Linux 5.80 matches Windows 6.0; the 8 GB and 16 GB variants never match).
 
 **Non-NVIDIA GPUs**: estimates are capped at Good. Only when measurements set the level as above does the level go up to theirs ([hardware.md](hardware.md)).
 

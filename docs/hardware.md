@@ -455,19 +455,17 @@ Required main memory = fixed part + all components + (one more copy of the main 
 
 ## Measurements that succeeded on the same GPU (0.7.0, #26)
 
-The level is decided by a measurement (`Estimate.fit_from: measurement`) when all of these hold.
+The level is decided by measurements (`Estimate.fit_from: measurement`) when all of these hold (the conditions changed in 0.11.0; the full rules are in [scoring.md](scoring.md) "When measurements set the level").
 
 - There is a measurement that succeeded (`outcome: ok`) at the same settings with the standard workflow.
-- Its GPU is from the same vendor as this PC's GPU.
-- This PC's VRAM is at least that of the measured GPU (97% or more, to allow for the gap between a nominal 16 and nvidia-smi's 15.9).
-- The measured peak fits in this PC's VRAM.
+- Its GPU is **the same GPU** as this PC's (`estimate.same_gpu`: the model ID or the normalized name, and a VRAM ratio of 0.95 or more). The same rule for the author's and other users' measurements (up to 0.10 the author's counted on any same-vendor GPU with at least the measured VRAM).
+- There are two or more independent sources (each author row is one, other users' rows count their `n_sources`) and they agree (no OOM record, spread within 15% of the median).
+- The amount used for the level = max(largest peak + context, weights + fixed part) fits in this PC's VRAM.
 
 How the level is decided:
 
-- By the band of measured VRAM / this PC's VRAM (60 / 85 / 98%). At least Good.
-- These measurements are not a basis for Perfect (Good at most):
-  - a measurement stuck at the upper limit (dynamic VRAM used up all the free memory);
-  - a measurement by another user that also has OOM reports for the same configuration.
+- By the band of the amount used for the level / this PC's VRAM (60 / 85 / 98%). At least Good.
+- If a measurement is stuck at the upper limit (dynamic VRAM used up all the free memory), it is not a basis for Perfect (Good at most).
 - A `torch_reserved` measurement (bench; it does not include the CUDA / HIP context) sets the band with 0.5 GiB for the context added (`estimate.TORCH_RESERVED_CONTEXT_GB`), and it is also a basis for Perfect (0.9.0). Before, it was not, so a non-NVIDIA GPU with only bench submissions stopped at Good even with a measurement.
 
 How the vendor of the measured GPU is decided:
@@ -478,15 +476,15 @@ How the vendor of the measured GPU is decided:
 How measurements by other users (#34) are used:
 
 - Only those of the same GPU as this PC (the model ID, or the normalized name; generic names are excluded; `estimate.same_gpu`). Decided on 2026-10-22. It is not widened to similar GPUs. From 0.9.0, the required amount also uses only the same GPU.
-- In addition, only when the ratio of the measured GPU's VRAM to this PC's total (smaller / larger) is 0.97 or more (0.9.1; `estimate.same_vram`). The same name can come with different VRAM (such as 8 / 16 GB for the RTX 4060 Ti). Integrated GPUs, APUs and Apple are not compared.
+- In addition, only when the ratio of the measured GPU's VRAM to this PC's total (smaller / larger) is 0.95 or more (0.9.1; 0.95 instead of 0.97 since 0.11.0, because Linux CUDA reports a 6 GB card as 5.80 GiB, 0.967 of Windows' 6.0; `estimate.same_vram`). The same name can come with different VRAM (such as 8 / 16 GB for the RTX 4060 Ti). Integrated GPUs, APUs and Apple are not compared.
 
 Other points:
 
 - They are not used on GPUs where the precision adjustment doubled the working memory.
 - The main memory check is done as usual.
-- The reason starts with "with a measurement at the same settings of ... GB and success on ..., judged to run on ... GPU (the level was decided by the measurement; the estimate is a rough guide)", and the VRAM in the table is that measured value (m).
-- If the measured GPU is larger than this PC, the reason says "the level was decided by the estimate".
-- Example: Wan 2.2 5B (15.8 GB, success on an RTX 5080 16 GB) is Good / GPU on an RTX 5080 (0.6.0: Marginal / offload), and stays Marginal / offload on an RTX 3060 12 GB.
+- The reason starts with "N independent sources ran to the end on the same GPU as this PC (...) with the same settings and agree ... (level from the measurements)", and the VRAM in the table is the amount used for the level (m / c).
+- If the measurement is from another GPU, has only one source or does not agree, the reason says "the level comes from the estimate (...)".
+- Example: Wan 2.2 5B (two author rows on an RTX 5080 16 GB: 15.8 / 15.0 GB) does not fit with weights + fixed part (about 18.4 GB) in 15.9 GB even at 640x640 with 73 frames, so from 0.11.0 the level comes from the estimate (Marginal / offload; Good / GPU from 0.7.0 to 0.10). It stays Marginal / offload on an RTX 3060 12 GB.
 
 ## Memory and virtual memory
 

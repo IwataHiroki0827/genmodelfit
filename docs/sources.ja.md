@@ -552,7 +552,7 @@ LFS でない小さいファイルは実際に落として sha256 を計算し�
 | `manual:irodori-tts-v4.1-small` | `other` / `mit-with-ethical-restrictions`(用途の制限付きの段。声のコーデックは `mit`) | https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small のカードの cardData は `license: mit`・本文「released under MIT」だが、同じカードの「Ethical Restrictions」(https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions。実在の人の声を同意なくまねない・ディープフェイクや偽情報の音声をつくらない)が用途を制限するので、寛容の段に入れない(gate の許可リストの `mit` にも当たらない)。声のコーデック https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim も `license: mit`(元の facebook/dacvae-watermarked は `apache-2.0`) |
 | `manual:stable-audio-3-small-music` | `other` / `stable-audio-community`、文字を読む部品 `t5gemma_b_b_ul2` は `gemma` | https://huggingface.co/stabilityai/stable-audio-3-small-music のカード(`license: other`・`license_name: stable-audio-community`、`gated: auto`)。同じリポジトリに `LICENSE_GEMMA.md` がある。URL は gated でない https://huggingface.co/Comfy-Org/stable-audio-3 の複製(`stable_audio_3_small_music.safetensors`・`t5gemma_b_b_ul2.safetensors`)。T5Gemma の記載は、同じファイルを使う `audio_stable_audio_3_medium` と同じ(`license_sources` の `stable-audio-3-t5gemma`) |
 
-手のモデルは、`recommend` の人気の点(`popularity`)に使う `downloads` を持たないので、同じ点数なら HF 由来より下に並びやすい。
+手のモデルは、HF のリポジトリがあれば人気の順位(`popularity`)の Hugging Face の仲間に入るが、全期間のダウンロード数(`downloads_all_time`)を持たないので順位は 0(一番下。[scoring.ja.md](scoring.ja.md)「人気」)。
 
 ### 手で足す部品
 
@@ -624,7 +624,7 @@ ID は `hf:<owner>/<repo>`、`source: "huggingface"`、`discovered_from` に見�
 PurzBeats など)は `Template.username` に持ち、`community: true` とする。同じ重みの公式のワークフローがあれば表の代表にしない
 (ワークフローの一覧には残す)。公式の仲間がいない利用者のテンプレートはそのまま 1 つのモデルとして出すが、並べ方では
 公式のものの後にする([schema.ja.md](schema.ja.md)「`recommend` の並べ方」)。
-`recommend` の並べ方では、HF のダウンロード数を 100 で割ってテンプレートの使用回数(`usage`)と同じ目盛りにして使う。
+`recommend` の並べ方の人気の順位は、テンプレートの使用回数(`usage`)と HF の全期間のダウンロード数を混ぜず、同じ種類・同じ出どころの中の百分位にして使う(0.11.0。それまでの「HF のダウンロード数を 100 で割って同じ目盛りにする」換算はやめた。[scoring.ja.md](scoring.ja.md)「人気」)。
 
 **テンプレートで足りない種類**: ローカルの読み上げのテンプレートは 0 件(Chatterbox は `size` 0)、効果音は 1 件
 (Stable Audio Open)しかないので、HF の人気順で補う(`content` は根拠が無ければ `sfw`):

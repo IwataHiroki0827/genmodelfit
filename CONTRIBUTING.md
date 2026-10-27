@@ -57,9 +57,9 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 
 ```powershell
 pip install -U "genmodelfit>=0.9.1"
-genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 768x768 --steps 6
-genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 512x512 --frames 49 --steps 20
-genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 20 --steps 8
+genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 1024x1024 --steps 6
+genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 832x480 --frames 81 --steps 20
+genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 30 --steps 8
 genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --steps 15
 ```
 
@@ -74,7 +74,8 @@ Template and settings:
 - Change other inputs with `--set INPUT_NAME=VALUE` (every input with that name changes).
 - A result is recorded as "non-standard" (`standard: false`) and is not used for estimates in two cases: you changed anything other than size, length, steps and seed with `--set`, or you used `--workflow`.
 - For `--set`, only numeric values are kept in `note`. For strings only the name is kept, since a string may be a prompt.
-- Measuring with the same settings as an existing measurement (`src/genmodelfit/data/measurements.json`) makes comparison easier.
+- Measure at **the default settings for the type** (image 1024x1024, video 832x480 with 81 frames, music 30 seconds, sound effects and speech 10 seconds) so the result is used as is for judgments without options (from 0.11.0 every model is judged at these settings unless options are given; [docs/scoring.md](docs/scoring.md) "Settings used for judging"). Measurements at other settings still shift the estimates.
+- A template whose size comes from the input image (depth estimation, background removal and so on; it has no size input) is measured without `--resolution`; bench writes no size. If the template is in the table the maintainer checked (`estimate.NO_SIZE_INPUT`), the measurement is used for judging as is. A size-less submission for a template not in the table gets the `settings_missing` notice in its PR (the maintainer decides whether to add it to the table).
 
 Model loading and caching:
 
@@ -121,7 +122,7 @@ Clone your fork (GitHub Fork) and run bench with `--submission` in that folder. 
 git clone https://github.com/<your-name>/genmodelfit
 cd genmodelfit
 pip install -e .
-genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832x832 --submission data/contrib/
+genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 1024x1024 --submission data/contrib/
 ```
 
 - The file is a submission file (`contrib_schema` 1). If you pass a folder to `--submission`, the file is written as `data/contrib/<GPU>/<date>-<sha8>.json`. Example: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`, where `sha8` is the first 8 hex digits of the content's sha256. If you pass a file name, it is written under that name.
@@ -203,10 +204,10 @@ This prints everything in the file in readable form, and prints the result of a 
 - After the merge, your file is in data/contrib, but it **reaches users with the next version** of genmodelfit (#90). When making a release, the maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD; [docs/release.md](docs/release.md)). `genmodelfit contrib aggregate --check` shows the submissions not in it yet.
 - Only **PCs with the same GPU as the measured one** use the result. Judgments for PCs with other GPUs do not change (0.9.1; the same approach as llmfit). "Same GPU" means:
   - the PCI model ID is the same (when both have it), otherwise the normalized name is the same (a generic name is not counted as a match), and
-  - the ratio of total VRAM is 0.97 or more. An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
-- On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured_community` (other users' measurements), and the count (`sample_count`) is shown.
+  - the ratio of total VRAM is 0.95 or more (the same card reports a slightly different total on Linux and Windows). An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
+- On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured_community` (other users' measurements), and the number of sources (`sample_count`) is shown.
 - The value is used in both directions, lowering or raising the required amount. A value for everything on the GPU is never lowered below weights + fixed part, and never raised above the GPU's total.
-- A measurement of the same GPU and the same settings also becomes grounds for deciding the level. For GPUs other than NVIDIA, the Good cap is lifted if that GPU has a measurement. See [docs/accuracy.md](docs/accuracy.md) for details.
+- Measurements of the same GPU and the same settings also become grounds for deciding the level once **two or more independent sources** agree (a maintainer row, or submissions sent in another pull request; however many files one person sends in one pull request, they are one source). Then, for GPUs other than NVIDIA, the Good cap is lifted too. See [docs/scoring.md](docs/scoring.md) for details.
 - For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements for a release.
 
 ### Maintainer measurements (measurements.json)
