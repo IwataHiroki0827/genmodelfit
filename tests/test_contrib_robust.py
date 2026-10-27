@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -149,7 +150,10 @@ def test_contrib_workflow_requires_add_only_and_the_exact_layout():
     steps = wf["jobs"]["validate"]["steps"]
     step = next(s for s in steps if "足すだけ" in s.get("name", ""))
     run = step["run"]
-    assert '--diff-filter=DMRTC --name-only "$BASE_SHA" HEAD -- data/contrib' in run
+    assert "--diff-filter=DMRTC --name-only HEAD^1 HEAD -- data/contrib" in run
+    assert "--diff-filter=A --raw HEAD^1 HEAD" in run  # 普通のファイルだけ(リンク・サブモジュールは断る)
+    pr_checkout = next(s for s in steps if s.get("with", {}).get("path") == "pr")
+    assert pr_checkout["with"]["fetch-depth"] == 2  # マージのコミットとその 1 つ目の親を比べる
     assert (
         "--diff-filter=A" in run
         and r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$" in run
@@ -391,7 +395,7 @@ def test_one_source_counts_once():
     """E2・E2b: 1 つの出どころ(同じ PR)の 20 件の小さな値は 1 つの値(その中央値)としてだけ数える。"""
     honest = [as_sub(sub(peak_vram_gb=v), f"h{i}") for i, v in enumerate((6.9, 7.0, 7.1))]
     spam = [as_sub(sub(peak_vram_gb=1.0, seconds=40 + i * 0.1), f"s{i}") for i in range(20)]
-    sources = {s.path: f"pr-honest-{i}" for i, s in enumerate(honest)} | {s.path: "pr-spam" for s in spam}
+    sources = {s.sha256: f"pr-honest-{i}" for i, s in enumerate(honest)} | {s.sha256: "pr-spam" for s in spam}
     row = contrib.aggregate(honest + spam, sources)[0]
     assert row["n_sources"] == 3 and row["peak_vram_gb"] == 7.0 and row["n_outliers"] == 20
     # 出どころが分からない(git の外)ときは提出ごとに数えるので、数の多い側が勝つ(出どころを git で数える理由)
@@ -463,3 +467,253 @@ def test_version_ranges_are_notices(db):
     d["comfyui_version"] = "0.3.0"  # テンプレートは 0.11.0 以上
     r = contrib.validate_submission(d, db, check_filename=False)
     assert r.ok and "comfyui_old" in codes(r, "notices")
+
+
+# --- チェッカーの指摘(#90 の 2 回目) ---------------------------------------------------------------
+
+
+def _repo_with_two_prs(tmp_path: Path) -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    root = repo / "data" / "contrib"
+    root.mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "main")
+    write(root, sub(peak_vram_gb=6.9))
+    write(root, sub(peak_vram_gb=7.0, seconds=41.0))
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "PR 1: two runs")
+    write(root, sub(peak_vram_gb=7.1, seconds=42.0))
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "PR 2")
+    return repo, root
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_bundled_status_needs_no_git_history(tmp_path, db):
+    """同梱のまとめは提出ごとの出どころを記録するので、浅い clone(CI)・git の外(ci_local の WSL の写し)でも
+    同じまとめを作り直せる。"""
+    repo, root = _repo_with_two_prs(tmp_path)
+    subs, _ = contrib.load_dir(root, db)
+    sources, via_git = contrib.submission_sources(root, subs)
+    assert via_git and len(set(sources.values())) == 2
+    doc = json.loads(
+        contrib.dumps(contrib.community_document(contrib.aggregate(subs, sources), subs, sources))
+    )
+    assert doc["measurements"][0]["n_sources"] == 2
+    assert {e["source"] for e in doc["submissions"]} == set(sources.values())
+    assert contrib.bundled_status(root, doc, db)["ok"]
+    shallow = tmp_path / "shallow"
+    _git(tmp_path, "clone", "-q", "--depth", "1", "file://" + repo.as_posix(), str(shallow))
+    assert contrib.bundled_status(shallow / "data" / "contrib", doc, db)["ok"]
+    nogit = tmp_path / "nogit" / "data" / "contrib"
+    shutil.copytree(root, nogit)
+    assert contrib.bundled_status(nogit, doc, db)["ok"]
+    # 古い形(sha256 の文字列だけ)も読める(出どころは提出ごと)
+    old = contrib.community_document(contrib.aggregate(subs), subs)
+    old["submissions"] = [e["sha256"] for e in old["submissions"]]
+    st = contrib.bundled_status(nogit, json.loads(json.dumps(old)), db)
+    assert st["missing"] == [] and st["listed"] == 3
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_sources_follow_renames(tmp_path):
+    """1 つの PR で足した 5 件をメンテナが別のフォルダへ動かしても、出どころは 1 つ(最初に足したコミット)。"""
+    repo = tmp_path / "repo"
+    root = repo / "data" / "contrib"
+    root.mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "x").write_text("x")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "init")
+    for i in range(5):
+        write(root, sub(peak_vram_gb=1.0 + i * 0.01, seconds=40.0 + i))
+    shutil.move(str(root / "rtx-3070"), str(root / "old-slug"))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "one PR")
+    pr = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "mv", "data/contrib/old-slug", "data/contrib/rtx-3070")
+    _git(repo, "commit", "-q", "-m", "maintainer: move")
+    subs, _ = contrib.load_dir(root)
+    sources, via_git = contrib.submission_sources(root, subs)
+    assert via_git and len(subs) == 5 and set(sources.values()) == {pr}
+
+
+# Linux の CUDA は公称より少なく報告する(6 GB → 5934 MiB = 5.80 GiB など)。Windows の値も受け付ける
+LINUX_WINDOWS_TOTALS = [
+    ("NVIDIA GeForce RTX 2060", 5.80),
+    ("NVIDIA GeForce RTX 3050 6GB", 5.80),
+    ("NVIDIA GeForce RTX 3070", 7.79),
+    ("NVIDIA GeForce RTX 3070", 7.99),
+    ("NVIDIA GeForce RTX 3080", 9.78),
+    ("NVIDIA GeForce RTX 2080 Ti", 10.76),
+    ("NVIDIA GeForce RTX 3060", 11.77),
+    ("NVIDIA GeForce RTX 4090", 23.69),
+    ("NVIDIA GeForce RTX 4080", 15.92),
+]
+
+
+@pytest.mark.parametrize(("name", "vram"), LINUX_WINDOWS_TOTALS)
+def test_reported_vram_totals_are_accepted(name, vram, db):
+    gpu = {"name": name, "vram_gb": vram, "driver": "580.65.06", "vendor": "nvidia", "backend": "cuda"}
+    r = contrib.validate_submission(sub(gpu=gpu, peak_vram_gb=3.0), db, check_filename=False)
+    assert "gpu_inconsistent" not in codes(r), r.errors
+
+
+def test_far_vram_is_still_an_error(db):
+    for name, vram in (("NVIDIA GeForce RTX 3070", 7.4), ("NVIDIA GeForce RTX 3050 6GB", 7.99)):
+        gpu = {"name": name, "vram_gb": vram, "driver": "580.65.06", "vendor": "nvidia", "backend": "cuda"}
+        r = contrib.validate_submission(sub(gpu=gpu, peak_vram_gb=3.0), db, check_filename=False)
+        assert "gpu_inconsistent" in codes(r), (name, vram)
+
+
+KNOWN_NVIDIA = [
+    "NVIDIA GeForce RTX 5080",
+    "NVIDIA GeForce RTX 3060 Ti",
+    "NVIDIA GeForce RTX 4090 D",
+    "NVIDIA GeForce RTX 5090 D",
+    "NVIDIA GeForce RTX 5090 D v2",
+    "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "NVIDIA GeForce RTX 3050 6GB",
+    "NVIDIA GeForce RTX 3050 OEM",
+    "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "NVIDIA GeForce RTX 2080 Super with Max-Q Design",
+    "NVIDIA GeForce RTX 2070 with Max-Q Design",
+    "NVIDIA GeForce GTX 1660 SUPER",
+    "NVIDIA GeForce GTX 1060 6GB",
+    "NVIDIA GeForce GTX 1060 3GB",
+    "NVIDIA TITAN RTX",
+    "NVIDIA TITAN X (Pascal)",
+    "NVIDIA RTX A2000 12GB",
+    "NVIDIA RTX A1000 6GB Laptop GPU",
+    "NVIDIA RTX 4000 Ada Generation",
+    "NVIDIA RTX 4000 SFF Ada Generation",
+    "NVIDIA RTX 3500 Ada Generation Laptop GPU",
+    "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+    "NVIDIA RTX PRO 4000 Blackwell",
+    "Quadro RTX 5000",
+    "Quadro P4000",
+    "Quadro T1000",
+    "NVIDIA T1000 8GB",
+    "Tesla T4",
+    "Tesla V100-SXM2-16GB",
+    "Tesla V100-PCIE-32GB",
+    "NVIDIA A100-SXM4-80GB",
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 NVL",
+    "NVIDIA L40S",
+    "NVIDIA GH200 480GB",
+    "NVIDIA B200",
+    "NVIDIA GB10",
+    "NVIDIA GeForce MX550",
+]
+UNKNOWN_NVIDIA = [
+    "NVIDIA GeForce RTX 3070 taro",
+    "NVIDIA Graphics Device",
+    "NVIDIA GeForce RTX 3060 1234",
+    "NVIDIA GeForce RTX 3060 3060",
+    "NVIDIA GeForce RTX 3060 Ti Ti super",
+    "NVIDIA GeForce RTX 3060 16GB",
+    "NVIDIA GeForce RTX 3070 99GB",
+    "NVIDIA Quadro RTX 31337",
+    "NVIDIA GeForce GTX 1660 SUPER generation design with",
+    "NVIDIA CMP 30HX",  # 実在するが表に無い(足すまでは知らない GPU。hardware._NAME_SUFFIXES の説明)
+]
+
+
+@pytest.mark.parametrize("name", KNOWN_NVIDIA)
+def test_known_nvidia_names(name):
+    assert contrib.gpu_known(name), name
+
+
+@pytest.mark.parametrize("name", UNKNOWN_NVIDIA)
+def test_unknown_nvidia_names(name):
+    assert not contrib.gpu_known(name), name
+
+
+# bench の失敗の理由などに入る、個人の情報ではない文字(ノードの名前・git のコミット・公開のドメイン)
+PUBLIC_NOTES = [
+    "Qwen2VLForConditionalGeneration",
+    "Wan22FunControlToVideo",
+    "HunyuanVideo15ImageToVideo",
+    "Hunyuan3Dv2ConditioningMultiView",
+    "CosmosPredict2ImageToVideoLatent",
+    "EmptyAceStep15LatentAudio",
+    "DownloadAndLoadDepthAnythingV2Model",
+    "ComfyUI 0.3.68 commit a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    "https を使わず huggingface.co と hf.co と comfy.org と pytorch.org を見た",
+    "github.com/comfyanonymous の版",
+]
+
+
+@pytest.mark.parametrize("text", PUBLIC_NOTES)
+def test_public_words_in_notes_are_kept(text):
+    assert not contrib._hits(text), text
+    note = f"失敗: {text} で止まった。計測 13 回"
+    assert contrib.scrub_text(note) == note
+
+
+def test_known_misses_are_documented():
+    """自動の点検は形を見るだけ(意味は分からない)。見逃すものは CONTRIBUTING に書いた
+    (利用者が note を読む)。"""
+    for text in ("yamada-desktop", "user: yamada", "t a r o @ g m a i l", "山田太郎のPC", "dGFybw=="):
+        assert not contrib._hits(text), text
+    for page in ("CONTRIBUTING.md", "CONTRIBUTING.ja.md"):
+        assert "yamada-desktop" in Path(page).read_text(encoding="utf-8")
+
+
+def test_stale_rows_are_listed(db):
+    """一覧のファイルが変わった(files_fp が違う)同梱のまとめの行は、--check と bundled_status で知らせる。"""
+    entry = db.get("flux1_krea_dev")
+    d = sub(
+        model_id=entry.id,
+        settings={"width": 1024, "height": 1024, "steps": 20},
+        peak_vram_gb=7.6,
+        files_fp=files_fingerprint(entry),
+    )
+    s = as_sub(d)
+    doc = contrib.community_document(contrib.aggregate([s]), [s])
+    assert contrib.bundled_status(Path("no-such-dir"), doc, db)["stale"] == []
+    changed = copy.deepcopy(db)
+    changed.get(entry.id).files[0].sha256 = "0" * 64
+    assert contrib.bundled_status(Path("no-such-dir"), doc, changed)["stale"] == [
+        [entry.id, "NVIDIA GeForce RTX 3070"]
+    ]
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or shutil.which("git") is None, reason="CI と同じ bash の検査(Linux・WSL で流す)"
+)
+def test_workflow_add_only_step_in_a_real_repo(tmp_path):
+    """contrib.yml の「足すだけ」の段を本物の git で動かす(HEAD^1 と HEAD を比べる)。"""
+    import yaml
+
+    wf = yaml.safe_load(Path(".github/workflows/contrib.yml").read_text(encoding="utf-8"))
+    run = next(s for s in wf["jobs"]["validate"]["steps"] if "足すだけ" in s.get("name", ""))["run"]
+    step = tmp_path / "step.sh"
+    step.write_text(run, encoding="utf-8")
+    good = "data/contrib/rtx-3070/2026-10-27-0123abcd.json"
+
+    def case(change) -> int:
+        repo = tmp_path / f"r{len(list(tmp_path.iterdir()))}"
+        (repo / "data/contrib/rtx-3070").mkdir(parents=True)
+        _git(repo, "init", "-q", "-b", "main")
+        (repo / "data/contrib/rtx-3070/2026-10-01-aaaaaaaa.json").write_text("{}")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "base")
+        change(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "--allow-empty", "-m", "pr")
+        env = {**os.environ, "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md")}
+        return subprocess.run(
+            ["bash", str(step)], cwd=repo, env=env, capture_output=True, check=False
+        ).returncode
+
+    assert case(lambda r: (r / good).write_text("{}")) == 0
+    assert case(lambda r: (r / "data/contrib/rtx-3070/2026-10-01-aaaaaaaa.json").unlink()) == 1  # 消す
+    assert case(lambda r: (r / "data/contrib/rtx-3070/2026-10-01-aaaaaaaa.json").write_text("[]")) == 1
+    assert case(lambda r: (r / good.replace(".json", ".JSON")).write_text("{}")) == 1
+    assert case(lambda r: (r / "data/contrib/README.md").write_text("x")) == 1
+    assert case(lambda r: None) == 1  # 何も足していない

@@ -301,26 +301,75 @@ _NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
 )
 
 
-# 名前の表に当てるときに除いてよい語(版・形・大きさを表す語。#90)。これを除いた残りが _NAME_CC のどれかに
-# 丸ごと当たれば「知っている NVIDIA の GPU 名」とする
-_NAME_EXTRA_WORDS = re.compile(
-    r"\b(ti|super|laptop|gpu|max-q|mobile|design|with|generation|tesla|pcie|sxm\d?|nvl|hbm\w*|\d+ ?gb)\b"
-    r"|\(\d+ ?gb\)",
+# 名前の表に当てるときに、名前の後ろから 1 回ずつ外してよい語(#90)。版・形・載せ方を表す決まった語だけ
+# (並びは問わない。同じ語を 2 回は外さない: 「RTX 3060 Ti Ti」は当たらない)。新しい言い方の GPU は、
+# 名前の表(_NAME_CC)かここに足す(足すまでは「知らない GPU」= 提出の行を判定に使わない。
+# docs/schema.md「contrib」)
+_NAME_SUFFIXES: tuple[str, ...] = (
+    r"with max q design",
+    r"max q workstation edition",
+    r"workstation edition",
+    r"server edition",
+    r"laptop gpu",
+    r"laptop",
+    r"max q",
+    r"oem",
+    r"v2",
+    r"d",
+    r"super",
+    r"ti",
+    r"\(pascal\)",
+    r"hbm\d?e?",
+    r"nvl",
+    r"pcie",
+    r"sxm\d?",
 )
+# VRAM を名前に入れる GPU の量(GB)の言い方(「GTX 1060 6GB」「A100 80GB」)。名前の表に量のある GPU は、
+# その量でなければ当たらない(contrib.gpu_known が estimate.nvidia_nominal_vram で見る)
+_NAME_SIZE = re.compile(r"(.*?) ?\b(\d{1,3}) ?gb$")
+_KNOWN_SIZES = {2, 3, 4, 5, 6, 8, 10, 11, 12, 16, 20, 24, 32, 40, 48, 64, 80, 94, 96, 141, 180, 192, 288, 480}
+# 系列だけの表の行に型番を付けた名前(Quadro RTX 3000〜8000)
+_NAME_EXTRA = (r"quadro rtx (3000|4000|5000|6000|8000)",)
+
+
+def _name_matches(n: str) -> bool:
+    # 系列の語(Quadro・Tesla)の付く名前と付かない名前の両方を試す(Quadro T1000・Quadro P4000・Tesla T4)
+    for cand in {n, re.sub(r"^(quadro|tesla) ", "", n)}:
+        if any(re.fullmatch(pat, cand) for pat in _NAME_EXTRA):
+            return True
+        if any(re.fullmatch(f"(?:{pat})", cand) for pat, _cc in _NAME_CC):
+            return True
+    return False
 
 
 def nvidia_name_known(name: str) -> bool:
-    """NVIDIA の GPU 名が名前の表(_NAME_CC)の 1 つに丸ごと当たるか(#90)。「RTX 3070」「RTX 4060 Ti」
-    「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」「NVIDIA Graphics Device」は当たらない。
-    ほかの利用者の提出で、表に無い名前の行を判定に使わないための見分け。"""
-    n = re.sub(r"\s+", " ", name.lower().replace("nvidia", "").replace("geforce", "")).strip()
-    n = n.replace("(tm)", "").replace("(r)", "").replace("-", " ")
-    short = re.sub(r"\s+", " ", _NAME_EXTRA_WORDS.sub(" ", n)).strip()
-    # 系列だけの表の行(「quadro rtx」など)には型番の数字が後ろに付く(Quadro RTX 6000)
-    for cand in (n, short, re.sub(r" \d{3,5}$", "", short)):
-        if cand and any(re.fullmatch(f"(?:{pat})", cand) for pat, _cc in _NAME_CC):
+    """NVIDIA の GPU 名が名前の表(_NAME_CC)の 1 つに丸ごと当たるか(#90)。名前の後ろの決まった語
+    (_NAME_SUFFIXES。Ti・SUPER・Laptop GPU・with Max-Q Design・OEM・D・v2 など)と量(_NAME_SIZE)は 1 回ずつ
+    外してよい。「RTX 3070」「RTX 4060 Ti」「RTX 4070 Laptop GPU」は当たり、「RTX 3070 taro yamada」
+    「RTX 3060 1234」「NVIDIA Graphics Device」は当たらない。ほかの利用者の提出で、表に無い名前の行を判定に
+    使わないための見分け。"""
+    n = name.lower()
+    for word in ("nvidia", "geforce", "(tm)", "(r)", "™", "®"):
+        n = n.replace(word, " ")
+    n = re.sub(r"\s+", " ", n.replace("-", " ")).strip()
+    n = re.sub(r"\b(sff )?ada generation\b", "ada", n)  # RTX 4000 SFF Ada Generation → rtx 4000 ada
+    used: set[str] = set()
+    while True:
+        if _name_matches(n):
             return True
-    return False
+        for suf in _NAME_SUFFIXES:
+            if suf in used:
+                continue
+            m = re.fullmatch(rf"(.+?) {suf}", n)
+            if m:
+                n, _ = m.group(1), used.add(suf)
+                break
+        else:
+            m = _NAME_SIZE.fullmatch(n)
+            if m and "size" not in used and int(m.group(2)) in _KNOWN_SIZES and m.group(1):
+                n, _ = m.group(1).strip(), used.add("size")
+                continue
+            return False
 
 
 def cc_from_name(name: str) -> tuple[int, int] | None:

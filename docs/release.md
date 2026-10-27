@@ -114,7 +114,10 @@ Steps:
      one) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
      and the output says so).
    - If someone resubmitted a fixed submission, remove the old file in a maintainer PR (write the reason in the PR
-     description; a submission PR only adds files and cannot remove them).
+     description; a submission PR only adds files and cannot remove them). The "add only" check of the `Contrib`
+     workflow fails on this PR, which is expected (it is a check for submission PRs; the maintainer reviews and merges).
+   - If `--check` lists rows that are not used (their `files_fp` differs from the current list), upstream files have
+     changed. Those rows are not used for judging, so they can stay; wait for submissions measured with the new files.
    - If the consistent groups (`consistent`) changed, refit with `python -m genmodelfit.calibrate` and update
      docs/accuracy.ja.md and docs/accuracy.md (CLAUDE.md).
 2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).

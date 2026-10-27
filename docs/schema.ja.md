@@ -1053,7 +1053,7 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **個人の情報**: base64 らしい 20 字以上の続き・32 桁以上の 16 進・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。
 - **測ったファイル**: bench は測った時点の一覧のモデルのファイルの指紋 `files_fp`(ファイルの sha256 を小文字にして並べ替え、改行でつないだ文字列の sha256。sha256 の無いファイルが 1 つでもあれば書かない)を書き、一覧のファイルが変わった(指紋が違う)実測は使わない。
 - **GPU の名前**: NVIDIA の GPU は名前の表(`hardware.nvidia_name_known`)に丸ごと当たる名前だけを判定に使い、当たらない名前(`NVIDIA Graphics Device` など)の行は `gpu_known: false` の記録として残すだけにする(確認 `unknown_gpu`)。
-- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの RTX 20〜50 系)で、`vram_gb` がどの版の量とも 3% より違えば誤り `gpu_inconsistent`。
+- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの RTX 20〜50 系)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ誤り `gpu_inconsistent`(Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
 - **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
@@ -1080,7 +1080,7 @@ bench の結果を読めないときは終了コード 1。
 - チェックリストに NG があるか、`validate` の誤り(errors)があれば送れない(理由を出して終了コード 1)。注意(warnings)と確認(notices)では断らない。
 - `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<中身>`。中身はファイルのまま(改行は LF)を URL エンコードしたもの。名前の sha8 は `contrib.canonical` の hash なので、字下げ・改行の違いでは変わらない。
 - URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、`paste_url` だけを案内する(長い URL は途中で切られることがあるため)。
-- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`(名前だけを入れた同じページ。入力済みのページに中身が出ないときの代わり)。テキストの出力では、その直前にファイルの中身をそのまま出すので、写して貼り付け、「Propose changes」「Create pull request」を押す。GitHub のアップロードのページ(`/upload/`)は書き込みの権限が要るので使わない。
+- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`(名前だけを入れた同じページ。入力済みのページに中身が出ないときの代わり)。テキストの出力では、その直前に、2 つの `---` の行の間にファイルの中身だけを出す(ファイルの場所はその外の行に出す。場所にはユーザ名が入るので、写す範囲に入れない)。写して貼り付け、「Propose changes」「Create pull request」を押す。GitHub のアップロードのページ(`/upload/`)は書き込みの権限が要るので使わない。
 - 端末(標準入力と標準出力がどちらも端末)では、ブラウザで開くかを y/N で尋ねる(既定は No)。y のときだけ開く。`--json` と端末でないときは URL を出すだけで、開かない。
 - 通信しない。送られるのは、利用者がブラウザでボタンを押したときだけ。リポジトリの名前は `contrib.REPO` の 1 か所。
 
@@ -1099,7 +1099,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 |---|---|
 | `read` | 読めない、JSON でない、64 KB を超える、入れ子が深すぎる、またはシンボリックリンク(シンボリックリンクのフォルダは辿らない) |
 | `string` | 制御文字・改行・見えない文字・双方向の文字を含む文字列、長すぎる文字列やキー、配列、深さ 8 を超える入れ子 |
-| `schema` | `contrib_schema` ≠ 1、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
+| `schema` | `contrib_schema` が 1・2 でない、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
 | `unknown_field` | 決まりに無いキー(`settings` の中を含め、どこでも) |
 | `privacy` | 値かキー(NFKC 正規化し、幅ゼロの文字を除き、`¥` を `\` と読んだあと)に、次のどれかが含まれる(詳細は下) |
 | `date` | `YYYY-MM-DD` でない、または未来 |
@@ -1181,7 +1181,8 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - 出力の行は、`origin: "community"` の Measurement の記録(Measurement を参照)で、順は固定。だから同じ入力は常に同じファイルになる。
 
 `--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, submissions, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
-- `submissions`(#90)は、まとめに渡した提出(検査を通ったもの)の内容の sha256(`contrib.canonical` の hash。ファイル名の sha8 の元)を並べたもの。
+- `submissions`(#90)は、まとめに渡した提出(検査を通ったもの)ごとの `{sha256, source}` を sha256 の順に並べたもの。`sha256` は内容の hash(`contrib.canonical`。ファイル名の sha8 の元)、`source` はまとめたときの出どころ(足したコミット、git の履歴が無ければ `file:<sha256>`)。
+- `contrib aggregate --check` と試験は、git の履歴を読まずに、この記録した出どころでまとめ直して比べる(浅い clone・git の外でも同じ結果)。最初の形(sha256 の文字列だけ)も読む(出どころは提出ごと)。
 - 古い版は知らないキーとして読み飛ばす(読むのは `measurements` だけ)。
 
 同梱の写しは `src/genmodelfit/data/measurements_community.json` で、ほかの実測と一緒に読み込まれる。
@@ -1201,11 +1202,12 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 ### `contrib aggregate [DIR] --check [--json]`
 
-何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ提出 0 件)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
+何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
 - まだまとめに入っていない、検査を通った提出(マージした後の提出)のパスを出す。
 - まとめの `submissions` にあるのに `DIR` に無い(または検査を通らない)提出と、それだけをまとめ直したときに同梱のファイルと同じになるかも出す。
+- 同梱のまとめのうち、測ったときの一覧のファイル(`files_fp`)が今の一覧と違い、判定に使われない行(`stale`)も出す(知らせるだけ。毎週の一覧の更新で上流のファイルが変わると起きる)。
 
-`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`matches`、`ok`(missing が無く matches)。
+`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`matches`、`ok`(missing が無く matches)。
 終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、または ok でない / 2 使い方の誤り。
 
 ## download

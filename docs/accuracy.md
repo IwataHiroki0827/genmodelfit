@@ -344,6 +344,8 @@ Users add the submission JSON made by `genmodelfit bench --submission` through a
 **As of 2026-10-22, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
 The rules below describe how submissions will be handled once they arrive.
 
+**Files measured (#90)**: other users' submissions (contrib_schema 2) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
+
 **Maintainer's decision of 2026-10-22:** follow the same approach as llmfit (main, read on 2026-10-22).
 
 - How llmfit does it:

@@ -1052,13 +1052,29 @@ NVIDIA_NOMINAL_VRAM: dict[str, tuple[float, ...]] = {
     "rtx-2070": (8.0,),
     "rtx-2060-super": (8.0,),
 }
-# 提出の vram_gb(GiB。/system_stats の総量)と公称の VRAM の比の許容(1 枚の GPU の数え方の違いだけを許す)
-NOMINAL_VRAM_TOLERANCE = (0.97, 1.03)
+# 提出の vram_gb(GiB。/system_stats の総量)と公称の VRAM の比の許容(1 枚の GPU の数え方の違いだけを許す)。
+# CUDA が報告する総量は公称より少ない: Linux で 6 GB の版は 5934 MiB = 5.80 GiB(比 0.967)、8 GB は 7.79、
+# 12 GB は 11.77、24 GB は 23.69。Windows は 7.99・15.92 など。下を 0.95 にした(版の違いの比は 0.83 以下)
+NOMINAL_VRAM_TOLERANCE = (0.95, 1.03)
 
 
 def nvidia_nominal_vram(name: str | None) -> tuple[float, ...]:
-    """名前の表で分かる NVIDIA の GPU の公称の VRAM(GB)。表に無ければ空。"""
-    return NVIDIA_NOMINAL_VRAM.get(gpu_key(name), ())
+    """名前の表で分かる NVIDIA の GPU の公称の VRAM(GB)。表に無ければ空。名前に量が付いている
+    (「RTX 3050 6GB」)ときは、表にその量の版があればその量だけ、無ければ空(contrib.gpu_size_ok が断る)。"""
+    k = gpu_key(name)
+    m = re.fullmatch(r"(.+)-(\d+)gb", k)
+    if m and m.group(1) in NVIDIA_NOMINAL_VRAM:
+        size = float(m.group(2))
+        return (size,) if size in NVIDIA_NOMINAL_VRAM[m.group(1)] else ()
+    return NVIDIA_NOMINAL_VRAM.get(k, ())
+
+
+def nvidia_size_ok(name: str | None) -> bool:
+    """名前に付いた量(「RTX 3060 16GB」)が、名前の表のその GPU の量のどれかか(表に無い GPU は True)。"""
+    m = re.fullmatch(r"(.+)-(\d+)gb", gpu_key(name))
+    return not (
+        m and m.group(1) in NVIDIA_NOMINAL_VRAM and float(m.group(2)) not in NVIDIA_NOMINAL_VRAM[m.group(1)]
+    )
 
 
 def nvidia_vram_variants(name: str | None) -> tuple[float, ...]:

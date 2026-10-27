@@ -1074,7 +1074,8 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
   (`hardware.nvidia_name_known`); rows with other names (`NVIDIA Graphics Device` etc.) are kept as records with
   `gpu_known: false` (notice `unknown_gpu`).
 - **GPU memory**: for NVIDIA GPUs whose VRAM follows from the name (`estimate.NVIDIA_NOMINAL_VRAM`; desktop RTX 20–50
-  series), a `vram_gb` more than 3% away from every version's amount is the error `gpu_inconsistent`.
+  series), a `vram_gb` outside 0.95–1.03 times every version's amount is the error `gpu_inconsistent` (CUDA on
+  Linux reports a 6 GB card as 5.80 GiB, so the lower side is wider).
 - **Error runs**: `outcome: error` submissions are not used for a row's value and only counted (`n_error`; a group of
   only errors makes no row).
 - **Steps**: peak VRAM does not depend on the step count, so neither the aggregation key nor judging's matching uses
@@ -1118,7 +1119,8 @@ submission it writes).
   `paste_url` is offered (a long URL may be cut).
 - `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`
   (the same page with only the name filled in; the fallback when the pre-filled page does not show the content). The
-  text output prints the file content as is just before it, to copy and paste; then "Propose changes", "Create pull
+  text output prints just the file content between two `---` lines before it (the file's location is on a line
+  outside them, since it holds the user name), to copy and paste; then "Propose changes", "Create pull
   request". GitHub's upload page (`/upload/`) needs write access, so it is not used.
 - In a terminal (stdin and stdout are both terminals) it asks y/N (default No) whether to open the page in a
   browser, and opens it only on y. With `--json` or without a terminal it only prints the URLs.
@@ -1143,7 +1145,7 @@ Like llmfit's `validate_community_benchmarks.py`, **only mechanical checks fail*
 |---|---|
 | `read` | not readable, not JSON, larger than 64 KB, nested too deep, or a symbolic link (symlinked folders are not followed) |
 | `string` | a string with control characters / newlines / invisible or bidi characters, too long a string or key, an array, or nesting deeper than 8 |
-| `schema` | `contrib_schema` ≠ 1, wrong `kind` / `tool`, missing keys, not objects |
+| `schema` | `contrib_schema` not 1 or 2, wrong `kind` / `tool`, missing keys, not objects |
 | `unknown_field` | a key outside the schema (anywhere, including `settings`) |
 | `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains something listed below |
 | `date` | not `YYYY-MM-DD`, or in the future |
@@ -1235,8 +1237,13 @@ aggregate is made from a clone with history when releasing (docs/release.md "Rel
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
 `--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, submissions,
 measurements}` (an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake).
-- `submissions` (#90) lists the content sha256 (the hash of `contrib.canonical`, the source of the sha8 in the file
-  name) of the submissions given to the aggregate (those that pass the checks).
+- `submissions` (#90) lists `{sha256, source}` for each submission given to the aggregate (those that pass the
+  checks), in sha256 order. `sha256` is the content hash (`contrib.canonical`, the source of the sha8 in the file
+  name); `source` is the source used when aggregating (the commit that added it, or `file:<sha256>` without git
+  history).
+- `contrib aggregate --check` and the test re-aggregate with these recorded sources, never reading git history (same
+  result in a shallow clone or outside git). The first form (plain sha256 strings) is still read (one source per
+  submission).
 - Older versions skip it as an unknown key (they read only `measurements`).
 
 The bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
@@ -1264,15 +1271,17 @@ Exit codes: 0 / 1 error (no such folder; empty result with `--output` without `-
 
 ### `contrib aggregate [DIR] --check [--json]`
 
-Writes nothing; compares the bundled aggregate with `DIR` (default `data/contrib`; a missing folder counts as 0
-submissions) (#90). It cannot be used with `--output` or `--report`.
+Writes nothing; compares the bundled aggregate with `DIR` (default `data/contrib`; a missing folder is an error,
+exit code 1) (#90). It cannot be used with `--output` or `--report`.
 - It lists the valid submissions not in the aggregate yet (submissions merged since the last release).
 - It also shows the submissions in the aggregate's `submissions` that are missing from `DIR` (or fail the checks),
   and whether re-aggregating exactly those gives the bundled file.
+- It also lists the bundled rows measured with files (`files_fp`) that differ from the current list, which judging
+  does not use (`stale`; information only; happens when a weekly list update sees upstream files change).
 
 `--json`: envelope + `action: "aggregate_check"`, `dir`, `listed` (submissions in the aggregate), `valid`, `invalid`
 (files that fail the checks), `pending` (paths of submissions not in it yet), `missing` (hashes in the aggregate but
-not found), `matches`, `ok` (nothing missing and matches).
+not found), `stale` ([model_id, gpu_name]), `matches`, `ok` (nothing missing and matches).
 Exit codes: 0 = nothing pending and ok / 1 = something pending, or not ok / 2 usage error.
 
 ## download

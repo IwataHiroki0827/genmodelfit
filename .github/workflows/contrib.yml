@@ -49,6 +49,9 @@ jobs:
         with:
           path: pr
           persist-credentials: false
+          # PR のマージのコミットとその 1 つ目の親(マージする先の今の先頭)を比べる(#90)。base.sha と比べると、
+          # 走らせ直したときに、その後に main で外した提出が「消した」に見えて提出の PR が落ちる
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           python-version: "3.12"
@@ -59,11 +62,8 @@ jobs:
           uv pip install -e .
       - name: data/contrib の外を変えていないか
         working-directory: pr
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          n=$(git diff --name-only "$BASE_SHA" HEAD -- . ':(exclude)data/contrib/**' | wc -l)
+          n=$(git diff --name-only HEAD^1 HEAD -- . ':(exclude)data/contrib/**' | wc -l)
           if [ "$n" -ne 0 ]; then
             {
               echo "## data/contrib の外のファイルも変えています(${n} 件)"
@@ -76,22 +76,22 @@ jobs:
       - name: data/contrib に足すだけか・足したファイルの形(#90)
         # 提出の PR は新しいファイルを足すだけ(消す・書き換える・名前を変えるのはメンテナの PR)。
         # 足すファイルは data/contrib/<GPU>/<日付>-<sha8>.json だけ(.json は小文字)。1 件も無ければ失敗。
-        # ファイル名は PR から来る文字なので、ログにもまとめにも出さない(件数だけ)
+        # ファイル名は PR から来る文字なので、ログにもまとめにも出さない(件数だけ)。
+        # 比べるのは HEAD^1(マージのコミットの 1 つ目の親 = マージする先の今の先頭)と HEAD。
+        # 提出を外すメンテナの PR はここで失敗するが、それでよい(メンテナが確かめてマージする。docs/release.md)
         working-directory: pr
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           fail() {
             { echo "## $1"; echo; echo "$2"; } >> "$GITHUB_STEP_SUMMARY"
             echo "$1" >&2
             exit 1
           }
-          changed=$(git diff --diff-filter=DMRTC --name-only "$BASE_SHA" HEAD -- data/contrib | wc -l)
+          changed=$(git diff --diff-filter=DMRTC --name-only HEAD^1 HEAD -- data/contrib | wc -l)
           if [ "$changed" -ne 0 ]; then
             fail "data/contrib の既にあるファイルを ${changed} 件、消す・書き換える・名前を変えています" \
               "提出の PR は新しいファイルを足すだけにしてください(直した提出を出し直すときも、新しいファイルとして足します。古い提出はメンテナが外します)。"
           fi
-          added=$(git diff --diff-filter=A --name-only "$BASE_SHA" HEAD -- data/contrib)
+          added=$(git diff --diff-filter=A --name-only HEAD^1 HEAD -- data/contrib)
           n=$(printf '%s\n' "$added" | grep -c . || true)
           if [ "$n" -eq 0 ]; then
             fail "提出のファイルを足していません" "data/contrib/<GPU>/<日付>-<sha8>.json を 1 件以上足してください。"
@@ -101,6 +101,11 @@ jobs:
           if [ "$bad" -ne 0 ]; then
             fail "置けない名前・場所のファイルを ${bad} 件足しています" \
               "足せるのは data/contrib/<GPU>/<日付>-<sha8>.json だけです(.json は小文字。フォルダの直下・深いフォルダ・ほかの形のファイルは置けません)。"
+          fi
+          # 足すのは普通のファイルだけ(シンボリックリンク 120000・サブモジュール 160000 は置けない)
+          odd=$(git diff --diff-filter=A --raw HEAD^1 HEAD -- data/contrib | awk '{print $2}' | grep -c -v '^100' || true)
+          if [ "$odd" -ne 0 ]; then
+            fail "普通のファイルでないもの(リンクなど)を ${odd} 件足しています" "提出は普通の JSON のファイルにしてください。"
           fi
       - name: 検査(contrib validate)
         run: |

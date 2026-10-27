@@ -43,6 +43,15 @@ All notable changes to this project are documented here. The format is based on
     says so); rows whose OOM sources are at least their ok sources get `runs_evidence: false`.
   - Notices for a submission made by a newer genmodelfit, a ComfyUI older than the template needs, or much newer than
     the latest the list knows.
+  - Follow-ups after review: the bundled aggregate records each submission's source (`submissions: [{sha256,
+    source}]`), so `--check` and the test re-aggregate without git history (shallow clones, ci_local's WSL copy);
+    sources follow renames back to the first add; the nominal-VRAM check accepts what CUDA reports on Linux (6 GB as
+    5.80 GiB; range 0.95–1.03); the NVIDIA name table strips only known suffixes (Ti, SUPER, D, v2, Laptop GPU,
+    with Max-Q Design, Workstation Edition, OEM, a VRAM size the model has, …) once each; node names, 40-digit commits
+    and public domains (huggingface.co, github.com, …) no longer trip the privacy check; the paste fallback keeps the
+    local path outside the `---` lines; `contrib.yml` compares the merge commit with its first parent and refuses
+    links / submodules; `aggregate --check` errors on a missing folder and lists bundled rows whose `files_fp` no
+    longer matches.
 
 ### Fixed
 

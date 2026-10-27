@@ -2084,13 +2084,15 @@ def _share(path: str | Path, args: argparse.Namespace, *, as_json: bool) -> tupl
             )
         )
     print()
+    # 写す範囲(--- の行の間)にはファイルの中身だけを置く(パスにはユーザ名が入るので、範囲の外に出す)
     print(
         tr(
-            f"--- 貼り付けて送る: ファイル {local} の中身(下の --- の間をそのまま写す) ---",
-            f"--- Paste and share: the content of the file {local}"
-            " (copy everything between the --- lines) ---",
+            "貼り付けて送る: 下の 2 つの --- の行の間(ファイルの中身)をそのまま写す",
+            "Paste and share: copy everything between the two --- lines below (the file content)",
         )
     )
+    print(tr(f"ファイル: {local}", f"File: {local}"))
+    print("---")
     print(raw.replace("\r\n", "\n"), end="" if raw.endswith("\n") else "\n")
     print("---")
     print(
@@ -2358,7 +2360,7 @@ def format_report(rep: dict[str, Any]) -> list[str]:
 
 def _contrib_aggregate_check(args: argparse.Namespace) -> int:
     """aggregate --check: 同梱のまとめに入っていない提出を数える(#90。まとめは版を出すときに作る)。
-    提出のフォルダが無ければ提出 0 件として比べる。"""
+    提出のフォルダが無ければ誤り(指定の間違いを 0 件として通さない)。今の一覧とファイルの違う行も知らせる。"""
     from .contrib import bundled_status
     from .db import COMMUNITY_FILE, bundled_text
 
@@ -2368,6 +2370,10 @@ def _contrib_aggregate_check(args: argparse.Namespace) -> int:
                 "--check は --output・--report と一緒に使えません",
                 "--check cannot be used with --output / --report",
             )
+        )
+    if not Path(args.dir).is_dir():
+        raise CliError(
+            tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
         )
     st = bundled_status(args.dir, json.loads(bundled_text(COMMUNITY_FILE)), _contrib_db(args))
     code = 0 if st["ok"] and not st["pending"] else 1
@@ -2403,6 +2409,18 @@ def _contrib_aggregate_check(args: argparse.Namespace) -> int:
     )
     for path in st["pending"]:
         print(f"  {path}")
+    if st["stale"]:
+        # 一覧のファイルが変わった(上流の差し替え)行は判定に使われない(estimate.files_match)。知らせるだけ
+        print(
+            tr(
+                f"同梱のまとめのうち、測ったときの一覧のファイル(files_fp)が今の一覧と違い、使われない行"
+                f" {len(st['stale'])} 件:",
+                f"{len(st['stale'])} rows of the bundled aggregate were measured with files (files_fp)"
+                " that differ from the current list, so they are not used:",
+            )
+        )
+        for model_id, gpu_name in st["stale"]:
+            print(f"  {model_id}  {gpu_name}")
     if st["pending"] or not st["ok"]:
         print(
             tr(
@@ -2446,7 +2464,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
                 " empty one; use --allow-empty to write it anyway)",
             )
         )
-    written = str(write_community(rows, args.output, subs)) if args.output else None
+    written = str(write_community(rows, args.output, subs, sources)) if args.output else None
     rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
     code = EXIT_BREACH if (rep and rep["breach"] and args.fail_on_breach) else 0
     stats = {
@@ -2463,7 +2481,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     }
     if args.json:
         payload: dict[str, Any] = {"action": "aggregate", **stats, "written_to": written}
-        payload["community"] = community_document(rows, subs)
+        payload["community"] = community_document(rows, subs, sources)
         if rep is not None:
             payload["report"] = rep
         _out(_envelope("contrib", None, None, **payload))

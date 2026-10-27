@@ -561,8 +561,9 @@ def test_bundled_community_file_is_regenerated_from_its_listed_submissions(db):
     st = contrib.bundled_status(root, doc, db)
     assert st["invalid"] == [] and st["missing"] == [], st
     assert st["matches"] and st["ok"], st
-    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in doc["submissions"])
-    assert doc["submissions"] == sorted(doc["submissions"])
+    hashes = [e["sha256"] for e in doc["submissions"]]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes) and hashes == sorted(hashes)
+    assert all(isinstance(e["source"], str) and e["source"] for e in doc["submissions"])
 
 
 def test_unlisted_new_submission_keeps_the_bundled_check_green(tmp_path, db):
@@ -602,7 +603,10 @@ def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(dbmod, "bundled_text", lambda name: empty if name == COMMUNITY_FILE else real(name))
     root = tmp_path / "contrib"
     (root / "rtx-3070").mkdir(parents=True)
-    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(tmp_path / "none"), "--check"]) == 0
+    # フォルダが無いのは指定の間違い(0 件として通さない)
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(tmp_path / "none"), "--check"]) == 1
+    assert "提出のフォルダがありません" in capsys.readouterr().err
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(root), "--check"]) == 0
     out = capsys.readouterr().out
     assert "まだ入っていないもの 0 件" in out
     shutil.copy(SDXL_3070[0], root / "rtx-3070" / SDXL_3070[0].name)
@@ -617,7 +621,8 @@ def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
     out_file = tmp_path / "c.json"
     assert cli.main(["contrib", "aggregate", str(root), "--output", str(out_file)]) == 0
     doc = json.loads(out_file.read_text(encoding="utf-8"))
-    assert doc["submissions"] == [contrib.content_hash(json.loads(SDXL_3070[0].read_text(encoding="utf-8")))]
+    h = contrib.content_hash(json.loads(SDXL_3070[0].read_text(encoding="utf-8")))
+    assert doc["submissions"] == [{"sha256": h, "source": f"file:{h}"}]  # git の外なので提出ごと
 
 
 # --- 根拠の段階 -----------------------------------------------------------------------------------
@@ -2003,6 +2008,13 @@ def test_cli_share_prints_urls_without_a_terminal(tmp_path, capsys, monkeypatch,
         in out
     )
     assert path.read_text(encoding="utf-8") in out  # 貼り付ける中身をそのまま出す
+    # 写す範囲(2 つの --- の行の間)は中身だけ。ファイルの場所(ユーザ名が入る)はその外の行
+    lines = out.splitlines()
+    a = lines.index("---")
+    b = lines.index("---", a + 1)
+    between = "\n".join(lines[a + 1 : b])
+    assert between + "\n" == path.read_text(encoding="utf-8") and str(path.resolve()) not in between
+    assert any(str(path.resolve()) in x for x in lines[:a])
     assert "Propose changes" in out and "Create pull request" in out and str(path.resolve()) in out
     assert "genmodelfit は何も送りません" in out and "[y/N]" not in out
     assert browser == []  # 端末でなければ開かない

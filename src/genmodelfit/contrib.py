@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import getpass
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -49,11 +50,13 @@ from .estimate import (
     PEAK_VRAM_RATIO,
     PEAK_VRAM_SLACK_GB,
     PRECISION_BYTES,
+    files_match,
     generic_gpu_name,
     gpu_key,
     no_size_input,
     norm_precision,
     nvidia_nominal_vram,
+    nvidia_size_ok,
 )
 from .hardware import (
     APPLE_CHIP_NAME,
@@ -150,11 +153,58 @@ _ZERO_WIDTH = re.compile(r"[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
 _HOST_WORDS = r"host ?name|computer ?name|PC ?name|user ?name|ホスト名|コンピューター?名|PC ?名|ユーザー?名"
 _POSIX_ROOTS = r"home|Users|root|mnt|media|tmp|var|opt|srv|private|Volumes|etc|usr|data|workspace|run"
 
+# 公開の道具・モデルの置き場のドメイン(note に書いても個人の情報ではない。#90)
+PUBLIC_DOMAINS = (
+    "huggingface.co",
+    "hf.co",
+    "github.com",
+    "githubusercontent.com",
+    "comfy.org",
+    "pytorch.org",
+    "nvidia.com",
+    "python.org",
+)
+_B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}(={0,2})(?![A-Za-z0-9+/=])")
+
+
+def _char_class(c: str) -> int:
+    return 0 if c.isdigit() else (1 if c.isupper() else 2)
+
+
+class _Base64Like:
+    """base64 らしい続き(#90): [A-Za-z0-9+/] が 20 字以上続き、次のどれか。
+    (1) 末尾に = の詰め物がある、(2) 中に + がある、(3) 大文字・小文字・数字がどれも入り、語の形をしていない:
+    3 字以上の小文字の語(先頭だけ大文字可)が 2 つ未満、その語の 4 分の 1 より多くが母音(aeiou)を含まない、
+    または隣り合う文字の種類(大文字・小文字・数字)の切り替わりが半分以上。ComfyUI のノードの名前
+    (HunyuanVideo15ImageToVideo・Qwen2VLForConditionalGeneration)は語の並びなので当たらない。
+    / だけでは数えない(パスは別の形で見る)。短い base64・語に見える base64 は見逃す
+    (docs/schema.md「contrib」)。"""
+
+    def search(self, text: str) -> bool:
+        for m in _B64_RUN.finditer(text):
+            run, pad = m.group(0).rstrip("="), m.group(1)
+            if pad or "+" in run:
+                return True
+            letters = run.replace("/", "")
+            if not (
+                any(c.isupper() for c in letters)
+                and any(c.islower() for c in letters)
+                and any(c.isdigit() for c in letters)
+            ):
+                continue
+            words = [w for w in re.findall(r"[A-Z]?[a-z]{2,}", letters) if len(w) >= 3]
+            voweled = sum(bool(re.search("[aeiouAEIOU]", w)) for w in words)
+            switches = sum(_char_class(a) != _char_class(b) for a, b in itertools.pairwise(letters))
+            if len(words) < 2 or voweled < 0.75 * len(words) or switches >= 0.5 * (len(letters) - 1):
+                return True
+        return False
+
+
 # (種類, 正規表現, (説明の日本語, 英語))。値を NFKC でそろえ(全角の Ｃ：＼ → C:\)、見えない文字を除き、
 # ¥ を \ とみなしてから当てる。
 # どれも入れ子の繰り返しの無い形にした(長い値でも時間が線形に近い。値の長さは MAX_STR / MAX_NOTE_CHARS まで)。
 # 当てはまらなければ安全、ではない(人の名前・自由な文の意味は分からない)。docs/schema.md「contrib」
-PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], tuple[str, str]], ...] = (
+PRIVACY_PATTERNS: tuple[tuple[str, Any, tuple[str, str]], ...] = (
     (
         "path",
         re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"),
@@ -263,22 +313,24 @@ PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str], tuple[str, str]], ...] = (
     # #90 で足したもの(書き換えた・崩した書き方の個人の情報)
     (
         "encoded",
-        # base64 らしい 20 字以上の続き(大文字・小文字・数字がどれも入るもの。パスやメールを書き換えて隠す)
-        re.compile(
-            r"(?=[A-Za-z0-9+/]{20,})(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*\d)"
-            r"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{20,}={0,2}"
-        ),
+        # base64 らしい 20 字以上の続き(_Base64Like の説明。パスやメールを書き換えて隠す)
+        _Base64Like(),
         ("base64 などで書き換えた文字", "base64 or other encoded text"),
     ),
     (
         "hex_id",
-        re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{32,}(?![0-9A-Za-z])"),
-        ("32 桁以上の 16 進(UUID・個体の ID など)", "32 or more hex digits (a UUID or device ID)"),
+        # ちょうど 32 桁(ダッシュの無い UUID・個体の ID)。40 桁の git のコミットは当てない
+        re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{32}(?![0-9A-Za-z])"),
+        ("32 桁の 16 進(UUID・個体の ID など)", "32 hex digits (a UUID or device ID)"),
     ),
     (
         "domain",
+        # 公開の道具・モデルの置き場(PUBLIC_DOMAINS とそのサブドメイン)は当てない
         re.compile(
-            r"(?<![\w.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|net|org|jp|io|dev|me|info|biz|co|ai|app|xyz"
+            r"(?<![\w.-])(?!(?:[A-Za-z0-9-]+\.)*(?:"
+            + "|".join(re.escape(d) for d in PUBLIC_DOMAINS)
+            + r")\b)"
+            r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|net|org|jp|io|dev|me|info|biz|co|ai|app|xyz"
             r"|us|uk|de|cn|kr|tw|ru|fr|eu|tv|cc|ne|or|ac|go|ed)\b(?![.-]\w)",
             re.I,
         ),
@@ -991,7 +1043,7 @@ def gpu_known(name: str | None, vendor: str | None = None) -> bool:
         return False
     if (vendor or name_vendor(name) or "nvidia") != "nvidia":
         return True
-    return nvidia_name_known(name) and not generic_gpu_name(name)
+    return nvidia_name_known(name) and not generic_gpu_name(name) and nvidia_size_ok(name)
 
 
 def validate_submission(
@@ -2024,9 +2076,10 @@ def load_dir(
 def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
     """提出ごとの出どころ(#90)。出どころは、そのファイルをリポジトリに足したコミット(main の first-parent の
     履歴で。PR のマージ・squash のコミットが 1 つの出どころ)。同じ PR で足した提出は 1 つの出どころになる。
-    (パス → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone(CI の depth 1 は全部が 1 つの
-    コミットに見える)・git が無いときは、使えなかったとして空を返す(aggregate はファイルごとに数える)。
-    通信しない(手元の git の履歴を読むだけ)。"""
+    メンテナがファイルを動かした(名前を変えた)ときは、名前の変更をさかのぼって最初に足したコミットを使う。
+    (内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone(CI の depth 1 は
+    全部が 1 つのコミットに見える)・git が無いときは、使えなかったとして空を返す(aggregate はファイルごとに
+    数える)。通信しない(手元の git の履歴を読むだけ)。"""
     import subprocess
 
     base = Path(root).resolve()
@@ -2050,29 +2103,44 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
         return {}, False
     top_dir = Path(top.strip()).resolve()
     log = git(
-        "log", "--first-parent", "--diff-filter=A", "--name-only", "--format=commit %H", "--", str(base)
+        "log",
+        "--first-parent",
+        "-M",
+        "--diff-filter=AR",
+        "--name-status",
+        "--format=commit %H",
+        "--",
+        str(base),
     )
     if log is None:
         return {}, False
-    added: dict[str, str] = {}
+    # 今の名前 → 提出。新しいコミットから順に見て、名前の変更(R)は前の名前に付け替え、足した(A)ところで止める
+    alias: dict[str, Submission] = {}
+    for s in subs:
+        with contextlib.suppress(ValueError):
+            alias[Path(s.path).resolve().relative_to(top_dir).as_posix()] = s
+    out: dict[str, str] = {}
     commit = None
     for line in log.splitlines():
         if line.startswith("commit "):
             commit = line[7:].strip()
-        elif line.strip() and commit and line.strip() not in added:
-            added[line.strip()] = commit  # 新しい順なので、最初に見たもの = いちばん新しく足したコミット
-    out: dict[str, str] = {}
+            continue
+        parts = line.split("\t")
+        if not commit or len(parts) < 2:
+            continue
+        if parts[0].startswith("R") and len(parts) == 3 and parts[2] in alias:
+            alias[parts[1]] = alias.pop(parts[2])
+        elif parts[0] == "A" and parts[1] in alias:
+            s = alias.pop(parts[1])
+            out.setdefault(s.sha256, commit)
     for s in subs:
-        try:
-            rel = Path(s.path).resolve().relative_to(top_dir).as_posix()
-        except ValueError:
-            rel = ""
-        out[s.path] = added.get(rel) or f"file:{s.sha256}"  # まだコミットしていないファイルは 1 件で 1 つ
+        out.setdefault(s.sha256, f"file:{s.sha256}")  # まだコミットしていないファイルは 1 件で 1 つ
     return out, True
 
 
 def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出は使わない。
+    sources は提出の内容の sha256 → 出どころ(submission_sources)。無い提出はそれぞれ 1 つの出どころ。
 
     - error で終わった提出は値に使わず、数だけ数える(n_error)。
     - 最後まで動いた(ok)ものは出どころ(sources。無ければ提出ごと)ごとに中央値をとり、その出どころの値で
@@ -2082,7 +2150,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
     sources = sources or {}
 
     def src(sub: Submission) -> str:
-        return sources.get(sub.path) or f"file:{sub.sha256}"
+        return sources.get(sub.sha256) or f"file:{sub.sha256}"
 
     groups: dict[tuple, list[Submission]] = {}
     for sub in subs:
@@ -2199,11 +2267,15 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
     return out
 
 
-def community_document(rows: list[dict[str, Any]], used: list[Submission] | None = None) -> dict[str, Any]:
+def community_document(
+    rows: list[dict[str, Any]], used: list[Submission] | None = None, sources: dict[str, str] | None = None
+) -> dict[str, Any]:
     """同梱の measurements_community.json の中身(日付は提出の最新の日付。作り直しても同じになる)。
-    used はまとめに渡した提出。submissions にその内容の sha256(canonical の hash)を並べて残す
-    (どの提出を入れたか。まだ入れていない提出を bundled_status で見分ける。#90)。古い版は知らないキーとして
-    読み飛ばす(db.parse_measurements は measurements だけを読む)。"""
+    used はまとめに渡した提出、sources はその出どころ(内容の sha256 → 出どころ。aggregate と同じ)。
+    submissions に [{sha256, source}] を sha256 の順に残す(どの提出を入れたか・どの出どころとして数えたか。
+    まだ入れていない提出を bundled_status で見分け、git の履歴の無い所でも同じまとめを作り直せる。#90)。
+    古い版は知らないキーとして読み飛ばす(db.parse_measurements は measurements だけを読む)。"""
+    sources = sources or {}
     return {
         "unit": "GiB",
         "source": "community",
@@ -2223,17 +2295,23 @@ def community_document(rows: list[dict[str, Any]], used: list[Submission] | None
             "(係数の合わせ直しに入れる)。名前の表に無い NVIDIA の GPU の行は gpu_known が false で、"
             "判定に使わない"
         ),
-        "submissions": sorted({s.sha256 for s in used or []}),
+        "submissions": [
+            {"sha256": h, "source": sources.get(h) or f"file:{h}"}
+            for h in sorted({s.sha256 for s in used or []})
+        ],
         "measurements": rows,
     }
 
 
 def write_community(
-    rows: list[dict[str, Any]], path: str | os.PathLike[str], used: list[Submission] | None = None
+    rows: list[dict[str, Any]],
+    path: str | os.PathLike[str],
+    used: list[Submission] | None = None,
+    sources: dict[str, str] | None = None,
 ) -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(dumps(community_document(rows, used)), encoding="utf-8", newline="\n")
+    p.write_text(dumps(community_document(rows, used, sources)), encoding="utf-8", newline="\n")
     return p
 
 
@@ -2246,23 +2324,36 @@ def bundled_status(
     - pending: フォルダにあって検査を通ったが、まだまとめに入っていない提出のパス(マージした後の提出。
       次の版で入れる)
     - missing: まとめに入っているのにフォルダに無い(検査を通らない)提出の hash
-    - matches: まとめに入っている提出だけをまとめ直すと document と同じになるか
-    - ok: missing が無く matches(pending は ok を落とさない。数えて知らせるだけ)"""
+    - matches: まとめに入っている提出だけを、記録した出どころでまとめ直すと document と同じになるか
+      (git の履歴は読まない。浅い clone・git の外でも同じ結果になる)
+    - stale: 測ったときの一覧のファイル(files_fp)が今の一覧(db)と違う行([model_id, gpu_name])。
+      判定には使われない(estimate.files_match)。知らせるだけ
+    - ok: missing が無く matches(pending・stale は ok を落とさない。数えて知らせるだけ)"""
     p = Path(root)
     subs, reports = load_dir(p, db) if p.is_dir() else ([], [])
-    listed = list((document or {}).get("submissions") or [])
+    # 古い形(sha256 の文字列だけ)も読む。そのときの出どころは提出ごと
+    recorded: dict[str, str] = {}
+    for e in (document or {}).get("submissions") or []:
+        h = e if isinstance(e, str) else e.get("sha256")
+        recorded[h] = (None if isinstance(e, str) else e.get("source")) or f"file:{h}"
+    listed = list(recorded)
     by = {s.sha256: s for s in subs}
     used = [by[h] for h in listed if h in by]
     missing = [h for h in listed if h not in by]
-    matches = (
-        not missing and community_document(aggregate(used, submission_sources(p, used)[0]), used) == document
-    )
+    matches = not missing and community_document(aggregate(used, recorded), used, recorded) == document
+    stale = []
+    if db is not None:
+        for row in (document or {}).get("measurements") or []:
+            entry = db.get(row.get("model_id")) if isinstance(row, dict) else None
+            if entry is not None and not files_match(Measurement.from_dict(row), entry):
+                stale.append([row.get("model_id"), row.get("gpu_name")])
     return {
         "listed": len(listed),
         "valid": len(subs),
         "invalid": [r.path for r in reports if not r.ok],
         "pending": [s.path for s in subs if s.sha256 not in set(listed)],
         "missing": missing,
+        "stale": stale,
         "matches": matches,
         "ok": matches,
     }

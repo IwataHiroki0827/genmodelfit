@@ -36,7 +36,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 6. 次のページで「Create pull request」を押します。あとは「[4. Pull Request で送る](#4-pull-request-で送る)」の 3 からと同じです(CI の検査・マージ)。
 
 - 点検に `[NG]` があるか、検査の誤りがあると、URL を出さずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
-- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示の「貼り付けて送る」を使ってください: 名前だけを入れた同じページ(`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<名前>`)を開き、すぐ上に出たファイルの中身(`---` の間)を写して大きな欄に貼り付け、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます(GitHub のアップロードのページは書き込みの権限が要るので使いません)。
+- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示の「貼り付けて送る」を使ってください: 名前だけを入れた同じページ(`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<名前>`)を開き、すぐ上の 2 つの `---` の行の間に出たファイルの中身を写して大きな欄に貼り付け、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます(GitHub のアップロードのページは書き込みの権限が要るので使いません)。
 - 前に作った提出のファイルは `genmodelfit contrib share <ファイル>` で同じように送れます。
 - 端末でないとき・`--json` のときはブラウザを開かず、URL を出すだけです。
 - genmodelfit は通信しません。ブラウザでページを開くだけで、ファイルが送られるのはあなたが GitHub のページでボタンを押したときだけです。
@@ -145,7 +145,13 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 **入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所(バス番号。型番 ID とは別物)、シリアル番号、IP / MAC アドレス、CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。
 決まった項目以外は CI の検査で断ります。
-ただし自動の点検は文字の形を見るだけで、`note` に普通の言葉で書いた名前(「山田太郎の PC で測った」など)や、base64 などで書き換えたパスは見分けられません。手順 3 で自分で読んでください。
+ただし自動の点検は文字の形を見るだけで、意味は分かりません。次のようなものは見逃します。手順 3 で `note` を自分で読んでください。
+- 普通の言葉で書いた名前(「山田太郎の PC で測った」、`user: yamada`、`my name is ...`)
+- 形の決まっていない PC の名前(`yamada-desktop`、`yamada-ws`)
+- 1 字ずつ空けた文字(`t a r o @ g m a i l`)・短い base64(`dGFybw==`)・語に見える base64
+- 住所・郵便番号・ほかのサービスの ID(Discord・Steam など)
+
+逆に、ComfyUI のノードの名前(`HunyuanVideo15ImageToVideo` など)、40 桁の git のコミット、公開のドメイン(huggingface.co・hf.co・github.com・comfy.org・pytorch.org・nvidia.com・python.org)は個人の情報として扱いません。
 
 ## 3. 中身を確かめる
 

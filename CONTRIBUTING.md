@@ -36,7 +36,7 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 6. Press "Create pull request" on the next page. The rest is the same as step 3 of "[4. Send a pull request](#4-send-a-pull-request)" (the CI checks and the merge).
 
 - With an `[NG]` in the checklist or an error in the checks, it stops without a URL. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
-- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use "Paste and share" in the output: open the same page with only the name filled in (`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<name>`), copy the file content printed just above it (between the `---` lines), paste it into the large box, then press "Propose changes" and "Create pull request". The file's location is shown too (GitHub's upload page needs write access, so it is not used).
+- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use "Paste and share" in the output: open the same page with only the name filled in (`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<name>`), copy the file content printed just above it between the two `---` lines, paste it into the large box, then press "Propose changes" and "Create pull request". The file's location is shown too (GitHub's upload page needs write access, so it is not used).
 - A submission file you made earlier can be sent the same way with `genmodelfit contrib share <file>`.
 - Without a terminal, or with `--json`, it does not open a browser and only prints the URLs.
 - genmodelfit makes no network access. It only opens the page in your browser; the file is sent only when you press the buttons on the GitHub page.
@@ -145,7 +145,13 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 **What does not go in**: PC name, user name, folder paths, GPU UUID, PCI slot address (bus number; different from the model ID), serial numbers, IP / MAC addresses, CPU name, time, the text given to bench's `--source`, and prompts.
 Fields other than the defined ones are rejected by the CI check.
-However, the automatic check looks only at the shape of the text. It cannot spot a name written in ordinary words in `note` (such as "measured on Taro Yamada's PC") or a path rewritten with base64 and the like. Read the file yourself in step 3.
+However, the automatic check reads patterns, not meaning. It misses things like these, so read the `note` yourself in step 3:
+- names written in ordinary words ("measured on Taro Yamada's PC", `user: yamada`, `my name is ...`)
+- PC names without a fixed form (`yamada-desktop`, `yamada-ws`)
+- letters separated by spaces (`t a r o @ g m a i l`), short base64 (`dGFybw==`) and base64 that looks like words
+- addresses, postal codes and IDs of other services (Discord, Steam, ...)
+
+On the other hand, ComfyUI node names (such as `HunyuanVideo15ImageToVideo`), 40-digit git commits and public domains (huggingface.co, hf.co, github.com, comfy.org, pytorch.org, nvidia.com, python.org) are not treated as personal information.
 
 ## 3. Check the contents
 
