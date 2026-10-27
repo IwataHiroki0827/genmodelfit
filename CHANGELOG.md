@@ -19,6 +19,17 @@ All notable changes to this project are documented here. The format is based on
   `bench --share` without `--submission` writes the submission to `<cache>/submissions/<GPU>/<date>-<sha8>.json`.
   genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
   the alternative.
+- **DGX Spark (GB10) is judged as a unified-memory GPU** (#101). Only when nvidia-smi names it exactly `NVIDIA GB10`,
+  reports no VRAM (`[N/A]`) and runs on Linux aarch64: the total is MemTotal (not discounted, not counted twice with
+  RAM; `memory: shared`), current free is MemAvailable + SwapFree (or free HugePages), and the level is capped at
+  Good until two sources measured the same GPU. cu128 for aarch64 was added to the PyTorch table. Jetson and
+  GH200 / GB200 stay out of scope (with a reason).
+- **AMD and Intel GPUs in WSL2** (#101). With `/dev/dxg` and a `microsoft` kernel, interop and container are checked
+  without starting a process, the Windows-side GPUs are read through `powershell.exe` (WMI + registry, as on
+  Windows), and WSL readiness through `rocminfo` (only `Name: gfx…`, `Marketing Name:`, `Device Type:` are read; the
+  UUID never appears anywhere) or `clinfo -l`. Used only for the products in AMD's WSL table (ROCm 7.2.1) and Intel
+  Arc / Core Ultra Arc Graphics with driver 32.0.101.8801 or later; otherwise CPU with what is missing.
+- New `Adapter` fields `driver`, `gfx_target`, `wsl_runtime`; `Adapter.source` can be `sysfs` or `wsl` (#101).
 
 ### Changed
 
@@ -122,6 +133,26 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
     Public domains count only when the host name ends with them; 32+ hex digits are caught again except exactly 40
     (git commit) and 64 (sha256); padded base64 is caught from 16 characters; tests never run the real `nvidia-smi`
     from bench.
+- **Detection works in every environment** (#101; docs/hardware.md "Every environment"). Memory falls back to
+  GlobalMemoryStatusEx / `/proc/meminfo` / `sysctl hw.memsize` when psutil fails (unknown → "give it with --ram"),
+  and MemFree + Cached on old kernels; the container limit walks the process's own cgroup (v2 and v1) to the
+  smallest limit, with available = limit − usage. A compute capability newer than the PyTorch table is no longer
+  refused (a note). Unknown machines are no longer treated as x86_64, and the table is keyed by (OS, machine)
+  (no CUDA build for Windows on Arm64; 32-bit Python is noted). MIG mode is noted. When PowerShell / lspci /
+  system_profiler cannot be read there is a note; Linux without lspci reads sysfs. amdkfd's `gfx_target_version`
+  is used before the name (newer RDNA values are not refused). Virtual-machine and BMC displays are "not a GPU for
+  computing"; device-ID lookup is for AMD and Intel only. Non-Apple GPUs on macOS are out of scope first, and an
+  Apple display that is not a chip name (the VM "Apple Paravirtual device") is CPU. macOS reported as 10.16 is
+  read again with `sw_vers`. An NVIDIA adapter without a driver is reported by vendor ID, not by its (localized)
+  name. Device Manager codes 22 / 28 / 43 get their own reasons. New AMD / Intel GPUs not in the Windows name
+  table point to `--vram`. Timed-out commands are killed with their process group on POSIX.
+- **Submitted GPU names are checked by form, not by a name table** (#101). Only placeholders (empty, n/a, none,
+  null, unknown, -) and generic names (`NVIDIA Graphics Device` etc.) give `gpu_known: false`. An NVIDIA name that
+  does not fit the form `[NVIDIA] BRAND* CORE SUFFIX*` is the notice `gpu_name_form` (maintainer check), not an
+  error; a VRAM that is not the name's nominal amount is the notice `gpu_vram_nominal` instead of the error
+  `gpu_inconsistent` (modified cards exist). Generation names in parentheses such as `(Pascal)` are allowed.
+  `hardware.nvidia_name_known` was replaced by `hardware.nvidia_name_well_formed`; `estimate.nvidia_size_ok` was
+  removed.
 
 ### Fixed
 

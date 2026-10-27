@@ -109,7 +109,7 @@ Gpu:
 | `compute_dtype` | str \| null | what ComfyUI computes in on this GPU by default: `fp16` / `bf16` / `fp32` (fp32 doubles working memory). null when `backend` is `none` or the generation is unknown |
 | `bf16`, `fp8` | bool \| null | bf16 / fp8 compute support as ComfyUI sees it (null as above). Without bf16, model families that ComfyUI never runs in fp16 compute in fp32 ([hardware.md](hardware.md)) |
 | `notes` | str[] | reasons and cautions for this GPU |
-| `memory` | str | (0.7.0) `dedicated` (own VRAM) / `shared` (integrated GPU or APU using system RAM) / `unified` (Apple silicon). Shared and unified GPUs never offload (`GPU+RAM`) |
+| `memory` | str | (0.7.0) `dedicated` (own VRAM) / `shared` (integrated GPU or APU using system RAM; from 0.11.0 also DGX Spark's GB10, whose total is MemTotal) / `unified` (Apple silicon). Shared and unified GPUs never offload (`GPU+RAM`) |
 | `gfx_target` | str \| null | (0.7.0) AMD LLVM target, e.g. `gfx1100` |
 | `carveout_gb` | float \| null | (0.7.0) for `memory: shared`, the VRAM the BIOS sets aside (not part of `ram_total_gb`); the RAM check counts only GPU use above it. null otherwise |
 | `pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` (`1002:744c`) for AMD / Intel GPUs (Windows WMI `PNPDeviceID`, Linux `lspci -nn`); null for NVIDIA (nvidia-smi names match everywhere) and Apple. Used to match other users' measurements of the same GPU (`estimate.same_gpu`) |
@@ -117,12 +117,18 @@ Gpu:
 Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` / `unknown`), `vram_gb` (Windows: registry
 `HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; Intel Arc on Linux: the
 smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` / `wmi` / `sysfs` / `name` / null),
-`source` (`wmi` / `lspci` / `system_profiler`). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
+`source` (`wmi` / `lspci` / `system_profiler`; 0.11.0 added `sysfs` (Linux without lspci) and `wsl` (Windows-side
+adapters read from WSL2)). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
 null for NVIDIA, which `nvidia-smi` decides), `reason` (a sentence in the display language: why it is or is not used), `shared_gb`
 (Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
 `"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
 Added in 0.9.0: `pci_id` (str | null: PCI model ID `vendor:device` from Windows WMI `PNPDeviceID` or Linux
 `lspci -nn`, any vendor; never the bus address).
+
+Added in 0.11.0 (#101; [hardware.md](hardware.md), "Every environment"):
+- `driver` (str | null: DriverVersion from Windows WMI; used for the Intel condition in WSL2)
+- `gfx_target` (str | null: the AMD generation read from a source more reliable than the name: `gfx_target_version` of the Linux amdkfd, or `Name: gfx…` of rocminfo in WSL2)
+- `wsl_runtime` (bool | null: for an adapter read from WSL2, whether WSL is ready (rocminfo for AMD, `clinfo -l` for Intel))
 
 ## Data status
 
@@ -954,7 +960,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
 | `files_fp` | str \| null | (#90) fingerprint of the model's files in the list when measured (`estimate.files_fingerprint`; see "Rules of the submission pipeline" below). If it differs from the current list's fingerprint, the measurement is not used. null = not recorded (the maintainer's measurements.json, older rows; used as before) |
-| `gpu_known` | bool \| null | (#90) community rows: false = an NVIDIA GPU not in the name table (kept as a record, never used for judging) |
+| `gpu_known` | bool \| null | (#90, #101) community rows: false = the GPU name is a generic name or a placeholder (kept as a record, never used for judging) |
 | `n_sources` | int \| null | (#90) community rows: number of independent sources (the commit that added the file to the repository) behind the value |
 | `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the commit, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
 | `n_error` | int \| null | (#90) community rows: submissions of the same group that ended in `error` (not used for the value) |
@@ -1092,13 +1098,18 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
 - **Measured files**: bench writes `files_fp`, the fingerprint of the model's files in the list when measured (the
   sha256 of the lowercased file sha256s, sorted and joined with newlines; omitted if any file has no sha256), and a
   measurement whose fingerprint differs from the current list is not used.
-- **GPU names**: an NVIDIA GPU is used for judging only when its name fully matches the name table
-  (`hardware.nvidia_name_known`; known trailing words may be removed once each, and impossible combinations such as
-  `RTX 3060 Ti D` are refused); rows with other names (`NVIDIA Graphics Device` etc.) are kept as records with
-  `gpu_known: false` (notice `unknown_gpu`).
+- **GPU names** (0.11.0, #101 dropped the name table): only placeholders (empty, `n/a`, `none`, `null`, `unknown`,
+  `-`) and generic names (`NVIDIA Graphics Device` etc.) are not used for judging (kept as records with
+  `gpu_known: false`; notice `unknown_gpu`). NVIDIA names are checked by form (`hardware.nvidia_name_well_formed`;
+  [hardware.md](hardware.md), "GPU name form"): a name that does not fit is not an error but the notice
+  `gpu_name_form` (a maintainer checks it), and a name that fits but is not in the table is the notice `unknown_gpu`
+  (still used). A made-up name only matches a PC that reports the same string (`estimate.same_gpu`). A generation
+  name in parentheses (`(Pascal)` etc.) is allowed in the name.
 - **GPU memory**: for NVIDIA GPUs whose VRAM follows from the name (`estimate.NVIDIA_NOMINAL_VRAM`; desktop GeForce
-  RTX 20–50 only; other families (laptop, workstation, data center) are matched by name only, without a size check), a `vram_gb` outside 0.95–1.03 times every version's amount is the error `gpu_inconsistent` (CUDA on
-  Linux reports a 6 GB card as 5.80 GiB, so the lower side is wider).
+  RTX 20–50 only; other families (laptop, workstation, data center) have no size check), a `vram_gb` outside
+  0.95–1.03 times every version's amount is the notice `gpu_vram_nominal` (lowered from an error in 0.11.0, because
+  modified cards exist; the VRAM ratio of 0.95 keeps them away from PCs with other VRAM. CUDA on Linux reports a
+  6 GB card as 5.80 GiB, so the lower side is wider).
 - **Error runs**: `outcome: error` submissions are not used for a row's value and only counted (`n_error`; a group of
   only errors makes no row).
 - **Steps**: peak VRAM does not depend on the step count, so neither the aggregation key nor judging's matching uses
@@ -1215,7 +1226,9 @@ Some harmless text is also rejected (e.g. `12:30`, a 4-part version `1.2.3.4`).
 
 Notices (the file is valid and is aggregated; shown in the CI summary for the maintainer who merges — merging is
 the review): `unknown_model` (not in the bundled list), `unknown_gpu` (not in the GPU name table, e.g. AMD / Intel /
-Apple), `batch_sizeless` (a template without a size input, `estimate.NO_SIZE_INPUT`, with `batch` other than 1:
+Apple or a new NVIDIA, still used; or a generic name or placeholder, not used), `gpu_name_form` (0.11.0: an NVIDIA
+name that does not fit the name form; a maintainer checks it for personal names), `gpu_vram_nominal` (0.11.0: VRAM
+that is not the name's nominal amount; an error unless a modified card), `batch_sizeless` (a template without a size input, `estimate.NO_SIZE_INPUT`, with `batch` other than 1:
 0.10.1's bench recorded MoGe's processing batch as the batch; judging uses batch 1, so it is not a same-settings
 measurement; #90), `deviation` (peak VRAM more than 40% away from the formula's all-in estimate for those settings),
 `below_weights` (`offload: none` but peak VRAM below the weights + fixed overhead; estimates use that floor for

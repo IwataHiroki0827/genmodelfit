@@ -19,6 +19,7 @@ llmfit's `llmfit-core/src/hardware.rs` (commit bffd1b6, MIT) was used for ideas 
 - [GPUs other than NVIDIA (0.7.0, #22, #23)](#gpus-other-than-nvidia-070-22-23)
 - [Families that run on CPU (0.7.0, #39)](#families-that-run-on-cpu-070-39)
 - [Measurements that succeeded on the same GPU (0.7.0, #26)](#measurements-that-succeeded-on-the-same-gpu-070-26)
+- [Every environment (0.11.0, #101)](#every-environment-0110-101)
 - [Memory and virtual memory](#memory-and-virtual-memory)
 - [VRAM used by the display etc. (current free)](#vram-used-by-the-display-etc-current-free)
 - [Comparison with llmfit](#comparison-with-llmfit)
@@ -29,9 +30,9 @@ llmfit's `llmfit-core/src/hardware.rs` (commit bffd1b6, MIT) was used for ideas 
 
 | Item | Source | Used for judging? |
 |---|---|---|
-| NVIDIA GPU (name, total VRAM, free, used, driver, compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | Yes (the one with the most VRAM among those with backend `cuda`) |
+| NVIDIA GPU (name, total VRAM, free, used, driver, compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap,mig.mode.current --format=csv,noheader,nounits` (the MIG state was added in 0.11.0) | Yes (the one with the most VRAM among those with backend `cuda`) |
 | Display adapters, including non-NVIDIA | Windows: PowerShell `Get-CimInstance Win32_VideoController` + registry `HardwareInformation.qwMemorySize`. Linux: `lspci -Dnn` (AMD VRAM / GTT from sysfs `mem_info_vram_total` / `mem_info_gtt_total`). macOS: `system_profiler SPDisplaysDataType -json` | Only when no NVIDIA GPU is usable: AMD, Intel and Apple are judged with the support table (0.7.0; see "GPUs other than NVIDIA" below). The PCI model ID (`pci_id`) is also read (0.9.0; used to match measurements of the same GPU and for bench submissions) |
-| Physical memory | psutil (on Linux, the container (cgroup) limit if there is one) | Yes |
+| Physical memory | psutil (if it fails, the OS's own reading; on Linux, the container (cgroup) limit if there is one) | Yes |
 | Virtual memory | Windows: `GlobalMemoryStatusEx` (ctypes) and registry `Memory Management\PagingFiles`. Linux: `/proc/swaps` (zram excluded). macOS: treated as growing automatically | Yes (the upper limit when memory is short) |
 | Free disk | `shutil.disk_usage` | Display only |
 
@@ -54,7 +55,7 @@ What is read is used locally and never sent anywhere.
   - `[N/A]`, `[Not Supported]`, `N/A` and empty mean "unknown".
   - If free is unknown but total and used are known, free = total - used.
   - Values with units (`8192 MiB`) and comma decimals (`8,6`) are also read.
-- A GPU that returns no total VRAM (such as GB10, which shares memory with the CPU) is not used for judging (backend `none`, with a reason).
+- A GPU that returns no total VRAM (one that shares memory with the CPU) is not used for judging (backend `none`, with a reason). DGX Spark (GB10) is the exception and is used as a unified-memory GPU (0.11.0; "DGX Spark (GB10)" below).
 - An old nvidia-smi that does not know `compute_cap` exits with code 2 and "Field "compute_cap" is not a valid field to query." (confirmed on this PC by asking for a field that does not exist; the driver version that introduced it could not be confirmed in primary sources).
   - It then asks again without `compute_cap` and infers it from the GPU name table (`hardware._NAME_CC`).
   - Ambiguous names (for example the laptop GTX 960M, where one model name mixes generations) are not inferred.
@@ -138,7 +139,7 @@ nvidia-smi on WSL returns the Windows driver version, so read it against the Win
 | Ada | 8.9 | cu126 to cu132 (8.6 machine code) | same | GPU |
 | Hopper | 9.0 | cu126 to cu132 | same | GPU |
 | Blackwell | 10.x, 12.x | cu128 to cu132 | 570 (generation minimum) / 580 (cu13x) | GPU |
-| Newer than that | 13.x and up | none | — | **CPU** (wait for PyTorch support) |
+| Newer than that | 13.x and up | none | — | **GPU** (not refused; the note says "newer than the table; use the latest PyTorch". CPU until 0.11.0) |
 
 - If a generation has no build that runs, or the driver is too old for every build, the backend is set to `none` and the PC is judged as CPU. The reason goes to `Gpu.notes` and `SystemInfo.notes`, including whether "updating the driver makes it run on GPU".
 - If the generation is unknown (nvidia-smi and the name table both fail) or the driver version cannot be read, it does not refuse; it says it does not know.
@@ -370,7 +371,7 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
 - It does not run when an NVIDIA GPU is present (starting PowerShell takes about 1 second).
 - `genmodelfit system --all-gpus` always runs it (even then, if NVIDIA is usable, NVIDIA is used for judging).
 - The registry also keeps entries of removed GPUs (they are dropped in the matching step below).
-- Windows: `powershell.exe -NoProfile -NonInteractive -Command` gets Name, AdapterRAM, PNPDeviceID and ConfigManagerErrorCode of `Get-CimInstance Win32_VideoController` as JSON (output set to UTF-8; time limit 8 seconds).
+- Windows: `powershell.exe -NoProfile -NonInteractive -Command` gets Name, AdapterRAM, PNPDeviceID, ConfigManagerErrorCode and DriverVersion of `Get-CimInstance Win32_VideoController` as JSON (output set to UTF-8; time limit 8 seconds).
   - Entries whose PNPDeviceID does not start with `PCI\` (virtual displays, Remote Desktop displays) are dropped.
   - The OS version is read from the build number (22000 or higher is Windows 11).
   - `AdapterRAM` is a uint32 (Microsoft's Win32_VideoController description: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller), so it tops out near 4293918720 for 4 GiB and more. Values at or above that are not used.
@@ -381,8 +382,8 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
     - An entry whose `MatchingDeviceId` matches the start of the WMI adapter's model ID.
     - Otherwise, an entry whose `DriverDesc` name is the same (compared without the trademark symbols).
     - If several entries match and their values differ (a removed GPU with the same name remains), none is used.
-  - If an NVIDIA adapter (VEN_10DE) is a "Microsoft Basic Display Adapter", it reports that the NVIDIA driver is not installed.
-  - If ConfigManagerErrorCode is not 0, it reports that Device Manager shows a problem.
+  - If there is an NVIDIA adapter (VEN_10DE) and nvidia-smi cannot judge it, it reports that the NVIDIA driver is not installed or not running, whatever the name (0.11.0; it used to check only the English name "Microsoft Basic Display Adapter").
+  - If ConfigManagerErrorCode is not 0, codes 22, 28 and 43 get their own reasons and others "Device Manager shows a problem" ("Every environment" below).
 - Linux: reads class 03xx (VGA, 3D, Display) from `lspci -Dnn`.
   - The name is the product name inside the brackets (inside the brackets of `Navi 31 [Radeon RX 7900 XT/7900 XTX/...]`).
   - For AMD it reads `/sys/bus/pci/devices/<slot>/mem_info_vram_total` (VRAM) and `mem_info_gtt_total` (GTT).
@@ -392,7 +393,7 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
 - macOS: `sppci_model` ("Apple M2 Pro") and `spdisplays_vendor` of `system_profiler SPDisplaysDataType -json`.
   - The unified memory amount is psutil's installed memory (the same value as `sysctl hw.memsize` on macOS).
   - The OS version is `platform.mac_ver()`.
-- If PowerShell, lspci or system_profiler is missing, fails or times out, it is skipped silently (left empty).
+- If PowerShell, lspci or system_profiler is missing, fails or times out, the list stays empty and a note says the display adapter list could not be read (0.11.0; on Linux without lspci, sysfs is read).
 
 ### Display
 
@@ -488,10 +489,115 @@ Other points:
 - If the measurement is from another GPU, has only one source or does not agree, the reason says "the level comes from the estimate (...)".
 - Example: Wan 2.2 5B (two author rows on an RTX 5080 16 GB: 15.8 / 15.0 GB; one source together, and a record of running by offloading part of the weights with dynamic VRAM) does not fit with weights + fixed part (about 18.4 GB) in 15.9 GB even at 640x640 with 73 frames, so from 0.11.0 the level comes from the estimate (Marginal / offload; Good / GPU from 0.7.0 to 0.10). It stays Marginal / offload on an RTX 3060 12 GB.
 
+## Every environment (0.11.0, #101)
+
+Detection finishes without raising in every environment, does not refuse when something is unknown, and writes what is unknown in the notes.
+41 environments (reproduced by substituting the output of external commands, the registry, WMI, lspci, sysfs and system_profiler) were listed and fixed.
+The sources were read on 2026-10-27.
+
+### List of environments
+
+| Environment | What genmodelfit does | Source (section quoted) |
+|---|---|---|
+| psutil cannot read the memory | Reads it with `GlobalMemoryStatusEx` on Windows, `/proc/meminfo` on Linux and `sysctl -n hw.memsize` on macOS. If none works, the amount is "unknown" (`Memory.total` is None) and the notes say "give it with --ram" (judging continues with 0 GB) | psutil fails differently on each OS (implementation decision) |
+| Old kernel without MemAvailable | Available = MemFree + Cached | Linux `Documentation/filesystems/proc.rst` "MemAvailable" |
+| Containers (cgroup v2 and v1) | From this process's cgroup in `/proc/self/cgroup` (v2 `0::/path`, v1 `N:memory:/path`), walks up to the root and uses the smallest limit (`memory.max`, `memory.limit_in_bytes`) as the installed amount; available = limit − usage (`memory.current`, `memory.usage_in_bytes`). `max` means no limit. Inside a namespace the path is `/`, so only the root is read | https://docs.kernel.org/admin-guide/cgroup-v2.html "memory.max", "memory.current"; https://docs.kernel.org/admin-guide/cgroup-v1/memory.html "memory.limit_in_bytes" |
+| A compute capability newer than the PyTorch table (13.0 etc.) | Not refused (stays `cuda`), with the note "newer than the table; use the latest PyTorch". Only generations older than the table are refused | Same as the CLAUDE.md rule "do not refuse when the generation is unknown" |
+| Linux on aarch64 / ppc64le / riscv64 etc. | `_machine()` no longer turns unknown kinds into x86_64. If not in the table (keys of `TORCH_CUDA_BUILDS`), "no CUDA build of PyTorch for this machine" and CPU | "Compute capabilities supported by PyTorch CUDA builds" above |
+| Windows on Arm64 + NVIDIA | The table is looked up by (OS, machine) (`torch_platform`). There is no CUDA build for Windows on Arm64, so CPU | The cu indexes of https://download.pytorch.org/whl/ (no `win_arm64` CUDA build) |
+| 32-bit Python | A note only ("PyTorch exists only for 64-bit Python") | The cu indexes of https://download.pytorch.org/whl/ (no 32-bit win32 / i686 wheels) |
+| MIG enabled (`mig.mode.current` is Enabled) | nvidia-smi reports the whole GPU, so the note says "give the partition size with --vram" (the value is not changed; not verified on real hardware) | NVIDIA "Multi-Instance GPU User Guide" https://docs.nvidia.com/datacenter/tesla/mig-user-guide/ (memory is split per partition) |
+| nvidia-smi that does not know `mig.mode.current` | Only when the error names that field, asks again without it (`QUERY_CC`). If compute_cap is unknown too, `QUERY_OLD` as before | One unknown field makes the whole query fail (checked on this PC with a nonexistent field) |
+| DGX Spark (GB10) | See "DGX Spark (GB10)" below | Same section |
+| Jetson (Orin, Thor) | Out of scope (CPU), with the note "Jetson uses JetPack-only PyTorch builds (jp6 cu126 etc.), separate from the CUDA build table here, and its memory handling is unverified". Outside this issue | Jetson AI Lab's ComfyUI guide https://www.jetson-ai-lab.com/tutorial_comfyui_flux.html (to be handled in another issue) |
+| GH200 / GB200 | Outside this issue (judged by the HBM amount nvidia-smi reports, as before) | — |
+| NVIDIA without a driver (Windows "Microsoft Basic Display Adapter", Linux nouveau) | Not by the name (which changes with the language) but by the NVIDIA vendor ID (`10de`): "cannot be checked with nvidia-smi, so CPU; install the NVIDIA driver" | — |
+| Device Manager errors (WMI ConfigManagerErrorCode) | 22 "is disabled", 28 "has no driver installed", 43 "was stopped by Windows because it reported problems", others "has a problem" | Microsoft "Device Manager error messages" https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages (Code 22, 28, 43) |
+| PowerShell, lspci or system_profiler missing, failing or timing out | A note "the display adapter list could not be read" (it used to be silent) | — |
+| Linux without lspci (minimal containers, Flatpak, Snap etc.) | Reads `/sys/bus/pci/devices/*/{class,vendor,device}` (class 0x03xxxx), names the device "AMD Device 744c" and looks it up in the device ID table (`PCI_DEVICE_NAMES`). The slot is only used to read (after checking its form) and is never kept or printed. Unreadable files (SELinux etc.) are None | https://docs.kernel.org/PCI/sysfs-pci.html "Accessing PCI device resources through sysfs" |
+| Virtual machine and management (BMC) displays (QEMU `1234`, virtio `1af4`, VMware `15ad`, VirtualBox `80ee`, Hyper-V `1414`, Cirrus `1013`, QEMU (Red Hat) `1b36`, ASPEED `1a03`, Matrox `102b`) | "Not a GPU for computing (a virtual machine or management display)" and CPU. Reading the device ID (the old pci.ids hint) is for AMD and Intel only | Vendor names in pci.ids (pciutils/pciids) |
+| AMD on Linux (amdgpu) | Matches `gfx_target_version` in amdkfd's `/sys/class/kfd/kfd/topology/nodes/*/properties` (decimal major×10000 + minor×100 + stepping, stepping one hex digit: 110000 → gfx1100, 90010 → gfx90a; 0 is a CPU node) to the adapter by the node's `vendor_id` and `device_id`, and uses it before the name. A gfx10.3-or-later value not in the table is "a newer generation (estimate)" and is not refused | torvalds/linux `drivers/gpu/drm/amd/amdkfd/kfd_topology.c` (`gfx_target_version`), `kfd_device.c` |
+| New AMD or Intel (Arc) on Windows not in the name table | Still CPU, with the reason "not in the name table (a new GPU?); give the VRAM with --vram to judge; the name table is extended by the weekly update" | — |
+| Non-Apple GPUs on macOS (AMD and Intel in Intel Macs) | Before looking up the generation: "GPUs other than Apple on macOS are not covered by the MPS build of PyTorch" | Apple "Accelerated PyTorch training on Mac" https://developer.apple.com/metal/pytorch/ ("Mac computer with Apple silicon", "macOS 14.0 or later"), ComfyUI README "Apple Mac silicon" |
+| macOS virtual machine ("Apple Paravirtual device") | An Apple display whose name is not an Apple chip name (`APPLE_CHIP_NAME`) is CPU | PyTorch #111576 "[MPS] Skip virtualized devices" https://github.com/pytorch/pytorch/pull/111576 (the first allocation fails on this device) |
+| macOS reported as 10.16 (Python built with an old SDK) | Reads again with `SYSTEM_VERSION_COMPAT=0 sw_vers -productVersion`. If that fails, the version is unknown (MPS is not used) | pypa/packaging #513 https://github.com/pypa/packaging/pull/513 (reads sw_vers with "SYSTEM_VERSION_COMPAT=0") |
+| AMD and Intel in WSL2 | See "AMD and Intel in WSL2" below | Same section |
+| Commands that time out | On POSIX the whole process group (`start_new_session`) is killed, then it waits 1 more second and returns. Windows: see "Known limits" below | Python `subprocess.Popen` "start_new_session" |
+
+### DGX Spark (GB10)
+
+- Conditions for using it (all of them): the nvidia-smi name is **exactly** `NVIDIA GB10` (no partial match, no GB20, no nvgpu), memory.total is `[N/A]` / `Not Supported`, and Linux on aarch64. Compute capability 12.1 supports this but is not required. GB10 machines by ASUS (GX10), Dell, MSI and others have the same name.
+- Memory (`memory: shared`):
+  - The total is MemTotal in `/proc/meminfo` (the rule is that the level comes from the total). It is not discounted (Apple's 3/4 stands in for Metal's guide value and has no basis for GB10). It is shared with main memory and not counted twice (`carveout_gb` 0; there is no offload mode).
+  - Free is MemAvailable + SwapFree as in NVIDIA's known-issues example (when HugePages are used, free HugePages × size and no swap), used only for the current-free notice (`vram_free_short`).
+- The level is an estimate, so **up to Good** (lifted when two or more sources measured the same GPU; "Measurements that succeeded on the same GPU" above). The reason says "GB10 has unified memory; NVIDIA documents no GPU-only limit".
+- PyTorch table: the current `_code_runs` (machine code for the same major with a lower minor runs) already judges that sm_120 code runs on compute capability 12.1 (no new rule needed). cu128 for aarch64 (PyTorch 2.7–2.11) was added to the table.
+- Note: "CUTLASS / xformers fmha kernels were reported to fail on sm_121 (GB10); whether this is fixed is unverified".
+- An NVIDIA GPU that reports no VRAM and is not named GB10 is CPU, with the reason (Jetson: the table above; others: "of the NVIDIA GPUs with shared memory, only GB10, which has an official ComfyUI guide, is used").
+
+Sources:
+
+- NVIDIA "ComfyUI on DGX Spark" https://github.com/NVIDIA/dgx-spark-playbooks (`nvidia/comfy-ui`; cu130 PyTorch, ComfyUI v0.28.2)
+- PyTorch forum (NVIDIA's ptrblck) https://discuss.pytorch.org/t/223744 "ARM binaries for CUDA 12.8 and later support DGX Spark; sm_121 is binary compatible with sm_120"
+- NVIDIA DGX Spark "Known Issues" https://docs.nvidia.com/dgx/dgx-spark/known-issues.html "nvidia-smi reports "Memory-Usage: Not Supported"" ("iGPUs do not have dedicated framebuffer memory") and "Guidance for reporting memory resources with unified memory architecture" ("the cudaMemGetInfo API does not account for memory that could potentially be reclaimed from SWAP"; the example reads MemAvailable, SwapFree and HugePages_Total)
+- cu128 for aarch64: v2.11.0 `.ci/manywheel/build_cuda.sh` (12.8 is `7.5;8.0;8.6;9.0;10.0;12.0`; aarch64 drops below 8.0 and 8.6), https://download.pytorch.org/whl/cu128/torch/ (`manylinux_2_28_aarch64` for 2.7.0–2.11.0)
+- ComfyUI treats an integrated GPU as a normal CUDA device and only disables pinning (`is_integrated_gpu` in `comfy/model_management.py`)
+
+### AMD and Intel in WSL2
+
+Three steps (NVIDIA in WSL is judged with nvidia-smi as before):
+
+1. **Is it WSL2**: `/dev/dxg` (the GPU paravirtualization device) exists and the kernel release contains `microsoft`. Then interop is checked by the presence of `/proc/sys/fs/binfmt_misc/WSLInterop` (or `WSLInterop-late`) without starting a process. If `/.dockerenv` or `/run/.containerenv` exists: "a container on WSL; the Windows-side GPUs cannot be read".
+2. **Read the Windows-side GPUs**: through interop, `powershell.exe` (if not on PATH, `c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe` under `[automount] root` of `/etc/wsl.conf`, default `/mnt/`) is run with `-NoProfile -NonInteractive` and an 8-second timeout. The script (`hardware._PS_WSL`) reads only the WMI Name, AdapterRAM, PNPDeviceID, ConfigManagerErrorCode and DriverVersion, and DriverDesc, MatchingDeviceId, `HardwareInformation.qwMemorySize` and `MemorySize` (REG_BINARY converted from bytes) of the display class keys (`0###`) in the registry, and returns UTF-8 JSON. As on Windows, the second half of PNPDeviceID (the slot) is dropped. Failures (interop disabled, timeout) do not raise; they become notes.
+3. **Is WSL ready**: AMD needs `rocminfo` (PATH or `/opt/rocm/bin`) to run and show `Name: gfx…` for a GPU agent (the strongest evidence). Only `Name: gfx…`, `Marketing Name:` and `Device Type:` matched at the start of a line are read; other lines such as the UUID are never read or put in notes, logs or exceptions. Intel needs an Intel GPU device in `clinfo -l`.
+
+Conditions for using it (the level is an estimate, up to Good):
+
+- AMD: an exact product name in AMD's WSL support table (ROCm 7.2.1) (`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE, AI PRO R9700 / R9600D, RX 9060 / 9060 XT, RX 7900 XTX / XT / GRE, PRO W7900 (Dual Slot) / W7800 (48GB) / W7700, RX 7800 XT, RX 7700 / 7700 XT). APUs are not in the official table (only in the librocdxg README, and that repository is deprecated), so they are not used.
+- Intel: Arc A and B, Arc Graphics of Core Ultra (`_INTEL_XPU`), with a Windows driver of 32.0.101.8801 or later (compared as the 7-digit number made of the third and fourth fields: `int(f"{p3}{p4:04d}") >= 1018801`). If the version cannot be read, it is not refused (a note). For integrated Arc Graphics, half of the memory inside WSL (at most the Windows amount) is taken as the shared part (a low estimate).
+- Otherwise it is CPU, with what is missing (e.g. "AMD Radeon RX 7900 XTX is on the Windows side, but rocminfo inside WSL does not see the GPU. Install AMD Software: Adrenalin Edition for WSL2 on Windows and the WSL build of ROCm inside WSL", "not in AMD's WSL support table (ROCm 7.2.1)").
+- VRAM is the Windows-side registry amount (WMI AdapterRAM stops at 4 GB). A (secondary) report says about 3 GB less is free inside WSL, so this is a note (the value is not changed).
+- The Microsoft device seen by lspci and sysfs in WSL2 (`1414:008e` Basic Render Driver) is not a compute GPU and is dropped from the list.
+- When a usable NVIDIA GPU exists, the Windows side (powershell.exe, rocminfo, clinfo) is not read, even with `--all-gpus`.
+- Not used: amd-smi (limited in WSL; even the ROCm CLI reports no GPU), xpu-smi (behaviour in WSL not verified), `HSA_OVERRIDE_GFX_VERSION` (unofficial).
+
+Sources:
+
+- AMD "WSL compatibility" (ROCm 7.2.1) https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html "Supported AMD Radeon™ Hardware" (Adrenalin Edition 26.1.1 for WSL2), https://github.com/ROCm/librocdxg
+- Intel "PyTorch Prerequisites for Intel GPUs" 2.14 https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-14.html "Install for WSL2" ("The /dev/dxg must exist, and clinfo -l must list an Intel platform with at least one device") and "Install for Windows" ("version 32.0.101.8801 … or higher")
+- Intel "Understanding the Intel Graphics Driver Version Number" https://www.intel.com/content/www/us/en/support/articles/000005654/graphics.html ("The seven digit build number is created by combining the numbers from the last two sections")
+- Microsoft "wsl.conf" https://learn.microsoft.com/en-us/windows/wsl/wsl-config "[automount] root", "[interop] enabled"
+
+### GPU name form
+
+GPU names in other users' submissions (contrib) are checked by form (`hardware.nvidia_name_well_formed`), not by the name table (#90's `nvidia_name_known`).
+
+- Refused (`gpu_known: false`; kept as a record, never used for judging) are only placeholders (empty, `n/a`, `none`, `null`, `unknown`, `-`) and generic names (`NVIDIA Graphics Device` etc.; `estimate.GENERIC_GPU_KEYS`). llmfit also compares names exactly ignoring case and refuses only placeholders (llmfit `share.rs`, `hardware_payload_matches` in `benchmarks.rs`).
+- Matching (`estimate.same_gpu`) already requires an exact normalized name and a VRAM ratio of 0.95 or more. A made-up or unknown name only matches a PC that reports the same string. So the name table hardly added safety to matching, and it refused real names (TITAN X (Pascal), vGPU, A800 40GB Active, CMP 30HX etc.).
+- Form (case-insensitive; at most 10 words): `NAME := [NVIDIA] BRAND* CORE SUFFIX*`
+  - BRAND: GeForce, Quadro, Tesla, GRID, TITAN, RTX, PRO, GTX, GTS, GT, MX, CMP, NVS, FX, DGX
+  - Exactly one CORE: `[A-Z]{0,3}\d{1,4}[A-Z]{0,3}` with `(-(SXM\d?|PCIE|\d{1,3}GB|\d{1,3}[ABCQ]|\d{1,2}))*` allowed; right after TITAN also `V|X|Xp|Z|Black|RTX`. The first "GeForce GTX TITAN", which has no model word, also passes
+  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)?` (at most one all-digit word), `\([A-Za-z]+\)`, A, AC
+- A name that does not fit the form is not an error but the notice `gpu_name_form` (a maintainer checks it; personal names are seen by the submitter in `contrib show`, which the existing personal-information check covers). A name that fits but is not in the table (`_NAME_CC`) is the notice `unknown_gpu` (still used for judging). A new series adds one word to the word list (not one entry per product).
+- A VRAM amount that does not match the name's nominal VRAM (`estimate.NVIDIA_NOMINAL_VRAM`) was lowered from an error to the notice `gpu_vram_nominal` (modified cards such as a 48 GB 4090 exist; the VRAM ratio of 0.95 keeps them away from PCs with other VRAM).
+- `_NAME_CC` (name → compute capability) is used only to guess the generation with old drivers and to check a submission's compute capability.
+- The characters allowed in a submitted name now include a generation name in parentheses (`(Pascal)` etc.; generation names only).
+- Tests: real names (the checker's 35 and the hwaudit list) pass, made-up names (phone numbers, initials + year, name + digits, "ABC123 XYZ99") do not (`tests/test_contrib_robust.py`). In the list, `NVIDIA Graphics Device` (generic), `Orin (nvgpu)`, `NVIDIA Thor` (Jetson words are not BRANDs) and the name with a personal name do not pass.
+
+### Known limits
+
+- On Windows a command that times out has only the child killed (grandchildren may remain). The pipe is not closed (closing it blocks until the grandchild ends); it waits 1 more second and returns.
+- The reported ~3 GB less free VRAM inside WSL is not put in the value.
+- The MIG partition size is not read automatically (give it with `--vram`).
+- The GB10 level is an estimate (up to Good). NVIDIA documents no number for a GPU-only limit.
+- Unified memory of Jetson and GH200 / GB200 is not handled (another issue).
+- The shared part of an integrated GPU in WSL2 (Intel Arc Graphics) is estimated low from the memory inside WSL.
+
 ## Memory and virtual memory
 
 - Installed and free memory come from psutil.
-  - On Linux, if the container limit (cgroup v2 `memory.max`, v1 `memory.limit_in_bytes`) is smaller than the installed memory, the limit is used as the installed memory.
+  - On Linux, if the container limit (cgroup v2 `memory.max`, v1 `memory.limit_in_bytes`) is smaller than the installed memory, the limit is used as the installed memory. From 0.11.0 it walks from this process's cgroup (`/proc/self/cgroup`) up to the root and uses the smallest limit; available = limit − usage ("Every environment" below).
+  - If psutil fails, the OS's own reading (GlobalMemoryStatusEx, /proc/meminfo, sysctl) is used; if that fails too, the notes say "give it with --ram".
   - Inside WSL it is the amount assigned to WSL (`.wslconfig`); the output says so.
 - Windows commit:
   - `ullTotalPageFile` of `GlobalMemoryStatusEx` is "the current commit limit (the smaller of the system's or this process's)", and `ullAvailPageFile` is its free part (https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex).
@@ -531,7 +637,7 @@ Judging (`estimate.ram_limit`): when more main memory is needed than is installe
 
 | llmfit's case split | Here |
 |---|---|
-| Uses nvidia-smi `addressing_mode` (ATS) to find GPUs that share memory with the CPU (Grace Blackwell, Tegra) and treats RAM as VRAM | An NVIDIA GPU that returns no VRAM is not used for judging. DGX Spark and similar are stated as out of scope |
+| Uses nvidia-smi `addressing_mode` (ATS) to find GPUs that share memory with the CPU (Grace Blackwell, Tegra) and treats RAM as VRAM | An NVIDIA GPU that returns no VRAM is not used for judging, except DGX Spark named `NVIDIA GB10`, which has an official ComfyUI guide and uses MemTotal as shared memory (0.11.0). Jetson and GH200 / GB200 are out of scope |
 | For Apple silicon, uses Metal `recommendedMaxWorkingSetSize` as GPU memory | Python does not call Metal (to avoid more dependencies), so 3/4 of the installed memory is assumed (see "Shared memory" above) |
 | Infers from the GPU name when nvidia-smi returns no VRAM | Does not infer (it does not guess VRAM and then say "it fits") |
 | Adds up the VRAM of several cards of the same model (llama.cpp and others can split a model) | Does not add (ComfyUI runs on one GPU). The one with the most VRAM |
@@ -558,9 +664,9 @@ Running only nvidia-smi 15 times each, alternating, the query with more fields a
 
 ## Tests
 
-- `tests/test_hardware.py`, `tests/test_vendors.py` (AMD, Intel, Apple, APU, families that run on CPU, #26) and `tests/fixtures/hardware/`.
+- `tests/test_hardware.py`, `tests/test_vendors.py` (AMD, Intel, Apple, APU, families that run on CPU, #26), `tests/test_detect_everywhere.py` (every environment, GB10, WSL2; #101) and `tests/fixtures/hardware/`.
 - The tool with which bench reads utilization and used memory of non-NVIDIA GPUs (`gpustat.py`) is tested by `tests/test_gpustat.py` (output examples from official documents and sources, and the actual typeperf output of this PC) and `tests/test_bench_vendors.py`.
-- The default tests do not call the real nvidia-smi, PowerShell, lspci or registry (`_no_real_hardware` in `tests/conftest.py` blocks `hardware._run`, `_reg_display_entries` and `_reg_paging_files`).
+- The default tests do not call the real nvidia-smi, PowerShell, lspci or registry (`_no_real_hardware` in `tests/conftest.py` blocks `hardware._run`, `_reg_display_entries` and `_reg_paging_files`, and from 0.11.0 also the sysfs device list, amdkfd and the WSL2 state).
 - Fixtures:
   - Actual output of nvidia-smi, WMI and the registry of this PC (instance IDs replaced with 0).
   - Multiple GPUs, an old version without compute_cap, `[N/A]`, broken output, output when the driver is not running or there is no GPU.

@@ -19,6 +19,7 @@ llmfit の `llmfit-core/src/hardware.rs`(コミット bffd1b6、MIT)は考え方
 - [NVIDIA 以外の GPU(0.7.0、#22・#23)](#nvidia-以外の-gpu0702223)
 - [CPU で動く系統(0.7.0、#39)](#cpu-で動く系統07039)
 - [同じ GPU で成功した実測(0.7.0、#26)](#同じ-gpu-で成功した実測07026)
+- [すべての環境(0.11.0、#101)](#すべての環境0110101)
 - [メモリと仮想メモリ](#メモリと仮想メモリ)
 - [画面などが使う VRAM(今の空き)](#画面などが使う-vram今の空き)
 - [llmfit との突き合わせ](#llmfit-との突き合わせ)
@@ -29,9 +30,9 @@ llmfit の `llmfit-core/src/hardware.rs`(コミット bffd1b6、MIT)は考え方
 
 | 項目 | どこから | 判定に使うか |
 |---|---|---|
-| NVIDIA の GPU(名前・VRAM の総量・空き・使用量・ドライバ・compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap --format=csv,noheader,nounits` | 使う(backend が `cuda` のものの最大の 1 枚) |
+| NVIDIA の GPU(名前・VRAM の総量・空き・使用量・ドライバ・compute capability) | `nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap,mig.mode.current --format=csv,noheader,nounits`(0.11.0 で MIG の状態を足した) | 使う(backend が `cuda` のものの最大の 1 枚) |
 | NVIDIA 以外も含めた画面の部品 | Windows: PowerShell の `Get-CimInstance Win32_VideoController` + レジストリの `HardwareInformation.qwMemorySize`。Linux: `lspci -Dnn`(AMD の VRAM・GTT は sysfs の `mem_info_vram_total`・`mem_info_gtt_total`)。macOS: `system_profiler SPDisplaysDataType -json` | NVIDIA の GPU が使えないときだけ、AMD・Intel・Apple を対応表で使う(0.7.0、下の「NVIDIA 以外の GPU」)。PCI の型番 ID(`pci_id`)も取る(0.9.0。同じ GPU の実測の照合と、bench の提出に使う) |
-| 物理メモリ | psutil(Linux はコンテナ(cgroup)の上限があればそれ) | 使う |
+| 物理メモリ | psutil(読めなければ OS の読み方。Linux はコンテナ(cgroup)の上限があればそれ) | 使う |
 | 仮想メモリ | Windows: `GlobalMemoryStatusEx`(ctypes)とレジストリ `Memory Management\PagingFiles`。Linux: `/proc/swaps`(zram を除く)。macOS: 自動で伸びる扱い | 使う(足りないときの上限) |
 | ディスクの空き | `shutil.disk_usage` | 表示だけ |
 
@@ -54,7 +55,7 @@ llmfit の `llmfit-core/src/hardware.rs`(コミット bffd1b6、MIT)は考え方
   - `[N/A]`・`[Not Supported]`・`N/A`・空は「分からない」。
   - 空きが分からず総量と使用量があれば 総量 − 使用量。
   - 単位付き(`8192 MiB`)・カンマの小数点(`8,6`)も読む。
-- VRAM の総量が返らない GPU(メモリを CPU と共有する GB10 など)は判定に使わない(backend `none`、理由付き)。
+- VRAM の総量が返らない GPU(メモリを CPU と共有するもの)は判定に使わない(backend `none`、理由付き)。ただし DGX Spark(GB10)は統合メモリの GPU として使う(0.11.0。下の「DGX Spark(GB10)」)。
 - `compute_cap` を知らない古い nvidia-smi は「Field "compute_cap" is not a valid field to query.」で終了コード 2 になる(この PC で存在しない項目を聞いて確かめた。どのドライバの版で入ったかは一次資料で確かめられなかった)。
   - そのときは `compute_cap` を除いて聞き直し、GPU 名の表(`hardware._NAME_CC`)から推す。
   - 迷う名前(ノート用の GTX 960M など、同じ型番で世代が混ざるもの)は推さない。
@@ -138,7 +139,7 @@ WSL の nvidia-smi は Windows のドライバの版を返すので、Windows �
 | Ada | 8.9 | cu126〜cu132(8.6 の機械語) | 同上 | GPU |
 | Hopper | 9.0 | cu126〜cu132 | 同上 | GPU |
 | Blackwell | 10.x, 12.x | cu128〜cu132 | 570(世代の最低)/ 580(cu13x) | GPU |
-| それより新しい | 13.x〜 | なし | — | **CPU**(PyTorch の対応を待つ) |
+| それより新しい | 13.x〜 | なし | — | **GPU**(断らず「表より新しい世代。最新の PyTorch を使う」と注意。0.11.0 まで CPU) |
 
 - 動くビルドが 1 つも無い世代、またはドライバがどのビルドにも足りないときは、backend `none` にして CPU として判定する。理由は `Gpu.notes` と `SystemInfo.notes` に書く(「ドライバを更新すれば GPU で動く」かどうかも書く)。
 - 世代が分からない(nvidia-smi も名前の表も分からない)・ドライバの版が読めないときは断らない(分からないと書く)。
@@ -370,7 +371,7 @@ GPU の名前から世代を決める表:
 - NVIDIA の GPU があるときは調べない(PowerShell の起動に約 1 秒かかるため)。
 - `genmodelfit system --all-gpus` で必ず調べる(このときも NVIDIA が使えれば NVIDIA で判定する)。
 - レジストリには取り外した GPU の項目も残る(下の突き合わせで除く)。
-- Windows: `powershell.exe -NoProfile -NonInteractive -Command` で `Get-CimInstance Win32_VideoController` の Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode を JSON で取る(出力は UTF-8 に指定。時間制限 8 秒)。
+- Windows: `powershell.exe -NoProfile -NonInteractive -Command` で `Get-CimInstance Win32_VideoController` の Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode・DriverVersion を JSON で取る(出力は UTF-8 に指定。時間制限 8 秒)。
   - PNPDeviceID が `PCI\` で始まらないもの(仮想の画面・リモートデスクトップの画面)は捨てる。
   - OS の版はビルド番号(22000 以上が Windows 11)。
   - `AdapterRAM` は uint32(Microsoft の Win32_VideoController の説明: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller)なので、4 GiB 以上は 4293918720 前後で頭打ちになる。この値以上は使わない。
@@ -381,8 +382,8 @@ GPU の名前から世代を決める表:
     - `MatchingDeviceId` が WMI の部品の型番の ID の先頭に当たるものに当てる。
     - 無ければ、`DriverDesc` の名前(™・® を除いて比べる)が同じものに当てる。
     - 当たる項目が複数あって値が違う(取り外した同名の GPU が残っている)ときは使わない。
-  - NVIDIA の部品(VEN_10DE)が「Microsoft Basic Display Adapter」なら「NVIDIA のドライバが入っていない」と知らせる。
-  - ConfigManagerErrorCode が 0 でなければ「デバイスマネージャーで問題がある状態」と知らせる。
+  - NVIDIA の部品(VEN_10DE)があり nvidia-smi で判定できなければ、名前によらず「NVIDIA のドライバが入っていない・動いていない」と知らせる(0.11.0。以前は英語の名前「Microsoft Basic Display Adapter」のときだけ)。
+  - ConfigManagerErrorCode が 0 でなければ、22・28・43 は理由を分けて、ほかは「デバイスマネージャーで問題がある状態」と知らせる(下の「すべての環境」)。
 - Linux: `lspci -Dnn` のクラス 03xx(VGA・3D・Display)を読む。
   - 名前は括弧の中の製品名(`Navi 31 [Radeon RX 7900 XT/7900 XTX/…]` の括弧の中)。
   - AMD は `/sys/bus/pci/devices/<slot>/mem_info_vram_total`(VRAM)と `mem_info_gtt_total`(GTT)を読む。
@@ -392,7 +393,7 @@ GPU の名前から世代を決める表:
 - macOS: `system_profiler SPDisplaysDataType -json` の `sppci_model`(「Apple M2 Pro」)と `spdisplays_vendor`。
   - 統合メモリの量は psutil の搭載量(macOS では `sysctl hw.memsize` と同じ値)。
   - OS の版は `platform.mac_ver()`。
-- PowerShell・lspci・system_profiler が無い・失敗した・時間切れは、黙って飛ばす(空のまま)。
+- PowerShell・lspci・system_profiler が無い・失敗した・時間切れは、空のまま「画面の部品の一覧を読めなかった」と知らせる(0.11.0。Linux で lspci が無ければ sysfs を読む)。
 
 ### 表示
 
@@ -488,10 +489,115 @@ ComfyUI の CPU での動き:
 - 実測が別の GPU のもの・出どころが 1 つだけ・そろっていないときは「段階は見積もりで決めた(…)」と理由を書く。
 - 例: Wan 2.2 5B(作者の RTX 5080 16 GB の実測 15.8 / 15.0 GB の 2 行。合わせて 1 つの出どころで、動的 VRAM で重みの一部を逃がして動いた記録)は、640x640・73 コマを指定しても、重み + 固定分(約 18.4 GB)が 15.9 GB に収まらないので、0.11.0 から段階は見積もり(Marginal / offload。0.7.0〜0.10 は Good / GPU)。RTX 3060 12 GB では Marginal / offload のまま。
 
+## すべての環境(0.11.0、#101)
+
+検出は、どの環境でも例外を出さずに終わり、分からないときは断らず、何が分からないかを notes に書く。
+環境 41 通り(外のコマンド・レジストリ・WMI・lspci・sysfs・system_profiler の出力を差し替えて再現したもの)を洗い出して直した。
+出典は 2026-10-27 に読んだ。
+
+### 環境の一覧
+
+| 環境 | genmodelfit がすること | 出典(引いた節) |
+|---|---|---|
+| psutil がメモリを読めない | Windows は `GlobalMemoryStatusEx`、Linux は `/proc/meminfo`、macOS は `sysctl -n hw.memsize` で読む。どれも読めなければ量は「分からない」(`Memory.total` が None)とし、「--ram で指定する」と notes に書く(判定は 0 GB として進む) | psutil の失敗は OS ごとに違う(実装の判断) |
+| MemAvailable の無い古いカーネル | 空き = MemFree + Cached | Linux `Documentation/filesystems/proc.rst`「MemAvailable」 |
+| コンテナ(cgroup v2・v1) | `/proc/self/cgroup` の自分の cgroup(v2 は `0::/path`、v1 は `N:memory:/path`)から根へたどり、上限(`memory.max`・`memory.limit_in_bytes`)の一番小さいものを搭載量に、空きは 上限 − 使用量(`memory.current`・`memory.usage_in_bytes`)。`max` は上限なし。名前空間の中ではパスが `/` なので根だけを読む | https://docs.kernel.org/admin-guide/cgroup-v2.html 「memory.max」「memory.current」、https://docs.kernel.org/admin-guide/cgroup-v1/memory.html 「memory.limit_in_bytes」 |
+| PyTorch の表より新しい compute capability(13.0 など) | 断らない(`cuda` のまま)。「表より新しい世代。最新の PyTorch を使う」と注意。断るのは表より古い世代だけ | CLAUDE.md の決まり「世代が分からないときは断らない」と同じ扱い |
+| Linux の aarch64 / ppc64le / riscv64 など | `_machine()` は知らない種類を x86_64 にしない。表(`TORCH_CUDA_BUILDS` の鍵)に無ければ「この機械向けの PyTorch の CUDA 版は無い」で CPU | 上の「PyTorch の CUDA 版のビルドが対応する compute capability」 |
+| Windows の Arm64 + NVIDIA | 表は (OS, 機械) で引く(`torch_platform`)。Windows の Arm64 向けの CUDA 版は無いので CPU | https://download.pytorch.org/whl/ の各 cu の索引(`win_arm64` の CUDA 版が無い) |
+| 32 ビットの Python | 注意だけ(「PyTorch は 64 ビットの Python にしか無い」) | https://download.pytorch.org/whl/ の各 cu の索引(32 ビットの win32・i686 の wheel が無い) |
+| MIG が有効(`mig.mode.current` が Enabled) | nvidia-smi の VRAM は GPU 全体なので、「区画の大きさを --vram で指定する」と注意(値は変えない。実機で確かめていない) | NVIDIA「Multi-Instance GPU User Guide」 https://docs.nvidia.com/datacenter/tesla/mig-user-guide/ (区画ごとにメモリが分かれる) |
+| `mig.mode.current` を知らない nvidia-smi | エラーの文がその項目を名指ししたときだけ、その項目を外して聞き直す(`QUERY_CC`)。compute_cap も知らなければ今までどおり `QUERY_OLD` | 知らない項目が 1 つあると問い合わせ全体が失敗する(この PC で存在しない項目を聞いて確かめた) |
+| DGX Spark(GB10) | 下の「DGX Spark(GB10)」 | 同節 |
+| Jetson(Orin・Thor) | 対象外(CPU)。「Jetson は PyTorch が JetPack 専用の版(jp6 の cu126 など)で表の CUDA 版と別系統、メモリの扱いも確かめていない」と書く。この Issue の範囲外 | Jetson AI Lab の ComfyUI の手順 https://www.jetson-ai-lab.com/tutorial_comfyui_flux.html (別の Issue で扱う) |
+| GH200 / GB200 | この Issue の範囲外(nvidia-smi が返す HBM の量でこれまでどおり判定する) | — |
+| ドライバの無い NVIDIA(Windows の「Microsoft 基本ディスプレイ アダプター」、Linux の nouveau) | 名前(言語で変わる)に頼らず、型番の会社 ID が NVIDIA(`10de`)の部品で「nvidia-smi で確かめられないので CPU。NVIDIA のドライバを入れる」と知らせる | — |
+| デバイス マネージャーのエラー(WMI の ConfigManagerErrorCode) | 22 は「無効にしてある」、28 は「ドライバが入っていない」、43 は「問題を報告して Windows が止めた」、ほかは「問題がある状態」 | Microsoft「Device Manager error messages」 https://learn.microsoft.com/en-us/windows-hardware/drivers/install/device-manager-error-messages (Code 22・28・43) |
+| PowerShell・lspci・system_profiler が無い・失敗・時間切れ | 「画面の部品の一覧を読めなかった」と注意(以前は黙っていた) | — |
+| lspci が無い Linux(最小のコンテナ・Flatpak・Snap など) | `/sys/bus/pci/devices/*/{class,vendor,device}` を読み(class が 0x03xxxx のもの)、名前は「AMD Device 744c」の形にして型番 ID の表(`PCI_DEVICE_NAMES`)で引く。差し場所は形を確かめて読むのに使うだけで、残さない・出さない。読めないファイル(SELinux など)は None | https://docs.kernel.org/PCI/sysfs-pci.html 「Accessing PCI device resources through sysfs」 |
+| 仮想マシン・管理用(BMC)の画面(QEMU `1234`・virtio `1af4`・VMware `15ad`・VirtualBox `80ee`・Hyper-V `1414`・Cirrus `1013`・QEMU(Red Hat)`1b36`・ASPEED `1a03`・Matrox `102b`) | 「計算に使う GPU ではない(仮想マシン・管理用の画面)」で CPU。型番 ID の読み替え(pci.ids が古いときの案内)は AMD・Intel だけ | pci.ids の会社名(pciutils/pciids) |
+| Linux の AMD(amdgpu) | amdkfd の `/sys/class/kfd/kfd/topology/nodes/*/properties` の `gfx_target_version`(10 進で 主×10000 + 下位×100 + stepping、stepping は 16 進 1 文字: 110000 → gfx1100、90010 → gfx90a。0 は CPU のノード)を、ノードの `vendor_id`・`device_id` で部品に当て、名前より先に使う。表に無い gfx10.3 以降は「新しい世代(推定)」として断らない | torvalds/linux `drivers/gpu/drm/amd/amdkfd/kfd_topology.c`(`gfx_target_version`)・`kfd_device.c` |
+| Windows の表に無い新しい AMD・Intel(Arc) | CPU のまま、理由に「名前の表に無い GPU(新しい GPU?)。--vram で VRAM を指定すれば判定できる。名前の表は毎週の更新で足す」 | — |
+| macOS の Apple 以外の GPU(Intel Mac の AMD・Intel) | 世代を引く前に「macOS の Apple 以外の GPU は PyTorch の MPS 版の対象ではない」 | Apple「Accelerated PyTorch training on Mac」 https://developer.apple.com/metal/pytorch/ (「Mac computer with Apple silicon」「macOS 14.0 or later」)、ComfyUI README「Apple Mac silicon」 |
+| macOS の仮想マシン(「Apple Paravirtual device」) | Apple のチップ名(`APPLE_CHIP_NAME`)の形でない Apple の画面は CPU | PyTorch #111576「[MPS] Skip virtualized devices」 https://github.com/pytorch/pytorch/pull/111576 (この部品では最初の確保が失敗する) |
+| macOS の版が 10.16 と出る(古い SDK で作った Python) | `SYSTEM_VERSION_COMPAT=0 sw_vers -productVersion` で読み直す。読み直せなければ版は分からない(MPS は使わない側) | pypa/packaging #513 https://github.com/pypa/packaging/pull/513 (「SYSTEM_VERSION_COMPAT=0」で sw_vers を読む) |
+| WSL2 の AMD・Intel | 下の「WSL2 の AMD・Intel」 | 同節 |
+| 時間切れのコマンド | POSIX はプロセスの組(`start_new_session`)ごと止め、さらに 1 秒だけ待って返す。Windows は下の「既知の限界」 | Python `subprocess.Popen`「start_new_session」 |
+
+### DGX Spark(GB10)
+
+- 判定に使う条件(すべて): nvidia-smi の名前が `NVIDIA GB10` と**完全に一致**(部分一致・GB20・nvgpu は入れない)、memory.total が `[N/A]` / `Not Supported`、Linux の aarch64。compute_cap 12.1 は補強で、無くても外さない。ASUS GX10・Dell・MSI などの GB10 機も同じ名前で拾える。
+- メモリ(`memory: shared`):
+  - 総量は `/proc/meminfo` の MemTotal(段階は総量で決める決まり)。割り引かない(Apple の 3/4 は Metal の目安の代わりで、GB10 に当てる根拠が無い)。メインメモリと共有で、二重に数えない(`carveout_gb` 0。逃がす動かし方は無い)。
+  - 空きは NVIDIA の known-issues の例どおり MemAvailable + SwapFree(HugePages を使っていれば空きの HugePages × 大きさ、swap は数えない)で、今の空きの注意(`vram_free_short`)だけに使う。
+- 段階は推定なので **Good まで**(同じ GPU の実測が 2 つ以上そろえば外れる。上の「同じ GPU で成功した実測」)。理由に「GB10 は統合メモリ。GPU だけの上限は NVIDIA の文書に無い」と書く。
+- PyTorch の表: compute capability 12.1 は今の `_code_runs`(同じ主番号で下位が小さい機械語は動く)で sm_120 の機械語が動くと判定する(新しい規則は要らない)。cu128 の aarch64(PyTorch 2.7〜2.11)を表に足した。
+- 注意: 「sm_121 では CUTLASS・xformers の fmha のカーネルが失敗した報告があり、直ったかは確かめていない」。
+- 名前が GB10 でない、VRAM を返さない NVIDIA の GPU は、理由(Jetson は上の表、ほかは「共有メモリの NVIDIA の GPU は ComfyUI の公式の手順を確かめた GB10 だけ」)を書いて CPU。
+
+出典:
+
+- NVIDIA「ComfyUI on DGX Spark」 https://github.com/NVIDIA/dgx-spark-playbooks (`nvidia/comfy-ui`。cu130 の PyTorch、ComfyUI v0.28.2)
+- PyTorch のフォーラム(NVIDIA の ptrblck) https://discuss.pytorch.org/t/223744 「CUDA 12.8 以上の ARM のバイナリは DGX Spark に対応、sm_121 は sm_120 とバイナリ互換」
+- NVIDIA DGX Spark「Known Issues」 https://docs.nvidia.com/dgx/dgx-spark/known-issues.html 「nvidia-smi reports "Memory-Usage: Not Supported"」(「iGPUs do not have dedicated framebuffer memory」)と「Guidance for reporting memory resources with unified memory architecture」(「the cudaMemGetInfo API does not account for memory that could potentially be reclaimed from SWAP」。例は MemAvailable・SwapFree・HugePages_Total を読む)
+- PyTorch の cu128 の aarch64: v2.11.0 `.ci/manywheel/build_cuda.sh`(12.8 は `7.5;8.0;8.6;9.0;10.0;12.0`、aarch64 は 8.0 未満と 8.6 を除く)、https://download.pytorch.org/whl/cu128/torch/ (2.7.0〜2.11.0 の `manylinux_2_28_aarch64`)
+- ComfyUI は統合 GPU を通常の CUDA デバイスとして扱い、pin だけ無効にする(`comfy/model_management.py` の `is_integrated_gpu`)
+
+### WSL2 の AMD・Intel
+
+3 段で判定する(NVIDIA は WSL でも nvidia-smi で今までどおり):
+
+1. **WSL2 か**: `/dev/dxg`(GPU の準仮想化の口)があり、カーネルの版に `microsoft` がある。続けて、相互運用が使えるかを `/proc/sys/fs/binfmt_misc/WSLInterop`(または `WSLInterop-late`)の有無で確かめる(プロセスを起こさない)。`/.dockerenv` か `/run/.containerenv` があれば「WSL の上のコンテナ。Windows 側の GPU は読めない」。
+2. **Windows 側の GPU を読む**: 相互運用で `powershell.exe`(PATH に無ければ `/etc/wsl.conf` の `[automount] root`(既定 `/mnt/`)の下の `c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`)を `-NoProfile -NonInteractive`・時間切れ 8 秒で呼ぶ。台本(`hardware._PS_WSL`)は WMI の Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode・DriverVersion と、レジストリの画面の部品のクラスキー(`0###`)の DriverDesc・MatchingDeviceId・`HardwareInformation.qwMemorySize`・`MemorySize`(REG_BINARY はバイト列から変換)だけを読み、UTF-8 の JSON で返す。PNPDeviceID は Windows と同じく後半(差し場所)を捨てる。失敗(相互運用が無効・時間切れ)は例外にせず注意にする。
+3. **WSL の中の準備**: AMD は `rocminfo`(PATH か `/opt/rocm/bin`)が通り、GPU のエージェントの `Name: gfx…` が読めること(一番強い証拠)。読むのは行の頭で照合した `Name: gfx…`・`Marketing Name:`・`Device Type:` だけで、UUID などほかの行は読まない・notes・ログ・例外に出さない。Intel は `clinfo -l` に Intel の GPU の Device が出ること。
+
+使う条件(段階は推定で Good まで):
+
+- AMD: AMD の WSL の対応表(ROCm 7.2.1)の製品名と完全に一致するもの(`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE、AI PRO R9700 / R9600D、RX 9060 / 9060 XT、RX 7900 XTX / XT / GRE、PRO W7900(Dual Slot)/ W7800(48GB)/ W7700、RX 7800 XT、RX 7700 / 7700 XT)。APU は公式の表に無い(librocdxg の README だけで、リポジトリは deprecated)ので使わない。
+- Intel: Arc A・B、Core Ultra の Arc Graphics(`_INTEL_XPU`)で、Windows のドライバが 32.0.101.8801 以上(3 つ目と 4 つ目の欄をつないだ 7 桁で比べる。`int(f"{p3}{p4:04d}") >= 1018801`)。版が読めなければ断らず注意。内蔵の Arc Graphics は WSL のメモリ(Windows の搭載量以下)の半分を共有の分とみなす(少なめの見積もり)。
+- そろわないときは CPU として、何が足りないかを書く(例「Windows 側に AMD Radeon RX 7900 XTX があるが、WSL の中の rocminfo で GPU が見えない。Windows に AMD Software: Adrenalin Edition for WSL2 を、WSL の中に ROCm の WSL 版を入れる」「AMD の WSL の対応表(ROCm 7.2.1)に無い」)。
+- VRAM は Windows 側のレジストリの量(WMI の AdapterRAM は 4 GB で頭打ち)。WSL の中では空きが約 3 GB 少ないという報告(二次)があるので注意に書く(値は変えない)。
+- WSL2 の lspci・sysfs に見える Microsoft の部品(`1414:008e` Basic Render Driver)は計算の GPU ではないので一覧から外す。
+- 使える NVIDIA の GPU があるときは、`--all-gpus` でも Windows 側(powershell.exe・rocminfo・clinfo)は読まない。
+- 使わないもの: amd-smi(WSL では機能が限られ、ROCm CLI でも GPU 無しと出る)、xpu-smi(WSL での動きを確かめていない)、`HSA_OVERRIDE_GFX_VERSION`(非公式)。
+
+出典:
+
+- AMD「WSL compatibility」(ROCm 7.2.1) https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/wsl/wsl_compatibility.html 「Supported AMD Radeon™ Hardware」(Adrenalin Edition 26.1.1 for WSL2)、https://github.com/ROCm/librocdxg
+- Intel「PyTorch Prerequisites for Intel GPUs」2.14 https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-14.html 「Install for WSL2」(「The /dev/dxg must exist, and clinfo -l must list an Intel platform with at least one device」)と「Install for Windows」(「version 32.0.101.8801 … or higher」)
+- Intel「Understanding the Intel Graphics Driver Version Number」 https://www.intel.com/content/www/us/en/support/articles/000005654/graphics.html (「The seven digit build number is created by combining the numbers from the last two sections」)
+- Microsoft「wsl.conf」 https://learn.microsoft.com/en-us/windows/wsl/wsl-config 「[automount] root」「[interop] enabled」
+
+### GPU 名の形
+
+ほかの利用者の提出(contrib)の GPU 名は、名前の表(#90 の `nvidia_name_known`)でなく形で見る(`hardware.nvidia_name_well_formed`)。
+
+- 断る(`gpu_known: false`。記録として残し、判定には使わない)のは、名前の代わりの値(空・`n/a`・`none`・`null`・`unknown`・`-`)と汎用の名前(`NVIDIA Graphics Device` など。`estimate.GENERIC_GPU_KEYS`)だけ。llmfit も名前は大文字小文字を無視した完全一致で比べ、断るのは代わりの値だけ(llmfit `share.rs`・`benchmarks.rs` の `hardware_payload_matches`)。
+- 照合(`estimate.same_gpu`)はもともと、そろえた名前の完全一致と VRAM の比 0.95 以上を求める。作った名前・知らない名前は、同じ文字列を返す PC にしか当たらない。∴ 名前の表は照合の安全をほとんど増やさず、逆に実在の名前(TITAN X (Pascal)・vGPU・A800 40GB Active・CMP 30HX など)を断っていた。
+- 形(大文字小文字を区別しない。語は 10 個まで): `NAME := [NVIDIA] BRAND* CORE SUFFIX*`
+  - BRAND: GeForce, Quadro, Tesla, GRID, TITAN, RTX, PRO, GTX, GTS, GT, MX, CMP, NVS, FX, DGX
+  - CORE はちょうど 1 つ: `[A-Z]{0,3}\d{1,4}[A-Z]{0,3}` に `(-(SXM\d?|PCIE|\d{1,3}GB|\d{1,3}[ABCQ]|\d{1,2}))*` を許す。TITAN の直後だけ `V|X|Xp|Z|Black|RTX` も。型番の語の無い初代の「GeForce GTX TITAN」も通す
+  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)?`(数字だけの語は 1 個まで)、`\([A-Za-z]+\)`、A, AC
+- 形に合わない名前は誤りではなく確認 `gpu_name_form`(メンテナが確かめる。人名などは本人が `contrib show` で見る。今の個人の情報の点検が受け止める)。形に合うが表(`_NAME_CC`)に無い名前は確認 `unknown_gpu`(判定には使う)。新しい系列の語は語の表に 1 語足す(製品ごとではない)。
+- 名前の公称の VRAM(`estimate.NVIDIA_NOMINAL_VRAM`)に合わない量は誤りから確認 `gpu_vram_nominal` に下げた(中国の改造品の 4090 48 GB などがあるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る)。
+- `_NAME_CC`(名前 → compute capability)は古いドライバのときの世代の推定と、提出の compute capability の食い違いの点検だけに使う。
+- 提出の名前の文字に、括弧の世代名(`(Pascal)` など、世代の名前だけ)を許した。
+- 試験: 実在の名前(検証の 35 個と hwaudit の一覧)は通り、作った名前(電話番号・イニシャル + 年・名前 + 数字・「ABC123 XYZ99」)は通らない(`tests/test_contrib_robust.py`)。一覧のうち `NVIDIA Graphics Device`(汎用)・`Orin (nvgpu)`・`NVIDIA Thor`(Jetson の語は BRAND に無い)・人名入りの名前は通らない。
+
+### 既知の限界
+
+- Windows で時間切れのコマンドは子だけを止める(孫のプロセスは残りうる)。読む口は閉じず(閉じると孫が終わるまで止まる)、1 秒だけ待って返す。
+- WSL の中の VRAM の空き(約 3 GB 少ない報告)は値に入れていない。
+- MIG の区画の大きさは自動では読まない(`--vram` で指定する)。
+- GB10 の段階は推定(Good まで)。GPU だけで使える上限の数字は NVIDIA の文書に無い。
+- Jetson・GH200 / GB200 の統合メモリは扱わない(別の Issue)。
+- WSL2 の内蔵 GPU(Intel の Arc Graphics)の共有の分は、WSL のメモリから少なめに見積もる。
+
 ## メモリと仮想メモリ
 
 - 搭載量・空きは psutil。
-  - Linux でコンテナ(cgroup v2 の `memory.max`、v1 の `memory.limit_in_bytes`)の上限が搭載量より小さければ、上限を搭載量として使う。
+  - Linux でコンテナ(cgroup v2 の `memory.max`、v1 の `memory.limit_in_bytes`)の上限が搭載量より小さければ、上限を搭載量として使う。0.11.0 から、自分の cgroup(`/proc/self/cgroup`)から根へたどって一番小さい上限を使い、空きは 上限 − 使用量(下の「すべての環境」)。
+  - psutil が失敗したら OS の読み方(GlobalMemoryStatusEx・/proc/meminfo・sysctl)で読み、読めなければ「--ram で指定する」と書く。
   - WSL の中では WSL に割り当てた分(`.wslconfig`)になる(そう書く)。
 - Windows のコミット:
   - `GlobalMemoryStatusEx` の `ullTotalPageFile` は「今のコミットの上限(システムかこのプロセスの小さいほう)」、`ullAvailPageFile` はその空き(https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex)。
@@ -531,7 +637,7 @@ ComfyUI の CPU での動き:
 
 | llmfit の場合分け | こちら |
 |---|---|
-| nvidia-smi の `addressing_mode`(ATS)で CPU と共有するメモリの GPU(Grace Blackwell・Tegra)を見分け、RAM を VRAM とみなす | VRAM が返らない NVIDIA の GPU は判定に使わない。DGX Spark などは対象外と書く |
+| nvidia-smi の `addressing_mode`(ATS)で CPU と共有するメモリの GPU(Grace Blackwell・Tegra)を見分け、RAM を VRAM とみなす | VRAM が返らない NVIDIA の GPU は判定に使わない。ただし名前が `NVIDIA GB10` の DGX Spark だけは、ComfyUI の公式の手順があるので MemTotal を共有のメモリとして使う(0.11.0)。Jetson・GH200 / GB200 は範囲外 |
 | Apple silicon は Metal の `recommendedMaxWorkingSetSize` を GPU のメモリにする | Python から Metal を呼ばない(依存を増やさない)ので、搭載量の 3/4 とみなす(上の「共有メモリ」) |
 | nvidia-smi が VRAM を返さないとき GPU 名から推す | 推さない(VRAM を推して「載る」と言わない) |
 | 同じ型番の複数枚をまとめて VRAM を足す(llama.cpp などは分けて載せられる) | 足さない(ComfyUI は 1 枚で動く)。最大の 1 枚 |
@@ -558,9 +664,9 @@ nvidia-smi だけを 15 回ずつ交互に動かすと、項目を増やした�
 
 ## 試験
 
-- `tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)と `tests/fixtures/hardware/`。
+- `tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)・`tests/test_detect_everywhere.py`(すべての環境・GB10・WSL2。#101)と `tests/fixtures/hardware/`。
 - bench が NVIDIA 以外の GPU の使用率・使用中のメモリを読む道具(`gpustat.py`)は、`tests/test_gpustat.py`(公式の文書・ソースの出力例と、この PC の typeperf の実際の出力)と `tests/test_bench_vendors.py`。
-- 既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない(`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files` を塞ぐ)。
+- 既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない(`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files`、0.11.0 から sysfs の部品の一覧・amdkfd・WSL2 の状態も塞ぐ)。
 - フィクスチャ:
   - この PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)。
   - 複数の GPU、compute_cap の無い古い版、`[N/A]`、壊れた出力、ドライバが動いていない・GPU が無いときの出力。

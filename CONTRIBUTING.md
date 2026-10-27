@@ -169,7 +169,8 @@ This prints everything in the file in readable form, and prints the result of a 
 - **Read the `note` yourself.** The automatic check does not understand what a sentence means. You may delete any sentence you are unsure about.
 - `genmodelfit contrib validate data/contrib` runs the same check as CI on your PC.
 - Only mechanical checks (shape, value range, personal information, duplicates, file name) make a submission fail (the same approach as llmfit; 2026-10-22).
-- Notices are shown but do not fail. They are: a value more than 40% off the estimate by the formula; a value smaller than the lower bound (weights + fixed part) although everything was put on the GPU (`offload: none`); a value that changes the level on a PC with the same GPU (checked with the submission's VRAM and with variants of the same name that have different VRAM, each with 16 / 32 / 64 GB of memory); a model not in the list; and an unknown GPU.
+- Notices are shown but do not fail. They are: a value more than 40% off the estimate by the formula; a value smaller than the lower bound (weights + fixed part) although everything was put on the GPU (`offload: none`); a value that changes the level on a PC with the same GPU (checked with the submission's VRAM and with variants of the same name that have different VRAM, each with 16 / 32 / 64 GB of memory); a model not in the list; an unknown GPU or a GPU name that does not fit the NVIDIA name form (`gpu_name_form`); and VRAM that is not the name's nominal amount (`gpu_vram_nominal`, e.g. a modified card).
+- A GPU name is refused only when it is a placeholder (empty, n/a, none, null, unknown, -) or a generic name (NVIDIA Graphics Device etc.) (0.11.0; new GPUs not in the table are accepted).
 - Notices are shown above the job summary, and the person who merges the PR reads them. If there is a reason, write it in the PR description (you may be asked to measure again).
 
 ## 4. Send a pull request
