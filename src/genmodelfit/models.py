@@ -474,12 +474,16 @@ class Estimate:
     # 根拠の細かい段階(BASIS_DETAILS。#34)。basis は measured / estimated のまま(後方互換)
     basis_detail: str = "estimated"
     # 段階を何で決めたか(0.7.0、#26)。estimate = 見積もり、
-    # measurement = 同じ設定でこの PC 以下の VRAM の GPU で成功した実測
-    # (そのとき measured_peak_vram_gb にその実測の VRAM)
+    # measurement = この PC と同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろった(#95)
+    # (そのとき measured_peak_vram_gb にそろった実測のピークの一番大きいもの)
     fit_from: str = "estimate"
     measured_peak_vram_gb: float | None = None
-    # 見積もりに使った実測の件数(2026-10-22。llmfit の sample_count)。ほかの利用者の実測は中央値に
-    # 使った件数、作者・この PC の実測は 1。実測を使っていない(basis_detail が estimated)ときは None
+    # fit_from が measurement のとき、段階に使った量(#95): max(ピーク + 文脈の分, 重み + 固定分)。
+    # 表の VRAM と Mem% はこの値
+    measured_level_vram_gb: float | None = None
+    # 値の元になった実測の、別々の出どころの数(2026-10-22。llmfit の sample_count。#95 で件数から出どころの
+    # 数に)。作者・この PC の実測は 1 行で 1、ほかの利用者のまとめは n_sources。段階を実測で決めたときは
+    # そろった出どころの合計。実測を使っていない(basis_detail が estimated)ときは None
     sample_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:

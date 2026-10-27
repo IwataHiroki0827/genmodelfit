@@ -46,6 +46,7 @@ from ._version import __version__
 from .db import Database
 from .estimate import (
     COMMUNITY_DEVIATION,
+    MIN_LEVEL_SOURCES,
     NOMINAL_VRAM_TOLERANCE,
     PEAK_VRAM_RATIO,
     PEAK_VRAM_SLACK_GB,
@@ -58,6 +59,7 @@ from .estimate import (
     nvidia_nominal_vram,
     nvidia_size_ok,
 )
+from .estimate import CONSISTENT_REL as _LEVEL_AGREE_REL
 from .hardware import (
     APPLE_CHIP_NAME,
     arch_of,
@@ -2014,8 +2016,10 @@ def validate_dirs(
 MAD_SCALE = 1.4826  # 正規分布の標準偏差に合わせる係数
 OUTLIER_Z = 3.5  # 外れ値とみなす |x - 中央値| / (1.4826 × MAD)(Iglewicz & Hoaglin の目安)
 MAD_FLOOR_REL = 0.02  # MAD の下限(中央値の 2%)。そろいすぎた値で小さな差を外れ値にしない
-CONSISTENT_REL = 0.15  # 残った値の幅(最大 - 最小)が中央値の 15% 以内なら「そろった」
-MIN_CONSISTENT = 2  # 「そろった」とみなす最小の件数
+# 残った値の幅(最大 - 最小)が中央値の 15% 以内なら「そろった」。「そろった」とみなす最小の出どころの数。
+# 実測で段階を決める条件(estimate.measured_level。#95)と同じ値を使う
+CONSISTENT_REL = _LEVEL_AGREE_REL
+MIN_CONSISTENT = MIN_LEVEL_SOURCES
 
 
 def _settings_key(s: Settings) -> tuple:

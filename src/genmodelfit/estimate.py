@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import statistics
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -1207,15 +1208,13 @@ def no_size_input(entry: ModelEntry) -> bool:
     return entry.modality in ("image", "video") and entry.id in NO_SIZE_INPUT
 
 
-def settings_for(
-    entry: ModelEntry, settings: Settings | None, base: Settings | None = None, *, sized: bool = True
-) -> Settings:
-    """指定の無い項目を埋める。base(実測の設定)があればそれを、無ければ種類ごとの既定を使う。
-    0 以下の解像度・コマ数・長さは指定が無いものとして扱う。sized が False(大きさの入力の無いテンプレート。
-    no_size_input)なら、既定の大きさは入れない(指定があれば使う。#90)。"""
-    src = base or DEFAULT_SETTINGS.get(entry.modality, Settings())
-    merged = Settings(**vars(src))
-    if not sized and base is None:
+def settings_for(entry: ModelEntry, settings: Settings | None, *, sized: bool = True) -> Settings:
+    """指定の無い項目を種類ごとの既定(DEFAULT_SETTINGS)で埋める。判定は実測の有無によらずこの規則で埋める
+    (#95。docs/scoring.md「判定に使う設定」)。0 以下の解像度・コマ数・長さは指定が無いものとして扱う。
+    sized が False(大きさの入力の無いテンプレート。no_size_input)なら、既定の大きさは入れない
+    (指定があれば使う。#90)。"""
+    merged = Settings(**vars(DEFAULT_SETTINGS.get(entry.modality, Settings())))
+    if not sized:
         merged.width = merged.height = None
     if settings is not None:
         for k, v in vars(settings).items():
@@ -1492,29 +1491,26 @@ def estimate(
     *,
     with_limits: bool = False,
 ) -> Estimate:
-    """1 モデル × 1 設定 × 1 PC の見積もり。settings を省くと、実測があれば実測の設定、無ければ既定の設定。"""
+    """1 モデル × 1 設定 × 1 PC の見積もり。settings で省いた項目は種類ごとの既定(DEFAULT_SETTINGS)で埋める
+    (実測の有無によらない。#95)。実測の設定は、実測からずらす量を計算するときだけ使う。"""
     c = coefficients or load_coefficients()
     return _estimate(entry, system, settings, list(measurements), c, with_limits)
 
 
 def _sample_count(m: Measurement) -> int:
-    """実測の件数(ほかの利用者の実測は、まとめの中央値に使った件数。作者・この PC の実測は 1)。"""
-    if not is_community(m):
-        return 1
-    n = getattr(m, "n_used", None)
-    if n is None:  # n_used の無い古いまとめ: 提出の数から OOM を引く
-        n = (m.n_submissions or 1) - (getattr(m, "n_oom", None) or 0)
-    return max(1, n)
+    """値の元になった実測の、別々の出どころの数(Estimate.sample_count。#95 で件数から出どころの数に変えた)。
+    作者・この PC の実測は 1、ほかの利用者のまとめは n_sources(measurement_sources)。"""
+    return measurement_sources(m)
 
 
 def community_label(m: Measurement) -> str:
-    """理由に出す「ほかの利用者の実測 3 件(中央値 7.02 GB。OOM 1 件)」。"""
+    """理由に出す「ほかの利用者の実測(出どころ 3。中央値 7.02 GB。OOM 1 件)」。"""
     oom = getattr(m, "n_oom", None) or 0
     return tr(
-        f"ほかの利用者の実測 {_sample_count(m)} 件(中央値 {m.peak_vram_gb:.2f} GB"
+        f"ほかの利用者の実測(出どころ {_sample_count(m)}。中央値 {m.peak_vram_gb:.2f} GB"
         + (f"。同じ構成で OOM の報告 {oom} 件" if oom else "")
         + ")",
-        f"{_sample_count(m)} measurement(s) by other users (median {m.peak_vram_gb:.2f} GB"
+        f"measurements by other users ({_sample_count(m)} source(s); median {m.peak_vram_gb:.2f} GB"
         + (f"; {oom} OOM report(s) with the same setup" if oom else "")
         + ")",
     )
@@ -1530,8 +1526,9 @@ def _estimate(
 ) -> Estimate:
     g0 = system.best_gpu
     gname = g0 if g0 is not None and system.vram_gb > 0 else None
-    s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
-    prep = _prepare(entry, measurements, c, s, gname)  # 設定が同じ実測があればそれを選び直す
+    # 指定の無い項目は、実測の有無によらず種類ごとの既定で埋める(#95。docs/scoring.md「判定に使う設定」)
+    s = settings_for(entry, settings, sized=not no_size_input(entry))
+    prep = _prepare(entry, measurements, c, s, gname)  # 設定が同じ実測があればそれを選ぶ
     if prep.parts.unknown:
         return _unknown_estimate(entry, prep.parts, s)
     prec = gpu_precision(entry, system, s)
@@ -1641,33 +1638,40 @@ def _estimate(
     parts = prep.parts_for(s)
     disk = parts.files_gb
     fit, mode, why, ram_need = _judge(n, system, prep.c, entry, parts.total)
-    fit_from, measured_peak = "estimate", None
-    band = _measured_band(m, entry, s, system, prec)
-    promoted = band if band is not None and _LEVELS.index(band[0]) < _LEVELS.index(fit) else None
+    fit_from, measured_peak, level_gb = "estimate", None, None
+    # 重み + 固定分(作業用メモリ 0 の全部載せ)。実測で段階を決めるときの量の下限(#95。表の VRAM と同じ下限)
+    floor_parts = prep.parts_for(s)
+    floor_parts.decode *= prec.vae_factor
+    floor_gb = need(floor_parts, 0.0, prep.c).full
+    band, not_why = (
+        measured_level(measurements, entry, s, system, prec, floor_gb) if m is not None else (None, None)
+    )
+    promoted = band if band is not None and _LEVELS.index(band.level) < _LEVELS.index(fit) else None
     if promoted is not None:
-        level, line = promoted
-        fit_from, measured_peak = "measurement", m.peak_vram_gb
+        fit_from, measured_peak, level_gb = "measurement", promoted.peak_gb, promoted.amount_gb
         ram_need = n.ram_gpu
-        fit, mode, why = _ram_check(level, "gpu", [line], ram_need, system)
+        fit, mode, why = _ram_check(promoted.level, "gpu", [promoted.line], ram_need, system)
     elif m is not None and basis == "measured" and system.vram_gb > 0 and mode in ("gpu", "offload"):
-        if m.gpu_vram_gb > system.vram_gb / MEASURED_VRAM_TOLERANCE:
+        if not measured_on_this_gpu(m, system.best_gpu):
             reasons.append(
                 tr(
-                    f"段階は見積もりで決めた(実測の GPU {m.gpu_vram_gb:g} GB は"
-                    f"この PC の {system.vram_gb:.1f} GB より大きい)",
-                    f"The level comes from the estimate (the measured GPU, {m.gpu_vram_gb:g} GB, is larger"
-                    f" than this PC's {system.vram_gb:.1f} GB)",
+                    f"段階は見積もりで決めた(実測は別の GPU {m.gpu_name}({m.gpu_vram_gb:g} GB)のもの。"
+                    "段階を実測で決めるのは同じ GPU だけ)",
+                    f"The level comes from the estimate (the measurement is from another GPU, {m.gpu_name}"
+                    f" ({m.gpu_vram_gb:g} GB); only measurements on the same GPU set the level)",
                 )
             )
+        elif not_why and band is None:
+            reasons.append(not_why)
     g = system.best_gpu
     if g is not None and g.vendor != "nvidia" and system.vram_gb > 0 and mode in ("gpu", "offload"):
         # NVIDIA 以外の GPU は、推定だけなら段階を good までにする。この PC と同じ名前の GPU の同じ設定の
         # 実測があれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
         label = _vendor_label(g.vendor)
-        own = band if band is not None and measured_on_this_gpu(m, g) else None
+        own = band  # 同じ GPU の実測だけ(measured_level)
         if own is not None:
             if fit == "perfect" and fit_from != "measurement":
-                if own[0] == "perfect":
+                if own.level == "perfect":
                     why = [
                         *why,
                         tr(
@@ -1677,12 +1681,12 @@ def _estimate(
                         ),
                     ]
                 else:
-                    fit = own[0]
+                    fit = own.level
                     why = [
                         *why,
                         tr(
-                            f"{label} のこの GPU の同じ設定の実測で決まる段階 {own[0]} までにした",
-                            f"Capped at {own[0]}, the level from a measurement with the same settings"
+                            f"{label} のこの GPU の同じ設定の実測で決まる段階 {own.level} までにした",
+                            f"Capped at {own.level}, the level from a measurement with the same settings"
                             f" on this {label} GPU",
                         ),
                     ]
@@ -1705,8 +1709,8 @@ def _estimate(
             n.full, n.sequential, n.offload, system.vram_gb, allow_offload=not shared_memory(system)
         )
         use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
-        if fit_from == "measurement" and m is not None:
-            use = measured_total_gb(m)
+        if fit_from == "measurement" and level_gb is not None:
+            use = level_gb
         if use > g.vram_free_gb:
             free_short = True
             used = g.vram_used_gb
@@ -1739,7 +1743,12 @@ def _estimate(
         basis_detail=detail,
         fit_from=fit_from,
         measured_peak_vram_gb=measured_peak,
-        sample_count=_sample_count(m) if m is not None and detail != "estimated" else None,
+        measured_level_vram_gb=level_gb,
+        sample_count=(
+            promoted.sources
+            if promoted is not None
+            else (_sample_count(m) if m is not None and detail != "estimated" else None)
+        ),
     )
     if with_limits:
         est.limits = limits(prep, system, s)
@@ -1791,62 +1800,153 @@ def _vendor_label(vendor: str) -> str:
     return {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}.get(vendor, vendor)
 
 
-def _measured_band(
-    m: Measurement | None, entry: ModelEntry, s: Settings, system: SystemInfo, prec: GpuPrecision
-) -> tuple[str, str] | None:
-    """同じ設定で成功した実測があり、その GPU の VRAM がこの PC の VRAM 以下
-    (97% の許容)で、実測のピークがこの PC の VRAM に収まるなら、実測で決めた段階と理由(#26)。
+# 実測で段階を決めるのに要る、別々の出どころの数と、そろったとみなす幅(#95。docs/scoring.md
+# 「実測で段階を決める条件」)。幅は contrib aggregate の consistent と同じ定義(contrib.CONSISTENT_REL はこれ)
+MIN_LEVEL_SOURCES = 2
+CONSISTENT_REL = 0.15
 
-    実測が「GPU で動いた」ことは、それ以上の VRAM の同じ会社・同じ精度の扱いの GPU でも動く根拠になる。
-    段階は 実測の VRAM ÷ この PC の VRAM の帯(FIT_BANDS)で、少なくとも good。上限に張り付いた実測
-    (動的 VRAM が空きを使い切った)・同じ構成で OOM の報告もあるまとめは perfect の根拠にしない(good まで)。
-    torch_reserved の実測(CUDA / HIP の文脈を含まない)は文脈の分(TORCH_RESERVED_CONTEXT_GB)を足した値で
-    帯を決め、perfect の根拠にもする(0.9.0。bench の提出はすべて torch_reserved なので、そうしないと
-    NVIDIA 以外の GPU が実測があっても perfect にならない)。会社は measurement_vendor(backend の記録が先)。
-    ほかの利用者の実測は、この PC と同じ名前の GPU のものだけ使う(llmfit と同じく、似た GPU には広げない。
-    2026-10-22 のオーナーの決定)。見積もりの段階と比べるのは呼び出し側。"""
-    if m is None or not usable(m):
-        return None
+
+def measurement_sources(m: Measurement) -> int:
+    """実測 1 行が表す、別々の出どころの数(#95)。作者・この PC の実測は 1 行で 1 つ。
+    ほかの利用者のまとめの行は n_sources(提出を足したコミット = PR の数。#90)。
+    n_sources の無い古いまとめは 1 つとして数える。"""
+    if not is_community(m):
+        return 1
+    n = getattr(m, "n_sources", None)
+    return max(1, n) if isinstance(n, int) else 1
+
+
+@dataclass(frozen=True)
+class MeasuredLevel:
+    """同じ GPU・同じ設定の実測で決めた段階(#26・#95)。"""
+
+    level: str
+    line: str  # 理由の 1 行
+    amount_gb: float  # 段階に使った量(表の VRAM と Mem%)
+    peak_gb: float  # そろった実測のピークの一番大きいもの(文脈の分を足す前)
+    sources: int  # 別々の出どころの数
+
+
+def measured_level(
+    measurements: Iterable[Measurement],
+    entry: ModelEntry,
+    s: Settings,
+    system: SystemInfo,
+    prec: GpuPrecision,
+    floor_gb: float,
+) -> tuple[MeasuredLevel | None, str | None]:
+    """同じ GPU・同じ設定の実測で段階を決める(#26・#95。docs/scoring.md「実測で段階を決める条件」)。
+    (決めた段階, 決めなかった理由の 1 行)。
+
+    - 使う実測: このモデルの、この PC と同じ GPU(same_gpu。作者の実測もほかの利用者と同じ規則)・同じ会社・
+      同じ設定と精度の、標準の実測(今の一覧のファイルで測ったもの、名前の表にある GPU のもの)
+    - 別々の出どころが MIN_LEVEL_SOURCES 以上で、そろっているときだけ決める。出どころは measurement_sources
+      (作者の実測は 1 行で 1 つ、ほかの利用者は提出を足した PR ごとに 1 つ)。そろう = OOM の記録が無く
+      (同じ構成の OOM の行・n_oom のあるまとめ・runs_evidence が false のまとめが無い)、まとめの行の中も
+      そろっていて(出どころ 2 つ以上なら consistent)、行どうしの値の幅(最大 − 最小)が中央値の
+      CONSISTENT_REL 以内
+    - 段階に使う量 = max(そろった実測の一番大きいピーク + 文脈の分(torch_reserved は 0.5 GiB), 重み + 固定分
+      (floor_gb))。表の VRAM と同じ値。これがこの PC の VRAM を超えれば決めない
+    - 段階はその量 ÷ VRAM の帯(FIT_BANDS)で、少なくとも good。GPU の上限に張り付いた実測があれば good まで
+    見積もりの段階と比べるのは呼び出し側。"""
     g = system.best_gpu
     vram = system.vram_gb
-    if g is None or vram <= 0 or g.vendor != measurement_vendor(m) or prec.act_factor != 1:
-        return None
-    if is_community(m) and not measured_on_this_gpu(m, g):
-        return None
-    if not _settings_match(m.settings, s, entry) or _precision_changed(m, s, entry):
-        return None
-    total = measured_total_gb(m)
-    if vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE or total > vram:
-        return None  # 実測の GPU より小さい、または実測の VRAM がこの PC の VRAM に収まらない
-    band = fit_band(total, vram)
-    weak = is_censored(m) or (getattr(m, "n_oom", None) or 0) > 0
+    if g is None or vram <= 0 or prec.act_factor != 1:
+        return None, None
+    rows = [
+        m
+        for m in measurements
+        if m.model_id == entry.id
+        and m.standard is not False
+        and (m.outcome or "ok") in ("ok", "oom")
+        and files_match(m, entry)
+        and (not is_community(m) or m.gpu_known is not False)
+        and measurement_vendor(m) == g.vendor
+        and measured_on_this_gpu(m, g)
+        and _settings_match(m.settings, s, entry)
+        and not _precision_changed(m, s, entry)
+        and not vram < m.gpu_vram_gb * MEASURED_VRAM_TOLERANCE  # 共有メモリの GPU: 測った GPU より小さい
+    ]
+    ok = [m for m in rows if (m.outcome or "ok") == "ok"]
+    if not ok:
+        return None, None
+    sources = sum(measurement_sources(m) for m in ok)
+    totals = [measured_total_gb(m) for m in ok]
+    oom = any(
+        (m.outcome or "ok") == "oom"
+        or (getattr(m, "n_oom", None) or 0) > 0
+        or getattr(m, "runs_evidence", None) is False
+        for m in rows
+    )
+    inner = all(measurement_sources(m) < 2 or m.consistent is not False for m in ok)
+    mid = statistics.median(totals)
+    spread = (max(totals) - min(totals)) / mid if mid > 0 else 0.0
+    if sources < MIN_LEVEL_SOURCES:
+        return None, tr(
+            "段階は見積もりで決めた(同じ GPU・同じ設定の実測は出どころが 1 つだけ。段階を決めるには別々の "
+            f"{MIN_LEVEL_SOURCES} つ以上が要る)",
+            "The level comes from the estimate (only one source has measured this GPU with these settings;"
+            f" {MIN_LEVEL_SOURCES} or more independent sources are needed to set the level)",
+        )
+    if oom or not inner or spread > CONSISTENT_REL:
+        return None, tr(
+            "段階は見積もりで決めた(同じ GPU・同じ設定の実測がそろっていない: 値の幅が中央値の "
+            f"{CONSISTENT_REL:.0%} を超えるか、OOM の記録がある)",
+            "The level comes from the estimate (the measurements on this GPU with these settings do not"
+            f" agree: the spread exceeds {CONSISTENT_REL:.0%} of the median, or there is an OOM report)",
+        )
+    top = max(ok, key=measured_total_gb)
+    peak = max(m.peak_vram_gb for m in ok)
+    total = max(totals)
+    amount = max(total, floor_gb)
+    if amount > vram:
+        return None, None  # 実測の量(か重み + 固定分)がこの PC の VRAM に収まらない
+    band = fit_band(amount, vram)
+    weak = any(is_censored(m) for m in ok)
     level = "perfect" if band == "perfect" and not weak else "good"
-    on = f"{m.gpu_name} ({m.gpu_vram_gb:g} GB)"
+    on = f"{top.gpu_name} ({top.gpu_vram_gb:g} GB)"
     pinned = (
         tr(
-            "(GPU の上限に張り付いた値: 動的 VRAM が空きを使った)",
-            " (hit the GPU limit: dynamic VRAM used the free space)",
+            "(GPU の上限に張り付いた値がある: 動的 VRAM が空きを使った)",
+            " (includes a value at the GPU limit: dynamic VRAM used the free space)",
         )
-        if is_censored(m)
+        if weak
         else ""
     )
     ctx = (
         tr(
-            f"(torch の確保量。文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足して {total:.1f} GB とみた)",
-            f" (torch reserved; counted as {total:.1f} GB with {TORCH_RESERVED_CONTEXT_GB:g} GB added for "
-            "the context etc.)",
+            f"(torch の確保量。文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足した)",
+            f" (torch reserved; {TORCH_RESERVED_CONTEXT_GB:g} GB added for the context etc.)",
         )
-        if total != m.peak_vram_gb
+        if total != peak
         else ""
     )
-    who = tr(f"({community_label(m)})", f" ({community_label(m)})") if is_community(m) else ""
-    return level, tr(
-        f"{on} で同じ設定の実測 {m.peak_vram_gb:.1f} GB{ctx}{pinned}{who}・成功があり、"
-        f"この PC の VRAM {vram:.1f} GB はそれ以上なので、"
-        "GPU で動くと判定した(段階は実測で決めた。見積もりは目安)",
-        f"A successful measurement on {on} with the same settings, {m.peak_vram_gb:.1f} GB{ctx}{pinned}{who},"
-        f" and this PC has at least that VRAM ({vram:.1f} GB), so it runs on the GPU"
-        " (level from the measurement; the estimate is a guide)",
+    lifted = (
+        tr(
+            f"(重み + 固定分 {floor_gb:.1f} GB のほうが大きいので、そちらを使った)",
+            f" (weights + fixed {floor_gb:.1f} GB is larger, so that is used)",
+        )
+        if floor_gb > total
+        else ""
+    )
+    return (
+        MeasuredLevel(
+            level,
+            tr(
+                f"この PC と同じ GPU({on})・同じ設定で、別々の {sources} つの出どころの実測がそろって最後まで"
+                f"動いた(最大 {total:.1f} GB{ctx}{pinned})。段階に使った量 {amount:.1f} GB{lifted} は"
+                f"この PC の VRAM {vram:.1f} GB に収まるので、GPU で動くと判定した(段階は実測で決めた)",
+                f"{sources} independent sources ran to the end on the same GPU as this PC ({on})"
+                f" with the same settings and agree (largest {total:.1f} GB{ctx}{pinned})."
+                f" The amount used for the level, {amount:.1f} GB{lifted}, fits this PC's {vram:.1f} GB"
+                " of VRAM, so it runs on the GPU"
+                " (level from the measurements)",
+            ),
+            round(amount, 2),
+            peak,
+            sources,
+        ),
+        None,
     )
 
 
@@ -2228,5 +2328,5 @@ def limits_for(
     measurements = list(measurements)
     g = system.best_gpu
     gname = g if g is not None and system.vram_gb > 0 else None
-    s = settings_for(entry, settings, _prepare(entry, measurements, c, None, gname).base)
+    s = settings_for(entry, settings, sized=not no_size_input(entry))
     return limits(_prepare(entry, measurements, c, s, gname), system, s)
