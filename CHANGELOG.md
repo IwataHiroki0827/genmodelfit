@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90). They run the same checks
+  as `contrib show` and `contrib validate` (all fields, the privacy checklist, the mechanical checks), refuse to share
+  when a privacy check is NG or the checks have errors (warnings and notices do not stop it), and print the URL of
+  GitHub's "new file" page under `data/contrib/<GPU>` with the file name and content filled in, plus the upload page
+  as a fallback. In a terminal they ask y/N (default No) before opening the browser; with `--json` or without a
+  terminal they only print the URLs. A URL longer than 8000 characters is not offered (upload page only).
+  `bench --share` without `--submission` writes the submission to `<cache>/submissions/<GPU>/<date>-<sha8>.json`.
+  genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
+  the alternative.
+
 ### Fixed
 
 - **Measurements of templates without a size input are now used** (#90). Templates that work from an input image
@@ -19,7 +31,8 @@ All notable changes to this project are documented here. The format is based on
   without measurements are unchanged. `contrib validate` warns `settings_missing` only when another standard
   measurement of the model has a size. The bench no longer reads a `batch_size` outside the size / latent nodes as the
   batch (MoGe's processing batch of 4 was recorded as `batch: 4`); the bundled RTX 3070 MoGe measurement is corrected
-  to `batch: 1` (calibration unchanged).
+  to `batch: 1` (calibration unchanged). A MoGe submission made by 0.10.1 still says `batch: 4` and does not match
+  (measure again, or make it again without `batch`).
 - **Merging a valid submission PR no longer breaks main's tests** (#90). The test required the bundled
   `measurements_community.json` to equal the aggregate of all of `data/contrib`, but a submission PR may only change
   `data/contrib` and the aggregate was a later maintainer step, so every merge turned main red. The aggregate is now

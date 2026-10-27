@@ -58,8 +58,8 @@ The same as the SIDE EFFECTS of each command's `--help` and [README, "Privacy"](
 | `update --fields-only` | GET of the Hugging Face Hub API for the cards whose `language` decides `languages` (the main files' repos and their `license_from`); for the hand-added models also HEAD, ranged GET of the file header and the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
-| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON |
-| `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate`: none |
+| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them); `--share` adds no network access (see `contrib share` below) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON; with `--share` and no `--submission`, `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
+| `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself); `share` prints URLs and opens a browser only when you answer y in a terminal (the browser sends it when you press the buttons) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate` / `share` / `aggregate --check`: none |
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
 | `python -m genmodelfit.weekly merge-check` | none | none |
 | `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
@@ -953,7 +953,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | settings that could not be applied, uploaded inputs, … (in the display language, `en` / `ja`) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
-| `submission` | object | only with `--submission`: `{saved_to, path_in_repo}` (the submission JSON, see contrib) |
+| `submission` | object | only with `--submission` or `--share`: `{saved_to, path_in_repo}` (the submission JSON, see contrib); with `--share` also `share` (the `file`, `ok`, `refused`, `checklist`, `report`, `share`, `opened` of `contrib share --json`; no browser is opened) |
 
 How bench fills Measurement:
 
@@ -976,7 +976,8 @@ How bench fills Measurement:
 ## contrib
 
 Measurement submissions from users (#34). genmodelfit **never sends** them: users add the file to `data/contrib/` of
-their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). Code: `src/genmodelfit/contrib.py`.
+their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). `contrib share` (`bench --share`)
+only prints the URL of the GitHub page that adds the file in a browser (#90). Code: `src/genmodelfit/contrib.py`.
 
 ### Submission file (`contrib_schema` 1)
 
@@ -1056,6 +1057,30 @@ Prints every field of the file and a privacy checklist (`known_fields`, `paths`,
 host / user name —, `device_ids`, `network`, `date_only`, and `note_reviewed`, which is for the user to tick).
 `--json`: envelope + `action: "show"`, `file`, `ok`, `submission`, `checklist` [{id, label, ok (null = for the user
 to check), detail}], `report` (below). Exit code 1 when something must be fixed.
+
+### `contrib share FILE [--json]`
+
+Runs the same checks as `show` (all fields, the privacy checklist and the `validate` result; the file name is not
+checked), then prints the URL of the GitHub page to share it (#90; `bench … --share` does the same for the
+submission it writes).
+- With an NG in the checklist or a `validate` error, it cannot be shared (the reasons are shown; exit code 1).
+  Warnings and notices do not stop it.
+- `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<content>`,
+  with the file content as is (LF line endings), URL-encoded. The sha8 in the name is the hash of
+  `contrib.canonical`, so indentation or line endings do not change it.
+- When the URL would be longer than 8000 characters (`contrib.SHARE_URL_LIMIT`), `new_file_url` is null and only the
+  upload page is offered (a long URL may be cut).
+- `upload_url`: `https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<gpu-slug>` (the fallback when
+  the pre-filled page does not show the content: drag the file in, "Propose changes", "Create pull request").
+- In a terminal (stdin and stdout are both terminals) it asks y/N (default No) whether to open the page in a
+  browser, and opens it only on y. With `--json` or without a terminal it only prints the URLs.
+- No network access; the file is sent only when you press the buttons in the browser. The repository name is in one
+  place, `contrib.REPO`.
+
+`--json`: envelope + `action: "share"`, `file`, `ok`, `refused` (the reasons it was refused), `checklist`, `report`,
+`share` (`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, upload_url}`; null when it cannot
+be shared), `opened` (always false).
+Exit codes: 0 = can be shared / 1 = cannot be shared (or cannot be read) / 2 usage error.
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 

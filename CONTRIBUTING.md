@@ -8,6 +8,7 @@ For terms, see [README.md](README.md).
 
 ## Contents
 
+- [The easy way (no git needed)](#the-easy-way-no-git-needed)
 - [1. Measure](#1-measure)
 - [2. Create the submission JSON](#2-create-the-submission-json)
 - [3. Check the contents](#3-check-the-contents)
@@ -15,8 +16,30 @@ For terms, see [README.md](README.md).
 - [Other changes](#other-changes)
 - [License](#license)
 
-In short: install `genmodelfit>=0.9.1` (or `pip install -e .` in your clone, so that local checks match CI), run `genmodelfit bench` against your own ComfyUI in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file.
+In short: the easiest way is to measure with `genmodelfit bench … --share`, read what it shows, and press two buttons on a GitHub page in your browser ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no clone of a fork needed).
+If you know git, you can also run `genmodelfit bench … --submission data/contrib/` in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file (from "[2. Create the submission JSON](#2-create-the-submission-json)").
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open.
+
+## The easy way (no git needed)
+
+`--share` is available from the version after 0.10.1. With [uv](https://docs.astral.sh/uv/) you can run it without installing (otherwise `pip install -U genmodelfit`, then `genmodelfit bench …`).
+
+```powershell
+uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+```
+
+1. bench measures and writes the submission JSON (`<cache>/submissions/<GPU>/<date>-<sha8>.json`). For preparation and cautions before measuring, see "[1. Measure](#1-measure)".
+2. It shows everything that will be shared and the privacy checklist. **Read it yourself, including the note.**
+3. If the content may be shared, answer `y` to "Open the page in a browser?". GitHub's "new file" page opens with the file name and content filled in.
+4. Sign in to GitHub (you need an account).
+5. Press "Propose changes" at the bottom of the page. If you cannot write to the repository, GitHub makes a fork for you.
+6. Press "Create pull request" on the next page. The rest is the same as step 3 of "[4. Send a pull request](#4-send-a-pull-request)" (the CI checks and the merge).
+
+- With an `[NG]` in the checklist or an error in the checks, it stops without a URL. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
+- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use the upload page it shows (`https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<GPU>`): drag the file onto the page, then press "Propose changes" and "Create pull request". The file's location is shown too.
+- A submission file you made earlier can be sent the same way with `genmodelfit contrib share <file>`.
+- Without a terminal, or with `--json`, it does not open a browser and only prints the URLs.
+- genmodelfit makes no network access. It only opens the page in your browser; the file is sent only when you press the buttons on the GitHub page.
 
 ## 1. Measure
 
@@ -89,6 +112,8 @@ Out-of-memory (OOM) data is welcome too: it is important data saying "this GPU c
 - Estimates use only measurements with `outcome` `ok` and `standard` `true`.
 
 ## 2. Create the submission JSON
+
+From here on is the way with git and a clone of your fork (if you used "[the easy way](#the-easy-way-no-git-needed)", you can skip it; the table of what goes in is the same).
 
 Clone your fork (GitHub Fork) and run bench with `--submission` in that folder. Running `pip install -e .` in the clone lets you run `contrib validate` with the same main version as CI.
 

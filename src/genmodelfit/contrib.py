@@ -605,6 +605,53 @@ def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Pa
     return t
 
 
+# --- ブラウザで送る(share。#90) ------------------------------------------------------------------
+# genmodelfit は何も送らない。GitHub の「新しいファイル」のページ(中身を入れたもの)の URL を作るだけで、
+# 開くのは CLI(利用者が y と答えたとき)、送るのはブラウザで利用者が押したとき
+
+REPO = "laxshmate/genmodelfit"  # 提出を送るリポジトリ(share の URL はすべてここから作る)
+SHARE_BRANCH = "main"
+# 中身を入れた URL の長さの上限(文字)。ブラウザ・GitHub が受け付ける長さには公の上限が無く、
+# 長い URL は途中で切られることがあるので控えめにした。超えたらアップロードのページだけを案内する
+SHARE_URL_LIMIT = 8000
+
+
+def share_check(checklist: list[dict[str, Any]], report: Report) -> list[str]:
+    """送ってよいか。断る理由の一覧(空なら送ってよい)。個人の情報の点検の [NG] と、検査の誤り(errors)で断る。
+    注意(warnings)・確認(notices)・利用者が読む note(ok が None)では断らない。"""
+    why = [
+        f"{c['label']}" + (f": {c['detail']}" if c.get("detail") else "")
+        for c in checklist
+        if c["ok"] is False
+    ]
+    why += [f"{e['code']}: {e['message']}" for e in report.errors]
+    return why
+
+
+def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
+    """GitHub で提出を送るページの URL(通信しない)。
+
+    - new_file_url: 「新しいファイル」のページ。data/contrib/<GPU> に <日付>-<sha8>.json の名前で、中身(text。
+      改行は LF にそろえる)を入れたもの。SHARE_URL_LIMIT を超えたら None(アップロードのページを使う)
+    - upload_url: ファイルをアップロードするページ(中身を入れたページに中身が出ないときの代わり)
+    名前の sha8 は contrib.canonical の hash なので、字下げ・改行の違いでは変わらない。"""
+    from urllib.parse import quote
+
+    path = suggested_path(data)
+    folder, name = path.rsplit("/", 1)
+    body = text.replace("\r\n", "\n")
+    base = f"https://github.com/{REPO}"
+    new = f"{base}/new/{SHARE_BRANCH}/{folder}?filename={quote(name, safe='')}&value={quote(body, safe='')}"
+    return {
+        "path_in_repo": path,
+        "file_name": name,
+        "new_file_url": new if len(new) <= SHARE_URL_LIMIT else None,
+        "new_file_url_length": len(new),
+        "url_limit": SHARE_URL_LIMIT,
+        "upload_url": f"{base}/upload/{SHARE_BRANCH}/{folder}",
+    }
+
+
 def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
     """bench が保存した JSON({"measurements": [...]})か、`bench --json` の出力({"measurement": {...}})。"""
     p = Path(path)
@@ -1990,6 +2037,8 @@ __all__ = [
     "privacy_findings",
     "robust_filter",
     "scrub_text",
+    "share_check",
+    "share_urls",
     "suggested_path",
     "validate_files",
     "validate_submission",

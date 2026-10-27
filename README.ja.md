@@ -362,7 +362,9 @@ HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出し
 ### 実測を出す(Pull Request)
 
 いろいろな GPU の実測が集まるほど、見積もりが良くなります。動いている ComfyUI(NVIDIA・AMD・Intel・Apple の GPU)で
-`genmodelfit bench <ID> --url http://127.0.0.1:8188 --submission data/contrib/` を実行すると、測って提出用のファイルを作ります
+`genmodelfit bench <ID> --url http://127.0.0.1:8188 --share` を実行すると、測って送る中身を見せ、ファイルを入力済みの GitHub のページを
+案内します(git は要りません。ログインして「Propose changes」と「Create pull request」を押すだけです)。
+`--submission data/contrib/` なら、フォークの clone に提出用のファイルを作ります
 (保存済みの結果は `genmodelfit contrib make --from <ファイル>` で変換できます)。`genmodelfit contrib show <ファイル>` で中身を
 そのまま確かめられます。入るのは GPU 名・VRAM・ドライバ・vendor / backend・AMD・Intel の GPU では PCI の型番 ID(例 `1002:744c`)・
 ComfyUI の版・OS の種類・GiB に丸めたメモリ・モデル・設定・結果です。`bench` はホスト名・ユーザー名・パス・GPU の UUID・PCI のアドレス・
@@ -375,6 +377,8 @@ IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送�
   `download` はモデルのファイルを取るだけ、`bench` は `--url` で指定した ComfyUI とだけ話します。
 - genmodelfit は PC の情報・実測・プロンプトを送りません。実測が共有されるのは、ご自身で Pull Request を出したときだけです
   ([実測を出す](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測を出すpull-request))。
+  `bench --share` / `contrib share` は GitHub のページの URL を出し、端末で y と答えたときにブラウザで開くだけです。
+  genmodelfit 自身は何も送らず、ファイルが送られるのは GitHub のページでボタンを押したときだけです。
   `~/.netrc` の資格情報は付けません。テレメトリもありません。
 - コマンドごとの表: [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#side-effects--通信と書き込み)(「Side effects」)。
 

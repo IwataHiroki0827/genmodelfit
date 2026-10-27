@@ -1296,6 +1296,9 @@ def test_library_writes_nothing(tmp_path, capfd, db):
     contrib.write_community(rows, tmp_path / "c.json")
     contrib.validate_files([*GOOD, tmp_path / "missing.json"], db)
     contrib.privacy_checklist(good())
+    contrib.share_urls(good(), contrib.dumps(good()))
+    contrib.share_check(contrib.privacy_checklist(good()), contrib.validate_submission(good(), db))
+    contrib.bundled_status(FIX, contrib.community_document(rows, subs), db)
     m = subs[0].measurement
     contrib.write_submission(contrib.build_submission(m), tmp_path / "s" / "x.json")
     copy.deepcopy(rows)
@@ -1846,3 +1849,176 @@ def test_community_effect_also_checks_nvidia_vram_variants(db, monkeypatch):
     assert all(c["vram_gb"] in (8.0, 12.0) for c in changes)
     # 8 GB 版の PC では 12 GB の実測は使われないので、段階は変わらない
     assert not [c for c in changes if c["vram_gb"] == 8.0]
+
+
+# --- ブラウザで送る(share。#90) ------------------------------------------------------------------
+
+
+def _pr92(tmp_path: Path) -> Path:
+    """PR #92 と同じ形の提出(MoGe 深度推定、RTX 3070。値は試験用)を書く。"""
+    d = good()
+    d["measurement"].update(
+        model_id="utility_moge_depth_estimation",
+        settings={"precision": "fp16"},
+        peak_vram_gb=0.78,
+        note="SYNTHETIC TEST FIXTURE。GPU 全体(nvidia-smi)の増分 1.46 GB。計測 13 回",
+    )
+    return contrib.write_submission(d, str(tmp_path / "subs") + "/")
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """この中で通信したら落とす(share は URL を作るだけ。README「Privacy」)。"""
+    import socket
+
+    import requests
+
+    def deny(*a, **k):
+        raise AssertionError("network used")
+
+    for name in ("connect", "connect_ex"):
+        monkeypatch.setattr(socket.socket, name, deny)
+    monkeypatch.setattr(socket, "create_connection", deny)
+    monkeypatch.setattr(socket, "getaddrinfo", deny)
+    monkeypatch.setattr(requests.Session, "request", deny)
+
+
+@pytest.fixture
+def browser(monkeypatch):
+    opened: list[str] = []
+    import webbrowser
+
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    return opened
+
+
+def test_share_urls_prefill_the_exact_file(tmp_path):
+    from urllib.parse import parse_qs, urlparse
+
+    path = _pr92(tmp_path)
+    text = path.read_text(encoding="utf-8")
+    data = json.loads(text)
+    u = contrib.share_urls(data, text)
+    assert u["path_in_repo"] == contrib.suggested_path(data) and u["path_in_repo"].endswith(path.name)
+    url = urlparse(u["new_file_url"])
+    assert f"{url.scheme}://{url.netloc}{url.path}" == (
+        "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070"
+    )
+    q = parse_qs(url.query)
+    assert q["filename"] == [path.name] and q["value"] == [text]
+    assert u["upload_url"] == "https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/rtx-3070"
+    assert u["new_file_url_length"] == len(u["new_file_url"]) <= contrib.SHARE_URL_LIMIT
+    # 改行は LF にそろえる。名前の sha8 は内容(canonical)の hash なので字下げでは変わらない
+    crlf = contrib.share_urls(data, text.replace("\n", "\r\n"))
+    assert crlf["new_file_url"] == u["new_file_url"]
+    assert contrib.share_urls(json.loads(json.dumps(data)), json.dumps(data))["file_name"] == path.name
+    # 長すぎる中身は URL に入れず、アップロードのページだけ
+    long = contrib.share_urls(data, text + " " * contrib.SHARE_URL_LIMIT)
+    assert long["new_file_url"] is None and long["upload_url"] == u["upload_url"]
+
+
+def test_share_check_refuses_ng_and_errors_only(db):
+    d = good()
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert contrib.share_check(contrib.privacy_checklist(d), r) == []
+    d["measurement"]["note"] = r"saved in C:\Users\John Smith\x.json"
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    why = contrib.share_check(contrib.privacy_checklist(d), r)
+    assert why and any("privacy" in w for w in why)
+    d = good()
+    d["measurement"]["peak_vram_gb"] = 0.5  # 確認(deviation・below_weights)だけでは断らない
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert r.notices and contrib.share_check(contrib.privacy_checklist(d), r) == []
+
+
+def test_cli_share_prints_urls_without_a_terminal(tmp_path, capsys, monkeypatch, no_network, browser):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "これがファイルの中身のすべてです" in out and "=== 個人の情報の点検 ===" in out
+    assert "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename=" in out
+    assert "https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/rtx-3070" in out
+    assert "Propose changes" in out and "Create pull request" in out and str(path.resolve()) in out
+    assert "genmodelfit は何も送りません" in out and "[y/N]" not in out
+    assert browser == []  # 端末でなければ開かない
+
+
+@pytest.mark.parametrize(("answer", "opens"), [("y", True), ("", False), ("n", False), (None, False)])
+def test_cli_share_asks_before_opening_the_browser(
+    answer, opens, tmp_path, capsys, monkeypatch, no_network, browser
+):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+
+    def ask(prompt=""):
+        if answer is None:
+            raise EOFError
+        return answer
+
+    monkeypatch.setattr("builtins.input", ask)
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "ブラウザでこのページを開きますか" in out
+    if opens:
+        text = path.read_text(encoding="utf-8")
+        assert browser == [contrib.share_urls(json.loads(text), text)["new_file_url"]]
+    else:
+        assert browser == []
+
+
+def test_cli_share_json_never_opens_a_browser(tmp_path, capsys, monkeypatch, no_network, browser):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    assert cli.main(["contrib", "share", str(path), "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["action"] == "share" and d["ok"] is True and d["opened"] is False and browser == []
+    assert d["refused"] == [] and d["share"]["file_name"] == path.name
+    assert d["share"]["new_file_url"].startswith("https://github.com/laxshmate/genmodelfit/new/main/")
+
+
+def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, no_network, browser):
+    d = good()
+    d["measurement"]["note"] = r"saved in C:\Users\John Smith\x.json"
+    path = tmp_path / "leaky.json"
+    path.write_text(contrib.dumps(d), encoding="utf-8")
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 1
+    cap = capsys.readouterr()
+    assert "送れません" in cap.err and "github.com/laxshmate" not in cap.out and browser == []
+    assert cli.main(["contrib", "share", str(path), "--json"]) == 1
+    j = json.loads(capsys.readouterr().out)
+    assert j["ok"] is False and j["share"] is None and j["refused"]
+
+
+def test_bench_share_writes_to_the_cache_and_shows_the_urls(tmp_path, capsys, monkeypatch, browser):
+    from test_bench import FakeComfy
+
+    from genmodelfit import bench
+    from genmodelfit.db import cache_dir
+
+    real_run = bench.run
+
+    def run(*a, **k):  # 偽の ComfyUI はすぐ終わり、時間が 0.1 秒未満(検査の誤り)になることがあるので
+        res = real_run(*a, **k)
+        res.measurement.seconds = 2.0
+        return res
+
+    monkeypatch.setattr(bench, "run", run)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    with FakeComfy() as fake:
+        assert cli.main(["--lang", "ja", "bench", "image_sdxl_simple", "--url", fake.url, "--share"]) == 0
+    out = capsys.readouterr().out
+    subs = list((cache_dir() / "submissions" / "rtx-3070").glob("*.json"))
+    assert len(subs) == 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json", subs[0].name)
+    assert "=== GitHub で送る ===" in out and f"filename={subs[0].name}" in out and browser == []
+    with FakeComfy() as fake:
+        args = ["bench", "image_sdxl_simple", "--url", fake.url, "--share", "--json"]
+        args += ["--submission", str(tmp_path / "mine") + "/"]
+        assert cli.main(args) == 0
+    d = json.loads(capsys.readouterr().out)
+    share = d["submission"]["share"]
+    assert share["ok"] is True and share["opened"] is False
+    assert Path(d["submission"]["saved_to"]).parent.parent == tmp_path / "mine"

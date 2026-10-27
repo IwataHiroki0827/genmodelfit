@@ -58,8 +58,8 @@ CLI の表示の「GB」も GiB。
 | `update --fields-only` | `languages` を決めるカードの `language` を読むための Hugging Face Hub API への GET(主なファイルのリポジトリと、その `license_from`)。手で足したモデルでは、HEAD、ファイルの見出しの範囲指定 GET、上流のカードの API も行う。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
-| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も |
-| `contrib` | なし(genmodelfit は提出を送らない。Pull Request は自分で出す) | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`show` / `validate`: なし |
+| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `contrib share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
+| `contrib` | なし(genmodelfit は提出を送らない。Pull Request は自分で出す)。`share` は URL を出し、端末で y と答えたときだけブラウザで開く(送るのはブラウザで利用者が押したとき) | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`show` / `validate` / `share` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
 | `python -m genmodelfit.weekly merge-check` | なし | なし |
 | `python -m genmodelfit.review publish SRC DST` | なし | DST(確認待ちを除いた一覧。data.yml が署名する) |
@@ -943,7 +943,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
-| `submission` | object | `--submission` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照) |
+| `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`contrib share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`。ブラウザは開かない) |
 
 bench が Measurement を埋める方法(測り方):
 
@@ -962,7 +962,7 @@ bench が Measurement を埋める方法(測り方):
 ## contrib
 
 利用者の実測の提出(#34)。
-genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。
+genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。`contrib share`(`bench --share`)は、ブラウザでファイルを足す GitHub のページの URL を出すだけ(#90)。
 コードは `src/genmodelfit/contrib.py`。
 
 ### Submission file (`contrib_schema` 1) / 提出ファイル
@@ -1049,6 +1049,19 @@ bench の結果を読めないときは終了コード 1。
 ファイルの全項目と、プライバシーのチェックリストを出す(`known_fields`、`paths`、`host_user`(この PC 自身のホスト名 / ユーザー名も)、`device_ids`、`network`、`date_only`、そして利用者が自分で印を付ける `note_reviewed`)。
 `--json`: 外枠 + `action: "show"`、`file`、`ok`、`submission`、`checklist` [{id, label, ok (null = 利用者が確かめる), detail}]、`report`(下)。
 直すべきものがあれば終了コード 1。
+
+### `contrib share FILE [--json]`
+
+`show` と同じ点検(中身のすべて・プライバシーのチェックリスト・`validate` の結果。ファイル名は見ない)のあと、GitHub で送るページの URL を出す(#90。`bench … --share` も、書いた提出に同じことをする)。
+- チェックリストに NG があるか、`validate` の誤り(errors)があれば送れない(理由を出して終了コード 1)。注意(warnings)と確認(notices)では断らない。
+- `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<中身>`。中身はファイルのまま(改行は LF)を URL エンコードしたもの。名前の sha8 は `contrib.canonical` の hash なので、字下げ・改行の違いでは変わらない。
+- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、アップロードのページだけを案内する(長い URL は途中で切られることがあるため)。
+- `upload_url`: `https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<gpu-slug>`(入力済みのページに中身が出ないときの代わり。ファイルを引きずって入れ、「Propose changes」「Create pull request」)。
+- 端末(標準入力と標準出力がどちらも端末)では、ブラウザで開くかを y/N で尋ねる(既定は No)。y のときだけ開く。`--json` と端末でないときは URL を出すだけで、開かない。
+- 通信しない。送られるのは、利用者がブラウザでボタンを押したときだけ。リポジトリの名前は `contrib.REPO` の 1 か所。
+
+`--json`: 外枠 + `action: "share"`、`file`、`ok`、`refused`(断った理由)、`checklist`、`report`、`share`(`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, upload_url}`。送れないときは null)、`opened`(常に false)。
+終了コード: 0 = 送れる / 1 = 送れない(または読めない)/ 2 使い方の誤り。
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 

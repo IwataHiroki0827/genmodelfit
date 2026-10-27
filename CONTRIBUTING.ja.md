@@ -8,6 +8,7 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 
 ## 目次
 
+- [かんたんな送り方(git は要らない)](#かんたんな送り方git-は要らない)
 - [1. 測る](#1-測る)
 - [2. 提出用の JSON を作る](#2-提出用の-json-を作る)
 - [3. 中身を確かめる](#3-中身を確かめる)
@@ -15,8 +16,30 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 - [そのほかの変更](#そのほかの変更)
 - [ライセンス](#ライセンス)
 
-流れの要約: `genmodelfit>=0.9.1` を入れ(または clone したフォルダで `pip install -e .`。手元の検査が CI と同じになります)、フォークの clone の中で自分の ComfyUI に対して `genmodelfit bench` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出します。
+流れの要約: いちばんかんたんなのは、`genmodelfit bench … --share` で測り、出てきた中身を読んで、ブラウザの GitHub のページでボタンを 2 つ押す方法です(下の「[かんたんな送り方](#かんたんな送り方git-は要らない)」。git もフォークの clone も要りません)。
+git に慣れていれば、フォークの clone の中で `genmodelfit bench … --submission data/contrib/` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出すこともできます(「[2. 提出用の JSON を作る](#2-提出用の-json-を作る)」から)。
 **genmodelfit 自身は何も送りません**。共有は、あなたが出す Pull Request を通してだけ行われます。
+
+## かんたんな送り方(git は要らない)
+
+`--share` は 0.10.1 の次の版から使えます。[uv](https://docs.astral.sh/uv/) があれば、入れずにそのまま動かせます(無ければ `pip install -U genmodelfit` のあと `genmodelfit bench …`)。
+
+```powershell
+uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+```
+
+1. bench が測り、提出用の JSON を書きます(`<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json`)。測る前の準備と注意は「[1. 測る](#1-測る)」を見てください。
+2. 送る中身のすべてと、個人の情報の点検が出ます。**note(メモ)も含めて自分で読んでください**。
+3. 送ってよい中身なら、「ブラウザでこのページを開きますか?」に `y` と答えます。GitHub の「新しいファイル」のページが、ファイルの名前と中身を入れた状態で開きます。
+4. GitHub にログインします(アカウントが要ります)。
+5. ページの下の「Propose changes」を押します。書き込みの権限が無い人は、GitHub が自動であなたのフォークを作ります。
+6. 次のページで「Create pull request」を押します。あとは「[4. Pull Request で送る](#4-pull-request-で送る)」の 3 からと同じです(CI の検査・マージ)。
+
+- 点検に `[NG]` があるか、検査の誤りがあると、URL を出さずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
+- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示されたアップロードのページ(`https://github.com/laxshmate/genmodelfit/upload/main/data/contrib/<GPU>`)を使ってください: ファイルをページに引きずって入れ、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます。
+- 前に作った提出のファイルは `genmodelfit contrib share <ファイル>` で同じように送れます。
+- 端末でないとき・`--json` のときはブラウザを開かず、URL を出すだけです。
+- genmodelfit は通信しません。ブラウザでページを開くだけで、ファイルが送られるのはあなたが GitHub のページでボタンを押したときだけです。
 
 ## 1. 測る
 
@@ -89,6 +112,8 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 - 見積もりは `outcome` が `ok` で `standard` が `true` の実測だけを使います。
 
 ## 2. 提出用の JSON を作る
+
+ここからは、git とフォークの clone で送る方法です(「[かんたんな送り方](#かんたんな送り方git-は要らない)」で送ったなら、ここは読まなくて構いません。入るもの・入らないものの表は同じです)。
 
 自分のフォーク(GitHub の Fork)を手元に clone し、そのフォルダで bench に `--submission` を付けて測ります。clone したフォルダで `pip install -e .` すると、CI と同じ main の版で `contrib validate` を流せます。
 
