@@ -126,14 +126,14 @@ def test_gpu_perfect_or_good_rows_never_switch_to_offload(db):
 
 def test_switched_offload_row_says_it_is_tight_on_the_gpu(db):
     # 86%: 既定で切ってある高速化の LoRA(switch_off)を数えない(#81。数えると 91%)
-    e = E.estimate(db.get("video_wan2_2_14B_i2v"), nv(24.0, 128.0), None, db.measurements)
+    e = E.estimate(db.get("video_wan2_2_14B_i2v"), nv(24.0, 64.0), None, db.measurements)
     assert (e.fit, e.run_mode) == ("good", "offload")
     assert (
         e.reasons[0].startswith("GPU だけでは 86%")
         and "でぎりぎりなので、一部をメインメモリへ逃がす" in e.reasons[0]
     )
     with i18n.forced("en"):
-        e = E.estimate(db.get("video_wan2_2_14B_i2v"), nv(24.0, 128.0), None, db.measurements)
+        e = E.estimate(db.get("video_wan2_2_14B_i2v"), nv(24.0, 64.0), None, db.measurements)
     assert e.reasons[0].startswith("On the GPU alone it is tight at 86%")
 
 

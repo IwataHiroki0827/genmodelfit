@@ -274,11 +274,11 @@ Note: 28 model(s) with an unknown license hidden; add --any-license to show them
 ```
 
 The first lines show the PC and how many models were hidden and why. The last lines explain the marks.
-`fit` prints one table (here 24 GiB VRAM, 128 GiB RAM, images only, first 6 rows):
+`fit` prints one table (here 24 GiB VRAM, 64 GiB RAM, images only, first 6 rows):
 
 ```
-$ genmodelfit fit --vram 24 --ram 128 -m image -n 6
-PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
+$ genmodelfit fit --vram 24 --ram 64 -m image -n 6
+PC: assumed 24.0 GiB VRAM (--vram), RAM 64.0 GiB (--ram)
 All models: 6 of 60 (218 hidden: other types 166, uncensored 21, tools 19, license unknown 12; 51
     more workflows merged into their models)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License

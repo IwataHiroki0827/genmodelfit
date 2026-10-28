@@ -31,7 +31,7 @@ FIX = Path(__file__).parent / "fixtures" / "hardware"
 GB = 2**30
 ORDER = ["too_tight", "marginal", "good", "perfect"]
 
-WIN11 = Host("Windows", 26100, cpu="13th Gen Intel(R) Core(TM) i7-13700KF")
+WIN11 = Host("Windows", 26100, cpu="13th Gen Intel(R) Core(TM) i5-13600KF")
 WIN10 = Host("Windows", 19045)
 LINUX = Host("Linux", cpu="AMD Ryzen 9 7950X 16-Core Processor")
 MAC = Host("Darwin", mac_version=(15, 1), cpu="Apple M2 Pro")

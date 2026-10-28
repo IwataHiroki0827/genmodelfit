@@ -268,11 +268,11 @@ m の無い見積もりは目安。詳しくは genmodelfit info <名前か ID>�
 ```
 
 最初の行は PC と、隠したモデルの数と理由です。最後の行は印の説明です。
-`fit` は 1 つの表で出します(VRAM 24 GiB・メモリ 128 GiB、画像だけ、先頭の 6 行。`--lang ja`):
+`fit` は 1 つの表で出します(VRAM 24 GiB・メモリ 64 GiB、画像だけ、先頭の 6 行。`--lang ja`):
 
 ```
-$ genmodelfit fit --vram 24 --ram 128 -m image -n 6 --lang ja
-PC: VRAM 24.0 GiB と仮定(--vram)、メモリ 128.0 GiB(--ram)
+$ genmodelfit fit --vram 24 --ram 64 -m image -n 6 --lang ja
+PC: VRAM 24.0 GiB と仮定(--vram)、メモリ 64.0 GiB(--ram)
 全モデル: 60 件中 6 件(隠した 218 件: ほかの種類 166・無検閲 21・補助ツール 19・ライセンス不明 12。
     ほかに 51 件のワークフローをモデルにまとめた)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
