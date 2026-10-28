@@ -424,9 +424,9 @@ def test_one_source_counts_once():
     assert row["n_sources"] == 20 and row["peak_vram_gb"] == 1.0
 
 
-def _git(cwd: Path, *args: str) -> str:
+def _git(cwd: Path, *args: str, email: str = "t@example.invalid") -> str:
     return subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+        ["git", "-c", "user.name=t", "-c", f"user.email={email}", *args],
         cwd=cwd,
         check=True,
         capture_output=True,
@@ -436,7 +436,8 @@ def _git(cwd: Path, *args: str) -> str:
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
 def test_n_sources_from_git_history(tmp_path, capsys):
-    """出どころ = そのファイルを足したコミット(main の first-parent)。同じ PR(マージ)で足した 2 件は 1 つ。"""
+    """出どころ = 送った人(#113)。PR の側でファイルを足したコミットの書いた人で見る(マージのコミットを作った
+    メンテナではない)。別の人の 2 件は 2 つ。"""
     repo = tmp_path / "repo"
     root = repo / "data" / "contrib"
     root.mkdir(parents=True)
@@ -448,10 +449,10 @@ def test_n_sources_from_git_history(tmp_path, capsys):
     _git(repo, "switch", "-q", "-c", "pr")
     write(root, b)
     _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "pr 1")
+    _git(repo, "commit", "-q", "-m", "pr 1", email="other@example.invalid")
     write(root, c)
     _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "pr 2")
+    _git(repo, "commit", "-q", "-m", "pr 2", email="other@example.invalid")
     _git(repo, "switch", "-q", "main")
     _git(repo, "merge", "-q", "--no-ff", "pr", "-m", "merge pr")
     subs, _ = contrib.load_dir(root)
@@ -504,7 +505,7 @@ def _repo_with_two_prs(tmp_path: Path) -> tuple[Path, Path]:
     _git(repo, "commit", "-q", "-m", "PR 1: two runs")
     write(root, sub(peak_vram_gb=7.1, seconds=42.0))
     _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "PR 2")
+    _git(repo, "commit", "-q", "-m", "PR 2", email="second@example.invalid")
     return repo, root
 
 
@@ -549,13 +550,14 @@ def test_sources_follow_renames(tmp_path):
         write(root, sub(peak_vram_gb=1.0 + i * 0.01, seconds=40.0 + i))
     shutil.move(str(root / "rtx-3070"), str(root / "old-slug"))
     _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "one PR")
-    pr = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "commit", "-q", "-m", "one PR", email="sender@example.invalid")
     _git(repo, "mv", "data/contrib/old-slug", "data/contrib/rtx-3070")
-    _git(repo, "commit", "-q", "-m", "maintainer: move")
+    _git(repo, "commit", "-q", "-m", "maintainer: move", email="maintainer@example.invalid")
     subs, _ = contrib.load_dir(root)
     sources, via_git = contrib.submission_sources(root, subs)
-    assert via_git and len(subs) == 5 and set(sources.values()) == {pr}
+    assert via_git and len(subs) == 5 and len(set(sources.values())) == 1
+    who, _ = contrib.submission_submitters(root, subs)
+    assert set(who.values()) == {"email:sender@example.invalid"}  # 動かしたメンテナではない
 
 
 # Linux の CUDA は公称より少なく報告する(6 GB → 5934 MiB = 5.80 GiB など)。Windows の値も受け付ける
@@ -840,3 +842,154 @@ def test_bench_gpu_tools_are_blocked_in_tests():
     from genmodelfit import bench
 
     assert bench._nvidia_smi() is None and bench.smi_gpus() == [] and bench.gpu_used_now("0") is None
+
+
+BOT = "41898282+github-actions[bot]@users.noreply.github.com"
+
+
+class _Repo:
+    """main にマージのコミットで PR を入れていく試験用のリポジトリ。"""
+
+    def __init__(self, tmp_path: Path):
+        self.repo = tmp_path / "repo"
+        self.root = self.repo / "data" / "contrib"
+        self.root.mkdir(parents=True)
+        self.v = 6.0
+        _git(self.repo, "init", "-q", "-b", "main")
+        (self.repo / "x").write_text("x")
+        _git(self.repo, "add", ".")
+        _git(self.repo, "commit", "-q", "-m", "init")
+
+    def _add(self, msg: str, email: str) -> None:
+        self.v = round(self.v + 0.01, 2)
+        write(self.root, sub(peak_vram_gb=self.v, seconds=40.0 + self.v))
+        _git(self.repo, "add", ".")
+        _git(self.repo, "commit", "-q", "-m", msg, email=email)
+
+    def pr(self, branch: str, commits: list[tuple[str, str]], owner: str = "laxshmate", n: int = 1) -> None:
+        """branch で commits(本文, メール)を足し、GitHub の「Create a merge commit」と同じ 1 行目で
+        マージする。"""
+        _git(self.repo, "switch", "-q", "-c", branch)
+        for msg, email in commits:
+            self._add(msg, email)
+        _git(self.repo, "switch", "-q", "main")
+        _git(
+            self.repo,
+            "merge",
+            "-q",
+            "--no-ff",
+            branch,
+            "-m",
+            f"Merge pull request #{n} from {owner}/{branch}",
+            email="maintainer@example.invalid",
+        )
+
+    def direct(self, msg: str, email: str) -> None:
+        self._add(msg, email)
+
+    def sources(self) -> tuple[list, dict, dict]:
+        subs, _ = contrib.load_dir(self.root)
+        who, ok = contrib.submission_submitters(self.root, subs)
+        src, ok2 = contrib.submission_sources(self.root, subs)
+        assert ok and ok2
+        return subs, who, src
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_one_person_is_one_source(tmp_path):
+    """同じ人が別々の PR・Issue で何件送っても 1 つの出どころ(#113)。人は GitHub のアカウント: PR は
+    マージのコミットの 1 行目の PR の元のアカウント、Issue のボットの PR は Submitted-by の人。
+    出どころの値にメールアドレスやアカウント名を書かない。"""
+    r = _Repo(tmp_path)
+    r.pr("fix-1", [("PR 1", "alice@example.invalid")], owner="alice", n=1)
+    r.pr("fix-2", [("PR 2", "alice@work.invalid")], owner="alice", n=2)  # 同じアカウント・別のメール(B)
+    r.pr("measurement/issue-3", [("issue 3\n\nSubmitted-by: github:Bob", BOT)], n=4)
+    r.pr("measurement/issue-5", [("issue 5\n\nSubmitted-by: github:bob", BOT)], n=6)  # 同じ人の別の Issue
+    r.pr("bobs-run", [("PR by bob", "bob@example.invalid")], owner="bob", n=7)  # 同じ人の PR
+    r.pr("measurement/issue-8", [("issue 8\n\nSubmitted-by: github:carol", BOT)], n=9)
+    subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["github:alice", "github:bob", "github:carol"]
+    assert len(set(src.values())) == 3
+    text = json.dumps(src)
+    assert "alice" not in text and "bob" not in text and "@" not in text
+    assert contrib.aggregate(subs, src)[0]["n_sources"] == 3
+    mid = subs[0].data["measurement"]["model_id"]
+    assert contrib.submitter_count(r.root, "BOB", model_id=mid, gpu_name="NVIDIA GeForce RTX 3070") == 3
+    assert contrib.submitter_count(r.root, "dave", model_id=mid, gpu_name="NVIDIA GeForce RTX 3070") == 0
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_same_account_two_prs_with_different_emails_is_one_source(tmp_path):
+    r = _Repo(tmp_path)
+    r.pr("a", [("1", "one@example.invalid")], owner="taro", n=1)
+    r.pr("b", [("2", "two@example.invalid")], owner="Taro", n=2)
+    _subs, who, src = r.sources()
+    assert set(who.values()) == {"github:taro"} and len(set(src.values())) == 1
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_claimed_noreply_address_does_not_join_the_victim(tmp_path):
+    """PR のコミットに人の noreply のアドレスを書いても、その人の出どころとつながらない
+    (PR の元のアカウントになる)。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("issue\n\nSubmitted-by: github:victim", BOT)], n=2)
+    r.pr("evil", [("x", "123+victim@users.noreply.github.com")], owner="mallory", n=3)
+    _subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["github:mallory", "github:victim"]
+    assert len(set(src.values())) == 2
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_one_pr_is_at_most_one_source(tmp_path):
+    """1 つの PR は、中のコミットの書いた人を何人にしても(ボットのメールアドレスと Submitted-by を偽っても)
+    1 つの出どころで、人は PR の元のアカウント(#90 と同じ。git の書いた人は誰でも書ける)。"""
+    r = _Repo(tmp_path)
+    commits = [(f"run {i}", f"sock{i}@example.invalid") for i in range(4)]
+    commits += [(f"fake\n\nSubmitted-by: github:puppet{i}", BOT) for i in range(3)]
+    r.pr("many-names", commits, owner="sock", n=1)
+    subs, who, src = r.sources()
+    assert len(subs) == 7 and len(set(src.values())) == 1 and set(who.values()) == {"github:sock"}
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_fork_branch_named_like_the_bot_is_not_trusted(tmp_path):
+    """フォークの measurement/issue-N のブランチ(マージのコミットの持ち主がこのリポジトリと違う)の
+    Submitted-by は信じず、人はフォークの持ち主。直接 main に入れたコミット(squash など)の
+    Submitted-by も信じない。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("x\n\nSubmitted-by: github:victim", BOT)], owner="mallory", n=1)
+    r.direct("squashed\n\nSubmitted-by: github:victim2", BOT)
+    _subs, who, _src = r.sources()
+    assert "github:mallory" in who.values() and not any("victim" in k for k in who.values())
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_direct_commits_fall_back_to_the_author_email(tmp_path):
+    """GitHub の PR のマージでないもの(main に直接・squash・rebase)は、書いた人のメールアドレスで
+    数える(弱い)。"""
+    r = _Repo(tmp_path)
+    r.direct("a", "a@example.invalid")
+    r.direct("b", "a@example.invalid")
+    r.direct("c", "c@example.invalid")
+    _subs, who, src = r.sources()
+    assert set(who.values()) == {"email:a@example.invalid", "email:c@example.invalid"}
+    assert len(set(src.values())) == 2
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_bot_trailer_id_survives_a_rename(tmp_path):
+    """Issue のボットのコミットの Submitted-by-id(アカウントの数の ID)で数える: 名前を変えても同じ人。
+    ID の無い前の版のコミットはアカウント名で数え、数字でない ID は使わない。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("a\n\nSubmitted-by: github:oldname\nSubmitted-by-id: 4242", BOT)], n=2)
+    r.pr("measurement/issue-3", [("b\n\nSubmitted-by: github:newname\nSubmitted-by-id: 4242", BOT)], n=4)
+    r.pr("measurement/issue-5", [("c\n\nSubmitted-by: github:legacy", BOT)], n=6)  # ID の無い前の版
+    r.pr("measurement/issue-7", [("d\n\nSubmitted-by: github:odd\nSubmitted-by-id: 12ab", BOT)], n=8)
+    subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["github-id:4242", "github:legacy", "github:odd"]
+    assert len(set(src.values())) == 3
+    mid = subs[0].data["measurement"]["model_id"]
+    gpu = "NVIDIA GeForce RTX 3070"
+    assert contrib.submitter_count(r.root, "newname", model_id=mid, gpu_name=gpu, user_id=4242) == 2
+    assert contrib.submitter_count(r.root, "legacy", model_id=mid, gpu_name=gpu) == 1
+    assert contrib.submitter_count(r.root, "x", model_id=mid, gpu_name=gpu, user_id="4242; rm") == 0

@@ -35,6 +35,14 @@ genmodelfit recommend             # この PC に合うモデルを種類ごと�
 python -m genmodelfit recommend   # 「genmodelfit が見つからない」ときはこちら(中身は同じ)
 ```
 
+**実測で協力する(任意。git は要りません)。** ComfyUI を起動しておけば、コマンド 2 つとボタン 1 回で、あなたの GPU の
+実測を送れます。同じ GPU を使う人みんなの見積もりの確かめと改善に役立ちます([やり方](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)):
+
+```
+genmodelfit measure               # 測ると役に立つモデルを選んで測る(何も送らない)
+genmodelfit share                 # 送る中身を見せて GitHub のフォームを開く。あとは「Create」を押す
+```
+
 ## 1. 前提
 
 ### できること・しないこと
@@ -57,8 +65,9 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
   Radeon 610M / 820M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します
   ([docs/hardware.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.ja.md))。
-  NVIDIA 以外の GPU は実測が無いので、✓ が付きません。`genmodelfit bench` はこれらの GPU でも測れます。実測を
-  Pull Request で出してもらえると、確認済みになり見積もりも詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md))。
+  NVIDIA 以外の GPU は実測が無いので、✓ が付きません。`genmodelfit measure` はこれらの GPU でも測れます。
+  `genmodelfit share` で送ってもらえると、確認済みになり見積もりも詰められます
+  ([実測で協力する](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する))。
 
 ### 入れ方
 
@@ -81,9 +90,10 @@ PATH を変える前に開いた端末には反映されないので、新しい
 
 ### 通信するもの
 
-判定には通信しません。PC の情報は手元で読みます。通信するのは `update`・`download`・`bench` だけで、
-相手は公開の情報か、指定した ComfyUI だけです(フォルダを指定しないときは、`download` がこの PC(127.0.0.1)で
-起動中の ComfyUI にもフォルダの場所を尋ねます)。利用状況の送信(テレメトリ)もありません。詳しくは[送るもの・送らないもの](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#送るもの送らないもの)。
+判定には通信しません。PC の情報は手元で読みます。通信するのは `update`・`download`・`measure`・`bench` だけで、
+相手は公開の情報か、指定した ComfyUI だけです(フォルダや URL を指定しないときは、`download` と `measure` がこの PC
+(127.0.0.1)で起動中の ComfyUI にも尋ねます)。`share` は何も送りません(ブラウザで GitHub のフォームを開くだけ)。
+利用状況の送信(テレメトリ)もありません。詳しくは[送るもの・送らないもの](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#送るもの送らないもの)。
 
 ## 2. 手順
 
@@ -123,6 +133,14 @@ PATH を変える前に開いた端末には反映されないので、新しい
    このコマンドで、このプロジェクトが署名して配る最新の一覧を取り込みます。
    ```
    genmodelfit update --from-release
+   ```
+
+7. **測って送る(任意)。** コマンド 2 つとボタン 1 回です: `measure` がこの GPU で測ると役に立つモデルを選んで、
+   起動中の ComfyUI で測ります。`share` が送る中身をそのまま見せ、中身を入れた GitHub のフォームを開くので、
+   「Create」を押します([実測で協力する](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する))。
+   ```
+   genmodelfit measure
+   genmodelfit share
    ```
 
 ### アプリから使う(Python / JSON)
@@ -320,7 +338,11 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `gate` | Verified のモデルの数と、ほかが保留の理由 |
 | `diff [OLD] [NEW] [--all]` | 2 つの一覧の違い([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#一覧の変化)) |
 | `config [set KEY VALUE \| unset KEY \| path]` | 設定: `download` の ComfyUI のフォルダと表示の言語([docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md#genmodelfit-config)) |
-| `review`・`bench`・`contrib` | 保守と実測(下) |
+| `measure [名前か ID] [--url URL]` | 起動中の ComfyUI でモデルを実測する。名前を省くと、測ると役に立つモデルを出す([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)) |
+| `share [ファイル]` | 実測を送る: 中身を見せて GitHub のフォームを開く([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)) |
+
+保守する人向け: `review`(確認待ちのモデル)・`bench`(1 つのテンプレートをすべてのオプションで測る)・`contrib`
+(提出を作る・検査する・まとめる。`contrib share` は `share` と同じ)。
 
 すべてのコマンドとオプション・環境変数・終了コード・例は [docs/commands.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/commands.ja.md) にまとめてあります(各コマンドの `--help` と同じ内容)。よく使うオプション: `--json`・`--vram`・`--ram`・
 `--uncensored`(無検閲も含める。前からの書き方は `--content all`)・`--any-license`(ライセンス不明も含める。前からの書き方は `--include-unknown-license`)・`--content uncensored`(無検閲だけ)・`--license apache-2.0,mit`・`--comfyui-version`。
@@ -375,29 +397,48 @@ comfy-cli の設定・よくある場所)の順で決め、どれで決めたか
 HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出します(毎週の PR の本文と同じ中身)。
 `--json` の形は [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#diff)。
 
-### 実測を出す(Pull Request)
+### 実測で協力する
 
-いろいろな GPU の実測が集まるほど、見積もりが良くなります。動いている ComfyUI(NVIDIA・AMD・Intel・Apple の GPU)で
-`genmodelfit bench <ID> --url http://127.0.0.1:8188 --share` を実行すると、測って送る中身を見せ、ファイルを入力済みの GitHub のページを
-案内します(git は要りません。ログインして「Propose changes」と「Create pull request」を押すだけです)。
-`--submission data/contrib/` なら、フォークの clone に提出用のファイルを作ります
-(保存済みの結果は `genmodelfit contrib make --from <ファイル>` で変換できます)。`genmodelfit contrib show <ファイル>` で中身を
-そのまま確かめられます。入るのは GPU 名・VRAM・ドライバ・vendor / backend・AMD・Intel の GPU では PCI の型番 ID(例 `1002:744c`)・
-ComfyUI の版・OS の種類・GiB に丸めたメモリ・モデル・設定・結果です。`bench` はホスト名・ユーザー名・パス・GPU の UUID・PCI のアドレス・
-IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送りません。Pull Request はご自身で出してください。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
+いろいろな GPU の実測が集まるほど、見積もりが良くなります。コマンド 2 つとボタン 1 回で、git は要りません
+(NVIDIA・AMD・Intel・Apple の GPU):
 
-今の NVIDIA の bench の提出(ComfyUI の動的 VRAM、`vram_metric: torch_reserved`)は作業用メモリだけを持つので、段ごとの山を測れるようになるまでは照合だけに使い、見積もりにも段階にも使いません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
+1. `genmodelfit measure` が、この GPU に載り、この GPU の実測がまだ無いモデルを出します(入っているもの → 時間が
+   短いもの → 落とす量が少ないものの順)。選ぶと、何をするか(モデル・設定・どの ComfyUI か・ファイルが入っているか・
+   時間の目安・何も送らないこと)を見せてから、この PC で起動中の ComfyUI(か `--url`)で測ります。入っていないモデルは、
+   `download` と同じ確かめをして先に落とします。
+2. `genmodelfit share` が、まだ送っていない実測を出し、送る中身をそのまま見せて、中身を入れた GitHub の実測の
+   フォームをブラウザで開きます。
+3. ログインして「Create」を押します。数分でボットが確かめてそのページに返事を書き、問題が無ければ、メンテナが
+   受け入れるとプロジェクトに入ります。
+
+送るもの(送る前にすべて見せます): GPU の名前・VRAM・世代と compute capability(NVIDIA)・ドライバの版・会社と backend・
+AMD・Intel の GPU では PCI の型番 ID(`1002:744c` のような機種の番号。同じ機種ならどのカードでも同じ)・OS の種類・
+GiB に丸めたメモリ・ComfyUI と genmodelfit の版・日付(時刻は入れない)・モデル・設定・結果・最大 VRAM / メモリ・時間・
+モデルの載せ方(`offload`)・測り方・モデルのファイルの指紋・bench が書く測り方のメモ。送らないもの: ホスト名・
+ユーザー名・パス・GPU の UUID・PCI の差し場所・シリアル番号・IP・CPU 名・正確な時刻・プロンプト。
+
+何に使われるか: 実測は同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリ
+しか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
+ほかの実測は、その GPU の見積もりを直し、別々の 2 人の実測がそろうと段階も決めます。1 つの GitHub アカウントは何件送っても 1 回だけ数えます。メモリが足りなかった結果は「この GPU では足りない」記録として残り、その設定では実測で段階を決めなく
+なります。実測が使われるのは、メンテナが受け入れ、genmodelfit の次の版が出てからです。
+
+ボットが Pull Request を作ったあとに Issue を編集すると、新しい中身でもう一度確かめます: Pull Request を直し(通らない
+中身なら閉じ)、両方のページにそう書きます。git に慣れていれば、フォークの clone で `bench --submission data/contrib/`
+を使う方法も残っています。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
 
 ### 送るもの・送らないもの
 
 - 判定のコマンドと Python の関数(自分で呼ぶ `update_from_release` と `download` を除く)は**ネットにつなぎません**(すべてのソケットをふさいだ試験で確かめています)。
 - `update` は公開の情報(GitHub・Hugging Face の API・モデルの URL への HEAD)を読むだけ、`--from-release` は `db.json` と署名を取るだけです。
   `download` はモデルのファイルを取るだけ(フォルダを指定しないときは、この PC で起動中の ComfyUI(127.0.0.1 の
-  8188・8000)にフォルダの場所も尋ねる)、`bench` は `--url` で指定した ComfyUI とだけ話します。
-- genmodelfit は PC の情報・実測・プロンプトを送りません。実測が共有されるのは、ご自身で Pull Request を出したときだけです
-  ([実測を出す](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測を出すpull-request))。
-  `bench --share` / `contrib share` は GitHub のページの URL を出し、端末で y と答えたときにブラウザで開くだけです。
-  genmodelfit 自身は何も送らず、ファイルが送られるのは GitHub のページでボタンを押したときだけです。
+  8188・8000)にフォルダの場所も尋ねる)。`measure` は同じポートに ComfyUI が起動しているかを尋ね(`--url` が無いとき)、
+  その ComfyUI とだけ話します(ほかは GitHub の公式のテンプレートと、同意したときのモデルのファイル)。
+  `bench` は `--url` で指定した ComfyUI とだけ話します。
+- genmodelfit は PC の情報・実測・プロンプトを送りません。実測が共有されるのは、`share` が開いた GitHub のフォームで
+  「Create」を押したときか、ご自身で Pull Request を出したときだけです
+  ([実測で協力する](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する))。
+  `share`(と `bench --share`・`contrib share`)はブラウザでフォームを開くだけです(か URL を出す。URL に入りきらない
+  ときは中身をクリップボードに写す)。genmodelfit 自身は何も送りません。
   `~/.netrc` の資格情報は付けません。テレメトリもありません。
 - コマンドごとの表: [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#side-effects--通信と書き込み)(「Side effects」)。
 

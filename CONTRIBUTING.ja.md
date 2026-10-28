@@ -3,46 +3,74 @@
 [English](CONTRIBUTING.md) · **日本語**
 
 genmodelfit の見積もりは、実際の PC で測った値(実測)があるとそれを優先します。いろいろな GPU の実測が集まるほど、見積もりが正確になります。
-このページは、`genmodelfit bench` で測った結果を Pull Request で送りたい人向けです。そのほかの変更の決まりも載せています。
+このページは、実測を送りたい人向けです(`genmodelfit measure` と `genmodelfit share` で、または Pull Request で)。そのほかの変更の決まりも載せています。
 用語は [README.ja.md](README.ja.md) に合わせています。
 
 ## 目次
 
 - [かんたんな送り方(git は要らない)](#かんたんな送り方git-は要らない)
-- [1. 測る](#1-測る)
-- [2. 提出用の JSON を作る](#2-提出用の-json-を作る)
-- [3. 中身を確かめる](#3-中身を確かめる)
-- [4. Pull Request で送る](#4-pull-request-で送る)
+- [慣れた人向け: bench と Pull Request](#慣れた人向け-bench-と-pull-request)
+  - [1. 測る](#1-測る)
+  - [2. 提出用の JSON を作る](#2-提出用の-json-を作る)
+  - [3. 中身を確かめる](#3-中身を確かめる)
+  - [4. Pull Request で送る](#4-pull-request-で送る)
 - [そのほかの変更](#そのほかの変更)
 - [ライセンス](#ライセンス)
 
-流れの要約: いちばんかんたんなのは、`genmodelfit bench … --share` で測り、出てきた中身を読んで、ブラウザの GitHub のページでボタンを 2 つ押す方法です(下の「[かんたんな送り方](#かんたんな送り方git-は要らない)」。git もフォークの clone も要りません)。
+流れの要約: いちばんかんたんなのは **コマンド 2 つとボタン 1 回** です: `genmodelfit measure` で測り、`genmodelfit share` で結果を入れた GitHub のフォームを開き、「Create」を押します(下の「[かんたんな送り方](#かんたんな送り方git-は要らない)」。git もフォークも要りません)。
 git に慣れていれば、フォークの clone の中で `genmodelfit bench … --submission data/contrib/` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出すこともできます(「[2. 提出用の JSON を作る](#2-提出用の-json-を作る)」から)。
-**genmodelfit 自身は何も送りません**。共有は、あなたが出す Pull Request を通してだけ行われます。
+**genmodelfit 自身は何も送りません**。共有は、あなたがフォームで「Create」を押したときか、あなたが出す Pull Request を通してだけ行われます。
 今の NVIDIA の bench の提出(ComfyUI の動的 VRAM、`vram_metric: torch_reserved`)は作業用メモリだけを持つので、段ごとの山を測れるようになるまでは照合だけに使い、見積もりにも段階にも使いません(#100。[accuracy.ja.md](docs/accuracy.ja.md#実測の使い方))。
 
 ## かんたんな送り方(git は要らない)
 
-`--share` は 0.10.1 の次の版から使えます。[uv](https://docs.astral.sh/uv/) があれば、入れずにそのまま動かせます(無ければ `pip install -U genmodelfit` のあと `genmodelfit bench …`)。
+`measure` と `share` は 0.11.0 から使えます。[uv](https://docs.astral.sh/uv/) があれば、入れずにそのまま動かせます(`uvx genmodelfit measure`。無ければ `pip install -U genmodelfit`)。
 
 ```powershell
-uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+genmodelfit measure
+genmodelfit share
 ```
 
-1. bench が測り、提出用の JSON を書きます(`<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json`)。測る前の準備と注意は「[1. 測る](#1-測る)」を見てください。
-2. 送る中身のすべてと、個人の情報の点検が出ます。**note(メモ)も含めて自分で読んでください**。
-3. 送ってよい中身なら、「ブラウザでこのページを開きますか?」に `y` と答えます。GitHub の「新しいファイル」のページが、ファイルの名前と中身を入れた状態で開きます。
-4. GitHub にログインします(アカウントが要ります)。
-5. ページの下の「Propose changes」を押します。書き込みの権限が無い人は、GitHub が自動であなたのフォークを作ります。
-6. 次のページで「Create pull request」を押します。あとは「[4. Pull Request で送る](#4-pull-request-で送る)」の 3 からと同じです(CI の検査・マージ)。
+**用意するもの:** GitHub のアカウント(無料)、この PC で起動している ComfyUI(NVIDIA・AMD・Intel・Apple の GPU)、
+1 つのモデルにつき 1〜5 分ほど(ComfyUI にまだ入っていないモデルは、落とす時間も)。git・フォーク・プログラミングは
+要りません。
 
-- 点検に `[NG]` があるか、検査の誤りがあると、URL を出さずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
-- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示の「貼り付けて送る」を使ってください: 名前だけを入れた同じページ(`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<名前>`)を開き、すぐ上の 2 つの `---` の行の間に出たファイルの中身を写して大きな欄に貼り付け、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます(GitHub のアップロードのページは書き込みの権限が要るので使いません)。
-- 前に作った提出のファイルは `genmodelfit contrib share <ファイル>` で同じように送れます。
-- 端末でないとき・`--json` のときはブラウザを開かず、URL を出すだけです。
-- genmodelfit は通信しません。ブラウザでページを開くだけで、ファイルが送られるのはあなたが GitHub のページでボタンを押したときだけです。
+1. **`genmodelfit measure`**: 一覧からモデルを番号で選び、Enter で測ります。
+2. **`genmodelfit share`**: 測った結果を選ぶと、中身を入れた GitHub のフォームがブラウザで開きます。
+3. **「Create」を押す。** 数分でボットが確かめて、そのページに返事を書きます。
 
-## 1. 測る
+1 つずつ詳しく:
+
+1. ComfyUI を起動します(ふだん使っているものでかまいません)。ほかの生成は止めておきます。測る前の注意は「[1. 測る](#1-測る)」を見てください。
+2. `genmodelfit measure` が、測ると役に立つモデルを出します: この PC の GPU に載り(GPU で good 以上)、この GPU の実測がまだ無いもの。並びは、ComfyUI にもう入っているもの → 時間が短いもの → 落とす量が少ないもの。番号で選びます(`q` でやめる)。
+   - 自分でモデルを決めるなら `genmodelfit measure "Z-Image-Turbo"`(名前・ワークフローの ID・その一部。`download` と同じ選び方)。
+   - この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探します。ほかの ComfyUI なら `--url http://<ホスト>:<ポート>` を付けます。起動していなければ、起動のしかたを案内します。
+3. 測る前に 1 画面で、モデルと精度、設定(公式のテンプレートのまま)、どの ComfyUI か・どう見つけたか、モデルのファイルが入っているか、時間の目安、何も送らないことが出ます。`Y`(Enter)で測ります。
+   - 時間は目安です: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。落とす時間は入りません。
+   - 入っていないモデルは、`genmodelfit download` と同じ確かめ・同意の決まりで先に落とします。
+   - ほかのプログラムが GPU を使っているときは測りません(`bench` と同じ)。
+4. 結果と保存した場所(`<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json`)を出し、最後に `genmodelfit share` を 1 行だけ案内します。送るかどうかは尋ねません。
+5. `genmodelfit share` が、まだ送っていない実測を出すので、番号で選びます。送る中身のすべてと、個人の情報の点検が出ます(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC やユーザの名前は入りません)。**note(メモ)も含めて自分で読んでください**。
+6. 中身を入れた GitHub の実測のフォームがブラウザで開きます。GitHub にログインし(アカウントが要ります)、**「Create」** を押します。
+7. 数分でボットが確かめて、そのページに返事を書きます。問題が無ければ、メンテナが受け入れるとプロジェクトに入ります(そのとき Issue は閉じます)。直すところがあれば、ボットが何を直すかを書くので、直した中身で Issue を編集すると、もう一度確かめます(中では `genmodelfit contrib validate` と同じ検査をし、ボットが `data/contrib/` にファイルを足す Pull Request を作ります)。
+
+**ボットが Pull Request を作ったあとの変更:** Issue の本文を編集してください。新しい中身でもう一度確かめ、通れば Pull Request を直し、通らなければ直すまで Pull Request を閉じます。どうなったかは Issue と Pull Request の両方に書きます。題だけの編集では何も起きません。
+
+**実測が何に使われるか:** 同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリしか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません([accuracy.ja.md](docs/accuracy.ja.md#実測の使い方))。ほかの実測は、その GPU の見積もりを直し、別々の 2 人の実測がそろうと段階も決めます。1 つの GitHub アカウントは何件送っても 1 回だけ数えます(Issue は書いた人、Pull Request は元のアカウント。どちらも GitHub のアカウント。「[受け付けたあと](#受け付けたあと)」)。メモリが足りなかった結果は「この GPU では足りない」記録として残り、その設定では実測で段階を決めなくなります。実測が使われるのは、メンテナが受け入れ、genmodelfit の次の版が出てからです。
+
+- 点検に `[NG]` があるか、検査の誤りがあると、`share` は何も開かずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
+- 中身が長くて URL に入りきらないときは、`share` が中身をクリップボードに写し(OS の道具 clip・pbcopy・wl-copy・xclip・xsel を使います)、中身の無いフォームを開きます。「Measurement (JSON)」の欄に貼り付けて「Create」を押してください。クリップボードの道具が無ければ、写す中身を 2 つの `---` の行の間に出します。
+- ページを開いたら、この PC でその実測に送った印を付け、次から一覧に出しません(`genmodelfit share --all` で出します)。`genmodelfit share <ファイル>` で、指定した提出のファイル(`bench --share`・`contrib make` で作ったものも)を送れます。
+- 端末でないとき・`--json`・`--print-url` のときは、`share` はブラウザを開かず URL を出すだけです。
+- 送るために genmodelfit が通信することはありません。ブラウザでページを開くだけで、中身が送られるのは「Create」を押したときだけです。
+- ボットは、あなたの GitHub のアカウントを Pull Request とコミットに書きます。そのアカウントからの実測は、何件送っても 1 つの出どころとして数えます(数の ID で数えるので、アカウントの名前を変えても同じ)(「[受け付けたあと](#受け付けたあと)」)。
+
+## 慣れた人向け: bench と Pull Request
+
+ここからは、git を使う人や、`genmodelfit bench` のすべてのオプション(自分のワークフロー・ほかの設定・`--force`)を
+使いたい人向けです。何を測り、何を確かめるかの詳しい説明もここにあります(かんたんな送り方にも当てはまります)。
+
+### 1. 測る
 
 1. ComfyUI を起動します(ふだん使っているもので構いません)。**ほかの生成が動いていないとき**に測ってください。
    - bench はキューに仕事があると測りません(開始前と、送る直前の 2 回見ます)。
@@ -94,7 +122,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 - 保存ノードの出力は ComfyUI の output フォルダの `genmodelfit_bench/` に入ります。要らなければ消してください。
 - ComfyUI の動的 VRAM(既定)では、VRAM がぎりぎりの設定で ComfyUI が応答しなくなることがあります(ログに aimdo の `budget_deficit` が出たあと進まない。#102 の RTX 5080 16GB で Wan の 81 コマ)。そのときは bench の時間切れでも取り消せないので、自分で起動した ComfyUI だけを止め、`--disable-dynamic-vram` を付けて起動し直して測ってください。
 
-### 何を測っているか
+#### 何を測っているか
 
 | 項目 | 測り方 |
 |---|---|
@@ -114,7 +142,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 - 「標準でない」結果も同じで、`--save-nonstandard` か `--output` で保存できます。
 - 見積もりは `outcome` が `ok` で `standard` が `true` の実測だけを使います。
 
-## 2. 提出用の JSON を作る
+### 2. 提出用の JSON を作る
 
 ここからは、git とフォークの clone で送る方法です(「[かんたんな送り方](#かんたんな送り方git-は要らない)」で送ったなら、ここは読まなくて構いません。入るもの・入らないものの表は同じです)。
 
@@ -133,7 +161,7 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 102
 - ComfyUI が別の PC だったときは `--no-pc-info` を付けると、この PC の OS・メモリ・GPU の世代を入れません。
 - 失敗(OOM)の結果も、そのまま出してください。標準でない条件の結果は記録として受け付けますが、まとめには使いません。
 
-### 入るもの・入らないもの
+#### 入るもの・入らないもの
 
 | 入るもの | 例 |
 |---|---|
@@ -157,7 +185,7 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 102
 
 逆に、ComfyUI のノードの名前(`HunyuanVideo15ImageToVideo` など)、40 桁の git のコミット・64 桁の sha256、公開のドメイン(huggingface.co・hf.co・github.com・comfy.org・pytorch.org・nvidia.com・python.org)は個人の情報として扱いません。
 
-## 3. 中身を確かめる
+### 3. 中身を確かめる
 
 送る前に必ず行ってください。
 
@@ -175,7 +203,7 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - GPU 名で断るのは、名前の代わりの値(空・n/a・none・null・unknown・-)と汎用の名前(NVIDIA Graphics Device など)だけです(0.11.0。表に無い新しい GPU も受け付けます)。
 - 「確認」はジョブのまとめの上に出し、PR をマージする人が見ます。事情があれば PR の説明に書いてください(測り直しをお願いすることがあります)。
 
-## 4. Pull Request で送る
+### 4. Pull Request で送る
 
 1. 足すのは `data/contrib/<GPU>/<日付>-<sha8>.json` のファイルだけにします。
    - ほかのファイルは変えません(コードの変更は別の PR に)。
@@ -200,9 +228,9 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
    - 検査は、PR の向き先(main)の genmodelfit で動きます。
    - マージがメンテナの確認になります(人が提出ごとに承認する別の仕組みはありません)。
 
-**genmodelfit は実測を送りません**。共有されるのは、あなたが自分の GitHub で出した Pull Request の中身だけです(自動で PR を作る機能はありません)。マージされると、提出は MPL-2.0 で公開されます(下の「[ライセンス](#ライセンス)」)。
+**genmodelfit は実測を送りません**。共有されるのは、あなたが自分で送ったものだけです: 「Create」で作った実測の Issue(ボットが Pull Request にします)か、自分の GitHub で出した Pull Request の中身。マージされると、提出は MPL-2.0 で公開されます(下の「[ライセンス](#ライセンス)」)。
 
-### 受け付けたあと
+#### 受け付けたあと
 
 - マージされると data/contrib に入りますが、利用者に**届くのは genmodelfit の次の版から**です(#90)。版を出すときに、メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く。[docs/release.ja.md](docs/release.ja.md))。まだまとめに入っていない提出は `genmodelfit contrib aggregate --check` で見られます。
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
@@ -210,10 +238,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
 - その PC では **1 件から**、その構成の見積もりの根拠が `measured`(実測。作者の実測と同じ扱いで、表の VRAM に `m` が付きます)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。出どころは 1 つの PR なので、同じ人の別々の PR は別々に数えます。メンテナはマージのときにそれを確かめます。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行は合わせて 1 つ、ほかの人は 1 人で 1 つ)がそろうと、段階を決める根拠にもなります。出どころは、同じ Pull Request か同じ人でつながった提出のまとまりで数えます(#113。`contrib.submission_sources`): 1 つの Pull Request は多くて 1 つ、1 つの GitHub アカウントは何件・何回の Pull Request や Issue で送っても 1 つです。人は **GitHub のアカウント** です: 実測の Issue なら Issue を書いた人(ボットがコミットに `Submitted-by: github:<アカウント>` と `Submitted-by-id: <アカウントの数の ID>` を書き、名前を変えても変わらない数の ID で数える。ID の無い前の版のボットのコミットはアカウント名で数える。これらの行を信じるのは、マージのコミットが `Merge pull request #N from laxshmate/measurement/issue-M`(このリポジトリの中のボット自身のブランチ)で、コミットがボットのもののときだけ)、Pull Request なら、GitHub がマージのコミットの 1 行目に書く Pull Request の元のアカウント(`Merge pull request #N from <アカウント>/<ブランチ>`。git から分かるのは名前だけ)。コミットのメールアドレスは誰でも書けるので、これには使いません。実測の Pull Request は「Create a merge commit」だけで入れます。それ以外(main に直接・squash・rebase)は、コミットを書いた人のメールアドレスで数えます(弱い)。**1 つのアカウントは 1 回だけ数えますが、別のアカウント・その人の組織・(Pull Request では)名前を変えたあとのアカウントから出したものは別の人として数えられる**ので、メンテナはマージのときに Pull Request や Issue を書いた人を確かめます(ボットの Pull Request には、同じアカウントがその GPU・モデルで既に送った数と、確かめる項目を書きます)。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
-### 作者の実測(measurements.json)
+#### 作者の実測(measurements.json)
 
 同梱の `src/genmodelfit/data/measurements.json` はメンテナが測った実測です。項目は docs/schema.ja.md の「[Measurement](docs/schema.ja.md#measurement--実測)」の節、提出の形は「[contrib](docs/schema.ja.md#contrib)」の節にあります。利用者の実測は data/contrib に出してください(measurements.json は直接変えない)。
 
@@ -232,6 +260,6 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 genmodelfit のコードと同梱のデータ(db.json・実測・係数)は [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE) です。
 
 - 送っていただく修正・実測・データも、**MPL-2.0 で出していただいたものとして受け入れます**(プロジェクトのほかの部分と同じ。inbound = outbound)。
-- Pull Request を出すことで、これに同意したことになります。
+- Pull Request か実測の Issue を出すことで、これに同意したことになります。
 - CLA(著作権の譲渡や追加の許諾の書類)はありません。
 - 自分で書いたもの、または MPL-2.0 で出してよいものだけを送ってください。

@@ -16,7 +16,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 | Look up every command, option, environment variable and exit code | [commands.md](commands.md) |
 | Download a model's files safely | [download.md](download.md) |
 | Use genmodelfit from an app (`--json` or Python) | [schema.md](schema.md), then [gate.md](gate.md) and [download.md](download.md) |
-| Send your measurements | [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| Send your measurements (`genmodelfit measure`, then `genmodelfit share`) | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Know where the model list comes from | [sources.md](sources.md) |
 | Release a version or update the list (maintainer) | [release.md](release.md) |
 
@@ -35,5 +35,5 @@ The pages below go into detail. Every page has an English version and a Japanese
 | [sources.md](sources.md) | The data sources and rules `genmodelfit update` uses to build the model list: templates, licenses, languages, uncensored models, exclusions. |
 | [release.md](release.md) | For the maintainer: package releases, signed data releases, the weekly list update, signing keys. |
 | [license_requests.md](license_requests.md) | Drafts of requests asking upstream owners to state a license for their model weights (Issue #30). |
-| [CONTRIBUTING.md](../CONTRIBUTING.md) | How to measure with `genmodelfit bench`, check the file, and send it as a pull request. |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | How to send a measurement: `genmodelfit measure`, `genmodelfit share`, then "Create" on GitHub (no git needed); the git / pull request way for advanced users. |
 | [CHANGELOG.md](../CHANGELOG.md) | What changed in each version (English only). |

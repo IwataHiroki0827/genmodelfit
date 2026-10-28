@@ -39,8 +39,10 @@
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
 - REST の serve は(未定)(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
-- **全試験は手元で通してから push する**(2026-10-22 オーナー決定)。`tools/ci_local.py --linux` が ci.yml と同じ検査を
-  Windows と WSL で順に流す(約 1 時間。メモリを食わないよう 1 つずつ)。GitHub の ci.yml は確認用で、このリポジトリの
+- **全試験は手元で通してから push する**(2026-10-22 オーナー決定、2026-10-28 に回数を見直し)。
+  - push の前に毎回: `tools/ci_local.py --quick`(Windows の Python 3.10 と 3.13・ruff・配布物。約 15 分)
+  - マージの前に 1 回(積んだ PR の最後のブランチで): `tools/ci_local.py --linux`(ci.yml と同じ検査を Windows と WSL で
+    順に流す。約 1 時間。メモリを食わないよう 1 つずつ)GitHub の ci.yml は確認用で、このリポジトリの
   ブランチの PR では動かない(main へのマージ後・手動・フォークからの PR だけ)。PR の説明に手元の結果を書く。
   ci.yml の検査を変えたら ci_local.py も合わせる(tests/test_release.py が対応を見る)
 - **文書は英語版と日本語版の組**(2026-10-23。README / README.ja、CONTRIBUTING / CONTRIBUTING.ja、docs の X.md / X.ja.md。
@@ -109,7 +111,7 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - 判定の設定は、指定が無ければ全モデル種類ごとの既定(実測の設定は、実測からずらす量の計算だけに使う)
 - 実測で段階を決めるのは、同じ GPU(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)、
   かつ VRAM の比 0.95 以上。`estimate.same_gpu`)・同じ設定で、別々の出どころ 2 つ以上がそろったときだけ
-  (作者の実測は何行あっても 1 つ、ほかの利用者は提出を足した PR ごとに 1 つ。`estimate.count_sources`)。
+  (作者の実測は何行あっても 1 つ、ほかの利用者は「同じ PR」か「同じ人」でつながるまとまりごとに 1 つ(PR 1 本は多くても 1 つ、同じ人も 1 つ。人は Issue なら作者の GitHub アカウント、手の PR なら PR の元の GitHub アカウント(マージコミットの 1 行目)。実測の PR はマージコミットでマージする。#113。`contrib.submission_sources`)。`estimate.count_sources`)。
   段階に使う量は表の VRAM と同じ(実測のピーク + 文脈の分と、重み + 固定分の大きい方)。1 つだけなら値をずらすだけ
 - Score は収まり(`memory_fit`。llmfit の fit_score と同じ曲線)だけ。人気は Score に混ぜず並びの鍵(`popularity.py`)。
   並び・Score・人気の式は docs/scoring にある

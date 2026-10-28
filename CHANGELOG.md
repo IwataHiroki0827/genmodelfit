@@ -25,16 +25,37 @@ All notable changes to this project are documented here. The format is based on
   `extra_model_paths.yaml` is honored (read without new dependencies). The question is `[y/N/c]` (`c` changes the
   place), and the first download into a place found automatically asks "Download here next time too? [Y/n]".
 
-- **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90). They run the same checks
-  as `contrib show` and `contrib validate` (all fields, the privacy checklist, the mechanical checks), refuse to share
-  when a privacy check is NG or the checks have errors (warnings and notices do not stop it), and print the URL of
-  GitHub's "new file" page under `data/contrib/<GPU>` with the file name and content filled in, plus a fallback: the
-  same page with only the name filled in, with the content printed to copy and paste (GitHub's upload page needs
-  write access, so it is not used). In a terminal they ask y/N (default No) before opening the browser; with `--json` or without a
-  terminal they only print the URLs. A URL longer than 8000 characters is not offered (fallback only).
-  `bench --share` without `--submission` writes the submission to `<cache>/submissions/<GPU>/<date>-<sha8>.json`.
-  genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
-  the alternative.
+- **Measure and send with two commands and one button: `genmodelfit measure` and `genmodelfit share`** (#113).
+  `measure` without a model lists models worth measuring: from an official template, `perfect` / `good` on this
+  PC's GPU, and no measurement on this GPU yet (one per model; installed ones first, then the shorter time, then the
+  smaller download); choose by number. `measure <name or id>` resolves like `download` (template workflows only).
+  Before measuring one screen shows the model and precision, the settings (as in the template), which ComfyUI and how
+  it was found (`--url`, else a ComfyUI running on 127.0.0.1 ports 8188 / 8000), whether the files are installed (by
+  size in the models folders), a rough time (the median of measurements of the same model on other GPUs, else a value
+  per type) and that nothing is sent, then asks `[Y/n]` (`--yes`; `--json` needs `--yes`). A missing model is
+  downloaded first through `download` (same questions and consent rules); without a running ComfyUI it says how to
+  start one. Afterwards it prints the result, where it saved it and one line pointing to `genmodelfit share` (it never
+  asks whether to send). `share` lists the unsent measurements in `<cache>/submissions/` (or takes a file), shows
+  exactly what will be sent with the privacy checks, and opens the GitHub **issue form** for measurements with the
+  content filled in; you press "Create". When the content does not fit in a URL (8000 characters) it is copied to the
+  clipboard with the OS tool (clip / pbcopy / wl-copy / xclip / xsel) and the empty form is opened. A shared
+  measurement is marked in `<cache>/submissions_shared.json` and not listed again (`--all`). `--print-url` and
+  `--json` never open a browser. genmodelfit itself still sends nothing.
+- **Measurement issues become pull requests** (#113): `.github/ISSUE_TEMPLATE/measurement.yml` and
+  `.github/workflows/measurement-intake.yml`. The workflow runs `genmodelfit contrib intake` on issues with the
+  `measurement` label: the body is read from the event file as data only, checked like `contrib validate` plus the
+  privacy checks, and on success the bot pushes `data/contrib/<GPU>/<date>-<sha8>.json` to `measurement/issue-<N>`,
+  opens a PR (with the issue author and `Closes #N`) and links it; on failure it comments the reasons (English and
+  Japanese). It counts as the issue author's submission. Library: `contrib.intake_issue`,
+  `contrib.extract_issue_json`.
+- **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90; the page changed in
+  #113). They run the same checks as `contrib show` and `contrib validate` (all fields, the privacy checklist, the
+  mechanical checks) and refuse to share when a privacy check is NG or the checks have errors (warnings and notices do
+  not stop it). They now do what `genmodelfit share` does (the issue form; GitHub's "new file" page and its
+  "Propose changes" / "Create pull request" steps are no longer used; `share_urls` returns `issue_url` / `form_url`
+  instead of `new_file_url` / `paste_url`). `bench --share` without `--submission` writes the submission to
+  `<cache>/submissions/<GPU>/<date>-<sha8>.json`. CONTRIBUTING now puts `measure` → `share` → "Create" first; the
+  git / fork path stays as the alternative.
 - **DGX Spark (GB10) is judged as a unified-memory GPU** (#101). Only when nvidia-smi names it exactly `NVIDIA GB10`,
   reports no VRAM (`[N/A]`) and runs on Linux aarch64: the total is MemTotal (not discounted, not counted twice with
   RAM; `memory: shared`), current free is MemAvailable + SwapFree (or free HugePages), and the level follows the
@@ -62,6 +83,37 @@ All notable changes to this project are documented here. The format is based on
   `python -m genmodelfit.gpuwatch` runs it by hand.
 
 ### Changed
+
+- **One GitHub account is one source, one pull request at most one** (#113): other users' submissions are counted as
+  groups connected by the same pull request (its merge commit; measurement pull requests are merged with a merge
+  commit, never squash or rebase) or the same account. For a measurement issue the person is the issue author's
+  numeric account id in the intake bot's `Submitted-by-id:` line (unchanged by renames; older bot commits with only
+  `Submitted-by: github:<account>` count by name), trusted only when the merge commit is `Merge pull request #N from laxshmate/measurement/issue-M` (the bot's
+  own branch; a fork's branch of the same name is not trusted), else the pull request's source account from the merge commit's
+  first line `Merge pull request #N from <account>/<branch>` (commit e-mail addresses are never used, since anyone
+  can write them; a fork's fake bot commits count as the fork's owner). Only a commit that is not such a merge
+  (directly on main, squash, rebase) falls back to its author's e-mail address. `source_ids` hold the first 12 hex digits of the sha256 of the group's smallest key, so
+  no address or account is published. Another account, an organization the person owns, or a pull request after a
+  rename counts as someone else; the bot's pull request has a checklist item for the maintainer to check the author.
+  New: `contrib.submission_origins`, `contrib.submission_submitters`, `contrib.submitter_count`.
+- **`share --json` only previews** (#113): it marks the measurement as sent only with `--mark-sent`; the text output
+  without a terminal does not mark it either (opening the browser and `--print-url` do). `share --print-url` without a
+  file uses the only unsent measurement. `measure` answered with n exits 0, and a failed measurement ends with a plain
+  "Next:" line. The line after measuring says honestly what the measurement is used for (working-memory-only NVIDIA
+  results are for cross-checking; out-of-memory results stop measured levels for that setup; every measurement
+  takes effect after a maintainer accepts it and the next version is released).
+- **Measurement intake is idempotent and follows edits** (#113): it runs on issues opened and on body edits only (not
+  on labels or title edits), does nothing when the PR already has the same content, refuses content that another
+  issue's PR already has, updates the PR and comments on both pages when the issue is edited to different valid
+  content, and closes the PR when the issue is edited to invalid content (reopened when fixed). It is split into a
+  read-only job that installs genmodelfit and a write job that only uses git and gh. The privacy check no longer
+  treats the runner's host / user name as the sender's.
+  It only looks at the bot's own pull requests (not a fork's with the same branch name), reopens only pull requests
+  it closed itself (label `measurement-invalid`), closes the issue's pull request when an edit duplicates another
+  issue's, and comments the same refusal reasons only once.
+- **`contrib` is for maintainers** (#113): the README command table and `--help` list `measure` and `share` for
+  users; `review`, `bench` and `contrib` are described as maintenance commands. The commands stay as they were
+  (`contrib share` is the same as `share`).
 
 - **`download` no longer falls back to genmodelfit's own folder** (#111), which ComfyUI does not read. When no
   ComfyUI is found or several are, a terminal lets you choose a candidate or type a path; with `--yes`, `--json` or

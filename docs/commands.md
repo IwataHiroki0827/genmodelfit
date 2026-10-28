@@ -21,7 +21,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
-| Measure a model and send the result | `genmodelfit bench <id> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
+| Measure a model and send the result | `genmodelfit measure` (with ComfyUI running), then `genmodelfit share` and "Create" on GitHub | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
 
@@ -81,8 +81,8 @@ link here.
 | `--json` |  |  | output JSON | every command |
 | `--vram` | `GB` | detected on this PC | judge with this much GPU VRAM in GB (GiB), e.g. 8 (0: no GPU); to judge another PC | `system`, `recommend`, `fit`, `search`, `info`, `download` |
 | `--ram` | `GB` | detected on this PC | judge with this much system RAM in GB (GiB), e.g. 32; to judge another PC | `system`, `recommend`, `fit`, `search`, `info`, `download` |
-| `--db` | `PATH` | the list fetched by update, else the bundled list | use this model list file (db.json) | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `gate`, `bench` |
-| `--no-cache` |  |  | use the bundled list, not the one fetched by update | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `gate`, `review list`, `bench` |
+| `--db` | `PATH` | the list fetched by update, else the bundled list | use this model list file (db.json) | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `measure`, `gate`, `bench` |
+| `--no-cache` |  |  | use the bundled list, not the one fetched by update | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `measure`, `gate`, `review list`, `bench` |
 | `--license-allowlist` | `LIST\|FILE` | the allowlist in [gate.md](gate.md) | licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line). Default: [gate.md](gate.md). An empty string ("") is the same as not giving it | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--comfyui-version` | `VER` | the latest release recorded in the list | the ComfyUI version in use; apps should always pass theirs (default: the latest release recorded by update) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--max-head-age-days` | `DAYS` | `30` | trust HEAD checks for this many days (default 30; none for no limit) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
@@ -116,9 +116,9 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 |---|---|---|
 | `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
 | `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
-| `GENMODELFIT_CACHE_DIR` | `update`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
+| `GENMODELFIT_CACHE_DIR` | `update`, `measure`, `share`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
 
 Network access also follows the usual proxy and certificate variables (`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, ...);
@@ -146,8 +146,9 @@ Where several places give the same setting, the first of these wins:
 
 `genmodelfit config path` prints the config file on your PC. `GENMODELFIT_CONFIG_DIR` and `GENMODELFIT_CACHE_DIR`
 move the folders. The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
-your `bench` results (`measurements/`, also used when this PC is judged) and submission drafts (`submissions/`).
-Deleting the cache folder is safe: the bundled list is used again (your saved `bench` results go with it).
+your `measure` and `bench` results (`measurements/`, also used when this PC is judged), submission drafts
+(`submissions/`, what `share` lists) and the marks of what `share` has sent (`submissions_shared.json`).
+Deleting the cache folder is safe: the bundled list is used again (your saved results go with it).
 
 ## Exit codes
 
@@ -157,7 +158,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved `b
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` first cancels its job and exits 1. |
+| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job and exit 1; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -171,6 +172,8 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
 - [`genmodelfit info`](#genmodelfit-info) — details of one model
 - [`genmodelfit update`](#genmodelfit-update) — get a newer model list (users: `--from-release`; without options it rebuilds from upstream)
 - [`genmodelfit download`](#genmodelfit-download) — download the files of a model (consent, sha256, resume, ComfyUI folders)
+- [`genmodelfit measure`](#genmodelfit-measure) — pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)
+- [`genmodelfit share`](#genmodelfit-share) — pick an unsent measurement, show it, and open the GitHub form to send it in your browser (it is sent when you press "Create")
 - [`genmodelfit config`](#genmodelfit-config) — show or change settings (download's ComfyUI folder, display language)
   - [`genmodelfit config show`](#genmodelfit-config-show) — current settings and where they come from (the default when no subcommand is given)
   - [`genmodelfit config set`](#genmodelfit-config-set) — save a value
@@ -183,11 +186,12 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
   - [`genmodelfit review approve`](#genmodelfit-review-approve) — approve with evidence (primary-source URLs); rewrites the list file
   - [`genmodelfit review reject`](#genmodelfit-review-reject) — remove from the list and record it so that update does not add it again
 - [`genmodelfit bench`](#genmodelfit-bench) — measure on a running ComfyUI
-- [`genmodelfit contrib`](#genmodelfit-contrib) — make, preview, validate and aggregate measurement submissions (nothing is sent)
+- [`genmodelfit contrib`](#genmodelfit-contrib) — for maintainers: make, validate and aggregate measurement submissions (to send one: measure and share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — make a submission JSON from a result saved by bench
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — show what will be shared and the privacy checklist
-  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — show it with the checks and print the URL of the GitHub page to share it (in a terminal, asks whether to open a browser; nothing is sent)
+  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — the same as `genmodelfit share` (kept for older scripts)
   - [`genmodelfit contrib validate`](#genmodelfit-contrib-validate) — check shape, values, personal information and duplicates (also used in CI)
+  - [`genmodelfit contrib intake`](#genmodelfit-contrib-intake) — check a measurement issue on GitHub and write the files for its PR (used by measurement-intake.yml)
   - [`genmodelfit contrib aggregate`](#genmodelfit-contrib-aggregate) — aggregate by model, settings and GPU, and check the accuracy
 
 ## `genmodelfit system`
@@ -745,6 +749,142 @@ genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI  # 2. download int
 genmodelfit download MODEL --uncensored --any-license --yes    # download without the question, also uncensored / unknown-license (check the terms yourself)
 ```
 
+## `genmodelfit measure`
+
+pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)
+
+**Usage**
+
+```text
+genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
+                    [--comfyui-dir DIR] [--yes] [--limit N] [--timeout SEC] [model]
+```
+
+- Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
+- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
+- MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows with a ComfyUI template).
+- Before measuring one screen shows the model and precision, the settings (as in the template), which ComfyUI and how it was found, whether the files are installed, a rough time and that nothing is sent, then asks [Y/n] (`--yes` skips it).
+- The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type.
+- A model that is not installed is downloaded first, with the same questions and consent rules as download.
+- Afterwards it shows the result and where it saved it, and one line pointing to `genmodelfit share`, which sends it (it never asks whether to send).
+
+**Options and arguments**
+
+| Option / argument | Value | Default | Description |
+|---|---|---|---|
+| `model` |  |  | model name (the Model column), workflow id, or a part of either (omitted: list models worth measuring and choose one) |
+| `--url` | `URL` | a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000) | URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188) |
+| `--comfyui-dir` | `DIR` | decided like download | your ComfyUI folder (to see whether the model is installed, and where to download it) |
+| `--yes`, `-y` |  |  | do not ask before measuring (a model that is not installed is downloaded under the same rules as download `--yes`) |
+| `--limit`, `-n` | `N` |  | how many suggestions to list without a model (default 10) |
+| `--timeout` | `SEC` | `1800` | the most time to wait (seconds > 0; default 1800) |
+
+- Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
+
+**Preconditions**
+
+- A GPU on this PC and a ComfyUI on it: `--url`, or one running on this PC (127.0.0.1 port 8188 or 8000).
+- When none is running, it says how to start ComfyUI and exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench without `--force`).
+
+**Side effects**
+
+- Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without `--url`), the ComfyUI it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and the model files when it downloads them.
+- Nothing about this PC is sent anywhere else.
+- Writes the result to `<cache>/measurements/` (used when this PC is judged) and a submission draft to `<cache>/submissions/` (what `genmodelfit share` lists).
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| 0 | Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?") |
+| 1 | Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not downloaded, the run failed (out of memory or another error), no terminal and no `--yes` |
+| 2 | Usage error |
+
+**Examples for scripts and apps**
+
+```sh
+genmodelfit measure --json
+genmodelfit measure image_z_image_turbo_int8 --yes --json
+genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+```
+
+JSON output (`--json`): [schema.md, "measure"](schema.md#measure)
+
+**Examples**
+
+```sh
+genmodelfit measure                              # pick a model worth measuring and measure it (sends nothing; genmodelfit share sends it)
+genmodelfit measure "Z-Image-Turbo"              # measure a model given by name
+genmodelfit measure --url http://127.0.0.1:8000  # measure on this ComfyUI (no search)
+```
+
+## `genmodelfit share`
+
+pick an unsent measurement, show it, and open the GitHub form to send it in your browser (it is sent when you press "Create")
+
+**Usage**
+
+```text
+genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-sent] [--db PATH]
+                  [file]
+```
+
+- Send a measurement: show exactly what will be sent and open the GitHub form for it.
+- Without FILE it lists the measurements saved by measure (and bench `--share`) that are not marked as sent, newest first; choose one by number.
+- It shows the whole content (GPU name, VRAM, OS family, model, settings and values; no PC or user names) with the privacy checks, then opens the measurement issue form on GitHub in your browser with the content filled in: sign in and press "Create".
+- A bot checks it within a few minutes and replies on the page; if it is fine, it goes into the project once a maintainer accepts it.
+- When the content does not fit in a URL it is copied to the clipboard (clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened; paste it there.
+- Once the page is opened, or the URL is printed with `--print-url`, the measurement is marked as sent on this PC and is not listed again (`--all` lists it); `--json` marks it only with `--mark-sent`.
+- `--print-url` without FILE uses the only unsent measurement (with several, give FILE).
+- You need a GitHub account.
+
+**Options and arguments**
+
+| Option / argument | Value | Default | Description |
+|---|---|---|---|
+| `file` |  |  | the submission JSON to send (omitted: list unsent measurements and choose one) |
+| `--print-url` |  |  | do not open a browser; print only the URL of the form (for scripts) |
+| `--all` |  |  | also list measurements already marked as sent |
+| `--mark-sent` |  |  | with `--json`, also mark it as sent (for apps that open the form themselves; by default `--json` only previews) |
+| `--db` | `PATH` |  | the list used to check model ids (default: the bundled list; the cache is not used) |
+
+- Also takes the [shared options](#options-shared-by-commands): `--json`
+
+**Preconditions**
+
+- A measurement saved by `genmodelfit measure`, or a submission JSON.
+
+**Side effects**
+
+- No network access: it only opens your browser (in a terminal, without `--json` and `--print-url`).
+- The content is sent only when you press "Create" on GitHub.
+- Writes the sent marks to `<cache>/submissions_shared.json`; may put the content on the clipboard.
+
+**Exit codes**
+
+| Code | Meaning |
+|---|---|
+| 0 | Success (also: nothing chosen, nothing to send) |
+| 1 | Error: the file cannot be read, a privacy check is NG or the checks have errors, or `--print-url` without FILE when several measurements are unsent |
+| 2 | Usage error |
+
+**Examples for scripts and apps**
+
+```sh
+genmodelfit share --json
+genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
+genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+```
+
+JSON output (`--json`): [schema.md, "share"](schema.md#share)
+
+**Examples**
+
+```sh
+genmodelfit share        # pick an unsent measurement and send it
+genmodelfit share --all  # also list the ones marked as sent
+```
+
 ## `genmodelfit config`
 
 show or change settings (download's ComfyUI folder, display language)
@@ -1132,7 +1272,8 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id in [ ] on the first line of info).
 - Model names and parts of ids are not accepted, and hf: models have no template (pass an API-format workflow with `--workflow` instead).
 - Your saved results are used when this PC is judged.
-- `--share` prepares a submission and opens GitHub's "new file" page in your browser if you answer y: sign in to GitHub (an account is needed), press "Propose changes", then "Create pull request" ([CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed)).
+- `genmodelfit measure` does the same without the template id (it suggests models and finds ComfyUI).
+- `--share` prepares a submission and opens GitHub's measurement form in your browser: sign in to GitHub (an account is needed) and press "Create" (like `genmodelfit share`).
 
 **Options and arguments**
 
@@ -1157,7 +1298,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--source` | `SOURCE` |  | who measured it where (goes into source) |
 | `--note` | `NOTE` |  | text to add to the result's note |
 | `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 1). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
-| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and print the URL of the GitHub page to share it; in a terminal, ask whether to open it in a browser. Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
+| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and open GitHub's measurement form (like `genmodelfit share`; without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
 
@@ -1170,7 +1311,8 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 **Side effects**
 
 - Network: only the ComfyUI at `--url` (it sends one job and reads the results), plus the official template file from GitHub when that ComfyUI does not have it.
-- Nothing about this PC is sent elsewhere; `--share` only prints a URL and opens your browser if you answer y. Writes the result JSON to `<cache>/measurements/` (or `--output`).
+- Nothing about this PC is sent elsewhere; `--share` only opens your browser at the form (or prints its URL).
+- Writes the result JSON to `<cache>/measurements/` (or `--output`).
 - Failed results and results under non-standard conditions are only shown unless `--save-failed` / `--save-nonstandard` / `--output`.
 - `--submission` / `--share` also write a submission JSON.
 - Settings you leave out (`--width`, `--height`, `--frames`, `--length`, `--steps`) stay as in the template.
@@ -1197,21 +1339,22 @@ JSON output (`--json`): [schema.md, "bench"](schema.md#bench)
 
 ## `genmodelfit contrib`
 
-make, preview, validate and aggregate measurement submissions (nothing is sent)
+for maintainers: make, validate and aggregate measurement submissions (to send one: measure and share)
 
 **Usage**
 
 ```text
-genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,aggregate} ...
+genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-Make, preview, validate and aggregate measurement submissions (contrib_schema 1). genmodelfit sends nothing (data is shared only when you open a Pull Request from your own GitHub account; [CONTRIBUTING.md](../CONTRIBUTING.md)).
+Make, preview, validate and aggregate measurement submissions (contrib_schema 1; for maintainers. To send a measurement use `genmodelfit measure` and `genmodelfit share`). genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a Pull Request yourself; [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ```text
 make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
 show      <file>                 what will be shared, and the privacy checklist (for consent)
-share     <file>                 the same checks as show, then the URL of the GitHub page to share it
-                                 (in a terminal, asks whether to open a browser; it only opens the page)
+share     [file]                 the same as genmodelfit share (kept for older scripts)
+intake    <event.json> --out DIR check a measurement issue on GitHub and write the files for its PR
+                                 (used by measurement-intake.yml)
 validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
 aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
           group by model, settings and GPU, drop outliers by median and MAD, check the calibration error
@@ -1222,8 +1365,8 @@ aggregate [dir] --check
 **Side effects**
 
 - No network access.
-- make writes the submission files; aggregate writes only with `--output`.
-- share opens a browser only when you answer y in a terminal (with `--json` or without a terminal it only prints the URLs).
+- make writes the submission files; aggregate writes only with `--output`; intake writes to `--out`.
+- share is `genmodelfit share` (opens a browser in a terminal; with `--json`, `--print-url` or without a terminal it only prints the URL; writes the sent marks).
 
 **Exit codes**
 
@@ -1251,7 +1394,7 @@ genmodelfit contrib aggregate --report --json --fail-on-breach
 
 Details: [schema.md, "contrib"](schema.md#contrib)
 
-**Subcommands**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib aggregate`
+**Subcommands**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib intake`, `genmodelfit contrib aggregate`
 
 ### `genmodelfit contrib make`
 
@@ -1296,12 +1439,13 @@ genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
 
 ### `genmodelfit contrib share`
 
-show it with the checks and print the URL of the GitHub page to share it (in a terminal, asks whether to open a browser; nothing is sent)
+the same as `genmodelfit share` (kept for older scripts)
 
 **Usage**
 
 ```text
-genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
+genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all]
+                          [--mark-sent] [file]
 ```
 
 **Options and arguments**
@@ -1309,7 +1453,10 @@ genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
 | Option / argument | Value | Default | Description |
 |---|---|---|---|
 | `--db` | `PATH` |  | the list used to check model ids (default: the bundled list; the cache is not used) |
-| `file` |  |  | the submission JSON |
+| `file` |  |  | the submission JSON to send (omitted: list unsent measurements and choose one) |
+| `--print-url` |  |  | do not open a browser; print only the URL of the form (for scripts) |
+| `--all` |  |  | also list measurements already marked as sent |
+| `--mark-sent` |  |  | with `--json`, also mark it as sent |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`
 
@@ -1333,6 +1480,28 @@ genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--stric
 | `--strict` |  |  | treat warnings as failures too |
 | `--no-filename-check` |  |  | do not check the file name (`<GPU>/<date>-<sha8>.json`) |
 | `--markdown` |  |  | output a Markdown table (for the CI summary) |
+
+- Also takes the [shared options](#options-shared-by-commands): `--json`
+
+### `genmodelfit contrib intake`
+
+check a measurement issue on GitHub and write the files for its PR (used by measurement-intake.yml)
+
+**Usage**
+
+```text
+genmodelfit contrib intake [-h] [--lang {en,ja}] [--json] [--db PATH] [--existing DIR] --out DIR
+                           EVENT_JSON
+```
+
+**Options and arguments**
+
+| Option / argument | Value | Default | Description |
+|---|---|---|---|
+| `--db` | `PATH` |  | the list used to check model ids (default: the bundled list; the cache is not used) |
+| `EVENT_JSON` |  |  | the issues event file |
+| `--existing` | `DIR` | `data/contrib` | the folder searched for the same submission (default data/contrib) |
+| `--out` | `DIR` |  | the folder to write the result files to |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`
 

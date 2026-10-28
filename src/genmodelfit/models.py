@@ -329,7 +329,7 @@ class Measurement:
     # 以下はほかの利用者の実測のまとめの行だけ(#90)
     gpu_known: bool | None = None  # False = 名前の表に無い GPU(記録として残すだけで判定に使わない)
     n_sources: int | None = None  # 使った提出の、別々の出どころ(リポジトリに足したコミット = PR)の数
-    # 使った出どころの短い ID(#95。contrib.source_id)。同じ PR の提出が別の行に分かれても、出どころを
+    # 使った出どころの短い ID(#95。contrib.source_id)。同じ人の提出が別の行に分かれても、出どころを
     # ID の和集合で数える(estimate.count_sources)。None は記録の無い古いまとめ
     source_ids: list[str] | None = None
     n_error: int | None = None  # 同じ構成で ok・oom 以外(error)で終わった提出の数(行の値には使わない)

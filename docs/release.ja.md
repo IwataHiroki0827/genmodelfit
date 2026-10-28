@@ -10,6 +10,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 - [GitHub の environment(2026-10-20 に設定)](#github-の-environment2026-10-20-に設定)
 - [最初の公開(v0.1.0)の手順](#最初の公開v010の手順)
 - [次からの版を出す手順](#次からの版を出す手順)
+- [実測の Issue を受け取る(#113)](#実測の-issue-を受け取る113)
 - [データの配布](#データの配布)
 - [毎週の一覧の更新(#19)](#毎週の一覧の更新19)
   - [PR で確かめること](#pr-で確かめること)
@@ -110,7 +111,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。最初の提出をマージするまでは data/contrib が無いので、`--check` は終了コード 1(フォルダが無い)になる。それで正しい。
    - あれば `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で作り直す
      (使った提出の sha256 が `submissions` に入る。試験はそれだけをまとめ直して一致を確かめる)。
-   - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ PR で足した提出は 1 つ)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。0.11.0 から、出どころをファイルごとに数える(`file:…`)ときは `--output` が書き出さない(終了コード 1)。1 人の何件ものファイルが何人分にも数えられ、段階を決められてしまうため(#95)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない。`--check` は `file_sources` を出す(同梱のまとめは 0 でなければならない。試験が確かめる)。
+   - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ人が送った提出は 1 つ。#113)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。0.11.0 から、出どころをファイルごとに数える(`file:…`)ときは `--output` が書き出さない(終了コード 1)。1 人の何件ものファイルが何人分にも数えられ、段階を決められてしまうため(#95)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない。`--check` は `file_sources` を出す(同梱のまとめは 0 でなければならない。試験が確かめる)。
    - 直した提出を出し直した人がいれば、古いファイルをメンテナの PR で外す(PR の説明に理由を書く。提出の PR は足すだけで、消せない)。この PR では `Contrib` のワークフローの「足すだけ」の検査が失敗するが、それでよい(提出の PR だけを通す検査。メンテナが確かめてマージする)。
    - `--check` が「使われない行」(`files_fp` が今の一覧と違う行)を出したら、上流のファイルが変わったということ。行は判定に使われないので、そのままでもよい。新しいファイルで測り直した提出が来るのを待つ。
    - そろった組(`consistent`)が変わったら `python -m genmodelfit.calibrate` で合わせ直し、
@@ -131,6 +132,58 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 - 事前登録では名前は確保されず、最初の公開で確定する。
 - **PEP 541(放棄された名前の扱い)があるので、中身の無い仮の版で名前だけ押さえない。動く v0.1 を公開する。**
 - 公開した版は消せない(取り下げ=yank だけ)。版の番号は使い回せないので、直すなら次の版を出す。
+
+## 実測の Issue を受け取る(#113)
+
+`genmodelfit share` は、実測を入れた Issue のフォーム `.github/ISSUE_TEMPLATE/measurement.yml` を開きます。
+ワークフロー `.github/workflows/measurement-intake.yml` が、`measurement` の印の開いている Issue を、作られたときと
+本文が編集されたときに受け取ります(題だけの編集・印を付けただけでは動かないので、1 つの Issue を 2 回扱いません)。
+ジョブは 2 つです:
+
+1. `check`(読むだけのトークン): genmodelfit を入れ、`genmodelfit contrib intake` がイベントのファイルから Issue の本文を
+   データとして読み(台本に `${{ }}` で埋め込まない)、`contrib validate` と同じ検査と `share` の個人の情報の点検(実行機
+   自身のホスト名・ユーザ名の確かめは除く)をし、同じ中身が既に `data/contrib` にあれば断り、同じアカウントがその GPU・
+   モデルで既に送った数を数えます(git の履歴をすべて取る)。結果のファイルは artifact にします
+   ([schema.ja.md「contrib」](schema.ja.md#contrib))。
+2. `publish`(contents・pull-requests・issues の書き込み。何も入れず、`git` と `gh` だけ):
+   - 通って新しいとき: `data/contrib/<GPU>/<日付>-<sha8>.json` をブランチ `measurement/issue-<N>` に push し(コミットに
+     `Submitted-by: github:<アカウント>`)、PR を作り(本文は Issue を書いた人・そのアカウントの前の提出の数・メンテナへの
+     確認・`Closes #N`)、Issue にリンクをコメントします。
+   - この Issue の開いている PR と同じ中身: 何もしません(push もコメントもしない)。
+   - 別の Issue の開いている PR と同じ中身: その PR のリンクをコメントし、何も作りません。
+   - PR ができたあとに、通る別の中身に編集された: PR(題・本文・ファイル)を直し、PR と Issue の両方にコメントします。
+     前に通らない中身で閉じた PR は、先に開き直します。
+   - 断ったとき: 理由(英語と日本語)を Issue にコメントします。同じ理由の組は 1 回だけ(コメントの隠した印で見分け、
+     同じ理由を繰り返さない)。Issue に開いている PR があれば、PR にも理由を書き、印 `measurement-invalid`(無ければ
+     作る)を付けて **閉じます**。Issue が直ったら、この印のある PR だけを開き直し(印は外す)、メンテナが閉じた PR は
+     開き直しません(Issue にそう書きます)。
+   - 別の Issue の PR と同じ中身に編集された: その PR を知らせ、この Issue の PR を同じように閉じます。
+   - 見るのはボット自身の PR だけ(`isCrossRepository` が偽で、作者が GitHub Actions。`gh` は `app/github-actions` と
+     返す)。フォークの同じ名前のブランチの PR は見ません。
+   PR をマージすると Issue は閉じます。
+
+マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
+動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 つのアカウントは何件送っても 1 つの出どころだが、別のアカウント・
+その人の組織・名前を変えたあとの Pull Request は別の人になる。Pull Request や Issue を書いた人を確かめる)。マージは、ボットの Pull Request も人が出した実測の Pull Request も **「Create a merge commit」だけで、squash・rebase は
+しない**(「次からの版を出す手順」と同じ決まり)。出どころはマージのコミットで数えるため(`Merge pull request #N from laxshmate/measurement/issue-M` のときだけ `Submitted-by:` の行を信じる)。
+
+一度だけの設定(リポジトリの Settings):
+1. Settings → Actions → General → 「Workflow permissions」→「Allow GitHub Actions to create and approve pull requests」に
+   チェック → Save。
+2. Issues → Labels → New label → 名前 `measurement` → Create label。
+3. Settings → General →「Pull Requests」: 「Allow merge commits」はチェックのまま、「Allow squash merging」と
+   「Allow rebase merging」のチェックを外す(出どころは GitHub のマージのコミットで数えるため)。オーナーの PC の毎週の
+   台本(`genmodelfit-weekly.ps1`)は PR を `gh pr merge --merge` でマージするので、そのまま動きます。このリポジトリの中に
+   `--squash`・`--rebase` を使うものはありません。
+   同じページの「Allow merge commits」の下の「Default commit message」は「Default message」にする。出どころのアカウントを
+   マージのコミットの 1 行目 `Merge pull request #N from <owner>/<branch>` から読むため(「Pull request title」などに
+   すると、その行が変わる)。
+4. main を、管理者も含めて PR なしで push・マージできないように守る: Settings → Rules → Rulesets → New ruleset →
+   New branch ruleset → 名前 `main` → Enforcement status「Active」→ Bypass list は空のまま → Target branches で
+   「Include default branch」→「Require a pull request before merging」と「Block force pushes」にチェック → Create。
+   (昔からのブランチの保護なら: Settings → Branches → Add branch protection rule → `main` →「Require a pull request
+   before merging」と「Do not allow bypassing the above settings」にチェック → Create。)
+ワークフローが使うのは `GITHUB_TOKEN` だけです(シークレットは使わない)。
 
 ## データの配布
 

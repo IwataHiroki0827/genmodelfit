@@ -4,15 +4,19 @@
 
 """利用者が出す実測(提出用の JSON)の作成・検査・まとめ(#34)。
 
-流れ(genmodelfit 自体は何も送らない。利用者が自分の GitHub で Pull Request を出す):
+流れ(genmodelfit 自体は何も送らない。利用者が GitHub の Issue のフォームで「Create」を押すか、
+自分で Pull Request を出す):
 
-1. `genmodelfit bench ... --submission <path>`(または `contrib make --from <bench の結果>`)で
-   提出用の JSON(`contrib_schema` 1)を作る。入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・
-   ComfyUI の版・OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
+1. `genmodelfit measure`(#113)・`genmodelfit bench ... --submission <path>`
+   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 1)を作る。
+   入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・ComfyUI の版・
+   OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
    モデル ID・設定・結果・最大 VRAM / メモリ・時間・測り方・日付(UTC の日付だけ)。
    PC 名・ユーザ名・パス・GPU の UUID・PCI の位置・シリアル・IP・時刻は入れない(note の中も消す)
 2. `contrib show` で、送る中身をそのまま見せる(同意のため)。個人の情報の点検の結果も出す
-3. `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` として PR にする
+3. `genmodelfit share` が中身を入れた実測の Issue のフォームを開き、利用者が「Create」を押す。
+   .github/workflows/measurement-intake.yml が `contrib intake`(intake_issue)で検査して
+   `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` を足す PR を作る(git で自分で PR にしてもよい)
 4. CI(.github/workflows/contrib.yml)が `contrib validate` で形・値・個人の情報・重複を機械的に検査する
    (llmfit の validate_community_benchmarks.py と同じ考え方。2026-10-22)。式から大きく外れる・段階を変える
    などは失敗にせず、注意(notices)としてジョブのまとめに出す。マージするメンテナが見て決める
@@ -563,7 +567,9 @@ CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
 )
 
 
-def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]:
+def privacy_checklist(
+    data: Any, raw: str | None = None, *, self_identity: bool = True
+) -> list[dict[str, Any]]:
     """送る前の点検の一覧 [{id, label, ok, detail}]。
     最後の note の項目は人が読んで確かめるもの(ok は None)。"""
     found = privacy_findings(data, raw)
@@ -590,7 +596,8 @@ def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]
     for cid, label, kinds in CHECKLIST:
         hits = [f"{f['where']}({f['what']})" for f in found if f["kind"] in kinds]
         if cid == "host_user":
-            own = [w for w in _identity_words() if w.lower() in text.lower()]
+            # self_identity が偽(intake。GitHub の実行機の名前・ユーザ名は送った人の情報ではない)なら見ない
+            own = [w for w in _identity_words() if w.lower() in text.lower()] if self_identity else []
             hits += [
                 tr("この PC の名前・ユーザ名・ホーム", "this PC's name, user name or home") for _ in own[:1]
             ]
@@ -745,14 +752,17 @@ def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Pa
     return t
 
 
-# --- ブラウザで送る(share。#90) ------------------------------------------------------------------
-# genmodelfit は何も送らない。GitHub の「新しいファイル」のページ(中身を入れたもの)の URL を作るだけで、
-# 開くのは CLI(利用者が y と答えたとき)、送るのはブラウザで利用者が押したとき
+# --- ブラウザで送る(share。#90・#113) -------------------------------------------------------------
+# genmodelfit は何も送らない。GitHub の Issue のフォーム(実測の提出用。中身を入れたもの)の URL を作るだけで、
+# 開くのは CLI、送るのはブラウザで利用者が「Create」を押したとき。受け取った Issue は
+# .github/workflows/measurement-intake.yml が intake_issue で検査し、通れば data/contrib に足す PR を作る
 
 REPO = "laxshmate/genmodelfit"  # 提出を送るリポジトリ(share の URL はすべてここから作る)
-SHARE_BRANCH = "main"
+ISSUE_TEMPLATE = "measurement.yml"  # .github/ISSUE_TEMPLATE/ のフォーム
+ISSUE_FIELD = "submission"  # フォームの JSON の欄の id(URL の ?submission= で中身を入れる)
+ISSUE_LABEL = "measurement"  # フォームが付ける印(受け取る仕組みはこの印の Issue だけを見る)
 # 中身を入れた URL の長さの上限(文字)。ブラウザ・GitHub が受け付ける長さには公の上限が無く、
-# 長い URL は途中で切られることがあるので控えめにした。超えたら中身を入れないページ(貼り付ける)だけを案内する
+# 長い URL は途中で切られることがあるので控えめにした。超えたら中身を入れないフォーム(貼り付ける)を開く
 SHARE_URL_LIMIT = 8000
 
 
@@ -768,31 +778,296 @@ def share_check(checklist: list[dict[str, Any]], report: Report) -> list[str]:
     return why
 
 
-def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
-    """GitHub で提出を送るページの URL(通信しない)。
+def issue_title(data: dict[str, Any]) -> str:
+    """Issue の題(モデル ID と GPU 名。どちらも検査を通った形の文字)。"""
+    mm = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    gpu = ((data.get("system") or {}).get("gpu") or {}).get("name")
+    return f"measurement: {mm.get('model_id')} on {gpu}"
 
-    - new_file_url: 「新しいファイル」のページ。data/contrib/<GPU> に <日付>-<sha8>.json の名前で、中身(text。
-      改行は LF にそろえる)を入れたもの。SHARE_URL_LIMIT を超えたら None(paste_url を使う)
-    - paste_url: 同じページで、名前だけを入れたもの(中身は利用者が貼り付ける)。中身を入れたページに中身が
-      出ないとき・URL が長すぎるときの代わり。GitHub のアップロードのページ(/upload/)は書き込みの権限が
-      要るので使わない(権限の無い人は「新しいファイル」のページなら自動でフォークを作れる)
-    名前の sha8 は contrib.canonical の hash なので、字下げ・改行の違いでは変わらない。"""
+
+def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
+    """GitHub で提出を送る Issue のフォームの URL(通信しない。#113)。
+
+    - issue_url: 実測の提出用のフォーム(ISSUE_TEMPLATE)に、題と中身(text。改行は LF にそろえる)を入れたもの。
+      SHARE_URL_LIMIT を超えたら None(form_url を開き、中身は貼り付ける)
+    - form_url: 同じフォームで、題だけを入れたもの
+    path_in_repo は受け付けたときのリポジトリの中の置き場所(PR は受け取る仕組みが作る)。"""
     from urllib.parse import quote
 
-    path = suggested_path(data)
-    folder, name = path.rsplit("/", 1)
     body = text.replace("\r\n", "\n")
-    base = f"https://github.com/{REPO}"
-    paste = f"{base}/new/{SHARE_BRANCH}/{folder}?filename={quote(name, safe='')}"
-    new = f"{paste}&value={quote(body, safe='')}"
+    title = issue_title(data)
+    form = f"https://github.com/{REPO}/issues/new?template={ISSUE_TEMPLATE}&title={quote(title, safe='')}"
+    full = f"{form}&{ISSUE_FIELD}={quote(body, safe='')}"
     return {
-        "path_in_repo": path,
-        "file_name": name,
-        "new_file_url": new if len(new) <= SHARE_URL_LIMIT else None,
-        "new_file_url_length": len(new),
+        "path_in_repo": suggested_path(data),
+        "title": title,
+        "issue_url": full if len(full) <= SHARE_URL_LIMIT else None,
+        "issue_url_length": len(full),
         "url_limit": SHARE_URL_LIMIT,
-        "paste_url": paste,
+        "form_url": form,
     }
+
+
+# --- Issue で受け取る(measurement-intake.yml。#113) ---------------------------------------------
+
+_FENCE = re.compile(r"^(?P<fence>`{3,}|~{3,})[^\n`]*\n(?P<body>.*?)^(?P=fence)[ \t]*$", re.M | re.S)
+_USER_ID = re.compile(r"\d{1,20}")  # GitHub のアカウントの数の ID
+_LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
+_REPO_PATH = re.compile(r"data/contrib/[a-z0-9-]+/\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json")
+
+
+def extract_issue_json(body: str | None) -> str | None:
+    """Issue の本文から提出の JSON の文字を取り出す(データとしてだけ扱う。何も実行しない)。
+    フォームの JSON の欄は ```json の囲みになる。{ で始まる最初の囲みの中身。囲みが無ければ、本文全体が
+    { で始まり } で終わるときだけその文字。見つからなければ None。"""
+    text = (body or "").replace("\r\n", "\n")
+    for m in _FENCE.finditer(text):
+        inner = m.group("body").strip()
+        if inner.startswith("{"):
+            return inner
+    t = text.strip()
+    return t if t.startswith("{") and t.endswith("}") else None
+
+
+@dataclass
+class IntakeResult:
+    """Issue 1 件の受け付けの結果。ok なら path_in_repo に content を足す PR を作る。"""
+
+    ok: bool
+    reasons: list[str] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)
+    path_in_repo: str | None = None
+    content: str | None = None
+    sha256: str | None = None
+    title: str = ""
+    commit_message: str = ""
+    pr_body: str = ""
+    comment: str = ""
+    comment_updated: str = ""  # PR ができたあとに Issue の中身が変わったとき(PR と Issue に書く)
+    comment_pr_closed: str = ""  # PR ができたあとに通らない中身に変わったとき(PR に書いて閉じる)
+    # 断った理由の組の印(コメントの最後に隠して書く HTML のコメント)。同じ理由で何度も編集されたとき、
+    # measurement-intake は前のボットのコメントにこの印があればコメントを書かない
+    marker: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _md(lines: list[str]) -> str:
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _parse_issue_json(text: str, res: IntakeResult) -> Any:
+    if len(text.encode("utf-8")) > MAX_FILE_BYTES:
+        res.reasons.append(
+            tr(f"大きすぎます({MAX_FILE_BYTES} バイトまで)", f"Too large (up to {MAX_FILE_BYTES} bytes)")
+        )
+        return None
+    try:
+        return loads_strict(text)
+    except RecursionError:
+        res.reasons.append(tr("入れ子が深すぎます", "Nested too deeply"))
+    except DuplicateKeyError as e:
+        res.reasons.append(str(e))
+    except ValueError as e:
+        res.reasons.append(tr(f"JSON ではありません({type(e).__name__})", f"Not JSON ({type(e).__name__})"))
+    return None
+
+
+def intake_issue(
+    body: str | None,
+    author: str,
+    number: int,
+    *,
+    db: Database | None = None,
+    existing: str | os.PathLike[str] | None = None,
+    today: _date | None = None,
+    prior: int | None = None,
+    author_id: int | str | None = None,
+) -> IntakeResult:
+    """実測の Issue(#113)を検査し、PR に入れる中身と、Issue へのコメントを作る(通信しない・何も書かない)。
+
+    本文はデータとしてだけ扱う(extract_issue_json)。検査は contrib validate と同じ(validate_submission。
+    ファイル名はここで決めるので見ない)と、個人の情報の点検(share_check)。大きさは MAX_FILE_BYTES まで。
+    existing(リポジトリの data/contrib)に同じ内容の提出があれば断る。PR に入れる中身は、取り出した文字を
+    そのまま使わず dumps で書き直したもの(名前の sha8 は canonical の hash なので変わらない)。
+    出どころは送った人(submission_sources)。コミットに `Submitted-by: github:<login>` を書き(ボットのコミット
+    だけ信じる)、PR の本文に Issue の番号と書いた人、prior(この人が同じ GPU・モデルで既に送った数。
+    submitter_count)を書く。コメントに入れる理由の文は md_cell で
+    無害にする(提出から来る文字でリンク・@ の呼び出し・HTML を作らない)。"""
+    if not _LOGIN.fullmatch(author or ""):
+        author = "unknown"
+    res = IntakeResult(ok=False)
+    text = extract_issue_json(body)
+    data: Any = None
+    if text is None:
+        res.reasons.append(
+            tr(
+                "本文に提出の JSON(```json の囲み)が見つかりません",
+                "No submission JSON (a ```json block) was found in the body",
+            )
+        )
+    else:
+        data = _parse_issue_json(text, res)
+    if text is not None and data is not None:
+        report = validate_submission(data, db, raw=text, today=today, check_filename=False)
+        if isinstance(data, dict):
+            res.reasons += share_check(privacy_checklist(data, text, self_identity=False), report)
+        else:
+            res.reasons += [f"{e['code']}: {e['message']}" for e in report.errors]
+        res.notices = [f"{v['code']}: {v['message']}" for v in [*report.warnings, *report.notices]]
+        if not res.reasons and isinstance(data, dict):
+            sha, path = content_hash(data), suggested_path(data)
+            if not _REPO_PATH.fullmatch(path):
+                res.reasons.append(tr("置き場所の名前を作れません", "Cannot make the file name"))
+            elif existing is not None and _already_there(existing, sha):
+                res.reasons.append(
+                    tr("同じ内容の提出が既にあります", "The same submission is already in the repository")
+                )
+            else:
+                res.ok, res.sha256, res.path_in_repo = True, sha, path
+                res.content = dumps(data)
+                res.title = issue_title(data)
+    if not res.ok:
+        res.marker = reasons_marker(res.reasons)
+        res.comment = _md(
+            [
+                tr("**実測の提出を受け付けられませんでした**", "**The measurement could not be accepted**"),
+                "",
+                *(f"- {md_cell(r)}" for r in res.reasons),
+                "",
+                tr(
+                    "直した中身で Issue の本文を編集すると、もう一度確かめます"
+                    "(中身は genmodelfit share で作り直せます)。",
+                    "Edit the issue body with the fixed content and it is checked again"
+                    " (genmodelfit share makes the content again).",
+                ),
+                tr(
+                    "どう直せばよいか分からないときは、このまま返信してください。メンテナが手伝います。",
+                    "Not sure how to fix it? Just reply here and a maintainer will help.",
+                ),
+                "",
+                res.marker,
+            ]
+        )
+        res.comment_pr_closed = _md(
+            [
+                tr(
+                    f"Issue #{number} の中身が、検査に通らない内容に変わったので、この PR を閉じます。"
+                    "Issue を直すと、もう一度開きます。",
+                    f"The content of issue #{number} changed and no longer passes the checks, so this PR is"
+                    " closed. Fixing the issue reopens it.",
+                ),
+                "",
+                *(f"- {md_cell(r)}" for r in res.reasons),
+            ]
+        )
+        return res
+    uid = str(author_id) if author_id is not None and _USER_ID.fullmatch(str(author_id)) else None
+    res.commit_message = (
+        f"data(contrib): {res.title}\n\nFrom issue #{number} by {author} (measurement-intake).\n\n"
+        + (f"Submitted-by: github:{author}\n" if author != "unknown" else "")
+        # アカウントの数の ID(名前を変えても変わらない)。出どころはこれで数える(submission_origins)
+        + (f"Submitted-by-id: {uid}\n" if uid and author != "unknown" else "")
+    )
+    if prior:
+        prior_line = tr(
+            f"- @{author} さんが同じ GPU・モデルで既に送った提出: {prior} 件"
+            "(同じ人の提出は合わせて 1 つの出どころ)",
+            f"- Submissions @{author} already sent for this GPU and model: {prior} (one person counts as one"
+            " source)",
+        )
+    elif prior is None:
+        prior_line = tr(
+            "- 同じ人の前の提出の数: git の履歴が無いので数えていない",
+            "- Earlier submissions by the same person: not counted (no git history)",
+        )
+    else:
+        prior_line = tr(
+            f"- @{author} さんの、この GPU・モデルの最初の提出",
+            f"- The first submission by @{author} for this GPU and model",
+        )
+    res.pr_body = _md(
+        [
+            tr(
+                f"Issue #{number} で @{author} さんが送った実測です"
+                "(measurement-intake が検査して作りました)。",
+                f"A measurement sent by @{author} in issue #{number}"
+                " (checked and opened by measurement-intake).",
+            ),
+            "",
+            f"- `{res.path_in_repo}`",
+            "- "
+            + tr(
+                "検査: contrib validate と個人の情報の点検を通過",
+                "Checks: passed contrib validate and the privacy checks",
+            ),
+            prior_line,
+            "- [ ] "
+            + tr(
+                "マージの前に: Issue を書いた人と、同じ人が別のアカウント・名前を変える前のアカウントで"
+                "この実測を既に送っていないかを確かめる(出どころはアカウントごとに数える)",
+                "Before merging: check who wrote the issue, and whether the same person already sent this"
+                " measurement from another account or under an earlier name (sources are counted per"
+                " account)",
+            ),
+            *(
+                [
+                    "",
+                    tr("**マージする人への確認**", "**For the maintainer who merges**"),
+                    *(f"- {md_cell(n)}" for n in res.notices),
+                ]
+                if res.notices
+                else []
+            ),
+            "",
+            f"Closes #{number}",
+        ]
+    )
+    res.comment = _md(
+        [
+            tr("**受け付けました。ありがとうございます**", "**Accepted — thank you!**"),
+            "",
+            tr(
+                "確かめて問題が無かったので、プロジェクトに入れる準備(Pull Request)を作りました(リンクは下)。"
+                "メンテナが入れると、この Issue は閉じます。",
+                "It passed the checks, so the bot prepared it to be added to the project (a pull request,"
+                " link below). This issue closes when a maintainer adds it.",
+            ),
+            tr(
+                "このあと Issue の本文を編集すると、その中身でもう一度確かめ、Pull Request も直します。",
+                "If you edit the issue body later, the new content is checked again and the pull request is"
+                " updated.",
+            ),
+        ]
+    )
+    res.comment_updated = _md(
+        [
+            tr(
+                f"Issue #{number} の中身が変わったので、新しい中身で確かめて Pull Request を直しました。",
+                f"The content of issue #{number} changed; the new content passed the checks and the pull"
+                " request was updated.",
+            ),
+            "",
+            f"- `{res.path_in_repo}`",
+        ]
+    )
+    return res
+
+
+def reasons_marker(reasons: list[str]) -> str:
+    """断った理由の組の印(HTML のコメント。表示されない)。理由の文(今の言語)の組の sha256 の先頭 16 桁。"""
+    digest = hashlib.sha256("\n".join(sorted(reasons)).encode("utf-8")).hexdigest()[:16]
+    return f"<!-- measurement-intake:reasons={digest} -->"
+
+
+def _already_there(root: str | os.PathLike[str], sha: str) -> bool:
+    for p in find_files(root):
+        with contextlib.suppress(OSError, ValueError):
+            data, _raw = read_submission(p)
+            if isinstance(data, dict) and content_hash(data) == sha:
+                return True
+    return False
 
 
 def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:
@@ -2133,16 +2408,25 @@ def load_dir(
     return subs, sorted([*reports, *(layout_report(b) for b in bad)], key=lambda r: r.path)
 
 
-def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
-    """提出ごとの出どころ(#90)。出どころは、そのファイルをリポジトリに足したコミット(main の first-parent の
-    履歴で。PR のマージ・squash のコミットが 1 つの出どころ)。同じ PR で足した提出は 1 つの出どころになる。
-    メンテナがファイルを動かした(名前を変えた)ときは、名前の変更をさかのぼって最初に足したコミットを使う。
-    (内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone(CI の depth 1 は
-    全部が 1 つのコミットに見える)・git が無いときは、使えなかったとして空を返す(aggregate はファイルごとに
-    数える)。通信しない(手元の git の履歴を読むだけ)。"""
-    import subprocess
+BOT_EMAIL = (
+    "41898282+github-actions[bot]@users.noreply.github.com"  # GitHub Actions のボット(intake のコミット)
+)
+# GitHub のアカウントの数の ID(Issue を書いた人の user.id。名前を変えても変わらない)。数字だけ
+SUBMITTED_BY_ID = re.compile(r"^Submitted-by-id:[ \t]*(\d{1,20})[ \t]*$", re.M | re.I)
+SUBMITTED_BY = re.compile(
+    r"^Submitted-by:[ \t]*github:([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))[ \t]*$", re.M | re.I
+)
+# GitHub が「Create a merge commit」で作るマージのコミットの 1 行目:
+# `Merge pull request #N from <owner>/<branch>`。<owner> は PR の元(head)のリポジトリの持ち主の
+# GitHub アカウント(フォークならフォークの持ち主)で、GitHub が
+# 書く(PR を出した人は変えられない)。人の鍵はこれで決め、コミットのメールアドレス(誰でも書ける)は使わない
+PR_MERGE = re.compile(r"Merge pull request #\d+ from ([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/(\S+)[ \t]*")
+BOT_BRANCH = re.compile(r"measurement/issue-\d+")  # measurement-intake のブランチ
+REPO_OWNER = REPO.split("/", 1)[0].lower()  # 決まった値(contrib.REPO の持ち主)。git の remote は見ない
 
-    base = Path(root).resolve()
+
+def _git_runner(base: Path):
+    import subprocess
 
     def git(*args: str) -> str | None:
         try:
@@ -2158,6 +2442,29 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
             return None
         return r.stdout if r.returncode == 0 else None
 
+    return git
+
+
+def submission_origins(
+    root: str | os.PathLike[str], subs: list[Submission]
+) -> tuple[dict[str, tuple[str | None, str]], bool]:
+    """提出ごとの (PR, 人)(#113。内容の sha256 → (PR の鍵 か None, 人の鍵), git の履歴を使えたか)。
+
+    そのファイルを main に足したコミット(first-parent の履歴で。名前の変更はさかのぼる)を探す。
+    - GitHub の PR のマージ(1 行目が `Merge pull request #N from <owner>/<branch>`。PR_MERGE): PR の鍵は
+      `pr:<マージのコミット>`、人は PR の元の GitHub アカウント `github:<owner>`(GitHub が書く値。コミットの
+      メールアドレスは誰でも書けるので使わない)。ただし <owner> がこのリポジトリの持ち主(REPO_OWNER)で
+      ブランチが `measurement/issue-<M>`(intake のブランチ)、ファイルを足したコミットが BOT_EMAIL のもので
+      `Submitted-by: github:<login>` があるときは、人は `github:<login>`(Issue を書いた人)。
+      フォークの同じ名前のブランチは <owner> がフォークの持ち主なので、その持ち主になる
+    - それ以外(main に直接・squash・rebase・手で書いたマージ): 人はコミットを書いた人のメールアドレス
+      `email:<小文字>`(弱い。実測の PR は GitHub のマージのコミットで入れる決まり。docs/release.md
+      「実測の Issue を受け取る(#113)」)
+    鍵はメールアドレスを含むので、外に書かない(submission_sources は hash にして使う)。
+    git の作業ツリーでない・浅い clone・git が無いときは ({}, False)。まだコミットしていない提出は入れない。
+    通信しない(手元の git の履歴を読むだけ)。"""
+    base = Path(root).resolve()
+    git = _git_runner(base)
     top = git("rev-parse", "--show-toplevel")
     if not top or (git("rev-parse", "--is-shallow-repository") or "").strip() != "false":
         return {}, False
@@ -2179,7 +2486,7 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
     for s in subs:
         with contextlib.suppress(ValueError):
             alias[Path(s.path).resolve().relative_to(top_dir).as_posix()] = s
-    out: dict[str, str] = {}
+    added: dict[str, tuple[str, str]] = {}
     commit = None
     for line in log.splitlines():
         if line.startswith("commit "):
@@ -2192,14 +2499,144 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
             alias[parts[1]] = alias.pop(parts[2])
         elif parts[0] == "A" and parts[1] in alias:
             s = alias.pop(parts[1])
-            out.setdefault(s.sha256, commit)
+            added.setdefault(s.sha256, (commit, parts[1]))
+    cache: dict[tuple[str, str], tuple[str | None, str]] = {}
+
+    def origin(commit: str, path: str) -> tuple[str | None, str]:
+        if (commit, path) in cache:
+            return cache[(commit, path)]
+        parents = (git("rev-list", "--parents", "-n", "1", commit) or "").split()
+        first = (git("log", "-1", "--format=%s", commit) or "").strip()
+        merge = PR_MERGE.fullmatch(first) if len(parents) > 2 else None
+        if merge is None:
+            # GitHub の PR のマージでない(main に直接・squash・rebase、または手で書いたマージ):
+            # コミットを書いた人のメールアドレス(誰でも書けるので弱い。
+            # 実測の PR はマージのコミットで入れる決まり)
+            target = commit
+            if len(parents) > 2:
+                inner = (
+                    git(
+                        "log",
+                        "--diff-filter=A",
+                        "--format=%H",
+                        f"{commit}^1..{commit}^2",
+                        "--",
+                        f":(top){path}",
+                    )
+                    or ""
+                ).split()
+                target = inner[-1] if inner else parents[2]
+            email = (git("log", "-1", "--format=%ae", target) or "").strip().lower()
+            out: tuple[str | None, str] = (f"pr:{commit}" if len(parents) > 2 else None, f"email:{email}")
+        else:
+            owner, branch = merge.group(1).lower(), merge.group(2)
+            person = f"github:{owner}"  # PR の元の GitHub アカウント
+            if owner == REPO_OWNER and BOT_BRANCH.fullmatch(branch):
+                # このリポジトリの中の intake のブランチ: ボットのコミットの Submitted-by(Issue を書いた人)
+                inner = (
+                    git(
+                        "log",
+                        "--diff-filter=A",
+                        "--format=%H",
+                        f"{commit}^1..{commit}^2",
+                        "--",
+                        f":(top){path}",
+                    )
+                    or ""
+                ).split()
+                info = git("log", "-1", "--format=%ae%x00%B", inner[-1] if inner else parents[2]) or ""
+                email, _, body = info.partition("\x00")
+                trailer = SUBMITTED_BY.search(body)
+                uid = SUBMITTED_BY_ID.search(body)
+                if trailer and email.strip().lower() == BOT_EMAIL:
+                    # 数の ID があればそれ(名前を変えても同じ人)、無ければ(前の版のボット)アカウント名
+                    person = f"github-id:{uid.group(1)}" if uid else f"github:{trailer.group(1).lower()}"
+            out = (f"pr:{commit}", person)
+        cache[(commit, path)] = out
+        return out
+
+    return {sha: origin(c, p) for sha, (c, p) in added.items()}, True
+
+
+def submission_submitters(
+    root: str | os.PathLike[str], subs: list[Submission]
+) -> tuple[dict[str, str], bool]:
+    """提出ごとの送った人の鍵(submission_origins の人。内容の sha256 → 鍵, git の履歴を使えたか)。"""
+    origins, ok = submission_origins(root, subs)
+    return {sha: person for sha, (_pr, person) in origins.items()}, ok
+
+
+def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
+    """提出ごとの出どころ(#90・#113)。出どころは「同じ PR」と「同じ人」でつながった提出のまとまり
+    (submission_origins の PR の鍵と人の鍵を合わせてつないだもの): 1 つの PR の提出は、中のコミットの
+    書いた人が何人に見えても 1 つ(#90 と同じ)、1 人の提出は何回の PR・Issue でも 1 つ
+    (作者の実測は何行あっても 1 つ、と
+    同じ考え方。#95)。値はまとまりの中でいちばん小さい鍵の sha256(16 進。メールアドレス・アカウント名を同梱の
+    まとめに書かない)。まだコミットしていないファイルは 1 件で 1 つ(file:<sha256>)。
+    (内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone・git が無いときは
+    ({}, False)(aggregate はファイルごとに数える)。通信しない。"""
+    origins, via_git = submission_origins(root, subs)
+    if not via_git:
+        return {}, False
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)  # いちばん小さい鍵を代表にする(決まった値になる)
+
+    for pr, person in origins.values():
+        find(person)
+        if pr:
+            union(pr, person)
+    out = {
+        sha: hashlib.sha256(f"source:{find(person)}".encode()).hexdigest()
+        for sha, (_pr, person) in origins.items()
+    }
     for s in subs:
         out.setdefault(s.sha256, f"file:{s.sha256}")  # まだコミットしていないファイルは 1 件で 1 つ
     return out, True
 
 
+def submitter_count(
+    root: str | os.PathLike[str],
+    login: str,
+    *,
+    model_id: str | None,
+    gpu_name: str | None,
+    user_id: int | str | None = None,
+) -> int | None:
+    """root(リポジトリの data/contrib)にある、GitHub のアカウント login が送った(実測の Issue、
+    またはそのアカウントから出した PR)、同じモデル・同じ GPU(gpu_key)の提出の数
+    (intake の PR の本文に書く。#113)。git の履歴が無ければ None。"""
+    if not Path(root).is_dir():
+        return 0
+    subs, _ = load_dir(root)
+    same = [
+        s
+        for s in subs
+        if (s.data.get("measurement") or {}).get("model_id") == model_id
+        and gpu_key(str(((s.data.get("system") or {}).get("gpu") or {}).get("name") or ""))
+        == gpu_key(gpu_name or "")
+    ]
+    who, via_git = submission_submitters(root, same)
+    if not via_git:
+        return None
+    keys = {f"github:{login.lower()}"}
+    if user_id is not None and _USER_ID.fullmatch(str(user_id)):
+        keys.add(f"github-id:{user_id}")
+    return sum(1 for k in who.values() if k in keys)
+
+
 def source_id(source: str) -> str:
-    """出どころ(コミットの hash か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
+    """出どころ(送った人の鍵の sha256 か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
     if source.startswith("file:"):
         return "file:" + source[5:17]
     return source[:12]
@@ -2357,7 +2794,7 @@ def community_document(
         "method": (
             "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・"
             "測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。"
-            "最後まで動いた(ok)ものの最大 VRAM を出どころ(リポジトリに足したコミット。git の履歴が無ければ"
+            "最後まで動いた(ok)ものの最大 VRAM を出どころ(送った人。git の履歴から読む。無ければ"
             "提出ごと)ごとの中央値にし、"
             f"|x - 中央値| / ({MAD_SCALE} × MAD) > {OUTLIER_Z} を外れ値として除き"
             "(出どころが 3 つ以上のとき。MAD は中央値の "
@@ -2571,8 +3008,10 @@ __all__ = [
     "bundled_status",
     "community_document",
     "content_hash",
+    "extract_issue_json",
     "gpu_known",
     "gpu_slug",
+    "intake_issue",
     "load_dir",
     "measurements_from_file",
     "privacy_findings",
@@ -2581,7 +3020,10 @@ __all__ = [
     "scrub_text",
     "share_check",
     "share_urls",
+    "submission_origins",
     "submission_sources",
+    "submission_submitters",
+    "submitter_count",
     "suggested_path",
     "validate_dirs",
     "validate_files",

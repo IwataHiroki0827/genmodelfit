@@ -59,8 +59,10 @@ CLI の表示の「GB」も GiB。
 | `update --fields-only` | `languages` を決めるカードの `language` を読むための Hugging Face Hub API への GET(主なファイルのリポジトリと、その `license_from`)。手で足したモデルでは、HEAD、ファイルの見出しの範囲指定 GET、上流のカードの API も行う。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
-| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `contrib share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
-| `contrib` | なし(genmodelfit は提出を送らない。Pull Request は自分で出す)。`share` は URL を出し、端末で y と答えたときだけブラウザで開く(送るのはブラウザで利用者が押したとき) | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`show` / `validate` / `share` / `aggregate --check`: なし |
+| `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル |
+| `share` | なし(端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `<cache>/submissions_shared.json`(送った印)。中身をクリップボードに写すことがある |
+| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
+| `contrib` | なし(genmodelfit は提出を送らない)。`share` は `genmodelfit share` と同じ | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`intake`: `--out` のファイル。`share`: 送った印。`show` / `validate` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
 | `python -m genmodelfit.weekly merge-check` | なし | なし |
 | `python -m genmodelfit.review publish SRC DST` | なし | DST(確認待ちを除いた一覧。data.yml が署名する) |
@@ -947,8 +949,8 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
 | `gpu_known` | bool \| null | (#90、#101)community の行: false は GPU 名が汎用の名前・名前の代わりの値(記録として残し、判定には使わない) |
-| `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
-| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(コミットの先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
+| `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(提出を送った人。#113)の数 |
+| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(送った人の鍵の sha256 の先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
 | `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
 | `runs_evidence` | bool \| null | (#90)community の行: false は OOM の出どころが ok の出どころ以上(「動く」根拠にしない。使い方は段階の決まり PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM の比も 0.95 以上でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE`。0.11.0 で 0.97 から 0.95。共有 / 統合メモリには適用しない) |
@@ -970,7 +972,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
-| `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`contrib share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`。ブラウザは開かない) |
+| `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`・`copied`・`marked_shared`。ブラウザは開かない) |
 
 bench が Measurement を埋める方法(測り方):
 
@@ -986,10 +988,76 @@ bench が Measurement を埋める方法(測り方):
 - `--set` の値: 数だけを `note` に書く。ほかの値は、入力の名前だけを残す。
 - 保存するファイルは `{"measurements": [Measurement]}` で、パス、ユーザー名、プロンプトは含まない。
 
+## measure
+
+`genmodelfit measure [MODEL] --json`(#113)は、外枠(`system`・`database` を含む)に `action` などを足して出す:
+
+- MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by}`(`found_by` は `--url` なら `option`、127.0.0.1 の
+  8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null)と `suggestions`
+  [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
+  seconds_basis}]。測らない。
+- MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`comfyui`・`installed`
+  `{state, missing_bytes, total_bytes, missing_files}`・`time_hint` `{seconds, basis}`、続けて `bench` の鍵
+  (`measurement`・`workflow_source`・`warnings`・`failed?`・`saved_to`・`not_saved`)、`submission`
+  `{saved_to, path_in_repo}`(提出を書かなかったときは null)、`hint`(`genmodelfit share` を案内する 1 行。無ければ null)。
+  失敗したときは `time_hint` までの鍵と `error`。
+
+決まり:
+
+- **提案**: ComfyUI の公式テンプレートのモデル(`source: comfyui-template`)で、この PC の判定が `perfect` か `good` で
+  動かし方が `gpu`、この GPU の実測がまだ無いもの(`measure.has_measurement_here`: `estimate.same_gpu` で同じ GPU、
+  `files_match` で同じファイル、標準の条件、結果が `ok` か `oom`。作業用メモリだけの実測も数える。同じ GPU で
+  測り直しても材料が増えないため)。同じモデル(`groups` の鍵)は 1 件: 入っているワークフロー、無ければ `recommend` が
+  選ぶもの。並びは 入っているもの → `seconds` → `download_bytes` → 名前。既定 10 件(`--limit`)。
+- **入っているか**(`installed.state`): ワークフローのファイルがすべて、一覧の大きさで models のフォルダのどれか
+  (`--comfyui-dir`、無ければ `download` と同じ決め方で ComfyUI に尋ねずに決めたフォルダ、と起動中の ComfyUI が
+  答えたフォルダ)にあれば `yes`、無ければ `no`(`missing_bytes` は `download` が落とす量)、フォルダが見つからない・一覧にファイルが無ければ
+  `unknown`。sha256 は計らない(download が確かめる)。
+- **時間**(`seconds`。10 秒単位に切り上げ): 同じワークフローのどの GPU でもよい `ok` の実測の `seconds` の中央値
+  (`basis: measured`)、無ければ種類ごとのおおよその値(`basis: typical`。`measure.TYPICAL_SECONDS`: image 60・
+  video 300・music 90・sfx 60・tts 60・3d 120)。目安だけで、落とす時間は入れない。
+- **MODEL** は `download` と同じ探し方(`downloader.resolve_candidates`)で、テンプレートのあるワークフローだけに
+  絞る。ID がそのまま合えばそれ、名前なら `recommend` が選ぶワークフロー。
+- 送るための下書きは `<cache>/submissions/<GPU>/<date>-<sha8>.json` に書く(標準の条件で結果が `ok` か `oom` の
+  ときだけ)。`share` がこれを一覧に出す。結果は `bench` と同じく `<cache>/measurements/` に書く。
+- 終了コード: 0 成功・選ばなかった・出す提案が無い・「測りますか?」に n と答えた / 1 ComfyUI が無い・GPU が無い・
+  GPU が使われている・テンプレートが無い・`--json` で入っていない・端末でなく `--yes` も無い・落とすのを断った・実行の
+  失敗 / 2 使い方の誤り。テキストの出力の失敗は、最後に「次にすること:」の行で何をすればよいかを出す。
+
+## share
+
+`genmodelfit share [FILE] --json`(#113。`contrib share` は同じもので、`command: "contrib"`・`action: "share"`):
+
+- FILE を省くと: `listed: true`・`folder`・`submissions` [{file, sha256, shared, date, model_id, gpu, outcome,
+  peak_vram_gb, seconds}](送っていないものを新しい順。`--all` なら送った印のあるものも)。何も開かない。
+- FILE を付けると: `listed: false`・`file`・`ok`・`refused`(送れない理由)・`checklist`・`report`・`share`
+  (`{path_in_repo, title, issue_url, issue_url_length, url_limit, form_url}`。送れないときは null)・
+  `opened`・`copied`(`--json` では false)・`marked_shared`。
+
+決まり:
+
+- 点検は `contrib show` と同じ(全項目・個人の情報のチェックリスト・`validate` の結果。ファイル名は見ない)。
+  チェックリストに NG があるか `validate` の誤りがあれば送れない(終了コード 1)。注意と確認では断らない。
+- `issue_url`: `https://github.com/laxshmate/genmodelfit/issues/new?template=measurement.yml&title=<題>&submission=<中身>`
+  (Issue のフォーム `.github/ISSUE_TEMPLATE/measurement.yml`。`submission` はその JSON の欄の id、`contrib.ISSUE_FIELD`)。
+  中身はファイルのまま(改行は LF)を URL エンコードしたもの。題は `measurement: <model_id> on <GPU 名>`。
+- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `issue_url` を null にし、`form_url`(題だけを入れた同じ
+  フォーム)を開いて、中身を OS の道具でクリップボードに写す(Windows は `clip`、macOS は `pbcopy`、Linux は
+  `wl-copy` / `xclip` / `xsel`。標準入力で渡し、シェルを通さない)。道具が無ければ、テキストの出力で中身を 2 つの
+  `---` の行の間に出す(ファイルの場所はその中に入れない)。
+- ブラウザを開くのは端末(標準入力と標準出力がどちらも端末)で、`--json`・`--print-url` が無いときだけ。尋ねない。
+  `--print-url` は URL だけを出す。
+- 送った印(`<cache>/submissions_shared.json`。中身の sha256 → 日付)を付けるのは、ブラウザでフォームを開いたときと、
+  `--print-url` で URL を出したときだけ。`--json` は見るだけで、`--mark-sent` があるときだけ印を付ける(フォームを自分で
+  開くアプリ向け)。端末でないときのテキストの出力・ブラウザを開けなかったときも付けない。
+- FILE の無い `--print-url` は、送っていない実測が 1 つだけならそれを使う。無い・2 つ以上なら終了コード 1 で FILE を
+  求める(ファイルは標準エラーに並べる)。
+- 通信しない。中身が送られるのは、利用者がフォームで「Create」を押したときだけ。
+
 ## contrib
 
 利用者の実測の提出(#34)。
-genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。`contrib share`(`bench --share`)は、ブラウザでファイルを足す GitHub のページの URL を出すだけ(#90)。
+genmodelfit は、これを**決して送らない**。利用者が `share` の開いた実測の Issue のフォームで「Create」を押す(ボットが Issue を Pull Request にする。`contrib intake`、#113)か、自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。
 コードは `src/genmodelfit/contrib.py`。
 
 動的 VRAM の bench の提出(`vram_metric: torch_reserved`・`offload: dynamic`)は作業用メモリだけを持つ(#100)。まとめて残すが、段ごとの山を測れるようになるまでは照合だけに使う(見積もりのずらしにも段階にも使わない。「Measurement」と [accuracy.ja.md](accuracy.ja.md))。
@@ -1080,7 +1148,8 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は量を見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ確認 `gpu_vram_nominal`(0.11.0 で誤りから下げた。改造品があるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る。Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
-- **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
+- **Issue**(#113): 実測の Issue は `contrib intake` が同じ検査をして 1 つの PR になる(ブランチ `measurement/issue-<N>`。GitHub Actions が作り、Issue を書いた人を PR に、`Submitted-by: github:<アカウント>` としてコミットに書く)。そのアカウントの提出として数える。`GITHUB_TOKEN` で作った PR では contrib.yml は動かない(intake が同じ検査を済ませている)。
+- **出どころ**(#113): 同じ Pull Request(マージのコミット)か同じ人でつながった提出は 1 つの出どころ(`contrib.submission_origins`・`submission_sources`。決まりは [scoring.ja.md](scoring.ja.md)): 人は GitHub のアカウント(アカウントごとに 1 回。別のアカウント・組織・名前を変えたアカウントは別の人になるので、メンテナが確かめる): `Submitted-by-id` の数の ID(ID の無い前の版のボットのコミットは `Submitted-by` のアカウント)はマージのコミットで入れた受け取るボット自身のブランチのときだけ信じ、ほかはマージのコミットの 1 行目(`Merge pull request #N from <アカウント>/<ブランチ>`)の Pull Request の元のアカウント(コミットのメールアドレスは使わない)。そういうマージでないもの(main に直接・squash・rebase)だけ、書いた人のメールアドレスで数える(弱い)。値はまとまりのいちばん小さい鍵の sha256 で、アドレスは出さない。それを 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
 - **OOM の多い組**: OOM の出どころが ok の出どころ以上の行は `runs_evidence: false`(「動く」根拠にしない。使い方は PR #95)。
 - **版**: 検査する genmodelfit より新しい版で作った提出(`tool_newer`)、テンプレートが求めるより古い ComfyUI(`comfyui_old`)、一覧が知る最新より 6 つ以上新しい ComfyUI の版(`comfyui_newer`)は確認だけにする。
 - **大きさの入力の無いテンプレート**で `batch` が 1 でない提出は確認 `batch_sizeless`(0.10.1 の bench の記録の誤り)。
@@ -1098,18 +1167,23 @@ bench の結果を読めないときは終了コード 1。
 `--json`: 外枠 + `action: "show"`、`file`、`ok`、`submission`、`checklist` [{id, label, ok (null = 利用者が確かめる), detail}]、`report`(下)。
 直すべきものがあれば終了コード 1。
 
-### `contrib share FILE [--json]`
+### `contrib share [FILE]`
 
-`show` と同じ点検(中身のすべて・プライバシーのチェックリスト・`validate` の結果。ファイル名は見ない)のあと、GitHub で送るページの URL を出す(#90。`bench … --share` も、書いた提出に同じことをする)。
-- チェックリストに NG があるか、`validate` の誤り(errors)があれば送れない(理由を出して終了コード 1)。注意(warnings)と確認(notices)では断らない。
-- `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<中身>`。中身はファイルのまま(改行は LF)を URL エンコードしたもの。名前の sha8 は `contrib.canonical` の hash なので、字下げ・改行の違いでは変わらない。
-- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、`paste_url` だけを案内する(長い URL は途中で切られることがあるため)。
-- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`(名前だけを入れた同じページ。入力済みのページに中身が出ないときの代わり)。テキストの出力では、その直前に、2 つの `---` の行の間にファイルの中身だけを出す(ファイルの場所はその外の行に出す。場所にはユーザ名が入るので、写す範囲に入れない)。写して貼り付け、「Propose changes」「Create pull request」を押す。GitHub のアップロードのページ(`/upload/`)は書き込みの権限が要るので使わない。
-- 端末(標準入力と標準出力がどちらも端末)では、ブラウザで開くかを y/N で尋ねる(既定は No)。y のときだけ開く。`--json` と端末でないときは URL を出すだけで、開かない。
-- 通信しない。送られるのは、利用者がブラウザでボタンを押したときだけ。リポジトリの名前は `contrib.REPO` の 1 か所。
+`genmodelfit share` と同じ(「share」を見る。前からのスクリプトのため)。JSON は `command: "contrib"`・`action: "share"`。
 
-`--json`: 外枠 + `action: "share"`、`file`、`ok`、`refused`(断った理由)、`checklist`、`report`、`share`(`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, paste_url}`。送れないときは null)、`opened`(常に false)。
-終了コード: 0 = 送れる / 1 = 送れない(または読めない)/ 2 使い方の誤り。
+### `contrib intake EVENT_JSON --out DIR [--existing DIR]`
+
+`.github/workflows/measurement-intake.yml`(#113)が、`measurement` の印の Issue で使う。issues のイベントのファイルから
+Issue の本文・番号・書いた人を読み、`{` で始まる最初の囲み(フォームの JSON の欄。`json` のコードの囲み)をデータとして取り出して
+`contrib.intake_issue` を通す: `validate` の検査(ファイル名は見ない)、`share` の個人の情報の点検(この機械自身のホスト名・ユーザ名の
+確かめは除く。GitHub では実行機のもので、送った人のものではないため)、64 KiB まで、`--existing` に同じ内容の提出が無いこと。
+同じアカウントがその GPU・モデルで `--existing` に既に送った数も数える(`contrib.submitter_count`。git の履歴が要る)。`result.json`(`IntakeResult`: `ok`・`reasons`・`notices`・`path_in_repo`・
+`sha256`・`title` など)と `comment.md`(英語と日本語。理由の文は `contrib.md_cell` で無害にする)を書き、受け付けたときは
+`submission.json`(本文の文字そのままでなく `contrib.dumps` で書き直した中身)・`path.txt`・`title.txt`・`commit_msg.txt`・
+`pr_body.md`(Issue の番号と書いた人・その数・メンテナへの確認・`Closes #N`)・`comment_updated.md`(PR ができた
+あとの編集のとき)も書き、断ったときは `comment_pr_closed.md`(閉じる PR に書く)も書く。`commit_msg.txt` の最後は
+`Submitted-by: github:<アカウント>` と `Submitted-by-id: <数の ID>`(Issue を書いた人の `user.id`。数字のときだけ)で、`submission_sources` が 1 つのアカウントを 1 つの出どころとして数えるのに使う。本文の文字は出力しない
+(`accepted` / `refused (N reasons)` だけ)。受け付けても断っても終了コード 0。イベントを読めないときだけ 1。通信しない。
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 
