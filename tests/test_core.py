@@ -1,4 +1,3 @@
-import itertools
 import json
 
 import pytest
@@ -83,15 +82,12 @@ def test_recommend_order_and_filters():
     db = load(use_cache=False)
     fits = gmf.recommend(modality="image", limit=None, system_info=pc(16), db=db)
     assert fits and all(f.model.modality == "image" for f in fits)
-    # 自動でおすすめに出せるものが先、その中は点数の高い順(同点は ID)
-    from genmodelfit.recommend import sort_key
+    # 自動でおすすめに出せるものが先、その中は 段階 → 公式 → 人気 → Score → ID(docs/scoring.md「並び」)
+    from genmodelfit.recommend import list_key
 
-    assert fits == sorted(fits, key=sort_key)
+    assert fits == sorted(fits, key=list_key)
     autos = [f.auto for f in fits]
     assert any(autos) and autos == sorted(autos, reverse=True)
-    for a, b in itertools.pairwise(fits):
-        if a.auto == b.auto:
-            assert (-a.score, a.model.id) <= (-b.score, b.model.id)
     unc = gmf.recommend(content="uncensored", limit=None, system_info=pc(16), db=db)
     assert all(f.model.content == "uncensored" and f.model.content_evidence for f in unc)
 

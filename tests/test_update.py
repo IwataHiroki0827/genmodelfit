@@ -26,7 +26,7 @@ from genmodelfit.hf import (
     strictest,
 )
 from genmodelfit.models import ModelEntry, Template
-from genmodelfit.recommend import popularity
+from genmodelfit.popularity import HUGGING_FACE, TEMPLATE, source_count
 from genmodelfit.update import (
     LICENSE_POLICY,
     UpstreamFormatError,
@@ -301,15 +301,16 @@ def test_parse_hf_url():
     assert parse_hf_url("https://civitai.com/api/download/models/1") is None
 
 
-def test_popularity_uses_downloads_for_hf():
-    few = ModelEntry(id="hf:a/b", name="b", modality="image", source="huggingface", downloads=100)
-    many = ModelEntry(id="hf:a/c", name="c", modality="image", source="huggingface", downloads=1_000_000)
-    assert popularity(many) > popularity(few)
-    assert popularity(few) >= 0 and popularity(many) <= 100
-    t = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", usage=0), downloads=10**9)
-    assert popularity(t) == popularity(
-        ModelEntry(id="u", name="u", modality="image", template=Template(name="u"))
+def test_popularity_uses_downloads_all_time_for_hf():
+    """人気の数(#95): HF のモデルは全期間のダウンロード数(30 日の数ではない。÷100 で目盛りを直さない)、
+    テンプレートがあればテンプレートの使用数(HF の数は混ぜない)。"""
+    hf = ModelEntry(
+        id="hf:a/b", name="b", modality="image", source="huggingface", downloads=100, downloads_all_time=5000
     )
+    assert source_count([hf]) == (HUGGING_FACE, 5000)
+    t = ModelEntry(id="t", name="t", modality="image", template=Template(name="t", usage=0), downloads=10**9)
+    assert source_count([t]) == (TEMPLATE, 0)
+    assert source_count([t, hf]) == (TEMPLATE, 0)
 
 
 # --- 安全 ---------------------------------------------------------------------------------------

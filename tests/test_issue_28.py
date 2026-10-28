@@ -29,7 +29,14 @@ from genmodelfit.headers import (
     read_header,
 )
 from genmodelfit.models import FIT_UNKNOWN, Gpu, ModelEntry, ModelFile, SystemInfo, fit_rank
-from genmodelfit.recommend import license_unknown, list_key, recommend, row_tier, runs_clean, select, sort_key
+from genmodelfit.recommend import (
+    license_unknown,
+    list_key,
+    mode_label,
+    recommend,
+    runs_clean,
+    select,
+)
 from genmodelfit.table import build_table, make_console
 from genmodelfit.update import set_completeness, set_sampler_stages
 from genmodelfit.workflow import sampler_stages
@@ -182,9 +189,10 @@ def test_precision_choice_falls_back_to_level_without_clean_variant(db):
             assert all(fit_rank(v["fit_level"]) >= fit_rank(f.estimate.fit) for v in others), f.model.id
 
 
-def test_rows_never_leave_the_clean_tier_and_score_never_drops(db):
-    """VRAM を増やしても、行の点数は下がらず、逃がさずに載る行は逃がさずに載ったまま、その精度は下がらない。
-    段階は perfect → good になることがある(高い精度に替わったとき。docs/schema.md)。"""
+def test_rows_never_leave_the_clean_tier(db):
+    """VRAM を増やしても、逃がさずに載る行は逃がさずに載ったまま、その精度は下がらない。
+    段階は perfect → good になることがある(高い精度に替わったとき。docs/schema.md)。
+    Score は下がることがある(#95: GPU+RAM → GPU~ に替わると使用率が上がる。docs/scoring.md「Score」)。"""
     from genmodelfit.groups import precision_rank
 
     for ram in (32, 128):
@@ -197,17 +205,15 @@ def test_rows_never_leave_the_clean_tier_and_score_never_drops(db):
             for k, f in rows.items():
                 if k not in prev:
                     continue
-                score, tier, rank, level = prev[k]
-                assert f.score >= score, (v, ram, k)
-                if tier == "clean":
-                    assert row_tier(f.estimate) == "clean", (v, ram, k)
+                clean, rank, level = prev[k]
+                if clean:
+                    assert runs_clean(f.estimate), (v, ram, k)
                     assert precision_rank(f.model.precision) <= rank, (v, ram, k)
                 else:
                     assert fit_rank(f.estimate.fit) <= level, (v, ram, k)
             prev = {
                 k: (
-                    f.score,
-                    row_tier(f.estimate),
+                    runs_clean(f.estimate),
                     precision_rank(f.model.precision),
                     fit_rank(f.estimate.fit),
                 )
@@ -297,8 +303,11 @@ def test_unknown_size_listed_last_in_fit_and_hidden_in_recommend(db, monkeypatch
     m = _tts_gguf_unknown()
     small = Database(models=[*db.models[:40], m], measurements=db.measurements, sources=db.sources)
     sel = select(small, pc(24), include_unknown_license=True, group=False)
-    assert sel.fits[-1].model.id == m.id
-    assert all(sort_key(a) <= sort_key(b) for a, b in zip(sel.fits, sel.fits[1:], strict=False))
+    # 動く → 判定できない → 動かない(表・--json・ライブラリで同じ。#95)
+    i = [f.model.id for f in sel.fits].index(m.id)
+    assert all(f.estimate.fit in ("perfect", "good", "marginal") for f in sel.fits[:i])
+    assert all(f.estimate.fit == "too_tight" for f in sel.fits[i + 1 :])
+    assert all(list_key(a) <= list_key(b) for a, b in zip(sel.fits, sel.fits[1:], strict=False))
     assert m.id not in [
         f.model.id for f in recommend(small, pc(24), limit=None, include_unknown_license=True)
     ]
@@ -352,7 +361,8 @@ def test_community_comes_after_official_only_within_the_same_level(db):
         keys = [list_key(f) for f in fits]
         assert keys == sorted(keys)
         for a, b in itertools.pairwise(fits):
-            if a.auto == b.auto and a.estimate.fit == b.estimate.fit and is_community(a.model):
+            same_mode = mode_label(a.estimate, a.system) == mode_label(b.estimate, b.system)
+            if a.auto == b.auto and a.estimate.fit == b.estimate.fit and same_mode and is_community(a.model):
                 assert is_community(b.model), (a.model.id, b.model.id)
         # 段階をまたいで最後に回さない: 利用者のテンプレートの good は、公式の marginal より前
         comm = [i for i, f in enumerate(fits) if is_community(f.model) and f.estimate.fit == "good"]
@@ -538,8 +548,8 @@ def test_fit_order_is_type_then_level_then_score(capsys):
     assert keys == sorted(keys)
     for a, b in zip(d["models"], d["models"][1:], strict=False):
         same = a["modality"] == b["modality"] and a["fit_level"] == b["fit_level"]
-        if same and a["community"] == b["community"]:
-            assert a["score"] >= b["score"]
+        if same and a["community"] == b["community"]:  # 同じ段階・公式の中は 人気 → Score(#95)
+            assert (-a["popularity"], -a["score"]) <= (-b["popularity"], -b["score"])
     # 自動のおすすめを先にしない(自動のおすすめかは info で分かる)
     autos = [m["auto"] for m in d["models"] if m["modality"] == "image" and m["fit_level"] == "good"]
     assert autos != sorted(autos, reverse=True) or len(set(autos)) == 1
@@ -547,7 +557,17 @@ def test_fit_order_is_type_then_level_then_score(capsys):
 
 def test_fit_sort_options(capsys):
     score = _fit_json(capsys, "--sort", "score")["models"]
-    keys = [LEVEL_ORDER.index(m["fit_level"]) for m in score]
+    # 動く → 判定できない → 動かない、段階(逃がさずに載る / Marginal)→ Score → 人気(#95)
+    runs = {"unknown": 1, "too_tight": 2}
+    keys = [
+        (
+            runs.get(m["fit_level"], 0),
+            0 if m["fit_level"] in ("perfect", "good") and m["run_mode"] == "gpu" else 1,
+            -m["score"],
+            -m["popularity"],
+        )
+        for m in score
+    ]
     assert keys == sorted(keys) and len({m["modality"] for m in score[:10]}) > 1  # 種類をまたいだ順位
     vram = _fit_json(capsys, "--sort", "vram")["models"]
     needs = [m["memory_required_gb"] for m in vram]

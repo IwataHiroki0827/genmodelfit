@@ -76,12 +76,12 @@ r.auto, r.held_by, r.to_dict()
 | `official_workflow` | ComfyUI 公式テンプレート(`source: comfyui-template`)で `openSource` が false でない | Hugging Face だけの項目 |
 | `custom_nodes` | テンプレートの `requiresCustomNodes` が空 | カスタムノードが要る、テンプレートが無い |
 | `comfyui_version` | テンプレートの `minComfyUIVersion` ≦ 使う版(数字で比べる。`0.3.9 < 0.3.10`) | 版が読めない・記載なし・使う版が不明 |
-| `app_runtime` | (`runtime` が `comfyui` でも null でもないモデルだけ。`official_workflow`・`custom_nodes`・`comfyui_version` の代わり)通らない。動かす仕組み(piper・irodori-tts)はこの一覧では確かめられないので、使う側が確かめる。点数(readiness)の重みは 3 条件の和の 40(0.5.0、#36) | `src/genmodelfit/data/manual.json` に手で足したモデルのつくよみちゃん(runtime `piper`)・Irodori-TTS(runtime `irodori-tts`) |
+| `app_runtime` | (`runtime` が `comfyui` でも null でもないモデルだけ。`official_workflow`・`custom_nodes`・`comfyui_version` の代わり)通らない。動かす仕組み(piper・irodori-tts)はこの一覧では確かめられないので、使う側が確かめる(0.5.0、#36) | `src/genmodelfit/data/manual.json` に手で足したモデルのつくよみちゃん(runtime `piper`)・Irodori-TTS(runtime `irodori-tts`) |
 | `url_reachable` | すべてのファイルの URL に、匿名の HEAD が 200 / 302 / 307(`/api/resolve-cache` への転送)を返した記録があり、その確認が `max_head_age_days`(既定 30 日)より新しい | 401(gated)・404・記録なし(未確認)・URL なし・確認が古い・確認の日時が無い |
 | `sha256` | すべてのファイルに 64 桁の 16 進の sha256 がある | Civitai のファイルなど |
 | `content` | 無検閲(`content: uncensored`)でない | 無検閲(`--allow-uncensored-auto` で外せる) |
 | `size_known` | すべてのファイルの大きさが分かり、ファイルの一覧が完全(`files_complete` が false でない) | 大きさ不明、ファイルの記載なし |
-| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。点数(readiness)の重みは 0。いつも最後の条件(0.6.0、#42。[schema.ja.md](schema.ja.md)「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。[sources.ja.md](sources.ja.md)「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
+| `reviewed` | 確認の印(`review`)が確認待ち(`pending`)でない。印の無い古い一覧(0.5.0 まで)は通る。いつも最後の条件(0.6.0、#42。[schema.ja.md](schema.ja.md)「review」) | `update`(作り直し・`--heads-only`・`--fields-only`・`--inspect-only`)が付けた新しい項目・寛容な側へのライセンスの変化・必要量の減少・新しく無検閲・ファイルの変化(`files_changed`。URL(クエリも)・sha256 の変化や消失・大きさの増減・ファイルの増減・repo_id。0.9.0。[sources.ja.md](sources.ja.md)「確認の印(review)」)(`genmodelfit review approve` で根拠を付けて確かめるまで) |
 
 - ファイルが 1 つも書かれていない項目は、ファイルについての条件がすべて保留になる(空なら通る、にはしない)。
 - `openSource` の記載が無いテンプレートは、ローカルで動くテンプレートとして通す。

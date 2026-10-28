@@ -208,12 +208,12 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
    - Precision spelling is normalized. If the measurement has no precision recorded, it is compared as the model's original precision.
    - Different settings give an estimate shifted by the measurement, with `basis: "estimated"` (the reason says 「…の実測で補正した推定」, "estimate corrected by the measurement of …").
    - If you change the precision, the measurement is not used.
-4. When no settings are given:
-   - A model with a measurement is judged at the measured settings (AI生成キット's "fast" quality).
-   - A model without one is judged at the default for its type (image 1024px, video 832x480 and 81 frames, music 30 seconds, …).
-   - **So in the `fit` list, models with a measurement (768–832px and so on) and models without (1024px and so on) are compared at different settings**
-     (shown in each row's `estimate.settings` and in the reason's 「設定:」 ("Settings:") line).
-   - To compare at the same settings, give `--width` and the like.
+4. When no settings are given (changed in 0.11.0; [scoring.md](scoring.md) "Settings used for judging"):
+   - Every model, with or without measurements, is judged at the default for its type (image 1024px, video 832x480 and 81 frames, music 30 seconds, …).
+   - A measurement's settings are used only to work out the shift of the working memory. The maintainer's image, video and music measurements (AI生成キット's "fast" quality:
+     768–832px, video at 512–640px, music of 20 seconds) do not match the defaults, so at the defaults they are `calibrated` (no `m` in the table).
+   - Up to 0.10 a model with a measurement was judged at the measured settings (so only the models the maintainer measured were compared at smaller settings).
+   - To judge at the measured settings, give `--width` and the like (apps: `judge_model(..., settings=...)`).
    - A template without a size input (depth estimation, background removal and the like, which work from an input image) has no size in its judging settings (#90).
      - Which templates have no size input is decided only by a hand table the maintainer checked (`estimate.NO_SIZE_INPUT`; the evidence is a bench record or the template's nodes), never by other users' submissions (so that one submission cannot change the judgment of a model with a size input on every PC).
      - A new template is added when its first bench record is reviewed (the bench writes a width and height only when the template has a size input; a size-less submission for a model not in the table gets the `settings_missing` warning in its PR, which tells the maintainer).
@@ -383,9 +383,9 @@ The rules below describe how submissions will be handled once they arrive.
   - If both have a PCI model ID (`1002:744c`), the ID is used.
   - Otherwise the name normalized by `estimate.gpu_key` is used (dropping (R), (TM), ™, ®, case, whitespace and the words NVIDIA / GeForce).
 - **In addition, the VRAM must be close** (0.9.1; `estimate.same_vram`):
-  - The ratio of the measured GPU's VRAM to this PC's total (smaller ÷ larger) is 0.97 or more.
+  - The ratio of the measured GPU's VRAM to this PC's total (smaller ÷ larger) is 0.95 or more (0.11.0; 0.97 in 0.9.1–0.10).
   - Because GPUs with the same name and the same model ID can have different VRAM (RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RX 7900 XT / XTX / GRE with PCI ID `744c`).
-  - 0.97 allows for differences in counting, such as nominal 16 GB vs 15.9 GB in nvidia-smi (the same as `MEASURED_VRAM_TOLERANCE`).
+  - 0.95 allows for how the OS and driver count the total of the same card (`MEASURED_VRAM_TOLERANCE`). Linux CUDA reports the total minus a reservation: 5.80 GiB for a 6 GB card (5934 MiB, an RTX 2060 report on the NVIDIA developer forum), 7.79 for 8 GB, 9.78 for 10 GB, 10.76 for 11 GB, 11.77 for 12 GB, 23.69 for 24 GB; Windows reports 6.0, 7.99, 15.92 and so on. For 6 GB, 5.80 ÷ 6.0 = 0.967 missed 0.97, so Linux and Windows owners of the same card were different GPUs; hence 0.95.
   - The ratio of versions with different VRAM is 0.83 or less (RTX 3080 10 / 12 GB, for example), so there is room between them.
   - Integrated GPUs, APUs and Apple (shared / unified memory, whose total is set by the PC's main memory) are not compared.
 - The check of other users' measurements (`fit_change` in `contrib`) is also done for a PC with that VRAM, for GPUs whose nominal VRAM the name table knows.
@@ -393,8 +393,8 @@ The rules below describe how submissions will be handled once they arrive.
   - Confirmed on NVIDIA's official product pages; the source is in the constant's comment.
   - Laptop GPUs and the GTX 16 series are not in the table: they have no VRAM variants, or the names differ.
 - Generic names such as "AMD Radeon(TM) Graphics" and "Intel(R) Arc(TM) Graphics" are not matched by name, because GPUs of different generations share them.
-- The maintainer's bundled measurements are used for every PC (as before).
-- An ok row is used **from one measurement**. `consistent` (2 or more, within 15% spread, no OOM) remains as the condition for entering a refit of the coefficients.
+- The maintainer's bundled measurements shift the values on every PC (as before). Only the same GPU uses them to set the level (0.11.0; "Level" below).
+- An ok row shifts the values **from one measurement**. `consistent` (2 or more sources, within 15% spread, no OOM) is the condition for entering a refit of the coefficients, and also one of the conditions for setting the level (0.11.0).
 
 **Direction:** a measurement is used to **lower or raise** the need. It counts the same as the maintainer's measurements. Only the physical range limits it (`estimate._prepare`).
 
@@ -428,28 +428,27 @@ The rules below describe how submissions will be handled once they arrive.
 
 GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, case and symbols (`estimate.gpu_key` = `contrib.gpu_slug`).
 
-**Level** (#26, "decide the level by measurement", `estimate._measured_band`):
+**Level** (#26, "decide the level by measurement", `estimate.measured_level`; the conditions changed in 0.11.0, full rules in [scoring.md](scoring.md) "When measurements set the level"):
 
-- Another user's successful measurement on **the same GPU** with the same settings is a basis for the level, like the maintainer's (it is not extended to similar GPUs).
-- The conditions are the same as for the maintainer's measurement:
-  - This PC's VRAM is 97% or more of the measured GPU's.
-  - The peak fits.
-  - Perfect needs 60% or less.
-  - A pinned measurement, or a group with a reported OOM, is not a basis for Perfect (up to Good).
+- Only successful measurements on **the same GPU** as this PC (`estimate.same_gpu`) with the same settings are a basis for the level. The same rule for the maintainer's and other users' measurements (not extended to similar GPUs; up to 0.10 the maintainer's counted on any same-vendor GPU with at least the measured VRAM).
+- The level is set only when **two or more independent sources** agree. The maintainer's rows are one source together, however many (the maintainer alone never sets the level); other users' rows count their `n_sources` (one per pull request that added submissions); they are added up. With one source, the values are only shifted.
+- Agree: no OOM record (no `outcome: oom`, `n_oom` or `runs_evidence: false` for the same setup), each aggregated row agrees inside (`consistent`), and the spread across rows is within 15% of the median.
+- **The amount used for the level = max(largest peak + context, weights + fixed part)**, the same value as the table's VRAM (`measured_level_vram_gb`). It uses the same physical floor as the values so that a fake small value cannot lift the level.
+  - If this amount does not fit this PC's VRAM, the level is not set (for example, Wan2.2 5B's weights + fixed part is about 18.4 GB, which does not fit the RTX 5080's 15.9 GB).
+  - Perfect needs 60% or less. A pinned measurement is not a basis for Perfect (up to Good).
 - A `torch_reserved` value gets 0.5 GiB added for the context before the band is decided, and it can also be a basis for Perfect (0.9.0).
-- **The "up to Good" cap for non-NVIDIA GPUs is lifted when the level is decided by a measurement.**
-  - A measurement means the maintainer's or this PC's measurement on a same-vendor GPU, or another user's measurement on the same GPU.
-  - The level rises as far as that measurement decides (it can become Perfect).
-  - Without a measurement, it stays capped at Good as before.
+- **The "up to Good" cap for non-NVIDIA GPUs is lifted when the level is decided by measurements.**
+  - The level rises as far as the measurements decide (it can become Perfect).
+  - When they do not decide it (one source, for example), it stays capped at Good as before.
 
-**Basis levels** (`Estimate.basis_detail`) and the count (`Estimate.sample_count`):
+**Basis levels** (`Estimate.basis_detail`) and the number of sources (`Estimate.sample_count`; the number of submissions until 0.11.0):
 
 - `basis` stays two-valued (measured / estimated) for backward compatibility.
 - `sample_count` was only added to the JSON.
 - How they show:
   - `info`: `measured_community n=3`
   - the mark on the table's VRAM: `c`
-  - the reason: 「ほかの利用者の実測 3 件(中央値 7.02 GB)」 ("3 measurements by other users (median 7.02 GB)")
+  - the reason: "measurements by other users (3 source(s); median 7.02 GB)" (「ほかの利用者の実測(出どころ 3。中央値 7.02 GB)」)
 
 | level | basis | meaning |
 |---|---|---|

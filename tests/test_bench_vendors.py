@@ -327,7 +327,7 @@ def test_apple_measurement_matches_this_pc_by_chip_name():
     """判定は、この PC の GPU 名(system_profiler のチップ名)と実測の GPU 名で同じ GPU を見る。
     古い "mps" の実測は会社 apple としてだけ使う(同じ GPU の実測にはならない)。"""
     from genmodelfit.db import load
-    from genmodelfit.estimate import _measured_band, gpu_precision, measurement_vendor, same_gpu_name
+    from genmodelfit.estimate import gpu_precision, measured_level, measurement_vendor, same_gpu_name
     from genmodelfit.hardware import Host, classify_adapter, parse_system_profiler
     from genmodelfit.models import SystemInfo
 
@@ -345,15 +345,17 @@ def test_apple_measurement_matches_this_pc_by_chip_name():
         "peak_vram_gb": 6.0,
         "vram_metric": "torch_reserved",
         "origin": "community",
-        "n_used": 1,
+        "n_used": 2,
         "n_oom": 0,
+        "n_sources": 2,  # 段階を決めるには別々の出どころ 2 つ以上(#95)
+        "consistent": True,
     }
     chip = Measurement(**{**kw, "gpu_name": "Apple M2 Pro", "gpu_backend": "mps"})
     assert same_gpu_name(chip.gpu_name, g.name)
-    assert _measured_band(chip, entry, s, pc, gpu_precision(entry, pc, s)) is not None
+    assert measured_level([chip], entry, s, pc, gpu_precision(entry, pc, s), 0.0)[0] is not None
     old = Measurement(**{**kw, "gpu_name": "mps", "gpu_backend": None})
     assert measurement_vendor(old) == "apple"
-    assert _measured_band(old, entry, s, pc, gpu_precision(entry, pc, s)) is None
+    assert measured_level([old], entry, s, pc, gpu_precision(entry, pc, s), 0.0)[0] is None
 
 
 # --- PCI の型番 ID(0.9.0): ComfyUI と同じ PC なら、検出した部品から vendor:device を記録する ----------

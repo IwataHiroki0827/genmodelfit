@@ -202,12 +202,12 @@ def test_nested_string_lists_and_bool_as_int_are_rejected(raw):
 
 
 def test_same_vram_boundary():
-    """M8: 比がちょうど 0.97 なら同じ(以上)。それ未満は別。"""
+    """M8: 比がちょうど 0.95 なら同じ(以上)。それ未満は別(0.11.0 で 0.97 から 0.95)。"""
     from genmodelfit.estimate import same_vram
 
     g = Gpu(name="x", vendor="nvidia", vram_total_gb=100.0, backend="cuda")
-    assert same_vram(97.0, g) and same_vram(100.0, g) and not same_vram(96.9, g)
-    assert same_vram(100.0 / 0.97 - 1e-9, g) and not same_vram(100.0 / 0.97 + 0.5, g)
+    assert same_vram(95.0, g) and same_vram(100.0, g) and not same_vram(94.9, g)
+    assert same_vram(100.0 / 0.95 - 1e-9, g) and not same_vram(100.0 / 0.95 + 0.5, g)
 
 
 def test_update_previous_db_falls_back_to_bundled_on_bad_cache(raw, tmp_path):

@@ -318,7 +318,7 @@ class Measurement:
     # 測った GPU の PyTorch の backend(cuda / rocm / xpu / mps。0.9.0、bench が書く)。None は記録が無い
     # (同梱の実測はすべて NVIDIA の cuda)
     gpu_backend: str | None = None
-    n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除いた数。Estimate.sample_count になる)
+    n_used: int | None = None  # 中央値に使った ok の件数(外れ値を除く。0.11.0 から sample_count は n_sources)
     n_oom: int | None = None  # 同じ構成で OOM だった提出の数(1 件以上なら perfect の根拠にしない)
     # 測った GPU の PCI の型番 ID("1002:744c" = vendor:device。機種の番号で、個体・差し場所は表さない。
     # 0.9.0、bench が ComfyUI と同じ PC の検出から書く)。同じ GPU かの照合に名前より先に使う
@@ -330,6 +330,9 @@ class Measurement:
     # 以下はほかの利用者の実測のまとめの行だけ(#90)
     gpu_known: bool | None = None  # False = 名前の表に無い GPU(記録として残すだけで判定に使わない)
     n_sources: int | None = None  # 使った提出の、別々の出どころ(リポジトリに足したコミット = PR)の数
+    # 使った出どころの短い ID(#95。contrib.source_id)。同じ PR の提出が別の行に分かれても、出どころを
+    # ID の和集合で数える(estimate.count_sources)。None は記録の無い古いまとめ
+    source_ids: list[str] | None = None
     n_error: int | None = None  # 同じ構成で ok・oom 以外(error)で終わった提出の数(行の値には使わない)
     runs_evidence: bool | None = None  # False = OOM の出どころが ok の出どころ以上(「動く」根拠にしない)
 
@@ -474,12 +477,17 @@ class Estimate:
     # 根拠の細かい段階(BASIS_DETAILS。#34)。basis は measured / estimated のまま(後方互換)
     basis_detail: str = "estimated"
     # 段階を何で決めたか(0.7.0、#26)。estimate = 見積もり、
-    # measurement = 同じ設定でこの PC 以下の VRAM の GPU で成功した実測
-    # (そのとき measured_peak_vram_gb にその実測の VRAM)
+    # measurement = この PC と同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろった(#95)
+    # (そのとき measured_peak_vram_gb にそろった実測のピークの一番大きいもの)
     fit_from: str = "estimate"
     measured_peak_vram_gb: float | None = None
-    # 見積もりに使った実測の件数(2026-10-22。llmfit の sample_count)。ほかの利用者の実測は中央値に
-    # 使った件数、作者・この PC の実測は 1。実測を使っていない(basis_detail が estimated)ときは None
+    # fit_from が measurement のとき、段階に使った量(#95): max(ピーク + 文脈の分, 重み + 固定分)。
+    # 表の VRAM と Mem% はこの値
+    measured_level_vram_gb: float | None = None
+    # 値の元になった実測の、別々の出どころの数(2026-10-22。llmfit の sample_count。#95 で件数から出どころの
+    # 数に)。作者・この PC の実測は 1(何行あっても合わせて 1)、ほかの利用者のまとめは n_sources。
+    # 段階を実測で決めたときは、そろった出どころの合計。実測を使っていない(basis_detail が estimated)
+    # ときは None
     sample_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:

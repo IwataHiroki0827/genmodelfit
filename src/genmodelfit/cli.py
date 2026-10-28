@@ -761,7 +761,7 @@ def cmd_info(args: argparse.Namespace) -> int:
         out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None and e.basis_detail != "measured":
-        basis += f" n={e.sample_count}"  # ほかの利用者の実測の件数(2026-10-22)
+        basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count。0.11.0 で件数から変えた)
     out.append(f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})")
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
@@ -831,7 +831,7 @@ def _info_lines_ja(m, e, gate, same: list[dict[str, Any]], model_name: str, comm
         out.append(f"    - {f.name}({fs}、{f.directory or '-'}、ライセンス {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None and e.basis_detail != "measured":
-        basis += f" n={e.sample_count}"
+        basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count)
     where = f"、{e.measured_on} で" if e.measured_on else ""
     out.append(f"{L('段階')}{e.fit}({basis}{where})")
     if e.unknown_size:
@@ -2376,10 +2376,19 @@ def _contrib_aggregate_check(args: argparse.Namespace) -> int:
             tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
         )
     st = bundled_status(args.dir, json.loads(bundled_text(COMMUNITY_FILE)), _contrib_db(args))
-    code = 0 if st["ok"] and not st["pending"] else 1
+    code = 0 if st["ok"] and not st["pending"] and not st["file_sources"] else 1
     if args.json:
         _out(_envelope("contrib", None, None, action="aggregate_check", dir=str(args.dir), **st))
         return code
+    if st["file_sources"]:
+        print(
+            tr(
+                f"同梱のまとめに、ファイルごとに数えた出どころが {st['file_sources']} 件ある"
+                "(版のまとめは git の履歴で作り直す。docs/release.md)",
+                f"The bundled aggregate has {st['file_sources']} source(s) counted per file"
+                " (rebuild it from git history for a release; docs/release.md)",
+            )
+        )
     print(
         tr(
             f"同梱のまとめ: 提出 {st['listed']} 件"
@@ -2462,6 +2471,20 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
                 " --allow-empty)",
                 "the result is empty, so nothing is written (so as not to overwrite the bundled data with an"
                 " empty one; use --allow-empty to write it anyway)",
+            )
+        )
+    file_ids = sorted({s for r in rows for s in r.get("source_ids") or [] if s.startswith("file:")})
+    if args.output and file_ids and not args.allow_file_sources:
+        # 版を出すまとめは、出どころを git のコミット(PR)で数える。提出のファイルごとに数えると、1 人が何件も
+        # 出すと何人分にも数えられ、段階を決められてしまう(#95。docs/release.md)
+        raise CliError(
+            tr(
+                "出どころを git の履歴(浅くない clone)で数えられないので書き出しません"
+                f"(ファイルごとの出どころ {len(file_ids)} 件)。版を出すときは main の"
+                " 浅くない clone で動かしてください。試験・手元の確かめだけなら --allow-file-sources",
+                "sources cannot be counted from git history (a non-shallow clone), so nothing is written"
+                f" ({len(file_ids)} per-file source(s)). For a release, run it in a non-shallow"
+                " clone of main. For tests or local experiments only, use --allow-file-sources",
             )
         )
     written = str(write_community(rows, args.output, subs, sources)) if args.output else None
@@ -3485,8 +3508,7 @@ _JSON_FIELDS = """  JSON (--json): { genmodelfit, command, system: {...}, databa
   matched, hidden: {reason: count}, groups: [{modality, matched, shown}],
   models: [{ id, name, model_name,
   modality, tasks, use, content, source, runtime, languages, description, fit_level, fit_label,
-  run_mode, run_mode_label, score,
-  score_components { fit, headroom, readiness, basis, popularity }, memory_kind,
+  run_mode, run_mode_label, score, score_components { memory_fit }, popularity, memory_kind,
   memory_required_gb, memory_available_gb, utilization_pct, gpu_memory_required_gb,
   ram_required_gb, disk_size_gb, total_size_gb, license, licenses, auto,
   held_reasons, estimate_confidence, notes,
@@ -3527,8 +3549,10 @@ _HELP_EN = {
 Without -m / --task: one section per type (image, video, music, sfx, tts, 3d), top -n
 (default 3) each. With -m or --task: one table (default 10).
 One row per model; the precision and workflow that fit best are chosen (--all-workflows: all).
-Order: models that run, then Perfect/Good, then Marginal, then Score (0-100), then id
-(--json puts auto-recommendable ones, gate: auto, before the levels). Uncensored models and
+Order: models that run, then Perfect/Good, then Marginal (faster mode first), official
+templates, popularity (rank among the same type and source), Score, id (--json puts
+auto-recommendable ones, gate: auto, before the levels). Score 0-100 is the memory headroom
+(100 up to 70% use; not speed). Rules: docs/scoring.md. Uncensored models and
 utility tools are hidden unless asked. The default output is a table (llmfit uses JSON by
 default); add --json for apps.
 
@@ -3774,8 +3798,10 @@ _HELP_JA = {
 -m も --task も無ければ、種類(image, video, music, sfx, tts, 3d)ごとに上位 -n 件(既定 3 件)。
 -m か --task があれば 1 つの表(既定 10 件)。
 同じモデルは 1 行にまとめ、一番合う精度とワークフローを選ぶ(--all-workflows で全部)。
-並べ方: 動くもの → Perfect/Good → Marginal → Score(0〜100)の高い順 → ID
+並べ方: 動くもの → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート →
+人気(同じ種類・同じ出どころの中の順位)→ Score → ID
 (--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
+Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。決まりは docs/scoring.md。
 無検閲のモデルと補助ツールは、指定しなければ出さない。既定の出力は表(llmfit の既定は JSON)。
 アプリは --json を付ける。
 
@@ -4472,9 +4498,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SORTS,
         default="type",
         help=tr(
-            "並べ方: type(既定。種類 → 段階 → 点数)、score(種類をまたいだ順位)、vram / disk(少ない順)、name",
-            "order: type (default; type -> fit level -> score), score (ranked across types),"
-            " vram / disk (smallest first), name",
+            "並べ方: type(既定。種類 → 段階 → 公式 → 人気 → Score)、score(種類をまたいで段階 → Score)、"
+            "vram / disk(少ない順)、name",
+            "order: type (default; type -> fit level -> official -> popularity -> Score),"
+            " score (across types; level -> Score), vram / disk (smallest first), name",
         ),
     )
     listing.add_argument(
@@ -5202,6 +5229,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "まとめが空でも --output に書き出す(既定は、空のまとめで上書きしない)",
             "write to --output even if the result is empty (by default an empty result does not overwrite)",
+        ),
+    )
+    c.add_argument(
+        "--allow-file-sources",
+        action="store_true",
+        help=tr(
+            "git の履歴が無くても(出どころを提出のファイルごとに数えても)--output に書き出す。"
+            "試験・手元の確かめだけ。版を出すときは使わない",
+            "write to --output even without git history (sources counted per file). For tests and local"
+            " experiments only; never for a release",
         ),
     )
     c.add_argument(

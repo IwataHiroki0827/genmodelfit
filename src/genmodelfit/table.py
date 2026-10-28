@@ -32,7 +32,7 @@ from rich.text import Text
 from . import i18n
 from .groups import precision_label
 from .i18n import tr
-from .recommend import FIT_LABEL, _ram_short, memory_use, mode_label, vram_need
+from .recommend import FIT_LABEL, _ram_short, mode_label, usage_ratio, vram_need
 from .tasks import MODALITY_LABEL, USES
 
 LEVEL_STYLE = {
@@ -323,12 +323,13 @@ def _mem_cell(e, system) -> Text:
         return Text("?")
     if _ram_short(e, system):  # メモリが理由(VRAM の割合だけだと足りているように見えるので)
         return Text("RAM", style="red" if e.fit == "too_tight" else "yellow")
-    _, need, avail = memory_use(e, system)
-    if need is None or not avail:
+    # その動かし方で一番きつい資源の使用率 r(Score の入力と同じ。#95、docs/scoring.md「Score」)
+    r = usage_ratio(e, system)
+    if r is None:
         return Text("-", style="dim")
-    pct = 100 * need / avail
+    pct = 100 * r
     # 足りないのに 100% と出さない。載るのに 101% とも出さない
-    shown = max(round(pct), 101) if need > avail else min(round(pct), 100)
+    shown = max(round(pct), 101) if r > 1 else min(round(pct), 100)
     style = "red" if pct > 100 else ("yellow" if pct > 90 else "")
     return Text(f"{shown}%" if shown <= 999 else ">999", style=style)
 
@@ -592,18 +593,18 @@ def hidden_text(hidden: Mapping[str, int]) -> str:
 
 # 表の下の「Order:」の説明(並べ方ごと。recommend は auto)
 ORDER_TEXT = {
-    "auto": "Order: runs, Perfect/Good, Marginal, Score.",
-    "type": "Order: Type, Status, Score (--sort).",
-    "score": "Order: Status, Score (all types).",
+    "auto": "Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score.",
+    "type": "Order: Type, Status, official, popularity, Score (--sort).",
+    "score": "Order: runs, Perfect/Good, Marginal, Score, popularity (all types).",
     "vram": "Order: runs, VRAM (least first).",
     "disk": "Order: runs, Disk (smallest first).",
     "name": "Order: runs, Model name.",
 }
 # 日本語(#76。列の名前・段階の名前・Mode の印は表と同じ英語のまま)
 ORDER_TEXT_JA = {
-    "auto": "並び: 動く → Perfect/Good → Marginal → Score。",
-    "type": "並び: Type → Status → Score(--sort)。",
-    "score": "並び: Status → Score(種類をまたいで)。",
+    "auto": "並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。",
+    "type": "並び: Type → Status → 公式 → 人気 → Score(--sort)。",
+    "score": "並び: 動く → Perfect/Good → Marginal → Score → 人気(種類をまたいで)。",
     "vram": "並び: 動くもの → VRAM の少ない順。",
     "disk": "並び: 動くもの → Disk の小さい順。",
     "name": "並び: 動くもの → モデルの名前。",
@@ -633,7 +634,8 @@ def legend(
             fits, hidden, grouped, order, shown, system_marks, non_nvidia, community, json_first
         )
     out = [  # 1 項目 1 行(幅 100 に収める。狭い端末では字下げして折り返す)
-        f"{ORDER_TEXT.get(order, ORDER_TEXT['auto'])} Score 0-100. VRAM: GiB needed, m = measured.",
+        ORDER_TEXT.get(order, ORDER_TEXT["auto"]),
+        "Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.",
         *(["VRAM: c = measured by other users (how many: genmodelfit info <id>)."] if community else []),
         "Mode: GPU all on GPU, GPU~ parts swapped in turn, GPU+RAM offload (slow), CPU (slow), - no run.",
         *(
@@ -650,7 +652,7 @@ def legend(
             if non_nvidia
             else []
         ),
-        "Mem%: share of VRAM (of RAM for CPU), RAM = system RAM short.",
+        "Mem%: share of the tightest memory (VRAM; RAM for CPU, or if larger for GPU+RAM), RAM = RAM short.",
     ]
     if grouped:
         out.append(
@@ -691,7 +693,8 @@ def _legend_ja(
 ) -> list[str]:
     """表の下の説明の日本語(#76)。英語と同じ項目を同じ順に、1 項目 1 行で。"""
     out = [
-        f"{ORDER_TEXT_JA.get(order, ORDER_TEXT_JA['auto'])}Score 0〜100。VRAM = 要る GiB(m = 実測)。",
+        ORDER_TEXT_JA.get(order, ORDER_TEXT_JA["auto"]),
+        "Score 0〜100 = メモリの余裕(Mem% 70% 以下で 100。速さではない)。VRAM = 要る GiB(m = 実測)。",
         *(["VRAM の c = ほかの利用者の実測(件数は genmodelfit info <id>)。"] if community else []),
         "Mode: GPU 全部 GPU、GPU~ 部品を順に載せ替え、GPU+RAM メモリへ逃がす(遅い)、CPU(遅い)、- 動かない。",
         *(
@@ -708,7 +711,7 @@ def _legend_ja(
             if non_nvidia
             else []
         ),
-        "Mem% = VRAM(CPU はメモリ)の使用率、RAM = メモリ不足。",
+        "Mem% = 一番きついメモリの使用率(VRAM。CPU はメモリ、GPU+RAM は大きいほう)、RAM = メモリ不足。",
     ]
     if grouped:
         out.append(

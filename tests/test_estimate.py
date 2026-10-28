@@ -159,18 +159,23 @@ def test_ram_depends_on_run_mode():
 
 def test_measured_on_16gb_falls_through_on_smaller_gpu(db):
     e = db.get("image_z_image_turbo_int8")  # 16 GB で 13.2 GB(動的 VRAM)。アプリでは 6 GB から動く
-    on8 = estimate(e, pc(8), None, db.measurements)
+    at = Settings(width=768, height=768)  # 実測の設定(#95 から、指定しなければ既定の 1024x1024)
+    on8 = estimate(e, pc(8), at, db.measurements)
     assert on8.basis == "measured" and on8.vram_gb == pytest.approx(13.2)
     # 順に載せ替えて 7.6 / 8 GB = 96%: 動くが余裕が無いので marginal(使用率の段階。docs/accuracy.md)
     assert on8.fit == "marginal" and on8.run_mode == "gpu" and on8.vram_sequential_gb <= 8
-    assert estimate(e, pc(12), None, db.measurements).fit == "good"  # 64%。載せ替えは good まで
-    assert estimate(e, pc(6), None, db.measurements).fit == "marginal"
+    assert estimate(e, pc(12), at, db.measurements).fit == "good"  # 64%。載せ替えは good まで
+    assert estimate(e, pc(6), at, db.measurements).fit == "marginal"
+    # 指定しなければ既定の設定(1024x1024)で判定し、実測は値をずらすのに使うだけ(#95)
+    d = estimate(e, pc(8), None, db.measurements)
+    assert d.basis == "estimated" and d.basis_detail == "calibrated" and d.settings["width"] == 1024
 
 
 def test_censored_measurement_is_a_lower_bound(db):
     m = next(x for x in db.measurements if x.model_id == "image_z_image_turbo")
     assert is_censored(m)  # 16 GB の GPU で 15.0 GB = 上限に張り付き
-    e = estimate(db.get("image_z_image_turbo"), pc(16), None, db.measurements)
+    at = Settings(width=768, height=768)  # 実測の設定
+    e = estimate(db.get("image_z_image_turbo"), pc(16), at, db.measurements)
     assert e.basis == "measured" and e.vram_gb > 15.0
     assert any("張り付いた" in r for r in e.reasons)
     ok = Measurement(model_id="x", gpu_name="g", gpu_vram_gb=16, peak_vram_gb=13.2)
@@ -211,7 +216,8 @@ def test_settings_scaling_is_monotonic(db, coef):
 
 def test_limits_are_the_largest_good_settings(db):
     e = db.get("text_to_video_wan")
-    lim = limits_for(e, pc(10), None, db.measurements)  # 8 GB では標準の設定でも 97% で good にならない
+    base = Settings(width=512, height=512, frames=49)  # 実測の設定(縦横比を正方形にそろえる)
+    lim = limits_for(e, pc(10), base, db.measurements)  # 8 GB では標準の設定でも 97% で good にならない
     assert lim["level"] == "good" and lim["max_side_px"] and lim["max_frames"]
     at = Settings(width=lim["max_side_px"], height=lim["max_side_px"], frames=49)
     over = Settings(width=lim["max_side_px"] + 32, height=lim["max_side_px"] + 32, frames=49)
@@ -220,7 +226,7 @@ def test_limits_are_the_largest_good_settings(db):
     more = estimate(e, pc(10), Settings(width=512, height=512, frames=lim["max_frames"] + 4), db.measurements)
     assert more.fit not in ("perfect", "good")
     # 大きな GPU ほど限界は上がる
-    lim16 = limits_for(e, pc(24), None, db.measurements)
+    lim16 = limits_for(e, pc(24), base, db.measurements)
     assert lim16["max_side_px"] >= lim["max_side_px"] and lim16["max_frames"] >= lim["max_frames"]
     assert limits_for(db.get("3d_hunyuan3d_image_to_model"), pc(8), None, db.measurements) is None
     big = limits_for(db.get("image_sdxl_simple"), pc(24), None, db.measurements)
@@ -250,10 +256,18 @@ CURATED_IDS = [
 ]
 
 
+def app_settings(db, model_id):
+    """カタログの目安の VRAM はアプリの設定(作者の実測の設定)でのもの。#95 から、指定しなければ既定の設定で
+    判定するので、比べるときはアプリの設定を渡す。"""
+    m = next((x for x in db.measurements if x.model_id == model_id), None)
+    return m.settings if m is not None else None
+
+
 @pytest.mark.parametrize("model_id", CURATED_IDS)
 def test_curated_min_is_not_too_tight(db, model_id):
     vmin, _ = CURATED[model_id]
-    assert estimate(db.get(model_id), pc(vmin), None, db.measurements).fit != "too_tight"
+    s = app_settings(db, model_id)
+    assert estimate(db.get(model_id), pc(vmin), s, db.measurements).fit != "too_tight"
 
 
 @pytest.mark.parametrize("model_id", CURATED_IDS)
@@ -261,7 +275,7 @@ def test_curated_recommended_runs_on_gpu(db, model_id):
     """推奨の VRAM では GPU で動く(逃がさない)。段階は使用率で決めるので、推奨ぎりぎり(85% 超)なら
     marginal のこともある(Z-Image Turbo int8 と Wan 2.1 1.3B は 8 GB で 96〜97%)。"""
     _, vrec = CURATED[model_id]
-    e = estimate(db.get(model_id), pc(vrec), None, db.measurements)
+    e = estimate(db.get(model_id), pc(vrec), app_settings(db, model_id), db.measurements)
     assert e.run_mode == "gpu" and e.fit != "too_tight"
 
 

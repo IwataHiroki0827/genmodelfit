@@ -654,7 +654,7 @@ For small non-LFS files, the file was actually downloaded and its sha256 compute
 | `manual:irodori-tts-v4.1-small` | `other` / `mit-with-ethical-restrictions` (the tier with use restrictions. The voice codec is `mit`) | The cardData of https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small is `license: mit` and the body says "released under MIT". But the same card's "Ethical Restrictions" (https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions: do not imitate a real person's voice without consent, do not make audio for deepfakes or disinformation) restricts use, so it does not go in the permissive tier (it also does not match `mit` in gate's allow-list). The voice codec https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim is also `license: mit` (the original facebook/dacvae-watermarked is `apache-2.0`) |
 | `manual:stable-audio-3-small-music` | `other` / `stable-audio-community`; the text-reading component `t5gemma_b_b_ul2` is `gemma` | the card https://huggingface.co/stabilityai/stable-audio-3-small-music (`license: other`, `license_name: stable-audio-community`, `gated: auto`). The same repository has `LICENSE_GEMMA.md`. The URL is a copy at the non-gated https://huggingface.co/Comfy-Org/stable-audio-3 (`stable_audio_3_small_music.safetensors`, `t5gemma_b_b_ul2.safetensors`). The T5Gemma entry is the same as `audio_stable_audio_3_medium`, which uses the same file (`stable-audio-3-t5gemma` in `license_sources`) |
 
-Manual models have no `downloads`, which is used for `recommend`'s popularity score, so at equal scores they tend to rank below HF-derived ones.
+Manual models with a Hugging Face repository join the Hugging Face pool of the popularity rank (`popularity`), but they have no all-time download count (`downloads_all_time`), so their rank is 0 (the bottom; [scoring.md](scoring.md) "Popularity").
 
 ### Manually added components
 
@@ -731,7 +731,7 @@ For counts, see `sources.counts` and `sources.huggingface-search` in the list (t
 - Templates whose `username` in index.json is not `ComfyUI` (32 as of 2026-10-20, such as hellorob and PurzBeats) are kept in `Template.username` and get `community: true`.
 - If an official workflow with the same weights exists, they are not made the representative of the entry (they stay in the workflow list).
 - A user template with no official counterpart is shown as one model as it is, but ranked after the official ones (see [schema.md](schema.md), "Order of `recommend`").
-- In `recommend` ordering, HF download counts are divided by 100 to match the scale of the template `usage`.
+- For the popularity rank in the `recommend` order, template `usage` and HF all-time downloads are never mixed: each becomes a percentile within the same type and source (0.11.0; the old conversion "HF downloads divided by 100 to match the template scale" was dropped; [scoring.md](scoring.md) "Popularity").
 
 **Types the templates do not cover**:
 

@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [Unreleased]
+## [0.11.0] - Unreleased
 
 ### Added
 
@@ -22,6 +22,73 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+The meaning of the output changed (#95), so this is 0.11.0. `SCHEMA_VERSION` (the shape of db.json) is unchanged.
+The rules, their one-sentence explanations, evidence and tests are in the new docs/scoring.md (English and Japanese).
+
+- **Score is now only the memory headroom (`memory_fit`)** (#95). It uses llmfit's `fit_score` curve (100 while
+  r ≤ 0.70, then `100 × exp(−0.5 × ((r − 0.70) / 0.20)²)`), where r is the use of the tightest resource of the run
+  mode: full-load VRAM ÷ VRAM (`GPU`), the largest swapped VRAM ÷ VRAM (`GPU~`), max(offloaded VRAM ÷ VRAM, RAM
+  needed ÷ RAM) (`GPU+RAM`), RAM needed ÷ RAM (`CPU`), the amount used for the level ÷ VRAM (level set by
+  measurements), and max(that, RAM needed ÷ RAM) for rows short of RAM. Rows that run never go below 37.5; rows that
+  do not run or are not judged are 0. The level, readiness (gate), "measured or not" and popularity are no longer
+  part of it. JSON `score_components` is now `{"memory_fit": …}`; the keys `fit`, `headroom`, `readiness`, `basis`
+  and `popularity` were removed. A model row's Score is now the representative's (it was the best score among the
+  members). The table's Mem% and JSON `utilization_pct` show r (for `GPU+RAM` and rows short of RAM this can be the
+  RAM share). **The Score can now drop when VRAM grows** and a heavier precision or run mode takes over (Z-Image
+  Turbo: 100 at 12 GB, 82.6 at 16 GB; llmfit behaves the same); the promise "more VRAM never lowers it" now covers
+  levels only. More RAM still never lowers the Score.
+- **Popularity is an order key, not part of the Score** (#95). New JSON field `popularity` (0–100): the percentile
+  (mid-rank) of the model's count among all models of the same type and source in the list (before filters): ComfyUI
+  template `usage` or Hugging Face all-time downloads (`downloads_all_time`), never mixed (the 30-day downloads ÷ 100
+  conversion is gone). No count → 0; sources with fewer than 5 models in a type → 50 for models with a count. The
+  weekly update reports the Spearman correlation between full-load VRAM and template usage for types with 20+
+  template models and warns in the PR body below −0.3 (`popularity.vram_bias`).
+- **New order** (#95). `recommend`: runs → not judged → does not run → (`--json` and the library: auto-recommendable
+  first) → fits without offloading (Perfect / Good on `GPU` / `GPU~`) → Marginal, faster run mode first (`GPU` →
+  `GPU~` → `GPU+RAM` → `CPU`) → official templates → popularity → Score → id. `fit` / `search --sort type`: type →
+  level → official → popularity → Score → id (the last key was the name). `--sort score`: runs → fits without
+  offloading / Marginal → Score → popularity → id. The library and `--json` now put "not judged" before "does not
+  run", like the table (it was the other way round).
+- **Judging uses the per-type default settings for every model** (#95). Without options, a model with measurements
+  was judged at the measurement's settings (the author's app's "fast" quality: Z-Image 768px, SDXL 832px, Wan2.1
+  512x512 with 49 frames, Wan2.2 5B 640x640 with 73 frames, ACE-Step 20 s) while all other models used the defaults
+  (image 1024x1024, video 832x480 with 81 frames, music 30 s). Now every model uses the defaults; measurement settings
+  are only used to compute the shift. Most bundled maintainer measurements (image, video, music) therefore become
+  `calibrated` at the defaults and lose the `m` in the table (3D and utility measurements match and keep it). Apps
+  that want their own settings pass them per model (`judge_model(..., settings=...)`, `--width` etc.); no new API.
+- **Measurements set the level only on the same GPU, and only when two or more independent sources agree** (#95).
+  The maintainer's measurements now follow the same rule as other users' (`estimate.same_gpu`; before, they counted on
+  any same-vendor GPU with at least the measured VRAM, e.g. Wan2.2 5B measured on an RTX 5080 was Good / GPU on an
+  RTX 4060 Ti 16 GB). The maintainer's rows are one source together, however many (the maintainer alone never sets
+  the level); an aggregated community row counts its `n_sources` (one per
+  pull request); they are added up. They must agree (no OOM record, aggregated rows `consistent`, spread across rows
+  within 15% of the median). The amount used for the level is max(largest peak + context, weights + fixed part), the
+  same physical floor as the values; the table's VRAM, Mem% and `memory_required_gb` show it (new
+  `estimate.measured_level_vram_gb`; `measured_peak_vram_gb` keeps the raw peak). With one source the values are
+  still shifted (from one submission) but the level comes from the estimate, and the reasons say why. The same applies
+  to lifting the Good cap of AMD / Intel / Apple GPUs. Wan2.2 5B on an RTX 5080 at 640x640 / 73 frames is no longer
+  Good / GPU (#26): the maintainer's two rows are one source, and its weights + fixed part (about 18.4 GB) does not
+  fit 15.9 GB. The measurement finished by offloading part of the weights with dynamic VRAM, so the right level is
+  the offload level (Marginal, GPU+RAM); docs/scoring.md works through this example.
+- `contrib aggregate --output` refuses (exit code 1) when sources would be counted per file (no git history),
+  unless `--allow-file-sources` (tests and local experiments only); `--check` reports `file_sources`, which must be 0
+  for the bundled aggregate (#95).
+- Aggregated community rows now carry `source_ids` (short IDs of the sources used), and measured levels count
+  sources as the union of the IDs across rows, so one pull request whose submissions land in two rows (with and
+  without a GPU device ID, or by measuring method) is still one source (#95). A measurement whose peak + context is
+  below weights + fixed part (it ran by offloading weights) no longer sets the level. When the weekly popularity-bias
+  check is flagged, the warning also goes into the result's `warnings` and `merge-check` is not safe, so that week is
+  not merged automatically. Manually added models have no usage count, so their popularity rank is 0.
+- **The same GPU now allows a VRAM ratio of 0.95 (was 0.97)** (#95; `estimate.MEASURED_VRAM_TOLERANCE`). Linux CUDA
+  reports the total minus a reservation (a 6 GB card as 5934 MiB = 5.80 GiB, e.g. an RTX 2060 on the NVIDIA developer
+  forum; 7.79 for 8 GB, 11.77 for 12 GB, 23.69 for 24 GB) while Windows reports about 6.0, so Linux and Windows owners
+  of the same 6 GB card (5.80 / 6.0 = 0.967) never shared measurements. Variants with another amount still never match
+  (ratio 0.83 or less: RTX 4060 Ti 8 / 16 GB, RTX 3060 8 / 12 GB, RTX 2060 6 / 12 GB, RTX 3080 10 / 12 GB).
+- `Estimate.sample_count` is now the number of independent sources (1 for the maintainer's rows together, `n_sources` for community
+  rows, the sum when measurements set the level), not the number of submissions; the reasons say
+  "measurements by other users (N source(s); median … GB)".
+- The table legend, `--help` and the Python docstrings explain the new Score and order. CONTRIBUTING recommends
+  measuring at the default settings, and explains templates without a size input.
 - **Submissions are checked more robustly** (#90; about 60 crafted kinds of submissions in
   `tests/test_contrib_robust.py`; each rule is one sentence in docs/schema.md "Rules of the submission pipeline"):
   - A submission PR may only add files: the `Contrib` workflow fails on deleted / modified / renamed files under
@@ -58,6 +125,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A fake small measurement, or one person submitting many times, can no longer lift a model's level** (#95). A
+  single crafted submission such as "Flux ran in 1.0 GB" made the 22 GB Flux Perfect on an 8 GB RTX 3070 while the
+  table still showed 22 GB; four near-identical files from one pull request also set the level. Now the level needs two
+  or more independent sources and never uses less than weights + fixed part.
+- **Only the models the maintainer measured were compared at smaller settings and could be lifted on other GPUs**
+  (#95; see "Changed"): judging settings and the level rule no longer depend on who measured.
 - **Measurements of templates without a size input are now used** (#90). Templates that work from an input image
   (depth estimation, background removal, MoGe, BiRefNet, …) have no width / height input, so the bench records no
   size; judging used the image default (1024x1024), so such measurements never matched and were never used (the
@@ -880,7 +953,7 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[Unreleased]: https://github.com/laxshmate/genmodelfit/compare/v0.10.1...HEAD
+[0.11.0]: https://github.com/laxshmate/genmodelfit/compare/v0.10.1...HEAD
 [0.10.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.1
 [0.10.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.0
 [0.9.2]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.2

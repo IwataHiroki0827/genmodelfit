@@ -46,6 +46,7 @@ from ._version import __version__
 from .db import Database
 from .estimate import (
     COMMUNITY_DEVIATION,
+    MIN_LEVEL_SOURCES,
     NOMINAL_VRAM_TOLERANCE,
     PEAK_VRAM_RATIO,
     PEAK_VRAM_SLACK_GB,
@@ -58,6 +59,7 @@ from .estimate import (
     nvidia_nominal_vram,
     nvidia_size_ok,
 )
+from .estimate import CONSISTENT_REL as _LEVEL_AGREE_REL
 from .hardware import (
     APPLE_CHIP_NAME,
     arch_of,
@@ -2014,8 +2016,10 @@ def validate_dirs(
 MAD_SCALE = 1.4826  # 正規分布の標準偏差に合わせる係数
 OUTLIER_Z = 3.5  # 外れ値とみなす |x - 中央値| / (1.4826 × MAD)(Iglewicz & Hoaglin の目安)
 MAD_FLOOR_REL = 0.02  # MAD の下限(中央値の 2%)。そろいすぎた値で小さな差を外れ値にしない
-CONSISTENT_REL = 0.15  # 残った値の幅(最大 - 最小)が中央値の 15% 以内なら「そろった」
-MIN_CONSISTENT = 2  # 「そろった」とみなす最小の件数
+# 残った値の幅(最大 - 最小)が中央値の 15% 以内なら「そろった」。「そろった」とみなす最小の出どころの数。
+# 実測で段階を決める条件(estimate.measured_level。#95)と同じ値を使う
+CONSISTENT_REL = _LEVEL_AGREE_REL
+MIN_CONSISTENT = MIN_LEVEL_SOURCES
 
 
 def _settings_key(s: Settings) -> tuple:
@@ -2149,6 +2153,13 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
     return out, True
 
 
+def source_id(source: str) -> str:
+    """出どころ(コミットの hash か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
+    if source.startswith("file:"):
+        return "file:" + source[5:17]
+    return source[:12]
+
+
 def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出は使わない。
     sources は提出の内容の sha256 → 出どころ(submission_sources)。無い提出はそれぞれ 1 つの出どころ。
@@ -2209,6 +2220,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
             outcome = "ok"
             n_sources = len(kept)
             runs = n_sources > len(oom_sources)
+            source_ids = sorted(source_id(n) for n in kept)
         else:
             used, outliers, base = [], [], [m for _, m in oom]
             uv = [m.peak_vram_gb for m in base]
@@ -2217,6 +2229,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
             outcome = "oom"
             n_sources = 0
             runs = False
+            source_ids = []
         first = ms[0]
         # consistent は係数の合わせ直し(calibrate)に入れる条件: 別々の出どころが 2 つ以上で、そろっていて、
         # OOM が無い。見積もりは ok の行を 1 件から使う(estimate.usable)
@@ -2263,6 +2276,10 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
                 "consistent": consistent,
                 "n_used": len(used),
                 "n_sources": n_sources,
+                # 使った出どころの短い ID(コミットの先頭 12 桁か file:<内容の sha256 の先頭 12 桁>)。
+                # 1 つの PR の提出が GPU の型番 ID の有無・測り方で別の行に分かれても、判定は ID の和集合で
+                # 出どころを数える(estimate.count_sources。#95)
+                "source_ids": source_ids,
                 "n_outliers": len(outliers),
                 "n_oom": len(oom),
                 "n_error": len(errors),
@@ -2339,6 +2356,8 @@ def bundled_status(
       (git の履歴は読まない。浅い clone・git の外でも同じ結果になる)
     - stale: 測ったときの一覧のファイル(files_fp)が今の一覧(db)と違う行([model_id, gpu_name])。
       判定には使われない(estimate.files_match)。知らせるだけ
+    - file_sources: git のコミットでなく提出のファイルごとに数えた出どころ(file:…)の数。版を出すまとめでは
+      0 でなければならない(1 人が何件も出すと何人分にも数えられるため。#95。docs/release.md)
     - ok: missing が無く matches(pending・stale は ok を落とさない。数えて知らせるだけ)"""
     p = Path(root)
     subs, reports = load_dir(p, db) if p.is_dir() else ([], [])
@@ -2366,8 +2385,23 @@ def bundled_status(
         "missing": missing,
         "stale": stale,
         "matches": matches,
+        "file_sources": file_source_count(document),
         "ok": matches,
     }
+
+
+def file_source_count(document: dict[str, Any] | None) -> int:
+    """まとめ(document)の中の、ファイルごとに数えた出どころ(file:…)の数(提出の記録と行の source_ids)。"""
+    ids = set()
+    for e in (document or {}).get("submissions") or []:
+        src = f"file:{e}" if isinstance(e, str) else (e.get("source") or f"file:{e.get('sha256')}")
+        if str(src).startswith("file:"):
+            ids.add(str(src))
+    for row in (document or {}).get("measurements") or []:
+        for sid in (row.get("source_ids") or []) if isinstance(row, dict) else []:
+            if str(sid).startswith("file:"):
+                ids.add("file:" + str(sid)[5:17])
+    return len({i[:17] for i in ids})
 
 
 # --- 精度の点検(毎週の表) ---------------------------------------------------------------------

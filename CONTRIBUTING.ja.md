@@ -57,9 +57,9 @@ uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --sha
 
 ```powershell
 pip install -U "genmodelfit>=0.9.1"
-genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 768x768 --steps 6
-genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 512x512 --frames 49 --steps 20
-genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 20 --steps 8
+genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 1024x1024 --steps 6
+genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 832x480 --frames 81 --steps 20
+genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 30 --steps 8
 genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --steps 15
 ```
 
@@ -74,7 +74,8 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 - ほかの入力は `--set 入力の名前=値` で変えられます(同じ名前の入力すべてが変わります)。
 - 次の 2 つの場合、結果は「標準でない」(`standard: false`)として記録され、見積もりには使われません: `--set` で大きさ・長さ・ステップ数・seed 以外を変えたとき、`--workflow` を使ったとき。
 - `--set` の値は、数値だけを `note` に残します(文字列はプロンプトのことがあるので、名前だけを残します)。
-- 既存の実測(`src/genmodelfit/data/measurements.json`)と同じ設定で測ると比べやすくなります。
+- **種類ごとの既定の設定**(画像 1024x1024、動画 832x480・81 コマ、音楽 30 秒、効果音・読み上げ 10 秒)で測ると、設定を指定しない判定にそのまま使われます(0.11.0 から、指定が無ければどのモデルもこの設定で判定します。[docs/scoring.ja.md](docs/scoring.ja.md)「判定に使う設定」)。ほかの設定の実測も、見積もりをずらすのに使われます。
+- 入力の画像から大きさが決まるテンプレート(深度推定・背景除去など。大きさの入力が無い)は、`--resolution` を付けずに測ります。bench は大きさを書きません。メンテナが確かめた表(`estimate.NO_SIZE_INPUT`)にあるテンプレートなら、そのまま判定に使われます。表に無いテンプレートの大きさの無い提出には、PR で `settings_missing` の注意が出ます(メンテナが表に足すかを決めます)。
 
 モデルの読み込みとキャッシュ:
 
@@ -121,7 +122,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 git clone https://github.com/<あなたの名前>/genmodelfit
 cd genmodelfit
 pip install -e .
-genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832x832 --submission data/contrib/
+genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 1024x1024 --submission data/contrib/
 ```
 
 - 書くのは提出ファイル(`contrib_schema` 1)です。`--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます。例: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`(`sha8` は中身の sha256 の先頭 8 桁(16 進))。ファイル名を渡せばその名前で書きます。
@@ -203,10 +204,10 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - マージされると data/contrib に入りますが、利用者に**届くのは genmodelfit の次の版から**です(#90)。版を出すときに、メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く。[docs/release.ja.md](docs/release.ja.md))。まだまとめに入っていない提出は `genmodelfit contrib aggregate --check` で見られます。
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
   - PCI の型番 ID が同じ(両方にあるとき)。無ければ、そろえた名前が同じ(汎用の名前は一致としない)。
-  - かつ、VRAM の総量の比が 0.97 以上。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
-- その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、件数(`sample_count`)も出ます。
+  - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
+- その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、段階を決める根拠にもなります。NVIDIA 以外の GPU も、その GPU の実測があれば Good の上限が外れます。詳しくは [docs/accuracy.ja.md](docs/accuracy.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行、または別の PR で送られた提出)がそろうと、段階を決める根拠にもなります(1 人が何件送っても、同じ PR の提出は 1 つの出どころ)。出どころは 1 つの PR なので、同じ人の別々の PR は別々に数えます。メンテナはマージのときにそれを確かめます。NVIDIA 以外の GPU も、そうなれば Good の上限が外れます。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 ### 作者の実測(measurements.json)

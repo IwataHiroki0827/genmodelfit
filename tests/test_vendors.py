@@ -23,7 +23,7 @@ from genmodelfit.hardware import (
     parse_system_profiler,
     parse_wmi_video,
 )
-from genmodelfit.models import Adapter, Gpu, ModelEntry, ModelFile, SystemInfo
+from genmodelfit.models import Adapter, Gpu, ModelEntry, ModelFile, Settings, SystemInfo
 from genmodelfit.recommend import judge, select
 from genmodelfit.table import _unusable_gpus, make_console, mode_cell, no_gpu_line, pc_line, print_fit_table
 
@@ -453,22 +453,29 @@ def nvidia(name: str, vram: float, ram: float = 32.0) -> SystemInfo:
     return SystemInfo(os="Windows", cpu="", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=[g])
 
 
-def test_issue_26_measured_success_on_same_gpu_is_good(db):
-    """Issue #26 の再現: RTX 5080 16GB で 15.8 GB・56 秒で成功した Wan 2.2 5B が
-    marginal / offload だった。"""
-    e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 5080", 15.9), db).estimate
-    assert (e.fit, e.run_mode, e.basis, e.fit_from) == ("good", "gpu", "measured", "measurement")
-    assert e.measured_peak_vram_gb == 15.8
-    assert any("段階は実測で決めた" in r for r in e.reasons)
-    # 表でも GPU・実測の VRAM(m)を出す
-    from genmodelfit.recommend import mode_label, vram_need
+# 作者の Wan 2.2 5B の実測の設定(AI生成キットの「はやい」画質。#95 から指定しないと既定の設定で判定する)
+WAN22_AT = Settings(width=640, height=640, frames=73)
 
+
+def test_issue_26_measured_success_on_same_gpu_is_good(db):
+    """Issue #26: RTX 5080 16GB で 15.8 GB・56 秒で成功した Wan 2.2 5B が marginal / offload だった。
+    #95 から、段階に使う量は max(実測のピーク + 文脈の分, 重み + 固定分)。Wan 2.2 5B の重み + 固定分は
+    約 18.4 GB で 15.9 GB に収まらない(実測は動的 VRAM で重みの一部を逃がしていた: offload dynamic・
+    上限に張り付き)ので、同じ GPU・同じ設定の出どころが 2 つそろっても段階は実測で決めない。
+    実測で段階が決まる組は tests/test_scoring.py(SDXL)。"""
     s = nvidia("NVIDIA GeForce RTX 5080", 15.9)
-    assert mode_label(e, s) == "GPU" and vram_need(e, s) == 15.8
+    e = judge(db.get("video_wan2_2_5B_ti2v"), s, db, settings=WAN22_AT).estimate
+    assert e.basis == "measured" and e.fit_from == "estimate"
+    assert e.measured_level_vram_gb is None
+    # 指定しなければ既定の設定(832x480・81 コマ)で判定し、実測は値をずらすだけ
+    d = judge(db.get("video_wan2_2_5B_ti2v"), s, db).estimate
+    assert d.fit_from == "estimate" and d.basis == "estimated"
 
 
 def test_issue_26_smaller_gpu_stays_estimated(db):
-    e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 3060", 12.0), db).estimate
+    e = judge(
+        db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 3060", 12.0), db, settings=WAN22_AT
+    ).estimate
     assert (e.fit, e.run_mode, e.fit_from) == ("marginal", "offload", "estimate")
     assert any("段階は見積もりで決めた" in r for r in e.reasons)
 
@@ -601,7 +608,7 @@ def test_shared_igpu_ram_includes_gpu_share(db):
 
 
 def test_issue_26_peak_must_fit_this_vram(db):
-    """公称 16 GB の実測 15.8 GB は、15.6 GB(97% 以上)の GPU では段階の根拠にしない(収まらない)。"""
+    """公称 16 GB の実測 15.8 GB は、15.6 GB(95% 以上)の GPU では段階の根拠にしない(収まらない)。"""
     e = judge(db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 5080", 15.6), db).estimate
     assert e.fit_from == "estimate"
 

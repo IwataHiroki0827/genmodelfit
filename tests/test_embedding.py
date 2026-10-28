@@ -271,9 +271,7 @@ def test_python_search_matches_cli(capsys, db):
 def test_fit_score_and_auto(db):
     fits = gmf.recommend(system_info=pc(8), db=db, limit=None)
     assert fits[0].auto and fits[0].score == fits[0].to_dict()["score"]
-    assert all(
-        set(f.score_components) == {"fit", "headroom", "readiness", "basis", "popularity"} for f in fits
-    )
+    assert all(set(f.score_components) == {"memory_fit"} for f in fits)  # #95
     # 古い版の ComfyUI を渡すと、新しい版が要るものは自動のおすすめから外れる
     old = gmf.recommend(system_info=pc(8), db=db, limit=None, comfyui_version="0.1.0")
     assert sum(f.auto for f in old) < sum(f.auto for f in fits)

@@ -184,12 +184,12 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 
 | sort | 順 |
 |---|---|
-| `type`(既定) | 種類(image、video、music、sfx、tts、3d)→ 段階(perfect → good → marginal → unknown → too_tight)→ 同じ段階の中で公式が community より先 → `score` の降順 → モデル名 |
-| `score` | 動く(perfect / good / marginal)→ unknown → too_tight、その中で段階 → 公式が先 → `score` の降順 → 名前。種類をまたいだ 1 つの順位 |
+| `type`(既定) | 種類(image、video、music、sfx、tts、3d)→ 段階(perfect → good → marginal → unknown → too_tight)→ 同じ段階の中で公式が community より先 → `popularity` の降順 → `score` の降順 → `id` |
+| `score` | 動く(perfect / good / marginal)→ unknown → too_tight、その中で段階(逃がさずに動く perfect / good → marginal)→ `score` の降順 → `popularity` の降順 → `id`。種類をまたいだ 1 つの順位 |
 | `vram` / `disk` | 動く → unknown → too_tight、その中で `memory_required_gb` / `disk_size_gb` の昇順(null は最後) |
 | `name` | 動く → unknown → too_tight、その中でモデル名 |
 
-段階は常に点数より先に見る(点数は段階にいちばん大きい重みを掛けるが、ほかの成分で 2 つの段階が逆転しうるため)。
+段階は常に点数より先に見る(段階は「動くか」の答えそのものなので。決まりは [scoring.ja.md](scoring.ja.md)「並び」)。
 自動でおすすめに出せるモデルを、`fit` / `search` で上へ動かすことはしない(条件は `info` で見られる)。
 JSON の `models` も同じ順。`fit` の `filters` は `sort`、`all`、`include_tools` を足し、`search` は `query`、`sort`、`all` を足す。
 
@@ -281,18 +281,19 @@ JSON では次のように分ける。
 
 ### Order of `recommend` / recommend の並べ方
 
-`gmf.recommend()` と `recommend --json`:
-1. 動くもの(`fit_level` が `too_tight` でない。`unknown` は `too_tight` の後ろ)
+`gmf.recommend()` と `recommend --json`([scoring.ja.md](scoring.ja.md)「並び」):
+1. 動く → 判定できない(`unknown`)→ 動かない(`too_tight`)。0.10 までは `too_tight` が `unknown` より先だった(0.11.0 で表とそろえた)
 2. `auto: true`
-3. **逃がさずに動くもの**(`GPU` / `GPU~` の perfect か good。行の点数と同じ 1 つの階層。0.1.1: 精度を上げて `good` の bf16 の行になっても、`perfect` の int8 の行があった位置より下に動かさない)
-4. marginal
+3. **逃がさずに動くもの**(`GPU` / `GPU~` の perfect か good。1 つの階層。0.1.1: 精度を上げて `good` の bf16 の行になっても、`perfect` の int8 の行があった位置より下に動かさない)
+4. marginal。marginal の中だけ動かし方の速い順(`GPU` → `GPU~` → `GPU+RAM` → `CPU`。0.11.0)
 5. **同じ階層の中で**公式が community のテンプレート(`community`)より先
-6. `score`(降順)
-7. `id`
+6. `popularity`(降順。0.11.0)
+7. `score`(降順)
+8. `id`
 
 0.1.0 までは、community のテンプレートが全段階の公式の行より後ろに来ていた。
 
-`recommend` の**表**(文字の出力)は、この順から 2(`auto: true`)を除いた順で並べる(#84)。`-n` はその順で切るので、
+`recommend` の**表**(文字の出力)は、この順から 2(`auto: true`)を除いた順で並べる(#84。だから日付や許可リストで表の並びは変わらない)。`-n` はその順で切るので、
 `-n` を付けると表と `--json` で出るモデルが違うことがある。JSON の並びと中身は変わらない。
 
 ### Models / モデルのまとめ方
@@ -367,12 +368,9 @@ llmfit と同じ考え方: **大きさ**が違えば別のモデル、**精度**
 - 8 GB では、bf16(逃がす、`marginal`)でなく int8(載せ替え、`marginal`)を出す。
 - `--task edit` なら、代表は編集のワークフロー。
 
-**行の `score`(と `score_components`)は、絞り込みを通り、出すエントリと用途も階層も同じモデルのエントリの中で、最も高い点数**。
-- 階層は段階。ただし、逃がさずに動くエントリ(`GPU` / `GPU~` の perfect / good)は、すべて 1 つの階層(`recommend.row_tier`)。
-- 行のほかの値は、出すエントリのもの。
-- 並べ方には、この点数と、出すエントリの `auto` を使う。
+**行の値は、`score`(と `score_components`)も含めてすべて出すエントリのもの**(0.11.0。表の Mem% と合う。0.10 までは、同じ用途・同じ階層の仲間の一番高い点数だった)。`popularity` はモデルの値(仲間で同じ)。
 
-VRAM を足しても、行の点数は下がらず、行が「逃がさずに動く」階層から出ることもない。その階層の中で、出す精度は上がるだけ(例外: ほかの利用者の実測。「Score」を参照)。
+VRAM を足しても、行が「逃がさずに動く」階層から出ることはない。その階層の中で、出す精度は上がるだけ(例外: 同じ GPU の実測が決めた段階。「Score」を参照)。行の `score` は、より重い精度・動かし方に替わると下がることがある(0.11.0)。
 ただし、より高い精度で動くようになると、行の `fit_level` は `perfect` から `good` になりうる(同梱の一覧では LTX 2.3 10Eros だけ: 48 GB で nvfp4 の `perfect` → 64 GB で bf16 の `good`)。
 `tests/test_groups.py` で試験している。
 
@@ -432,12 +430,13 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明で判定していない。0.2.0。0.1.1 まではこれらは `none` だった)(= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU`(全部 GPU)/ `GPU~`(部品を順に載せ替え)/ `GPU+RAM`(逃がす)/ `CPU` / `-`(動かない)/ `?`(大きさが不明) |
 | `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `marginal`)、`cpu`(最大 `marginal`)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
-| `score` | float | 0–100(下) |
-| `score_components` | object | `fit`、`headroom`、`readiness`、`basis`、`popularity`。それぞれ 0–100 |
+| `score` | float | 0–100。メモリの余裕(下の「Score」) |
+| `score_components` | object | `{"memory_fit": …}`(0.11.0。`score` と同じ値。0.10 までの `fit`・`headroom`・`readiness`・`basis`・`popularity` は無くした) |
+| `popularity` | float | (0.11.0)人気の順位 0–100。同じ種類・同じ出どころ(テンプレートの使用数 / Hugging Face の全期間のダウンロード数)の中の百分位で、モデルの値。並びの鍵にだけ使い、`score` には入れない([scoring.ja.md](scoring.ja.md)「人気」) |
 | `memory_kind` | str | `vram`(GPU で判定)または `ram`(CPU) |
 | `memory_required_gb` | float \| null | 段階を判定した量。全部載せ・載せ替え・逃がすなら VRAM(表の VRAM の列)、CPU なら RAM。GPU が要るのに無いときは、最小の VRAM。大きさが不明なら null |
 | `memory_available_gb` | float \| null | この PC の VRAM(CPU なら RAM)。GPU が要るのに無いときは `0.0`。大きさが不明でも入る(0.2.0。以前は null) |
-| `utilization_pct` | float \| null | `memory_required_gb / memory_available_gb × 100`(表の Mem%) |
+| `utilization_pct` | float \| null | その動かし方で一番きつい資源の使用率 r × 100(表の Mem%。`score` の入力)。ふつうは `memory_required_gb / memory_available_gb × 100`。`GPU+RAM` とメモリが足りない行は、要るメモリ ÷ メインメモリのほうが大きければそちら(0.11.0) |
 | `gpu_memory_required_gb` | float \| null | (0.7.1、#58)この PC の GPU で動かすのに要る VRAM。`run_mode` が `cpu`(`memory_required_gb` が RAM になる)のときも入る。すべての GPU の動かし方と `too_tight` では `memory_required_gb` と同じ値。`cpu` では `too_tight` が使うのと同じ値で、読み込み方の中で最も小さい要る量(GPU+RAM で逃がす量 `estimate.vram_offload_gb`。共有 / 統合メモリの GPU でも同じで、`cpu` と `too_tight` で意味が変わらない)。つまり「GPU があるなら少なくともこれだけ要る」。判定に GPU を使わない(CPU だけの PC、`gpu_usable=False`、使えない GPU)とき、または大きさが不明なときは null。追加のキーで、ほかのキーは変わらない |
 | `ram_required_gb` | float \| null | 要るシステム RAM(= `estimate.ram_gb`。大きさが不明なら null) |
 | `disk_size_gb` | float \| null | 数えたダウンロードの大きさ(部品ごとに 1 つの版。= `estimate.disk_gb`) |
@@ -462,28 +461,37 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 
 ### Score / 点数
 
-`score = 0.45·fit + 0.15·headroom + 0.20·readiness + 0.10·basis + 0.10·popularity`。0.1 に丸める(`recommend.WEIGHTS`)。
-各成分は 0–100:
+決まりの全体は [scoring.ja.md](scoring.ja.md)「Score」(0.11.0 で変えた)。
 
-| 成分 | 式 |
+```
+r = その動かし方で一番きつい資源の使用率(utilization_pct ÷ 100)
+memory_fit = 100                                     (r ≤ 0.70)
+           = 100 × exp(−0.5 × ((r − 0.70) / 0.20)²)    (r > 0.70)
+動く行(perfect / good / marginal)は 37.5 が下限。too_tight と unknown は 0
+score = round(memory_fit, 1)
+```
+
+| 動かし方 | r |
 |---|---|
-| `fit` | perfect 100、good 70、marginal 35、too_tight 0、unknown 0 |
-| `headroom` | `min(100, 100 × (1 − vram_gb / VRAM) / 0.5)`。GPU が無いとき、大きさが不明のとき、全部載せの VRAM(`estimate.vram_gb`)が収まらないときは 0。VRAM の半分が空けば 100 |
-| `readiness` | `auto` なら 100。そうでなければ、通った確認の点の合計: license 25、gated 15、official_workflow 15、custom_nodes 15、comfyui_version 10、url_reachable 5、sha256 5、content 5、size_known 5(app_runtime は ComfyUI の 3 つの確認の代わりに 40。これは決して通らない。reviewed は 0) |
-| `basis` | `basis` が `measured` なら 100(0.9.0 から `basis_detail: measured_community` も)。`estimated` なら 0(物理的な上限で切った community の値を含む) |
-| `popularity` | `min(100, 20 × log10(1 + usage))`。usage はテンプレートの利用数、または Hugging Face のダウンロード数 / 100(10 万で 100) |
+| `GPU` | 全部載せの VRAM ÷ VRAM |
+| `GPU~` | 順に載せ替えたときの最大の VRAM ÷ VRAM |
+| `GPU+RAM` | max(逃がしたときの VRAM ÷ VRAM、要るメモリ ÷ メインメモリ) |
+| `CPU` | 要るメモリ ÷ メインメモリ |
+| 段階を実測で決めた行(`fit_from: measurement`) | `estimate.measured_level_vram_gb` ÷ VRAM |
+| メモリが足りない行 | max(上の値、要るメモリ ÷ メインメモリ) |
 
-VRAM や RAM が増えても、点数は下がらない。理由:
-- 段階が下がらない。
-- `headroom` は、PC によらない全部載せの VRAM と比べる。
-- `basis` は、GPU があるときだけ `measured` になる。
+- 定数 0.70・0.20 は llmfit の `fit_score` と同じ。例: r = 0.80 → 88.2、0.90 → 60.7、0.98 → 37.5。
+- 段階・準備(gate)・実測の有無・人気は入れない(人気は並びの鍵。`popularity`)。
+- 0.10 までの式(`0.45·fit + 0.15·headroom + 0.20·readiness + 0.10·basis + 0.10·popularity`)と内訳の鍵は無くした。
 
-`tests/test_invariants.py` で試験している(community の行は除く)。
+**約束**: VRAM やメモリを増やしても、段階は下がらない。メモリを増やしても `score` は下がらない。
+VRAM を増やすと、代表がより重い精度・動かし方に替わって `score` が下がることはある(例: Z-Image Turbo は 12 GB で 100、16 GB で 82.6。0.11.0。llmfit も同じ)。
+`tests/test_invariants.py` と `tests/test_scoring.py` で試験している。
 
-**例外: ほかの利用者の実測**(0.9.1)。
-- 同じ GPU で、VRAM が 3% 以内のときだけ使う(`estimate.same_vram`。VRAM の違うカードは別の GPU)。
-- だから VRAM がそれを超えて増えると、実測が外れる。`basis` が `measured` から `estimated` になり、実測が決めた段階(`fit_from: measurement`)が下がりうる(例: RTX 3060 12 GB の行は、12 GB で Perfect、12.5 GB で Good)。
-- これは意図した動き。同梱の community のファイルは、今は空(0.9.1)。
+**例外: 同じ GPU の実測が決めた段階**(0.9.1、0.11.0)。
+- 実測で段階を決めるのは、この PC と同じ GPU(`estimate.same_gpu`。VRAM の比が 0.95 以上)だけ。作者の実測もほかの利用者の実測も同じ。
+- だから VRAM がそれを超えて増える(`--vram` で量を変える)と、実測が段階を決めなくなり、段階が下がりうる(例: RTX 5080 の PC で `--vram 17`)。
+- これは意図した動き(違う量の GPU の判定だから)。
 
 ## Estimate / 見積もり
 
@@ -497,20 +505,21 @@ VRAM や RAM が増えても、点数は下がらない。理由:
 | `basis` | str | **`measured`**(実際に動かした値)か **`estimated`**(式)。必ず入る。互換のため 2 値のまま。細かい段階は `basis_detail` |
 | `basis_detail` | str | (#34)値がどこまで実測に基づくか。詳しくは下 |
 | `fit_from` | str | (0.7.0、#26)`estimate`(段階が見積もりから来る)か `measurement`。詳しくは下 |
-| `measured_peak_vram_gb` | float \| null | (0.7.0)`fit_from` が `measurement` のときの、その実測の VRAM のピーク(表の VRAM の列に `m` を付けて出す) |
-| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった実測の数。ほかの利用者の実測では、中央値に使った提出の数(`n_used`。それが無い古い行は `n_submissions` − `n_oom`、最低 1)。保守者 / この PC の実測では 1。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
+| `measured_peak_vram_gb` | float \| null | (0.7.0)`fit_from` が `measurement` のときの、そろった実測の VRAM のピークの一番大きいもの(文脈の分を足す前) |
+| `measured_level_vram_gb` | float \| null | (0.11.0)`fit_from` が `measurement` のときの、段階に使った量: max(ピーク + 文脈の分, 重み + 固定分)。表の VRAM の列(`m` / `c` を付ける)・Mem%・`memory_required_gb` はこの値 |
+| `sample_count` | int \| null | (2026-10-22、任意。llmfit と同じ)値の元になった別々の出どころの数(0.11.0 で件数から変えた)。保守者 / この PC の実測は何行あっても合わせて 1。ほかの利用者の実測はまとめの `n_sources`(無い古い行は 1)。段階を実測で決めたときは、ID(`source_ids`)の和集合で数えた、そろった出どころの合計。実測を使わなかったとき(`basis_detail` が `estimated`)は null。`info` は、ほかの利用者の実測を `n=3` のように出す。表の VRAM の列は、ほかの利用者の実測に `c` を、保守者の実測に `m` を付ける |
 | `measured_on` | str \| null | `basis` が `measured` のときの、実測した GPU(GPU 無しで判定したときは null) |
 | `fit` | str | 下の 4 つの段階、または `unknown`(大きさが不明で判定していない) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明) |
 | `reasons` | str[] | 人が読める理由(表示の言語 `en` / `ja`) |
-| `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測から、無ければ種類ごとの既定で埋める) |
+| `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測の有無によらず種類ごとの既定で埋める。0.11.0。それまでは実測があれば実測の設定) |
 | `limits` | Limits \| null | この PC で `good` に届く最大の設定。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
 | `vram_free_short` | bool | GPU で動くと判定したが、今の空き VRAM(`nvidia-smi` の `memory.free`)が選んだ動かし方に要る量を下回る: ほかのアプリを閉じること。段階は全体の VRAM のまま。空き VRAM が不明(`--vram`)のときは常に false |
 | `unknown_size` | bool | 重みの大きさが不明で、何も判定していない。`fit` は `unknown`(`?` と表示。「Too tight」にはしない)、`run_mode` は `unknown`(0.2.0。以前は `none`)、VRAM / RAM の値は JSON で `null`(`Estimate.to_dict`。Python の属性は 0.0 のまま)、`limits` は null、最初の理由は「大きさが分からないため判定できません」。`recommend` はこれを落とし、`fit` / `search` は最後に並べる |
 
 `basis_detail`(#34)。実測に近い順に並べる(`models.BASIS_DETAILS`):
 1. `measured`: 保守者 / この PC の bench の実測(同じ設定)
-2. `measured_community`: ほかの利用者の提出を `contrib aggregate` でまとめたもの。**1 件**の提出からでよく、設定は同じ。件数は `sample_count`
+2. `measured_community`: ほかの利用者の提出を `contrib aggregate` でまとめたもの。値には **1 件**の提出から使い、設定は同じ。出どころの数は `sample_count`
 3. `calibrated`: 別の設定の実測でずらしたもの
 4. `estimated`: 式だけ
 
@@ -522,7 +531,7 @@ VRAM や RAM が増えても、点数は下がらない。理由:
 
 ほかの利用者の実測は、同じ GPU でだけ使う。
 - `estimate.same_gpu`: 両方に PCI 型番 ID があればそれ、無ければ正規化した名前。
-- 0.9.1 から、VRAM が 3% 以内でもある。
+- 0.9.1 から、VRAM の比が 0.95 以上でもある(0.11.0 までは 0.97)。
 - 別の GPU の PC は、それが無いものとして判定する。
 
 そのほかの決まり:
@@ -532,28 +541,25 @@ VRAM や RAM が増えても、点数は下がらない。理由:
 - `basis` が `measured` で、実測が GPU の上限に張り付いていなければ、`vram_gb` は実測の値と等しい。
 - [accuracy.md](accuracy.ja.md)「ほかの利用者の実測」を参照。
 
-`fit_from`(0.7.0、#26): `estimate`(段階が見積もりから来る)か `measurement`。
-`measurement` になる条件と段階:
-- 同じ設定で、同じベンダーの GPU(VRAM がこの PC 以下。3% 以内を許す: 公称 16 と報告 15.9)の標準の実測が成功していれば、段階を少なくとも Good にする。
-- Perfect にするのは、そのピークがこの VRAM の 60% 以内で、GPU の上限に張り付いておらず、OOM の報告のある community のグループでもないときだけ。
-- `torch_reserved` のピークには、帯と収まりの確認の前に `estimate.TORCH_RESERVED_CONTEXT_GB`(0.5 GiB。それが含めない CUDA / HIP のコンテキスト分)を足す(0.9.0。以前は Perfect にならなかった)。
-- 実測のベンダーは、記録があればその `gpu_backend`、無ければ GPU の名前から推す。
-- 実測のピークは、この PC の VRAM にも収まらなければならない。
+`fit_from`(0.7.0、#26。条件は 0.11.0 で変えた): `estimate`(段階が見積もりから来る)か `measurement`。
+`measurement` になる条件と段階(`estimate.measured_level`。詳しくは [scoring.ja.md](scoring.ja.md)「実測で段階を決める条件」):
+- この PC と**同じ GPU**(`estimate.same_gpu`: PCI 型番 ID が同じ、無ければ正規化した名前が同じ。かつ VRAM の比が 0.95 以上。汎用の名前は決して合わない)の、同じ設定・同じベンダーの標準の実測。保守者の実測もほかの利用者の実測も同じ規則(0.10 までは、保守者の実測は同じベンダーで VRAM が測った GPU 以上ならどの GPU にも効いた)。
+- **別々の出どころが 2 つ以上**: 保守者 / この PC の実測は何行あっても合わせて 1 つ(保守者だけでは決めない)、ほかの利用者はまとめの出どころの ID(`source_ids`)の和集合(ID の無い古い行は `n_sources` の一番大きいもの)。足して数える(`estimate.count_sources`)。ピーク + 文脈の分が重み + 固定分より小さい実測は、段階を決めない(重みを逃がして動いた記録)。
+- **そろっている**: OOM の記録が無い(`outcome: oom` の行・`n_oom`・`runs_evidence: false` が無い)、まとめの行の中もそろっている(`consistent`)、行どうしの幅が中央値の 15% 以内。
+- 段階に使う量 = max(そろった一番大きいピーク + 文脈の分, 重み + 固定分)(`measured_level_vram_gb`)。`torch_reserved` のピークには `estimate.TORCH_RESERVED_CONTEXT_GB`(0.5 GiB)を足す。この量がこの PC の VRAM に収まらなければ決めない。
+- 段階は少なくとも Good。Perfect にするのは、その量がこの VRAM の 60% 以内で、GPU の上限に張り付いた実測が無いときだけ。
+- 実測で決めた段階が見積もりの段階より良いときだけ使う。
+- 実測のベンダーは、記録があればその `gpu_backend`、無ければ GPU の名前から推す。別のベンダーの GPU の実測は、較正にだけ使う(`basis: estimated`)。
 
-ほかの利用者の実測:
-- GPU がこの PC のものであるときだけ数える(`estimate.same_gpu`: PCI 型番 ID が同じ、無ければ正規化した名前が同じ。かつ VRAM が 3% 以内。汎用の名前は決して合わない。似た GPU も決して合わない)。
-- 別のベンダーの GPU の実測は、較正にだけ使う(`basis: estimated`)。
+AMD / Intel / Apple の GPU は、段階が実測から来る場合(上の条件)を除き、Good まで。実測から来る場合は、その実測が決める段階まで。
+このとき動かし方は `gpu` で、理由に実測で決めたことが書かれる。
 
-AMD / Intel / Apple の GPU は、段階が実測から来る場合(`fit_from: measurement`: 上のような同じベンダーの保守者 / この PC の実測、または同じ GPU でのほかの利用者の実測)を除き、Good まで。実測から来る場合は、その実測が決める段階まで。
-このとき動かし方は `gpu` で、理由にどちらが決めたかが書かれる。
-
-設定が与えられないとき、実測のあるモデルは実測の設定で判定する(だから実測の値がそのまま使われる。保守者 / この PC の実測だけ。ほかの利用者の行が既定の設定を変えることはない)。
-ほかのモデルは種類ごとの既定を使う(image 1024²、video 832×480 × 81 フレーム、music 30 秒、sfx / tts 10 秒)。
+設定が与えられないときは、実測の有無によらず種類ごとの既定を使う(image 1024²、video 832×480 × 81 フレーム、music 30 秒、sfx / tts 10 秒。大きさの入力の無いテンプレートは大きさなし)。0.10 までは、実測のあるモデルは実測の設定で判定していた(0.11.0 で変えた。[scoring.ja.md](scoring.ja.md)「判定に使う設定」)。
 
 実測を `basis: "measured"` として使うのは、width / height / frames / seconds / batch / precision が合い(精度は大文字小文字を区別せず比べる。精度の無い実測は、モデル自身の精度を意味する)、GPU があるときだけ。
 ほかの設定では、実測でずらすだけで `estimated` のまま。
 `outcome` が `ok` でないもの、`standard: false` のものは無視する。
-だから `fit` では、実測のあるモデルは実測の設定で、ほかのモデルは既定の設定で比べることになる。同じ設定で比べるには `--width` などを付ける。
+だから既定の設定では、実測の設定が既定と違うモデル(作者の画像・動画・音楽の実測)は `calibrated` になる。実測の設定で判定するには `--width` などを付ける。
 実測と係数の使い方は [accuracy.md](accuracy.ja.md) を参照。
 
 Limits / 限界(値はすべて、`perfect` か `good` になる最大のもの。ほかの設定は変えない。`null` は、試した最小の値でも `good` に届かない):
@@ -583,7 +589,7 @@ Limits / 限界(値はすべて、`perfect` か `good` になる最大のもの�
 最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。
 RAM の確認はそのあとに掛ける(足りないが上のページファイルの上限に収まるなら最大 `marginal`、それ以上は `too_tight`)。
 ComfyUI が fp32 で計算する GPU(`compute_dtype: "fp32"`: Maxwell、一部の Pascal、GTX 16xx など)では、判定の前に作業メモリと VAE の重みを 2 倍にする([hardware.md](hardware.ja.md) の「精度」)。
-逃がしても(小さな)GPU に収まらないモデルは、GPU が無いものとしても判定し、良いほうの結果を使う(CPU で動く小さなモデルは `marginal`)。だから VRAM を足しても段階は下がらない(例外: ほかの利用者の実測が決めた段階。実測した VRAM の 3% 以内でだけ効く。「Score」を参照)。
+逃がしても(小さな)GPU に収まらないモデルは、GPU が無いものとしても判定し、良いほうの結果を使う(CPU で動く小さなモデルは `marginal`)。だから VRAM を足しても段階は下がらない(例外: 同じ GPU の実測が決めた段階。VRAM の比が 0.95 以上でだけ効く。「Score」を参照)。
 大きさが不明のモデル(`unknown_size: true`)は、段階の代わりに `unknown` になる。定数は `estimate.FIT_BANDS`。
 
 **1 つのワークフローに拡散モデルが複数ある場合**(0.1.1、Issue #28):
@@ -920,16 +926,17 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `vram_metric` | str \| null | `peak_vram_gb` の取り方: `torch_reserved`(bench: ComfyUI のプロセスの torch の確保のピーク。CUDA コンテキストは除く)、または null(記録なし。同梱の RTX 5080 の行)。較正は null の行だけを使う(`calibrate.CALIBRATION_METRIC`) |
 | `origin` | str \| null | (#34)`measurements_community.json` の行(ほかの利用者の提出を `contrib aggregate` でまとめたもの)は `community`。保守者の同梱の行と、この PC の bench の結果は null |
 | `n_submissions` | int \| null | community の行: グループの提出数(外れ値と OOM を含む)。ファイルには `n_outliers`、`spread_mad_gb`、`spread_rel_pct`、`peak_vram_min_gb` / `peak_vram_max_gb`、`outlier_submissions`、`submissions`(各ファイルの sha8)も残るが、読み手は無視する |
-| `n_used` | int \| null | community の行: 中央値の元になった `ok` の提出数(外れ値を除く)。`Estimate.sample_count` になる |
+| `n_used` | int \| null | community の行: 中央値の元になった `ok` の提出数(外れ値を除く)。0.10 までは `Estimate.sample_count` だった(0.11.0 からは `n_sources`) |
 | `n_oom` | int \| null | community の行: 同じグループでメモリ不足になった提出数。`ok` と `oom` のあるグループは `ok` の中央値を使い、この数を残す(理由に出す。こうした行は決して Perfect にならない) |
 | `consistent` | bool \| null | community の行: 使った提出が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無い。係数の較正(`calibrate`)に入るのは consistent の行だけ。見積もりは、1 件の提出からの `ok` の行すべてを使う(2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
 | `gpu_known` | bool \| null | (#90)community の行: false は名前の表に無い NVIDIA の GPU(記録として残し、判定には使わない) |
 | `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
+| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(コミットの先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
 | `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
 | `runs_evidence` | bool \| null | (#90)community の行: false は OOM の出どころが ok の出どころ以上(「動く」根拠にしない。使い方は段階の決まり PR #95) |
-| `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM も 3% 以内でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE` 0.97。共有 / 統合メモリには適用しない) |
+| `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM の比も 0.95 以上でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE`。0.11.0 で 0.97 から 0.95。共有 / 統合メモリには適用しない) |
 | `standard` | bool | 公式テンプレートをそのまま使い(width / height / frames / length / steps / seed だけ変えた)、到達できるノードがすべて実際に動き(部分的なキャッシュが無い)、間にほかのジョブが動いていないとき `true`。既定は `true` |
 
 `outcome` と `standard` は、既定値のある任意の項目として後から足した。無い古いファイルは `ok` / `true` として読む(`schema_version` は 1 のまま)。
@@ -1164,6 +1171,8 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
+`--output` は、出どころをファイルごとに数える(`file:…`。git の履歴が無い)ときは書き出さない(終了コード 1)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない(#95)。`--report`・`--check` は表示だけなので git の履歴が無くても動く。
+
 `DIR`(既定 `data/contrib`。フォルダが無ければエラー)を読み、`validate` を通ったファイル(通知は許す)を残し、標準の提出を次でグループにする。
 - モデル id
 - GPU(PCI 型番 ID があればそれ、無ければ `estimate.gpu_key` で正規化した名前: 大文字小文字、空白・記号、`(R)` `(TM)` `™` `®`、`NVIDIA` / `GeForce`)
@@ -1202,13 +1211,13 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 ### `contrib aggregate [DIR] --check [--json]`
 
-何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
+何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。git のコミットでなくファイルごとに数えた出どころ(`file:…`)の数 `file_sources` も出す(同梱のまとめは 0 でなければならない。#95)。
 - まだまとめに入っていない、検査を通った提出(マージした後の提出)のパスを出す。
 - まとめの `submissions` にあるのに `DIR` に無い(または検査を通らない)提出と、それだけをまとめ直したときに同梱のファイルと同じになるかも出す。
 - 同梱のまとめのうち、測ったときの一覧のファイル(`files_fp`)が今の一覧と違い、判定に使われない行(`stale`)も出す(知らせるだけ。毎週の一覧の更新で上流のファイルが変わると起きる)。
 
-`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`matches`、`ok`(missing が無く matches)。
-終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、または ok でない / 2 使い方の誤り。
+`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`file_sources`(#95)、`matches`、`ok`(missing が無く matches)。
+終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、ファイルごとの出どころがある、または ok でない / 2 使い方の誤り。
 
 ## download
 

@@ -105,7 +105,10 @@ def recommend(
 
     1 件 = 1 モデル(同じ重みの系統と大きさ。精度・使い方だけ違うワークフローはまとめ、段階が良く精度が
     高いものを出す。ほかは fit.workflows / fit.variants)。all_workflows=True ならワークフローごと。
-    並べ方: 動くもの → 自動でおすすめに出せるもの(fit.auto)→ fit.score の高い順 → ID。
+    並べ方: 動くもの → 判定できないもの → 動かないもの → 自動でおすすめに出せるもの(fit.auto)→ 段階
+    (逃がさずに載る → Marginal。Marginal の中は速い動かし方が先)→ 公式 → 人気の順位(fit.popularity)→
+    fit.score → ID(docs/scoring.md「並び」)。fit.score(0〜100)はメモリの余裕(その動かし方で一番きつい
+    資源の使用率の曲線。llmfit の fit_score と同じ式。速さ・品質・人気は入れない)。
     `fit.to_dict()` は `recommend --json` の models の 1 件と同じ形(docs/schema.md)。
 
     modality: "image"、"image,video"、["image", "video"] のどれでもよい。
@@ -203,12 +206,12 @@ def fit_list(
     comfyui_version: str | None = None,
 ) -> list[Fit]:
     """CLI の `fit` と同じ一覧(0.1.1)。既定は動くもの(perfect / good / marginal)だけで、補助ツール・
-    ライセンス不明・無検閲は出さない。並びは種類 → 段階 → 点数(sort="type")。
+    ライセンス不明・無検閲は出さない。並びは種類 → 段階 → 公式 → 人気 → Score(sort="type")。
 
     fit: "perfect" / "good" / "marginal"(その段階だけ)、"runnable"、"all"(too_tight・判定できないものも)。
     min_fit を渡すときは fit=None にする(両方は ValueError)。show_all=True は CLI の --all
     (fit="all"・補助ツール・ライセンス不明も。無検閲は content="all" で)。
-    sort: "type" / "score"(種類をまたいだ順位)/ "vram" / "disk" / "name"。"""
+    sort: "type" / "score"(種類をまたいで 段階 → Score)/ "vram" / "disk" / "name"。"""
     from .recommend import select
 
     if show_all:
