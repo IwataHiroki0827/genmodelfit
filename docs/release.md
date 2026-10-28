@@ -174,8 +174,9 @@ twice). It has two jobs:
 
 What to check before merging: the notices in the PR body (the same as the `Contrib` job summary; contrib.yml does not
 run for a PR made with `GITHUB_TOKEN`), and the line about how many submissions the same account already sent for
-that GPU and model (one person counts as one source however many they send, but someone using several accounts would
-count several times). Merge with **"Create a merge commit" only, never squash or rebase**, for the bot's pull requests and for
+that GPU and model (one account counts as one source however many it sends, but another account, an organization the
+person owns, or a pull request after a rename counts as someone else; check the author of the pull request or
+issue). Merge with **"Create a merge commit" only, never squash or rebase**, for the bot's pull requests and for
 measurement pull requests opened by people alike (the same rule as "Releasing later versions"): sources are
 counted from the merge commit (`Merge pull request #N from laxshmate/measurement/issue-M` is what makes the
 `Submitted-by:` line trusted).
@@ -188,6 +189,15 @@ One-time setup (the repository's Settings):
    "Allow rebase merging" (sources are counted from GitHub's merge commits). The weekly script on the owner's PC
    (`genmodelfit-weekly.ps1`) merges its PR with `gh pr merge --merge`, which still works; nothing in this repository
    uses `--squash` or `--rebase`.
+   On the same page, under "Allow merge commits", set "Default commit message" to "Default message": the first
+   line of the merge commit must stay `Merge pull request #N from <owner>/<branch>`, because the source account is
+   read from it ("Pull request title" or "title and description" would replace that line).
+4. Protect main so that nobody, including administrators, can push to it or merge without a pull request:
+   Settings → Rules → Rulesets → New ruleset → New branch ruleset → name `main` → Enforcement status "Active" →
+   Bypass list: leave empty → Target branches: "Include default branch" → tick "Require a pull request before
+   merging" and "Block force pushes" → Create. (With classic branch protection instead: Settings → Branches → Add
+   branch protection rule → `main` → tick "Require a pull request before merging" and "Do not allow bypassing the
+   above settings" → Create.)
 The workflow uses only `GITHUB_TOKEN`; no secrets.
 
 ## Data releases

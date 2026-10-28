@@ -1213,7 +1213,9 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
   the same checks.
 - **Sources** (#113): submissions connected by the same pull request (merge commit) or the same person count as
   one source (`contrib.submission_origins` / `submission_sources`; the rules are in [scoring.md](scoring.md)): the
-  person is a GitHub account: the `Submitted-by` account only for the intake bot's own branch merged with a merge
+  person is a GitHub account (counted once per account; another account, an organization or a renamed account counts
+  as someone else, which the maintainer checks): the `Submitted-by-id` numeric id (else, for older bot commits, the
+  `Submitted-by` account) only for the intake bot's own branch merged with a merge
   commit, else the pull request's source account from the merge commit's first line (`Merge pull request #N from
   <account>/<branch>`; commit e-mail addresses are never used for it); only a commit that is not such a merge
   (directly on main, squash, rebase) falls back to the author's e-mail address (weaker). The value is the sha256 of the
@@ -1260,8 +1262,8 @@ counts how many submissions the same account already sent for that GPU and model
 content re-serialized by `contrib.dumps`, not the raw body), `path.txt`, `title.txt`, `commit_msg.txt` and
 `pr_body.md` (the issue number and author, that count, notices for the maintainer, `Closes #N`) and
 `comment_updated.md` (for an edit after the PR exists); when refused also `comment_pr_closed.md` (for the PR that is
-closed). `commit_msg.txt` ends with `Submitted-by: github:<account>`, which `submission_sources` uses to count one
-person as one source. Nothing from the body is printed
+closed). `commit_msg.txt` ends with `Submitted-by: github:<account>` and `Submitted-by-id: <numeric id>` (the issue author's
+`user.id`, only when it is digits), which `submission_sources` uses to count one account as one source. Nothing from the body is printed
 (only `accepted` / `refused (N reasons)`). Exit 0 whether accepted or refused; 1 when the event cannot be read. No
 network access.
 

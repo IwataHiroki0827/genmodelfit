@@ -798,3 +798,25 @@ def test_intake_marker_is_stable_per_reason_set(db, tmp_path):
     with i18n.forced("en"):  # marker.txt は英語の理由の組の印
         en = contrib.intake_issue("nothing", "x", 1, db=db).marker
     assert (tmp_path / "o" / "marker.txt").read_text(encoding="utf-8").strip() == en
+
+
+def test_intake_writes_the_numeric_account_id(db, tmp_path):
+    text = GOOD[0].read_text(encoding="utf-8")
+    ok = contrib.intake_issue(_body(text), "alice", 5, db=db, author_id=583231)
+    assert "Submitted-by: github:alice\nSubmitted-by-id: 583231\n" in ok.commit_message
+    assert (
+        "Submitted-by-id"
+        not in contrib.intake_issue(_body(text), "alice", 5, db=db, author_id="58x").commit_message
+    )
+    assert "- [ ] " in ok.pr_body  # マージの前に作者と同じ人の前の提出を確かめる項目
+    ev = tmp_path / "e.json"
+    ev.write_text(
+        json.dumps({"issue": {"number": 9, "body": _body(text), "user": {"login": "bob", "id": 77}}}), "utf-8"
+    )
+    assert (
+        cli.main(
+            ["contrib", "intake", str(ev), "--existing", str(tmp_path / "none"), "--out", str(tmp_path / "o")]
+        )
+        == 0
+    )
+    assert "Submitted-by-id: 77" in (tmp_path / "o" / "commit_msg.txt").read_text(encoding="utf-8")

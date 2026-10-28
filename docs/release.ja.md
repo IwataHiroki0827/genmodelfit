@@ -163,8 +163,8 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    PR をマージすると Issue は閉じます。
 
 マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
-動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 人は何件送っても 1 つの出どころだが、複数のアカウントを
-使う人は何回も数えられる)。マージは、ボットの Pull Request も人が出した実測の Pull Request も **「Create a merge commit」だけで、squash・rebase は
+動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 つのアカウントは何件送っても 1 つの出どころだが、別のアカウント・
+その人の組織・名前を変えたあとの Pull Request は別の人になる。Pull Request や Issue を書いた人を確かめる)。マージは、ボットの Pull Request も人が出した実測の Pull Request も **「Create a merge commit」だけで、squash・rebase は
 しない**(「次からの版を出す手順」と同じ決まり)。出どころはマージのコミットで数えるため(`Merge pull request #N from laxshmate/measurement/issue-M` のときだけ `Submitted-by:` の行を信じる)。
 
 一度だけの設定(リポジトリの Settings):
@@ -175,6 +175,14 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    「Allow rebase merging」のチェックを外す(出どころは GitHub のマージのコミットで数えるため)。オーナーの PC の毎週の
    台本(`genmodelfit-weekly.ps1`)は PR を `gh pr merge --merge` でマージするので、そのまま動きます。このリポジトリの中に
    `--squash`・`--rebase` を使うものはありません。
+   同じページの「Allow merge commits」の下の「Default commit message」は「Default message」にする。出どころのアカウントを
+   マージのコミットの 1 行目 `Merge pull request #N from <owner>/<branch>` から読むため(「Pull request title」などに
+   すると、その行が変わる)。
+4. main を、管理者も含めて PR なしで push・マージできないように守る: Settings → Rules → Rulesets → New ruleset →
+   New branch ruleset → 名前 `main` → Enforcement status「Active」→ Bypass list は空のまま → Target branches で
+   「Include default branch」→「Require a pull request before merging」と「Block force pushes」にチェック → Create。
+   (昔からのブランチの保護なら: Settings → Branches → Add branch protection rule → `main` →「Require a pull request
+   before merging」と「Do not allow bypassing the above settings」にチェック → Create。)
 ワークフローが使うのは `GITHUB_TOKEN` だけです(シークレットは使わない)。
 
 ## データの配布

@@ -974,3 +974,22 @@ def test_direct_commits_fall_back_to_the_author_email(tmp_path):
     _subs, who, src = r.sources()
     assert set(who.values()) == {"email:a@example.invalid", "email:c@example.invalid"}
     assert len(set(src.values())) == 2
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_bot_trailer_id_survives_a_rename(tmp_path):
+    """Issue のボットのコミットの Submitted-by-id(アカウントの数の ID)で数える: 名前を変えても同じ人。
+    ID の無い前の版のコミットはアカウント名で数え、数字でない ID は使わない。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("a\n\nSubmitted-by: github:oldname\nSubmitted-by-id: 4242", BOT)], n=2)
+    r.pr("measurement/issue-3", [("b\n\nSubmitted-by: github:newname\nSubmitted-by-id: 4242", BOT)], n=4)
+    r.pr("measurement/issue-5", [("c\n\nSubmitted-by: github:legacy", BOT)], n=6)  # ID の無い前の版
+    r.pr("measurement/issue-7", [("d\n\nSubmitted-by: github:odd\nSubmitted-by-id: 12ab", BOT)], n=8)
+    subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["github-id:4242", "github:legacy", "github:odd"]
+    assert len(set(src.values())) == 3
+    mid = subs[0].data["measurement"]["model_id"]
+    gpu = "NVIDIA GeForce RTX 3070"
+    assert contrib.submitter_count(r.root, "newname", model_id=mid, gpu_name=gpu, user_id=4242) == 2
+    assert contrib.submitter_count(r.root, "legacy", model_id=mid, gpu_name=gpu) == 1
+    assert contrib.submitter_count(r.root, "x", model_id=mid, gpu_name=gpu, user_id="4242; rm") == 0

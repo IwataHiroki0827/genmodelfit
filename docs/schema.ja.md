@@ -1149,7 +1149,7 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
 - **Issue**(#113): 実測の Issue は `contrib intake` が同じ検査をして 1 つの PR になる(ブランチ `measurement/issue-<N>`。GitHub Actions が作り、Issue を書いた人を PR に、`Submitted-by: github:<アカウント>` としてコミットに書く)。そのアカウントの提出として数える。`GITHUB_TOKEN` で作った PR では contrib.yml は動かない(intake が同じ検査を済ませている)。
-- **出どころ**(#113): 同じ Pull Request(マージのコミット)か同じ人でつながった提出は 1 つの出どころ(`contrib.submission_origins`・`submission_sources`。決まりは [scoring.ja.md](scoring.ja.md)): 人は GitHub のアカウント: `Submitted-by` のアカウントはマージのコミットで入れた受け取るボット自身のブランチのときだけ信じ、ほかはマージのコミットの 1 行目(`Merge pull request #N from <アカウント>/<ブランチ>`)の Pull Request の元のアカウント(コミットのメールアドレスは使わない)。そういうマージでないもの(main に直接・squash・rebase)だけ、書いた人のメールアドレスで数える(弱い)。値はまとまりのいちばん小さい鍵の sha256 で、アドレスは出さない。それを 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
+- **出どころ**(#113): 同じ Pull Request(マージのコミット)か同じ人でつながった提出は 1 つの出どころ(`contrib.submission_origins`・`submission_sources`。決まりは [scoring.ja.md](scoring.ja.md)): 人は GitHub のアカウント(アカウントごとに 1 回。別のアカウント・組織・名前を変えたアカウントは別の人になるので、メンテナが確かめる): `Submitted-by-id` の数の ID(ID の無い前の版のボットのコミットは `Submitted-by` のアカウント)はマージのコミットで入れた受け取るボット自身のブランチのときだけ信じ、ほかはマージのコミットの 1 行目(`Merge pull request #N from <アカウント>/<ブランチ>`)の Pull Request の元のアカウント(コミットのメールアドレスは使わない)。そういうマージでないもの(main に直接・squash・rebase)だけ、書いた人のメールアドレスで数える(弱い)。値はまとまりのいちばん小さい鍵の sha256 で、アドレスは出さない。それを 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
 - **OOM の多い組**: OOM の出どころが ok の出どころ以上の行は `runs_evidence: false`(「動く」根拠にしない。使い方は PR #95)。
 - **版**: 検査する genmodelfit より新しい版で作った提出(`tool_newer`)、テンプレートが求めるより古い ComfyUI(`comfyui_old`)、一覧が知る最新より 6 つ以上新しい ComfyUI の版(`comfyui_newer`)は確認だけにする。
 - **大きさの入力の無いテンプレート**で `batch` が 1 でない提出は確認 `batch_sizeless`(0.10.1 の bench の記録の誤り)。
@@ -1182,7 +1182,7 @@ Issue の本文・番号・書いた人を読み、`{` で始まる最初の囲�
 `submission.json`(本文の文字そのままでなく `contrib.dumps` で書き直した中身)・`path.txt`・`title.txt`・`commit_msg.txt`・
 `pr_body.md`(Issue の番号と書いた人・その数・メンテナへの確認・`Closes #N`)・`comment_updated.md`(PR ができた
 あとの編集のとき)も書き、断ったときは `comment_pr_closed.md`(閉じる PR に書く)も書く。`commit_msg.txt` の最後は
-`Submitted-by: github:<アカウント>` で、`submission_sources` が 1 人を 1 つの出どころとして数えるのに使う。本文の文字は出力しない
+`Submitted-by: github:<アカウント>` と `Submitted-by-id: <数の ID>`(Issue を書いた人の `user.id`。数字のときだけ)で、`submission_sources` が 1 つのアカウントを 1 つの出どころとして数えるのに使う。本文の文字は出力しない
 (`accepted` / `refused (N reasons)` だけ)。受け付けても断っても終了コード 0。イベントを読めないときだけ 1。通信しない。
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`

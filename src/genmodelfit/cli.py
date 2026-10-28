@@ -2419,6 +2419,7 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
         body = issue.get("body") or ""
         number = int(issue["number"])
         author = str((issue.get("user") or {}).get("login") or "")
+        author_id = (issue.get("user") or {}).get("id")  # 数の ID(intake_issue が数字か確かめる)
         if not isinstance(body, str):
             raise ValueError("body")
     except (OSError, ValueError, KeyError, TypeError) as e:
@@ -2431,7 +2432,7 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
     db = _contrib_db(args)
     # コメントと PR の本文は英語と日本語の両方(Issue を書く人もメンテナもどちらかを読めるように)
     with i18n.forced("en"):
-        res = intake_issue(body, author, number, db=db, existing=args.existing)
+        res = intake_issue(body, author, number, db=db, existing=args.existing, author_id=author_id)
     prior = None
     if res.ok and res.content:
         data = json.loads(res.content)
@@ -2440,11 +2441,16 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
             author,
             model_id=(data.get("measurement") or {}).get("model_id"),
             gpu_name=((data.get("system") or {}).get("gpu") or {}).get("name"),
+            user_id=author_id,
         )
         with i18n.forced("en"):
-            res = intake_issue(body, author, number, db=db, existing=args.existing, prior=prior)
+            res = intake_issue(
+                body, author, number, db=db, existing=args.existing, prior=prior, author_id=author_id
+            )
     with i18n.forced("ja"):
-        ja = intake_issue(body, author, number, db=db, existing=args.existing, prior=prior)
+        ja = intake_issue(
+            body, author, number, db=db, existing=args.existing, prior=prior, author_id=author_id
+        )
     sep = "\n---\n\n"
     res.comment = f"{res.comment}{sep}{ja.comment}"
     res.comment_updated = f"{res.comment_updated}{sep}{ja.comment_updated}"

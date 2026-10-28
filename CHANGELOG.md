@@ -84,16 +84,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **One person is one source, one pull request at most one** (#113): other users' submissions are counted as groups
-  connected by the same pull request (its merge commit; measurement pull requests are merged with a merge commit,
-  never squash or rebase) or the same person. The person is the `Submitted-by: github:<account>` of the intake bot's
-  commit, trusted only when the merge commit is `Merge pull request #N from laxshmate/measurement/issue-M` (the bot's
+- **One GitHub account is one source, one pull request at most one** (#113): other users' submissions are counted as
+  groups connected by the same pull request (its merge commit; measurement pull requests are merged with a merge
+  commit, never squash or rebase) or the same account. For a measurement issue the person is the issue author's
+  numeric account id in the intake bot's `Submitted-by-id:` line (unchanged by renames; older bot commits with only
+  `Submitted-by: github:<account>` count by name), trusted only when the merge commit is `Merge pull request #N from laxshmate/measurement/issue-M` (the bot's
   own branch; a fork's branch of the same name is not trusted), else the pull request's source account from the merge commit's
   first line `Merge pull request #N from <account>/<branch>` (commit e-mail addresses are never used, since anyone
   can write them; a fork's fake bot commits count as the fork's owner). Only a commit that is not such a merge
   (directly on main, squash, rebase) falls back to its author's e-mail address. `source_ids` hold the first 12 hex digits of the sha256 of the group's smallest key, so
-  no address or account is published. New: `contrib.submission_origins`, `contrib.submission_submitters`,
-  `contrib.submitter_count`.
+  no address or account is published. Another account, an organization the person owns, or a pull request after a
+  rename counts as someone else; the bot's pull request has a checklist item for the maintainer to check the author.
+  New: `contrib.submission_origins`, `contrib.submission_submitters`, `contrib.submitter_count`.
 - **`share --json` only previews** (#113): it marks the measurement as sent only with `--mark-sent`; the text output
   without a terminal does not mark it either (opening the browser and `--print-url` do). `share --print-url` without a
   file uses the only unsent measurement. `measure` answered with n exits 0, and a failed measurement ends with a plain

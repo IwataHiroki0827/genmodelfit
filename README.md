@@ -432,7 +432,7 @@ How it is used: a measurement is used for people with the same GPU. On NVIDIA wi
 default today) only the working memory can be measured, so it is used to cross-check the estimates and does not set
 levels yet (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
 Other measurements adjust the estimate for that GPU, and when two different people's measurements agree they also
-set the level. One person counts once, however many measurements they send. Out-of-memory results are kept as
+set the level. One GitHub account counts once, however many measurements it sends. Out-of-memory results are kept as
 "not enough on this GPU" records, which stop measurements from setting the level for that setup. A measurement takes
 effect after a maintainer accepts it and the next version of genmodelfit is released.
 

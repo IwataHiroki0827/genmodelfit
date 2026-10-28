@@ -811,6 +811,7 @@ def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
 # --- Issue で受け取る(measurement-intake.yml。#113) ---------------------------------------------
 
 _FENCE = re.compile(r"^(?P<fence>`{3,}|~{3,})[^\n`]*\n(?P<body>.*?)^(?P=fence)[ \t]*$", re.M | re.S)
+_USER_ID = re.compile(r"\d{1,20}")  # GitHub のアカウントの数の ID
 _LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
 _REPO_PATH = re.compile(r"data/contrib/[a-z0-9-]+/\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json")
 
@@ -882,6 +883,7 @@ def intake_issue(
     existing: str | os.PathLike[str] | None = None,
     today: _date | None = None,
     prior: int | None = None,
+    author_id: int | str | None = None,
 ) -> IntakeResult:
     """実測の Issue(#113)を検査し、PR に入れる中身と、Issue へのコメントを作る(通信しない・何も書かない)。
 
@@ -961,9 +963,12 @@ def intake_issue(
             ]
         )
         return res
+    uid = str(author_id) if author_id is not None and _USER_ID.fullmatch(str(author_id)) else None
     res.commit_message = (
         f"data(contrib): {res.title}\n\nFrom issue #{number} by {author} (measurement-intake).\n\n"
         + (f"Submitted-by: github:{author}\n" if author != "unknown" else "")
+        # アカウントの数の ID(名前を変えても変わらない)。出どころはこれで数える(submission_origins)
+        + (f"Submitted-by-id: {uid}\n" if uid and author != "unknown" else "")
     )
     if prior:
         prior_line = tr(
@@ -998,6 +1003,14 @@ def intake_issue(
                 "Checks: passed contrib validate and the privacy checks",
             ),
             prior_line,
+            "- [ ] "
+            + tr(
+                "マージの前に: Issue を書いた人と、同じ人が別のアカウント・名前を変える前のアカウントで"
+                "この実測を既に送っていないかを確かめる(出どころはアカウントごとに数える)",
+                "Before merging: check who wrote the issue, and whether the same person already sent this"
+                " measurement from another account or under an earlier name (sources are counted per"
+                " account)",
+            ),
             *(
                 [
                     "",
@@ -2398,6 +2411,8 @@ def load_dir(
 BOT_EMAIL = (
     "41898282+github-actions[bot]@users.noreply.github.com"  # GitHub Actions のボット(intake のコミット)
 )
+# GitHub のアカウントの数の ID(Issue を書いた人の user.id。名前を変えても変わらない)。数字だけ
+SUBMITTED_BY_ID = re.compile(r"^Submitted-by-id:[ \t]*(\d{1,20})[ \t]*$", re.M | re.I)
 SUBMITTED_BY = re.compile(
     r"^Submitted-by:[ \t]*github:([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))[ \t]*$", re.M | re.I
 )
@@ -2532,8 +2547,10 @@ def submission_origins(
                 info = git("log", "-1", "--format=%ae%x00%B", inner[-1] if inner else parents[2]) or ""
                 email, _, body = info.partition("\x00")
                 trailer = SUBMITTED_BY.search(body)
+                uid = SUBMITTED_BY_ID.search(body)
                 if trailer and email.strip().lower() == BOT_EMAIL:
-                    person = f"github:{trailer.group(1).lower()}"
+                    # 数の ID があればそれ(名前を変えても同じ人)、無ければ(前の版のボット)アカウント名
+                    person = f"github-id:{uid.group(1)}" if uid else f"github:{trailer.group(1).lower()}"
             out = (f"pr:{commit}", person)
         cache[(commit, path)] = out
         return out
@@ -2589,7 +2606,12 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
 
 
 def submitter_count(
-    root: str | os.PathLike[str], login: str, *, model_id: str | None, gpu_name: str | None
+    root: str | os.PathLike[str],
+    login: str,
+    *,
+    model_id: str | None,
+    gpu_name: str | None,
+    user_id: int | str | None = None,
 ) -> int | None:
     """root(リポジトリの data/contrib)にある、GitHub のアカウント login が送った(実測の Issue、
     またはそのアカウントから出した PR)、同じモデル・同じ GPU(gpu_key)の提出の数
@@ -2607,7 +2629,10 @@ def submitter_count(
     who, via_git = submission_submitters(root, same)
     if not via_git:
         return None
-    return sum(1 for k in who.values() if k == f"github:{login.lower()}")
+    keys = {f"github:{login.lower()}"}
+    if user_id is not None and _USER_ID.fullmatch(str(user_id)):
+        keys.add(f"github-id:{user_id}")
+    return sum(1 for k in who.values() if k in keys)
 
 
 def source_id(source: str) -> str:
