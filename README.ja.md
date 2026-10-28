@@ -10,9 +10,13 @@ LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit
 llmfit の公式のプロジェクトでも派生(フォーク)でもありません。状態: アルファ版
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md))。
 
-![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.png)
+![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.ja.png)
 
-`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-22 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+`--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のままです。画像では GPU を架空の Ada 世代
+(bf16・fp8 とも使える)に差し替えていて、撮った PC のものではありません。
+RTX 30 系以降(30・40・50 系)なら世代で見積もりは変わらないので、GPU を買う前に試すのにも使えます(メインメモリは `--ram`)。
+画像は [tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py) で作っています。
 
 ## すぐ試す
 
@@ -215,16 +219,18 @@ JSON のキー・ID・コード・判定はどちらの言語でも同じ。英�
 
 ### 例
 
-VRAM 8 GiB・メモリ 32 GiB の PC での `genmodelfit recommend --lang ja`(種類ごとに上位 2 件。`COLUMNS=100`):
+VRAM 8 GiB・メモリ 32 GiB の PC での `genmodelfit recommend --lang ja`(種類ごとに上位 2 件。`COLUMNS=100`)。
+例は架空の Ada 世代の GPU で作っています。`--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のものです。
+[tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py) の `--readme` でこれらのブロックを作り直せます:
 
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2 --lang ja
 PC: VRAM 8.0 GiB と仮定(--vram)、メモリ 32.0 GiB(--ram)
-おすすめ: 81 件中 12 件(隠した 226 件: 無検閲 26・補助ツール 34・ライセンス不明 28・動かない 138。ほ
-    かに 22 件のワークフローをモデルにまとめた)
-== 画像 (image): 30 件中 上位 2 件(続きは -m image)
+おすすめ: 83 件中 12 件(隠した 221 件: 無検閲 26・補助ツール 34・ライセンス不明 28・動かない 133。ほ
+    かに 25 件のワークフローをモデルにまとめた)
+== 画像 (image): 32 件中 上位 2 件(続きは -m image)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% GPU~     5.4 other
+image ● Good        100 Anima Base 1.0             gen,edit  bf16   5.7  71% GPU~     5.4 other
 image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
 == 動画 (video): 12 件中 上位 2 件(続きは -m video)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
@@ -233,7 +239,7 @@ video ● Good        100 Wan 2.1 1.3B T2V           gen       fp16   4.3  54% G
 == 音楽 (music): 10 件中 上位 2 件(続きは -m music)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
-music ● Good         84 YuE2 3B                    gen,edit  int8   6.5  82% GPU      3.7 cc-by-nc-…
+music ● Good        100 YuE2 3B                    gen,edit  int8   4.3  54% GPU~     3.7 cc-by-nc-…
 == 効果音 (sfx): 2 件中 上位 2 件(続きは -m sfx)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 sfx   ● Good        100 stable-audio-open-1.0      gen       fp32   4.9  61% GPU~     5.3 other
@@ -270,7 +276,7 @@ PC: VRAM 24.0 GiB と仮定(--vram)、メモリ 128.0 GiB(--ram)
 全モデル: 60 件中 6 件(隠した 218 件: ほかの種類 166・無検閲 21・補助ツール 19・ライセンス不明 12。
     ほかに 51 件のワークフローをモデルにまとめた)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Perfect     100 Anima Base 1.0             gen,edit  bf16   7.2  30% GPU      5.4 other
+image ● Perfect     100 Anima Base 1.0             gen,edit  bf16   7.0  29% GPU      5.4 other
 image ● Perfect     100 SDXL1.0 Base               gen       fp16   8.0  33% GPU      6.5 openrail++
 image ● Perfect     100 Anima Preview 3 Base       gen       bf16   7.0  29% GPU      5.2 other
 image ● Perfect     100 NetaYume Lumina            gen       bf16  12.4  52% GPU      9.9 gemma
