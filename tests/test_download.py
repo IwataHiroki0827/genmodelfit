@@ -1609,7 +1609,9 @@ def test_comfyui_dir_env_precedence(tmp_path, comfy, capsys, monkeypatch):
     p = plan_json(["--output-dir", str(tmp_path / "out")])  # --output-dir も環境変数に勝つ
     assert p["layout"] == "output" and p["root"] == str(tmp_path / "out")
     _, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
-    assert f"ComfyUI の models のフォルダ、{cli.COMFYUI_DIR_ENV}" in out and "指定なし" not in out
+    assert f"決め方:環境変数{cli.COMFYUI_DIR_ENV}" in _nows(out)  # どれで決めたかを毎回出す(#111)
+    code, out, _ = _run([*base], capsys)
+    assert json.loads(out)["destination_from"] == "env"  # どれで決めたか(#111)
 
     monkeypatch.setenv(cli.COMFYUI_DIR_ENV, str(tmp_path / "not-comfy"))  # フラグと同じく確かめる
     code, out, err = _run(base, capsys)
@@ -1618,28 +1620,25 @@ def test_comfyui_dir_env_precedence(tmp_path, comfy, capsys, monkeypatch):
     assert plan_json(["--output-dir", str(tmp_path / "out")])["layout"] == "output"
 
 
-@pytest.mark.parametrize("windows", [True, False], ids=["powershell", "posix"])
-def test_comfyui_hint_when_not_set(tmp_path, capsys, monkeypatch, windows):
-    monkeypatch.setattr(downloader, "default_output_dir", lambda: tmp_path / "gmf-models")
-    monkeypatch.setattr(cli, "_is_windows", lambda: windows)
+def test_list_without_a_place_shows_undecided(tmp_path, capsys):
+    """置き場所が決まらないとき(#111): genmodelfit のフォルダに黙って落とさない。
+    --list は「未定」と決め方を出す(仮のフォルダの root・dest・空きは出さない)。"""
     db = _cli_db(tmp_path)
     code, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
-    assert (
-        code == 0
-        and "ComfyUI:      指定なし" in out
-        and "--comfyui-dir" in out
-        and "extra_model_paths.yaml" in out
-    )
-    ps, sh = f"$env:{cli.COMFYUI_DIR_ENV} = 'C:\\ComfyUI'", f'export {cli.COMFYUI_DIR_ENV}="$HOME/ComfyUI"'
-    assert (ps in out) is windows and (sh in out) is not windows  # この OS の形だけ
-    assert out.count("extra_model_paths.yaml") == 1  # ライブラリの同じ知らせは出さない(1 つにまとめる)
-    _, out, _ = _run(
-        ["download", "test_tiny", "--list", "--db", str(db), "--output-dir", str(tmp_path)], capsys
-    )
-    assert "指定なし" not in out and out.count("extra_model_paths.yaml") == 1
+    flat = _nows(out)
+    assert code == 0 and "未定(ComfyUIのフォルダが見つかりません)" in flat
+    assert "genmodelfitconfigsetcomfyui-dir" in flat and "--comfyui-dir" in out
+    assert "127.0.0.1" in out  # 落とすときは起動中の ComfyUI にも尋ねる
+    assert "genmodelfit-undecided" not in out
+    assert "extra_model_paths.yaml" not in out
+    code, out, _ = _run(["download", "test_tiny", "--list", "--json", "--db", str(db), *HW], capsys)
+    env = json.loads(out)
+    assert code == 0 and env["destination_from"] is None and env["destination_candidates"] == []
+    assert env["plan"]["root"] == "" and all(f["dest"] == "" for f in env["plan"]["files"])
+    assert env["plan"]["disk_free_bytes"] is None and "disk" not in env["plan"]["blocked_codes"]
     with i18n.forced("en"):
         _, out, _ = _run(["download", "test_tiny", "--list", "--db", str(db), *HW], capsys)
-    assert "ComfyUI:   not set" in out
+    assert "not decided (no ComfyUI folder was found)" in " ".join(out.split())
 
 
 def test_library_warnings_do_not_name_the_cli_env_var(comfy, tmp_path):
@@ -1705,7 +1704,7 @@ def test_interactive_question_names_exactly_the_items(
     path = _consent_db(server, tmp_path, content=content, unknown=unknown)
     args = ["download", "test_tiny", "--db", str(path), "--comfyui-dir", str(comfy), *HW, "--lang", lang]
     code, out, _ = _run(args, capsys)
-    assert code == 1 and asked == ["[y/N] "]  # 止めずに尋ねた。既定は No
+    assert code == 1 and len(asked) == 1 and asked[0].startswith("[y/N/c]")  # 止めずに尋ねた。既定は No
     assert _nows(QUESTION[(content, unknown, lang)]) in _nows(out)
     careful = {
         "ja": "ライセンスの原文の URL が無いファイルは、上の確かめる場所で条件を自分で確かめたうえで",

@@ -9,6 +9,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`genmodelfit config`** (#111): `config` (show each setting and where it comes from), `config set comfyui-dir
+  <folder>` / `set lang ja`, `config unset <key>`, `config path`, all with `--json`. The file is `config.json` in the
+  platformdirs user config folder (`GENMODELFIT_CONFIG_DIR` changes it). Only the command line reads it; the Python
+  library never does. `set comfyui-dir` checks that the folder looks like ComfyUI; unknown keys are refused; a broken
+  file is ignored with a warning and never overwritten. `lang` is the default display language (`--lang` and
+  `GENMODELFIT_LANG` win).
+- **`download` finds your ComfyUI** (#111): after `--comfyui-dir` / `--output-dir`, `GENMODELFIT_COMFYUI_DIR` and the
+  saved `comfyui-dir`, it looks at the current folder (4 of `main.py`, `comfy`, `nodes.py`, `comfy_extras`,
+  `comfy_api`, as comfy-cli does), a ComfyUI running on this PC (`GET /internal/folder_paths` on 127.0.0.1 ports 8188
+  and 8000, 2 s; only when downloading, never with `--list`), the ComfyUI Desktop settings (`basePath`) and comfy-cli
+  settings / default workspace, and usual places one level deep (fixed drives, Documents, Desktop, Downloads, home;
+  also `ComfyUI_windows_portable\ComfyUI`). The plan always says how the place was decided (JSON `destination_from`,
+  plus `comfyui_dir`, `extra_model_paths`, `destination_candidates`). An `is_default` section in
+  `extra_model_paths.yaml` is honored (read without new dependencies). The question is `[y/N/c]` (`c` changes the
+  place), and the first download into a place found automatically asks "Download here next time too? [Y/n]".
+
 - **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90). They run the same checks
   as `contrib show` and `contrib validate` (all fields, the privacy checklist, the mechanical checks), refuse to share
   when a privacy check is NG or the checks have errors (warnings and notices do not stop it), and print the URL of
@@ -46,6 +62,12 @@ All notable changes to this project are documented here. The format is based on
   `python -m genmodelfit.gpuwatch` runs it by hand.
 
 ### Changed
+
+- **`download` no longer falls back to genmodelfit's own folder** (#111), which ComfyUI does not read. When no
+  ComfyUI is found or several are, a terminal lets you choose a candidate or type a path; with `--yes`, `--json` or
+  without a terminal nothing is downloaded (exit 1, with the candidates and how to decide; JSON `plan: null`).
+  `--list` still shows the plan with the place "not decided" (`plan.root` and `files[].dest` are `""`). Only
+  `--output-dir` puts files outside ComfyUI. The Python API (`plan_download` / `download`) is unchanged.
 
 The meaning of the output changed (#95), so this is 0.11.0. `SCHEMA_VERSION` (the shape of db.json) is unchanged.
 The rules, their one-sentence explanations, evidence and tests are in the new docs/scoring.md (English and Japanese).

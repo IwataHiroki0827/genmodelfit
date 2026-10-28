@@ -83,7 +83,8 @@ add that folder to PATH or use one of the above. A terminal opened before PATH c
 ### What is sent over the network
 
 Nothing, for judging: the hardware is read locally. Only `update`, `download` and `bench` connect, and only to public
-data or the ComfyUI you name. No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
+data or the ComfyUI you name (when you give no folder, `download` also asks a ComfyUI running on this PC, at 127.0.0.1,
+where its folders are). No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
 
 ## 2. Procedure
 
@@ -114,6 +115,7 @@ data or the ComfyUI you name. No telemetry. Details: [Privacy](https://github.co
 
 5. **Download it.** `--list` shows the files, licenses, sizes and free disk without downloading.
    Then download into your ComfyUI folders; you are asked before anything starts, and every file is sha256-checked.
+   Without `--comfyui-dir` it looks for your ComfyUI and shows where it found it (if it finds none or several, it asks).
    ```
    genmodelfit download "Z-Image-Turbo" --list
    genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI   # your ComfyUI folder
@@ -169,8 +171,9 @@ setting.
 ### Language
 
 Output is in English by default. For Japanese, add `--lang ja` to any command (e.g. `genmodelfit recommend --lang ja`),
-set the environment variable `GENMODELFIT_LANG=ja`, or call `gmf.set_language("ja")` from Python (the flag wins, then
-the variable, then `set_language`; the OS language is not used). Only the texts change (reasons, notes, errors, table
+set the environment variable `GENMODELFIT_LANG=ja`, save it with `genmodelfit config set lang ja` (command line only),
+or call `gmf.set_language("ja")` from Python (the flag wins, then the variable, then the saved setting for the command
+line or `set_language` for Python; the OS language is not used). Only the texts change (reasons, notes, errors, table
 headings and footers, `--help`); JSON keys, ids, codes and judgments are the same in both languages. English output
 contains no Japanese, and Japanese output contains no English-only sentences (one language per line).
 
@@ -323,9 +326,10 @@ Every page of the documentation, with who each one is for: [docs/README.md](http
 | `update [--from-release]` | rebuild the list from upstream, or fetch the signed list |
 | `gate` | how many models are Verified, and why the rest are held |
 | `diff [OLD] [NEW] [--all]` | what changed between two lists ([below](https://github.com/laxshmate/genmodelfit#what-changed-in-the-list)) |
+| `config [set KEY VALUE \| unset KEY \| path]` | settings: the ComfyUI folder for `download` and the display language ([docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md#genmodelfit-config)) |
 | `review`, `bench`, `contrib` | maintenance and measurements (below) |
 
-Each command's `--help` lists options, exit codes and examples. Common options: `--json`, `--vram`, `--ram`,
+Every command and option, the environment variables, exit codes and examples are on one page: [docs/commands.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/commands.md) (the same text as each command's `--help`). Common options: `--json`, `--vram`, `--ram`,
 `--uncensored` (include uncensored models; old form `--content all`), `--any-license` (include unknown licenses; old form `--include-unknown-license`), `--content uncensored` (only uncensored), `--license apache-2.0,mit`, `--comfyui-version`.
 
 ### Data sources
@@ -357,8 +361,11 @@ after Ctrl-C, never outside the destination. Gated files are never downloaded. U
 unknown license are downloaded only with your consent: in a terminal the consent question names them (y/N, default
 No); with `--yes`, `--json` or in scripts pass `--uncensored` / `--any-license` (the plan then shows one ready command
 with them added and what each means; it never adds them by itself). Files whose ComfyUI folder is unknown go to `other/`, which
-ComfyUI does not read (the plan says so; move them before use). Set `GENMODELFIT_COMFYUI_DIR` to your ComfyUI folder to
-skip `--comfyui-dir`. Details and Python API: [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md).
+ComfyUI does not read (the plan says so; move them before use). The place is `--comfyui-dir` (or `--output-dir`),
+then `GENMODELFIT_COMFYUI_DIR`, then `genmodelfit config set comfyui-dir <folder>`, then a ComfyUI found on this PC
+(the current folder, a running ComfyUI, ComfyUI Desktop / comfy-cli settings, usual places); the plan always says
+which. When none or several are found, a terminal lets you choose, and scripts stop with an error instead of
+downloading into a folder ComfyUI does not read. The question is `[y/N/c]` (`c` changes the place). Details and Python API: [docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md).
 
 ### Maintenance
 
@@ -395,7 +402,8 @@ Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_re
 
 - Judging commands and the Python API (except `update_from_release` and `download`, which you call on purpose) make **no network access** (tested with every socket blocked).
 - `update` reads public data only (GitHub, Hugging Face API, HEAD on model URLs); `--from-release` only fetches
-  `db.json` and its signature. `download` only fetches model files. `bench` talks only to your `--url`.
+  `db.json` and its signature. `download` only fetches model files, and, when no folder is given, asks a ComfyUI
+  running on this PC (127.0.0.1 ports 8188 and 8000) where its folders are. `bench` talks only to your `--url`.
 - genmodelfit never sends hardware details, measurements or prompts. A measurement is shared only if you open a
   pull request yourself ([Contributing measurements](https://github.com/laxshmate/genmodelfit#contributing-measurements)).
   `bench --share` / `contrib share` only print a GitHub link and, if you answer y in a terminal, open it in your

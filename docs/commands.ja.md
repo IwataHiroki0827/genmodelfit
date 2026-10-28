@@ -1,0 +1,1374 @@
+# コマンド一覧
+
+[English](commands.md) · **日本語**
+
+`genmodelfit` のすべてのコマンドとオプションを 1 ページにまとめたものです。コマンドごとに、何をするか・オプション・
+読むものと書くもの・終了コードがあります。同じ文は `genmodelfit <コマンド> --help` でも出ます。
+
+## よくある使い方
+
+| したいこと | コマンド | 詳しく |
+|---|---|---|
+| 入れる | `pipx install genmodelfit`(か `uv tool install genmodelfit` / `pip install genmodelfit`)。入れずに試すなら `uvx genmodelfit recommend` | [README「入れ方」](../README.ja.md#入れ方) |
+| 入れたのに `genmodelfit` が「見つからない」 | `python -m genmodelfit recommend`(中身は同じ。PATH に関係なく動く) | [README「入れ方」](../README.ja.md#入れ方) |
+| この PC で動くモデルを知る | `genmodelfit recommend` | [README「すぐ試す」](../README.ja.md#すぐ試す) |
+| 1 つの種類のモデルを探す(例は音楽) | `genmodelfit recommend -m music`(か `genmodelfit search <語>`) | [`recommend`](#genmodelfit-recommend)・[`types`](#genmodelfit-types) |
+| 動くものを全部 1 つの表で見る | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
+| 1 つのモデルを調べる(ファイル・ライセンス・見積もり) | `genmodelfit info "Z-Image-Turbo"` | [`info`](#genmodelfit-info) |
+| モデルを ComfyUI に入れる(初めて) | `genmodelfit download "Z-Image-Turbo" --list` で確かめ、`--list` を外して実行 | [download.ja.md](download.ja.md) |
+| 落とす場所を変える | `genmodelfit config set comfyui-dir D:/ComfyUI`(1 回だけなら `--comfyui-dir D:/ComfyUI`) | [download.ja.md「genmodelfit config」](download.ja.md#genmodelfit-config) |
+| 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
+| ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
+| スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
+| 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
+| モデルを実測して送る | `genmodelfit bench <ID> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
+
+## 用語
+
+| 用語 | 意味 |
+|---|---|
+| 段階(`Status`) | モデルがこの PC のメモリ(GPU なら VRAM、CPU ならメモリ)をどれだけ使うか: `perfect` は 60% まで、`good` は 85% まで、`marginal` は 98% まで、`too_tight` は 98% を超える(動かない)、`unknown` / `?` は判定していない(大きさが分からない)。動かし方による上限もある: [README「段階」](../README.ja.md#段階)。 |
+| runnable | `perfect`・`good`・`marginal` のどれか(`fit` が既定で出すもの)。 |
+| 逃がす(offload) | 重みの一部を VRAM ではなくメモリに置き、動かしながら GPU へ移すこと(`GPU+RAM`)。小さい GPU でも動くが遅い。「逃がさずに」は `GPU` か `GPU~` のこと。 |
+| 動かし方(`Mode`) | `GPU` 全部 GPU に載せる、`GPU~` 部品を順に GPU へ載せ替える、`GPU+RAM` 重みの一部をメモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない。[README「列」](../README.ja.md#列) |
+| Score | 0〜100 のメモリの余裕(使用率 70% までは 100)。速さや品質ではない。 |
+| モデル / ワークフロー | ワークフローは ComfyUI のテンプレート(か Hugging Face の項目)1 つで、`image_z_image_turbo_int8` のような ID を持つ。モデルは、いくつかのワークフローが共有する重み(系統 + 大きさ)で、ワークフローどうしは精度か使い方だけが違う。表はモデルごとに 1 行(`--all-workflows` ならワークフローごと)。`info` と `download` はどちらでも受ける。 |
+| 用途(`--task`) | 種類の中でワークフローがすること: `gen`・`edit`・`i2v` など(`genmodelfit types` が並べる)。 |
+| 一覧(`db.json`) | genmodelfit が判定するモデルの一覧。パッケージに 1 つ入っていて、`update --from-release` は署名つきの新しい一覧をキャッシュに置き、それからはそちらを使う(`--no-cache` で同梱、`--db PATH` でファイル)。 |
+| HEAD の確認 | ダウンロードの URL のそれぞれに、名乗らずに HTTP の HEAD を送った結果(一覧に記録してある)。30 日(`--max-head-age-days`)より古い確認は期限切れで、そのモデルは `genmodelfit update --from-release` を実行するまで保留になる。日付は `system` で分かる。 |
+| Verified / auto / 保留 | Verified(JSON では `auto`)は、gate の条件(ライセンスが許可リストにある・公式のワークフロー・HEAD の確認が新しい・sha256 が分かる・`sfw`・確認済み など)をすべて満たしたもので、アプリが人に尋ねずにおすすめに出してよい。満たさないものは保留(`held_reasons`)。[README「Verified」](../README.ja.md#verified自動でおすすめに出す条件)・[gate.ja.md](gate.ja.md) |
+| 内容(`sfw` / `uncensored`) | `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルの印。`--uncensored`(両方)か `--content uncensored`(それだけ)を付けたときだけ出す。[README「内容の印」](../README.ja.md#内容の印) |
+| GB | いつも GiB(1024³ バイト)。`--vram`・`--ram`・`--budget` も同じ。 |
+
+## このページの読み方
+
+- コマンドの節には、目的・使い方の行・何をするか・そのコマンドだけのオプション・ほかのコマンドと共通のオプション
+  ([共通のオプション](#共通のオプション)に 1 回だけ載せる)・前提・読むものと書くもの・終了コード・例があります。
+- 使い方の行の `[...]` は省けること、`A | B` はどちらか 1 つ、`...` は繰り返せることを表します。
+- 「値」はオプションの後ろに書くもの(`--vram GB`)で、値の無いオプションは付けるだけのスイッチです。「既定」は、
+  そのオプションを省いたときに使うものです。
+- `-h` / `--help` と `--lang` はどのコマンドでも使えるので、下に 1 回だけ載せます。
+- オプションは紛れない長さに略せます(`--modality` を `--mod`)。ただし同意のオプション `--uncensored`・
+  `--any-license`・`--include-unknown-license`・`--content` は略さずに書きます(`recommend --unc` は使い方の誤りで、
+  終了コード 2)。
+- 同じ名前でもコマンドによって働きが違うオプションがあります。
+  - `--precision`: `recommend`・`fit`・`search`・`info` では見積もりをその精度に換算する。`download` では落とす
+    ワークフロー(ファイル)を選ぶ。
+  - `--content`: 一覧を出すコマンドでは表示を絞る。`download` では名前で探すモデルを決め、`uncensored` / `all` は
+    無検閲のモデルを落とす同意にもなる。`--uncensored` は `--content all` と同じで、`--content sfw` か
+    `--content uncensored` と一緒に使うと使い方の誤り(終了コード 2)。
+  - `--all`: `fit` / `search` では全部を出す。`diff` では保守用の内容を足す。`review list` では確認済みも出す。
+  - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数。
+  - `--output` と `--force` は、`update`・`bench`・`contrib` でそれぞれ意味が違う(各コマンドを見る)。
+- `--json` を付けると、どのコマンドもプログラム向けの JSON を出します。形は [schema.ja.md](schema.ja.md) にあります。
+
+## 全体のオプション
+
+| オプション | 値 | 説明 |
+|---|---|---|
+| `--version` |  | 版を出して終わる |
+| `--lang` | `{en,ja}` | 表示の言語(既定は環境変数 GENMODELFIT_LANG、`genmodelfit config` の lang、無ければ en) |
+
+## 共通のオプション
+
+次のオプションは、使えるどのコマンドでも同じ意味です。コマンドの節には、そのコマンドだけのオプションを載せ、
+ここへリンクします。
+
+| オプション | 値 | 既定 | 説明 | コマンド |
+|---|---|---|---|---|
+| `--json` |  |  | JSON で出す | すべてのコマンド |
+| `--vram` | `GB` | この PC から調べる | GPU の VRAM を GB(GiB)で決める(例: 8。0 なら GPU なしとして判定)。別の PC として判定するときに | `system`・`recommend`・`fit`・`search`・`info`・`download` |
+| `--ram` | `GB` | この PC から調べる | メインメモリを GB(GiB)で決める(例: 32)。別の PC として判定するときに | `system`・`recommend`・`fit`・`search`・`info`・`download` |
+| `--db` | `PATH` | update で取った一覧、無ければ同梱の一覧 | この一覧のファイル(db.json)を使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`gate`・`bench` |
+| `--no-cache` |  |  | update で取った一覧を使わず、同梱のデータを使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`gate`・`review list`・`bench` |
+| `--license-allowlist` | `LIST\|FILE` | [gate.ja.md](gate.ja.md) の許可リスト | 自動のおすすめに許すライセンス(「mit,apache-2.0」か、1 行に 1 つ書いたファイル)。既定は [gate.ja.md](gate.ja.md)。空の文字("")は指定なしと同じ | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
+| `--comfyui-version` | `VER` | 一覧が記録した最新のリリース | 使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース) | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
+| `--max-head-age-days` | `DAYS` | `30` | HEAD の確認をこの日数まで信じる(既定 30。none で期限なし) | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
+| `--allow-uncensored-auto` |  |  | 無検閲のモデルも自動のおすすめ(Verified)に出してよい(表示の絞り込み・download の同意とは別) | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
+| `--modality`, `-m` | `TYPE[,TYPE]` |  | 種類で絞る(カンマ区切り可): image, video, music, sfx, tts, 3d | `recommend`・`fit`・`search` |
+| `--content` | `{all,sfw,uncensored}` | `sfw` | 内容の印で絞る: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。`--uncensored` と同じ)。`--uncensored` と一緒に使えるのは all だけ。略さずに書く | `recommend`・`fit`・`search`・`info` |
+| `--uncensored` |  |  | 無検閲のモデルも含める(`--content all` と同じ) | `recommend`・`fit`・`search`・`types`・`info` |
+| `--width` | `PX` | 種類ごと: image 1024、video 832 | 画像・動画の幅(ピクセル)で判定する。省いた設定は種類ごとの既定 | `recommend`・`fit`・`search`・`info` |
+| `--height` | `PX` | 種類ごと: image 1024、video 480 | 画像・動画の高さ(ピクセル)で判定する | `recommend`・`fit`・`search`・`info` |
+| `--frames` | `N` | 種類ごと: video 81 | 動画のコマ数で判定する | `recommend`・`fit`・`search`・`info` |
+| `--length` | `SEC` | 種類ごと: music 30 秒、sfx 10 秒、tts 10 秒 | 音楽・効果音・読み上げの長さ(秒)で判定する | `recommend`・`fit`・`search`・`info` |
+| `--precision` | `PREC` | 一覧にある精度のまま | 見積もりで本体の重みをこの精度に換算する(fp32・bf16・fp16・fp8・int8・q8・q6・q5・nf4・q4。元の精度が分かるときだけ)。download の `--precision`(落とすワークフローを選ぶ)とは別 | `recommend`・`fit`・`search`・`info` |
+| `--limits` |  |  | この PC の GPU で逃がさずに good になる最大の解像度・コマ数・長さも出す(JSON の limits) | `recommend`・`fit`・`search` |
+| `--license` | `LIST` |  | すべてのファイルのライセンスがこの中にあるものだけ(例: apache-2.0,mit。不明は合わない) | `recommend`・`fit`・`search` |
+| `--any-license`, `--include-unknown-license` |  |  | ライセンスの分からないファイルを含むモデルも出す(既定は出さない。info `<ID>` では常に出る。前からの書き方 `--include-unknown-license` も同じ) | `recommend`・`fit`・`search` |
+| `--task` | `USE[,USE]` |  | 用途で絞る(gen / edit / i2v / lipsync / motion / voice / upscale / tool、または t2i・i2i・inpaint などの tasks。一覧は `genmodelfit types`) | `recommend`・`fit`・`search` |
+| `--all-workflows` |  |  | 同じモデル(精度・使い方だけ違うもの)をまとめず、ワークフローごとに 1 行ずつ出す | `recommend`・`fit`・`search` |
+
+## この PC を判定するコマンドの前提
+
+`system`・`recommend`・`fit`・`search`・`info` の前提は次のとおりです。
+
+- 用意するものは無い。
+- GPU とメモリは調べて決める(`--vram` / `--ram` で置き換える)。
+- GPU は NVIDIA なら nvidia-smi、ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・system_profiler(macOS)で調べる。
+- 一覧は同梱のものを使う(`genmodelfit update` で新しい一覧を取ってあればそちら。`--no-cache` で同梱)。
+
+## 環境変数
+
+| 変数 | 使うところ | 内容 |
+|---|---|---|
+| `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
+| `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
+| `GENMODELFIT_CACHE_DIR` | `update`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
+| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
+
+通信は、プロキシと証明書の環境変数(`HTTPS_PROXY`・`REQUESTS_CA_BUNDLE` など)にも従います。`~/.netrc` の資格情報は送りません。
+
+## 保存できる設定(`genmodelfit config`)
+
+`genmodelfit config set キー 値` は、設定のフォルダの `config.json` に設定を保存します。読むのはコマンドラインだけで、
+Python の関数は読みません。キーは `comfyui-dir`(フォルダのパス)と `lang`(`en` か `ja`)です。
+同じ設定を決める場所が複数あるときは、次の上のものが勝ちます。
+
+1. コマンドラインのオプション(`--lang`・`--comfyui-dir`・`--output-dir`)
+2. 環境変数(`GENMODELFIT_LANG`・`GENMODELFIT_COMFYUI_DIR`)
+3. 保存した設定(`genmodelfit config`)
+4. 既定(`lang` は `en`。ComfyUI のフォルダは、ちょうど 1 つ見つかったときだけ自動で使う)
+
+`genmodelfit config` は、各設定とどこから来た値かを出します。詳しくは [download.ja.md](download.ja.md)。
+
+## ファイルの置き場所
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| 設定のフォルダ(`config.json`) | `%LOCALAPPDATA%\genmodelfit` | `~/Library/Application Support/genmodelfit` | `~/.config/genmodelfit`(か `$XDG_CONFIG_HOME/genmodelfit`) |
+| キャッシュのフォルダ | `%LOCALAPPDATA%\genmodelfit\Cache` | `~/Library/Caches/genmodelfit` | `~/.cache/genmodelfit`(か `$XDG_CACHE_HOME/genmodelfit`) |
+
+この PC の設定ファイルの場所は `genmodelfit config path` で分かります。`GENMODELFIT_CONFIG_DIR`・`GENMODELFIT_CACHE_DIR`
+でフォルダを変えられます。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
+`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`)が入ります。
+キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した `bench` の結果も消えます)。
+
+## 終了コード
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功。引数なしの `genmodelfit` は使い方を出して 0 で終わります。 |
+| 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
+| 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
+| 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
+| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench` は送った仕事を取り消してから 1 で終わります。 |
+
+`--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
+
+## コマンド
+
+- [`genmodelfit system`](#genmodelfit-system) — この PC の GPU・メモリ・空きと、一覧の新しさを出す
+- [`genmodelfit recommend`](#genmodelfit-recommend) — おすすめ順に出す
+- [`genmodelfit fit`](#genmodelfit-fit) — 動くモデルの判定を表で出す(`--all` で全部)
+- [`genmodelfit search`](#genmodelfit-search) — ID・名前の一部で探して、この PC での判定を出す
+- [`genmodelfit types`](#genmodelfit-types) — 大きな種類と、その中の用途(`--task` の名前)と数
+- [`genmodelfit info`](#genmodelfit-info) — 1 つのモデルの詳細
+- [`genmodelfit update`](#genmodelfit-update) — 新しい一覧を取る(利用者は `--from-release`。オプションなしは上流から作り直す)
+- [`genmodelfit download`](#genmodelfit-download) — モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)
+- [`genmodelfit config`](#genmodelfit-config) — 設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える
+  - [`genmodelfit config show`](#genmodelfit-config-show) — 今の設定と出どころ(サブコマンドを省いたときはこれ)
+  - [`genmodelfit config set`](#genmodelfit-config-set) — 値を保存する
+  - [`genmodelfit config unset`](#genmodelfit-config-unset) — 値を消す
+  - [`genmodelfit config path`](#genmodelfit-config-path) — 設定ファイルの場所
+- [`genmodelfit gate`](#genmodelfit-gate) — 自動でおすすめに出せるかの集計
+- [`genmodelfit diff`](#genmodelfit-diff) — 2 つの一覧(db.json)の違い(増減・ライセンス・自動のおすすめ・HEAD の失敗)
+- [`genmodelfit review`](#genmodelfit-review) — 確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(保守する人向け)
+  - [`genmodelfit review list`](#genmodelfit-review-list) — 確認待ちの項目と理由
+  - [`genmodelfit review approve`](#genmodelfit-review-approve) — 根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)
+  - [`genmodelfit review reject`](#genmodelfit-review-reject) — 一覧から外し、update でも入れないように記録する
+- [`genmodelfit bench`](#genmodelfit-bench) — 動いている ComfyUI で実測する
+- [`genmodelfit contrib`](#genmodelfit-contrib) — 実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)
+  - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — bench が保存した結果から提出用の JSON を作る
+  - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — 送る中身と個人の情報の点検を見せる
+  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — 中身と点検を見せ、GitHub で送るページの URL を出す(端末ならブラウザで開くかを尋ねる。何も送らない)
+  - [`genmodelfit contrib validate`](#genmodelfit-contrib-validate) — 形・値・個人の情報・重複を検査する(CI でも使う)
+  - [`genmodelfit contrib aggregate`](#genmodelfit-contrib-aggregate) — 同じモデル・設定・GPU ごとにまとめ、精度を点検する
+
+## `genmodelfit system`
+
+この PC の GPU・メモリ・空きと、一覧の新しさを出す
+
+**使い方**
+
+```text
+genmodelfit system [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                   [--license-allowlist LIST|FILE] [--comfyui-version VER]
+                   [--max-head-age-days DAYS] [--allow-uncensored-auto] [--disk-path PATH]
+                   [--all-gpus]
+```
+
+この PC(GPU・メモリ・ディスクの空き)と、使っている一覧がまだ新しいか(一覧の欄: 出どころ・HEAD の確認の日付・期限切れか・いつまで有効か・自動のおすすめの数)を出す。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--disk-path` | `PATH` | ホームのフォルダ | ディスクの空きを調べる場所(フォルダ) |
+| `--all-gpus` |  |  | NVIDIA 以外も含めて画面の部品(GPU)をすべて出す(Windows は約 1 秒かかる。判定には使わない) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- [この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(一覧が期限切れのときも。一覧の欄・database.status.expired を見る。新しくするには `genmodelfit update --from-release`) |
+| 1 | 失敗: 壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit system --json
+genmodelfit system --comfyui-version 0.40.0 --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「System / PC の情報」](schema.ja.md#system--pc-の情報)・[schema.ja.md「Data status / 一覧の新しさ」](schema.ja.md#data-status--一覧の新しさ)
+
+## `genmodelfit recommend`
+
+おすすめ順に出す
+
+**使い方**
+
+```text
+genmodelfit recommend [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                      [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}] [--uncensored]
+                      [--width PX] [--height PX] [--frames N] [--length SEC] [--precision PREC]
+                      [--limit N] [--limits] [--min-fit {perfect,good,marginal,too_tight}]
+                      [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
+                      [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
+                      [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
+                      [--auto-only] [--include-tools]
+```
+
+この PC に合う生成モデルを、おすすめ順に出す。
+
+- `-m` も `--task` も無ければ、種類(image, video, music, sfx, tts, 3d)ごとに上位 `-n` 件(既定 3 件)。
+- `-m` か `--task` があれば 1 つの表(既定 10 件)。
+- 同じモデルは 1 行にまとめ、一番合う精度とワークフローを選ぶ(`--all-workflows` で全部)。
+- 並べ方: 動くもの → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート → 人気(同じ種類・同じ出どころの中の順位)→ Score → ID(`--json` は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
+- Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。
+- Score の決まりは [scoring.ja.md](scoring.ja.md)。
+- 無検閲のモデルと補助ツールは、指定しなければ出さない。
+- 出力は表。
+- アプリは `--json` を付ける。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--limit`, `-n` | `N` | 種類ごとに 3(`-m`・`--task` があれば 10) | 出す行の数(1 以上) |
+| `--min-fit` | `{perfect,good,marginal,too_tight}` | `marginal` | この段階以上だけ出す(recommend の既定は marginal、fit / search は全部) |
+| `--fit` | `{perfect,good,marginal,runnable,all}` |  | 出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、all(too_tight・判定できないものも)。`--min-fit` とは同時に使えない |
+| `--auto-only` |  |  | 自動でおすすめに出せるものだけ |
+| `--include-tools` |  |  | 深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--modality`・`--content`・`--uncensored`・`--width`・`--height`・`--frames`・`--length`・`--precision`・`--limits`・`--license`・`--any-license`・`--task`・`--all-workflows`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- [この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: 壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit recommend --json
+genmodelfit recommend -m image --task edit -n 5 --min-fit good --json
+genmodelfit recommend -m video,music --auto-only --comfyui-version 0.40.0 --json
+genmodelfit recommend --license apache-2.0,mit --vram 8 --ram 32 --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「recommend / fit / search」](schema.ja.md#recommend--fit--search)
+
+1 項目に 1 モデル(同じ重みの系統 + 大きさ)。`--all-workflows` ならワークフローごとに 1 項目。
+
+**例**
+
+```sh
+genmodelfit recommend                            # 種類ごとのおすすめ(各 3 件)
+genmodelfit recommend -m image --task edit -n 5  # 画像の編集の上位 5 件
+genmodelfit recommend --uncensored               # 無検閲のモデルも含める(既定は sfw)
+genmodelfit recommend --vram 12 --ram 32         # 別の PC として判定する
+genmodelfit recommend -m video --json            # アプリ向けの JSON
+```
+
+## `genmodelfit fit`
+
+動くモデルの判定を表で出す(`--all` で全部)
+
+**使い方**
+
+```text
+genmodelfit fit [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}] [--uncensored]
+                [--width PX] [--height PX] [--frames N] [--length SEC] [--precision PREC]
+                [--limit N] [--limits] [--min-fit {perfect,good,marginal,too_tight}]
+                [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
+                [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
+                [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
+                [--sort {type,score,vram,disk,name}] [--all] [--perfect] [--include-tools]
+```
+
+- この PC でモデルを判定し、1 つの表にする(recommend のように上位だけに絞らない)。
+- 既定は動くもの(`--fit runnable`: perfect・good・marginal)だけで、補助ツールとライセンスの分からないファイルを含むモデルは出さない。
+- `--all` で too_tight・判定できないもの・補助ツール・ライセンス不明も出す。
+- 無検閲のモデルは `--uncensored` で出す(`--all` だけでは出ない)。
+- 並べ方: 種類 → 段階 → 公式のテンプレート → 人気 → Score(`--sort` で変える)。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--limit`, `-n` | `N` | 全部 | 出す行の数(1 以上) |
+| `--min-fit` | `{perfect,good,marginal,too_tight}` |  | この段階以上だけ出す(recommend の既定は marginal、fit / search は全部) |
+| `--fit` | `{perfect,good,marginal,runnable,all}` | runnable(`--all` なら all) | 出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、all(too_tight・判定できないものも)。`--min-fit` とは同時に使えない |
+| `--sort` | `{type,score,vram,disk,name}` | `type` | 並べ方: type(既定。種類 → 段階 → 公式 → 人気 → Score)、score(種類をまたいで段階 → Score)、vram / disk(少ない順)、name |
+| `--all` |  |  | 全部出す(動かないもの・判定できないもの・補助ツール・ライセンス不明も。無検閲は `--uncensored`) |
+| `--perfect`, `-p` |  |  | perfect だけ(`--fit perfect` と同じ) |
+| `--include-tools` |  |  | 深度・ポーズ・切り抜き・拡大などの補助ツールも含める(既定は「つくる」モデルだけ) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--modality`・`--content`・`--uncensored`・`--width`・`--height`・`--frames`・`--length`・`--precision`・`--limits`・`--license`・`--any-license`・`--task`・`--all-workflows`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- [この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: 壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit fit --json
+genmodelfit fit -m video --task i2v --min-fit good -n 20
+genmodelfit fit --uncensored --all-workflows --vram 12 --ram 32 --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「recommend / fit / search」](schema.ja.md#recommend--fit--search)
+
+1 項目に 1 モデル(同じ重みの系統 + 大きさ)。`--all-workflows` ならワークフローごとに 1 項目。
+
+**例**
+
+```sh
+genmodelfit fit                                         # この PC で動くモデルの全部
+genmodelfit fit --sort score --fit good                 # good だけを種類をまたいだ順位で
+genmodelfit fit --all                                   # 動かないもの・補助ツールなども全部
+genmodelfit fit -m video --task i2v --vram 12 --ram 32  # 別の PC で画像から動画
+genmodelfit fit --uncensored --json                     # 無検閲も含めて JSON で(既定は sfw)
+```
+
+## `genmodelfit search`
+
+ID・名前の一部で探して、この PC での判定を出す
+
+**使い方**
+
+```text
+genmodelfit search [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                   [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}] [--uncensored]
+                   [--width PX] [--height PX] [--frames N] [--length SEC] [--precision PREC]
+                   [--limit N] [--limits] [--min-fit {perfect,good,marginal,too_tight}]
+                   [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
+                   [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
+                   [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
+                   [--sort {type,score,vram,disk,name}] [--all] [--perfect] query
+```
+
+- ID・名前の一部で探し(大文字小文字は区別しない)、この PC での判定を出す。
+- `--content` が効く(既定 sfw)。
+- 合うものが無ければ空の一覧で、終了コードは 0。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--limit`, `-n` | `N` | 全部 | 出す行の数(1 以上) |
+| `--min-fit` | `{perfect,good,marginal,too_tight}` |  | この段階以上だけ出す(recommend の既定は marginal、fit / search は全部) |
+| `--fit` | `{perfect,good,marginal,runnable,all}` | すべての段階 | 出す段階: perfect / good / marginal(その段階だけ)、runnable(動くもの全部。fit の既定)、all(too_tight・判定できないものも)。`--min-fit` とは同時に使えない |
+| `--sort` | `{type,score,vram,disk,name}` | `type` | 並べ方: type(既定。種類 → 段階 → 公式 → 人気 → Score)、score(種類をまたいで段階 → Score)、vram / disk(少ない順)、name |
+| `--all` |  |  | 全部出す(動かないもの・判定できないもの・補助ツール・ライセンス不明も。無検閲は `--uncensored`) |
+| `--perfect`, `-p` |  |  | perfect だけ(`--fit perfect` と同じ) |
+| `query` |  |  | 探す語(ID・名前の一部。大文字小文字は区別しない) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--modality`・`--content`・`--uncensored`・`--width`・`--height`・`--frames`・`--length`・`--precision`・`--limits`・`--license`・`--any-license`・`--task`・`--all-workflows`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- [この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(合うものが無いときも。models は空、表では「(該当なし)」) |
+| 1 | 失敗: 探す語が空、壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit search flux --json
+genmodelfit search wan -m video --min-fit good
+genmodelfit search sdxl --uncensored --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「recommend / fit / search」](schema.ja.md#recommend--fit--search)
+
+1 項目に 1 モデル(同じ重みの系統 + 大きさ)。`--all-workflows` ならワークフローごとに 1 項目。
+
+**例**
+
+```sh
+genmodelfit search flux                         # 名前に flux を含むモデル
+genmodelfit search wan -m video --min-fit good  # good 以上の動画だけ
+```
+
+## `genmodelfit types`
+
+大きな種類と、その中の用途(`--task` の名前)と数
+
+**使い方**
+
+```text
+genmodelfit types [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
+                  [--content {all,sfw,uncensored}] [--uncensored]
+```
+
+大きな種類(image, video, music, sfx, tts, 3d)と、その中の用途と数を出す。用途の名前は `--task` に使う。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--content` | `{all,sfw,uncensored}` | `sfw` | 数えるモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。`--uncensored` と同じ)。略さずに書く |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`・`--uncensored`
+
+**前提**
+
+- 用意するものは無い。
+- PC は判定しない。
+- 一覧は同梱のものを使う(`genmodelfit update` で新しい一覧を取ってあればそちら。`--no-cache` で同梱)。
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: 壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit types
+genmodelfit types --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「Uses / 用途」](schema.ja.md#uses--用途)
+
+`--vram`・`--ram` も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。
+
+## `genmodelfit info`
+
+1 つのモデルの詳細
+
+**使い方**
+
+```text
+genmodelfit info [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                 [--content {all,sfw,uncensored}] [--uncensored] [--width PX] [--height PX]
+                 [--frames N] [--length SEC] [--precision PREC] [--license-allowlist LIST|FILE]
+                 [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto] model
+```
+
+- 1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動のおすすめの条件・同じモデルのほかのワークフロー)を出す。
+- ID がそのまま合えば必ずそのモデル(無検閲も)。
+- ID がそのまま合わなければ、ID・名前の一部を `--content` の中で探す。
+- 2 件以上合えば失敗にして候補を並べる。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `model` |  |  | モデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部 |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--content`・`--uncensored`・`--width`・`--height`・`--frames`・`--length`・`--precision`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- [この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: モデルが無い、2 件以上合う(候補を並べる)、壊れた `--db` のファイルなど(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit info image_z_image_turbo_int8 --json
+genmodelfit info sdxlturbo --vram 8 --ram 32
+```
+
+JSON の出力(`--json`): [schema.ja.md「info」](schema.ja.md#info)
+
+失敗のときは { error, candidates? }。
+
+**例**
+
+```sh
+genmodelfit info "Z-Image-Turbo"                  # モデルの名前で
+genmodelfit info image_z_image_turbo_int8 --json  # ワークフローの ID で、JSON
+```
+
+`--modality`・`--limit`・`--limits` も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。
+
+## `genmodelfit update`
+
+新しい一覧を取る(利用者は `--from-release`。オプションなしは上流から作り直す)
+
+**使い方**
+
+```text
+genmodelfit update [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
+                   [--license-allowlist LIST|FILE] [--comfyui-version VER]
+                   [--max-head-age-days DAYS] [--allow-uncensored-auto] [--offline-sources DIR]
+                   [--skip-hf] [--skip-head] [--heads-only] [--fields-only] [--inspect-only]
+                   [--offline] [--output PATH] [--from-release] [--force] [--allow-partial]
+                   [--rate-limit-budget SEC]
+```
+
+- 新しい一覧を取る。
+- 利用者は `genmodelfit update --from-release` を実行する。
+- `--from-release` は、このプロジェクトが配る署名つきの最新の一覧を取り込み(落とすのは db.json と db.json.sig だけ)、署名を確かめる。
+- 取り込んだ後は、ほかのコマンドも同梱の一覧の代わりにこれを使う(`--no-cache` で同梱に戻る)。
+- オプションなしの update は、一覧を上流(ComfyUI のテンプレート・Hugging Face Hub・すべてのダウンロードの URL への HEAD)から作り直す。
+- 作り直しは保守する人向けで、時間がかかる(問い合わせが多く、Hugging Face の上限で待つ。`--rate-limit-budget` を見る)。
+- 保守する人は、HEAD の確認だけ(`--heads-only`)、アプリ向けの項目と手で足したモデルだけ(`--fields-only`)、ファイルの見出しだけ(`--inspect-only`)をやり直すこともできる。
+- 方針のオプション(`--comfyui-version`・`--max-head-age-days` など)が変えるのは、最後に出す自動のおすすめの数だけ。
+- `--db` / `--no-cache` は、`--heads-only`・`--fields-only`・`--inspect-only` が元にする一覧を選ぶ。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` | update で取った一覧、無ければ同梱の一覧 | 元にする一覧のファイル(db.json)(`--heads-only`・`--fields-only`・`--inspect-only` のときだけ使う) |
+| `--no-cache` |  |  | update で取った一覧ではなく、同梱の一覧を元にする(`--heads-only`・`--fields-only`・`--inspect-only` のときだけ使う) |
+| `--offline-sources` | `DIR` |  | (試験用)上流の代わりに使うファイル |
+| `--skip-hf` |  |  | Hugging Face を見ない |
+| `--skip-head` |  |  | URL の HEAD 確認を飛ばす |
+| `--heads-only` |  |  | 今の一覧はそのままで、URL の HEAD と ComfyUI の最新の版の確認だけをやり直す |
+| `--fields-only` |  |  | 今の一覧はそのままで、アプリ向けの項目(言語・動かし方・説明)と手のモデル(data/manual.json)だけを当て直す。通信するのは、言語を読むカードと手のモデルのファイルだけ(`--offline` で通信せず、保存済みのカードの言語を使う) |
+| `--inspect-only` |  |  | 今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る) |
+| `--offline` |  |  | `--inspect-only` / `--fields-only` で通信せず、キャッシュにある見出し・リポジトリの精度だけを使う |
+| `--output` | `PATH` | キャッシュの db.json | 一覧の書き出し先(既定はキャッシュの db.json) |
+| `--from-release` |  |  | 配布された署名つきの一覧を取り込む(署名が合わなければ何も変えない)。`--output` があればそこへ書く |
+| `--force` |  |  | (`--from-release`)前に取り込んだ一覧より古くても取り込む |
+| `--allow-partial` |  |  | 一部(テンプレート・Hugging Face)を取得できなくても書き出す(sources.partial が true になる) |
+| `--rate-limit-budget` | `SEC` | `900` | Hugging Face の上限(429)で待つ時間の合計の上限(秒。既定 900)。超えたら止める |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- 通信できること。
+
+**副作用**
+
+- 通信: GET / HEAD だけ。
+- update は ComfyUI のワークフローのテンプレートとリリース(GitHub)、Hugging Face Hub の API、モデルのダウンロードの URL(HEAD だけ。重みは落とさない)を読む。
+- `--from-release` は、このプロジェクトの GitHub のリリースから db.json と db.json.sig だけを落とす。
+- この PC のことは何も送らない(User-Agent: `genmodelfit/<版>`。`~/.netrc` の資格情報は送らない)。
+- 一覧をキャッシュ(か `--output`)に書く。
+- 失敗したらキャッシュは変えない。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗(通信・署名が合わない・前より古い一覧など。`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り |
+
+`--vram`・`--ram` も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。
+
+## `genmodelfit download`
+
+モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)
+
+**使い方**
+
+```text
+genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                     [--license-allowlist LIST|FILE] [--comfyui-version VER]
+                     [--max-head-age-days DAYS] [--allow-uncensored-auto] [--precision PREC]
+                     [--budget GB] [--list] [--output-dir DIR | --comfyui-dir DIR] [--yes]
+                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
+```
+
+モデルのファイルをこの PC 向けに落とす(1 つのワークフローの全部のファイル。sha256 で確かめる)。
+
+- MODEL はモデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部(info と同じ)。
+- モデルの名前なら、ワークフローは recommend と同じ選び方で決める: この PC で逃がさずに載る(good 以上で GPU)中で一番精度の高いもの、それが無ければ段階が一番良いもの(同じなら逃がさない載せ方、次に精度の高いもの)。
+- どの決まりで選んだかは計画に出す。
+- `--precision` を付けると、その精度のワークフローを落とす。
+- `--budget` を付けると、落とす量が上限に収まる中で一番良いワークフローを選び、収まるものが無ければ断る。
+- ファイルは `<ComfyUI>/models/<folder>/<file>` に置く(folder はテンプレートで決まる: diffusion_models・text_encoders・vae・loras・checkpoints など)。
+- 置き場所は次の順で最初に決まったもの: `--comfyui-dir`(ComfyUI の外は `--output-dir`。優先の順は同じ)、環境変数 GENMODELFIT_COMFYUI_DIR、`genmodelfit config` で保存した comfyui-dir、自動で見つけた ComfyUI(今いるフォルダ、127.0.0.1 の 8188・8000 で起動中の ComfyUI、ComfyUI デスクトップ版と comfy-cli の設定、C:/ComfyUI などのよくある場所)。
+- 置き場所をどれで決めたかは、計画に必ず出す。
+- 置き場所が見つからない・2 つ以上見つかったときは、端末なら選ぶかパスを入れ、`--yes`・`--json`・端末でないときは落とさない(終了コード 1)。
+- `--list` は起動中の ComfyUI に尋ねないので、本当に落とすときは見つかる場所でも「置き場所: 未定」と出ることがある(正しい計画を見るには `--comfyui-dir` を付ける)。
+- ComfyUI のフォルダの extra_model_paths.yaml に is_default の節があれば、そこに置く。
+- ComfyUI のどのフォルダか分からないファイルは other/ に置く。
+- ComfyUI は other/ を読まないので、使う前に正しいフォルダ(diffusion_models など)へ移す。
+- 落とす前に、ファイル・それぞれのライセンスと URL(記載が無ければ確かめる場所)・合計の大きさ・ディスクの空きを出し、[y/N/c] で尋ねる(c で置き場所を変える。`--yes` で尋ねない)。
+- 自動で見つけた場所に初めて落とすときは、次からもそこにするかを尋ねる([Y/n]。`genmodelfit config` で見る・消す)。
+- 保存できるのは ComfyUI のフォルダだけで、`--output-dir` の場所は毎回指定する。
+- 無検閲のモデルとライセンスの分からないファイルには同意が要る: 端末ならそれを書いて y/N で尋ね、`--yes`・`--json`・端末でないときは `--uncensored`・`--any-license` を指定する(前からの書き方: `--content all`、`--include-unknown-license`。同意の指定は略さずに書く)。
+- 足りないのが同意だけなら、計画の最後に同意を足したコマンドを 1 つ出す(genmodelfit が勝手に足して落とすことはしない)。
+- 断るもの(どのオプションでも変わらない): gated のファイル(ログインしない)、ディスクの空きが足りない(落とす量 + 1 GB が要る)、置き場所の外に出る名前、Hugging Face / GitHub 以外のホスト。
+- 落としたファイルを使うには: ComfyUI を開いていたらブラウザで読み込み直し、ComfyUI のテンプレートの一覧から、info の 1 行目の名前のテンプレートを開く([ ] の中の ID はテンプレートのファイル名)。
+- ID が hf: で始まるモデルには ComfyUI のテンプレートが無いので、使い方は Hugging Face のページ(`https://huggingface.co/<owner>/<repo>`)を見る。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `model` |  |  | モデルの名前(表の Model)・ワークフローの ID・その一部 |
+| `--precision` | `PREC` | recommend と同じ選び方(上を見る) | 同じモデルのワークフローのうち、この精度のものを落とす(例: fp8 / bf16 / int8 / gguf-q8_0。あるものは表の Prec・info で分かり、無ければ誤りにして並べる)。recommend などの `--precision`(見積もりの換算)とは別 |
+| `--budget` | `GB` |  | 落とす量の上限(GB。既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、収まるものが無ければ断る |
+| `--list` |  |  | 落とすファイルと合計を出すだけ(落とさない・通信しない) |
+| `--output-dir` | `DIR` | なし(`--comfyui-dir` の決め方で決める) | ComfyUI の外の置き場所。ファイルは `<DIR>/<folder>/<file>` に置く(folder は diffusion_models・vae など。ComfyUI の models と同じ並びなので、ComfyUI の models のフォルダそのものを渡してもよい) |
+| `--comfyui-dir` | `DIR` | GENMODELFIT_COMFYUI_DIR → config の comfyui-dir → 自動で見つけたもの | ComfyUI のフォルダ。ファイルは `<DIR>/models/<folder>/<file>` に置く(既定は環境変数 GENMODELFIT_COMFYUI_DIR、`genmodelfit config` の comfyui-dir、自動で見つけたもの) |
+| `--yes`, `-y` |  |  | 同意の確認を省く(`--json` で落とすときは必須) |
+| `--uncensored` |  |  | 無検閲のモデルも落とす(前からの書き方 `--content all` と同じ) |
+| `--any-license`, `--include-unknown-license` |  |  | ライセンスの分からないファイルを含むモデルも落とす(条件は自分で確かめる。前からの書き方 `--include-unknown-license` も同じ) |
+| `--content` | `{all,sfw,uncensored}` | `sfw` | 名前で探すモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方)。uncensored と all は無検閲のモデルを落とす同意にもなる(`--uncensored` は all と同じ。`--uncensored` と一緒に使えるのは all だけ) |
+
+- 同時には使えない: `--output-dir`, `--comfyui-dir`
+- 同意(端末では y/N で尋ねる。`--yes`・`--json`・端末でないときに指定する。略さずに書く): `--uncensored`・`--any-license`・`--content`
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--vram`・`--ram`・`--db`・`--no-cache`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- 落とすには huggingface.co(か github.com)と通信できること。
+- `--list` は通信しない。
+
+**副作用**
+
+- 通信: 一覧の URL の GET だけ(https。転送先もすべて Hugging Face / GitHub のホストに限る)。
+- この PC のことは何も送らない(User-Agent: `genmodelfit/<版>`。`~/.netrc` の資格情報もトークンも使わない)。
+- 書くのは置き場所のフォルダの中だけ: 落としている間は `<file>.part`(Ctrl-C や失敗では残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば `<file>` に名前を変える。
+- 落としたファイルの sha256 が合わなければ消す。
+- sha256 の合う既にあるファイルは飛ばし、ほかの既にあるファイルは上書きしない。
+- 置き場所の指定(オプション・環境変数・設定)が無いときは、この PC で起動中の ComfyUI にフォルダの場所を尋ねる(GET http://127.0.0.1:8188 と :8000 の /internal/folder_paths。時間切れ 2 秒)。
+- 「次からも」に Y と答えると、設定ファイルに comfyui-dir を書く(`genmodelfit config path`)。
+- `--list`: 通信せず(起動中の ComfyUI にも尋ねない)、何も書かない。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(`--list` も。計画が止まっていても: "blocked" を見る) |
+| 1 | 失敗: モデルが無い・2 件以上合う、断った(上を見る)、同意が無い、通信、sha256 が合わない(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り |
+| 130 | 中断(Ctrl-C)。もう一度実行すれば続きから落とす |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit download "Z-Image-Turbo" --list --json
+genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI --yes --json
+genmodelfit download image_z_image_turbo_int8 --output-dir D:/models --budget 15 --yes
+```
+
+JSON の出力(`--json`): [schema.ja.md「download」](schema.ja.md#download)
+
+**例**
+
+```sh
+genmodelfit download "Z-Image-Turbo" --list                    # 1. まず落とすファイル・ライセンス・大きさを見る(落とさない)
+genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI  # 2. ComfyUI のフォルダへ落とす(同意を尋ねる)
+genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落とす(無検閲・ライセンス不明も。条件は自分で確かめる)
+```
+
+## `genmodelfit config`
+
+設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える
+
+**使い方**
+
+```text
+genmodelfit config [-h] [--lang {en,ja}] [--json] {show,set,unset,path} ...
+```
+
+genmodelfit のコマンドラインの設定を見る・変える(Python の API は読まない)。
+
+キー:
+
+```text
+comfyui-dir  download が使う ComfyUI のフォルダ(--comfyui-dir・--output-dir と
+             GENMODELFIT_COMFYUI_DIR の次)。set はそのフォルダが ComfyUI に見えることを確かめる
+             (main.py・comfy・nodes.py・comfy_extras・comfy_api のうち 4 つ、または ComfyUI
+             デスクトップ版のフォルダ: models・input・user・output・custom_nodes)。ComfyUI の外の
+             フォルダ(download の --output-dir)は保存できないので、毎回 --output-dir を付ける。
+lang         表示の言語。en か ja(--lang と GENMODELFIT_LANG が優先)。
+```
+
+操作を書かなければ、それぞれの設定と、どこから来たか(指定・環境変数・設定ファイル・既定)を出す。
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+**前提**
+
+- なし。
+
+**副作用**
+
+- 通信しない。
+- set・unset は設定ファイル(genmodelfit の利用者の設定のフォルダの config.json。GENMODELFIT_CONFIG_DIR でフォルダを変えられる)を書く。
+- show・path は何も書かない。
+- 壊れたファイルは読まず(注意を出す)、set・unset でも上書きしない。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: 知らないキー、正しくない値、壊れた・書けないファイル |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit config --json
+genmodelfit config set comfyui-dir D:/ComfyUI
+genmodelfit config unset comfyui-dir
+genmodelfit config path
+```
+
+JSON の出力(`--json`): [schema.ja.md「config」](schema.ja.md#config)
+
+**サブコマンド**: `genmodelfit config show`, `genmodelfit config set`, `genmodelfit config unset`, `genmodelfit config path`
+
+### `genmodelfit config show`
+
+今の設定と出どころ(サブコマンドを省いたときはこれ)
+
+**使い方**
+
+```text
+genmodelfit config show [-h] [--lang {en,ja}] [--json]
+```
+
+このコマンドだけのオプションはありません。
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit config set`
+
+値を保存する
+
+**使い方**
+
+```text
+genmodelfit config set [-h] [--lang {en,ja}] [--json] key value
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `key` |  |  | comfyui-dir か lang |
+| `value` |  |  | comfyui-dir なら ComfyUI のフォルダのパス、lang なら en か ja |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit config unset`
+
+値を消す
+
+**使い方**
+
+```text
+genmodelfit config unset [-h] [--lang {en,ja}] [--json] key
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `key` |  |  | comfyui-dir か lang |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit config path`
+
+設定ファイルの場所
+
+**使い方**
+
+```text
+genmodelfit config path [-h] [--lang {en,ja}] [--json]
+```
+
+このコマンドだけのオプションはありません。
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+## `genmodelfit gate`
+
+自動でおすすめに出せるかの集計
+
+**使い方**
+
+```text
+genmodelfit gate [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
+                 [--license-allowlist LIST|FILE] [--comfyui-version VER] [--max-head-age-days DAYS]
+                 [--allow-uncensored-auto] [--modality {image,video,music,sfx,tts,3d}]
+                 [--only-auto | --only-held]
+```
+
+一覧のうち、自動でおすすめに出せる(Verified。JSON では "auto")モデルの数と、ほかが保留になる理由を数える。条件は info(1 つのモデル)や recommend `--json` の "auto"・held_reasons と同じ。
+
+- 出力の読み方: 1 行目は条件に使った ComfyUI の版、2 行目はモデルの数と、出せる数・保留の数。
+- 表は条件ごとに 1 行で、「落ちた数」はその条件に通らないモデルの数、「最初に落ちた数」はそれが最初に落ちた条件であるモデルの数(先に直すところ)。
+- `--only-auto` / `--only-held` はモデルの ID も並べる(保留は最初の理由つき)。
+- 条件と許可リストは [gate.ja.md](gate.ja.md)
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--modality`, `-m` | `{image,video,music,sfx,tts,3d}` |  | この種類だけ数える(1 つだけ) |
+| `--only-auto` |  |  | 自動で出せるものの ID も並べる |
+| `--only-held` |  |  | 保留のものの ID と理由も並べる |
+
+- 同時には使えない: `--only-auto`, `--only-held`
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`・`--license-allowlist`・`--comfyui-version`・`--max-head-age-days`・`--allow-uncensored-auto`
+
+**前提**
+
+- 用意するものは無い。
+- PC は判定しない。
+- 一覧は同梱のものを使う(`genmodelfit update` で新しい一覧を取ってあればそちら。`--no-cache` で同梱)。
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: 壊れた `--db` のファイル、空の `--license-allowlist`(「,」や空のファイル)など(`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り(知らないオプション・値) |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit gate
+genmodelfit gate -m video --only-held
+genmodelfit gate --comfyui-version 0.40.0 --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「gate」](schema.ja.md#gate)
+
+`--vram`・`--ram` も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。
+
+## `genmodelfit diff`
+
+2 つの一覧(db.json)の違い(増減・ライセンス・自動のおすすめ・HEAD の失敗)
+
+**使い方**
+
+```text
+genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] [--limit N] [old]
+                 [new]
+```
+
+- 2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す。
+- 出すのは、増えた・消えたモデルと、変わったモデル(名前 (種類) — ID)ごとの次の違い。
+- 変わったモデルの違い: 増えた・消えた・変わったファイル(ライセンスと出どころつき)、ライセンス(寛容な側に ! を付ける)、新しく無検閲になったもの、動かし方・用途、自動のおすすめ、指示・読み上げの言語、大きさ、精度、確認の状態、ほかに変わった項目の名前(「その他の変化」)。
+- 変わったモデルは 3 つの節に分け、節ごとに `--limit` で切る: ファイル・ライセンス・無検閲・動かし方と用途が先、次に自動のおすすめの変化(ID は必ず出す)、最後にライセンスの出どころ・言語・大きさ・確認の印など。
+- 節の中では大事な変化を先に出すので、大事な変化は `--limit` で隠れない。
+- 大事さの低い同じ変化が多くのモデルにあれば(全部に確認の印が付いたなど)、件数つきの 1 行にまとめる。
+- 変わった項目はどこかに必ず出る(`--all` では数える)。
+- JSON をそのまま比べるので、知らない鍵の変化も数える(merge-check と同じ)。
+
+- 引数なしなら、同梱の一覧と `update` で取ってきた一覧(キャッシュ)を比べる。
+- 引数が 1 つなら同梱の一覧とそのファイル、2 つならその 2 つを比べる。
+- `--all` は保守用の内容(毎週の PR の中身)を足す: 新しいものに限らずすべての HEAD の失敗、401 のリポジトリ、`sources` の変わった数、人気の数・日付・HEAD の結果だけが変わったモデル、まとめた行の ID。
+- `--all` のときは、`-n` を付けなければ行の上限は無い(`--all` でなければ節ごとに既定 `-n` 20)。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `old` |  |  | 前の一覧。省くと同梱の一覧と取ってきた一覧(update のキャッシュ)を比べる。1 つだけなら同梱の一覧とそのファイルを比べる |
+| `new` |  |  | 新しい一覧 |
+| `--all` |  |  | 保守用の内容も出す(前からの HEAD の失敗・401 のリポジトリ・sources の数・人気の数などだけの変化) |
+| `--comfyui-version` | `VER` |  | 自動のおすすめを比べるときの ComfyUI の版(既定は新しい一覧の記録) |
+| `--limit`, `-n` | `N` | 20(`--all` なら全部) | 1 つの節に出す行の上限(既定 20。`--all` では全部) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+**前提**
+
+- 引数なし: キャッシュに取ってきた一覧があること(先に `genmodelfit update --from-release`。無ければ短い案内を出して終了コード 0)。
+- 引数があるときは db.json のファイルを 1 つか 2 つ。
+- 新しい一覧(generated_at)が前の一覧より古ければ注意を出す。
+
+**副作用**
+
+- なし(読むだけ。通信しない)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(違いがあるときも、取ってきた一覧がまだ無いときも) |
+| 1 | 失敗(ファイルが読めない・形が違う。`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit diff                          # 同梱の一覧 ↔ 取ってきた一覧
+genmodelfit diff new.json                 # 同梱の一覧 ↔ new.json
+genmodelfit diff old.json new.json --json
+genmodelfit diff old.json new.json --all  # 保守用の内容
+```
+
+自動のおすすめは、両方の一覧を 1 つの条件で比べる: 新しい一覧が記録した ComfyUI の版(か `--comfyui-version`)で、HEAD の期限は無し(HEAD の失敗は数える)。
+
+JSON の出力(`--json`): [schema.ja.md「diff」](schema.ja.md#diff)
+
+取ってきた一覧が無いときは、同じ鍵が空で "note" が付く。
+
+## `genmodelfit review`
+
+確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(保守する人向け)
+
+**使い方**
+
+```text
+genmodelfit review [-h] [--lang {en,ja}] {list,approve,reject} ...
+```
+
+- 確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す(保守する人向け)。
+- pending は update が前の一覧と比べて付ける(new / license_permissive / need_decreased / uncensored_new / files_changed)。
+- 確かめるまで自動のおすすめに出さない(gate の reviewed)。
+
+```text
+list     [--json] [--all] [--db PATH]          確認待ちと理由
+approve  <id> --evidence URL [--evidence URL…] [--note TEXT] [--by NAME] --db PATH
+         根拠が無ければ断る。一覧のファイルをその場で書き換える
+reject   <id> --note TEXT --db PATH [--rejected FILE] [--hide-name]
+         一覧から外し、review_rejected.txt に記録する(update でも入れない)
+```
+
+**副作用**
+
+- 通信しない。
+- list は読むだけ。
+- approve / reject は `--db` のファイルを書き換える(reject は外した記録のファイルにも足す)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗(ID が無い・根拠が無い・確認待ちでない・`--db` が読めない。`--json` なら誤りは "error" に入る) |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit review list --json --db src/genmodelfit/data/db.json
+genmodelfit review approve hf:org/model --db src/genmodelfit/data/db.json \
+    --evidence https://huggingface.co/org/model/blob/main/LICENSE
+genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "商用には使えない"
+```
+
+**サブコマンド**: `genmodelfit review list`, `genmodelfit review approve`, `genmodelfit review reject`
+
+### `genmodelfit review list`
+
+確認待ちの項目と理由
+
+**使い方**
+
+```text
+genmodelfit review list [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--all]
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | 一覧のファイル(既定はキャッシュ、無ければ同梱) |
+| `--all` |  |  | 確認済みの項目も出す |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--no-cache`
+
+### `genmodelfit review approve`
+
+根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)
+
+**使い方**
+
+```text
+genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] [--by BY] --db PATH
+                           [--json] id
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `id` |  |  | モデルの ID |
+| `--evidence` | `URL` |  | 根拠の URL(https。1 つ以上。繰り返して足す) |
+| `--note` | `NOTE` |  | 確かめた内容のメモ |
+| `--by` | `BY` | `review` | 確かめた人・仕組み(decided_by。既定 review) |
+| `--db` | `PATH` |  | 書き換える一覧(例 src/genmodelfit/data/db.json) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit review reject`
+
+一覧から外し、update でも入れないように記録する
+
+**使い方**
+
+```text
+genmodelfit review reject [-h] [--lang {en,ja}] --note NOTE --db PATH [--rejected PATH]
+                          [--hide-name] [--json] id
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `id` |  |  | モデルの ID |
+| `--note` | `NOTE` |  | 外す理由 |
+| `--db` | `PATH` |  | 書き換える一覧(例 src/genmodelfit/data/db.json) |
+| `--rejected` | `PATH` |  | 外した記録のファイル(既定は `--db` と同じフォルダの review_rejected.txt) |
+| `--hide-name` |  |  | 記録に ID を残さず sha256 だけ残す(安全上の理由で外すとき。既存の除外と同じく名前を残さない) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+## `genmodelfit bench`
+
+動いている ComfyUI で実測する
+
+**使い方**
+
+```text
+genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url URL
+                  [--workflow PATH] [--width PX] [--height PX] [--frames N] [--length SEC]
+                  [--steps N] [--output PATH] [--save-failed] [--save-nonstandard]
+                  [--resolution WxH] [--set NAME=VALUE] [--free] [--timeout SEC] [--force]
+                  [--source SOURCE] [--note NOTE] [--submission PATH] [--share] template
+```
+
+- 動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
+- TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのもの(例 image_z_image_turbo_int8。info の 1 行目の [ ] の中)。
+- モデルの名前や ID の一部は受けない。
+- hf: のモデルにはテンプレートが無い(代わりに `--workflow` で API 形式のワークフローを渡す)。
+- 保存した結果はこの PC の判定に使う。
+- `--share` は提出の用意をし、y と答えるとブラウザで GitHub の「新しいファイル」のページを開く: GitHub にログインし(アカウントが要る)、「Propose changes」、次に「Create pull request」を押す([CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない))。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `template` |  |  | ComfyUI のテンプレートのワークフローの ID そのもの(info の 1 行目の [ ] の中) |
+| `--url` | `URL` |  | 測りに使う ComfyUI の URL(例 http://127.0.0.1:8188。既定は持たない) |
+| `--workflow` | `PATH` |  | API 形式のワークフロー(省略時はテンプレートから作る) |
+| `--width` | `PX` | テンプレートの値 | 幅(ピクセル)(省くとテンプレートのまま) |
+| `--height` | `PX` | テンプレートの値 | 高さ(ピクセル)(省くとテンプレートのまま) |
+| `--frames` | `N` | テンプレートの値 | 動画のコマ数(省くとテンプレートのまま) |
+| `--length` | `SEC` | テンプレートの値 | 音声の長さ(秒)(省くとテンプレートのまま) |
+| `--steps` | `N` | テンプレートの値 | サンプラーのステップ数(省くとテンプレートのまま) |
+| `--output` | `PATH` | キャッシュの measurements/ | 結果の JSON の書き出し先(失敗・標準でない結果もここへ書く) |
+| `--save-failed` |  |  | 失敗(OOM など)の結果もキャッシュに保存する(既定は表示だけ) |
+| `--save-nonstandard` |  |  | 標準でない条件(`--workflow`・`--set`・一部だけ実行など)の結果もキャッシュに保存する |
+| `--resolution` | `WxH` |  | 幅と高さ(例: 768x768)。`--width`/`--height` と同じ |
+| `--set` | `NAME=VALUE` |  | 入力を名前で変える(例: octree_resolution=192) |
+| `--free` |  |  | 開始前に /free でその ComfyUI のモデルを解放する(自分だけが使う ComfyUI のときに) |
+| `--timeout` | `SEC` | `1800` | 待つ時間の上限(0 より大きい秒数。既定 1800) |
+| `--force` |  |  | GPU が使われている・GPU の空きを確かめられないときも測る |
+| `--source` | `SOURCE` |  | 誰がどこで測ったか(結果の source に入る) |
+| `--note` | `NOTE` |  | 結果の note に足す文 |
+| `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 1)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+| `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
+
+**前提**
+
+- `--url` で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること(先に `genmodelfit download` で落とす)。
+- GPU が空いていること: ほかのプログラムが使っている、または空きを確かめられない(nvidia-smi)ときは、`--force` が無ければ測らない。
+- 自分だけが使う ComfyUI で測る。
+- `--free` を付けると、先にその ComfyUI のモデルを解放する。
+
+**副作用**
+
+- 通信: `--url` の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。
+- その ComfyUI にテンプレートが無ければ、GitHub から公式のテンプレートのファイルを読む。
+- この PC のことはほかへ送らない。
+- `--share` は URL を出し、y と答えたときだけブラウザを開く。
+- 結果の JSON を `<cache>/measurements/`(か `--output`)に書く。
+- 失敗した結果と標準でない条件の結果は、`--save-failed`・`--save-nonstandard`・`--output` が無ければ表示だけ。
+- `--submission`・`--share` は提出用の JSON も書く。
+- 省いた設定(`--width`・`--height`・`--frames`・`--length`・`--steps`)はテンプレートのまま。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失敗: ComfyUI につながらない、GPU が使われている(`--force` なし)、テンプレートやファイルが無い、実行の失敗(メモリ不足など)、時間切れ、Ctrl-C(送った自分の仕事を先に取り消す) |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188
+genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+genmodelfit bench video_wan2_2_5B_ti2v --url http://127.0.0.1:8188 --resolution 640x640 --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「bench」](schema.ja.md#bench)
+
+`--vram`・`--ram` も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。
+
+## `genmodelfit contrib`
+
+実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)
+
+**使い方**
+
+```text
+genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,aggregate} ...
+```
+
+実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる。genmodelfit は何も送らない(共有は、利用者が自分の GitHub で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
+
+```text
+make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
+show      <file>                 送る中身と個人の情報の点検(同意のため)
+share     <file>                 show と同じ点検のあと、GitHub で送るページの URL を出す
+                                 (端末ならブラウザで開くかを尋ねる。開くだけで、送るのはブラウザで押したとき)
+validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
+aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
+          同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
+aggregate [dir] --check
+          同梱のまとめにまだ入っていない提出を数える(まとめは版を出すときに作る)
+```
+
+**副作用**
+
+- 通信しない。
+- make は提出のファイルを書く。
+- aggregate は `--output` のときだけ書く。
+- share は端末で y と答えたときだけブラウザを開く(`--json`・端末でないときは URL を出すだけ)。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(validate: すべてのファイルが通った。show: 直すところが無い) |
+| 1 | 失敗(読めないファイル・知らない形など) |
+| 1 | validate: 機械的な検査に通らないファイルがある、または `--strict` で注意がある(マージする人向けの確認では失敗にしない) |
+| 1 | show: 直すところがある |
+| 1 | share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない) |
+| 1 | aggregate: フォルダが無い、または `--output` で結果が空(`--allow-empty` が無いとき) |
+| 1 | aggregate `--check`: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う |
+| 2 | 使い方の誤り |
+| 3 | aggregate `--report` `--fail-on-breach`: 誤差が閾値を超えた |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
+genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
+genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
+genmodelfit contrib validate data/contrib --json
+genmodelfit contrib aggregate --report --json --fail-on-breach
+```
+
+**サブコマンド**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib aggregate`
+
+### `genmodelfit contrib make`
+
+bench が保存した結果から提出用の JSON を作る
+
+**使い方**
+
+```text
+genmodelfit contrib make [-h] [--lang {en,ja}] [--json] [--db PATH] --from FILE [--output PATH]
+                         [--no-pc-info]
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `--from` | `FILE` |  | bench の結果の JSON |
+| `--output` | `PATH` | `data/contrib` | 書き出す場所(フォルダなら `<GPU>/<日付>-<sha8>.json`。既定 data/contrib) |
+| `--no-pc-info` |  |  | この PC の OS の種類・メモリ・GPU の世代を入れない(ComfyUI が別の PC だったとき) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit contrib show`
+
+送る中身と個人の情報の点検を見せる
+
+**使い方**
+
+```text
+genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `file` |  |  | 提出用の JSON |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit contrib share`
+
+中身と点検を見せ、GitHub で送るページの URL を出す(端末ならブラウザで開くかを尋ねる。何も送らない)
+
+**使い方**
+
+```text
+genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `file` |  |  | 提出用の JSON |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit contrib validate`
+
+形・値・個人の情報・重複を検査する(CI でも使う)
+
+**使い方**
+
+```text
+genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--strict]
+                             [--no-filename-check] [--markdown] FILE|DIR [FILE|DIR ...]
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `FILE\|DIR` |  |  | 提出用の JSON(フォルダなら下の \*.json すべて) |
+| `--strict` |  |  | 注意(warnings)も失敗にする |
+| `--no-filename-check` |  |  | ファイル名(`<GPU>/<日付>-<sha8>.json`)を確かめない |
+| `--markdown` |  |  | Markdown の表で出す(CI のまとめ用) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit contrib aggregate`
+
+同じモデル・設定・GPU ごとにまとめ、精度を点検する
+
+**使い方**
+
+```text
+genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--output FILE] [--report]
+                              [--threshold PCT] [--fail-on-breach] [--allow-empty]
+                              [--allow-file-sources] [--check] [dir]
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `dir` |  | `data/contrib` | 提出のフォルダ(既定 data/contrib) |
+| `--output` | `FILE` |  | まとめを書き出す(同梱するなら src/genmodelfit/data/measurements_community.json) |
+| `--report` |  |  | 校正をやり直し、種類ごとの誤差の表と閾値の判定を出す |
+| `--threshold` | `PCT` | `25.0` | 誤差の閾値(%、既定 25) |
+| `--fail-on-breach` |  |  | `--report` で閾値を超えたら終了コード 3 にする |
+| `--allow-empty` |  |  | まとめが空でも `--output` に書き出す(既定は、空のまとめで上書きしない) |
+| `--allow-file-sources` |  |  | git の履歴が無くても(出どころを提出のファイルごとに数えても)`--output` に書き出す。試験・手元の確かめだけ。版を出すときは使わない |
+| `--check` |  |  | 書き出さず、同梱のまとめにまだ入っていない提出を数える(あれば終了コード 1) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+## このページについて
+
+コマンドの節は、プログラムの引数の解釈から `tools/cli_reference.py` が作っているので、プログラムといつも一致します。
+手で直さず、`src/genmodelfit/cli.py` の説明の文を直して `python tools/cli_reference.py` を実行してください
+(このページが古いと `tests/test_commands_doc.py` が落ちます)。
+
+環境変数を読むのは `src/genmodelfit/` の `i18n.py`(`GENMODELFIT_LANG`)・`cli.py`(`GENMODELFIT_COMFYUI_DIR`)・
+`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
+`signing.py`(`GENMODELFIT_SIGNING_KEY`)です。

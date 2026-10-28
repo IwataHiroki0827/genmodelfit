@@ -15,6 +15,8 @@ def _isolated_cache_session(tmp_path_factory):
     まず全体で空のフォルダにする。"""
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
+        # この PC の ComfyUI を探さない(子のプロセスにも効く。#111)。探す試験は test_download_place.py が外す
+        mp.setenv("GENMODELFIT_COMFYUI_SEARCH", "0")
         yield
 
 
@@ -44,6 +46,23 @@ def _no_real_hardware(monkeypatch):
     monkeypatch.setattr(hardware, "_sysfs_slots", lambda: [])
     monkeypatch.setattr(hardware, "kfd_gfx_targets", lambda: {})
     monkeypatch.setattr(hardware, "wsl_state", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_comfyui(monkeypatch, tmp_path):
+    """download の置き場所(#111)を、この PC の ComfyUI・設定に左右されないようにする。
+    設定ファイルは試験ごとの空のフォルダ、探す場所は無いホームだけ(固定ドライブ・ドキュメントなどを見ない)、
+    起動中の ComfyUI(127.0.0.1)には尋ねない。使う試験は tests/test_download_place.py のように差し替える。"""
+    import sys
+
+    from genmodelfit import comfyfind, config
+
+    monkeypatch.setenv(config.CONFIG_DIR_ENV, str(tmp_path / "gmf-config"))
+    home = tmp_path / "no-home"
+    monkeypatch.setattr(
+        comfyfind, "current_places", lambda: comfyfind.Places(platform=sys.platform, home=home)
+    )
+    monkeypatch.setattr(comfyfind, "running_candidates", lambda *a, **k: [])
 
 
 @pytest.fixture(autouse=True)

@@ -11,20 +11,19 @@ The implementation is `src/genmodelfit/downloader.py`; `tests/test_download.py` 
 
 ```
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
+genmodelfit download "Z-Image-Turbo"                        # into the ComfyUI found on this PC (asks first)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
+genmodelfit config set comfyui-dir D:\ComfyUI_windows_portable\ComfyUI   # use this ComfyUI from now on
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
 genmodelfit download MODEL --uncensored --any-license --yes   # without the question (scripts)
 ```
 
 - **Which files**: all files of one workflow.
-  - A model name (as in the tables) picks the workflow and precision like `recommend`: the highest precision that runs on this PC without offloading.
+  - A model name (as in the tables) picks the workflow and precision like `recommend`: the highest precision that runs on this PC without offloading (good or better on the GPU); when none does, the best fit level, then the faster run mode, then the higher precision. The plan says which rule chose it.
   - A workflow id is used as is.
   - `--precision int8` picks a precision.
-  - `--budget 15` (GB) caps the download (files already there are not counted).
-- **Where**:
-  - `--comfyui-dir` puts each file in the ComfyUI folder the template names (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, ...). Subfolders in the file name are kept.
-  - `--output-dir` (default: genmodelfit's user data folder, `models`) uses the same layout, so it can be added to ComfyUI's `extra_model_paths.yaml`.
-  - The environment variable `GENMODELFIT_COMFYUI_DIR` is the default for `--comfyui-dir` (CLI only; in Python pass `comfyui_dir`). Order: `--comfyui-dir`, then `--output-dir`, then `GENMODELFIT_COMFYUI_DIR`, then the default folder. The value is checked like the flag (it must look like a ComfyUI folder). When none is set, the plan says the folder is genmodelfit's (ComfyUI does not read it) and shows how to set it, for this OS only: PowerShell `$env:GENMODELFIT_COMFYUI_DIR = 'C:\ComfyUI'` on Windows, bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"` elsewhere.
+  - `--budget 15` (GB) caps the download (files already there are not counted): the best workflow within it is chosen, and when none fits the download is refused.
+- **Where**: each file goes to the ComfyUI folder the template names (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, ...). Subfolders in the file name are kept. Which ComfyUI is decided as in [Choosing the place](#choosing-the-place) below; `--output-dir` uses the same layout for a folder outside ComfyUI.
   - Files whose ComfyUI folder is unknown (many Hugging Face models) go to `other/`. ComfyUI does not read `models/other`: the plan says so, and you move them (to `checkpoints`, `diffusion_models`, `loras`, ... as the model page says) before use.
   - For a file without a folder in the list (from any source) the folder is inferred only from one piece of evidence in the bundled list: the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all matching files are in one folder (`unet` and `diffusion_models`, `clip` and `text_encoders` count as one; e.g. an SDXL all-in-one file has the same count as `sd_xl_base_1.0.safetensors`, so `checkpoints`). The plan shows the basis (`directory_basis` in JSON). Names and tags are not used to guess. A GGUF file placed in `diffusion_models` / `text_encoders` this way needs the ComfyUI-GGUF custom nodes; the plan says so.
   - Since #75 the main files of 12 Hugging Face models go to `checkpoints/` or `diffusion_models/` instead of `other/`. If you downloaded one of them with 0.9.2 into `other/`, it is downloaded again into the new folder; move the file there yourself first to skip that (the sha256 is checked again).
@@ -32,7 +31,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - every file with its license and the license URL. A file with no license URL says "no license stated" and shows the page to check (the Hugging Face page of the model, or the page stored in the list); the consent question then asks you to check those pages yourself;
   - licenses that are not on the allowlist, marked (commercial use without use restrictions; see [gate.md](gate.md); change it with `--license-allowlist`);
   - the total size and the free disk.
-  - Then you are asked `[y/N]` (default No). `--yes` skips the question (required with `--json`).
+  - Then you are asked `[y/N/c]` (default No; `c` changes the place, see [Before downloading](#before-downloading)). `--yes` skips the question (required with `--json`).
   - Uncensored models and files with no stated license: in a terminal (stdin and stdout are terminals, no `--yes` / `--json`) they do not stop the plan; they are shown, and the question names them ("This model is uncensored (may include adult content) and has files with no stated license (check the pages above). Download anyway, ...?"). One `y` covers everything named. Without a terminal, with `--yes` or `--json` you must pass `--uncensored` and / or `--any-license` (old forms `--content all`, `--include-unknown-license`). `--list` shows what a real run would do: in a terminal (no `--yes`), one `consent:` line with what will be asked and the command for scripts (with `--uncensored` / `--any-license` and `--yes`); otherwise "cannot download" and the flags command. Consent flags must be written in full (`--u` or `--an` is a usage error, exit 2), and `--uncensored` cannot be combined with `--content sfw|uncensored`. The Python API is unchanged: pass `content=` / `include_unknown_license=` yourself.
   - Read the terms of each file before you use the model.
 - **Refused**: if any file matches, nothing of that workflow is downloaded. It never downloads only part of it.
@@ -56,6 +55,58 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - A URL that could be read as two different hosts is refused before any connection: `\`, spaces, control characters, `%` or `@` in the host, non-ASCII hosts. The host is read the way requests / urllib3 read it.
   - No `~/.netrc` credentials, no tokens, nothing about this PC (User-Agent and Range only).
   - On HTTP 429 / 500 / 502 / 503 / 504 it waits for `Retry-After` (or backs off) and retries. It stops after 4 failures in a row without progress.
+
+## Choosing the place
+
+The first of these that is set decides the place. The plan always says which one (`destination_from` in JSON).
+
+1. `--comfyui-dir <ComfyUI>` or `--output-dir <folder>`. `--comfyui-dir` must look like a ComfyUI folder (`models` or `main.py`); `--output-dir` is any folder outside ComfyUI, with the same layout.
+2. The environment variable `GENMODELFIT_COMFYUI_DIR` (checked like the flag).
+3. `comfyui-dir` saved with [`genmodelfit config`](#genmodelfit-config). If that folder is gone, it is an error that says how to remove the setting.
+4. Found automatically. Every place found is shown on the confirmation screen:
+   1. The current folder, when 4 of `main.py`, `comfy/`, `nodes.py`, `comfy_extras/`, `comfy_api/` are there (the same test as comfy-cli).
+   2. A ComfyUI running on this PC: `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (the ComfyUI and ComfyUI Desktop defaults), 2 s timeout, no redirects, no proxy. ComfyUI says this endpoint is for its own front end only and may change, so any missing or odd answer is skipped silently. The ComfyUI folder is the parent of `custom_nodes` (else of `models`). **Only when downloading**: `--list` and the other commands never connect.
+   3. The ComfyUI Desktop settings: `basePath` in `config.json` of its user data folder (Windows `%APPDATA%\ComfyUI`, macOS `~/Library/Application Support/ComfyUI`, Linux `~/.config/ComfyUI`), and its `extra_models_config.yaml` there. comfy-cli: `default_workspace` / `recent_workspace` in its `config.ini` and its default workspace (`~/Documents/comfy/ComfyUI` on Windows / macOS, `~/comfy/ComfyUI` on Linux). The newer "Comfy Desktop" is not looked for: its folders are not in the source we checked.
+   4. Usual places, one level only: `ComfyUI` and `ComfyUI_windows_portable\ComfyUI` directly under each fixed drive (`C:\`, `D:\`, ... on Windows), Documents, Desktop, Downloads and the home folder.
+
+   A place counts only if it looks like ComfyUI (4 of the 5 names above, or a ComfyUI Desktop folder with `models`, `input`, `user`, `output`, `custom_nodes`). The same folder found twice is listed once.
+   With the environment variable `GENMODELFIT_COMFYUI_SEARCH=0`, step 4 is skipped entirely (for embedding apps, scripts and tests; if nothing else decides, "Not decided" below applies).
+- **`is_default`**: when the ComfyUI folder's `extra_model_paths.yaml` (and, for ComfyUI Desktop, its `extra_models_config.yaml`) has a section with `is_default: true`, files go there, as ComfyUI-Manager does: `<base_path>/<download_model_base>` when the section has `download_model_base`, else the common parent when each folder key is `<parent>/<key>`. A section laid out differently (e.g. A1111), a missing folder, or a file genmodelfit cannot read (only the plain `name: value` and `|` forms are read, without extra dependencies) is not used, with a warning. A folder the section does not list is warned about (ComfyUI does not read it from there).
+- **Not decided** (nothing found, or 2 or more found): in a terminal you choose a number or type the path of a ComfyUI folder. With `--yes`, `--json` or without a terminal nothing is downloaded: exit code 1, with the candidates and how to decide (`--comfyui-dir`, or `genmodelfit config set comfyui-dir`). `--list` downloads nothing, so it still shows the plan, with the place "not decided" and the candidates.
+- **Changed in 0.11.0**: genmodelfit no longer downloads silently into its own folder, which ComfyUI does not read. Only `--output-dir` puts files outside ComfyUI.
+
+## Before downloading
+
+In a terminal, the plan ends with the place and how it was found, the files with sizes and licenses, the total and the free disk, then:
+
+```
+  to:        D:\ComfyUI_windows_portable\ComfyUI\models  (ComfyUI models folder: <folder>/<file>; found by: the running ComfyUI (127.0.0.1:8188))
+  files (3; GB = GiB):
+    - diffusion_models/z_image_turbo_int8_convrot.safetensors  5.78 GB
+  ...
+  total:     11.34 GB; to download 11.34 GB (already there 0.00 GB)
+Do you agree to use the files above under their licenses and terms (URLs), and download them?
+[y/N/c] (c = change the place)
+```
+
+- `c` shows the places found (or asks for a path); after you choose, the plan is shown again and you are asked again. An empty answer keeps the place.
+- The first time you download into a place found automatically (step 4, or a path you typed), `y` is followed by "Download here next time too? [Y/n]". `Y` saves it as `comfyui-dir`.
+- The consent questions for uncensored models and files with no stated license are the same as before (they are part of the same question).
+
+## genmodelfit config
+
+```
+genmodelfit config                          # current settings, and where each comes from (option, environment variable, config file, default)
+genmodelfit config set comfyui-dir D:\ComfyUI
+genmodelfit config set lang ja              # default display language (--lang and GENMODELFIT_LANG win)
+genmodelfit config unset comfyui-dir
+genmodelfit config path                     # where the config file is
+```
+
+- All of them take `--json` ([schema.md](schema.md) "config").
+- The file is `config.json` in genmodelfit's user config folder (platformdirs: Windows `%LOCALAPPDATA%\genmodelfit`, macOS `~/Library/Application Support/genmodelfit`, Linux `~/.config/genmodelfit`). The environment variable `GENMODELFIT_CONFIG_DIR` changes the folder.
+- Only the command line reads it. The Python library never does.
+- `set comfyui-dir` saves the folder only if it looks like ComfyUI (4 of 5, or a ComfyUI Desktop folder). Unknown keys are refused. A broken `config.json` is not read (a warning is shown, nothing fails) and is not overwritten.
 
 ## Python
 

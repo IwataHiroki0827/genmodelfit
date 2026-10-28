@@ -5,7 +5,8 @@
 """モデルを落とす(Issue #31。`genmodelfit download` と `gmf.plan_download()` / `gmf.download()`)。
 
 - plan_download: 落とすファイルの一覧・大きさ・ライセンス・置き場所・止める理由を、通信せずに決める
-  (精度は recommend と同じ選び方: この PC で逃がさずに載る中で一番品質の高いもの。recommend.variant_key)
+  (精度は recommend と同じ選び方: この PC で逃がさずに載る中で一番品質の高いもの、無ければ段階が一番良いもの。
+  recommend.variant_key)
 - download: 計画どおりに落とす。同意(confirm / yes)が無ければ始めない
 
 安全のための約束(README「Download」):
@@ -782,7 +783,8 @@ def plan_download(
 
     model: モデルの表示名・ワークフローの ID・名前の一部(info と同じ探し方)。ID がそのまま合えばその
     ワークフロー、表示名・一部なら同じモデルの仲間から、この PC で逃がさずに載る中で一番精度の高いもの
-    (recommend と同じ選び方)。precision: その精度の仲間だけ(ID を指定したときも、同じ使い方の仲間から選ぶ)。
+    (無ければ段階が一番良いもの。recommend と同じ選び方)。
+    precision: その精度の仲間だけ(ID を指定したときも、同じ使い方の仲間から選ぶ)。
     budget_gb: 落とす量(既にあるファイルを除く。GiB)の上限。超えない中で一番良いものを選ぶ。
     output_dir / comfyui_dir: 置き場所(両方は ValueError)。comfyui_dir なら <dir>/models/<directory>/<名前>、
     output_dir(既定は default_output_dir())も同じ並び。content: 無検閲は "all" / "uncensored" のときだけ
@@ -885,14 +887,38 @@ def plan_download(
     plan.chosen = (
         tr("ID で指定", "Given by id")
         if exact and not precision
-        else tr(
-            f"この PC で逃がさずに載る中で一番精度の高いもの({len(plans)} 件から。recommend と同じ選び方)",
-            f"The highest precision that fits this PC without offloading (from {len(plans)}; "
-            "chosen like recommend)",
-        )
+        else _chosen_reason(fit, len(plans), precision, budget is not None)
     )
     _finish(plan, fit, allow)
     return plan
+
+
+def _chosen_reason(fit: Fit, count: int, precision: str | None, budget: bool) -> str:
+    """名前で選んだときの、選んだ決まり。
+
+    recommend.variant_key と同じ順(docs/download.md「コマンドライン」)。"""
+    from .recommend import runs_clean
+
+    if count == 1:
+        rule = tr("候補はこれだけ", "the only candidate")
+    elif runs_clean(fit.estimate):
+        rule = tr(
+            "この PC で逃がさずに載る(good 以上で GPU)中で一番精度の高いもの",
+            "the highest precision that fits this PC without offloading (good or better on the GPU)",
+        )
+    else:
+        rule = tr(
+            "逃がさずに載るものが無いので、段階が一番良いもの(同じなら逃がさない載せ方、次に精度の高いもの)",
+            "nothing fits without offloading, so the best fit level"
+            " (then the faster run mode, then the higher precision)",
+        )
+    extra = []
+    if precision:
+        extra.append(tr(f"精度 {precision} の中から", f"among precision {precision}"))
+    if budget:
+        extra.append(tr("--budget に収まるものを先に", "those within --budget first"))
+    extra.append(tr(f"{count} 件から。recommend と同じ選び方", f"from {count}; chosen like recommend"))
+    return f"{rule}" + tr(f"({'、'.join(extra)})", f" ({'; '.join(extra)})")
 
 
 def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:

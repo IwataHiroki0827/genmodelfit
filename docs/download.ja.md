@@ -11,20 +11,19 @@ JSON の形は [schema.ja.md](schema.ja.md)「download」にあります。
 
 ```
 genmodelfit download "Z-Image-Turbo" --list                 # what would be downloaded (no network, writes nothing)
+genmodelfit download "Z-Image-Turbo"                        # into the ComfyUI found on this PC (asks first)
 genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI
+genmodelfit config set comfyui-dir D:\ComfyUI_windows_portable\ComfyUI   # use this ComfyUI from now on
 genmodelfit download image_z_image_turbo_int8 --output-dir D:\models --budget 15 --yes
 genmodelfit download MODEL --uncensored --any-license --yes   # without the question (scripts)
 ```
 
 - **落とすもの**: 1 つのワークフローの全部のファイル。
-  - モデル名(表の Model)なら、`recommend` と同じく、この PC で逃がさずに載る中で一番精度の高いワークフローを選ぶ。
+  - モデル名(表の Model)なら、`recommend` と同じく、この PC で逃がさずに載る(good 以上で GPU)中で一番精度の高いワークフローを選ぶ。それが無ければ段階が一番良いもの(同じなら逃がさない載せ方、次に精度の高いもの)。どの決まりで選んだかは計画に出す。
   - ID を指定すればそのまま使う。
   - `--precision int8` で精度を決められる。
-  - `--budget 15`(GB)で落とす量の上限を決められる(既にあるファイルは数えない)。
-- **置き場所**:
-  - `--comfyui-dir` なら、テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・`checkpoints` など)に置く。ファイル名の中のサブフォルダは保つ。
-  - `--output-dir`(既定は genmodelfit のデータのフォルダの `models`)も同じ並びなので、ComfyUI の `extra_model_paths.yaml` に足せる。
-  - 環境変数 `GENMODELFIT_COMFYUI_DIR` が `--comfyui-dir` の既定になる(CLI だけ。Python は `comfyui_dir` を渡す)。順は `--comfyui-dir` → `--output-dir` → `GENMODELFIT_COMFYUI_DIR` → 既定のフォルダ。値はフラグと同じく確かめる(ComfyUI のフォルダに見えること)。どれも無いときは、計画の中で genmodelfit のフォルダであること(ComfyUI は読まない)と決め方を、この OS の形だけで示す(Windows は PowerShell `$env:GENMODELFIT_COMFYUI_DIR = 'C:\ComfyUI'`、ほかは bash / zsh `export GENMODELFIT_COMFYUI_DIR="$HOME/ComfyUI"`)。
+  - `--budget 15`(GB)で落とす量の上限を決められる(既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、収まるものが無ければ断る。
+- **置き場所**: テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・`checkpoints` など)に置く。ファイル名の中のサブフォルダは保つ。どの ComfyUI かは下の[置き場所の決め方](#置き場所の決め方)で決める。`--output-dir` は ComfyUI の外のフォルダに同じ並びで置く。
   - ComfyUI のどのフォルダか分からないファイル(Hugging Face のモデルに多い)は `other/` に置く。ComfyUI は `models/other` を読まないので、計画の中でそう知らせる。使う前に(モデルのページの説明に従って `checkpoints`・`diffusion_models`・`loras` などへ)移すこと。
   - 一覧に置き場所の無いファイル(出どころによらない)の置き場所は、同梱の一覧の 1 つの根拠だけで決める: 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけのとき(`unet` と `diffusion_models`、`clip` と `text_encoders` は同じとみなす。例 SDXL の全部入りのファイルは `sd_xl_base_1.0.safetensors` と同じ数なので `checkpoints`)。計画に根拠を出す(JSON は `directory_basis`)。名前やタグからの推測はしない。こうして `diffusion_models`・`text_encoders` に置く GGUF のファイルは、読むのにカスタムノード ComfyUI-GGUF が要る(計画にそう出す)。
   - #75 から、Hugging Face の 12 モデルの本体は `other/` ではなく `checkpoints/`・`diffusion_models/` に置く。0.9.2 でそれを `other/` に落とした人は、新しいフォルダへもう一度落とすことになる。先にファイルを自分で移せば落とし直さない(sha256 は計り直す)。
@@ -32,7 +31,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - ファイルごとのライセンスと原文の URL。原文の URL が無いファイルは「ライセンスの記載がありません」と書き、確かめる場所(モデルの Hugging Face のページか、一覧にあるページ)を出す。そのときの同意の質問は、そのページで自分で確かめることを求める文になる。
   - 許可リストに無いライセンスの印(利用制限の無い商用利用ができるもの。[gate.ja.md](gate.ja.md)。`--license-allowlist` で変えられる)。
   - 合計の大きさと空き。
-  - そのあと `[y/N]` で尋ねる(既定は No)。`--yes` で省ける(`--json` で落とすときは必須)。
+  - そのあと `[y/N/c]` で尋ねる(既定は No。`c` で置き場所を変える。[落とす前の確かめ](#落とす前の確かめ))。`--yes` で省ける(`--json` で落とすときは必須)。
   - 無検閲のモデルとライセンスの記載が無いファイル: 端末(標準入力と標準出力が端末で、`--yes`・`--json` が無い)では計画を止めず、計画に出したうえで、同意の質問で名指しする(「このモデルは無検閲(成人向けを含みうる)で、ライセンスの記載が無いファイルを含みます(上の確かめる場所で条件を確かめてください)。…それでも落としますか?」)。1 回の `y` で名指ししたもの全部に同意する。端末でない・`--yes`・`--json` では `--uncensored`・`--any-license`(前からの書き方は `--content all`・`--include-unknown-license`)が要る。`--list` は本当に実行したときと同じ: 端末(`--yes` 無し)なら尋ねることを `同意:` の 1 行と、スクリプト向けのコマンド(`--uncensored`・`--any-license` と `--yes` 付き)を出し、そうでなければ「落とせません」と指定のコマンドを出す。同意の指定は略さずに書く(`--u`・`--an` は使い方の誤りで終了コード 2)。`--uncensored` は `--content sfw|uncensored` と一緒に使えない。Python の API は変えない(`content=`・`include_unknown_license=` を自分で渡す)。
   - 使う前に各ファイルの条件を読むこと。
 - **落とさないもの**: 1 つでも当てはまるファイルがあれば、そのワークフローは何も落とさない。一部だけ落とすことはしない。
@@ -56,6 +55,58 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - 2 通りのホストに読める URL は、つなぐ前に拒む: `\`・空白・制御文字・ホストの中の `%` や `@`・ASCII でないホスト。ホストは requests / urllib3 と同じ読み方で取る。
   - `~/.netrc` もトークンも使わず、PC の情報も送らない(User-Agent と Range だけ)。
   - HTTP 429・500・502・503・504 では `Retry-After`(無ければ間を空けて)待ってやり直す。進まない失敗が 4 回続いたら止める。
+
+## 置き場所の決め方
+
+次のうち、上から順に最初に決まったものを使う。どれで決めたかを計画に毎回出す(JSON は `destination_from`)。
+
+1. `--comfyui-dir <ComfyUI>` か `--output-dir <フォルダ>`。`--comfyui-dir` は ComfyUI のフォルダに見えること(`models` か `main.py` がある)。`--output-dir` は ComfyUI の外の好きなフォルダで、同じ並びで置く。
+2. 環境変数 `GENMODELFIT_COMFYUI_DIR`(フラグと同じく確かめる)。
+3. [`genmodelfit config`](#genmodelfit-config) で保存した `comfyui-dir`。そのフォルダが無くなっていれば誤りにし、設定の消し方を出す。
+4. 自動で探す。見つけたものは確かめの画面に必ず出す:
+   1. 今いるフォルダ。`main.py`・`comfy/`・`nodes.py`・`comfy_extras/`・`comfy_api/` のうち 4 つがあるとき(comfy-cli と同じ見分け方)。
+   2. この PC で起動中の ComfyUI: `GET http://127.0.0.1:8188/internal/folder_paths` と、ポート 8000 の同じもの(ComfyUI とデスクトップ版の既定)。時間切れ 2 秒、転送は追わない、プロキシは使わない。ComfyUI はこの口を自分の画面のためだけのもので変わりうると書いているので、答えが無い・形が違うときは黙って次へ進む。ComfyUI のフォルダは `custom_nodes` の親(無ければ `models` の親)。**落とすときだけ**尋ねる: `--list` とほかのコマンドは通信しない。
+   3. ComfyUI デスクトップ版の設定: 利用者データのフォルダ(Windows `%APPDATA%\ComfyUI`、macOS `~/Library/Application Support/ComfyUI`、Linux `~/.config/ComfyUI`)の `config.json` の `basePath` と、そこの `extra_models_config.yaml`。comfy-cli: `config.ini` の `default_workspace`・`recent_workspace` と既定の場所(Windows・macOS は `~/Documents/comfy/ComfyUI`、Linux は `~/comfy/ComfyUI`)。新しい「Comfy Desktop」は探さない(確かめたソースにフォルダの場所が無い)。
+   4. よくある場所(1 段だけ): 固定ドライブ(Windows の `C:\`・`D:\` など)・ドキュメント・デスクトップ・ダウンロード・ホームの直下の `ComfyUI` と `ComfyUI_windows_portable\ComfyUI`。
+
+   ComfyUI に見えるもの(上の 5 つのうち 4 つ、または `models`・`input`・`user`・`output`・`custom_nodes` のそろったデスクトップ版のフォルダ)だけを数える。同じフォルダは 1 つにまとめる。
+   環境変数 `GENMODELFIT_COMFYUI_SEARCH=0` なら 4 は全部しない(組み込むアプリ・スクリプト・試験向け。決まらなければ下の「決まらない」になる)。
+- **`is_default`**: ComfyUI のフォルダの `extra_model_paths.yaml`(デスクトップ版はその `extra_models_config.yaml` も)に `is_default: true` の節があれば、ComfyUI-Manager と同じくそこに置く: 節に `download_model_base` があれば `<base_path>/<download_model_base>`、無ければフォルダのキーがどれも `<親>/<キーの名前>` のときの共通の親。並びの違う節(A1111 など)・無いフォルダ・genmodelfit の読めない書き方(依存を足さずに、`名前: 値` と `|` の形だけを読む)は使わず、注意を出す。節に無いフォルダは注意を出す(ComfyUI はそこから読まない)。
+- **決まらない**(見つからない、2 つ以上見つかった): 端末なら番号で選ぶか、ComfyUI のフォルダのパスを入れる。`--yes`・`--json`・端末でないときは落とさずに誤り(終了コード 1)にし、候補と決め方(`--comfyui-dir` か `genmodelfit config set comfyui-dir`)を出す。`--list` は落とさないので、決まらなくても計画を出す(置き場所は「未定」と候補)。
+- **0.11.0 で変わった点**: ComfyUI が読まない genmodelfit のフォルダに黙って落とすことはやめた。ComfyUI の外に置くのは `--output-dir` を指定したときだけ。
+
+## 落とす前の確かめ
+
+端末では、計画の最後に、置き場所と見つけ方・ファイルと大きさとライセンス・合計と空きを出し、そのあと尋ねる:
+
+```
+  置き場所:     D:\ComfyUI_windows_portable\ComfyUI\models(ComfyUI の models のフォルダ: <folder>/<file>。見つけ方: 起動中の ComfyUI(127.0.0.1:8188))
+  ファイル(3 件。GB = GiB):
+    - diffusion_models/z_image_turbo_int8_convrot.safetensors  5.78 GB
+  ...
+  合計:         11.34 GB。落とす量 11.34 GB(既にある 0.00 GB)
+上のファイルを、それぞれのライセンス・利用条件(URL)に従って使うことに同意して落としますか?
+[y/N/c](c = 置き場所を変える)
+```
+
+- `c` で、見つけた場所の一覧(またはパスを入れる画面)を出す。選ぶと計画を出し直して聞き直す。空で答えれば置き場所はそのまま。
+- 自動で見つけた場所(上の 4、または入れたパス)に初めて落とすときは、`y` のあとに「次からもここに落としますか? [Y/n]」と尋ねる。`Y` なら `comfyui-dir` に保存する。
+- 無検閲・ライセンスの記載が無いファイルの同意の質問は今までと同じ(同じ質問の文に入る)。
+
+## genmodelfit config
+
+```
+genmodelfit config                          # current settings, and where each comes from (option, environment variable, config file, default)
+genmodelfit config set comfyui-dir D:\ComfyUI
+genmodelfit config set lang ja              # default display language (--lang and GENMODELFIT_LANG win)
+genmodelfit config unset comfyui-dir
+genmodelfit config path                     # where the config file is
+```
+
+- どれも `--json` が使える([schema.ja.md](schema.ja.md)「config」)。
+- ファイルは genmodelfit の利用者の設定のフォルダの `config.json`(platformdirs: Windows `%LOCALAPPDATA%\genmodelfit`、macOS `~/Library/Application Support/genmodelfit`、Linux `~/.config/genmodelfit`)。環境変数 `GENMODELFIT_CONFIG_DIR` でフォルダを変えられる。
+- 読むのはコマンドラインだけ。Python のライブラリは読まない。
+- `set comfyui-dir` は、そのフォルダが ComfyUI に見える(5 つのうち 4 つ、またはデスクトップ版のフォルダ)ときだけ保存する。知らないキーは断る。壊れた `config.json` は読まず(注意を出す。落ちない)、上書きもしない。
 
 ## Python
 

@@ -23,6 +23,7 @@
 - [bench](#bench)
 - [contrib](#contrib)
 - [download](#download)
+- [config](#config)
 - [Python API (stable) / 公開の範囲](#python-api-stable--公開の範囲)
 - [Database file (`db.json`) / データベースファイル](#database-file-dbjson--データベースファイル)
 - [update](#update)
@@ -41,7 +42,7 @@ CLI の表示の「GB」も GiB。
 | キー | 型 | 意味 |
 |---|---|---|
 | `genmodelfit` | str | ツールの版 |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
 | `system` | System | 判定した PC(`--vram` / `--ram` で置き換えたあと)。`types` / `gate` / `update` / `bench` / `diff` / `review` / `contrib` には無い |
 | `database` | object | `origin`(`bundled` / `cache` / `path`)、`generated_at`、`models`、`measurements`(件数)。`system` では `status`(DataStatus。下)も入る。`bench` / `diff` / `contrib` / `review approve` / `review reject` / `update --from-release` には無い |
 | `error` | str | 失敗したときだけ(終了コード 1) |
@@ -64,7 +65,8 @@ CLI の表示の「GB」も GiB。
 | `python -m genmodelfit.weekly merge-check` | なし | なし |
 | `python -m genmodelfit.review publish SRC DST` | なし | DST(確認待ちを除いた一覧。data.yml が署名する) |
 | `python -m genmodelfit.review apply DECISIONS --db PATH` | なし | `--db` のファイル。reject は `review_rejected.txt` にも追記する |
-| `download` | 一覧のモデルの URL への GET(https。リダイレクトは Hugging Face / GitHub のホストへだけ)。`--list` では通信しない | 保存先のファイル(ダウンロード中は `<file>.part`)。`--list` では書かない |
+| `download` | 一覧のモデルの URL への GET(https。リダイレクトは Hugging Face / GitHub のホストへだけ)。置き場所の指定(`--comfyui-dir`・`--output-dir`・環境変数・設定)が無いときは、`GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(この PC で起動中の ComfyUI。時間切れ 2 秒、転送は追わない、プロキシは使わない)も。`--list` では通信しない | 保存先のファイル(ダウンロード中は `<file>.part`)。「次からも」に Y と答えたときは設定ファイルの `comfyui-dir`。`--list` では書かない |
+| `config` | なし | `set`・`unset`: 設定ファイル(`config path`)。`show`・`path`: なし |
 
 テレメトリは無い。PC や利用者の情報は何も送らない。HTTP は `fetch.make_session()` を使う。
 User-Agent は `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`。
@@ -1244,6 +1246,7 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - `--json` でダウンロードするには `--yes` が要る。
 - 失敗したとき(終了コード 1、Ctrl-C の後は 130)は、`error` が入り、`result` は null、`plan` は計画(作れていれば)。
 - モデルが見つからない、または複数のモデルに合うときは、`plan` 無しで `error`(と `candidates`)を出す。
+- 置き場所が決まらない(ComfyUI のフォルダが見つからない・2 つ以上見つかり、尋ねられない)ときは、`plan` は null で、`destination_candidates` に見つけたものを入れる([download.ja.md](download.ja.md)「置き場所の決め方」)。
 - Python: `gmf.plan_download(...)` は `DownloadPlan` を返し(`.to_dict()` が `plan`)、`gmf.download(...)` は `DownloadResult` を返す(`.to_dict()` が `result`)。
 
 | キー | 型 | 意味 |
@@ -1251,6 +1254,10 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 | `listed` | bool | `--list` なら true(何も落とさない) |
 | `plan` | DownloadPlan | 落とす(または落とすことになる)もの |
 | `result` | DownloadResult \| null | 起きたこと。`--list` のとき、失敗のときは null |
+| `destination_from` | str \| null | (0.11.0、#111)置き場所の決め方: `comfyui_dir_option`、`output_dir_option`、`env`(`GENMODELFIT_COMFYUI_DIR`)、`config`(`genmodelfit config`)、自動で見つけたもの: `cwd`、`running`(起動中の ComfyUI)、`desktop`(ComfyUI デスクトップ版の設定)、`comfy_cli`、`common`(よくある場所)、または `typed`(端末で入れたパス)。null = 未定(`--list`、または上の誤り) |
+| `comfyui_dir` | str \| null | (0.11.0)ComfyUI のフォルダ。`--output-dir` と未定のときは null |
+| `extra_model_paths` | object \| null | (0.11.0)使った `is_default` の節: `file`、`section`、`root`(置き場所)、`folders`(節にあるフォルダのキーの str[]。`download_model_base` のときは null)。使わなければ null |
+| `destination_candidates` | object[] | (0.11.0)自動で見つけた ComfyUI のフォルダ: `comfyui_dir`、`from`(`destination_from` と同じ)、`detail`(例 `127.0.0.1:8188`、設定ファイル)。置き場所を指定したときは空 |
 
 DownloadPlan:
 
@@ -1261,8 +1268,8 @@ DownloadPlan:
 | `modality`、`content`、`precision` | str / str / str \| null | ModelEntry と同じ |
 | `fit_level`、`run_mode_label`、`auto` | str / str / bool | この PC での判定(`recommend` と同じ) |
 | `chosen` | str | このワークフローを選んだ理由(表示の言語 `en` / `ja`) |
-| `layout` | str | `comfyui`(`--comfyui-dir`。`root` は `<dir>/models`)/ `output`(`--output-dir` または既定。同じ配置) |
-| `root` | str | ファイルを置くフォルダの絶対パス(`<root>/<directory>/<name>`) |
+| `layout` | str | `comfyui`(`--comfyui-dir`。`root` は `<dir>/models`)/ `output`(`--output-dir` または Python の既定。同じ配置。CLI は `is_default` の節と、起動中の ComfyUI が答えた models のフォルダでも `output`) |
+| `root` | str | ファイルを置くフォルダの絶対パス(`<root>/<directory>/<name>`)。置き場所が未定(CLI の `--list`)なら "" |
 | `files` | PlannedFile[] | ワークフローのファイルごとに 1 つ |
 | `total_bytes` | int | ファイルの大きさの合計 |
 | `download_bytes` | int | これから落とす量(すでにあるファイルと `.part` のバイト数を引いたもの) |
@@ -1284,7 +1291,7 @@ PlannedFile:
 |---|---|---|
 | `name` | str | 一覧にあるファイル名(ComfyUI のサブフォルダ `/` を含むことがある) |
 | `relpath` | str | `root` の下のパス(`<directory>/<name>`。ComfyUI のフォルダが分からなければ `other/<name>`。ComfyUI は `other` を読まないので、使う前に移す)。断ったときは "" |
-| `dest` | str | 保存先の絶対パス。断ったときは "" |
+| `dest` | str | 保存先の絶対パス。断ったとき、置き場所が未定のときは "" |
 | `url`、`sha256`、`size_bytes`、`role` | | ModelFile から |
 | `directory` | str \| null | ComfyUI のフォルダ。ModelFile から。一覧に無ければ決めたもの(`directory_basis` を参照)。null は分からない(`other/`) |
 | `directory_basis` | object \| null | 一覧に置き場所の無いファイル(出どころによらない)の `directory` を決めた根拠(任意。#75 から): 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけ(`unet` は `diffusion_models`、`clip` は `text_encoders` と同じとみなす。例 SDXL の全部入り = `sd_xl_base_1.0.safetensors` → `checkpoints`)。キー: `kind`(`header_params`)、`template`(テンプレートの ID)、`file`(そのファイル)、`params`、`reference_params`、`needs`(GGUF を `diffusion_models`・`text_encoders` に置くときの `ComfyUI-GGUF`)。null は一覧の値か、分からない |
@@ -1312,6 +1319,22 @@ DownloadResult:
 | `bytes_downloaded` | int | この実行で受け取ったバイト数 |
 | `seconds` | float | 実時間 |
 | `files` | object[] | すべてのファイルの `relpath`、`dest`、`sha256` |
+
+## config
+
+`genmodelfit config [show|set|unset|path] --json`(0.11.0、#111。[download.ja.md](download.ja.md)「genmodelfit config」)。
+外枠に `system`・`database` は無い。
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `action` | str | `show`(操作を書かないときも)/ `set` / `unset` / `path` |
+| `path` | str | 設定ファイル(まだ無いこともある) |
+| `settings` | object | `show`: `comfyui-dir` と `lang`、それぞれ `{ value, from }`。`from`: `option`(`--lang`)、`env`(`GENMODELFIT_COMFYUI_DIR`・`GENMODELFIT_LANG`)、`file`、`default`(`comfyui-dir` は値が null で download が探す。`lang` は `en`) |
+| `warnings` | str[] | `show`: ファイルや値を使わなかった理由(壊れた JSON、型の違い) |
+| `key`、`value` | str | `set`: 保存したもの(`comfyui-dir` は絶対パス) |
+| `removed` | bool | `unset`: 設定されていなかったときは false |
+
+誤り(終了コード 1: 知らないキー、正しくない値、壊れた・書けないファイル)は `{ genmodelfit, command, error }`。
 
 ## Python API (stable) / 公開の範囲
 

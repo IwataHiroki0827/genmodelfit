@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -2789,20 +2790,12 @@ def blocked_texts(plan) -> list[str]:
     return out
 
 
-def format_plan(
-    plan, *, consent: bool = False, comfyui_from: str | None = None, asks: list[str] | None = None
-) -> list[str]:
+def format_plan(plan, *, consent: bool = False, dest=None, asks: list[str] | None = None) -> list[str]:
     """download --list と同意の画面の文(人が読む形。幅は _emit で 100 桁までに折り返す)。
 
-    comfyui_from: ComfyUI のフォルダをどこで決めたか("flag" / "env" / "default" = どちらも無く既定の場所。
-    None = 知らせない)。asks: 端末の質問で尋ねる同意の種類(uncensored / unknown_license。#75)。"""
-    from .downloader import (
-        LAYOUT_WARNING_EN,
-        LAYOUT_WARNING_JA,
-        UNKNOWN_WARNING_EN,
-        UNKNOWN_WARNING_JA,
-        license_label,
-    )
+    dest: 置き場所をどう決めたか(_Destination。None = 知らせない。#111)。
+    asks: 端末の質問で尋ねる同意の種類(uncensored / unknown_license。#75)。"""
+    from .downloader import UNKNOWN_WARNING_EN, UNKNOWN_WARNING_JA, license_label
 
     ja = i18n.get_language() == "ja"
     # 見出し(#76。日本語は全角の幅で値の頭をそろえる。英語は前からの形のまま)
@@ -2822,18 +2815,7 @@ def format_plan(
             f"{plan.fit_level} ({plan.run_mode_label}); {plan.chosen}",
         )
     )
-    if plan.layout == "comfyui":
-        where = tr("ComfyUI の models のフォルダ", "ComfyUI models folder")
-    else:
-        where = tr("models のフォルダ(ComfyUI と同じ並び)", "models folder (ComfyUI layout)")
-    if comfyui_from == "env":
-        where += tr(f"、{COMFYUI_DIR_ENV}", f", {COMFYUI_DIR_ENV}")
-    out.append(
-        L("置き場所", "to")
-        + tr(f"{plan.root}({where}: <folder>/<file>)", f"{plan.root}  ({where}: <folder>/<file>)")
-    )
-    if comfyui_from == "default":
-        out += _comfyui_hint()
+    out += _destination_lines(plan, dest, L)
     out.append(tr(f"  ファイル({len(plan.files)} 件。GB = GiB):", f"  files ({len(plan.files)}; GB = GiB):"))
     lic_label = tr("        ライセンス: ", "        license: ")
     for f in plan.files:
@@ -2923,8 +2905,6 @@ def format_plan(
         more = tr(f"(ほかに {rest} 件)", f" (+{rest} more)") if rest > 0 else ""
         out.append(L("ほかの候補", "others") + f"{alts}{more}")
     for w in plan.warnings:
-        if comfyui_from == "default" and w in (LAYOUT_WARNING_JA, LAYOUT_WARNING_EN):
-            continue  # 上の「ComfyUI:」の案内にまとめた
         if asks and w.startswith((UNKNOWN_WARNING_JA, UNKNOWN_WARNING_EN)):
             continue  # 下の「同意」の行にまとめた(ライブラリの warnings はアプリ向けにそのまま)
         out.append(tr(f"  注意: {w}", f"  warning: {w}"))
@@ -3000,25 +2980,320 @@ def _basis_text(f) -> str:
     )
 
 
-def _comfyui_hint() -> list[str]:
-    """ComfyUI のフォルダを指定していないときの案内(#75)。ライブラリの「同じ並びで置く」知らせも
-    ここにまとめる。
-    環境変数の決め方は、この OS のシェルの形だけ出す。"""
-    if _is_windows():
-        example = f"               $env:{COMFYUI_DIR_ENV} = 'C:\\ComfyUI'"
+# --- 置き場所の決め方(#111。docs/download.ja.md「置き場所の決め方」) -----------------------------
+
+# 自動で見つけた(または選ぶ画面で入れた)場所。初めて落とすとき「次からもここに」と尋ねる
+_AUTO_SOURCES = ("cwd", "running", "desktop", "comfy_cli", "common", "typed")
+
+
+def _source_label(source: str | None, detail: str = "") -> str:
+    """置き場所の決め方(JSON の destination_from)→ 人が読む名前。"""
+    labels = {
+        "comfyui_dir_option": ("--comfyui-dir", "--comfyui-dir"),
+        "output_dir_option": ("--output-dir", "--output-dir"),
+        "env": (f"環境変数 {COMFYUI_DIR_ENV}", f"environment variable {COMFYUI_DIR_ENV}"),
+        "config": ("genmodelfit config の comfyui-dir", "comfyui-dir in genmodelfit config"),
+        "cwd": ("今いるフォルダ", "the current folder"),
+        "running": ("起動中の ComfyUI", "the running ComfyUI"),
+        "desktop": ("ComfyUI デスクトップ版の設定", "ComfyUI Desktop settings"),
+        "comfy_cli": ("comfy-cli の設定・既定の場所", "comfy-cli settings or default"),
+        "common": ("よくある場所", "a usual place"),
+        "typed": ("入力した場所", "the folder you typed"),
+    }
+    ja, en = labels.get(source or "", ("?", "?"))
+    if source == "running" and detail:
+        ja, en = f"{ja}({detail})", f"{en} ({detail})"
+    return tr(ja, en)
+
+
+@dataclass
+class _Destination:
+    """download の置き場所をどう決めたか(#111)。source が None なら未定(--list だけで起きる)。"""
+
+    source: str | None
+    comfyui_dir: Path | None = None
+    output_dir: Path | None = None  # plan_download に渡す(--output-dir、is_default の節、起動中の models)
+    detail: str = ""
+    section: Any = None  # comfyfind.DefaultSection
+    candidates: list = field(default_factory=list)  # comfyfind.Candidate
+    notes: list[str] = field(default_factory=list)
+    probed: bool = False
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "destination_from": self.source,
+            "comfyui_dir": str(self.comfyui_dir) if self.comfyui_dir else None,
+            "extra_model_paths": self.section.to_dict() if self.section else None,
+            "destination_candidates": [c.to_dict() for c in self.candidates],
+        }
+
+
+def _from_comfyui(
+    path: Path,
+    source: str,
+    *,
+    detail: str = "",
+    models_dir: Path | None = None,
+    extra: list[Path] | None = None,
+    notes: list[str] | None = None,
+) -> _Destination:
+    """ComfyUI のフォルダ → 置き場所。ComfyUI に見えなければ誤り。extra_model_paths.yaml に is_default の節が
+    あれば、そこ(ComfyUI-Manager の download_model_base と同じ)。"""
+    from . import comfyfind
+    from .downloader import DownloadRefused, comfyui_models_dir
+
+    path = Path(os.path.abspath(path.expanduser()))
+    try:
+        comfyui_models_dir(path)
+    except DownloadRefused as e:
+        src = {
+            "env": tr(
+                f"(環境変数 {COMFYUI_DIR_ENV} の値)", f" (from the environment variable {COMFYUI_DIR_ENV})"
+            ),
+            "config": tr(
+                "(genmodelfit config の comfyui-dir の値。genmodelfit config unset comfyui-dir で消せる)",
+                " (from comfyui-dir in genmodelfit config; remove it with"
+                " genmodelfit config unset comfyui-dir)",
+            ),
+        }.get(source, "")
+        raise CliError(str(e) + src) from e
+    files: list[Path] = []
+    for p in [path / "extra_model_paths.yaml", *(extra or []), *comfyfind.desktop_extra_configs(path)]:
+        if p not in files:
+            files.append(p)
+    section, ynotes = comfyfind.default_section(files)
+    d = _Destination(source, comfyui_dir=path, detail=detail, notes=[*(notes or []), *ynotes])
+    if section is not None:
+        d.section, d.output_dir = section, section.root
+    elif models_dir is not None and models_dir.is_dir():
+        d.output_dir = models_dir
+    return d
+
+
+def _from_candidate(
+    c, candidates: list, notes: list[str] | None = None, probed: bool = False
+) -> _Destination:
+    d = _from_comfyui(
+        c.path, c.source, detail=c.detail, models_dir=c.models_dir, extra=c.extra_configs, notes=notes
+    )
+    d.candidates, d.probed = candidates, probed
+    return d
+
+
+def _resolve_destination(args: argparse.Namespace, *, probe: bool) -> _Destination:
+    """置き場所(上から順に最初に決まったもの): --comfyui-dir / --output-dir → 環境変数
+    GENMODELFIT_COMFYUI_DIR → genmodelfit config の comfyui-dir → 自動で探す(1 つだけ見つかったとき)。
+    probe: 起動中の ComfyUI(127.0.0.1)に尋ねる(落とすときだけ。--list は通信しない)。"""
+    from . import comfyfind, config
+
+    if args.comfyui_dir:
+        return _from_comfyui(Path(args.comfyui_dir), "comfyui_dir_option")
+    if args.output_dir:
+        out = Path(os.path.abspath(Path(args.output_dir).expanduser()))
+        return _Destination("output_dir_option", output_dir=out)
+    env_dir = os.environ.get(COMFYUI_DIR_ENV, "").strip()
+    if env_dir:
+        return _from_comfyui(Path(env_dir), "env")
+    values, notes = config.load()
+    if values.get("comfyui-dir"):
+        return _from_comfyui(Path(values["comfyui-dir"]), "config", notes=notes)
+    cands = comfyfind.find_candidates(probe=probe)
+    if len(cands) == 1:
+        return _from_candidate(cands[0], cands, notes, probe)
+    return _Destination(None, candidates=cands, notes=notes, probed=probe)
+
+
+def _undecided_root() -> Path:
+    """未定のまま計画を作るときの、無いフォルダ(何も書かない。計画の root・dest は空にして出す)。"""
+    import secrets
+    import tempfile
+
+    return Path(tempfile.gettempdir()) / f"genmodelfit-undecided-{secrets.token_hex(8)}"
+
+
+def _undecided_plan(plan) -> None:
+    """未定の計画から、仮のフォルダに関わるもの(root・dest・空き・空きで止める理由)を消す。"""
+    from .downloader import LAYOUT_WARNING_EN, LAYOUT_WARNING_JA
+
+    codes = list(plan.blocked_codes) + [""] * (len(plan.blocked) - len(plan.blocked_codes))
+    pairs = [(b, c) for b, c in zip(plan.blocked, codes, strict=True) if c != "disk"]
+    plan.blocked = [b for b, _ in pairs]
+    plan.blocked_codes = [c for _, c in pairs if c]
+    plan.root, plan.layout, plan.disk_free_bytes = "", "comfyui", None
+    for f in plan.files:
+        f.dest = ""
+    plan.warnings = [w for w in plan.warnings if w not in (LAYOUT_WARNING_JA, LAYOUT_WARNING_EN)]
+
+
+def _destination_notes(plan, dest: _Destination) -> None:
+    """ComfyUI から決めた置き場所の計画を直す: 「ComfyUI のフォルダではない」の知らせを外し、is_default の節に
+    無いフォルダと、置き場所を決めたときの注意を足す。"""
+    from .comfyfind import LEGACY
+    from .downloader import LAYOUT_WARNING_EN, LAYOUT_WARNING_JA
+
+    if dest.comfyui_dir is not None and dest.output_dir is not None:
+        plan.warnings = [w for w in plan.warnings if w not in (LAYOUT_WARNING_JA, LAYOUT_WARNING_EN)]
+    sec = dest.section
+    if sec is not None and sec.folders is not None:
+        missing = sorted(
+            {
+                f.directory
+                for f in plan.files
+                if f.directory and LEGACY.get(f.directory, f.directory) not in sec.folders
+            }
+        )
+        if missing:
+            plan.warnings.append(
+                tr(
+                    f"{sec.file} の節 {sec.section} に無いフォルダ({', '.join(missing)})は、"
+                    "ComfyUI がここから読みません(節にそのフォルダを足すか、"
+                    "--output-dir で ComfyUI の models を指定する)",
+                    f"ComfyUI does not read the folders missing from section {sec.section} of {sec.file}"
+                    f" ({', '.join(missing)}) here (add them to the section, or pass ComfyUI's models with"
+                    " --output-dir)",
+                )
+            )
+    plan.warnings += dest.notes
+
+
+def _how_to_decide() -> str:
+    return tr(
+        "--comfyui-dir で ComfyUI のフォルダを渡すか、genmodelfit config set comfyui-dir <フォルダ> で決める"
+        "(ComfyUI の外に置くなら --output-dir)",
+        "pass the ComfyUI folder with --comfyui-dir, or save it with genmodelfit config set comfyui-dir"
+        " <folder> (--output-dir for a place outside ComfyUI)",
+    )
+
+
+def _undecided_why(dest: _Destination) -> str:
+    if dest.candidates:
+        return tr(
+            f"ComfyUI のフォルダが {len(dest.candidates)} つ見つかりました",
+            f"{len(dest.candidates)} ComfyUI folders were found",
+        )
+    return tr("ComfyUI のフォルダが見つかりません", "no ComfyUI folder was found")
+
+
+def _candidate_lines(dest: _Destination, current: Path | None = None) -> list[str]:
+    from .comfyfind import _key
+
+    out = []
+    for i, c in enumerate(dest.candidates, 1):
+        here = current is not None and _key(c.path) == _key(current)
+        mark = tr("  ← 今の置き場所", "  <- current") if here else ""
+        out.append(f"    {i}. {c.path}  ({_source_label(c.source, c.detail)}){mark}")
+    return out
+
+
+def _destination_lines(plan, dest: _Destination | None, L) -> list[str]:
+    """計画の「置き場所」の行(#111。決め方・見つけ方を毎回出す)。"""
+    if dest is not None and dest.source is None:
+        why = _undecided_why(dest)
+        out = [L("置き場所", "to") + tr(f"未定({why})", f"not decided ({why})")]
+        out += _candidate_lines(dest)
+        out.append(tr(f"        決め方: {_how_to_decide()}", f"        to decide: {_how_to_decide()}"))
+        if not dest.probed:
+            out.append(
+                tr(
+                    "        落とすときは、起動中の ComfyUI(127.0.0.1 の 8188・8000)にも尋ねます。"
+                    "端末なら候補から選べます",
+                    "        When downloading, a running ComfyUI (127.0.0.1 ports 8188 and 8000) is"
+                    " also asked, and in a terminal you can pick from the candidates",
+                )
+            )
+        return out
+    if plan.layout == "comfyui":
+        where = tr("ComfyUI の models のフォルダ", "ComfyUI models folder")
+    elif dest is not None and dest.section is not None:
+        where = tr(
+            f"extra_model_paths.yaml の is_default の節 {dest.section.section}",
+            f"is_default section {dest.section.section} of extra_model_paths.yaml",
+        )
+    elif dest is not None and dest.comfyui_dir is not None and dest.output_dir is not None:
+        where = tr(
+            "起動中の ComfyUI が最初に見る models", "the models folder the running ComfyUI reads first"
+        )
     else:
-        example = f'               export {COMFYUI_DIR_ENV}="$HOME/ComfyUI"'
-    return [
-        tr(
-            _ja_label("ComfyUI", 14)
-            + "指定なし。ここは genmodelfit のフォルダで、ComfyUI は読みません。--comfyui-dir で"
-            " ComfyUI のフォルダを渡すか、この端末で環境変数を決めるか、"
-            "extra_model_paths.yaml にこのフォルダを足す:",
-            "  ComfyUI:   not set. This is genmodelfit's folder, which ComfyUI does not read: pass"
-            " --comfyui-dir, set the folder for this terminal, or add this folder to extra_model_paths.yaml:",
-        ),
-        example,
+        where = tr("models のフォルダ(ComfyUI と同じ並び)", "models folder (ComfyUI layout)")
+    how = ""
+    if dest is not None and dest.source is not None:
+        auto = dest.source in _AUTO_SOURCES and dest.source != "typed"
+        label = _source_label(dest.source, dest.detail)
+        how = tr(
+            f"。{'見つけ方' if auto else '決め方'}: {label}", f"; {'found by' if auto else 'set by'}: {label}"
+        )
+    out = [
+        L("置き場所", "to")
+        + tr(f"{plan.root}({where}: <folder>/<file>{how})", f"{plan.root}  ({where}: <folder>/<file>{how})")
     ]
+    if dest is not None and dest.comfyui_dir is not None and plan.layout != "comfyui":
+        out.append(L("ComfyUI", "ComfyUI") + str(dest.comfyui_dir))
+    return out
+
+
+def _choose_destination(candidates: list, current: Path | None = None) -> _Destination | None:
+    """端末で ComfyUI のフォルダを選ぶ(番号か、パスを入れる)。空・EOF・3 回続けて誤りなら None。"""
+    from .comfyfind import looks_like_comfyui
+
+    lines = [tr("ComfyUI のフォルダを選んでください:", "Choose the ComfyUI folder:")]
+    lines += _candidate_lines(_Destination(None, candidates=candidates), current) or [
+        tr("    (ComfyUI のフォルダは見つかりませんでした)", "    (no ComfyUI folder was found)")
+    ]
+    _emit(lines)
+    for _ in range(3):
+        try:
+            ans = input(
+                tr(
+                    "番号か ComfyUI のフォルダのパス(空で取りやめ): ",
+                    "Number, or path of the ComfyUI folder (empty to cancel): ",
+                )
+            ).strip()
+        except EOFError:
+            return None
+        if not ans:
+            return None
+        if ans.isdigit() and 1 <= int(ans) <= len(candidates):
+            return _from_candidate(candidates[int(ans) - 1], candidates, probed=True)
+        p = Path(ans.strip("\"'")).expanduser()
+        if looks_like_comfyui(p):
+            d = _from_comfyui(p, "typed")
+            d.candidates = candidates
+            return d
+        print(
+            tr(
+                f"ComfyUI のフォルダに見えません: {p}(main.py・comfy・nodes.py・comfy_extras・comfy_api の"
+                "うち 4 つがあるフォルダ)",
+                f"This does not look like a ComfyUI folder: {p} (one with 4 of main.py, comfy, nodes.py,"
+                " comfy_extras, comfy_api)",
+            ),
+            file=sys.stderr,
+        )
+    return None
+
+
+def _remember(dest: _Destination) -> None:
+    """自動で見つけた・入れた場所に落とすとき、次からもそこに落とすかを尋ねて保存する(既定は Yes)。"""
+    from . import config
+
+    if dest.source not in _AUTO_SOURCES or dest.comfyui_dir is None:
+        return
+    try:
+        ans = input(tr("次からもここに落としますか? [Y/n] ", "Download here next time too? [Y/n] "))
+    except EOFError:
+        return
+    if ans.strip().lower() not in ("", "y", "yes"):
+        return
+    try:
+        path = config.set_value("comfyui-dir", str(dest.comfyui_dir))
+    except config.ConfigError as e:
+        print(tr(f"保存できませんでした: {e}", f"Not saved: {e}"), file=sys.stderr)
+        return
+    print(
+        tr(
+            f"保存しました: comfyui-dir = {dest.comfyui_dir}({path}。genmodelfit config で見る・消す)",
+            f"Saved: comfyui-dir = {dest.comfyui_dir} ({path}; see or remove it with genmodelfit config)",
+        )
+    )
 
 
 # 引用符なしで両方のシェル(PowerShell・POSIX sh)にそのまま渡る文字
@@ -3064,13 +3339,17 @@ def _download_command(args: argparse.Namespace, model_id: str, add: list[str]) -
 
     モデルは計画のワークフローの ID で書く(同じワークフローになる。精度も ID で決まるので
     --precision は付けない)。
-    --list・--json・--yes は付けない(落とすためのコマンドなので)。環境変数で決めた ComfyUI のフォルダは
-    付けない(同じ環境変数で同じ場所になる)。"""
+    --list・--json・--yes は付けない(落とすためのコマンドなので)。環境変数・genmodelfit config で決めた
+    ComfyUI のフォルダは付けない(同じ設定で同じ場所になる)。自動で見つけた場所は --comfyui-dir で
+    書く(#111)。"""
     parts = ["download", model_id]
     if args.budget is not None:
         parts += ["--budget", _num(args.budget)]
+    dest = getattr(args, "_dest", None)
     if args.comfyui_dir:
         parts += ["--comfyui-dir", args.comfyui_dir]
+    elif dest is not None and dest.source in _AUTO_SOURCES and dest.comfyui_dir is not None:
+        parts += ["--comfyui-dir", str(dest.comfyui_dir)]  # 自動で見つけた場所(スクリプトでも同じ場所に)
     elif args.output_dir:
         parts += ["--output-dir", args.output_dir]
     if "--uncensored" in add or args.content == "all":
@@ -3328,8 +3607,37 @@ def _ask(lines: list[str]) -> bool:
     return ans.strip().lower() in ("y", "yes")
 
 
+def _ask_choice(lines: list[str]) -> str:
+    """download の同意を尋ねる。y / yes → "y"、c → "c"(置き場所を変える。#111)、ほか・入力が無い
+    (パイプ・EOF)→ "n"。"""
+    _emit(lines)
+    try:
+        ans = input(tr("[y/N/c](c = 置き場所を変える) ", "[y/N/c] (c = change the place) "))
+    except EOFError:
+        return "n"
+    ans = ans.strip().lower()
+    if ans in ("y", "yes"):
+        return "y"
+    return "c" if ans == "c" else "n"
+
+
+def _undecided_error(args: argparse.Namespace, s, db, dest: _Destination) -> int:
+    """置き場所が決まらず、尋ねられない(--yes・--json・端末でない)とき: 落とさずに誤り(#111)。"""
+    msg = tr(
+        f"置き場所が決まりません({_undecided_why(dest)})。{_how_to_decide()}",
+        f"The place to download to is not decided ({_undecided_why(dest)}). To decide, {_how_to_decide()}",
+    )
+    if args.json:
+        _out(_envelope("download", s, db, listed=False, plan=None, result=None, error=msg, **dest.to_json()))
+        return 1
+    print(tr(f"エラー: {msg}", f"error: {msg}"), file=sys.stderr)
+    for line in _candidate_lines(dest):
+        print(line, file=sys.stderr)
+    return 1
+
+
 def cmd_download(args: argparse.Namespace) -> int:
-    from .downloader import DownloadError, ModelNotFound, download, plan_download
+    from .downloader import CONSENT_CODES, DownloadError, ModelNotFound, download, plan_download
 
     if args.json and not args.list and not args.yes:
         raise CliError(
@@ -3338,109 +3646,162 @@ def cmd_download(args: argparse.Namespace) -> int:
                 "--json needs --yes to download (consent cannot be asked; check with --list first)",
             )
         )
-    # ComfyUI のフォルダ: --comfyui-dir > --output-dir > 環境変数 GENMODELFIT_COMFYUI_DIR > 既定の場所(#75)
-    comfyui_dir, comfyui_from = args.comfyui_dir, "flag" if args.comfyui_dir else None
-    env_dir = os.environ.get(COMFYUI_DIR_ENV, "").strip()
-    if not comfyui_dir and not args.output_dir:
-        comfyui_dir, comfyui_from = (env_dir, "env") if env_dir else (None, "default")
+    # 置き場所(#111): --comfyui-dir / --output-dir → 環境変数 → genmodelfit config → 自動で探す。
+    # 起動中の ComfyUI に尋ねるのは落とすときだけ(--list は通信しない)
+    dest = _resolve_destination(args, probe=not args.list)
     s, db = _system(args), _db(args)
-    try:
-        plan = plan_download(
-            args.model,
-            precision=args.precision,
-            budget_gb=args.budget,
-            output_dir=args.output_dir,
-            comfyui_dir=comfyui_dir,
-            content=args.content,
-            include_unknown_license=args.include_unknown_license,
-            system_info=s,
-            db=db,
-            policy=_policy(args),
-        )
-    except ModelNotFound as e:
-        err = CliError(str(e).replace('content="all"', "--uncensored"))  # ライブラリの言い方を CLI の指定に
-        err.candidates = e.candidates or None  # type: ignore[attr-defined]
-        raise err from e
-    except DownloadError as e:
-        if comfyui_from == "env":
-            src = tr(
-                f"(環境変数 {COMFYUI_DIR_ENV} の値)", f" (from the environment variable {COMFYUI_DIR_ENV})"
+    # 本当に実行したら尋ねるとき(端末で --yes・--json が無い)。--list も同じ条件で、尋ねることを見せる
+    can_ask = not args.json and not args.yes and _interactive()
+
+    def make_plan(dest: _Destination):
+        if dest.source is None:
+            where: dict[str, Any] = {"output_dir": _undecided_root(), "comfyui_dir": None}
+        elif dest.output_dir is not None:
+            where = {"output_dir": dest.output_dir, "comfyui_dir": None}
+        else:
+            where = {"output_dir": None, "comfyui_dir": dest.comfyui_dir}
+        try:
+            plan = plan_download(
+                args.model,
+                precision=args.precision,
+                budget_gb=args.budget,
+                content=args.content,
+                include_unknown_license=args.include_unknown_license,
+                system_info=s,
+                db=db,
+                policy=_policy(args),
+                **where,
             )
-            raise CliError(str(e) + src) from e
-        raise CliError(str(e)) from e
+        except ModelNotFound as e:
+            err = CliError(
+                str(e).replace('content="all"', "--uncensored")
+            )  # ライブラリの言い方を CLI の指定に
+            err.candidates = e.candidates or None  # type: ignore[attr-defined]
+            raise err from e
+        except DownloadError as e:
+            raise CliError(str(e)) from e
+        # 無検閲・ライセンス不明は、端末で尋ねられるなら止めずに y/N の質問で同意を取る(#75)。--yes・--json・
+        # 端末でないときは今までどおり指定(--uncensored・--any-license)が要る。ライブラリの約束は変えない
+        asks = [c for c in dict.fromkeys(plan.blocked_codes) if c in CONSENT_CODES]
+        if asks and can_ask and set(plan.blocked_codes) <= set(CONSENT_CODES):
+            strict = plan
+            try:
+                plan = plan_download(
+                    plan.model_id,  # 同じワークフロー(ID で指定し直す。名前の探し方は変えない)
+                    budget_gb=args.budget,
+                    content="all" if "uncensored" in asks else args.content,
+                    include_unknown_license=True,
+                    verify_existing=False,  # sha256 は 1 回目で計った。ファイルの状態は 1 回目のものを使う
+                    system_info=s,
+                    db=db,
+                    policy=_policy(args),
+                    **where,
+                )
+            except DownloadError as e:  # 1 回目と同じ条件なので起きないはず
+                raise CliError(str(e)) from e
+            if [f.name for f in plan.files] != [
+                f.name for f in strict.files
+            ]:  # 念のため(同じ ID なので同じはず)
+                raise CliError(tr("計画を作り直せませんでした", "could not re-plan the download"))
+            plan.files = strict.files
+            plan.chosen, plan.alternatives = strict.chosen, strict.alternatives  # 選んだ理由は 1 回目のもの
+        else:
+            asks = []
+        if dest.source is None:
+            _undecided_plan(plan)
+        _destination_notes(plan, dest)
+        args._dest = dest  # 次の一手のコマンドに、自動で見つけた場所を書くため
+        return plan, asks
+
+    plan, asks = make_plan(dest)  # 置き場所が未定でも先に作る(モデルが無いなどの誤りを先に出す)
+    if dest.source is None and not args.list:
+        if not can_ask:
+            return _undecided_error(args, s, db, dest)
+        try:
+            chosen = _choose_destination(dest.candidates)
+        except KeyboardInterrupt:  # 選ぶ途中の Ctrl-C: 何も落とさず 130
+            print(file=sys.stderr)
+            print(
+                tr("中断しました(何も落としていません)", "Interrupted (nothing downloaded)"), file=sys.stderr
+            )
+            return 130
+        if chosen is None:
+            print(
+                tr("落としませんでした(置き場所が決まりません)", "Not downloaded (no place chosen)"),
+                file=sys.stderr,
+            )
+            return 1
+        dest = chosen
+        plan, asks = make_plan(dest)
 
     def fail(e: Exception, code: int = 1) -> int:
         if args.json:
-            _out(_envelope("download", s, db, listed=False, plan=plan.to_dict(), result=None, error=str(e)))
+            _out(
+                _envelope(
+                    "download",
+                    s,
+                    db,
+                    listed=False,
+                    plan=plan.to_dict(),
+                    result=None,
+                    error=str(e),
+                    **dest.to_json(),
+                )
+            )
         else:
             print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
         return code
 
-    # 無検閲・ライセンス不明は、端末で尋ねられるなら止めずに y/N の質問で同意を取る(#75)。--yes・--json・
-    # 端末でないときは今までどおり指定(--uncensored・--any-license)が要る。ライブラリの約束は変えない
-    from .downloader import CONSENT_CODES
-
-    asks = [c for c in dict.fromkeys(plan.blocked_codes) if c in CONSENT_CODES]
-    # 本当に実行したら尋ねるとき(端末で --yes・--json が無い)だけ。--list も同じ条件で、尋ねることを見せる
-    can_ask = not args.json and not args.yes and _interactive()
-    if asks and can_ask and set(plan.blocked_codes) <= set(CONSENT_CODES):
-        strict = plan
-        try:
-            plan = plan_download(
-                plan.model_id,  # 同じワークフロー(ID で指定し直す。名前の探し方は変えない)
-                budget_gb=args.budget,
-                output_dir=args.output_dir,
-                comfyui_dir=comfyui_dir,
-                content="all" if "uncensored" in asks else args.content,
-                include_unknown_license=True,
-                verify_existing=False,  # sha256 は 1 回目で計った。ファイルの状態は 1 回目のものを使う
-                system_info=s,
-                db=db,
-                policy=_policy(args),
-            )
-        except DownloadError as e:  # 1 回目と同じ条件なので起きないはず
-            raise CliError(str(e)) from e
-        if [f.name for f in plan.files] != [f.name for f in strict.files]:  # 念のため(同じ ID なので同じはず)
-            raise CliError(tr("計画を作り直せませんでした", "could not re-plan the download"))
-        plan.files = strict.files
-        plan.chosen, plan.alternatives = strict.chosen, strict.alternatives  # 選んだ理由は 1 回目のもの
-    else:
-        asks = []
-
     if args.list:
         if args.json:
-            _out(_envelope("download", s, db, listed=True, plan=plan.to_dict(), result=None))
+            _out(
+                _envelope("download", s, db, listed=True, plan=plan.to_dict(), result=None, **dest.to_json())
+            )
         else:
-            _emit(format_plan(plan, comfyui_from=comfyui_from, asks=asks))
+            _emit(format_plan(plan, dest=dest, asks=asks))
             _emit_next_steps(plan, args, asks)
         return 0
-    if plan.blocked:
-        if args.json:
-            return fail(
-                DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(blocked_texts(plan)))
+    while True:
+        if plan.blocked:
+            if args.json:
+                return fail(
+                    DownloadError(tr("落とせません: ", "cannot download: ") + " / ".join(blocked_texts(plan)))
+                )
+            # 理由は計画の中に 1 回だけ出し、最後に次の一手を出す(同じ文を error: で繰り返さない。#75)
+            _emit(format_plan(plan, dest=dest))
+            _emit_next_steps(plan, args)
+            print(
+                tr("エラー: 落とせません(上を見てください)", "error: cannot download (see above)"),
+                file=sys.stderr,
             )
-        # 理由は計画の中に 1 回だけ出し、最後に次の一手を出す(同じ文を error: で繰り返さない。#75)
-        _emit(format_plan(plan, comfyui_from=comfyui_from))
-        _emit_next_steps(plan, args)
-        print(
-            tr("エラー: 落とせません(上を見てください)", "error: cannot download (see above)"),
-            file=sys.stderr,
-        )
-        return 1
-    if not args.yes:
+            return 1
+        if args.yes:
+            if not args.json:
+                _emit(format_plan(plan, dest=dest))
+            break
         try:
-            agreed = _ask(format_plan(plan, consent=True, comfyui_from=comfyui_from, asks=asks))
+            answer = _ask_choice(format_plan(plan, consent=True, dest=dest, asks=asks))
+            if answer == "c":  # 置き場所を変えて、計画を出し直して聞き直す(#111)
+                from .comfyfind import find_candidates
+
+                cands = dest.candidates or find_candidates(probe=True)
+                new = _choose_destination(cands, current=dest.comfyui_dir)
+                if new is not None:
+                    dest = new
+                    plan, asks = make_plan(dest)
+                continue
+            if answer == "y":
+                _remember(dest)
         except KeyboardInterrupt:  # 質問の途中の Ctrl-C: 何も落とさず 130
             print(file=sys.stderr)
             print(
                 tr("中断しました(何も落としていません)", "Interrupted (nothing downloaded)"), file=sys.stderr
             )
             return 130
-        if not agreed:
+        if answer != "y":
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
-    elif not args.json:
-        _emit(format_plan(plan, comfyui_from=comfyui_from))
+        break
     show = None if args.json else _ProgressLine()
     try:
         result = download(plan, progress=show, yes=True)
@@ -3464,7 +3825,17 @@ def cmd_download(args: argparse.Namespace) -> int:
     if show:
         show.close()
     if args.json:
-        _out(_envelope("download", s, db, listed=False, plan=plan.to_dict(), result=result.to_dict()))
+        _out(
+            _envelope(
+                "download",
+                s,
+                db,
+                listed=False,
+                plan=plan.to_dict(),
+                result=result.to_dict(),
+                **dest.to_json(),
+            )
+        )
         return 0
     print(
         tr(
@@ -3478,6 +3849,119 @@ def cmd_download(args: argparse.Namespace) -> int:
         )
     )
     print(tr(f"置き場所: {plan.root}", f"Location: {plan.root}"))
+    return 0
+
+
+# --- genmodelfit config(#111。docs/download.ja.md「genmodelfit config」) --------------------------------
+
+
+def _config_settings(args: argparse.Namespace, values: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """それぞれの設定の今の値と出どころ(option / env / file / default)。"""
+    if getattr(args, "lang", None):
+        lang = {"value": args.lang, "from": "option"}
+    elif i18n.normalize(os.environ.get(i18n.ENV_VAR)) is not None:
+        lang = {"value": i18n.normalize(os.environ.get(i18n.ENV_VAR)), "from": "env"}
+    elif values.get("lang"):
+        lang = {"value": values["lang"], "from": "file"}
+    else:
+        lang = {"value": "en", "from": "default"}
+    env_dir = os.environ.get(COMFYUI_DIR_ENV, "").strip()
+    if env_dir:
+        comfy = {"value": env_dir, "from": "env"}
+    elif values.get("comfyui-dir"):
+        comfy = {"value": values["comfyui-dir"], "from": "file"}
+    else:
+        comfy = {"value": None, "from": "default"}
+    return {"comfyui-dir": comfy, "lang": lang}
+
+
+def _from_label(key: str, src: str) -> str:
+    env = COMFYUI_DIR_ENV if key == "comfyui-dir" else i18n.ENV_VAR
+    return {
+        "option": tr("指定(--lang)", "option (--lang)"),
+        "env": tr(f"環境変数 {env}", f"environment variable {env}"),
+        "file": tr("設定ファイル", "config file"),
+        "default": tr("既定", "default"),
+    }[src]
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    from . import comfyfind, config
+
+    action = args.action or "show"
+    path = config.config_path()
+    head = {"genmodelfit": __version__, "command": "config", "action": action, "path": str(path)}
+    try:
+        if action == "path":
+            if args.json:
+                _out(head)
+            else:
+                print(path)
+            return 0
+        if action == "set":
+            key, value = args.key, args.value
+            config._check_key(key)
+            if key == "comfyui-dir":
+                p = Path(os.path.abspath(Path(value).expanduser()))
+                if not comfyfind.looks_like_comfyui(p):
+                    raise CliError(
+                        tr(
+                            f"ComfyUI のフォルダに見えません: {p}(main.py・comfy・nodes.py・"
+                            "comfy_extras・comfy_api のうち 4 つ、または ComfyUI デスクトップ版のフォルダ"
+                            "(models・input・user・output・custom_nodes)が要ります)",
+                            f"This does not look like a ComfyUI folder: {p} (needs 4 of main.py, comfy,"
+                            " nodes.py, comfy_extras, comfy_api, or a ComfyUI Desktop folder: models, input,"
+                            " user, output, custom_nodes)",
+                        )
+                    )
+                value = str(p)
+            elif value not in LANGUAGES:
+                raise CliError(
+                    tr(
+                        f"lang の値が正しくありません: {value!r}(使えるのは {', '.join(LANGUAGES)})",
+                        f"Invalid lang: {value!r} (choose from {', '.join(LANGUAGES)})",
+                    )
+                )
+            written = config.set_value(key, value)
+            if args.json:
+                _out({**head, "path": str(written), "key": key, "value": value})
+            else:
+                print(tr(f"保存しました: {key} = {value}({written})", f"Saved: {key} = {value} ({written})"))
+            return 0
+        if action == "unset":
+            written, removed = config.unset(args.key)
+            if args.json:
+                _out({**head, "path": str(written), "key": args.key, "removed": removed})
+            elif removed:
+                print(tr(f"消しました: {args.key}({written})", f"Removed: {args.key} ({written})"))
+            else:
+                print(tr(f"{args.key} は設定されていません", f"{args.key} is not set"))
+            return 0
+    except config.ConfigError as e:
+        raise CliError(str(e)) from e
+    values, notes = config.load()
+    settings = _config_settings(args, values)
+    if args.json:
+        _out({**head, "settings": settings, "warnings": notes})
+        return 0
+    exists = tr("ある", "exists") if path.is_file() else tr("まだ無い", "not created yet")
+    lines = [tr(f"設定ファイル: {path}({exists})", f"config file: {path} ({exists})")]
+    for key, v in settings.items():
+        if key == "comfyui-dir" and v["value"] is None:
+            value = tr("(未設定。download が自動で探す)", "(not set; download looks for ComfyUI)")
+        else:
+            value = str(v["value"])
+        lines.append(f"  {key:<12} {value}  ({_from_label(key, v['from'])})")
+    lines += [tr(f"注意: {n}", f"warning: {n}") for n in notes]
+    lines.append(
+        tr(
+            "変える: genmodelfit config set comfyui-dir <フォルダ> / set lang ja、"
+            "消す: genmodelfit config unset <キー>",
+            "change: genmodelfit config set comfyui-dir <folder> / set lang ja;"
+            " remove: genmodelfit config unset <key>",
+        )
+    )
+    _emit(lines)
     return 0
 
 
@@ -3557,8 +4041,9 @@ _JSON_FIELDS = (
 )
 
 _DETECT_HELP = (
-    "  None. The GPU and RAM are detected; --vram / --ram override them. GPU: NVIDIA via nvidia-smi;\n"
-    "  otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).\n"
+    "  Nothing to prepare. The GPU and RAM are detected; --vram / --ram override them. GPU: NVIDIA\n"
+    "  via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or\n"
+    "  system_profiler (macOS).\n"
 )
 
 _COMMON_HELP = (
@@ -3586,9 +4071,8 @@ One row per model; the precision and workflow that fit best are chosen (--all-wo
 Order: models that run, then Perfect/Good, then Marginal (faster mode first), official
 templates, popularity (rank among the same type and source), Score, id (--json puts
 auto-recommendable ones, gate: auto, before the levels). Score 0-100 is the memory headroom
-(100 up to 70% use; not speed). Rules: docs/scoring.md. Uncensored models and
-utility tools are hidden unless asked. The default output is a table (llmfit uses JSON by
-default); add --json for apps.
+(100 up to 70% use; not speed). Score rules: docs/scoring.md. Uncensored models and
+utility tools are hidden unless asked. The output is a table; add --json for apps.
 
 """
     + _COMMON_HELP.format(zero="", one="")
@@ -3601,7 +4085,11 @@ AGENT USAGE:
 
 """
     + _JSON_FIELDS,
-    "fit": """Judge every model for this PC (too tight ones included), in the same order as recommend.
+    "fit": """Judge the models for this PC and show them in one table (not cut to the top few like recommend).
+By default only the models that run (--fit runnable: perfect, good, marginal), without utility
+tools and models with files of unknown license. --all also shows too_tight and unknown ones, utility
+tools and unknown licenses; uncensored models need --uncensored (with or without --all).
+Order: type, then fit level, official templates, popularity, Score (--sort changes it).
 
 """
     + _COMMON_HELP.format(zero="", one="")
@@ -3632,7 +4120,7 @@ with counts. The use names are what --task accepts.
 """
     + _COMMON_HELP.format(zero="", one="").replace(
         _DETECT_HELP,
-        "  None. The PC is not judged.\n",
+        "  Nothing to prepare. The PC is not judged.\n",
     )
     + """
 AGENT USAGE:
@@ -3641,14 +4129,15 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, database, filters: {content}, types: [{ modality,
   label, label_ja, models, workflows, uses: {use: workflows} }], uses: [{ use, label,
-  label_ja, tasks }], aliases }. Details: docs/schema.md""",
+  label_ja, tasks }], aliases }
+  Details: docs/schema.md""",
     "info": """Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the
 other workflows that use the same model.
-An exact id always matches (uncensored included). Otherwise a part of the id or name is
+An exact id always matches (uncensored included). When the id does not match, a part of the id or name is
 searched within --content; several matches are an error that lists the candidates.
 
 """
-    + _COMMON_HELP.format(zero="", one=": no such model, several matches (candidates listed), or")
+    + _COMMON_HELP.format(zero="", one=": no such model or several matches (candidates listed); other errors")
     + """
 AGENT USAGE:
   genmodelfit info image_z_image_turbo_int8 --json
@@ -3656,14 +4145,17 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
   gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
-  memory_required_gb, disk_size_gb, auto, matched}] } / on error: { error, candidates? }.
+  memory_required_gb, disk_size_gb, auto, matched}] }
+  On error: { error, candidates? }.
   Details: docs/schema.md""",
     "system": """Show this PC (GPU, RAM, free disk) and whether the model list in use is still fresh
 (Data: source, HEAD check dates, expired / valid until, auto-recommendable count).
 
 """
     + _COMMON_HELP.format(
-        zero=" (also when the list has expired: see Data / database.status.expired)", one=""
+        zero=" (also when the list has expired: see Data / database.status.expired;"
+        " run genmodelfit update --from-release to renew it)",
+        one="",
     )
     + """
 AGENT USAGE:
@@ -3673,10 +4165,21 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, system, database: { origin, generated_at, models,
   measurements, status: { source, generated_at, heads_checked_oldest, heads_checked_newest,
   max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
-  checked_at } } }. Details: docs/schema.md""",
-    "update": """Rebuild the model list from upstream, redo the HEAD checks (--heads-only), re-apply only the
-app fields and the hand-added models (--fields-only), or take in the signed list published by this
-project (--from-release).
+  checked_at } } }
+  Details: docs/schema.md""",
+    "update": """Get a newer model list.
+Users: run `genmodelfit update --from-release`.
+--from-release takes in the signed latest list published by this project (only db.json and
+db.json.sig are downloaded) and checks the signature; after that, the other commands use it instead
+of the bundled list (--no-cache goes back to the bundled one).
+Without options, update rebuilds the whole list from upstream (ComfyUI templates, the Hugging Face
+Hub, a HEAD request to every download URL). Rebuilding is for maintainers: it is slow (many requests;
+Hugging Face rate limits make it wait, see --rate-limit-budget). Maintainers can also redo only the
+HEAD checks (--heads-only), re-apply only the app fields and the hand-added models (--fields-only),
+or re-read only the file headers (--inspect-only).
+The policy options (--comfyui-version, --max-head-age-days, ...) only change the
+auto-recommendable count printed at the end. --db / --no-cache choose the list that --heads-only,
+--fields-only and --inspect-only start from.
 
 PRECONDITIONS:
   Network access.
@@ -3693,11 +4196,12 @@ EXIT CODES:
   1  Error (network, bad signature, older list, ...; with --json the error is in "error")
   2  Usage error
 """,
-    "diff": """Compare two model lists (db.json) and show what changed for users: added / removed models, and
-for each changed model (name (type) — id) added / removed / changed files (with their license and
-source), license (the permissive side is marked with !), newly uncensored, runtime / use,
-auto-recommendation, prompt / speech languages, size, precision, review status, and the names of
-any other changed fields ("other changes"). Changed models are in three sections, each cut by
+    "diff": """Compare two model lists (db.json) and show what changed for users.
+Shown are added / removed models and, for each changed model (name (type) — id), the changes below.
+Changes of a model: added / removed / changed files (with their license and source), license (the
+permissive side is marked with !), newly uncensored, runtime / use, auto-recommendation, prompt /
+speech languages, size, precision, review status, and the names of any other changed fields
+("other changes"). Changed models are in three sections, each cut by
 --limit separately: files / license / uncensored / runtime and use first, then auto-recommendation
 changes (ids always listed), then license provenance, languages, size, review marks and the rest;
 within a section the most important change comes first, so --limit never hides it; the same
@@ -3709,12 +4213,12 @@ With no arguments, compares the bundled list with the list fetched by `update` (
 With one argument, compares the bundled list with that file. With two, compares the two files.
 --all adds the maintenance view (the content of the weekly PR): all failed HEAD checks (not only
 new ones), 401 repos, the changed numbers in `sources`, models where only popularity numbers,
-dates or HEAD results changed, and the ids of collapsed lines; it has no line limit unless -n is
-given (default -n 20 per section otherwise).
+dates or HEAD results changed, and the ids of collapsed lines. With --all there is no line limit
+unless -n is given (without --all the default is -n 20 per section).
 
 PRECONDITIONS:
   No arguments: a fetched list in the cache (run `genmodelfit update --from-release` first; without
-  it, a short how-to is printed and the exit code is 0). Otherwise one or two db.json files.
+  it, a short how-to is printed and the exit code is 0). With arguments: one or two db.json files.
   A warning is printed when the new list is older (generated_at) than the old one.
 
 SIDE EFFECTS:
@@ -3736,30 +4240,49 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, old, new, old_label, new_label, policy, summary, added,
   removed, license_changes, auto_changes, size_changes, precision_changes, newly_uncensored,
   head_failures, unauthorized, partial_counts, stats, classification, field_changes,
-  model_changes, top_changes, warnings }. With no fetched list: the same keys, empty, plus
-  "note". Details: docs/schema.md""",
+  model_changes, top_changes, warnings }
+  With no fetched list: the same keys, empty, plus "note".
+  Details: docs/schema.md""",
     "download": """Download the files of a model for this PC (all files of one workflow), checking sha256.
 
 MODEL is a model name (as in the tables), a workflow id, or a part of either (like info).
-For a model name, the workflow and precision are chosen like recommend: the highest precision
-that runs on this PC without offloading (--precision picks one; --budget caps the download).
-Files go to <--comfyui-dir>/models/<folder>/<file> (the folder comes from the template:
-diffusion_models, text_encoders, vae, loras, checkpoints, ...), or the same layout under
---output-dir (default: the user data folder of genmodelfit, "models").
-The environment variable GENMODELFIT_COMFYUI_DIR is the default for --comfyui-dir
-(--comfyui-dir and --output-dir win over it). Files whose ComfyUI folder is unknown go to
-other/, which ComfyUI does not read: move them before use.
+For a model name, the workflow is chosen like recommend: the highest precision that runs on
+this PC without offloading (good or better on the GPU); when none does, the best fit level,
+then the faster run mode, then the higher precision. The plan says which rule chose it.
+--precision downloads the workflow of that precision instead.
+--budget prefers the best workflow whose download stays under the limit; when none does, the
+download is refused.
+Files go to <ComfyUI>/models/<folder>/<file>, where the folder comes from the template
+(diffusion_models, text_encoders, vae, loras, checkpoints, ...).
+The place is the first of: --comfyui-dir (for a folder outside ComfyUI, --output-dir, with the
+same order of priority), the environment variable GENMODELFIT_COMFYUI_DIR, comfyui-dir saved
+with `genmodelfit config`, or a ComfyUI found automatically (the current folder, a ComfyUI
+running on 127.0.0.1 port 8188 or 8000, the ComfyUI Desktop and comfy-cli settings, usual
+places such as C:/ComfyUI). The plan always says which of these decided the place.
+When no place or several places are found, a terminal lets you pick one or type a path, while
+with --yes, --json or without a terminal nothing is downloaded (exit 1).
+--list does not ask a running ComfyUI, so it may show the place as "not decided" although the
+real download would find one (pass --comfyui-dir to see the exact plan).
+An is_default section in the ComfyUI folder's extra_model_paths.yaml is honored.
+Files whose ComfyUI folder is unknown go to other/; ComfyUI does not read other/, so move them to
+the right folder (diffusion_models, ...) before use.
 Before downloading, the files, each license and its URL (or the page to check when no license
-is stated), the total size and the free disk are shown and you are asked to agree (--yes skips
-the question).
+is stated), the total size and the free disk are shown and you are asked [y/N/c] (c changes
+the place; --yes skips the question). The first time a place found automatically is used, you
+are asked whether to save it for next time ([Y/n]; `genmodelfit config` shows or removes it).
+Only a ComfyUI folder can be saved: an --output-dir place must be given each time.
 Uncensored models and files with an unknown license need your consent: in a terminal the
 question names them (y/N); with --yes, --json or without a terminal pass --uncensored and/or
 --any-license (old forms: --content all, --include-unknown-license; consent flags must be
-written in full). When only these are missing, the plan ends with one command that adds them
-(it never adds them by itself).
+written in full). When only the consent is missing, the plan ends with one command that adds
+it (genmodelfit never adds it by itself).
 Refused (no option lifts these): gated files (no login is used), too little disk (needs the
 download + 1 GB), names that would land outside the folder, hosts other than Hugging Face /
 GitHub.
+To use the files: reload ComfyUI in the browser if it was open, then open, from ComfyUI's template
+list, the template titled as in the first line of info (the id in [ ] is the template's file
+name). Models whose id starts with hf: have no ComfyUI template: their
+Hugging Face page (https://huggingface.co/<owner>/<repo>) says how to use them.
 
 PRECONDITIONS:
   Network access to huggingface.co (or github.com) for the download. --list needs none.
@@ -3771,7 +4294,11 @@ SIDE EFFECTS:
   while downloading (kept on Ctrl-C or failure; the next run resumes it with HTTP Range),
   renamed to <file> after the sha256 matches. A sha256 mismatch deletes the file. Existing
   files whose sha256 matches are skipped; other existing files are never overwritten.
-  --list: no network access and nothing is written.
+  When the place is not given (no option, environment variable or config), a ComfyUI running
+  on this PC is asked where its folders are (GET http://127.0.0.1:8188 and :8000
+  /internal/folder_paths, 2 s timeout). Answering Y to "next time" writes comfyui-dir to the
+  config file (`genmodelfit config path`).
+  --list: no network access (a running ComfyUI is not asked) and nothing is written.
 
 EXIT CODES:
   0  Success (also --list, even when the plan is blocked: see "blocked")
@@ -3791,7 +4318,106 @@ AGENT USAGE:
   gated, status, part_bytes, remaining_bytes, reason }], total_bytes, download_bytes,
   disk_free_bytes, disk_needed_bytes, blocked, blocked_codes, warnings, alternatives, ok },
   result: { downloaded, resumed,
-  restarted, skipped, bytes_downloaded, seconds, files } | null, error? }.
+  restarted, skipped, bytes_downloaded, seconds, files } | null, destination_from,
+  comfyui_dir, extra_model_paths, destination_candidates, error? }
+  Details: docs/schema.md""",
+    "config": """Show or change the settings of the genmodelfit command line (the Python API never reads
+them).
+
+Keys:
+  comfyui-dir  the ComfyUI folder download uses (after --comfyui-dir / --output-dir and
+               GENMODELFIT_COMFYUI_DIR). `set` checks that the folder looks like ComfyUI
+               (4 of main.py, comfy, nodes.py, comfy_extras, comfy_api, or a ComfyUI Desktop
+               folder: models, input, user, output, custom_nodes). A folder outside ComfyUI
+               (download --output-dir) cannot be saved: pass --output-dir each time.
+  lang         the display language, en or ja (--lang and GENMODELFIT_LANG win).
+Without an action, shows each setting and where it comes from (option, environment variable,
+config file, default).
+
+PRECONDITIONS:
+  None.
+
+SIDE EFFECTS:
+  No network access. set / unset write the config file (config.json in the user config folder
+  of genmodelfit; GENMODELFIT_CONFIG_DIR changes the folder). show and path write nothing.
+  A broken file is not read (a warning is shown) and set / unset do not overwrite it.
+
+EXIT CODES:
+  0  Success
+  1  Error: unknown key, invalid value, broken or unwritable file
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit config --json
+  genmodelfit config set comfyui-dir D:/ComfyUI
+  genmodelfit config unset comfyui-dir
+  genmodelfit config path
+
+  JSON (--json): { genmodelfit, command, action, path, settings: { comfyui-dir: { value, from },
+  lang: { value, from } }, warnings } for show; { ..., action, path, key, value } for set,
+  { ..., key, removed } for unset, { ..., path } for path.
+  Details: docs/schema.md""",
+    "gate": """Count how many models in the list can be recommended automatically (Verified, "auto" in
+JSON) and why the others are held. The checks are the same as in info (one model) and in the
+"auto" / held_reasons fields of recommend --json.
+
+How to read the output: the first line is the ComfyUI version the checks used, and the second the
+number of models, how many are auto and how many held. The table has one row per check: "failing" is how many
+models fail that check, "first-failing" how many models fail it as their first failed check (the
+check to fix first). --only-auto / --only-held also list the model ids (held ones with the first
+reason). The checks and the allowlist: docs/gate.md
+
+"""
+    + _COMMON_HELP.format(zero="", one=': an empty --license-allowlist ("," or an empty file)').replace(
+        _DETECT_HELP, "  Nothing to prepare. The PC is not judged.\n"
+    )
+    + """
+AGENT USAGE:
+  genmodelfit gate
+  genmodelfit gate -m video --only-held
+  genmodelfit gate --comfyui-version 0.40.0 --json
+
+  JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
+  failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
+  Details: docs/schema.md""",
+    "bench": """Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
+TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id
+in [ ] on the first line of info). Model names and parts of ids are not accepted, and hf: models
+have no template (pass an API-format workflow with --workflow instead).
+Your saved results are used when this PC is judged.
+--share prepares a submission and opens GitHub's "new file" page in your browser if you answer y:
+sign in to GitHub (an account is needed), press "Propose changes", then "Create pull request"
+(CONTRIBUTING.md "The easy way").
+
+PRECONDITIONS:
+  A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
+  genmodelfit download first). The GPU must be free: when another program uses it, or its free
+  memory cannot be checked (nvidia-smi), bench refuses unless --force. Measure on a ComfyUI only you
+  use; --free makes bench unload that ComfyUI's models first.
+
+SIDE EFFECTS:
+  Network: only the ComfyUI at --url (it sends one job and reads the results), plus the official
+  template file from GitHub when that ComfyUI does not have it. Nothing about this PC is sent
+  elsewhere; --share only prints a URL and opens your browser if you answer y.
+  Writes the result JSON to <cache>/measurements/ (or --output). Failed results and results under
+  non-standard conditions are only shown unless --save-failed / --save-nonstandard / --output.
+  --submission / --share also write a submission JSON.
+  Settings you leave out (--width, --height, --frames, --length, --steps) stay as in the template.
+
+EXIT CODES:
+  0  Success
+  1  Error: ComfyUI cannot be reached, the GPU is busy (without --force), the template or a file is
+     missing, the run failed (out of memory or another error), timeout, Ctrl-C (our job is
+     cancelled first)
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+  genmodelfit bench video_wan2_2_5B_ti2v --url http://127.0.0.1:8188 --resolution 640x640 --json
+
+  JSON (--json): { genmodelfit, command, measurement, saved_to, not_saved?, workflow_source,
+  warnings, failed?, submission? }
   Details: docs/schema.md""",
 }
 
@@ -3799,8 +4425,9 @@ AGENT USAGE:
 # --- 日本語の説明(#76。英語の _HELP_EN と同じ内容を日本語だけで書く。JSON の鍵・コマンドは同じ) ---
 
 _DETECT_HELP_JA = (
-    "  なし。GPU とメモリは調べて決める(--vram / --ram で置き換える)。GPU は NVIDIA なら nvidia-smi、\n"
-    "  ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・system_profiler(macOS)で調べる。\n"
+    "  用意するものは無い。GPU とメモリは調べて決める(--vram / --ram で置き換える)。\n"
+    "  GPU は NVIDIA なら nvidia-smi、ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・\n"
+    "  system_profiler(macOS)で調べる。\n"
 )
 
 _COMMON_HELP_JA = (
@@ -3835,9 +4462,8 @@ _HELP_JA = {
 並べ方: 動くもの → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート →
 人気(同じ種類・同じ出どころの中の順位)→ Score → ID
 (--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
-Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。決まりは docs/scoring.md。
-無検閲のモデルと補助ツールは、指定しなければ出さない。既定の出力は表(llmfit の既定は JSON)。
-アプリは --json を付ける。
+Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。Score の決まりは docs/scoring.md。
+無検閲のモデルと補助ツールは、指定しなければ出さない。出力は表。アプリは --json を付ける。
 
 """
     + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA)
@@ -3850,7 +4476,11 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
 
 """
     + _JSON_FIELDS_JA,
-    "fit": """すべてのモデルをこの PC で判定して表にする(動かないものも。並べ方は recommend と同じ)。
+    "fit": """この PC でモデルを判定し、1 つの表にする(recommend のように上位だけに絞らない)。
+既定は動くもの(--fit runnable: perfect・good・marginal)だけで、補助ツールとライセンスの分からない
+ファイルを含むモデルは出さない。--all で too_tight・判定できないもの・補助ツール・ライセンス不明も出す。
+無検閲のモデルは --uncensored で出す(--all だけでは出ない)。
+並べ方: 種類 → 段階 → 公式のテンプレート → 人気 → Score(--sort で変える)。
 
 """
     + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA)
@@ -3882,7 +4512,9 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
 用途の名前は --task に使う。
 
 """
-    + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA).replace(_DETECT_HELP_JA, "  なし。PC は判定しない。\n")
+    + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA).replace(
+        _DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n"
+    )
     + """
 使い方の例(エージェント・アプリ向け):
   genmodelfit types
@@ -3894,7 +4526,8 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
   詳しくは docs/schema.md""",
     "info": """1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動のおすすめの条件・
 同じモデルのほかのワークフロー)を出す。
-ID がそのまま合えば必ずそのモデル(無検閲も)。合わなければ ID・名前の一部を --content の中で探す。
+ID がそのまま合えば必ずそのモデル(無検閲も)。
+ID がそのまま合わなければ、ID・名前の一部を --content の中で探す。
 2 件以上合えば失敗にして候補を並べる。
 
 """
@@ -3909,13 +4542,16 @@ ID がそのまま合えば必ずそのモデル(無検閲も)。合わなけれ
   JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
   gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
   memory_required_gb, disk_size_gb, auto, matched}] }
-  失敗のときは { error, candidates? }。詳しくは docs/schema.md""",
+  失敗のときは { error, candidates? }。
+  詳しくは docs/schema.md""",
     "system": """この PC(GPU・メモリ・ディスクの空き)と、使っている一覧がまだ新しいか(一覧の欄: 出どころ・
 HEAD の確認の日付・期限切れか・いつまで有効か・自動のおすすめの数)を出す。
 
 """
     + _COMMON_HELP_JA.format(
-        zero="(一覧が期限切れのときも。一覧の欄・database.status.expired を見る)", one=_ONE_DB_JA
+        zero="(一覧が期限切れのときも。一覧の欄・database.status.expired を見る。"
+        "新しくするには genmodelfit update --from-release)",
+        one=_ONE_DB_JA,
     )
     + """
 使い方の例(エージェント・アプリ向け):
@@ -3927,9 +4563,17 @@ HEAD の確認の日付・期限切れか・いつまで有効か・自動のお
   max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
   checked_at } } }
   詳しくは docs/schema.md""",
-    "update": """一覧を上流から作り直す。HEAD の確認だけをやり直す(--heads-only)、アプリ向けの項目と手で足した
-モデルだけを当て直す(--fields-only)、このプロジェクトが配る署名つきの一覧を取り込む(--from-release)
-こともできる。
+    "update": """新しい一覧を取る。
+利用者は `genmodelfit update --from-release` を実行する。
+--from-release は、このプロジェクトが配る署名つきの最新の一覧を取り込み(落とすのは db.json と
+db.json.sig だけ)、署名を確かめる。取り込んだ後は、ほかのコマンドも同梱の一覧の代わりにこれを使う
+(--no-cache で同梱に戻る)。
+オプションなしの update は、一覧を上流(ComfyUI のテンプレート・Hugging Face Hub・すべてのダウンロードの
+URL への HEAD)から作り直す。作り直しは保守する人向けで、時間がかかる(問い合わせが多く、Hugging Face の
+上限で待つ。--rate-limit-budget を見る)。保守する人は、HEAD の確認だけ(--heads-only)、アプリ向けの
+項目と手で足したモデルだけ(--fields-only)、ファイルの見出しだけ(--inspect-only)をやり直すこともできる。
+方針のオプション(--comfyui-version・--max-head-age-days など)が変えるのは、最後に出す自動のおすすめの
+数だけ。--db / --no-cache は、--heads-only・--fields-only・--inspect-only が元にする一覧を選ぶ。
 
 前提:
   通信できること。
@@ -3946,26 +4590,28 @@ HEAD の確認の日付・期限切れか・いつまで有効か・自動のお
   1  失敗(通信・署名が合わない・前より古い一覧など。--json なら誤りは "error" に入る)
   2  使い方の誤り
 """,
-    "diff": """2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す: 増えた・消えたモデルと、変わったモデル
-(名前 (種類) — ID)ごとの、増えた・消えた・変わったファイル(ライセンスと出どころつき)、ライセンス
-(寛容な側に ! を付ける)、新しく無検閲になったもの、動かし方・用途、自動のおすすめ、指示・読み上げの
-言語、大きさ、精度、確認の状態と、ほかに変わった項目の名前(「その他の変化」)。
+    "diff": """2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す。
+出すのは、増えた・消えたモデルと、変わったモデル(名前 (種類) — ID)ごとの次の違い。
+変わったモデルの違い: 増えた・消えた・変わったファイル(ライセンスと出どころつき)、ライセンス(寛容な
+側に ! を付ける)、新しく無検閲になったもの、動かし方・用途、自動のおすすめ、指示・読み上げの言語、
+大きさ、精度、確認の状態、ほかに変わった項目の名前(「その他の変化」)。
 変わったモデルは 3 つの節に分け、節ごとに --limit で切る: ファイル・ライセンス・無検閲・動かし方と
 用途が先、次に自動のおすすめの変化(ID は必ず出す)、最後にライセンスの出どころ・言語・大きさ・
-確認の印など。節の中では大事な変化を先に出すので、--limit で隠れない。大事さの低い同じ変化が多くの
-モデルにあれば(全部に確認の印が付いたなど)、件数つきの 1 行にまとめる。
-変わった項目はどこかに必ず出る(--all では数える)。JSON をそのまま比べるので、知らない鍵の変化も
-数える(merge-check と同じ)。
+確認の印など。
+節の中では大事な変化を先に出すので、大事な変化は --limit で隠れない。
+大事さの低い同じ変化が多くのモデルにあれば(全部に確認の印が付いたなど)、件数つきの 1 行にまとめる。
+変わった項目はどこかに必ず出る(--all では数える)。
+JSON をそのまま比べるので、知らない鍵の変化も数える(merge-check と同じ)。
 
-引数なしなら、同梱の一覧と `update` で取ってきた一覧(キャッシュ)を比べる。1 つなら同梱の一覧と
-そのファイル、2 つならその 2 つを比べる。
+引数なしなら、同梱の一覧と `update` で取ってきた一覧(キャッシュ)を比べる。引数が 1 つなら同梱の
+一覧とそのファイル、2 つならその 2 つを比べる。
 --all は保守用の内容(毎週の PR の中身)を足す: 新しいものに限らずすべての HEAD の失敗、401 の
 リポジトリ、`sources` の変わった数、人気の数・日付・HEAD の結果だけが変わったモデル、まとめた行の
-ID。-n を付けなければ行の上限は無い(--all でなければ節ごとに既定 -n 20)。
+ID。--all のときは、-n を付けなければ行の上限は無い(--all でなければ節ごとに既定 -n 20)。
 
 前提:
   引数なし: キャッシュに取ってきた一覧があること(先に `genmodelfit update --from-release`。無ければ
-  短い案内を出して終了コード 0)。ほかは db.json のファイルを 1 つか 2 つ。
+  短い案内を出して終了コード 0)。引数があるときは db.json のファイルを 1 つか 2 つ。
   新しい一覧(generated_at)が前の一覧より古ければ注意を出す。
 
 副作用:
@@ -3988,26 +4634,45 @@ ID。-n を付けなければ行の上限は無い(--all でなければ節ご�
   removed, license_changes, auto_changes, size_changes, precision_changes, newly_uncensored,
   head_failures, unauthorized, partial_counts, stats, classification, field_changes,
   model_changes, top_changes, warnings }
-  取ってきた一覧が無いときは、同じ鍵が空で "note" が付く。詳しくは docs/schema.md""",
+  取ってきた一覧が無いときは、同じ鍵が空で "note" が付く。
+  詳しくは docs/schema.md""",
     "download": """モデルのファイルをこの PC 向けに落とす(1 つのワークフローの全部のファイル。
 sha256 で確かめる)。
 
 MODEL はモデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部(info と同じ)。
-モデルの名前なら、ワークフローと精度は recommend と同じ選び方: この PC で逃がさずに動く中で一番高い
-精度(--precision で選ぶ。--budget で落とす量の上限を決める)。
-ファイルは <--comfyui-dir>/models/<folder>/<file> に置く(folder はテンプレートで決まる:
-diffusion_models・text_encoders・vae・loras・checkpoints など)。--output-dir なら同じ並びでその下
-(既定は genmodelfit の利用者データのフォルダの「models」)。
-環境変数 GENMODELFIT_COMFYUI_DIR は --comfyui-dir の既定(--comfyui-dir と --output-dir が優先)。
-ComfyUI のどのフォルダか分からないファイルは other/ に置く。ComfyUI は読まないので、使う前に移す。
+モデルの名前なら、ワークフローは recommend と同じ選び方で決める: この PC で逃がさずに載る(good 以上で
+GPU)中で一番精度の高いもの、それが無ければ段階が一番良いもの(同じなら逃がさない載せ方、次に精度の
+高いもの)。どの決まりで選んだかは計画に出す。
+--precision を付けると、その精度のワークフローを落とす。
+--budget を付けると、落とす量が上限に収まる中で一番良いワークフローを選び、収まるものが無ければ断る。
+ファイルは <ComfyUI>/models/<folder>/<file> に置く(folder はテンプレートで決まる:
+diffusion_models・text_encoders・vae・loras・checkpoints など)。
+置き場所は次の順で最初に決まったもの: --comfyui-dir(ComfyUI の外は --output-dir。優先の順は同じ)、
+環境変数 GENMODELFIT_COMFYUI_DIR、`genmodelfit config` で保存した comfyui-dir、自動で見つけた
+ComfyUI(今いるフォルダ、127.0.0.1 の 8188・8000 で起動中の ComfyUI、ComfyUI デスクトップ版と
+comfy-cli の設定、C:/ComfyUI などのよくある場所)。置き場所をどれで決めたかは、計画に必ず出す。
+置き場所が見つからない・2 つ以上見つかったときは、端末なら選ぶかパスを入れ、--yes・--json・端末で
+ないときは落とさない(終了コード 1)。
+--list は起動中の ComfyUI に尋ねないので、本当に落とすときは見つかる場所でも「置き場所: 未定」と
+出ることがある(正しい計画を見るには --comfyui-dir を付ける)。
+ComfyUI のフォルダの extra_model_paths.yaml に is_default の節があれば、そこに置く。
+ComfyUI のどのフォルダか分からないファイルは other/ に置く。ComfyUI は other/ を読まないので、使う
+前に正しいフォルダ(diffusion_models など)へ移す。
 落とす前に、ファイル・それぞれのライセンスと URL(記載が無ければ確かめる場所)・合計の大きさ・
-ディスクの空きを出し、同意を尋ねる(--yes で尋ねない)。
-無検閲のモデルとライセンスの分からないファイルには同意が要る: 端末ならそれを書いて y/N で尋ねる。
+ディスクの空きを出し、[y/N/c] で尋ねる(c で置き場所を変える。--yes で尋ねない)。
+自動で見つけた場所に初めて落とすときは、次からもそこにするかを尋ねる([Y/n]。`genmodelfit config`
+で見る・消す)。保存できるのは ComfyUI のフォルダだけで、--output-dir の場所は毎回指定する。
+無検閲のモデルとライセンスの分からないファイルには同意が要る: 端末ならそれを書いて y/N で尋ね、
 --yes・--json・端末でないときは --uncensored・--any-license を指定する(前からの書き方:
---content all、--include-unknown-license。同意の指定は略さずに書く)。足りないのがこれだけなら、
-計画の最後にそれを足したコマンドを 1 つ出す(勝手には足さない)。
+--content all、--include-unknown-license。同意の指定は略さずに書く)。
+足りないのが同意だけなら、計画の最後に同意を足したコマンドを 1 つ出す(genmodelfit が勝手に足して
+落とすことはしない)。
 断るもの(どのオプションでも変わらない): gated のファイル(ログインしない)、ディスクの空きが
 足りない(落とす量 + 1 GB が要る)、置き場所の外に出る名前、Hugging Face / GitHub 以外のホスト。
+落としたファイルを使うには: ComfyUI を開いていたらブラウザで読み込み直し、ComfyUI のテンプレートの
+一覧から、info の 1 行目の名前のテンプレートを開く([ ] の中の ID はテンプレートのファイル名)。
+ID が hf: で始まるモデルには ComfyUI のテンプレートが無いので、使い方は Hugging Face のページ
+(https://huggingface.co/<owner>/<repo>)を見る。
 
 前提:
   落とすには huggingface.co(か github.com)と通信できること。--list は通信しない。
@@ -4016,9 +4681,13 @@ ComfyUI のどのフォルダか分からないファイルは other/ に置く�
   通信: 一覧の URL の GET だけ(https。転送先もすべて Hugging Face / GitHub のホストに限る)。
   この PC のことは何も送らない(User-Agent: genmodelfit/<版>。~/.netrc の資格情報もトークンも
   使わない)。書くのは置き場所のフォルダの中だけ: 落としている間は <file>.part(Ctrl-C や失敗では
-  残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば <file> に名前を変える。sha256 が
-  合わなければ消す。sha256 の合う既にあるファイルは飛ばし、ほかの既にあるファイルは上書きしない。
-  --list: 通信せず、何も書かない。
+  残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば <file> に名前を変える。落とした
+  ファイルの sha256 が合わなければ消す。sha256 の合う既にあるファイルは飛ばし、ほかの既にある
+  ファイルは上書きしない。
+  置き場所の指定(オプション・環境変数・設定)が無いときは、この PC で起動中の ComfyUI にフォルダの
+  場所を尋ねる(GET http://127.0.0.1:8188 と :8000 の /internal/folder_paths。時間切れ 2 秒)。
+  「次からも」に Y と答えると、設定ファイルに comfyui-dir を書く(`genmodelfit config path`)。
+  --list: 通信せず(起動中の ComfyUI にも尋ねない)、何も書かない。
 
 終了コード:
   0  成功(--list も。計画が止まっていても: "blocked" を見る)
@@ -4038,7 +4707,101 @@ ComfyUI のどのフォルダか分からないファイルは other/ に置く�
   gated, status, part_bytes, remaining_bytes, reason }], total_bytes, download_bytes,
   disk_free_bytes, disk_needed_bytes, blocked, blocked_codes, warnings, alternatives, ok },
   result: { downloaded, resumed,
-  restarted, skipped, bytes_downloaded, seconds, files } | null, error? }
+  restarted, skipped, bytes_downloaded, seconds, files } | null, destination_from,
+  comfyui_dir, extra_model_paths, destination_candidates, error? }
+  詳しくは docs/schema.md""",
+    "config": """genmodelfit のコマンドラインの設定を見る・変える(Python の API は読まない)。
+
+キー:
+  comfyui-dir  download が使う ComfyUI のフォルダ(--comfyui-dir・--output-dir と
+               GENMODELFIT_COMFYUI_DIR の次)。set はそのフォルダが ComfyUI に見えることを確かめる
+               (main.py・comfy・nodes.py・comfy_extras・comfy_api のうち 4 つ、または ComfyUI
+               デスクトップ版のフォルダ: models・input・user・output・custom_nodes)。ComfyUI の外の
+               フォルダ(download の --output-dir)は保存できないので、毎回 --output-dir を付ける。
+  lang         表示の言語。en か ja(--lang と GENMODELFIT_LANG が優先)。
+操作を書かなければ、それぞれの設定と、どこから来たか(指定・環境変数・設定ファイル・既定)を出す。
+
+前提:
+  なし。
+
+副作用:
+  通信しない。set・unset は設定ファイル(genmodelfit の利用者の設定のフォルダの config.json。
+  GENMODELFIT_CONFIG_DIR でフォルダを変えられる)を書く。show・path は何も書かない。
+  壊れたファイルは読まず(注意を出す)、set・unset でも上書きしない。
+
+終了コード:
+  0  成功
+  1  失敗: 知らないキー、正しくない値、壊れた・書けないファイル
+  2  使い方の誤り
+
+使い方の例(エージェント・アプリ向け):
+  genmodelfit config --json
+  genmodelfit config set comfyui-dir D:/ComfyUI
+  genmodelfit config unset comfyui-dir
+  genmodelfit config path
+
+  JSON (--json): show は { genmodelfit, command, action, path, settings: { comfyui-dir: { value,
+  from }, lang: { value, from } }, warnings }。set は { ..., action, path, key, value }、unset は
+  { ..., key, removed }、path は { ..., path }。
+  詳しくは docs/schema.md""",
+    "gate": """一覧のうち、自動でおすすめに出せる(Verified。JSON では "auto")モデルの数と、ほかが保留になる
+理由を数える。条件は info(1 つのモデル)や recommend --json の "auto"・held_reasons と同じ。
+
+出力の読み方: 1 行目は条件に使った ComfyUI の版、2 行目はモデルの数と、出せる数・保留の数。表は条件ごとに
+1 行で、「落ちた数」はその条件に通らないモデルの数、「最初に落ちた数」はそれが最初に落ちた条件である
+モデルの数(先に直すところ)。--only-auto / --only-held はモデルの ID も並べる(保留は最初の理由つき)。
+条件と許可リストは docs/gate.md
+
+"""
+    + _COMMON_HELP_JA.format(
+        zero="", one=": 壊れた --db のファイル、空の --license-allowlist(「,」や空のファイル)など"
+    ).replace(_DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n")
+    + """
+使い方の例(エージェント・アプリ向け):
+  genmodelfit gate
+  genmodelfit gate -m video --only-held
+  genmodelfit gate --comfyui-version 0.40.0 --json
+
+  JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
+  failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
+  詳しくは docs/schema.md""",
+    "bench": """動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
+TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのもの(例 image_z_image_turbo_int8。info の
+1 行目の [ ] の中)。モデルの名前や ID の一部は受けない。hf: のモデルにはテンプレートが無い
+(代わりに --workflow で API 形式のワークフローを渡す)。
+保存した結果はこの PC の判定に使う。
+--share は提出の用意をし、y と答えるとブラウザで GitHub の「新しいファイル」のページを開く:
+GitHub にログインし(アカウントが要る)、「Propose changes」、次に「Create pull request」を押す
+(CONTRIBUTING.md「かんたんな送り方」)。
+
+前提:
+  --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
+  (先に genmodelfit download で落とす)。GPU が空いていること: ほかのプログラムが使っている、または
+  空きを確かめられない(nvidia-smi)ときは、--force が無ければ測らない。自分だけが使う ComfyUI で測る。
+  --free を付けると、先にその ComfyUI のモデルを解放する。
+
+副作用:
+  通信: --url の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。その ComfyUI にテンプレートが無ければ、
+  GitHub から公式のテンプレートのファイルを読む。この PC のことはほかへ送らない。--share は URL を
+  出し、y と答えたときだけブラウザを開く。
+  結果の JSON を <cache>/measurements/(か --output)に書く。失敗した結果と標準でない条件の結果は、
+  --save-failed・--save-nonstandard・--output が無ければ表示だけ。--submission・--share は提出用の
+  JSON も書く。
+  省いた設定(--width・--height・--frames・--length・--steps)はテンプレートのまま。
+
+終了コード:
+  0  成功
+  1  失敗: ComfyUI につながらない、GPU が使われている(--force なし)、テンプレートやファイルが無い、
+     実行の失敗(メモリ不足など)、時間切れ、Ctrl-C(送った自分の仕事を先に取り消す)
+  2  使い方の誤り
+
+使い方の例(エージェント・アプリ向け):
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+  genmodelfit bench video_wan2_2_5B_ti2v --url http://127.0.0.1:8188 --resolution 640x640 --json
+
+  JSON (--json): { genmodelfit, command, measurement, saved_to, not_saved?, workflow_source,
+  warnings, failed?, submission? }
   詳しくは docs/schema.md""",
 }
 
@@ -4260,6 +5023,59 @@ def _examples(name: str) -> str:
     return "\n".join(lines)
 
 
+def _doc(action: argparse.Action, ja: str | None = None, en: str | None = None) -> argparse.Action:
+    """argparse の既定(default)が None のオプションに、利用者向けの既定の言い方を付ける。
+    docs/commands.md の「既定」の欄に出す(動きは変えない。tools/cli_reference.py が読む)。"""
+    if en is not None:
+        action.doc_default = tr(ja or en, en)  # type: ignore[attr-defined]
+    return action
+
+
+def _tune(
+    parser: argparse.ArgumentParser,
+    option: str,
+    *,
+    help: str | None = None,
+    default: tuple[str, str] | None = None,
+    hide: bool = False,
+) -> None:
+    """親(parents)から受け継いだオプションの説明・既定の言い方を、このコマンドだけ変える。
+    親の Action はほかのコマンドと共有なので、写しを作って差し替える(引数の解釈は変わらない)。
+    hide は --help と文書から隠す(受け付けるのは前と同じ。前からのスクリプトを壊さないため)。"""
+    import copy
+
+    old = parser._option_string_actions[option]
+    new = copy.copy(old)
+    if help is not None:
+        new.help = help
+    if default is not None:
+        new.doc_default = tr(*default)  # type: ignore[attr-defined]
+    if hide:
+        new.help = argparse.SUPPRESS
+    parser._actions[parser._actions.index(old)] = new
+    for name in old.option_strings:
+        parser._option_string_actions[name] = new
+    for group in [*parser._action_groups, *parser._mutually_exclusive_groups]:
+        acts = group._group_actions
+        if old in acts:
+            acts[acts.index(old)] = new
+
+
+def _no_effect(parser: argparse.ArgumentParser, *options: str) -> None:
+    """このコマンドでは何もしないオプションを隠し、そう書いた 1 行を --help の最後に足す。"""
+    from .table import wrap_text
+
+    for o in options:
+        _tune(parser, o, hide=True)
+    text = tr(
+        f"{'・'.join(options)} も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。",
+        f"{', '.join(options)} {'are' if len(options) > 1 else 'is'} also accepted but"
+        f" {'have' if len(options) > 1 else 'has'} no effect in this command (kept for older scripts).",
+    )
+    line = "\n".join(wrap_text(text, _help_width(), space_room=False))
+    parser.epilog = f"{parser.epilog}\n\n{line}" if parser.epilog else line
+
+
 def build_parser() -> argparse.ArgumentParser:
     """引数の解釈。説明の文は今の言語で作る(main は --lang を先に読んでから呼ぶ。#73)。"""
     lang = argparse.ArgumentParser(add_help=False)
@@ -4268,26 +5084,49 @@ def build_parser() -> argparse.ArgumentParser:
         choices=LANGUAGES,
         default=argparse.SUPPRESS,
         help=tr(
-            "表示の言語(既定は環境変数 GENMODELFIT_LANG、無ければ en)",
-            "display language (default: $GENMODELFIT_LANG, else en)",
+            "表示の言語(既定は環境変数 GENMODELFIT_LANG、genmodelfit config の lang、無ければ en)",
+            "display language (default: $GENMODELFIT_LANG, then lang in genmodelfit config, else en)",
         ),
     )
     json_help = tr("JSON で出す", "output JSON")
     common = argparse.ArgumentParser(add_help=False, parents=[lang])
     common.add_argument("--json", action="store_true", help=json_help)
-    common.add_argument(
-        "--vram",
-        type=_non_negative_float,
-        metavar="GB",
-        help=tr("GPU の VRAM を上書きする(例: 8)", "override the GPU VRAM (e.g. 8)"),
+    _doc(
+        common.add_argument(
+            "--vram",
+            type=_non_negative_float,
+            metavar="GB",
+            help=tr(
+                "GPU の VRAM を GB(GiB)で決める(例: 8。0 なら GPU なしとして判定)。"
+                "別の PC として判定するときに",
+                "judge with this much GPU VRAM in GB (GiB), e.g. 8 (0: no GPU); to judge another PC",
+            ),
+        ),
+        "この PC から調べる",
+        "detected on this PC",
     )
-    common.add_argument(
-        "--ram",
-        type=_positive_float,
-        metavar="GB",
-        help=tr("メインメモリを上書きする(例: 32)", "override the system RAM (e.g. 32)"),
+    _doc(
+        common.add_argument(
+            "--ram",
+            type=_positive_float,
+            metavar="GB",
+            help=tr(
+                "メインメモリを GB(GiB)で決める(例: 32)。別の PC として判定するときに",
+                "judge with this much system RAM in GB (GiB), e.g. 32; to judge another PC",
+            ),
+        ),
+        "この PC から調べる",
+        "detected on this PC",
     )
-    common.add_argument("--db", metavar="PATH", help=tr("一覧のファイルを指定する", "model list file to use"))
+    _doc(
+        common.add_argument(
+            "--db",
+            metavar="PATH",
+            help=tr("この一覧のファイル(db.json)を使う", "use this model list file (db.json)"),
+        ),
+        "update で取った一覧、無ければ同梱の一覧",
+        "the list fetched by update, else the bundled list",
+    )
     common.add_argument(
         "--no-cache",
         action="store_true",
@@ -4305,14 +5144,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TYPE[,TYPE]",
         help=tr("種類で絞る(カンマ区切り可): ", "filter by type (comma-separated): ") + ", ".join(MODALITIES),
     )
-    filt.add_argument(
-        "--content",
-        choices=CONTENT_FILTERS,
-        default=None,
-        help=tr(
-            "sfw / uncensored(無検閲だけ)/ all で絞る。既定は sfw(無検閲も出すなら --uncensored)",
-            "sfw / uncensored (only uncensored) / all. Default sfw (--uncensored also shows uncensored)",
-        ),
+    content_help = tr(
+        "内容の印で絞る: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。--uncensored と同じ)。"
+        "--uncensored と一緒に使えるのは all だけ。略さずに書く",
+        "filter by the content mark: sfw (default) / uncensored (only uncensored) / all (both; same as"
+        " --uncensored). Only all can be combined with --uncensored. Write it in full",
+    )
+    _doc(
+        filt.add_argument("--content", choices=CONTENT_FILTERS, default=None, help=content_help), "sfw", "sfw"
     )
 
     filt.add_argument(
@@ -4323,43 +5162,104 @@ def build_parser() -> argparse.ArgumentParser:
             "include uncensored models (same as --content all)",
         ),
     )
-    filt.add_argument("--width", type=_positive_int)
-    filt.add_argument("--height", type=_positive_int)
-    filt.add_argument("--frames", type=_positive_int, help=tr("動画のコマ数", "video frames"))
-    filt.add_argument(
-        "--length", type=_positive_float, metavar="SEC", help=tr("音声の長さ(秒)", "audio length (seconds)")
-    )
-    filt.add_argument(
-        "--precision",
-        help=tr(
-            "本体の精度を換算する(例: fp8。元の精度が分かるときだけ)",
-            "convert the weights to this precision (e.g. fp8; only when the original precision is known)",
+    from .estimate import DEFAULT_SETTINGS, PRECISION_BYTES
+
+    def per_type(key: str, unit_ja: str = "", unit_en: str = "") -> tuple[str, str]:
+        vals = [(m, getattr(s, key)) for m, s in DEFAULT_SETTINGS.items() if getattr(s, key)]
+        return (
+            "種類ごと: " + "、".join(f"{m} {v:g}{unit_ja}" for m, v in vals),
+            "by type: " + ", ".join(f"{m} {v:g}{unit_en}" for m, v in vals),
+        )
+
+    _doc(
+        filt.add_argument(
+            "--width",
+            type=_positive_int,
+            metavar="PX",
+            help=tr(
+                "画像・動画の幅(ピクセル)で判定する。省いた設定は種類ごとの既定",
+                "judge images / videos at this width in pixels; settings left out use the defaults by type",
+            ),
         ),
+        *per_type("width"),
+    )
+    _doc(
+        filt.add_argument(
+            "--height",
+            type=_positive_int,
+            metavar="PX",
+            help=tr("画像・動画の高さ(ピクセル)で判定する", "judge images / videos at this height in pixels"),
+        ),
+        *per_type("height"),
+    )
+    _doc(
+        filt.add_argument(
+            "--frames",
+            type=_positive_int,
+            metavar="N",
+            help=tr("動画のコマ数で判定する", "judge videos at this number of frames"),
+        ),
+        *per_type("frames"),
+    )
+    _doc(
+        filt.add_argument(
+            "--length",
+            type=_positive_float,
+            metavar="SEC",
+            help=tr(
+                "音楽・効果音・読み上げの長さ(秒)で判定する",
+                "judge music / sound effects / speech at this length in seconds",
+            ),
+        ),
+        *per_type("seconds", " 秒", " s"),
+    )
+    _doc(
+        filt.add_argument(
+            "--precision",
+            metavar="PREC",
+            help=tr(
+                "見積もりで本体の重みをこの精度に換算する("
+                + "・".join(PRECISION_BYTES)
+                + "。元の精度が分かるときだけ)。download の --precision(落とすワークフローを選ぶ)とは別",
+                "estimate as if the weights were converted to this precision ("
+                + ", ".join(PRECISION_BYTES)
+                + "; only when the original precision is known). Not the same as download --precision,"
+                " which picks the workflow to download",
+            ),
+        ),
+        "一覧にある精度のまま",
+        "the precision in the list",
     )
     filt.add_argument(
-        "--limit", "-n", type=_positive_int, help=tr("出す件数(1 以上)", "number of rows to show (1 or more)")
+        "--limit",
+        "-n",
+        type=_positive_int,
+        metavar="N",
+        help=tr("出す行の数(1 以上)", "number of rows to show (1 or more)"),
     )
     filt.add_argument(
         "--limits",
         action="store_true",
         help=tr(
-            "この PC で good になる最大の解像度・長さも出す(JSON の limits)",
-            "also show the largest resolution / length that is good on this PC (limits in JSON)",
+            "この PC の GPU で逃がさずに good になる最大の解像度・コマ数・長さも出す(JSON の limits)",
+            "also show the largest resolution / frames / length that is good on this PC's GPU without"
+            " offloading (limits in JSON)",
         ),
     )
 
     gate = argparse.ArgumentParser(add_help=False)
-    gate.add_argument(
+    allow = gate.add_argument(
         "--license-allowlist",
         metavar="LIST|FILE",
         help=tr(
             "自動のおすすめに許すライセンス(「mit,apache-2.0」か、1"
-            " 行に 1 つ書いたファイル)。既定は docs/gate.md",
+            ' 行に 1 つ書いたファイル)。既定は docs/gate.md。空の文字("")は指定なしと同じ',
             'licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line).'
-            " Default: docs/gate.md",
+            ' Default: docs/gate.md. An empty string ("") is the same as not giving it',
         ),
     )
-    gate.add_argument(
+    _doc(allow, "docs/gate.md の許可リスト", "the allowlist in docs/gate.md")
+    cver = gate.add_argument(
         "--comfyui-version",
         metavar="VER",
         help=tr(
@@ -4368,6 +5268,7 @@ def build_parser() -> argparse.ArgumentParser:
             " (default: the latest release recorded by update)",
         ),
     )
+    _doc(cver, "一覧が記録した最新のリリース", "the latest release recorded in the list")
     gate.add_argument(
         "--max-head-age-days",
         type=_head_age,
@@ -4433,8 +5334,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         [common, gate],
     )
-    sp.add_argument(
-        "--disk-path", help=tr("空きを調べる場所(既定はホーム)", "where to check free disk (default: home)")
+    _doc(
+        sp.add_argument(
+            "--disk-path",
+            metavar="PATH",
+            help=tr("ディスクの空きを調べる場所(フォルダ)", "the folder whose disk's free space is shown"),
+        ),
+        "ホームのフォルダ",
+        "your home folder",
     )
     sp.add_argument(
         "--all-gpus",
@@ -4525,6 +5432,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
+    _tune(sp, "--limit", default=("種類ごとに 3(-m・--task があれば 10)", "3 per type (10 with -m / --task)"))
+    _tune(sp, "--min-fit", default=("marginal", "marginal"))
 
     listing = argparse.ArgumentParser(add_help=False)
     listing.add_argument(
@@ -4564,6 +5473,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_fit)
+    _tune(sp, "--limit", default=("全部", "all"))
+    _tune(sp, "--fit", default=("runnable(--all なら all)", "runnable (all with --all)"))
 
     sp = sub_parser(
         "search",
@@ -4581,6 +5492,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_search)
+    _tune(sp, "--limit", default=("全部", "all"))
+    _tune(sp, "--fit", default=("すべての段階", "every level"))
 
     sp = sub.add_parser(
         "types",
@@ -4592,7 +5505,21 @@ def build_parser() -> argparse.ArgumentParser:
         description=_help("types"),
         formatter_class=_HelpFormatter,
     )
-    sp.add_argument("--content", choices=CONTENT_FILTERS, default=None)
+    _doc(
+        sp.add_argument(
+            "--content",
+            choices=CONTENT_FILTERS,
+            default=None,
+            help=tr(
+                "数えるモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。--uncensored と同じ)。"
+                "略さずに書く",
+                "which content marks to count: sfw (default) / uncensored (only uncensored) / all"
+                " (both; same as --uncensored). Write it in full",
+            ),
+        ),
+        "sfw",
+        "sfw",
+    )
     sp.add_argument(
         "--uncensored",
         action="store_true",
@@ -4602,13 +5529,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_types)
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub_parser("info", tr("1 つのモデルの詳細", "details of one model"), [common, filt, gate])
-    sp.add_argument("model", help=tr("モデルの ID または名前の一部", "model id, or a part of the id or name"))
+    sp.add_argument(
+        "model",
+        help=tr(
+            "モデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部",
+            "model name (the Model column), workflow id, or a part of either",
+        ),
+    )
     sp.set_defaults(func=cmd_info)
+    _no_effect(sp, "--modality", "--limit", "--limits")
 
     sp = sub_parser(
-        "update", tr("一覧を上流から作り直す", "rebuild the model list from upstream"), [common, gate]
+        "update",
+        tr(
+            "新しい一覧を取る(利用者は --from-release。オプションなしは上流から作り直す)",
+            "get a newer model list (users: --from-release; without options it rebuilds from upstream)",
+        ),
+        [common, gate],
     )
     sp.add_argument(
         "--offline-sources",
@@ -4663,10 +5603,17 @@ def build_parser() -> argparse.ArgumentParser:
             " use only the cached headers and repository precision",
         ),
     )
-    sp.add_argument(
-        "--output",
-        metavar="PATH",
-        help=tr("書き出し先(既定はキャッシュ)", "where to write (default: the cache)"),
+    _doc(
+        sp.add_argument(
+            "--output",
+            metavar="PATH",
+            help=tr(
+                "一覧の書き出し先(既定はキャッシュの db.json)",
+                "where to write the list (default: db.json in the cache)",
+            ),
+        ),
+        "キャッシュの db.json",
+        "db.json in the cache",
     )
     sp.add_argument(
         "--from-release",
@@ -4704,7 +5651,27 @@ def build_parser() -> argparse.ArgumentParser:
             " stops when exceeded",
         ),
     )
+    sp._actions[-1].doc_default = "900"  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_update)
+    only_with = tr(
+        "(--heads-only・--fields-only・--inspect-only のときだけ使う)",
+        " (used only with --heads-only, --fields-only or --inspect-only)",
+    )
+    _tune(
+        sp,
+        "--db",
+        help=tr("元にする一覧のファイル(db.json)", "the list file (db.json) to start from") + only_with,
+    )
+    _tune(
+        sp,
+        "--no-cache",
+        help=tr(
+            "update で取った一覧ではなく、同梱の一覧を元にする",
+            "start from the bundled list, not the one fetched by update",
+        )
+        + only_with,
+    )
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub_parser(
         "download",
@@ -4721,21 +5688,31 @@ def build_parser() -> argparse.ArgumentParser:
             "model name (the Model column), workflow id, or a part of either",
         ),
     )
-    sp.add_argument(
-        "--precision",
-        metavar="PREC",
-        help=tr(
-            "精度を指定する(例: fp8 / bf16 / int8 / gguf-q8_0)",
-            "precision to use (e.g. fp8 / bf16 / int8 / gguf-q8_0)",
+    _doc(
+        sp.add_argument(
+            "--precision",
+            metavar="PREC",
+            help=tr(
+                "同じモデルのワークフローのうち、この精度のものを落とす(例: fp8 / bf16 / int8 / gguf-q8_0。"
+                "あるものは表の Prec・info で分かり、無ければ誤りにして並べる)。recommend などの --precision"
+                "(見積もりの換算)とは別",
+                "download the workflow of the same model that has this precision (e.g. fp8 / bf16 / int8 /"
+                " gguf-q8_0; the Prec column and info show which exist, and an unknown one is an error that"
+                " lists them). Not the same as --precision of recommend etc. (which converts the estimate)",
+            ),
         ),
+        "recommend と同じ選び方(上を見る)",
+        "chosen like recommend (see above)",
     )
     sp.add_argument(
         "--budget",
         type=_positive_float,
         metavar="GB",
         help=tr(
-            "落とす量の上限(GB。既にあるファイルは数えない)",
-            "the most to download in GB (files already there are not counted)",
+            "落とす量の上限(GB。既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、"
+            "収まるものが無ければ断る",
+            "the most to download in GB (files already there are not counted); the best workflow within it"
+            " is chosen, and when none fits the download is refused",
         ),
     )
     sp.add_argument(
@@ -4751,19 +5728,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         metavar="DIR",
         help=tr(
-            "置き場所(ComfyUI の models と同じ並びで置く)",
-            "destination folder (same layout as ComfyUI's models)",
+            "ComfyUI の外の置き場所。ファイルは <DIR>/<folder>/<file> に置く"
+            "(folder は diffusion_models・vae など。ComfyUI の models と同じ並びなので、"
+            "ComfyUI の models のフォルダそのものを渡してもよい)",
+            "a destination outside ComfyUI; files go to <DIR>/<folder>/<file> (folder: diffusion_models,"
+            " vae, ...; the same layout as ComfyUI's models folder, so passing that models folder itself"
+            " also works)",
         ),
     )
     where.add_argument(
         "--comfyui-dir",
         metavar="DIR",
         help=tr(
-            "ComfyUI のフォルダ。models/<diffusion_models など>/ に置く"
-            "(既定は環境変数 GENMODELFIT_COMFYUI_DIR)",
-            "the ComfyUI folder; files go to models/<diffusion_models etc.>/"
-            " (default: $GENMODELFIT_COMFYUI_DIR)",
+            "ComfyUI のフォルダ。ファイルは <DIR>/models/<folder>/<file> に置く(既定は環境変数"
+            " GENMODELFIT_COMFYUI_DIR、genmodelfit config の comfyui-dir、自動で見つけたもの)",
+            "the ComfyUI folder; files go to <DIR>/models/<folder>/<file>"
+            " (default: $GENMODELFIT_COMFYUI_DIR, then comfyui-dir in genmodelfit config, then found"
+            " automatically)",
         ),
+    )
+    _doc(
+        where._group_actions[0], "なし(--comfyui-dir の決め方で決める)", "none (decided as for --comfyui-dir)"
+    )
+    _doc(
+        where._group_actions[1],
+        "GENMODELFIT_COMFYUI_DIR → config の comfyui-dir → 自動で見つけたもの",
+        "GENMODELFIT_COMFYUI_DIR, then config, then found automatically",
     )
     sp.add_argument(
         "--yes",
@@ -4806,18 +5796,65 @@ def build_parser() -> argparse.ArgumentParser:
         choices=CONTENT_FILTERS,
         default=None,
         help=tr(
-            "sfw / uncensored / all(--uncensored は all と同じ。既定 sfw)",
-            "sfw / uncensored / all (--uncensored is the same as all; default sfw)",
+            "名前で探すモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方)。"
+            "uncensored と all は無検閲のモデルを落とす同意にもなる"
+            "(--uncensored は all と同じ。--uncensored と一緒に使えるのは all だけ)",
+            "which content marks the name search looks at: sfw (default) / uncensored (only uncensored) / all"
+            " (both). uncensored and all also give consent to download uncensored models (--uncensored is the"
+            " same as all; only all can be combined with --uncensored)",
         ),
     )
+    sp._actions[-1].doc_default = "sfw"  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_download)
 
-    sp = sub.add_parser(
-        "gate",
-        parents=[common, gate],
-        help=tr("自動でおすすめに出せるかの集計", "summary of which models can be auto-recommended"),
+    # genmodelfit config(#111。docs/download.ja.md「genmodelfit config」)
+    sp = sub_parser(
+        "config",
+        tr(
+            "設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える",
+            "show or change settings (download's ComfyUI folder, display language)",
+        ),
+        [lang],
     )
-    sp.add_argument("--modality", "-m", choices=MODALITIES)
+    sp.add_argument("--json", action="store_true", help=json_help)
+    csub = sp.add_subparsers(dest="action", metavar="{show,set,unset,path}")
+    c = csub.add_parser(
+        "show",
+        parents=[lang],
+        help=tr(
+            "今の設定と出どころ(サブコマンドを省いたときはこれ)",
+            "current settings and where they come from (the default when no subcommand is given)",
+        ),
+    )
+    c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
+    c = csub.add_parser("set", parents=[lang], help=tr("値を保存する", "save a value"))
+    c.add_argument("key", help=tr("comfyui-dir か lang", "comfyui-dir or lang"))
+    c.add_argument(
+        "value",
+        help=tr(
+            "comfyui-dir なら ComfyUI のフォルダのパス、lang なら en か ja",
+            "for comfyui-dir: the path of the ComfyUI folder; for lang: en or ja",
+        ),
+    )
+    c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
+    c = csub.add_parser("unset", parents=[lang], help=tr("値を消す", "remove a value"))
+    c.add_argument("key", help=tr("comfyui-dir か lang", "comfyui-dir or lang"))
+    c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
+    c = csub.add_parser("path", parents=[lang], help=tr("設定ファイルの場所", "where the config file is"))
+    c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
+    sp.set_defaults(func=cmd_config)
+
+    sp = sub_parser(
+        "gate",
+        tr("自動でおすすめに出せるかの集計", "summary of which models can be auto-recommended"),
+        [common, gate],
+    )
+    sp.add_argument(
+        "--modality",
+        "-m",
+        choices=MODALITIES,
+        help=tr("この種類だけ数える(1 つだけ)", "count only this type (one type)"),
+    )
     only = sp.add_mutually_exclusive_group()
     only.add_argument(
         "--only-auto",
@@ -4830,6 +5867,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("保留のものの ID と理由も並べる", "also list the ids of held models and why"),
     )
     sp.set_defaults(func=cmd_gate)
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub.add_parser(
         "diff",
@@ -4877,11 +5915,13 @@ def build_parser() -> argparse.ArgumentParser:
         "-n",
         type=_positive_int,
         default=None,
+        metavar="N",
         help=tr(
             "1 つの節に出す行の上限(既定 20。--all では全部)",
             "max lines per section (default 20; all with --all)",
         ),
     )
+    sp._actions[-1].doc_default = tr("20(--all なら全部)", "20 (all with --all)")  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_diff)
 
     db_cache_help = tr(
@@ -4896,8 +5936,9 @@ def build_parser() -> argparse.ArgumentParser:
         "review",
         parents=[lang],
         help=tr(
-            "確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(#42)",
-            "list, approve or reject models waiting for review (new entries, license changes, ...) (#42)",
+            "確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(保守する人向け)",
+            "list, approve or reject models waiting for review (new entries, license changes, ...;"
+            " for maintainers)",
         ),
         description=_review_help(),
         formatter_class=_HelpFormatter,
@@ -4978,12 +6019,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--json", action="store_true", help=json_help)
     r.set_defaults(func=cmd_review_reject)
 
-    sp = sub.add_parser(
-        "bench",
-        parents=[common],
-        help=tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"),
+    sp = sub_parser("bench", tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"), [common])
+    sp.add_argument(
+        "template",
+        help=tr(
+            "ComfyUI のテンプレートのワークフローの ID そのもの(info の 1 行目の [ ] の中)",
+            "the exact workflow id of a ComfyUI template (the id in [ ] on the first line of info)",
+        ),
     )
-    sp.add_argument("template", help=tr("テンプレート名(モデルの ID)", "template name (model id)"))
     sp.add_argument(
         "--url",
         required=True,
@@ -5000,11 +6043,23 @@ def build_parser() -> argparse.ArgumentParser:
             "workflow in API format (default: built from the template)",
         ),
     )
-    sp.add_argument("--width", type=_positive_int)
-    sp.add_argument("--height", type=_positive_int)
-    sp.add_argument("--frames", type=_positive_int)
-    sp.add_argument("--length", type=_positive_float, metavar="SEC")
-    sp.add_argument("--steps", type=_positive_int)
+    as_template = ("テンプレートの値", "the template's value")
+    for flag, metavar, kind, ja, en in (
+        ("--width", "PX", _positive_int, "幅(ピクセル)", "width in pixels"),
+        ("--height", "PX", _positive_int, "高さ(ピクセル)", "height in pixels"),
+        ("--frames", "N", _positive_int, "動画のコマ数", "number of video frames"),
+        ("--length", "SEC", _positive_float, "音声の長さ(秒)", "audio length in seconds"),
+        ("--steps", "N", _positive_int, "サンプラーのステップ数", "number of sampler steps"),
+    ):
+        _doc(
+            sp.add_argument(
+                flag,
+                type=kind,
+                metavar=metavar,
+                help=tr(f"{ja}(省くとテンプレートのまま)", f"{en} (omitted: as in the template)"),
+            ),
+            *as_template,
+        )
     sp.add_argument(
         "--output",
         metavar="PATH",
@@ -5012,6 +6067,9 @@ def build_parser() -> argparse.ArgumentParser:
             "結果の JSON の書き出し先(失敗・標準でない結果もここへ書く)",
             "where to write the result JSON (failed and non-standard results are written here too)",
         ),
+    )
+    sp._actions[-1].doc_default = tr(  # type: ignore[attr-defined]
+        "キャッシュの measurements/", "measurements/ in the cache"
     )
     sp.add_argument(
         "--save-failed",
@@ -5063,6 +6121,7 @@ def build_parser() -> argparse.ArgumentParser:
             "待つ時間の上限(0 より大きい秒数。既定 1800)", "the most time to wait (seconds > 0; default 1800)"
         ),
     )
+    sp._actions[-1].doc_default = "1800"  # type: ignore[attr-defined]
     sp.add_argument(
         "--force",
         action="store_true",
@@ -5092,13 +6151,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
             "中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。"
-            "何も送らない(CONTRIBUTING.md)",
+            "送るには GitHub のアカウントが要る。genmodelfit は何も送らない(CONTRIBUTING.md)",
             "write the submission JSON (to the cache's submissions folder without --submission),"
             " show it with the checks, and print the URL of the GitHub page to share it;"
-            " in a terminal, ask whether to open it in a browser. Nothing is sent (CONTRIBUTING.md)",
+            " in a terminal, ask whether to open it in a browser. Sending needs a GitHub account;"
+            " genmodelfit itself sends nothing (CONTRIBUTING.md)",
         ),
     )
     sp.set_defaults(func=cmd_bench)
+    _no_effect(sp, "--vram", "--ram")
 
     cj = argparse.ArgumentParser(add_help=False, parents=[lang])
     cj.add_argument("--json", action="store_true", help=json_help)
@@ -5287,7 +6348,8 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-_REVIEW_HELP_JA = """確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す(#42)。
+_REVIEW_HELP_JA = """確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す
+(保守する人向け)。
 pending は update が前の一覧と比べて付ける
 (new / license_permissive / need_decreased / uncensored_new / files_changed)。
 確かめるまで自動のおすすめに出さない(gate の reviewed)。
@@ -5314,7 +6376,7 @@ pending は update が前の一覧と比べて付ける
   genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "商用には使えない"
 詳しくは docs/schema.md「review」、docs/release.md「毎週のスキル」"""
 
-_REVIEW_HELP_EN = """List, approve or reject models waiting for review (#42).
+_REVIEW_HELP_EN = """List, approve or reject models waiting for review (for maintainers).
 update marks an entry pending (review.status = pending) when it differs from the previous list
 (new / license_permissive / need_decreased / uncensored_new / files_changed).
 Pending entries are not auto-recommended until approved (gate check: reviewed).
@@ -5367,11 +6429,13 @@ CONTRIBUTING.md)。
 
 終了コード:
   0  成功(validate: すべてのファイルが通った。show: 直すところが無い)
-  1  失敗 / validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
-     (マージする人向けの確認では失敗にしない)/ show: 直すところがある /
-     share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない)/
-     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)/
-     aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
+  1  失敗(読めないファイル・知らない形など)
+  1  validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
+     (マージする人向けの確認では失敗にしない)
+  1  show: 直すところがある
+  1  share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない)
+  1  aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)
+  1  aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
   2  使い方の誤り
   3  aggregate --report --fail-on-breach: 誤差が閾値を超えた
 
@@ -5404,12 +6468,13 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
-  1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
-     maintainer who merges never fail) /
-     show: something to fix / share: a privacy check is NG or the checks have errors (cannot share) /
-     aggregate: no such folder, or an empty result with --output
-     (unless --allow-empty) / aggregate --check: submissions not in the bundled aggregate yet, or
-     re-aggregating it differs
+  1  Error (an unreadable file, an unknown shape, ...)
+  1  validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
+     maintainer who merges never fail)
+  1  show: something to fix
+  1  share: a privacy check is NG or the checks have errors (cannot share)
+  1  aggregate: no such folder, or an empty result with --output (unless --allow-empty)
+  1  aggregate --check: submissions not in the bundled aggregate yet, or re-aggregating it differs
   2  Usage error
   3  aggregate --report --fail-on-breach: an error exceeded the threshold
 
@@ -5440,10 +6505,24 @@ def main(argv: list[str] | None = None) -> int:
             with contextlib.suppress(AttributeError, ValueError, OSError):
                 stream.reconfigure(encoding="utf-8")
     argv = sys.argv[1:] if argv is None else argv
-    lang = _lang_in(argv)  # 説明の文を作る前に言語を決める(#73)
+    lang = _lang_in(argv) or _config_lang(argv)  # 説明の文を作る前に言語を決める(#73・#111)
     # ContextVar で固定するので、ほかのスレッドのライブラリの呼び出しには効かず、main を出れば元に戻る
     with i18n.forced(lang) if lang else contextlib.nullcontext(), _argparse_language():
         return _main(argv)
+
+
+def _config_lang(argv: list[str]) -> str | None:
+    """genmodelfit config の lang(#111)。環境変数 GENMODELFIT_LANG があればそちら(None)。
+    壊れた設定ファイルは使わずに、stderr に 1 回だけ注意を出す(config のコマンドは自分で出す)。"""
+    if i18n.normalize(os.environ.get(i18n.ENV_VAR)) is not None:
+        return None
+    from . import config
+
+    values, notes = config.load()
+    if notes and (not argv or argv[0] != "config"):
+        for n in notes:
+            print(tr(f"注意: {n}", f"warning: {n}"), file=sys.stderr)
+    return values.get("lang")
 
 
 def _is_lang_flag(a: str) -> bool:

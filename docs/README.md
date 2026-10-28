@@ -13,6 +13,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 | Find the table row your GPU matches and its source | [gpu-inventory.md](gpu-inventory.md) |
 | Know how far to trust the memory estimates | [accuracy.md](accuracy.md) |
 | Know how the order and the Score are decided, and when measurements set the level | [scoring.md](scoring.md) |
+| Look up every command, option, environment variable and exit code | [commands.md](commands.md) |
 | Download a model's files safely | [download.md](download.md) |
 | Use genmodelfit from an app (`--json` or Python) | [schema.md](schema.md), then [gate.md](gate.md) and [download.md](download.md) |
 | Send your measurements | [CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -23,6 +24,7 @@ The pages below go into detail. Every page has an English version and a Japanese
 
 | Page | What it covers |
 |---|---|
+| [commands.md](commands.md) | Every command and option, the environment variables, the saved settings and the exit codes, generated from the argument parser (`tools/cli_reference.py`). |
 | [hardware.md](hardware.md) | How genmodelfit detects GPUs, memory and drivers, and the primary-source rules behind each verdict. |
 | [gpu-inventory.md](gpu-inventory.md) | Every row of the GPU registration tables (name / device ID → generation, PyTorch CUDA builds) with the official product names it matches, the verdict, the source and the date checked (generated). |
 | [accuracy.md](accuracy.md) | How the VRAM / RAM estimates are built and fitted, how accurate they are, and how other users' measurements are used. |
