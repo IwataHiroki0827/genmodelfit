@@ -26,6 +26,9 @@
    review_queue.json(確認待ちの項目と、diff の分類 classification。#42。毎週のスキルがこれを読んで、
    安全な向きだけの週か、根拠付きの PR をオーナーに出す週かを決める)
 6. --apply があれば、確かめを通った db.json をそこへ写す(ワークフローはこのあと pytest を回す)
+7. GPU の表の見張り(gpuwatch。#103): 公式の GPU の一覧を取り、表に無い・表と違う候補と読めなかった出典を
+   PR の本文の「GPU 表の見張り」と <dir>/gpu_watch.json に書く。表は書き換えず、結果(ok)にも効かない
+   (見つかった件は別の Issue にする。データの自動マージは止めない)。--no-gpu-watch で飛ばす
 
 終了コード: 0 = 通った、1 = 確かめに落ちた・作り直しをやめた(<dir>/result.json の problems に理由)、
 2 = 使い方の誤り。
@@ -426,6 +429,7 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         lines += _table(["鍵", "前", "今回"], [[x["key"], x["old"], x["new"]] for x in d["stats"]])
         lines += ["", "</details>", ""]
 
+    lines += gpu_watch_section(result.get("gpu_watch"))
     lines += [
         "### マージの前に確かめること",
         "",
@@ -438,6 +442,14 @@ def pr_body(d: dict[str, Any], result: dict[str, Any]) -> str:
         "- [ ] 新しく無検閲の印が付いた項目の根拠を見た(未成年の性的表現を目的とするものは除外する)",
         "- [ ] 実測のあるモデルのファイルが変わっていたら、"
         "`python -m genmodelfit.calibrate` を別の PR で直す",
+        *(
+            [
+                "- [ ] 「GPU 表の見張り」に候補があれば、一次資料で確かめて別の Issue にした"
+                "(このマージは止めない)"
+            ]
+            if (result.get("gpu_watch") or {}).get("candidates")
+            else []
+        ),
         "",
         f"<sub>genmodelfit {__version__} / `python -m genmodelfit.weekly` / "
         "全部の違いは artifact の diff.json</sub>",
@@ -504,6 +516,7 @@ def run(
     now: datetime | None = None,
     progress: Callable[[str], None] | None = None,
     offline: bool = False,
+    gpu_watch: bool = True,
 ) -> dict[str, Any]:
     """作り直して確かめ、<out_dir> に db.json・diff.json・pr_body.md・result.json を書く。何も表示しない。
 
@@ -579,6 +592,10 @@ def run(
             "review_queue": str(out / "review_queue.json"),
         },
     )
+    if gpu_watch:
+        result["gpu_watch"] = watch_gpus(fetch, progress)
+        result["files"]["gpu_watch"] = str(out / "gpu_watch.json")
+        _write_json(out / "gpu_watch.json", result["gpu_watch"])
     _write_json(out / "diff.json", d)
     _write_json(out / "review_queue.json", review_queue(new, d["classification"]))
     body = pr_body(d, result)
@@ -595,6 +612,56 @@ def run(
         result["applied_to"] = str(apply_to)
     _write_json(out / "result.json", result)
     return result
+
+
+def watch_gpus(fetch: Fetcher, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """GPU の表の見張り(gpuwatch.watch)。例外を出さない(毎週の更新を止めない)。"""
+    if progress:
+        progress("GPU の表の見張り: 公式の一覧を読む")
+    try:
+        from . import gpuwatch
+
+        return gpuwatch.watch(fetch).to_dict()
+    except Exception as e:
+        return {
+            "candidates": [],
+            "unreadable": [{"source": "gpuwatch", "url": "", "error": f"{type(e).__name__}: {e}"}],
+            "read": [],
+            "baseline": None,
+        }
+
+
+@_japanese()
+def gpu_watch_section(w: dict[str, Any] | None) -> list[str]:
+    """PR の本文の「GPU 表の見張り」の節(#103)。上流の文字は md() で無害にする(_table が使う)。"""
+    if not w:
+        return []
+    cands = w.get("candidates") or []
+    bad = w.get("unreadable") or []
+    lines = ["### GPU 表の見張り", ""]
+    lines.append(
+        "公式の GPU の一覧と GPU の登録の表(`gputables.py`)を照らした結果です。**表は自動では書き換えません。"
+        "この節はマージを止めません**(候補は一次資料で確かめてから別の Issue で足す。"
+        "docs/release.ja.md「毎週の一覧の更新」)。"
+    )
+    lines.append("")
+    kind_ja = {"not in tables": "表に無い", "differs": "表と違う"}
+    if cands:
+        lines.append(f"候補: {len(cands)} 件")
+        lines.append("")
+        rows = [[c["source"], kind_ja.get(c["kind"], c["kind"]), c["item"], c["detail"]] for c in cands]
+        lines += _table(["出典", "種類", "項目", "詳しく"], rows[:MAX_ROWS])
+        if len(rows) > MAX_ROWS:
+            lines.append(f"…ほか {len(rows) - MAX_ROWS} 件(全部は artifact の gpu_watch.json)")
+    else:
+        lines.append(f"- 候補なし(読んだ出典 {len(w.get('read') or [])} 件)")
+    lines.append("")
+    if bad:
+        lines.append(f"読めなかった出典: {len(bad)} 件")
+        lines.append("")
+        lines += _table(["出典", "URL", "理由"], [[b["source"], b["url"], b["error"]] for b in bad])
+        lines.append("")
+    return lines
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -725,6 +792,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--rate-limit-budget", type=float, metavar="SEC", help="429 で待つ時間の合計の上限(既定 900)"
     )
+    p.add_argument("--no-gpu-watch", action="store_true", help="GPU の表の見張り(gpuwatch)を飛ばす")
     p.add_argument("--json", action="store_true", help="result.json と同じものを標準出力に出す")
     args = p.parse_args(argv)
 
@@ -748,6 +816,7 @@ def main(argv: list[str] | None = None) -> int:
             apply_to=None if args.dry_run else args.apply,
             progress=say,
             offline=bool(args.offline_sources),
+            gpu_watch=not args.no_gpu_watch,
         )
     except DatabaseError as e:  # --base が読めない
         print(f"error: {e}", file=sys.stderr)

@@ -1,0 +1,30 @@
+{
+ "client": [
+  {
+   "hardware": [
+    "Intel Arc A-Series Graphics (CodeName: Alchemist)",
+    "Intel Arc B-Series Graphics (CodeName: Battlemage)",
+    "Intel Core Ultra Processors with Intel Arc Graphics (CodeName: Meteor Lake-H)",
+    "Intel Core Ultra Processors (Series 2) with Intel Arc Graphics (CodeName: Arrow Lake-H)",
+    "Intel Core Ultra Mobile Processors (Series 2) with Intel Arc Graphics (CodeName: Lunar Lake)"
+   ],
+   "os": "Windows 11 & Ubuntu 24.04/26.04 & WSL2 Ubuntu 24.04/26.04"
+  },
+  {
+   "hardware": [
+    "Intel Core Ultra Mobile Processors (Series 3) with Intel Arc Graphics (CodeName: Panther Lake)"
+   ],
+   "os": "Windows 11 & Ubuntu 26.04 & WSL2 Ubuntu 24.04/26.04"
+  }
+ ],
+ "datacenter": [
+  {
+   "device": "Intel Data Center GPU Max Series (CodeName: Ponte Vecchio)",
+   "os": [
+    "Red Hat Enterprise Linux 9.2",
+    "SUSE Linux Enterprise Server 15 SP5",
+    "Ubuntu Server 22.04 (>= 5.15 LTS kernel)"
+   ]
+  }
+ ]
+}

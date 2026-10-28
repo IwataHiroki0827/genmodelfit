@@ -1,0 +1,2756 @@
+[
+ {
+  "cc": "12.1",
+  "name": "NVIDIA GB10 (DGX Spark)",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.1",
+  "name": "NVIDIA RTX Spark N1X",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 6000",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "Blackwell Server Edition",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 4500",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "Blackwell Server Edition",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 5500 Blackwell Workstation Edition",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 5000 Blackwell",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 4500 Blackwell Workstation Edition",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 4000 Blackwell",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 4000 Blackwell SFF Edition",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "NVIDIA RTX PRO 2000 Blackwell",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5090",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5080",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5070 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5070",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5060 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5060",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "12.0",
+  "name": "GeForce RTX 5050",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "11.0",
+  "name": "Jetson T5000",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "11.0",
+  "name": "Jetson T4000",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "10.3",
+  "name": "NVIDIA GB300",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "10.3",
+  "name": "NVIDIA B300",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "10.3",
+  "name": "NVIDIA GB300 (DGX Station)",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "10.0",
+  "name": "NVIDIA GB200",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "10.0",
+  "name": "NVIDIA B200",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "9.0",
+  "name": "NVIDIA GH200",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "9.0",
+  "name": "NVIDIA H200",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "9.0",
+  "name": "NVIDIA H100",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA L4",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA L40",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA L40S",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 6000 Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 5000 Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 4500 Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 4000 Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 4000 SFF Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "NVIDIA RTX 2000 Ada",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4090",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4080",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4070 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4070",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4060 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4060",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.9",
+  "name": "GeForce RTX 4050",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.7",
+  "name": "Jetson AGX Orin",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.7",
+  "name": "Jetson Orin NX",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.7",
+  "name": "Jetson Orin Nano",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA A40",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA A10",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA A16",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA A2",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA RTX A6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA RTX A5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA RTX A4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA RTX A3000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "NVIDIA RTX A2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3090 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3090",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3080 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3080",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3070 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3070",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3060 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3060",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3050 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.6",
+  "name": "GeForce RTX 3050",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.0",
+  "name": "NVIDIA A100",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "8.0",
+  "name": "NVIDIA A30",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T4",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO RTX 8000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO RTX 6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO RTX 5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO RTX 4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO RTX 3000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "QUADRO T2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T1200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T1000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T500",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA T400",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "GeForce GTX 1650 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "NVIDIA TITAN RTX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "GeForce RTX 2080 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "GeForce RTX 2080",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "GeForce RTX 2070",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.5",
+  "name": "GeForce RTX 2060",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_gpus"
+ },
+ {
+  "cc": "7.2",
+  "name": "Jetson AGX Xavier",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "7.2",
+  "name": "Jetson Xavier NX",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "7.0",
+  "name": "NVIDIA V100",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "7.0",
+  "name": "Quadro GV100",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "7.0",
+  "name": "NVIDIA TITAN V",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.2",
+  "name": "Jetson TX2",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Tesla P40",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Tesla P4",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P5200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P4200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P3200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P3000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P2200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P1000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P620",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P500",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "Quadro P400",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "P620",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "P520",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "NVIDIA TITAN Xp",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "NVIDIA TITAN X",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1080 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1080",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1070 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1070",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1060",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.1",
+  "name": "GeForce GTX 1050",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.0",
+  "name": "Tesla P100",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "6.0",
+  "name": "Quadro GP100",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.3",
+  "name": "Jetson Nano",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Tesla M60",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Tesla M40",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M6000 24GB",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M5500M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M2200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "Quadro M620",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX TITAN X",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 980 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 980",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 970",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 960",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 950",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 980M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 970M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce GTX 965M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.2",
+  "name": "GeForce 910M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro K2200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro K1200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro K620",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M1200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M520",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M5000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M4000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M3000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M2000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M1000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro K620M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M600M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "Quadro M500M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "NVIDIA NVS 810",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce GTX 750 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce GTX 750",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce GTX 960M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce GTX 950M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce 940M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce 930M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce GTX 850M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce 840M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "5.0",
+  "name": "GeForce 830M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.7",
+  "name": "Tesla K80",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Tesla K40",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Tesla K20",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Quadro K6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Quadro K5200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Quadro K610M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "Quadro K510M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GTX TITAN Z",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GTX TITAN Black",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GTX TITAN",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GTX 780 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GTX 780",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GT 730",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GT 720",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GT 705",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce GT 640 (GDDR5)",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.5",
+  "name": "GeForce 920M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.2",
+  "name": "Tegra K1",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.2",
+  "name": "Jetson TK1",
+  "segment": "Jetson",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Tesla K10",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K4200",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K2000D",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K420",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro 410",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K6000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K5200M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K5100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K500M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K4200M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K4100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K3100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K2200M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K2100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "Quadro K1100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "NVIDIA NVS 510",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 770",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 760",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 690",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 680",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 670",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 660 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 660",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 650 Ti BOOST",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 650 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 650",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 740",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 880M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 870M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 780M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 770M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 765M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 760M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 680MX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 680M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 675MX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 670MX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GTX 660M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 755M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 750M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 650M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 745M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 645M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 740M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 730M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 640M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 640M LE",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 735M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "3.0",
+  "name": "GeForce GT 730M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "NVIDIA NVS 315",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "NVIDIA NVS 310",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "NVS 5400M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "NVS 5200M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "NVS 4200M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 2000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 2000D",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 4000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 3000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 2000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "Quadro 1000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 560 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 550 Ti",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 460",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTS 450",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTS 450",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 730 DDR3,128bit",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 640 (GDDR3)",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 630",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 620",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 610",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 520",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 440",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 440",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 430",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 430",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 820M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 800M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 675M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 670M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 635M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 630M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 625M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 720M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 620M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 710M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 705M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 610M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 580M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 570M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 560M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 555M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 550M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 540M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 525M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 520MX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 520M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 485M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 470M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GTX 460M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 445M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 435M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 420M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce GT 415M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 710M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.1",
+  "name": "GeForce 410M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla C2075",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla C2050",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla C2070",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla M2050",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla M2070",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla M2075",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Tesla M2090",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro Plex 7000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 6000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 5000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 4000",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 4000 for Mac",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 5010M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "Quadro 5000M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 590",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 580",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 570",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 480",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 470",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 465",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "2.0",
+  "name": "GeForce GTX 480M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Tesla C1060",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Tesla S1070",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Tesla M1060",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro FX 5800",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro FX 4800",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro FX 4800 for Mac",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro FX 3800",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro CX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "Quadro Plex 2200 D2",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 295",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 285",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 285 for Mac",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 280",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 275",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.3",
+  "name": "GeForce GTX 260",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "Quadro 400",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "Quadro FX 380 Low Profile",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "NVIDIA NVS 300",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "Quadro FX 1800M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "Quadro FX 880M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "Quadro FX 380M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "NVIDIA NVS 300",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "NVS 5100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "NVS 3100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "NVS 2100M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 240",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 220",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce 210",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GTS 360M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GTS 350M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 335M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 330M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 325M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce GT 240M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce G210M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce 310M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.2",
+  "name": "GeForce 305M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 4700 X2",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 3700",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 1800",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 1700",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 580",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 570",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 470",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 380",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 370",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 370 Low Profile",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 450",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 420",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 295",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro Plex 2100 D4",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 3800M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 3700M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 3600M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 2800M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 2700M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 1700M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 1600M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 770M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 570M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 370M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro FX 360M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 320M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 160M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 150M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 140M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 135M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 130M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 450",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 420",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "Quadro NVS 295",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTS 250",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTS 150",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GT 130",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GT 120",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce G100",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800 GX2",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800 GTX+",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800 GTX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9600 GSO",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9500 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8800 GTS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8800 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8800 GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8600 GTS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8600 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8500 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8400 GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9400 mGPU",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9300 mGPU",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8300 mGPU",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8200 mGPU",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8100 mGPU",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTX 285M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTX 280M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTX 260M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800M GTX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8800M GTX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTS 260M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GTS 250M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9600M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8800M GTS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9800M GTS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce GT 230M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9700M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9650M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9700M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9650M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9600M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9600M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9500M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8700M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8600M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8600M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9500M G",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9300M G",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8400M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce G210M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce G110M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9300M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9200M GS",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 9100M G",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce 8400M GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.1",
+  "name": "GeForce G105M",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Tesla C870",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Tesla D870",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Tesla S870",
+  "segment": "Data Center",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Quadro FX 5600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Quadro FX 4600",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "Quadro Plex 2100 S4",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce GT 420",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 8800 Ultra",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 8800 GTX",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce GT 340",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce GT 330",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce GT 320",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 315",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 310",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 9800 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 9600 GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ },
+ {
+  "cc": "1.0",
+  "name": "GeForce 9400GT",
+  "segment": "Workstation/Consumer",
+  "source": "nvidia_cuda_legacy"
+ }
+]

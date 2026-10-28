@@ -1,0 +1,12 @@
+class _CompatInterval: ...
+class _CompatSet: ...
+DEVICE_REQUIREMENT: dict[int, object] = {
+    80: _CompatInterval(start=80, exclude={87}),
+    87: _CompatSet({87}),
+    110: _CompatSet({101, 110}),
+}
+DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION = DEVICE_REQUIREMENT | {80: _CompatInterval(start=80)}
+PYTORCH_RELEASES_CODE_CC: dict[str, dict[str, set[int]]] = {
+    "12.6": {"x86_64": {50, 60, 70, 75, 80, 86, 90}, "aarch64": {80, 90}},
+    "13.4": {"x86_64": {75, 80, 86, 90, 100, 120}, "aarch64": {80, 90, 100, 110, 120}},
+}

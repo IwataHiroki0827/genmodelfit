@@ -103,7 +103,7 @@ The four checks:
 - Fair: the same value for everyone's measurements; Linux and Windows owners of the same card share each other's measurements.
 - Test: `tests/test_scoring.py::test_same_vram_ratio_linux_and_windows` (Linux 5.80 matches Windows 6.0; the 8 GB and 16 GB variants never match).
 
-**Non-NVIDIA GPUs**: estimates are capped at Good. Only when measurements set the level as above does the level go up to theirs ([hardware.md](hardware.md)).
+**Non-NVIDIA GPUs**: no measurement has run on this kind of GPU yet, so the level is capped at Good (the reason reads "No measurement has run on this kind of GPU (<vendor>) yet, so the level is capped at Good (lifted once two or more measurements of the same GPU agree)"; #101, #103). Only when measurements set the level as above does the level go up to theirs ([hardware.md](hardware.md)).
 
 ## Shifting values with measurements
 

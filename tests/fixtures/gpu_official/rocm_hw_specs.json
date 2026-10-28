@@ -1,0 +1,411 @@
+[
+ {
+  "gfx": "gfx950",
+  "name": "MI355X"
+ },
+ {
+  "gfx": "gfx950",
+  "name": "MI350X"
+ },
+ {
+  "gfx": "gfx950",
+  "name": "MI350P"
+ },
+ {
+  "gfx": "gfx942",
+  "name": "MI325X"
+ },
+ {
+  "gfx": "gfx942",
+  "name": "MI300X"
+ },
+ {
+  "gfx": "gfx942",
+  "name": "MI300A"
+ },
+ {
+  "gfx": "gfx90a",
+  "name": "MI250X"
+ },
+ {
+  "gfx": "gfx90a",
+  "name": "MI250"
+ },
+ {
+  "gfx": "gfx90a",
+  "name": "MI210"
+ },
+ {
+  "gfx": "gfx908",
+  "name": "MI100"
+ },
+ {
+  "gfx": "gfx906",
+  "name": "MI60"
+ },
+ {
+  "gfx": "gfx906",
+  "name": "MI50 (32GB)"
+ },
+ {
+  "gfx": "gfx906",
+  "name": "MI50 (16GB)"
+ },
+ {
+  "gfx": "gfx900",
+  "name": "MI25"
+ },
+ {
+  "gfx": "gfx803",
+  "name": "MI8"
+ },
+ {
+  "gfx": "gfx803",
+  "name": "MI6"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon AI PRO R9700S"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon AI PRO R9700"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon AI PRO R9600D"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon AI PRO R9600"
+ },
+ {
+  "gfx": "gfx1101",
+  "name": "Radeon PRO V710"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon PRO W7900 Dual Slot"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon PRO W7900"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon PRO W7800 48GB"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon PRO W7800"
+ },
+ {
+  "gfx": "gfx1101",
+  "name": "Radeon PRO W7700"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon RX 9070 XT"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon RX 9070 GRE"
+ },
+ {
+  "gfx": "gfx1201",
+  "name": "Radeon RX 9070"
+ },
+ {
+  "gfx": "gfx1200",
+  "name": "Radeon RX 9060 XT LP"
+ },
+ {
+  "gfx": "gfx1200",
+  "name": "Radeon RX 9060 XT"
+ },
+ {
+  "gfx": "gfx1200",
+  "name": "Radeon RX 9060"
+ },
+ {
+  "gfx": "gfx1200",
+  "name": "Radeon RX 9050"
+ },
+ {
+  "gfx": "gfx1200",
+  "name": "Radeon RX 9050 (4GB)"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon RX 7900 XTX"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon RX 7900 XT"
+ },
+ {
+  "gfx": "gfx1100",
+  "name": "Radeon RX 7900 GRE"
+ },
+ {
+  "gfx": "gfx1101",
+  "name": "Radeon RX 7800 XT"
+ },
+ {
+  "gfx": "gfx1101",
+  "name": "Radeon RX 7700"
+ },
+ {
+  "gfx": "gfx1101",
+  "name": "Radeon RX 7700 XT"
+ },
+ {
+  "gfx": "gfx1102",
+  "name": "Radeon RX 7600"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8065S",
+  "name": "Ryzen AI Max+ PRO 495"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max PRO 490"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max PRO 485"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max PRO 390"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max PRO 385"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8040S",
+  "name": "Ryzen AI Max PRO 380"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8060S",
+  "name": "Ryzen AI Max+ PRO 395"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8060S",
+  "name": "Ryzen AI Max+ 395"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8060S",
+  "name": "Ryzen AI Max+ 392"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8060S",
+  "name": "Ryzen AI Max+ 388"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max 390"
+ },
+ {
+  "gfx": "gfx1151",
+  "graphics_model": "Radeon 8050S",
+  "name": "Ryzen AI Max 385"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX PRO 475"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX PRO 470"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 880M",
+  "name": "Ryzen AI 9 PRO 465"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 860M",
+  "name": "Ryzen AI 7 PRO 450"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 PRO 440"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 PRO 435"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 435"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 430"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX 475"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX 470"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 880M",
+  "name": "Ryzen AI 9 465"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 7 445"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 860M",
+  "name": "Ryzen AI 7 450"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX PRO 375"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX PRO 370"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX 375"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 890M",
+  "name": "Ryzen AI 9 HX 370"
+ },
+ {
+  "gfx": "gfx1150",
+  "graphics_model": "Radeon 880M",
+  "name": "Ryzen AI 9 365"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 860M",
+  "name": "Ryzen AI 7 PRO 350"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 860M",
+  "name": "Ryzen AI 7 350"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 7 345"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 PRO 340"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 840M",
+  "name": "Ryzen AI 5 340"
+ },
+ {
+  "gfx": "gfx1152",
+  "graphics_model": "Radeon 820M",
+  "name": "Ryzen AI 5 330"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 780M",
+  "name": "Ryzen 7 7840U"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 780M",
+  "name": "Ryzen 9 270"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 780M",
+  "name": "Ryzen 7 PRO 250"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 780M",
+  "name": "Ryzen 7 260"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 780M",
+  "name": "Ryzen 7 250"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 760M",
+  "name": "Ryzen 5 PRO 230"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 740M",
+  "name": "Ryzen 5 PRO 220"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 740M",
+  "name": "Ryzen 5 PRO 215"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 760M",
+  "name": "Ryzen 5 240"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 760M",
+  "name": "Ryzen 5 230"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 740M",
+  "name": "Ryzen 5 220"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 740M",
+  "name": "Ryzen 3 PRO 210"
+ },
+ {
+  "gfx": "gfx1103",
+  "graphics_model": "Radeon 740M",
+  "name": "Ryzen 3 210"
+ }
+]

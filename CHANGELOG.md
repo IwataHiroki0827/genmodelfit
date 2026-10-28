@@ -30,6 +30,20 @@ All notable changes to this project are documented here. The format is based on
   UUID never appears anywhere) or `clinfo -l`. Used only for the products in AMD's WSL table (ROCm 7.2.1) and Intel
   Arc / Core Ultra Arc Graphics with driver 32.0.101.8801 or later; otherwise CPU with what is missing.
 - New `Adapter` fields `driver`, `gfx_target`, `wsl_runtime`, `config_error`; `Adapter.source` can be `sysfs` or `wsl` (#101).
+- **GPU registration tables with sources, and an inventory page** (#103). The hand-written GPU tables (AMD name →
+  gfx, CPU name → iGPU gfx, Intel XPU names, PCI device IDs, NVIDIA name → compute capability for old drivers,
+  PyTorch CUDA builds) moved to `gputables.py`; every row is a `Rule` with its source, the date it was checked, the
+  version it was added in and a note. `tools/gpu_inventory.py` generates `docs/gpu-inventory.md` / `.ja.md` (every
+  row with the official product names it matches, the verdict and the source); a test pins the pages to the
+  generator. The official lists (pci.ids, ROCm hw specs and compatibility tables, TheRock, PyTorch's Intel GPU table,
+  NVIDIA's CUDA GPU lists, PyTorch's release tables and wheel index, the CUDA release notes, ComfyUI's
+  `model_management.py`; fetched 2026-10-27) are fixed under `tests/fixtures/gpu_official`, and a test checks that
+  every official product matches a row with the same gfx / compute capability (no network).
+- **GPU table watch in the weekly update** (#103; `gpuwatch.py`). `python -m genmodelfit.weekly` reads the same
+  official lists (with `fetch`'s session, by header words, with time limits) and adds a "GPU 表の見張り" section to the
+  PR body and `gpu_watch.json`: candidates "not in tables" / "differs" and the sources that could not be read. It never
+  rewrites the tables, never raises, and does not affect `ok` or the safe automatic merge. `--no-gpu-watch` skips it;
+  `python -m genmodelfit.gpuwatch` runs it by hand.
 
 ### Changed
 
@@ -198,6 +212,29 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
 
 ### Fixed
 
+- **GPUs missing from the tables are now judged** (#103; sources on each row of docs/gpu-inventory.md): Radeon 8065S
+  (gfx1151), RX 7500 / 7400 / 7300, PRO W7400 and the Steam Machine GPU (Navi 33, gfx1102), Radeon Pro W6900X,
+  Pro V520, the CPU names of Ryzen AI 4xx / PRO and Ryzen 9 270, Intel Arc Pro B65 / B70 and Data Center GPU Max
+  (Linux only, as in PyTorch's table). `AMD_ARCH` gained gfx1170, gfx1171, gfx1250 and gfx803.
+- **A newer pci.ids no longer turns a usable GPU into CPU** (#103). Device IDs whose product name becomes generic
+  ("Navi 33 [Radeon Graphics]", "Battlemage G31 [Intel Graphics]") are looked up in the device ID table when amdkfd
+  is not available. This also applies on Windows: a Core Ultra whose Arc Graphics shows as "Intel(R) Graphics"
+  because the memory is single-channel (Intel support 000102144) is used as XPU when its device ID is Meteor Lake
+  7d55, Arrow Lake-H 7d51 or Lunar Lake 64a0, with a note that single-channel memory is slower. The Radeon 820M
+  row now comes before the 840M / 860M row (pci.ids 1902 "Radeon 820M / 840M"), and "Navi10Lite" / "Navi12Lite"
+  (console chips) no longer match Navi 10 / 12.
+- **gfx that are not Release Ready in TheRock are judged as CPU** (#103): gfx1170 / gfx1171 (Build Passing only) and
+  gfx1250 (up to Sanity Tested). Before, they passed as "a newer RDNA" through amdkfd.
+- **The Radeon 820M follows TheRock (gfx1153)** with a note that ROCm hw specs says gfx1152 (#103); the CPU-name table
+  for the Ryzen AI 5 330 now agrees. The verdict is the same either way.
+- **Wording** (#103): an old driver with an unknown generation no longer promises that a driver update makes Kepler or
+  Fermi run; the cu129 range notes that Windows wheels exist only for 2.8 and 2.9, and cu128 for aarch64 for 2.7 and
+  2.9 to 2.11. AMD's Windows policy (AMD's official table vs TheRock's Release Ready) and why Jetson Orin 8.7 with
+  CUDA 13.2 is not used are documented in docs/hardware.md.
+- **The reason for the Good cap on non-NVIDIA GPUs and DGX Spark** (#101) now says what it is: no measurement has
+  run on this kind of GPU yet (lifted once two or more measurements of the same GPU agree), not "an estimate".
+  When one source has measured this GPU with these settings, it says that there are not yet enough measurements to
+  set the level (two independent sources) instead (#103).
 - Workstation Ada GPUs named "RTX 4000 SFF Ada Generation" or "RTX 2000E Ada Generation" now get the Ada generation
   (8.9) from the name when nvidia-smi does not report it, and "RTX 2000E Ada Generation" is a known GPU name.
   Tests pin how NVIDIA GPUs are matched by name and VRAM, without PCI device IDs (#99).

@@ -42,6 +42,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .db import bundled_text
+from .hardware import GB10_KIND, good_cap_text
 from .i18n import tr
 from .models import (
     FIT_UNKNOWN,
@@ -1861,10 +1862,11 @@ def _estimate(
     g = system.best_gpu
     capped_gpu = g is not None and (g.vendor != "nvidia" or g.memory != "dedicated")
     if capped_gpu and system.vram_gb > 0 and mode in ("gpu", "offload"):
-        # NVIDIA 以外の GPU と統合メモリの NVIDIA(DGX Spark の GB10。#101)は、推定だけなら段階を
-        # good までにする。この PC と同じ名前の GPU の同じ設定の
-        # 実測があれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
+        # NVIDIA 以外の GPU と統合メモリの NVIDIA(DGX Spark の GB10。#101)は、この種類の GPU で動いた実測が
+        # まだ無いので段階を good までにする(#103 で理由の文言を直した)。この PC と同じ GPU の同じ設定の
+        # 実測で段階が決まれば、その実測の段階まで上げてよい(2026-10-22 のオーナーの決定)
         label = _vendor_label(g.vendor)
+        kind = GB10_KIND if g.vendor == "nvidia" else label
         own = band  # 同じ GPU の実測だけ(measured_level)
         if own is not None:
             if fit == "perfect" and fit_from != "measurement":
@@ -1889,15 +1891,9 @@ def _estimate(
                     ]
         elif fit == "perfect" and fit_from != "measurement":
             fit = "good"
-            why = [
-                *why,
-                tr(
-                    f"推定({label}・実測なし)なので、段階は good までにした",
-                    f"Estimated ({label}, no measurement), so the level is capped at good",
-                ),
-            ]
+            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
         elif fit_from != "measurement":
-            why = [*why, tr(f"推定({label}・実測なし)", f"Estimated ({label}, no measurement)")]
+            why = [*why, tr(*good_cap_text(kind, measured=not_why is not None))]
     reasons.extend(prec.notes)
     reasons.extend(_stage_notes(n, parts, system, prec, prep.c))
     free_short = False

@@ -1,0 +1,106 @@
+[
+ {
+  "gfx": "gfx950",
+  "product": "AMD Instinct MI355X / MI350X"
+ },
+ {
+  "gfx": "gfx942",
+  "product": "AMD Instinct MI325X / MI300X / MI300A"
+ },
+ {
+  "gfx": "gfx90a",
+  "product": "AMD Instinct MI250X / MI250 / MI210"
+ },
+ {
+  "gfx": "gfx908",
+  "product": "AMD Instinct MI100"
+ },
+ {
+  "gfx": "gfx906",
+  "product": "AMD Instinct MI60 / MI50, Radeon Pro VII, Radeon VII"
+ },
+ {
+  "gfx": "gfx900",
+  "product": "AMD Instinct MI25"
+ },
+ {
+  "gfx": "gfx1201",
+  "product": "AMD Radeon RX 9070 / XT, AI PRO R9700 / R9600D"
+ },
+ {
+  "gfx": "gfx1200",
+  "product": "AMD Radeon RX 9060 / XT"
+ },
+ {
+  "gfx": "gfx1153",
+  "product": "AMD Radeon 820M iGPU"
+ },
+ {
+  "gfx": "gfx1152",
+  "product": "AMD Ryzen AI 7 350"
+ },
+ {
+  "gfx": "gfx1151",
+  "product": "AMD Ryzen AI Max+ PRO 395"
+ },
+ {
+  "gfx": "gfx1150",
+  "product": "AMD Ryzen AI 9 HX 375"
+ },
+ {
+  "gfx": "gfx1103",
+  "product": "AMD Ryzen 7 7840U / Ryzen 9 270"
+ },
+ {
+  "gfx": "gfx1102",
+  "product": "AMD Radeon RX 7600"
+ },
+ {
+  "gfx": "gfx1101",
+  "product": "AMD Radeon RX 7800 XT / 7700 XT, PRO V710 / W7700"
+ },
+ {
+  "gfx": "gfx1100",
+  "product": "AMD Radeon RX 7900 XTX / 7900 XT, PRO W7900 / W7800"
+ },
+ {
+  "gfx": "gfx1030",
+  "product": "AMD Radeon RX 6900 XT / 6800 XT, PRO W6800 / V620"
+ },
+ {
+  "gfx": "gfx1031",
+  "product": "AMD Radeon RX 6750 XT / 6700 XT"
+ },
+ {
+  "gfx": "gfx1032",
+  "product": "AMD Radeon RX 6600 XT / 6600, PRO W6600"
+ },
+ {
+  "gfx": "gfx1033",
+  "product": "AMD Van Gogh iGPU"
+ },
+ {
+  "gfx": "gfx1034",
+  "product": "AMD Radeon RX 6500 XT"
+ },
+ {
+  "gfx": "gfx1035",
+  "product": "AMD Radeon 680M iGPU"
+ },
+ {
+  "gfx": "gfx1036",
+  "product": "AMD Raphael iGPU"
+ },
+ {
+  "gfx": "gfx1010",
+  "product": "AMD Radeon RX 5700 / XT"
+ },
+ {
+  "gfx": "gfx1011",
+  "product": "AMD Radeon Pro V520"
+ },
+ {
+  "gfx": "gfx1012",
+  "product": "AMD Radeon Pro W5500"
+ }
+]

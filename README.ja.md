@@ -52,7 +52,7 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 - Windows・Linux・macOS、Python 3.10 以上(`uvx` で使うときは、Python が無くても uv が用意します)。
 - GPU: NVIDIA(CUDA)は、NVIDIA の実測で較正した推定で判定します。使える NVIDIA の GPU が無いときは、AMD(ROCm: RDNA 2 以降、
   Windows 11・Linux)・Intel(XPU: Arc A / B シリーズ、Core Ultra の Arc Graphics、Windows 11・Linux)・Apple silicon(MPS、
-  macOS 14 以降)を推定で判定します(段階は Good まで。実測で段階が決まれば外れます: 同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろったとき)。内蔵 GPU・APU
+  macOS 14 以降)を各社の対応表で判定します(この種類の GPU で動いた実測がまだ無いので段階は Good まで。実測で段階が決まれば外れます: 同じ GPU・同じ設定で、別々の 2 つ以上の出どころの実測がそろったとき)。内蔵 GPU・APU
   (Radeon 780M / 680M・Steam Deck・Ryzen Z1 など)は共有メモリで判定します。それ以外の GPU(Intel UHD・Iris Xe、2 CU の
   Radeon 610M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します

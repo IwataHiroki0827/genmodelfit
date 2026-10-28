@@ -387,3 +387,80 @@ def test_code_block_contains_untrusted_report():
     assert len(fence) == 5 and out.endswith(fence + "\n")  # 中身の ```` より長い囲み
     assert rep in out
     assert weekly.code_block("x" * 10, max_chars=3).count("省きました") == 1
+
+
+# --- GPU の表の見張り(#103) -----------------------------------------------------------------------------
+
+
+class _GpuRaw:
+    """tests/fixtures/gpu_watch_raw の写しで上流の GPU の一覧を返す(通信しない)。"""
+
+    def __init__(self):
+        from genmodelfit import gpuwatch
+
+        self.inner = gpuwatch._RawDir(Path(__file__).parent / "fixtures" / "gpu_watch_raw")
+
+    def get_text(self, url):
+        return self.inner.get_text(url)
+
+    def get_json(self, url):
+        return self.inner.get_json(url)
+
+
+def test_gpu_watch_section_in_the_body(tmp_path, monkeypatch, bundled):
+    _fake_update(monkeypatch, lambda old: _fresh(old, NOW))
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "out", base=base, fetch=_GpuRaw(), now=NOW)
+    assert r["ok"] is True  # 見張りの候補は結果(ok)に効かない
+    w = r["gpu_watch"]
+    assert w["candidates"] and w["unreadable"] == []
+    saved = json.loads((tmp_path / "out" / "gpu_watch.json").read_text(encoding="utf-8"))
+    assert saved == w
+    body = (tmp_path / "out" / "pr_body.md").read_text(encoding="utf-8")
+    assert "### GPU 表の見張り" in body and "マージを止めません" in body
+    assert any(c["item"].startswith("1002:75b0 Navi 50") for c in w["candidates"])
+    assert r"| rocm\_hw\_specs | 表に無い | Ryzen AI 9 HX 575 (Radeon 990M) |" in body  # md() を通す
+    assert f"ほか {len(w['candidates']) - weekly.MAX_ROWS} 件" in body  # 長い表は gpu_watch.json へ
+    assert "GPU 表の見張り」に候補があれば" in body
+    assert body.index("### GPU 表の見張り") < body.index("### マージの前に確かめること")
+
+
+def test_gpu_watch_lists_unreadable_sources_and_never_fails(tmp_path, monkeypatch, bundled):
+    _fake_update(monkeypatch, lambda old: _fresh(old, NOW))
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "out", base=base, fetch=object(), now=NOW)  # 何も取れない
+    assert r["ok"] is True
+    assert {u["source"] for u in r["gpu_watch"]["unreadable"]} >= {"pci_ids", "torch_release"}
+    body = (tmp_path / "out" / "pr_body.md").read_text(encoding="utf-8")
+    assert "読めなかった出典" in body and "候補なし" in body
+
+    from genmodelfit import gpuwatch
+
+    def boom(*a, **k):
+        raise RuntimeError("bug in watch")
+
+    monkeypatch.setattr(gpuwatch, "watch", boom)
+    r = weekly.run(tmp_path / "out2", base=base, fetch=object(), now=NOW)
+    assert r["ok"] is True and r["gpu_watch"]["unreadable"][0]["source"] == "gpuwatch"
+
+
+def test_gpu_watch_can_be_skipped_and_escapes_text(tmp_path, monkeypatch, bundled):
+    _fake_update(monkeypatch, lambda old: _fresh(old, NOW))
+    base = tmp_path / "base.json"
+    bundled.save(base)
+    r = weekly.run(tmp_path / "out", base=base, fetch=object(), now=NOW, gpu_watch=False)
+    assert "gpu_watch" not in r
+    assert "GPU 表の見張り" not in (tmp_path / "out" / "pr_body.md").read_text(
+        encoding="utf-8"
+    )  # 確かめる項目も出さない
+    evil = {
+        "candidates": [
+            {"source": "pci_ids", "kind": "not in tables", "item": "<img src=x> @owner", "detail": "|x|"}
+        ],
+        "unreadable": [],
+        "read": [],
+    }
+    text = "\n".join(weekly.gpu_watch_section(evil))
+    assert "<img" not in text and "@owner" not in text.replace("@​owner", "")
