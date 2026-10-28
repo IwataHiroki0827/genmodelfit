@@ -678,7 +678,7 @@ def test_basis_ordering(db):
     )
     high.settings = Settings(width=1536, height=1536, steps=20)
     e = est([*maint, high])
-    assert (e.basis, e.basis_detail, e.sample_count) == ("measured", "measured_community", 3)
+    assert (e.basis, e.basis_detail, e.sample_count) == ("measured", "measured", 3)  # 作者と分けない(#108)
     assert e.vram_gb == round(high.peak_vram_gb, 2) and e.vram_gb > base.vram_gb
     assert e.measured_on.startswith("NVIDIA GeForce RTX 3070")
     assert any(f"ほかの利用者の実測(出どころ 3。中央値 {high.peak_vram_gb:.2f} GB)" in r for r in e.reasons)
@@ -688,7 +688,7 @@ def test_basis_ordering(db):
     low = _community(high, peak_vram_gb=floor - 1.0)
     e = est([*maint, low])
     assert e.vram_gb == round(floor, 2) < base.vram_gb
-    assert (e.basis, e.basis_detail) == ("estimated", "measured_community")  # 値は実測ではない(下限)
+    assert (e.basis, e.basis_detail) == ("estimated", "calibrated")  # 値は実測ではない(下限)
     assert any("下限" in r for r in e.reasons)
     mid = _community(high, peak_vram_gb=round((floor + base.vram_gb) / 2, 2))  # 下限より上なら、そのまま使う
     e = est([*maint, mid])
@@ -696,7 +696,7 @@ def test_basis_ordering(db):
     # 1 件だけ・そろっていない(consistent でない)まとめも使う
     one = _community(high, n_submissions=1, n_used=1, n_sources=1, consistent=False)
     e = est([*maint, one])
-    assert e.basis_detail == "measured_community" and e.sample_count == 1
+    assert e.basis_detail == "measured" and e.sample_count == 1
     assert pick_measurement([one], entry, s1536, system.best_gpu) is one
     # 別の GPU・GPU の無い PC では、ほかの利用者の実測は使わない(llmfit と同じ。0.9.0)
     assert pick_measurement([one], entry, s1536) is None
@@ -704,10 +704,11 @@ def test_basis_ordering(db):
     # 同じ設定なら、この PC と同じ名前の GPU の実測 → 作者の実測 → ほかの利用者の実測
     same_maint = Measurement(**{**vars(maint[0]), "settings": Settings(width=1536, height=1536)})
     e = est([high, same_maint])  # この PC は RTX 3070。同じ GPU のほかの利用者の実測が先
-    assert e.basis_detail == "measured_community"
+    assert e.basis_detail == "measured" and e.sample_count == 3
     e = est([high, same_maint], sysi=pc(12, "NVIDIA GeForce RTX 4090"))  # 別の GPU なら作者の実測が先
-    assert (e.basis, e.basis_detail) == ("measured", "measured")
-    assert set(BASIS_DETAILS) == {"measured", "measured_community", "calibrated", "estimated"}
+    assert (e.basis, e.basis_detail, e.sample_count) == ("measured", "measured", 1)
+    # measured_community は #108 で measured にまとめた
+    assert set(BASIS_DETAILS) == {"measured", "calibrated", "estimated"}
     d = e.to_dict()  # JSON は後方互換: basis は 2 値のまま、basis_detail と sample_count を足しただけ
     assert d["basis"] in ("measured", "estimated") and d["basis_detail"] in BASIS_DETAILS
 
@@ -848,7 +849,7 @@ def test_one_sizeless_community_row_does_not_change_a_sized_model(db):
     after = estimate(e, system, None, [*_own(db), *cm])
     assert after.settings["width"] == before.settings["width"] == 1024
     assert (after.fit, after.basis, after.fit_from) == (before.fit, before.basis, before.fit_from)
-    assert after.vram_gb >= before.vram_gb - 1e-9 or after.basis_detail != "measured_community"
+    assert after.vram_gb >= before.vram_gb - 1e-9 or not any("ほかの利用者の実測" in r for r in after.reasons)
     # validate は settings_missing を出す(提出そのものを根拠に数えない)
     r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
     assert "settings_missing" in {w["code"] for w in r.warnings}
@@ -890,7 +891,8 @@ def test_sizeless_community_measurement_is_used_on_the_same_gpu(db):
         cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(mid, peak)])]
         after = estimate(entry, pc(8), None, [*_own(db), *cm])
         assert "width" not in after.settings
-        assert after.basis == "measured" and after.basis_detail == "measured_community", (mid, after)
+        assert after.basis == "measured" and after.basis_detail == "measured", (mid, after)
+        assert any("ほかの利用者の実測" in r for r in after.reasons)
         assert after.measured_on == "NVIDIA GeForce RTX 3070 (8 GB)" and after.sample_count == 1
         assert after.vram_gb == peak and after.vram_gb < before.vram_gb
         # 別の GPU の PC の判定は変えない
@@ -1032,7 +1034,9 @@ def test_upward_submissions_raise_needs_and_are_noticed(db):
             t, pc(24), None, db.measurements
         )
         b = estimate(t, pc(24, "NVIDIA GeForce RTX 4090"), None, [*db.measurements, *cm])
-        assert b.basis_detail == "measured_community", t.id
+        # 張り付いた値(上限で切り詰めた)は値が実測ではないので calibrated
+        # (#108 で measured_community をまとめた)
+        assert b.basis_detail == ("measured" if b.basis == "measured" else "calibrated"), t.id
         if cm[0].peak_vram_gb < 0.9 * 24:  # 張り付いた値は「これ以上」としてだけ使う
             assert b.vram_gb == cm[0].peak_vram_gb, t.id
         assert b.sample_count == 2
@@ -1046,7 +1050,8 @@ def test_upward_submissions_raise_needs_and_are_noticed(db):
 
 
 def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypatch):
-    """理由・info・JSON に区分と件数を出す(info の fit の行は measured_community n=3、表の VRAM は c)。"""
+    """理由・info・JSON に件数を出す(info の fit の行は measured n=3)。表の VRAM の印は作者の実測と同じ m
+    (#108。作者・ほかの利用者を印で分けない)。"""
     from genmodelfit import hardware
 
     # この PC の GPU は実測と同じ A100(ほかの利用者の実測は同じ GPU の PC にだけ使う。0.9.0)
@@ -1068,15 +1073,15 @@ def test_cli_info_and_table_show_community_counts(db, capsys, tmp_path, monkeypa
     )
     assert cli.main(["info", entry.id, "--vram", "80", "--ram", "32", "--no-cache"]) == 0
     out = capsys.readouterr().out
-    assert "measured: measured_community n=3" in out and "ほかの利用者の実測(出どころ 3。中央値" in out
+    assert "measured n=3" in out and "ほかの利用者の実測(出どころ 3。中央値" in out
     assert cli.main(["info", entry.id, "--vram", "80", "--ram", "32", "--no-cache", "--json"]) == 0
     e = json.loads(capsys.readouterr().out)["estimate"]
-    assert (e["basis_detail"], e["sample_count"]) == ("measured_community", 3)
+    assert (e["basis_detail"], e["sample_count"]) == ("measured", 3)
     args = ["fit", "--vram", "80", "--ram", "32", "--no-cache", "--all-workflows", "--min-fit", "too_tight"]
     assert cli.main([*args, "--modality", "image", "-n", "500"]) == 0
     out = capsys.readouterr().out
-    assert "VRAM の c = ほかの利用者の実測" in out  # 凡例
-    assert re.search(r" \d+\.\dc ", out), out  # 表の VRAM はほかの利用者の実測に c を付ける
+    assert "VRAM の c" not in out and "m = 実測" in out  # 凡例(c は #108 で無くした)
+    assert re.search(r" \d+\.\dm ", out) and not re.search(r" \d+\.\dc ", out), out  # 表の VRAM は m
 
 
 # --- NVIDIA 以外の GPU の段階(同じ GPU の実測があれば good の上限を外す) -----------------------------
@@ -1098,37 +1103,32 @@ def amd_pc(vram: float = 24.0, name: str = FAKE_AMD) -> SystemInfo:
     return SystemInfo(os="test", cpu="test", cpu_cores=8, ram_total_gb=64, ram_available_gb=64, gpus=[g])
 
 
-def test_non_nvidia_good_cap_is_lifted_by_a_same_gpu_measurement(db):
+def test_non_nvidia_has_no_good_cap_and_measurements_only_raise(db):
+    """#108: NVIDIA 以外の GPU にも段階の上限は無い(NVIDIA と同じ基準)。同じ GPU の実測は段階を上げるだけで、
+    下げない(#95 の own の分岐を外した)。"""
     entry = db.get("image_sdxl_simple")
     maint = [m for m in db.measurements if m.model_id == entry.id]
     a = estimate(entry, amd_pc(), None, maint)
-    assert a.fit == "good" and any("この種類の GPU(AMD)で動いた実測がまだ無いので" in r for r in a.reasons)
+    nv = estimate(entry, pc(24.0, "NVIDIA GeForce RTX 3090"), None, maint)
+    assert a.fit == nv.fit == "perfect"
+    assert not any("Good まで" in r or "上限(good)" in r for r in a.reasons)
     sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
-    # 出どころが 1 つだけの提出では上限を外さない(段階を決めるのは別々の 2 つ以上。#95)
     one = _community(
         maint[0], gpu_name=FAKE_AMD, gpu_vram_gb=24.0, peak_vram_gb=8.2, settings=sett, n_used=1, n_sources=1
     )
     b = estimate(entry, amd_pc(), None, [*maint, one])
-    assert (b.fit, b.basis_detail, b.sample_count) == ("good", "measured_community", 1)
-    # 実測が 1 つあるので「動いた実測がまだ無い」とは言わず、段階を決めるだけの実測が無いと言う(#103)
-    assert any("段階を決めるだけの実測(別々の出どころ 2 つ)がまだ無い" in r for r in b.reasons)
-    assert not any("動いた実測がまだ無い" in r for r in b.reasons)
+    assert (b.fit, b.basis_detail, b.sample_count) == ("perfect", "measured", 1)
     amd = _community(one, n_used=2, n_sources=2)
     b = estimate(entry, amd_pc(), None, [*maint, amd])
-    assert (b.fit, b.basis_detail, b.sample_count) == ("perfect", "measured_community", 2)
-    assert any("段階の上限(good)を外した" in r for r in b.reasons)
-    # ほかの条件は残す: 名前の違う GPU の実測・同じ構成の OOM の報告・張り付いた実測は perfect の根拠にしない
-    for kw in (
-        {"gpu_name": "AMD Radeon RX 7900 XTX"},
-        {"n_oom": 1},
-        {"gpu_vram_gb": 8.0, "peak_vram_gb": 7.9},
-    ):
-        c = estimate(entry, amd_pc(), None, [*maint, _community(amd, **kw)])
-        assert c.fit == "good", kw
+    assert (b.fit, b.basis_detail, b.sample_count) == ("perfect", "measured", 2)
+    # 実測で決まる段階が見積もりより低い(上限に張り付いた実測は good まで)ときも、下げない
+    pinned = _community(amd, gpu_vram_gb=24.0, peak_vram_gb=12.0, offload="lowvram")
+    c = estimate(entry, amd_pc(), None, [*maint, pinned])
+    assert c.fit == "perfect" and c.fit_from == "estimate"
+    for kw in ({"gpu_name": "AMD Radeon RX 7900 XTX"}, {"n_oom": 1}):
+        assert estimate(entry, amd_pc(), None, [*maint, _community(amd, **kw)]).fit == "perfect", kw
     c = estimate(entry, amd_pc(), None, [*maint, _community(amd, n_oom=1)])
     assert any("OOM の報告 1 件" in r for r in c.reasons)
-    # 実測の GPU より小さい VRAM の同じ名前の GPU(別の版)では段階の根拠にしない
-    assert estimate(entry, amd_pc(16.0), None, [*maint, amd]).fit == "good"
 
 
 def test_community_measurement_on_the_same_gpu_sets_the_level(db):
@@ -1484,13 +1484,16 @@ def test_torch_reserved_measurement_sets_perfect_with_the_context_added(db):
         offload="none",  # 全部 GPU に載せた実測(動的 VRAM の torch_reserved は作業用メモリだけ。#100)
     )
     b = estimate(entry, amd_pc(), None, [*maint, tr])
-    assert b.fit == "perfect" and any("段階の上限(good)を外した" in r for r in b.reasons)
+    assert b.fit == "perfect"  # NVIDIA 以外にも上限は無い(#108)
     pc = amd_pc()
     band, _why = measured_level([tr], entry, sett, pc, gpu_precision(entry, pc, sett), 0.0)
     assert band is not None and band.level == "perfect" and band.amount_gb == 8.7
     assert f"文脈などの {TORCH_RESERVED_CONTEXT_GB:g} GB を足した" in band.line and "最大 8.7 GB" in band.line
     # 14.0 + 0.5 = 14.5 GB は 24 GB の 60.4%: 足さなければ perfect(58.3%)だが、足すと good
     edge = _community(tr, peak_vram_gb=14.0, vram_metric="torch_reserved")
+    band, _why = measured_level([edge], entry, sett, pc, gpu_precision(entry, pc, sett), 0.0)
+    assert band is not None and band.level == "good"
+    # 見積もりの必要量も同じ GPU の実測の値(14.0 GB + ずらし)になるので good(実測で段階を下げたのではない)
     assert estimate(entry, amd_pc(), None, [*maint, edge]).fit == "good"
     pinned = _community(tr, gpu_vram_gb=8.0, peak_vram_gb=7.9, vram_metric="torch_reserved")
     assert estimate(entry, amd_pc(8.0), None, [*maint, pinned]).fit != "perfect"
@@ -1626,7 +1629,7 @@ def test_community_measurement_moves_only_the_same_gpu(db):
         assert estimate(entry, sysi, s, [*maint, big]) == estimate(entry, sysi, s, maint), sysi.gpus
         assert estimate(entry, sysi, None, [*maint, big]) == estimate(entry, sysi, None, maint)
     same = estimate(entry, pc(24, "NVIDIA GeForce RTX 4090"), s, [*maint, big])
-    assert same.vram_gb == 20.0 and same.basis_detail == "measured_community"
+    assert same.vram_gb == 20.0 and same.basis_detail == "measured"
     # 書き方の違う同じ GPU の名前((R)・(TM)・™・®・NVIDIA / GeForce の有無・大小)でも同じ GPU
     for name in ("GeForce RTX 4090", "NVIDIA(R) GeForce(TM) RTX 4090", "nvidia geforce rtx™ 4090"):
         assert estimate(entry, pc(24, name), s, [*maint, big]).vram_gb == 20.0, name
@@ -1813,20 +1816,22 @@ def test_aggregate_groups_by_pci_id():
 
 def test_fit_change_check_uses_a_pc_with_the_submitted_gpu(db):
     """F: fit_change の点検は、提出と同じ GPU(名前・ID・会社、VRAM は提出の vram_gb、RAM 16/32/64)の PC で
-    見る。同じ GPU で NVIDIA 以外の good の上限が外れるのも notices に出る。"""
+    見る。同じ GPU の実測で段階が上がる(見積もり good → 実測 perfect)のも notices に出る。"""
     entry = db.get("image_sdxl_simple")
     d = good()
     d["system"]["gpu"].update(
-        name="AMD Radeon RX 7900 XTX",
-        vram_gb=24.0,
+        name="AMD Radeon RX 7800 XT",
+        vram_gb=16.0,
         vendor="amd",
         backend="rocm",
         arch=None,
         compute_capability=None,
         driver="25.10.1",
-        pci_id="1002:744c",
+        pci_id="1002:747e",
     )
-    a = estimate(entry, _sys(_amd_gpu(pci="1002:744c")), None, db.measurements)
+    gpu = _amd_gpu("AMD Radeon RX 7800 XT", 16.0, pci="1002:747e")
+    a = estimate(entry, _sys(gpu), None, db.measurements)
+    assert a.fit == "good"  # 見積もり 9.84 GB は 16 GB の 61%
     sett = {k: v for k, v in a.settings.items() if k != "batch" and v is not None}
     # 重み + 固定分(7.93 GB)以上の値(それより小さい実測は段階を決めない。#95)
     d["measurement"].update(settings=sett, peak_vram_gb=9.0, offload="none")
@@ -1839,34 +1844,36 @@ def test_fit_change_check_uses_a_pc_with_the_submitted_gpu(db):
     _rel, changes = contrib.community_effect(entry, contrib._own_measurements(db), [m], m.settings)
     assert changes and all(c["before"] == "good" and c["after"] == "perfect" for c in changes)
     assert {c["ram_gb"] for c in changes} <= set(contrib.CHECK_RAM_GB)
-    assert all(c["gpu_name"] == "AMD Radeon RX 7900 XTX" and c["vram_gb"] == 24.0 for c in changes)
+    assert all(c["gpu_name"] == "AMD Radeon RX 7800 XT" and c["vram_gb"] == 16.0 for c in changes)
 
 
-def test_good_cap_needs_the_same_gpu_name(db):
-    """変異 M06: NVIDIA 以外の good の上限は、この PC と同じ GPU の実測でだけ外す。同じ会社・同じ VRAM でも
-    名前の違う GPU の実測(作者・この PC の bench の実測も)では外さない。"""
+def test_measured_level_needs_the_same_gpu_name(db):
+    """変異 M06: NVIDIA 以外の GPU でも、実測で段階を上げるのはこの PC と同じ GPU の実測だけ。同じ会社・同じ
+    VRAM でも名前の違う GPU の実測(作者・この PC の bench の実測も)では上げない(#108 で上限は無くした)。"""
     entry = db.get("image_sdxl_simple")
     maint = [m for m in db.measurements if m.model_id == entry.id]
-    a = estimate(entry, amd_pc(), None, maint)
+    pc16 = amd_pc(16.0)
+    a = estimate(entry, pc16, None, maint)
+    assert a.fit == "good"  # 見積もりは 16 GB の 61%
     sett = Settings(**{k: v for k, v in a.settings.items() if k != "batch"})
     other = Measurement(
         **{
             **vars(maint[0]),
             "gpu_name": "AMD Radeon RX 9998 XT",
-            "gpu_vram_gb": 24.0,
-            "peak_vram_gb": 9.0,  # 重み + 固定分(7.93 GB)以上
+            "gpu_vram_gb": 16.0,
+            "peak_vram_gb": 9.0,  # 重み + 固定分(7.93 GB)以上、16 GB の 56%
             "settings": sett,
             "gpu_backend": "rocm",
         }
     )
-    e = estimate(entry, amd_pc(), None, [*maint, other])
-    assert e.fit == "good" and not any("上限(good)を外した" in x for x in e.reasons)
+    e = estimate(entry, pc16, None, [*maint, other])
+    assert e.fit == "good" and e.fit_from == "estimate"
     same = Measurement(**{**vars(other), "gpu_name": FAKE_AMD})
-    assert estimate(entry, amd_pc(), None, [*maint, same]).fit == "good"  # 出どころ 1 つ(#95)
+    assert estimate(entry, pc16, None, [*maint, same]).fit == "good"  # 出どころ 1 つ(#95)
     same2 = Measurement(**{**vars(same), "peak_vram_gb": 9.2})  # 作者・この PC の行は何行あっても 1 つ
-    assert estimate(entry, amd_pc(), None, [*maint, same, same2]).fit == "good"
+    assert estimate(entry, pc16, None, [*maint, same, same2]).fit == "good"
     other = Measurement(**{**vars(same2), "origin": "community", "n_sources": 1, "n_oom": 0})
-    assert estimate(entry, amd_pc(), None, [*maint, same, other]).fit == "perfect"
+    assert estimate(entry, pc16, None, [*maint, same, other]).fit == "perfect"
 
 
 @pytest.mark.parametrize(

@@ -2,8 +2,8 @@
 
 **English** · [日本語](scoring.ja.md)
 
-The rules for how the `recommend` / `fit` / `search` tables, `--json` and the Python functions use measurements, order the models and set the Score (0.11.0, Issue #95).
-The memory formula and its coefficients are in [accuracy.md](accuracy.md), the level bands (60 / 85 / 98% use) and the caps per run mode in [schema.md](schema.md) "Estimate", and whether a model may be recommended automatically in [gate.md](gate.md); this page does not change them.
+The rules for how the `recommend` / `fit` / `search` tables, `--json` and the Python functions use measurements, order the models and set the Score (0.11.0, Issue #95; the level caps and verified GPU kinds are #108).
+The memory formula and its coefficients are in [accuracy.md](accuracy.md), the level bands (60 / 85 / 98% use) in [schema.md](schema.md) "Estimate", and whether a model may be recommended automatically in [gate.md](gate.md); this page does not change them.
 The model is [llmfit](https://github.com/AlexsJones/llmfit) (2f35825: `llmfit-core/src/fit.rs`, `analysis.rs`, `benchmarks.rs`); where genmodelfit differs, the reason is given.
 
 ## Contents
@@ -11,6 +11,8 @@ The model is [llmfit](https://github.com/AlexsJones/llmfit) (2f35825: `llmfit-co
 - [Four checks](#four-checks)
 - [Overall flow](#overall-flow)
 - [Settings used for judging](#settings-used-for-judging)
+- [Level caps](#level-caps)
+- [Verified GPU kinds](#verified-gpu-kinds)
 - [When measurements set the level](#when-measurements-set-the-level)
 - [Shifting values with measurements](#shifting-values-with-measurements)
 - [Measurements of templates without a size input](#measurements-of-templates-without-a-size-input)
@@ -53,6 +55,84 @@ An item goes into the verdict, the score or the order only if it passes all four
 - Evidence: llmfit also compares every model under the same assumption (context length).
 - Test: `tests/test_scoring.py::test_a_settings_do_not_depend_on_measurements`.
 
+## Level caps
+
+**In one sentence**: the level comes from the use of the memory the run mode needs (60 / 85 / 98%), and slow run modes are capped (GPU~ and GPU+RAM at Good, generation on the CPU at Marginal); there is no cap by GPU vendor (#108).
+
+What the levels mean (same as the table legend and the README):
+
+| Level | Meaning |
+|---|---|
+| Perfect | Everything fits on the GPU with 40% or more of the memory to spare. **Not a speed guarantee** (low-bandwidth machines such as DGX Spark are judged by use as well) |
+| Good | 15% or more to spare (swapping parts or offloading is Good when there is room) |
+| Marginal | Runs, but the memory is tight (85–98%), or it generates on the CPU (very slow) |
+| Does not run | Above 98% (no allocator slack; it does not load in practice). **Exception**: a row whose level comes from measurements can be Good even above 98% (the runs finished; "When measurements set the level" 6) |
+
+Caps per run mode (`estimate.gpu_choice`, `cpu_top`):
+
+| Run mode | Cap | Why |
+|---|---|---|
+| GPU (all on the GPU) | none | |
+| GPU~ (parts swapped in turn) | Good | The parts are loaded again for each stage. Perfect means "everything stays loaded with room to spare" (the same idea as llmfit's "Perfect has room and runs on the GPU") |
+| GPU+RAM (part offloaded to system RAM) | Good | Slow, so never Perfect, but Good when there is room (as in llmfit). In the diffusers comparison (PR #11682) offloading slowed Wan by 1.14–1.5× (model-level and group offloading) and FLUX by 3.3–10.4× |
+| CPU: CPU-realtime speech (listed) and one-pass tools | Good | "Running on the CPU" below |
+| CPU: image, video, music, sound effect and 3D generation | Marginal | "Running on the CPU" below |
+
+### When offloading is chosen
+
+**In one sentence**: offloading is chosen only when it raises the level (on a tie the model stays on the GPU).
+
+- If all-on-GPU or swapping parts is Good or better, nothing is offloaded. A row switches to offloading only when all-on-GPU and swapping parts both exceed 98%, or when they are at 85–98% (Marginal, close to OOM) and offloading makes it Good. The reason for the latter reads like "On the GPU alone it is tight at 91% (…), so part of the weights is offloaded to main memory (slow; …)". ComfyUI on NVIDIA also offloads weights with Dynamic VRAM in that situation.
+- The level of an offloaded row is the band of the tighter of the offloaded VRAM use and RAM needed ÷ system RAM (the same as the table's Mem%), capped at Good. So it is often set by the amount of system RAM. The offloaded share is a chosen value (40% of the weights stay on the GPU; `Coefficients.offload_fraction`). Above 98% of system RAM the page-file check applies as before (Marginal or does not run).
+- llmfit offloads only when all-on-GPU exceeds 98%. genmodelfit does not, because of the promise that more VRAM never lowers the level ([schema.md](schema.md)): with that rule a Good offloaded row would become a Marginal swapped row with slightly more VRAM (136 models in the bundled list, NVIDIA 4–32 GB).
+- GPUs other than NVIDIA lack ComfyUI's Dynamic VRAM (comfy-aimdo; NVIDIA on Windows and Linux only per the ComfyUI blog "Dynamic VRAM in ComfyUI"; WSL is not planned), so the reasons for their offloaded rows say "slower still". The level is not changed.
+- The limits (the largest resolution and length that are Good on this PC; `limits`) count only rows that are Good or better on the GPU without offloading.
+- Impact (0.11.0; bundled list, 32 GB system RAM (64 GB for 24 GB)): rows that switched from GPU / GPU~ Marginal to GPU+RAM Good: 8 at 6 GB, 6 at 8 GB, 18 at 12 GB, 19 at 16 GB, 49 at 24 GB. A GPU Perfect or Good row never switches to offloading (test `test_gpu_perfect_or_good_rows_never_switch_to_offload`).
+
+### Running on the CPU
+
+**In one sentence**: on the CPU only, speech built to run in real time on a CPU and one-pass tools go up to Good, and generation that runs dozens of steps up to Marginal.
+
+The level is the band of system RAM use, capped as follows (`estimate.cpu_top`):
+
+| Type / use | Cap | Examples |
+|---|---|---|
+| Speech built to run in real time on a CPU (`estimate.CPU_REALTIME_TTS`; table below) | Good | MeloTTS, Piper, VieNeu-TTS |
+| All uses are one-pass tools (`tool`, `estimate`, `matting`, `interp`, `segment`, `separate`) | Good | background removal (BiRefNet), depth, pose, segmentation, audio separation |
+| Everything else (image, video, music, sound effect and 3D generation; speech whose authors do not say it runs in real time on a CPU; upscaling `upscale`) | Marginal | SDXL, Stable Audio, Fun-CosyVoice3, Chatterbox, VibeVoice, Qwen3-TTS, Kokoro, HiFi-GAN |
+
+Speech built to run in real time on a CPU (the authors' own statements; also shown in the reasons):
+
+| Speech | Matched by | Authors' statement |
+|---|---|---|
+| MeloTTS | `hf:myshell-ai/MeloTTS-*` | model card: "Fast enough for CPU real-time inference" |
+| Piper | run with `piper` | README (tag 2023.11.14-2, github.com/rhasspy/piper/blob/2023.11.14-2/README.md): "A fast, local neural text to speech system that sounds great and is optimized for the Raspberry Pi 4." |
+| VieNeu-TTS | `hf:pnnbao-ump/VieNeu-TTS*` | model card: "on CPU everything runs on ONNX Runtime", "RTF < 1, one stream" |
+
+Speech whose authors do not say it runs in real time on or suits a CPU (Kokoro, HiFi-GAN and others) is not listed and is capped at Marginal like generation.
+
+- Evidence: diffusion generation computes the whole model at every step (20–50 steps). In the Hugging Face blog "Accelerating Stable Diffusion Inference on Intel CPUs", 20 steps of SD 1.5 take 32.3 s on an r7iz.metal-16xl (Sapphire Rapids) in fp32 before optimization. Speech whose authors do not say it runs in real time on a CPU is capped at Marginal (many of them, such as Fun-CosyVoice3, Chatterbox, VibeVoice and Qwen3-TTS, run a language model, flow matching or diffusion for tokens or steps dozens to hundreds of times; Kokoro and HiFi-GAN are smaller, but their authors give no CPU figure). One-pass tools run no steps.
+- The upscalers in the list are diffusion families, so upscaling is capped at Marginal like generation (SeedVR2 is one-step diffusion but runs a 3B / 7B DiT at high resolution; SUPIR and Z-Image run dozens of steps).
+- llmfit caps the CPU at Good (LLM generation is bound by memory bandwidth and is usable on a CPU). Diffusion generation is bound by compute, so it is separated.
+- On a PC with a GPU too, the CPU judgement is used when the GPU judgement is worse (so adding VRAM never lowers the level; on a tie the GPU wins).
+- Impact: on CPU-only PCs (32 / 64 GB), 11 rows went from Marginal to Good (3 speech, 8 tools).
+
+## Verified GPU kinds
+
+**In one sentence**: if this kind of GPU has records of running on two or more GPU models, "✓ verified GPU kind" is shown (it is not used for the level).
+
+- Kind = vendor × memory form (dedicated VRAM / shared with system RAM). For example `nvidia/dedicated`, `amd/dedicated`, `amd/shared` (integrated GPUs), `apple/shared`, `nvidia/shared` (DGX Spark). Measurements do not record the memory form, so it comes from the GPU name (GB10 and Apple are shared; AMD and Intel use the integrated flag of the name tables).
+- Measurements used: the bundled ones (the author's `measurements.json` and the aggregated rows from other users; this PC's saved bench results are not included) that ran to the end (`outcome: ok`) as standard measurements, without offloading weights to the CPU side (`offload` lowvram, novram or cpu). Aggregated rows must be on a GPU in the name table and not have `runs_evidence: false`. Working-memory-only values (bench with dynamic VRAM) count too: they are records of running to the end on the GPU.
+- What is counted is **GPU models** (`estimate.kind_models`): two measurements are on the same model when `same_gpu`'s rule matches (the PCI device ID when both have one, else the normalized name; for dedicated VRAM also a VRAM ratio of 0.95 or more). The author's, this PC's and other users' measurements are treated the same. One model counts once however many measurements or people. Generic names without a device ID do not identify a model and are not counted.
+- Measurements with a generic name ("AMD Radeon(TM) Graphics" and the like) are taken as integrated GPUs: by the device ID's table name when there is one, otherwise as the shared-memory kind.
+- Only the bundled measurements are used (as in calibrate: the same inputs give the same answer on everyone's PC). With `--vram` it is false, because the assumed GPU is not the measured one.
+- Today (0.11.0) only `nvidia/dedicated` is verified (two models: RTX 5080 and RTX 3070). Non-NVIDIA GPUs and DGX Spark have no mark, and their levels follow the same rules.
+- Where it shows: after the GPU on the PC line of the tables (`recommend` / `fit` / `search`), on the level line of `info`, and in `system`. Nothing is shown when the kind is not verified. The table legend explains the mark in one line. With `--vram` the GPU is assumed, so nothing is shown.
+- JSON: `system.platform_verified` (true / false) and `system.platform_verified_by` (`{"kind", "models"}` when verified, with `models` the names of the GPU models that ran; otherwise null). The library has `gmf.platform_verification(system)`.
+- It is not part of automatic recommendation (gate). The gate does not depend on the PC (model information only), and adding it would make automatic recommendations 0 on AMD, Apple and others. Apps decide for themselves.
+- Before 0.11.0, non-NVIDIA GPUs and DGX Spark were capped at Good because no measurement had run on their kind of GPU. That cap could only be lifted by submissions from other users, so it became a mark instead (llmfit also shows confidence with marks, not levels). Measurements on the same GPU only raise the level and never lower it (the #95 branch that lowered Perfect to Good from measurements was removed).
+- Impact: Good → Perfect for 65 rows on AMD 16 GB, 46 on Apple 16 GB, 87 on Apple 32 GB and 317 on DGX Spark. The level distribution on AMD 16 GB (Perfect 65, Good 117, Marginal 96, does not run 47) is close to NVIDIA 16 GB (69, 113, 96, 47).
+
 ## When measurements set the level
 
 **In one sentence**: if two or more independent sources ran to the end on the same GPU as yours with the same settings and agree, the level comes from them (and the amount used for the level is the table's VRAM).
@@ -84,7 +164,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 `Estimate.sample_count` is the number of independent sources behind the value (1 for the author's measurements however many rows, `n_sources` for other users, the sum of agreeing sources when measurements set the level). Up to 0.10 it was the number of submissions (`n_used`).
 
 Examples (bundled measurements):
-- **Example: Wan2.2 5B on an RTX 5080 16 GB** (with 640x640, 73 frames; the author's two rows, 15.8 / 15.0 GB, are one source together). Weights + fixed part is about 18.4 GB, which cannot all fit in 15.9 GB. The measurement ran to the end with ComfyUI's dynamic VRAM keeping part of the weights in system RAM (offload: dynamic, a value at the GPU limit). So it is a record of "runs by offloading", and the right level is the offload level (Marginal, GPU+RAM). Even with agreeing submissions from other users, the floor of the amount (weights + fixed part) exceeds the VRAM, so measurements never make it a GPU level. From 0.7.0 to 0.10 it was Good, GPU (#26).
+- **Example: Wan2.2 5B on an RTX 5080 16 GB** (with 640x640, 73 frames; the author's two rows, 15.8 / 15.0 GB, are one source together). Weights + fixed part is about 18.4 GB, which cannot all fit in 15.9 GB. The measurement ran to the end with ComfyUI's dynamic VRAM keeping part of the weights in system RAM (offload: dynamic, a value at the GPU limit). So it is a record of "runs by offloading", and measurements do not set the level (with the current per-stage formula it is Good, GPU~, swapping parts). Even with agreeing submissions from other users, the floor of the amount (weights + fixed part) exceeds the VRAM, so measurements never make it a GPU level. From 0.7.0 to 0.10 it was Good, GPU (#26).
 - SDXL on an RTX 5080 (with 832px): only one author row, so no level from measurements. One agreeing submission from another user on the same GPU and settings would set it.
 
 The four checks:
@@ -103,14 +183,14 @@ The four checks:
 - Fair: the same value for everyone's measurements; Linux and Windows owners of the same card share each other's measurements.
 - Test: `tests/test_scoring.py::test_same_vram_ratio_linux_and_windows` (Linux 5.80 matches Windows 6.0; the 8 GB and 16 GB variants never match).
 
-**Non-NVIDIA GPUs**: no measurement has run on this kind of GPU yet, so the level is capped at Good (the reason reads "No measurement has run on this kind of GPU (<vendor>) yet, so the level is capped at Good (lifted once two or more measurements of the same GPU agree)"; #101, #103). Only when measurements set the level as above does the level go up to theirs ([hardware.md](hardware.md)).
+**Non-NVIDIA GPUs**: the same conditions. Since 0.11.0 there is no level cap by GPU vendor ("Verified GPU kinds" above), and measurements only raise the level ([hardware.md](hardware.md)).
 
 ## Shifting values with measurements
 
 **In one sentence**: for a model with measurements, the formula's working memory is shifted to match them, on any GPU.
 
 - Unchanged ([accuracy.md](accuracy.md) "How measurements are used"). Other users' measurements are used from one submission on PCs with the same GPU.
-- Only the models the author measured get more accurate values, and the shift can change the run mode or level (for example HY 3D 2.0 (`3d_hunyuan3d_image_to_model`) on an RTX 4060 8 GB is Good / GPU (6.7 GB) with the measurement and Good / GPU~ (full load 6.85 GB) without). This is accepted as the other side of making values accurate; the table's `m` / `c` marks values that come from measurements.
+- Only the models the author measured get more accurate values, and the shift can change the run mode or level (for example HY 3D 2.0 (`3d_hunyuan3d_image_to_model`) on an RTX 4060 8 GB is Good / GPU (6.7 GB) with the measurement and Good / GPU~ (full load 6.85 GB) without). This is accepted as the other side of making values accurate; the table's `m` marks values that come from measurements (the author's and other users' measurements are not told apart by the mark; #108 dropped `c`).
 - Since #100 a negative shift is clipped at 0 per stage (never below weights + fixed part), a positive shift goes to the all-on-GPU value only, and a shift from a measurement pinned at the GPU limit goes to all three ([accuracy.md](accuracy.md) "How measurements are used" 1).
 - Evidence: llmfit also corrects estimates with measurements (one ratio from a machine's measurements for every model; genmodelfit shifts per model, by about −1 to +2 GB with the per-stage formula of #100).
 - Test: `tests/test_scoring.py::test_d_values_shift_by_at_most_the_delta` (the difference with and without measurements is within the shift).
@@ -151,7 +231,7 @@ r per run mode (the table's Mem% and JSON's `utilization_pct` are this r):
 - Examples: r = 0.60 → 100.0, 0.80 → 88.2, 0.85 → 75.5, 0.90 → 60.7, 0.98 → 37.5.
 - The constants 0.70 and 0.20 are llmfit's `fit_score` (`fit.rs:2335-2349`). llmfit PR #648 made the curve one-sided (free space is not a loss) and PR #100 removed the cliff. The input r is, as in llmfit, "the share of the tightest resource of the run mode".
 - The floor 37.5 is the value at r = 0.98 (the edge of Marginal). It covers rows that run although r exceeds 0.98: levels set by measurements, and rows short of system RAM that run with the page file (not only CPU but also GPU, GPU~ and GPU+RAM; r is then the RAM share and Mem% can be 110–130%; the level is Marginal).
-- Relation to levels: Perfect (GPU, r ≤ 0.60) is always 100. Good (GPU) is 100 to 75.5, Marginal (GPU) 75.5 to 37.5. GPU+RAM and CPU are capped at Marginal, so a high Score does not mean fast.
+- Relation to levels: Perfect (GPU, r ≤ 0.60) is always 100. Good (GPU) is 100 to 75.5, Marginal (GPU) 75.5 to 37.5. GPU~ and GPU+RAM are capped at Good and generation on the CPU at Marginal, so a high Score does not mean fast.
 - The Score barely matters for the order (levels and popularity come first). Its job is to show the memory headroom as one number. `--sort score` orders by it.
 - With one row per model, the Score is **the representative's value** (it matches the table's Mem%). The "highest score among the members" of 0.10 was dropped.
 - JSON: `score` (= memory_fit) and `score_components = {"memory_fit": …}`. The keys up to 0.10 (`fit`, `headroom`, `readiness`, `basis`, `popularity`) were removed (no reuse of a name with a new meaning).
@@ -205,7 +285,7 @@ The weekly update (`python -m genmodelfit.weekly`) computes the same correlation
 
 Keys in order:
 1. Runs → not judged → does not run
-2. Level: fits without offloading (Perfect / Good with GPU or GPU~) → Marginal
+2. Level: fits without offloading (Perfect / Good with GPU or GPU~) → Good with GPU+RAM or CPU → Marginal
 3. Within Marginal only: run mode GPU → GPU~ → GPU+RAM → CPU (fastest first). Not used among rows that fit without offloading (so that the 24 GB Z-Image row whose representative is bf16 Good / GPU~ does not sink, #28)
 4. Official templates → community templates
 5. Popularity rank, highest first
@@ -228,7 +308,9 @@ Why (difference from llmfit): llmfit only puts models that do not run last and o
 
 ## One row per model: the representative
 
-Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fit without offloading, the highest precision → otherwise the best level (`recommend.variant_key`). The precision order agrees with "16-bit ≳ 8-bit > 4-bit".
+Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fit without offloading, the highest precision → otherwise the best level → on the same level, the run mode without offloading (`recommend.variant_key`). The precision order agrees with "16-bit ≳ 8-bit > 4-bit".
+
+For #108 (offloaded rows up to Good) the representative changes were counted (bundled list; NVIDIA 6 / 8 / 12 / 16 / 24 GB, AMD 16 GB, Apple 16 / 32 GB, DGX Spark, CPU-only 32 / 64 GB). Four models changed (Z-Image at 8 GB: bf16 Marginal → int8 Good; FLUX.1 schnell at 12 GB: bf16 Marginal → fp8 Good; Wan 2.2 14B at 24 GB: i2v GPU~ Marginal → flf2v Good; SCAIL at 24 GB: fp16 Marginal → int8 Good; each to a better level among offloaded rows), and a bf16 offloaded row beating an int8 GPU row never happened. A Good offloaded row placed above a GPU Marginal row also never happened on these PCs (a GPU Marginal row becomes an offloaded row when offloading makes it Good). Nothing looked unnatural, so the selection is unchanged.
 
 ## Differences from llmfit
 
@@ -236,7 +318,9 @@ Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fi
 |---|---|---|---|
 | Score contents | quality, speed, fit, context length | fit only | There is no evidenced way to measure quality and speed for generation models yet; added once there is |
 | Order | does not run last → Score | runs → level → … → popularity → Score | "Order" |
-| Caps for slow run modes | offload and CPU up to Good | GPU~ up to Good, GPU+RAM and CPU up to Marginal | Decided 2026-10-20. Generation reads the weights dozens of times per image, so offloading slows it a lot (needs measurements) |
+| Caps for slow run modes | offload and CPU up to Good | GPU~ and GPU+RAM up to Good; on the CPU, speech and tools up to Good, generation up to Marginal | "Level caps". Diffusion generation is bound by compute and very slow on a CPU (LLM generation is bound by memory bandwidth) |
+| When offloading is chosen | when all-on-GPU exceeds 98% | when offloading raises the level | The promise that more VRAM never lowers the level ("When offloading is chosen") |
+| GPU kind | same levels, confidence as a mark | same levels, ✓ for verified kinds | "Verified GPU kinds" |
 | Measurements and levels | never change the level | set the level when two or more independent sources agree on the same GPU and settings | "When measurements set the level" |
 | Same hardware | CPU name + GPU name | GPU device ID or name + VRAM ratio | The CPU is not used for judging |
 
@@ -260,6 +344,9 @@ Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fi
 | (f) The allowlist does not change the table order or Score | `test_f_allowlist_does_not_change_table_order_or_score` |
 | (g) Measurements without a size are used | `test_g_measurements_without_size_are_used` |
 | A fake 1.0 GB Flux is not Perfect; one person's four files do not set the level; the author + one submission do; two author rows are one source | `test_fake_small_submission_does_not_make_flux_perfect`, `test_one_source_with_many_files_does_not_set_the_level`, `test_author_one_and_community_one_agree`, `test_author_rows_are_one_source` |
+| Offloading up to Good, only when it raises the level; GPU Perfect / Good rows never switch; system RAM counts; limits use GPU rows only (#108) | `tests/test_levels.py` (`test_offload_is_capped_at_good_and_chosen_only_when_it_raises_the_level` and others) |
+| CPU caps (speech and tools Good, generation Marginal); the RAM band | `tests/test_levels.py::test_cpu_only_caps`, `test_cpu_top_table`, `test_cpu_level_uses_the_ram_band` |
+| Verified kinds (true for NVIDIA dedicated VRAM, false for AMD, Apple, GB10; one model with many measurements is not verified, two models are, whatever the origin); ✓ only when verified; the gate ignores the kind; AMD and NVIDIA distributions are close; more VRAM or RAM never lowers the level | `tests/test_levels.py` |
 
 `SCHEMA_VERSION` (the shape version of the bundled and released db.json) is unchanged. The meaning of the output changed, so the package is 0.11.0 ([CHANGELOG.md](../CHANGELOG.md)).
 
@@ -268,5 +355,5 @@ Unchanged ([schema.md](schema.md) "Models"): use order → among entries that fi
 1. Measure the author's models again at the default settings (image 1024x1024, video 832x480 with 81 frames, music 30 s). Those get their `m` back.
 2. A speed (seconds) estimate: GPU compute × size × resolution and frames × steps, calibrated with measurements (a separate spec).
 3. Quality measurements: differences per precision with the same seed (LPIPS etc.) with bench. A precision penalty comes after that.
-4. Measurements behind capping offload and CPU at Marginal.
+4. Measurements of offloading speed (compare times with `--disable-dynamic-vram` + lowvram in the #102 measurements), to check the Good cap for offloaded rows.
 5. The popularity bias check for music, 3D and speech (once there are more models).

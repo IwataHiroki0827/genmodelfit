@@ -37,9 +37,11 @@ from pathlib import Path
 import psutil
 
 from .gputables import (
+    AMD_820M_840M,
     AMD_ARCH_RULES,
     AMD_CPU_IGPU_RULES,
     AMD_DISPLAY_ONLY,
+    AMD_DISPLAY_ONLY_NAMES,
     AMD_LINUX_ONLY_ARCH,
     AMD_NAME_RULES,
     AMD_NO_BF16_ARCH,
@@ -739,23 +741,17 @@ GB10_NAME = "NVIDIA GB10"
 GB10_KIND = ("NVIDIA の統合メモリ、DGX Spark", "NVIDIA unified memory, DGX Spark")
 
 
-def good_cap_text(kind: str | tuple[str, str], *, measured: bool = False) -> tuple[str, str]:
-    """段階を Good までにする理由(日本語, 英語)。NVIDIA 以外の GPU と統合メモリの GB10 の上限は、
-    推定だからではなく、この種類の GPU で動いた実測がまだ無いから
-    (#101・#103。docs/hardware.md「NVIDIA 以外の GPU」)。measured: この GPU・設定の実測はあるが、
-    段階を決める条件(別々の出どころ 2 つ・そろっている)に届かないとき。"""
+def unverified_kind_text(kind: str | tuple[str, str]) -> tuple[str, str]:
+    """NVIDIA 以外の GPU と統合メモリの GB10 の判定の注意(日本語, 英語)。段階は NVIDIA と同じ基準で決め、
+    上限は付けない(#108。0.11.0 より前は Good まで)。この種類の GPU で動いた実測があるか(確認済み)は
+    同梱の実測で決まるので、ここでは言わず表の PC の行の ✓ と JSON の platform_verified に任せる
+    (estimate.platform_verification。docs/scoring.md「確認済みの GPU の種類」)。"""
     ja, en = (kind, kind) if isinstance(kind, str) else kind
-    if measured:
-        return (
-            f"この GPU({ja})で段階を決めるだけの実測(別々の出どころ 2 つ)がまだ無いので、段階は Good まで",
-            f"There are not yet enough measurements on this GPU ({en}) to set the level (two independent"
-            " sources), so the level is capped at Good",
-        )
     return (
-        f"この種類の GPU({ja})で動いた実測がまだ無いので、段階は Good まで"
-        "(同じ GPU の実測が 2 つ以上そろえば外れる)",
-        f"No measurement has run on this kind of GPU ({en}) yet, so the level is capped at Good"
-        " (lifted once two or more measurements of the same GPU agree)",
+        f"段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた({ja}。この種類の GPU で動いた実測があるかは、"
+        "表の PC の行の ✓ 確認済みの種類で分かる)",
+        f"The level uses the same rules as NVIDIA GPUs with dedicated VRAM ({en}; whether this kind of GPU"
+        " has run in measurements is shown by the ✓ verified GPU kind mark on the PC line of the tables)",
     )
 
 
@@ -823,7 +819,7 @@ def apply_gb10(g: Gpu, *, system: str, machine: str, meminfo: dict[str, int] | N
     g.backend = "cuda"
     g.memory = "shared"
     g.carveout_gb = 0.0
-    cap = good_cap_text(GB10_KIND)
+    cap = unverified_kind_text(GB10_KIND)
     g.notes += [
         tr(
             "DGX Spark(GB10)は統合メモリ: メインメモリ"
@@ -1594,7 +1590,7 @@ def detect_other_gpus(*, wsl_windows: bool = True) -> tuple[list[Adapter], list[
 #
 # ComfyUI(Comfy-Org/ComfyUI 426f5ee の README「AMD GPUs (Linux)」「AMD GPUs (Windows, ROCm 10.0)」
 # 「Intel GPUs (Windows and Linux)」「Apple Mac silicon」)が案内する PyTorch で動く組み合わせだけを使う。
-# この種類の GPU で動いた実測がまだ無いので、段階は Good までにする(good_cap_text・estimate.py)。
+# 段階は NVIDIA と同じ基準で決める(上限なし。#108。unverified_kind_text)。
 
 # AMD: ComfyUI の Windows の案内は「RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」(AMD の multi-arch 版 PyTorch、
 # Windows 11)。TheRock の SUPPORTED_GPUS.md(4639f91)は Linux・Windows とも RDNA 1〜4 を Release Ready にして
@@ -1809,12 +1805,12 @@ def _shared_pool(a: Adapter, ram_gb: float) -> tuple[float, str]:
 
 def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
     """NVIDIA 以外の画面の部品を対応表で判定し、a.usable・a.integrated・a.reason を書く。
-    ComfyUI + PyTorch が動く組み合わせなら判定に使う Gpu を返す(段階は Good まで。good_cap_text)。
+    ComfyUI + PyTorch が動く組み合わせなら判定に使う Gpu を返す(段階は NVIDIA と同じ基準)。
     ram_gb は内蔵 GPU・Apple の共有の分を決めるメインメモリ(--ram で上書きしたらその値)。"""
     if a.vendor == "nvidia":
         return None  # NVIDIA は nvidia-smi で決める
     a.needs = None  # 判定し直すたびに消す(同じ部品を別の PC の条件で判定し直すことがある)
-    cap = good_cap_text(VENDOR_LABEL.get(a.vendor, "") or "?")
+    cap = unverified_kind_text(VENDOR_LABEL.get(a.vendor, "") or "?")
 
     def refuse(why: str, why_en: str) -> None:
         a.usable = False
@@ -1950,17 +1946,32 @@ def classify_adapter(a: Adapter, host: Host, ram_gb: float) -> Gpu | None:
         if gfx in AMD_UNVERIFIED_GFX:
             refuse(  # gfx1170 / gfx1171 / gfx1250(#103)
                 f"{a.name}({gfx})は AMD の TheRock(ROCm)の対応表で Release Ready でない"
-                "(Build Passing・Sanity Tested まで。動くと確かめられていない)",
+                "(Build Passing・Sanity Tested まで。PyTorch が動く根拠が無い)",
                 f"{a.name} ({gfx}) is not Release Ready in AMD's TheRock (ROCm) support table"
-                " (Build Passing / Sanity Tested only; not verified to run)",
+                " (Build Passing / Sanity Tested only), so there is no evidence that PyTorch runs",
             )
             return None
-        if gfx in AMD_DISPLAY_ONLY_GFX:
-            refuse(  # Radeon 610M(Dragon Range・Raphael など)
+        small = amd_rule(name, host.cpu)
+        small_cpu = (
+            small is not None
+            and small.key == AMD_820M_840M
+            and any(
+                r.key in AMD_DISPLAY_ONLY_NAMES.values and re.search(r.key, _low(host.cpu))
+                for r in AMD_CPU_IGPU_RULES
+            )
+        )  # 「Radeon 820M / 840M」(pci.ids 1902)で、CPU の名前が 820M の Ryzen AI 5 330 なら 820M
+        if (
+            gfx in AMD_DISPLAY_ONLY_GFX
+            or (small is not None and small.key in AMD_DISPLAY_ONLY_NAMES.values)
+            or small_cpu
+        ):
+            # 断る理由の 3 つ目(#108。docs/hardware.md「断る理由」): 動くが CPU より速い見込みが無い。
+            # Radeon 610M(gfx1036。Dragon Range・Raphael など)と Radeon 820M(名前で決める)
+            refuse(
                 f"{a.name}({gfx})は画面を出すための 2 CU の小さな内蔵 GPU で、"
-                "生成では CPU より速い見込みが無い",
-                f"{a.name} ({gfx}) is a small 2-CU integrated GPU for the display"
-                " and is not expected to generate faster than the CPU",
+                "動いても生成では CPU より速い見込みが無い",
+                f"{a.name} ({gfx}) is a small 2-CU integrated GPU for the display;"
+                " even if it runs, it is not expected to generate faster than the CPU",
             )
             return None
         if host.system == "Windows" and not _windows_ok(host):
@@ -2141,7 +2152,7 @@ def _classify_wsl(a: Adapter, ram_gb: float, cap: tuple[str, str], refuse) -> Gp
     """WSL2 の中から読んだ Windows 側の AMD・Intel の GPU(#101。docs/hardware.md「WSL2」)。
     使うのは、WSL の中の
     準備(rocminfo / clinfo)ができていて、公式の WSL の対応表にあるときだけ。
-    段階は Good まで(good_cap_text)。"""
+    段階は NVIDIA と同じ基準(unverified_kind_text)。"""
     vram_note = tr(
         "WSL の中では、Windows 側の VRAM より空きが約 3 GB 少ないという報告がある(値は変えていない)",
         "Inside WSL, free VRAM is reported to be about 3 GB less than on Windows (the value is not changed)",

@@ -88,6 +88,8 @@ credentials never attached (tests/test_privacy.py).
 | `other_gpus` | Adapter[] | display adapters of any vendor. AMD / Intel / Apple ones are classified (`usable`, `reason`); usable ones also appear in `gpus` when no NVIDIA GPU is usable. Empty unless checked |
 | `other_gpus_checked` | bool | whether `other_gpus` was looked up: by default only when `nvidia-smi` found no NVIDIA GPU and `--vram` is not given; always with `system --all-gpus` |
 | `notes` | str[] | what detection found or could not find (in the display language, `en` / `ja`): why a GPU is judged as CPU, old driver, non-NVIDIA GPUs, page file, WSL / container limits |
+| `platform_verified` | bool | (0.11.0, #108; only in the CLI's JSON envelope, not in `SystemInfo.to_dict`) whether the bundled measurements have records of running on two or more GPU models of the kind (vendor × dedicated / shared memory) of the GPU used for judging. The same as "✓ verified GPU kind" on the tables' PC line. false without a GPU or with `--vram`. Not used for levels or `auto` (gate) ([scoring.md](scoring.md) "Verified GPU kinds"). The library has `gmf.platform_verification(system)` |
+| `platform_verified_by` | object \| null | the evidence when verified: `{"kind": "nvidia/dedicated", "models": ["NVIDIA GeForce RTX 3070", "NVIDIA GeForce RTX 5080"]}` (kind, names of the GPU models that ran). null when not verified |
 
 With `--ram`, the swap / commit values are null (another PC is assumed). Detection never fails: unknown values are
 null and the reason is in `notes`. Host name, user name, GPU UUID, PCI bus id and device instance ids are never
@@ -101,7 +103,7 @@ Gpu:
 | `vram_total_gb` | float | 0 when nvidia-smi does not report it (then `backend` is `none`). For `memory` `shared` / `unified`, the memory the GPU is taken to use ([hardware.md](hardware.md), "Shared memory") |
 | `vram_free_gb`, `vram_used_gb` | float \| null | free now / used now by other apps (screen, browser, …). null when overridden or not reported |
 | `driver` | str \| null | driver version as nvidia-smi prints it |
-| `backend` | str | `cuda` / `rocm` (AMD) / `xpu` (Intel) / `mps` (Apple silicon): used for judging. `none`: not used (generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`). `rocm` / `xpu` / `mps` are new in 0.7.0 (#22) and estimates (levels capped at Good unless a measurement sets the level: `fit_from`) |
+| `backend` | str | `cuda` / `rocm` (AMD) / `xpu` (Intel) / `mps` (Apple silicon): used for judging. `none`: not used (generation not supported by any PyTorch CUDA build, driver too old for all of them, or VRAM unknown; reason in `notes`). `rocm` / `xpu` / `mps` are new in 0.7.0 (#22) and estimates; levels follow the same rules as NVIDIA (no cap since 0.11.0, #108) |
 | `compute_capability` | str \| null | e.g. `"8.6"` |
 | `compute_capability_source` | str \| null | `nvidia-smi` / `name` (guessed from the GPU name when nvidia-smi is too old) |
 | `arch` | str \| null | `kepler` / `maxwell` / `pascal` / `volta` / `turing` / `ampere` / `ada` / `hopper` / `blackwell` (`fermi` / `unknown`) |
@@ -414,7 +416,7 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped in turn) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) / `?` (size unknown) |
-| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `marginal`), `cpu` (at most `marginal`); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
+| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `good`; `marginal` up to 0.11.0), `cpu` (generation at most `marginal`, speech built for real-time CPU use and one-pass tools at most `good`; 0.11.0, #108); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100: the memory headroom ("Score" below) |
 | `score_components` | object | `{"memory_fit": …}` (0.11.0; the same value as `score`. The keys up to 0.10, `fit`, `headroom`, `readiness`, `basis`, `popularity`, were removed) |
 | `popularity` | float | (0.11.0) popularity rank 0–100: the percentile within the same type and source (template usage / Hugging Face all-time downloads), the model's value. Only an order key, not part of `score` ([scoring.md](scoring.md) "Popularity") |
@@ -493,24 +495,25 @@ can fall (for example `--vram 17` on an RTX 5080 PC). Intended: it is a judgemen
 | `fit_from` | str | (0.7.0, #26) `estimate` (the level comes from the estimate) or `measurement`; details below |
 | `measured_peak_vram_gb` | float \| null | (0.7.0) the largest agreeing peak VRAM when `fit_from` is `measurement` (before the context is added) |
 | `measured_level_vram_gb` | float \| null | (0.11.0) the amount used for the level when `fit_from` is `measurement`: max(peak + context, weights + fixed part). The table's VRAM column (with `m` / `c`), Mem% and `memory_required_gb` show this value |
-| `sample_count` | int \| null | (2026-10-22, optional; like llmfit) number of independent sources behind the value (0.11.0; was the number of submissions): 1 for the maintainer's / this PC's measurements however many rows, the aggregated row's `n_sources` for other users' (1 for older rows without it), and the agreeing sources counted by the union of the IDs (`source_ids`) when measurements set the level. null when no measurement was used (`basis_detail` `estimated`). `info` prints it as `n=3` for other users' measurements; the table's VRAM column marks other users' measurements with `c` (the maintainer's with `m`) |
+| `sample_count` | int \| null | (2026-10-22, optional; like llmfit) number of independent sources behind the value (0.11.0; was the number of submissions): 1 for the maintainer's / this PC's measurements however many rows, the aggregated row's `n_sources` for other users' (1 for older rows without it), and the agreeing sources counted by the union of the IDs (`source_ids`) when measurements set the level. null when no measurement was used (`basis_detail` `estimated`). `info` prints it as `n=3`; the table's VRAM column marks any measured value with `m`, whoever measured it (0.11.0 dropped `c`; #108) |
 | `measured_on` | str \| null | GPU of the measurement when `basis` is `measured` (null when judged without a GPU) |
 | `fit` | str | the four levels below, or `unknown` (size unknown, not judged) |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown) |
 | `reasons` | str[] | human-readable reasons, in the display language (`en` / `ja`) |
 | `settings` | object \| null | settings actually judged (unset items filled with the per-modality defaults whether or not there are measurements; 0.11.0, before that from the measurement when there was one) |
-| `limits` | Limits \| null | largest settings that still reach `good` on this PC. Set by `info`, and by `fit` / `recommend` with `--limits` |
+| `limits` | Limits \| null | largest settings that still reach `good` on this PC's GPU without offloading (0.11.0; null on PCs without a GPU). Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」 ("size unknown, cannot judge"). `recommend` drops these; `fit` / `search` list them last |
 
 `basis_detail` (#34), from most to least measured (`models.BASIS_DETAILS`):
 
-1. `measured`: the maintainer's or this PC's bench measurement at the same settings
-2. `measured_community`: other users' submissions aggregated by `contrib aggregate`; values use **one** submission already; same settings; the number of sources is `sample_count`
-3. `calibrated`: shifted by a measurement at other settings
-4. `estimated`: formula only
+1. `measured`: a measurement at the same settings. The maintainer's or this PC's bench measurements and other users' submissions aggregated by `contrib aggregate` (values use **one** submission already) are not told apart. The number of sources is `sample_count`
+2. `calibrated`: shifted by a measurement at other settings (also a same-settings value clamped by the bounds below)
+3. `estimated`: formula only
 
-Since 2026-10-22 (like llmfit) community measurements are used in **both directions**: they can lower or raise the needs, and `measured_community` scores like `measured`.
+0.11.0 (#108) merged `measured_community` into `measured`. Apps that check for `measured_community` should check for `measured` (which source it was stays in `origin` of the `measurements` list of `info --json`; it is never used for marks).
+
+Since 2026-10-22 (like llmfit) community measurements are used in **both directions**: they can lower or raise the needs.
 They are bounded only physically:
 
 - The all-in value is never below weights + fixed overhead (zero working memory), and never above the measuring GPU's VRAM × 1.02 + 0.25 GiB.
@@ -528,7 +531,7 @@ Other rules:
 - At the same settings, such a row comes before the maintainer's / this PC's.
 - The maintainer's `torch_reserved` rows stay lower bounds (they only raise).
 - Working-memory-only rows (`vram_metric: torch_reserved` with `offload: dynamic`; #100, `estimate.working_only`) are not used at all here: they hold no weights, because dynamic VRAM loads and evicts the weights on demand. Until the per-stage peaks can be measured they are only cross-checked in [accuracy.md](accuracy.md) (not for the shift, not for the level).
-- When a bound was applied, the value is not the measurement: `basis` is `estimated` while `basis_detail` still says `measured_community` (or `calibrated`).
+- When a bound was applied, the value is not the measurement: `basis` is `estimated` and `basis_detail` is `calibrated`.
 - When `basis` is `measured` and the measurement is not capped at the GPU limit, `vram_gb` equals the measured value.
 - See [accuracy.md](accuracy.md), "Other users' measurements".
 
@@ -542,7 +545,7 @@ It is `measurement` when all of these hold (`estimate.measured_level`; details i
 - The level is at least Good; Perfect only when the amount is within 60% of this VRAM and no agreeing measurement was pinned at the GPU limit.
 - It is used only when it is better than the estimated level.
 - The vendor of a measurement is its `gpu_backend` when recorded, else guessed from the GPU name. A measurement from another vendor's GPU only calibrates (`basis: estimated`).
-- AMD / Intel / Apple GPUs are capped at Good unless the level comes from measurements as above. Then they go up to the level the measurements set.
+- Measurements only raise the level and never lower it, whatever the GPU vendor. Before 0.11.0, AMD / Intel / Apple GPUs and DGX Spark were capped at Good unless the level came from measurements (#108 replaced the cap with the verified-kind mark `platform_verified`).
 - The run mode is then `gpu`, and the reasons say that measurements decided.
 
 When no settings are given, the per-modality defaults are used whether or not there are measurements (image 1024²,
@@ -554,7 +557,7 @@ present; other settings are shifted by it and stay `estimated`. Measurements wit
 `standard: false` are ignored. So at the defaults, models whose measurements were taken at other settings (the
 maintainer's image, video and music measurements) are `calibrated`; pass `--width` etc. to judge at the measured settings. How measurements and coefficients are used: [accuracy.md](accuracy.md).
 
-Limits (all values are the largest that give `perfect` or `good`, other settings unchanged; `null` = even the
+Limits (all values are the largest that give `perfect` or `good` on the GPU without offloading; `limits` is null without a GPU; other settings unchanged; `null` = even the
 smallest tried value does not reach `good`):
 
 | key | type | meaning |
@@ -575,13 +578,21 @@ GPU, RAM on the CPU), as in llmfit (llmfit's `docs/how-it-works.md`, "Fit analys
 | ≤ 98% | `marginal` |
 | > 98% | `too_tight` |
 
-Caps per run mode: all on the GPU (`GPU`) none; parts swapped in turn (`GPU~`) at most `good`; offload to RAM
-(`GPU+RAM`) and CPU at most `marginal`. The run mode with the best level is used (ties: all-in → swapped → offload).
+Caps per run mode (0.11.0, #108; [scoring.md](scoring.md) "Level caps"): all on the GPU (`GPU`) none; parts swapped
+in turn (`GPU~`) and offload to RAM (`GPU+RAM`) at most `good` (offload was `marginal` up to 0.11.0); on the CPU,
+image, video, music, sound effect and 3D generation and speech whose authors do not say it runs in real time on a CPU
+at most `marginal`, speech whose authors say it runs in real time on a CPU (`estimate.CPU_REALTIME_TTS`) and one-pass tools (all uses in `tool` /
+`estimate` / `matting` / `interp` / `segment` / `separate`) at most `good`, with system RAM as the pool. No cap by GPU
+vendor (up to 0.11.0 non-NVIDIA GPUs and DGX Spark were capped at `good`). The run mode with the best level is used
+(ties: all-in → swapped → offload), so offloading is chosen only when it raises the level (never when all-in or
+swapped is `good` or better). The use of the offload mode is the tighter of the offloaded VRAM use and RAM needed ÷
+system RAM. A level set by measurements can be `good` even above 98% (an exception). `perfect` means room to spare,
+not speed.
 The RAM check is applied afterwards (short but within the page file limit above → at most `marginal`, more →
 `too_tight`). On GPUs where ComfyUI computes in fp32 (`compute_dtype: "fp32"`: Maxwell, some Pascal, GTX 16xx …) the
-working memory and the VAE weights are doubled before judging ([hardware.md](hardware.md), "Precision"). A model
-that does not fit a (small) GPU even with offloading is also judged as if there were no GPU (small CPU-capable models are
-`marginal`), and the better result is used, so adding VRAM never lowers the level (exception: a level set by
+working memory and the VAE weights are doubled before judging ([hardware.md](hardware.md), "Precision"). When the
+GPU judgement is worse than the judgement as if there were no GPU (CPU), the CPU one is used (ties: GPU), so adding VRAM
+never lowers the level (exception: a level set by
 measurements on the same GPU, which applies only at a VRAM ratio of 0.95 or more; see "Score"). Models whose size is unknown
 (`unknown_size: true`) get `unknown` instead of a level. Constants: `estimate.FIT_BANDS`.
 
@@ -1441,6 +1452,7 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 |---|---|---|
 | `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia)}` or `Gpu`. The largest usable NVIDIA GPU is judged; non-NVIDIA ones never are. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, [hardware.md](hardware.md)); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU. `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
 | `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
+| `gmf.platform_verification(system, measurements=None)` | `dict` | (0.11.0, #108) whether the kind of `system`'s GPU is verified: `{"verified": bool, "kind": "nvidia/dedicated" etc. \| None, "models": [names of the GPU models that ran]}` (verified with two or more). Without `measurements`, the bundled measurements (this PC's bench results are not included). The same as `system.platform_verified` in the CLI's JSON. No network |
 | `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | the display language of the texts that genmodelfit returns (`estimate.reasons`, `notes`, gate `detail`, error messages, …): `"en"` or `"ja"`; `None` clears it. **The default is English**; the OS language is not used. Order (first wins): the CLI `--lang`, the environment variable `GENMODELFIT_LANG`, `set_language()`, `en`. The CLI `--lang` holds only inside that call (a `contextvars.ContextVar`), so it does not change the language of library calls in other threads. A text is fixed in the language that was active when the object holding it was created (a `Fit` made in `ja` keeps Japanese `notes` after `set_language("en")`). Only the language of those texts changes; keys, ids, codes, scores and judgments do not. Free text stored in the list (`review.note`, `license_evidence`, measurement `source` / `note`) is not translated. Other values raise `ValueError` (#73) |
 
 Fetching the distributed list from Python (0.7.1, #58). Also in `__all__`: `gmf.RemoteError` (a `DatabaseError`):

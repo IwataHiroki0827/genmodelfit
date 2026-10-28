@@ -216,11 +216,14 @@ def value_and_verdict(table: str, r: Rule, lang: str) -> tuple[str, str]:
         return f"{r.value[0][0]} ({r.value[1]})", "-"
     if table == "AMD_ARCH_RULES":
         return r.value, amd_verdict(r.key, lang)
+    small = ("refused: 2-CU display iGPU", "断る: 2 CU の画面用の内蔵 GPU")[0 if lang == "en" else 1]
     if table == "AMD_NAME_RULES":
         gfx, inside = r.value
-        return gfx + (f", {integ}" if inside else ""), amd_verdict(gfx, lang)
+        verdict = small if r.key in gputables.AMD_DISPLAY_ONLY_NAMES.values else amd_verdict(gfx, lang)
+        return gfx + (f", {integ}" if inside else ""), verdict
     if table == "AMD_CPU_IGPU_RULES":
-        return f"{r.value}, {integ}", amd_verdict(r.value, lang)
+        verdict = small if r.key in gputables.AMD_DISPLAY_ONLY_NAMES.values else amd_verdict(r.value, lang)
+        return f"{r.value}, {integ}", verdict
     if table == "INTEL_XPU_RULES":
         label, inside, floor = r.value
         extra = [integ] if inside else []

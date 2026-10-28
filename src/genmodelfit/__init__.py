@@ -22,6 +22,7 @@ Python から:
     )
     fit.to_dict()["fit_level"], fit.to_dict()["memory_required_gb"]
     gmf.system_from([{"name": "NVIDIA GeForce RTX 3060", "vram_gb": 12}], ram_gb=32)  # SystemInfo
+    gmf.platform_verification(gmf.system())["verified"]  # この GPU の種類は実測で確かめてあるか(#108)
 
 互換の対象は __all__ に入る名前だけ(docs/schema.md「Python API (stable)」)。サブモジュールの関数は内部のもの。
 注意: `genmodelfit.recommend` は関数で、同じ名前のモジュール(genmodelfit/recommend.py)を隠す
@@ -49,7 +50,7 @@ from .downloader import (
     ModelNotFound,
     plan_download,
 )
-from .estimate import estimate
+from .estimate import estimate, platform_verification
 from .hardware import detect
 from .i18n import get_language, set_language
 from .models import (
@@ -340,6 +341,7 @@ __all__ = [
     "judge_model",
     "load_db",
     "plan_download",
+    "platform_verification",
     "recommend",
     "review_approve",
     "review_list",

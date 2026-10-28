@@ -145,6 +145,14 @@ def _envelope(command: str, system: SystemInfo | None, db: Database | None, **pa
     d: dict[str, Any] = {"genmodelfit": __version__, "command": command}
     if system is not None:
         d["system"] = system.to_dict()
+        # この PC の GPU の種類が同梱の実測で確かめてあるか(#108。docs/schema.md「system」)。gate には使わない
+        from .estimate import platform_verification
+
+        pv = platform_verification(system)
+        d["system"]["platform_verified"] = pv["verified"]
+        d["system"]["platform_verified_by"] = (
+            {"kind": pv["kind"], "models": pv["models"]} if pv["verified"] else None
+        )
     if db is not None:
         d["database"] = {
             "origin": db.origin,
@@ -157,13 +165,14 @@ def _envelope(command: str, system: SystemInfo | None, db: Database | None, **pa
 
 
 def format_limits(lim: dict) -> str:
-    """「この PC なら 長辺 640px・133 コマまで good」の形にする。"""
+    """「この PC の GPU なら(逃がさずに)長辺 640px・133 コマまで good」の形にする。限界は逃がさずに GPU で
+    good になる設定だけ(#108。逃がす・CPU の行の段階とは別)。"""
     caps = set(lim.get("at_cap") or [])
     keys = [k for k in ("max_side_px", "max_frames", "max_seconds") if k in lim]
     if keys and all(lim[k] is None for k in keys):
         return tr(
-            "この PC では、解像度や長さを下げても good にならない",
-            "not good on this PC even at a lower resolution or length",
+            "逃がさずに GPU で Good になる設定は無い(解像度や長さを下げても)",
+            "no setting is Good on the GPU without offloading (even at a lower resolution or length)",
         )
     ja = i18n.get_language() == "ja"
     parts = []
@@ -178,16 +187,20 @@ def format_limits(lim: dict) -> str:
         if not ja:
             name = (label_en or unit_en).strip()
             if v is None:
-                parts.append(f"{name}: not good even when lowered")
+                parts.append(f"{name}: not Good on the GPU without offloading even when lowered")
             else:
                 parts.append(f"{label_en}{v}{unit_en}{' (the highest checked)' if key in caps else ''}")
         elif v is None:
-            parts.append(f"{label or unit.strip() + ' '}は下げても good にならない")
+            parts.append(f"{label or unit.strip() + ' '}は下げても逃がさずに GPU で good にならない")
         else:
             parts.append(f"{label}{v}{unit}{'(調べた上限)' if key in caps else ''}")
     if not ja:
-        return "good on this PC up to " + ", ".join(parts) + " (other settings unchanged)"
-    return "この PC なら " + "・".join(parts) + "まで good(ほかの設定はそのまま)"
+        return (
+            "Good on this PC's GPU without offloading up to "
+            + ", ".join(parts)
+            + " (other settings unchanged)"
+        )
+    return "この PC なら逃がさずに GPU で " + "・".join(parts) + "まで good(ほかの設定はそのまま)"
 
 
 # --- コマンド ---------------------------------------------------------------------------------
@@ -363,6 +376,16 @@ def cmd_system(args: argparse.Namespace) -> int:
                 False: tr(": 使えない → CPU として判定", ": not usable -> judged as CPU"),
             }.get(a.usable, "")
             print("\n".join(_wrapped(f"{a.name} [{a.vendor}{vram}{kind}]{state}")))
+    from .estimate import platform_verification
+
+    pv = platform_verification(s)
+    if pv["verified"]:  # 確認済みの種類だけ印を出す(#108。docs/scoring.md「確認済みの GPU の種類」)
+        print(
+            tr(
+                f"✓ 確認済みの種類({pv['kind']}。動いた機種: {'、'.join(pv['models'])})",
+                f"✓ verified GPU kind ({pv['kind']}; ran on: {', '.join(pv['models'])})",
+            )
+        )
     if s.overrides:
         print(tr(f"(上書き: {', '.join(s.overrides)})", f"(overridden: {', '.join(s.overrides)})"))
     if s.notes:
@@ -729,9 +752,15 @@ def cmd_info(args: argparse.Namespace) -> int:
         )
         return 0
     from .groups import index_for, is_community
+    from .table import platform_verified
 
+    verified = platform_verified(s)
     if i18n.get_language() == "ja":
-        _emit(_info_lines_ja(m, e, gate, same, index_for(db).name_of.get(key, m.name), is_community(m)))
+        _emit(
+            _info_lines_ja(
+                m, e, gate, same, index_for(db).name_of.get(key, m.name), is_community(m), verified
+            )
+        )
         return 0
     n = len(same) + 1
     out = [f"{m.name}  [{m.id}]"]
@@ -760,9 +789,12 @@ def cmd_info(args: argparse.Namespace) -> int:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
         out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
-    if e.sample_count is not None and e.basis_detail != "measured":
+    if e.sample_count is not None:
         basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count。0.11.0 で件数から変えた)
-    out.append(f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})")
+    out.append(
+        f"  fit:      {e.fit}  ({basis}{', on ' + e.measured_on if e.measured_on else ''})"
+        + ("  ✓ verified GPU kind" if verified else "")
+    )
     seq = f" / {e.vram_sequential_gb:.1f} GB swapping parts" if e.vram_sequential_gb is not None else ""
     if e.unknown_size:
         out.append("  VRAM:     ? (unknown: weight sizes are not known)")
@@ -803,7 +835,9 @@ def _ja_label(name: str, width: int = 12) -> str:
     return "  " + text + " " * max(1, width - cell_len(text))
 
 
-def _info_lines_ja(m, e, gate, same: list[dict[str, Any]], model_name: str, community: bool) -> list[str]:
+def _info_lines_ja(
+    m, e, gate, same: list[dict[str, Any]], model_name: str, community: bool, verified: bool = False
+) -> list[str]:
     """info の日本語(#76)。英語と同じ項目を同じ順に。機械の値(ID・段階・用途・精度・コード)は訳さない。"""
     L = _ja_label
     out = [f"{m.name}  [{m.id}]"]
@@ -830,10 +864,10 @@ def _info_lines_ja(m, e, gate, same: list[dict[str, Any]], model_name: str, comm
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
         out.append(f"    - {f.name}({fs}、{f.directory or '-'}、ライセンス {f.license or '?'})")
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
-    if e.sample_count is not None and e.basis_detail != "measured":
+    if e.sample_count is not None:
         basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count)
     where = f"、{e.measured_on} で" if e.measured_on else ""
-    out.append(f"{L('段階')}{e.fit}({basis}{where})")
+    out.append(f"{L('段階')}{e.fit}({basis}{where})" + ("  ✓ 確認済みの種類" if verified else ""))
     if e.unknown_size:
         out.append(f"{L('VRAM')}?(重みの大きさが分からない)")
     else:

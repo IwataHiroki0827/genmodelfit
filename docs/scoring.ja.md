@@ -2,8 +2,8 @@
 
 [English](scoring.md) · **日本語**
 
-`recommend` / `fit` / `search` の表・`--json`・Python の関数が、実測をどう使い、どう並べ、Score をどう決めるかの決まりです(0.11.0、Issue #95)。
-要るメモリの式と係数は [accuracy.ja.md](accuracy.ja.md)、段階の区切り(使用率 60 / 85 / 98%)と動かし方の上限は [schema.ja.md](schema.ja.md)「Estimate / 見積もり」、自動でおすすめに出せるかは [gate.ja.md](gate.ja.md) にあり、ここでは変えません。
+`recommend` / `fit` / `search` の表・`--json`・Python の関数が、実測をどう使い、どう並べ、Score をどう決めるかの決まりです(0.11.0、Issue #95。段階の上限と確認済みの GPU の種類は #108)。
+要るメモリの式と係数は [accuracy.ja.md](accuracy.ja.md)、段階の区切り(使用率 60 / 85 / 98%)は [schema.ja.md](schema.ja.md)「Estimate / 見積もり」、自動でおすすめに出せるかは [gate.ja.md](gate.ja.md) にあり、ここでは変えません。
 手本は [llmfit](https://github.com/AlexsJones/llmfit)(2f35825。`llmfit-core/src/fit.rs`・`analysis.rs`・`benchmarks.rs`)で、違えるところは理由を書きます。
 
 ## 目次
@@ -11,6 +11,8 @@
 - [4 つの確認](#4-つの確認)
 - [全体の流れ](#全体の流れ)
 - [判定に使う設定](#判定に使う設定)
+- [段階の上限](#段階の上限)
+- [確認済みの GPU の種類](#確認済みの-gpu-の種類)
 - [実測で段階を決める条件](#実測で段階を決める条件)
 - [実測で値をずらすこと](#実測で値をずらすこと)
 - [大きさの入力の無いテンプレートの実測](#大きさの入力の無いテンプレートの実測)
@@ -53,6 +55,84 @@
 - 根拠: llmfit も全モデルを同じ前提(文脈長)で比べる。
 - 試験: `tests/test_scoring.py::test_a_settings_do_not_depend_on_measurements`。
 
+## 段階の上限
+
+**1 文で**: 段階は使う置き場所の使用率(60 / 85 / 98%)で決め、遅い動かし方には上限がある(GPU~・GPU+RAM は Good まで、CPU の生成は Marginal まで)。GPU の会社による上限は無い(#108)。
+
+段階の意味(表の凡例・README と同じ):
+
+| 段階 | 意味 |
+|---|---|
+| Perfect | 全部 GPU に載り、メモリに 4 割以上の余裕がある。**速さの保証ではない**(DGX Spark のような帯域の狭い機械でも使用率で決める) |
+| Good | 余裕が 15% 以上ある(順に載せ替え・逃がすでも、余裕があれば Good) |
+| Marginal | 動くがメモリがぎりぎり(85〜98%)、または CPU で生成する(とても遅い) |
+| 動かない | 98% を超える(確保の隙間が無く、実際には読み込めない)。**例外**: 実測で段階を決めた行は、98% を超えても Good になる(最後まで動いた記録なので。「実測で段階を決める条件」6) |
+
+動かし方ごとの上限(`estimate.gpu_choice`・`cpu_top`):
+
+| 動かし方 | 上限 | 理由 |
+|---|---|---|
+| GPU(全部載せ) | なし | |
+| GPU~(部品を順に載せ替え) | Good | 段ごとに部品を読み込み直す。Perfect は「全部が載ったまま余裕がある」こと(llmfit の「Perfect は余裕があり、かつ GPU で動く」と同じ考え) |
+| GPU+RAM(一部をメインメモリへ逃がす) | Good | 遅いので Perfect にはしないが、余裕があれば Good(llmfit と同じ)。diffusers の比較(PR #11682)で、逃がしたときの遅れは Wan で 1.14〜1.5 倍(モデル単位と組単位の逃がし方)、FLUX で 3.3〜10.4 倍 |
+| CPU: CPU で実時間に動く読み上げ(表にあるもの)・1 回の計算の道具 | Good | 下の「CPU で動かすとき」 |
+| CPU: 画像・動画・音楽・効果音・3D の生成 | Marginal | 下の「CPU で動かすとき」 |
+
+### 逃がす動かし方を選ぶとき
+
+**1 文で**: 逃がすのは、逃がしたほうが段階が上がるときだけ(同じ段階なら逃がさない)。
+
+- 全部載せ・順に載せ替えが Good 以上なら逃がさない。逃がす行に替わるのは、全部載せ・順に載せ替えでも 98% を超える行と、85〜98%(Marginal、OOM の手前)で逃がせば Good になる行だけ。後者は理由に「GPU だけでは 91% でぎりぎりなので、一部をメインメモリへ逃がす(遅い。…)」のように出る。NVIDIA の ComfyUI もこの状況では Dynamic VRAM で重みを逃がす。
+- 逃がす行の段階は、逃がしたときの VRAM の使用率と、要るメモリ ÷ メインメモリ(表の Mem% と同じ)のきついほうの帯で、Good まで。逃がす行の段階はメインメモリの量で決まることが多い。逃がす量は決めの値(重みの 4 割を GPU に残す。`Coefficients.offload_fraction`)。メインメモリが 98% を超える分は、今までどおりページファイルの判定(Marginal か動かない)。
+- llmfit は「全部載せが 98% を超えるときだけ逃がす」。genmodelfit がそうしないのは、VRAM を増やして段階が下がらない約束([schema.ja.md](schema.ja.md))のため。98% を超えるときだけ逃がすと、Good の逃がす行が VRAM を少し増やすと Marginal の順に載せ替えになる(同梱の一覧で 136 モデル。NVIDIA 4〜32 GB)。
+- NVIDIA 以外の GPU には ComfyUI の Dynamic VRAM(comfy-aimdo)が無い(NVIDIA の Windows・Linux だけ。ComfyUI のブログ「Dynamic VRAM in ComfyUI」。WSL は予定なし)ので、逃がす行の理由に「さらに遅い」と書く。段階は変えない。
+- 限界(この PC で Good になる最大の解像度・長さ。`limits`)は、逃がさずに GPU で Good 以上になる行だけで数える。
+- 影響(0.11.0。同梱の一覧、メインメモリ 32 GB(24 GB は 64 GB)): GPU・GPU~ の Marginal から GPU+RAM の Good に替わった行は 6 GB で 8、8 GB で 6、12 GB で 18、16 GB で 19、24 GB で 49。GPU の Perfect・Good の行が逃がす行に替わることは無い(試験 `test_gpu_perfect_or_good_rows_never_switch_to_offload`)。
+
+### CPU で動かすとき
+
+**1 文で**: CPU だけで動かすときは、CPU で実時間に動く設計の読み上げと 1 回の計算の道具は Good まで、手順を何十回も回す生成は Marginal まで。
+
+段階はメインメモリの使用率の帯で決め、次の上限で抑える(`estimate.cpu_top`):
+
+| 種類・用途 | 上限 | 例 |
+|---|---|---|
+| CPU で実時間に動く設計の読み上げ(`estimate.CPU_REALTIME_TTS`。下の表) | Good | MeloTTS・Piper・VieNeu-TTS |
+| 用途がすべて 1 回の計算の道具(`tool`・`estimate`・`matting`・`interp`・`segment`・`separate`) | Good | 背景除去(BiRefNet)・深度・ポーズ・切り抜き・音の分離 |
+| それ以外(画像・動画・音楽・効果音・3D の生成、CPU で実時間に動くと作者が書いていない読み上げ、高解像度化 `upscale`) | Marginal | SDXL・Stable Audio・Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS・Kokoro・HiFi-GAN |
+
+CPU で実時間に動く設計の読み上げ(作者の資料の文。理由にも出す):
+
+| 読み上げ | 当て方 | 作者の資料 |
+|---|---|---|
+| MeloTTS | `hf:myshell-ai/MeloTTS-*` | モデルカード「Fast enough for CPU real-time inference」 |
+| Piper | 動かし方が `piper` | README(タグ 2023.11.14-2。github.com/rhasspy/piper/blob/2023.11.14-2/README.md)「A fast, local neural text to speech system that sounds great and is optimized for the Raspberry Pi 4.」 |
+| VieNeu-TTS | `hf:pnnbao-ump/VieNeu-TTS*` | モデルカード「on CPU everything runs on ONNX Runtime」「RTF < 1, one stream」 |
+
+作者が CPU で実時間に動く・CPU に向くと書いていない読み上げ(Kokoro・HiFi-GAN など)は表に入れず、生成と同じ Marginal まで。
+
+- 根拠: 拡散の生成は手順(20〜50 回)ごとに本体の全部を計算する。Hugging Face のブログ「Accelerating Stable Diffusion Inference on Intel CPUs」で、SD 1.5 の 20 手順は r7iz.metal-16xl(Sapphire Rapids)の fp32 で 32.3 秒(最適化の前)。CPU で実時間に動くと作者が書いていない読み上げは Marginal まで(Fun-CosyVoice3・Chatterbox・VibeVoice・Qwen3-TTS などは言語モデル・フローマッチング・拡散でトークンや手順を何十〜何百回も回す。Kokoro・HiFi-GAN は小さいが、作者が CPU の数字を書いていない)。1 回の計算の道具は手順を回さない。
+- 高解像度化は一覧のものが拡散の系統なので、生成と同じ Marginal まで(SeedVR2 は 1 手順の拡散だが 3B・7B の DiT を高い解像度で回す。SUPIR・Z-Image は手順を何十回も回す)。
+- llmfit は CPU を Good まで(LLM の生成はメモリの帯域で決まり、CPU でも実用の速さが出る)。拡散の生成は計算の量で決まるので分けた。
+- GPU のある PC でも、GPU の判定が CPU の判定より悪ければ CPU の判定を取る(VRAM を足して段階が下がらないように。同じ段階なら GPU)。
+- 影響: CPU だけの PC(32 / 64 GB)で、Marginal から Good になったのは 11 行(読み上げ 3・道具 8)。
+
+## 確認済みの GPU の種類
+
+**1 文で**: この種類の GPU で、2 機種以上で動いた記録があれば「✓ 確認済みの種類」と出す(段階には使わない)。
+
+- 種類 = 会社 × メモリの形(専用の VRAM / メインメモリと共有)。例: `nvidia/dedicated`、`amd/dedicated`、`amd/shared`(内蔵 GPU)、`apple/shared`、`nvidia/shared`(DGX Spark)。実測にはメモリの形の記録が無いので、GPU 名から決める(GB10・Apple は共有、AMD・Intel は名前の表の内蔵の印)。
+- 使う実測: 同梱の実測(作者の `measurements.json` とほかの利用者のまとめ。この PC の bench の保存は入れない)のうち、最後まで動いた(`outcome: ok`)標準の実測で、重みを CPU 側に置いた逃がし方(`offload` が lowvram・novram・cpu)でないもの。ほかの利用者のまとめは、名前の表にある GPU で、`runs_evidence` が false でないもの。作業用メモリだけの値(bench の動的 VRAM)も、最後まで GPU で動いた記録なので数える。
+- 数えるのは**機種**(`estimate.kind_models`): 2 つの実測は、`same_gpu` と同じ決め方(両方に PCI の型番 ID があれば ID、無ければそろえた名前。専用の VRAM なら VRAM の比 0.95 以上も)で同じなら同じ機種。作者・この PC・ほかの利用者の実測を分けない。1 機種の実測は何件・何人でも 1 つ。汎用の名前(型番 ID も無い)は機種が決まらないので数えない。
+- 汎用の名前(「AMD Radeon(TM) Graphics」など)の実測は内蔵 GPU とみなし、型番 ID が表にあればその名前で、無ければ共有のメモリの種類にする。
+- 使うのは同梱の実測だけ(calibrate と同じく、同じ入力なら誰の PC でも同じ答え)。`--vram` で VRAM を仮定したときは、仮定の GPU は測った GPU ではないので false。
+- 今(0.11.0)確認済みなのは `nvidia/dedicated` だけ(RTX 5080 と RTX 3070 の 2 機種)。NVIDIA 以外の GPU・DGX Spark は印なしで、段階は同じ基準で決める。
+- 出し方: 表(`recommend` / `fit` / `search`)の PC の行に「✓ 確認済みの種類」、`info` の段階の行、`system` の行。確認済みでなければ何も出さない。表の凡例に意味を 1 行。`--vram` で VRAM を仮定したときは GPU が仮定なので出さない。
+- JSON: `system.platform_verified`(true / false)と `system.platform_verified_by`(確認済みのとき `{"kind", "models"}`。`models` は動いた機種の名前。そうでなければ null)。ライブラリは `gmf.platform_verification(system)`。
+- 自動のおすすめ(gate)には入れない。gate は PC によらない作り(モデルの情報だけ)で、入れると AMD・Apple などで自動のおすすめが 0 になる。使う側のアプリが自分で判断に使う。
+- 0.11.0 より前は、NVIDIA 以外の GPU と DGX Spark の段階を、この種類の GPU で動いた実測が無いことを理由に Good までにしていた。ほかの利用者の提出が集まらないと外れないので、上限をやめて印にした(llmfit も確からしさは段階でなく印で示す)。同じ GPU の実測は段階を上げるだけで、下げない(#95 の「実測で perfect → good に下げる」分岐も外した)。
+- 影響: AMD 16 GB で 65 行、Apple 16 GB で 46 行、Apple 32 GB で 87 行、DGX Spark で 317 行が Good → Perfect。AMD 16 GB の段階の分布(Perfect 65・Good 117・Marginal 96・動かない 47)は NVIDIA 16 GB(69・113・96・47)とほぼ同じ。
+
 ## 実測で段階を決める条件
 
 **1 文で**: あなたと同じ GPU・同じ設定で、別々の 2 つ以上の出どころの記録がそろって最後まで動いていれば、それで段階を決める(段階に使う量は表の VRAM と同じ)。
@@ -84,7 +164,7 @@
 `Estimate.sample_count` は、値の元になった別々の出どころの数です(作者の実測は何行あっても 1、ほかの利用者は `n_sources`、段階を実測で決めたときはそろった出どころの合計)。0.10 までは提出の件数(`n_used`)でした。
 
 例(同梱の実測):
-- **例: RTX 5080 16 GB の Wan2.2 5B**(640x640・73 コマを指定。作者の実測は 15.8 / 15.0 GB の 2 行で、合わせて 1 つの出どころ)。重み + 固定分は約 18.4 GB で、15.9 GB に全部は載らない。実測は ComfyUI の動的 VRAM で重みの一部をメインメモリに逃がして最後まで動いた(offload: dynamic、GPU の上限に張り付いた値)。つまり「逃がせば動く」記録なので、段階は逃がす動かし方の段階(Marginal・GPU+RAM)が正しい。ほかの利用者の提出がそろっても、量の下限(重み + 固定分)が VRAM を超えるので、実測で GPU の段階にはならない。0.7.0〜0.10 は Good・GPU だった(#26)。
+- **例: RTX 5080 16 GB の Wan2.2 5B**(640x640・73 コマを指定。作者の実測は 15.8 / 15.0 GB の 2 行で、合わせて 1 つの出どころ)。重み + 固定分は約 18.4 GB で、15.9 GB に全部は載らない。実測は ComfyUI の動的 VRAM で重みの一部をメインメモリに逃がして最後まで動いた(offload: dynamic、GPU の上限に張り付いた値)。つまり「逃がせば動く」記録なので、段階は実測では決めない(今の段ごとの式では、部品を順に載せ替えて Good・GPU~)。ほかの利用者の提出がそろっても、量の下限(重み + 固定分)が VRAM を超えるので、実測で GPU の段階にはならない。0.7.0〜0.10 は Good・GPU だった(#26)。
 - RTX 5080 の SDXL(832px を指定): 作者の行は 1 つなので決めない。同じ GPU・同じ設定のほかの利用者の提出が 1 つそろえば決まる。
 
 4 つの確認:
@@ -103,14 +183,14 @@
 - フェア: 誰の実測にも同じ値を使う。Linux と Windows の持ち主が、同じカードの実測を互いに使える。
 - 試験: `tests/test_scoring.py::test_same_vram_ratio_linux_and_windows`(Linux 5.80 と Windows 6.0 は同じ、8 GB と 16 GB の版は別)。
 
-**NVIDIA 以外の GPU**: この種類の GPU で動いた実測がまだ無いので、段階は Good まで(理由の文言は「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」。#101・#103)。上の条件で段階を実測で決めたときだけ、その段階まで上げます([hardware.ja.md](hardware.ja.md))。
+**NVIDIA 以外の GPU**: 同じ条件です。0.11.0 から GPU の会社による段階の上限は無く(上の「確認済みの GPU の種類」)、実測は段階を上げるだけです([hardware.ja.md](hardware.ja.md))。
 
 ## 実測で値をずらすこと
 
 **1 文で**: 実測のあるモデルは、どの GPU でも、式の作業用メモリを実測に合わせてずらす。
 
 - 変えていない([accuracy.ja.md](accuracy.ja.md)「実測の使い方」)。ほかの利用者の実測は、同じ GPU の PC で 1 件から使う。
-- 作者の測ったモデルだけ値が正確になり、ずらしで動かし方・段階が変わることもある(例: RTX 4060 8 GB の HY 3D 2.0(`3d_hunyuan3d_image_to_model`)は実測ありで Good・GPU(6.7 GB)、無しで Good・GPU~(全部載せ 6.85 GB))。値を正確にすることの裏返しとして受け入れ、表の `m` / `c` で値が実測から来ていることを示す。
+- 作者の測ったモデルだけ値が正確になり、ずらしで動かし方・段階が変わることもある(例: RTX 4060 8 GB の HY 3D 2.0(`3d_hunyuan3d_image_to_model`)は実測ありで Good・GPU(6.7 GB)、無しで Good・GPU~(全部載せ 6.85 GB))。値を正確にすることの裏返しとして受け入れ、表の `m` で値が実測から来ていることを示す(作者・ほかの利用者の実測を印で分けない。#108 で `c` をやめた)。
 - #100 から、負のずらしは段ごとに 0 で切り(重み + 固定分より下げない)、正のずらしは全部載せにだけ足し、GPU の上限に張り付いた実測からのずらしは 3 つに足す([accuracy.ja.md](accuracy.ja.md)「実測の使い方」1)。
 - 根拠: llmfit も実測で推定を補正する(同じ機種の実測から全モデルに同じ倍率。genmodelfit はモデルごと。ずらす量は #100 の段ごとの式で −1〜+2 GB 程度)。
 - 試験: `tests/test_scoring.py::test_d_values_shift_by_at_most_the_delta`(実測の有無による差は、ずらした量以内)。
@@ -151,7 +231,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 - 例: r = 0.60 → 100.0、0.80 → 88.2、0.85 → 75.5、0.90 → 60.7、0.98 → 37.5。
 - 定数 0.70・0.20 は llmfit の `fit_score`(`fit.rs:2335-2349`)と同じ。片側の曲線にした経緯は llmfit PR #648(空きは損ではない)、崖をなくした経緯は PR #100。入力の r も llmfit と同じく「その動かし方で一番きつい資源の割合」。
 - 下限 37.5 は r = 0.98(Marginal の端)の値。r が 0.98 を超えても動くと言える行のため: 実測で段階を決めた行と、メインメモリが足りずページファイルで動く行(CPU だけでなく GPU・GPU~・GPU+RAM でも。r はメモリの割合になり、Mem% が 110〜130% のことがある。段階は Marginal)。
-- 段階との関係: Perfect(GPU で r ≤ 0.60)は必ず 100。Good(GPU)は 100〜75.5、Marginal(GPU)は 75.5〜37.5。GPU+RAM・CPU は段階の上限が Marginal なので、Score が高くても速くはない。
+- 段階との関係: Perfect(GPU で r ≤ 0.60)は必ず 100。Good(GPU)は 100〜75.5、Marginal(GPU)は 75.5〜37.5。GPU~・GPU+RAM は段階の上限が Good、CPU の生成は Marginal なので、Score が高くても速くはない。
 - Score は並びではほとんど効かない(段階・人気が先)。役目は「メモリにどれだけ余裕があるか」を 1 つの数で見せること。`--sort score` で並べられる。
 - 1 モデル 1 行の Score は**代表の行の値**(表の Mem% と合う)。0.10 までの「仲間の一番高い点」はやめた。
 - JSON: `score`(= memory_fit)、`score_components = {"memory_fit": …}`。0.10 までの鍵(`fit`・`headroom`・`readiness`・`basis`・`popularity`)は無くした(意味を変えて同じ名前を使わない)。
@@ -206,7 +286,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 
 鍵の順:
 1. 動く → 判定できない → 動かない
-2. 段階: 逃がさずに載る(Perfect / Good で GPU・GPU~)→ Marginal
+2. 段階: 逃がさずに載る(Perfect / Good で GPU・GPU~)→ Good の GPU+RAM・CPU → Marginal
 3. Marginal の中だけ: 動かし方 GPU → GPU~ → GPU+RAM → CPU(速い順)。逃がさずに載る中では使わない(24 GB の Z-Image で bf16 の Good・GPU~ を代表にした行が沈まないように。#28)
 4. 公式のテンプレート → 利用者のテンプレート
 5. 人気の順位の高い順
@@ -229,7 +309,9 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 
 ## 1 モデル 1 行の代表
 
-変えていません([schema.ja.md](schema.ja.md)「Models / モデルのまとめ方」)。用途の順 → 逃がさずに載るものがあればその中で精度の高いもの → 無ければ段階の良いもの(`recommend.variant_key`)。精度の順は「16 ビット ≳ 8 ビット > 4 ビット」の資料と矛盾しません。
+変えていません([schema.ja.md](schema.ja.md)「Models / モデルのまとめ方」)。用途の順 → 逃がさずに載るものがあればその中で精度の高いもの → 無ければ段階の良いもの → 同じ段階なら逃がさない動かし方(`recommend.variant_key`)。精度の順は「16 ビット ≳ 8 ビット > 4 ビット」の資料と矛盾しません。
+
+#108(逃がす行が Good まで)で代表が替わったかを数えました(同梱の一覧。NVIDIA 6 / 8 / 12 / 16 / 24 GB・AMD 16 GB・Apple 16 / 32 GB・DGX Spark・CPU だけ 32 / 64 GB)。替わったのは 4 モデル(8 GB の Z-Image は bf16 の Marginal → int8 の Good、12 GB の FLUX.1 schnell は bf16 の Marginal → fp8 の Good、24 GB の Wan 2.2 14B は i2v の GPU~ Marginal → flf2v の Good、24 GB の SCAIL は fp16 の Marginal → int8 の Good。どれも逃がす行の中で段階の良いほうへ)で、bf16 の逃がす行が int8 の GPU の行に勝つ例は 0 です。逃がす Good の行が GPU の Marginal の行より上に来る組も、これらの PC では 0 でした(GPU の Marginal の行は、逃がせば Good になるなら逃がす行になるため)。不自然な並びは無いので、選び方は変えていません。
 
 ## llmfit との違い
 
@@ -237,7 +319,9 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 |---|---|---|---|
 | Score の中身 | 品質・速さ・収まり・文脈長 | 収まりだけ | 生成モデルの品質と速さに根拠のある測り方がまだ無い。根拠ができたら足す |
 | 並び | 動かないものを最後 → Score | 動く → 段階 → … → 人気 → Score | 「並び」 |
-| 遅い動かし方の上限 | 逃がす・CPU は Good まで | GPU~ は Good、GPU+RAM・CPU は Marginal まで | 2026-10-20 決定。生成は 1 枚で何十回も重みを読み直すので逃がすと遅れが大きい(要: 実測) |
+| 遅い動かし方の上限 | 逃がす・CPU は Good まで | GPU~・GPU+RAM は Good まで。CPU は読み上げ・道具が Good まで、生成が Marginal まで | 「段階の上限」。拡散の生成は計算の量で決まり、CPU ではとても遅い(LLM の生成はメモリの帯域で決まる) |
+| 逃がす動かし方を選ぶとき | 全部載せが 98% を超えるとき | 逃がしたほうが段階が上がるとき | VRAM を増やして段階が下がらない約束のため(「逃がす動かし方を選ぶとき」) |
+| GPU の種類 | 段階は同じ、確からしさは印 | 段階は同じ、確認済みの種類に ✓ | 「確認済みの GPU の種類」 |
 | 実測と段階 | 変えない | 同じ GPU・同じ設定で、別々の 2 つ以上の出どころがそろえば段階に使う | 「実測で段階を決める条件」 |
 | 同じハードの決め方 | CPU 名 + GPU 名 | GPU の型番 ID か名前 + VRAM の比 | CPU は判定に使わない |
 
@@ -261,6 +345,9 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 | (f) 許可リストで表の並びと Score が変わらない | `test_f_allowlist_does_not_change_table_order_or_score` |
 | (g) 大きさの無い実測が使われる | `test_g_measurements_without_size_are_used` |
 | 作り物の 1.0 GB の Flux で Perfect にならない・1 人の 4 件では決めない・作者 1 + 提出 1 で決まる・作者の 2 行は 1 つ | `test_fake_small_submission_does_not_make_flux_perfect`、`test_one_source_with_many_files_does_not_set_the_level`、`test_author_one_and_community_one_agree`、`test_author_rows_are_one_source` |
+| 逃がすのは Good まで・段階が上がるときだけ・GPU の Perfect / Good は替わらない・メインメモリも見る・限界は GPU の行だけ(#108) | `tests/test_levels.py`(`test_offload_is_capped_at_good_and_chosen_only_when_it_raises_the_level` ほか) |
+| CPU の上限(読み上げ・道具は Good、生成は Marginal)・メインメモリの帯 | `tests/test_levels.py::test_cpu_only_caps`、`test_cpu_top_table`、`test_cpu_level_uses_the_ram_band` |
+| 確認済みの種類(NVIDIA の専用 VRAM は true、AMD・Apple・GB10 は false。1 機種は何件でも未確認、2 機種で確認済み、出どころを分けない)・✓ は確認済みだけ・gate は種類によらない・AMD と NVIDIA の分布が近い・VRAM とメモリを増やして段階が下がらない | `tests/test_levels.py` |
 
 `SCHEMA_VERSION`(同梱・配布の db.json の形の版)は変えていません。出力の意味が変わったので、パッケージは 0.11.0 です([CHANGELOG.md](../CHANGELOG.md))。
 
@@ -269,5 +356,5 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 1. 作者の実測を既定の設定で取り直す(画像 1024x1024、動画 832x480・81 コマ、音楽 30 秒)。取り直した分は `m` が戻る。
 2. 速さ(秒数)の見積もり: GPU の計算性能 × 大きさ × 解像度・コマ数 × ステップ数を実測で較正する(別の仕様)。
 3. 品質の実測: 同じ seed で精度ごとの差(LPIPS など)を bench で測る。精度の減点はその後。
-4. 逃がす・CPU の上限を Marginal にしている根拠の実測。
+4. 逃がしたときの速さの実測(#102 の測定で `--disable-dynamic-vram` + lowvram の時間を比べる)。逃がす行を Good までにしている根拠の確かめ。
 5. 音楽・3D・読み上げの人気のかたよりの確認(件数が増えたら)。

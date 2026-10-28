@@ -279,21 +279,35 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 
 - **NVIDIA の判定は変えない**。NVIDIA の GPU が使えれば、ほかの GPU は `--all-gpus` で一覧に出すだけ。
 - 動くかどうかは下の対応表(一次資料)で決める。
-- **段階は Good まで**にする。理由は推定だからではなく、この種類の GPU で動いた実測がまだ無いから(#101・#103)。理由に「この種類の GPU(<会社>)で動いた実測がまだ無いので、段階は Good まで(同じ GPU の実測が 2 つ以上そろえば外れる)」と書く(`hardware.good_cap_text`)。外れるのは、この GPU と同じ GPU・同じ設定の実測が、別々の 2 つ以上の出どころでそろって段階を決めたとき(下の「同じ GPU で成功した実測」)。この GPU・設定の実測が 1 つだけ(またはそろわない)ときは、理由に「この GPU(<会社>)で段階を決めるだけの実測(別々の出どころ 2 つ)がまだ無いので、段階は Good まで」と書く(「動いた実測がまだ無い」とは書かない)。
-- 2026-10-22 から、この GPU と同じ GPU のほかの利用者の実測もその根拠になる([accuracy.ja.md](accuracy.ja.md)「ほかの利用者の実測」)。
+- **段階は NVIDIA の専用 VRAM の GPU と同じ基準で決める**(0.11.0、#108。上限なし)。0.11.0 より前は、この種類の GPU で動いた実測がまだ無いことを理由に Good までにしていた(#101・#103)。今は代わりに、この種類の GPU で 2 機種以上で動いた記録があれば、表の PC の行に「✓ 確認済みの種類」を出す([scoring.ja.md](scoring.ja.md)「確認済みの GPU の種類」)。理由(notes)には「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた(<会社>。この種類の GPU で動いた実測があるかは、表の PC の行の ✓ 確認済みの種類で分かる)」と書く(`hardware.unverified_kind_text`)。
+- 同じ GPU・同じ設定の実測(ほかの利用者の実測も。[accuracy.ja.md](accuracy.ja.md)「ほかの利用者の実測」)は、段階を上げるだけで下げない(下の「同じ GPU で成功した実測」)。
 - NVIDIA の GPU での実測は、作業用メモリをずらす補正にだけ使い(`basis_detail: calibrated`)、`basis` は `estimated`。
-- 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する。
+- 対応しない組み合わせは、理由(`Adapter.reason`)を付けて CPU として判定する(下の「断る理由」)。
+
+### 断る理由
+
+NVIDIA 以外の GPU の扱いは 3 つに分かれる(0.11.0、#108)。
+
+| 扱い | どれ | 理由の文 |
+|---|---|---|
+| 使う(未確認。印なし) | 下の対応表で動く組み合わせ。DGX Spark(GB10)も | 「段階は NVIDIA の専用 VRAM の GPU と同じ基準で決めた …」。2 機種以上の実測が集まれば ✓ 確認済みの種類 |
+| 対応の根拠が無いので断る(CPU として判定) | AMD がまだ対応を出していない世代: gfx1170・gfx1171・gfx1250(TheRock で Release Ready でない)。RDNA 1 以前・Windows 10 など、ComfyUI の案内の外のもの | 「… Release Ready でない(Build Passing・Sanity Tested まで。PyTorch が動く根拠が無い)ので、CPU として判定した」 |
+| 動いても CPU より速い見込みが無いので CPU として判定 | 2 CU の内蔵 GPU: Radeon 610M(gfx1036。Raphael・Granite Ridge・Dragon Range・Fire Range・Mendocino)・Radeon 820M(Ryzen AI 5 330) | 「… 画面を出すための 2 CU の小さな内蔵 GPU で、動いても生成では CPU より速い見込みが無いので、CPU として判定した」 |
+
+- CU の数の出典: AMD の製品ページの「Graphics Core Count」(Ryzen 9 7940HX の Radeon 610M は 2、Ryzen AI 5 330 の Radeon 820M は 2(https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-5-330.html 、2026-10-28 に確かめた)。同じ石の 840M は 4、860M は 8)。
+- 820M は gfx(gfx1152・1153)では 840M・860M と分けられないので、名前で決める(`gputables.AMD_DISPLAY_ONLY_NAMES`: 名前の「820M」と、名前が「AMD Radeon(TM) Graphics」だけのときの CPU の名前「Ryzen AI 5 330」)。新しい pci.ids の lspci の名前「Radeon 820M / 840M」(1902)は、CPU の名前が Ryzen AI 5 330(820M だけの CPU)なら 820M として CPU にし、それ以外は 820M か 840M か決まらないので使う側にする。
+- 0.11.0 より前は 820M を使っていた(gfx1153 の RDNA 3.5 として)。
 
 ### 対応表(一次資料は 2026-10-21 に読んだ)
 
 | 会社・部品 | OS | 判定 | 一次資料 |
 |---|---|---|---|
 | AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI 426f5ee: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
-| AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153(公式の資料どうしで食い違う。下)、Radeon 8065S = gfx1151) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
+| AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 8065S = gfx1151。名前が「Radeon 820M / 840M」のものは gfx1153(公式の資料どうしで食い違う。下)) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
 | AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600・7500・7400・7300・PRO W7400 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
 | AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300・Pro W6400 / W6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh・Sephiroth(Steam Deck・OLED 版。Windows の名前は AMD Custom GPU 0405。8 CU、gfx1033。共有メモリ) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
 | AMD Instinct(MI100〜MI355X、gfx908・90a・942・950) | Linux | **GPU**(`rocm`) | pytorch.org の ROCm 版の `PYTORCH_ROCM_ARCH`、TheRock の Instinct - Linux の表 |
-| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし) |
+| AMD の 2 CU の内蔵 GPU(Raphael・Granite Ridge = Ryzen 7000 / 9000 のデスクトップ、Dragon Range・Fire Range = 7x40HX / 7x45HX / 9x5xHX、Mendocino、610M = gfx1036。Radeon 820M = Ryzen AI 5 330(0.11.0)) | — | CPU | 世代は対象だが、画面を出すための小さな GPU で、生成では CPU より速い見込みが無い(判断。実測なし。上の「断る理由」) |
 | AMD の gfx1170・gfx1171(RDNA 4 系の APU)・gfx1250(CDNA 5) | — | CPU | TheRock で Release Ready でない(下の「GPU の登録の表と公式の一覧」) |
 | AMD RDNA 1(RX 5700 / 5500)・GCN(Vega・Polaris 以前) | — | CPU | ComfyUI の案内が RDNA 2 以降(TheRock は RDNA 1 も Release Ready にしているが、ComfyUI に合わせた) |
 | AMD(どれでも) | Windows 10・版が分からない | CPU | ComfyUI の案内「Use Windows 11」(分からなければ使わない側) |
@@ -361,7 +375,7 @@ GPU の名前から世代を決める表:
 - 新しい pci.ids で製品名が汎用(「Navi 33 [Radeon Graphics]」「Battlemage G31 [Intel Graphics]」)になる型番 ID は、古い pci.ids では使えて新しい pci.ids では断る、という逆転があった。amdkfd が無いときは、汎用の名前でも型番 ID の表を先に引くようにした(理由に「製品名が汎用なので、型番の ID から … とみなした」)。
 - Intel: Arc Pro B65 / B70(Battlemage G31、e222・e223。公称の VRAM は確かめられなかったので持たない)、Data Center GPU Max(Ponte Vecchio。PyTorch の表で Linux だけなので、Windows・WSL2 は CPU)。
 - **Windows の「Intel(R) Graphics」と Core Ultra の Arc**: Intel はメモリが 1 チャンネルのとき、同じ石の Arc Graphics をデバイス マネージャーで「Intel Graphics」と表示する(Intel support 000102144「Intel Arc Graphics Appears As Intel Graphics in Device Manager and Task Manager」https://www.intel.com/content/www/us/en/support/articles/000102144/graphics.html 。解決は 2 チャンネルのメモリ。2026-10-27 に読んだ)。汎用の名前のときに型番 ID の表を引く決まりは Windows の WMI にも効くので、型番 ID が Meteor Lake 7d55・Arrow Lake-H 7d51・Lunar Lake 64a0 なら「Intel(R) Graphics」でも XPU として使う(Linux は前から型番 ID で使っていた)。理由に「1 チャンネルでは 2 チャンネルより遅い」と書く。型番 ID が表に無い「Intel(R) Graphics」(Arrow Lake-S など)は今までどおり CPU。
-- **820M の gfx**: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は Ryzen AI 5 330 の Radeon 820M を gfx1152、pci.ids は別の石(1902「Krackan2 [Radeon 820M / 840M]」)に 820M と 840M を載せる。名前だけでは決まらないので、ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、理由に食い違いの注意を出す。どちらも RDNA 3.5 で判定は同じ。Linux は amdkfd の値が先。
+- **820M の gfx**: TheRock の RELEASES.md は gfx1153、ROCm の hw specs は Ryzen AI 5 330 の Radeon 820M を gfx1152、pci.ids は別の石(1902「Krackan2 [Radeon 820M / 840M]」)に 820M と 840M を載せる。名前だけでは決まらないので、ROCm の wheel を選ぶ TheRock に合わせて gfx1153 にし、理由に食い違いの注意を出す。どちらも RDNA 3.5。Linux は amdkfd の値が先。0.11.0(#108)から、820M だけの名前(と、CPU の名前が Ryzen AI 5 330 の「Radeon 820M / 840M」)は 2 CU として CPU と判定する(上の「断る理由」)。
 - **Jetson Orin(8.7)と CUDA 13.2 以降**: PyTorch v2.14.1 は CUDA 13.2 以降のビルドで 8.0 / 8.6 の機械語を 8.7 でも動くとする(`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`)。genmodelfit は Jetson を判定に使わない(JetPack 専用の版・統合メモリ。下の「すべての環境」)ので、表(`SOLO_CC`)は変えない。
 - cu129 の版の範囲: Windows の wheel は 2.8・2.9 だけ(2.10 以降は Linux だけ)。cu128 の aarch64 は 2.7・2.9〜2.11(2.8 は無い)。案内の文言だけで、判定は変わらない。
 - 古いドライバで世代が分からないとき(compute_cap を返さず名前の表にも無い)、「ドライバを更新すれば GPU で動く」と言い切っていた。Kepler・Fermi は新しいドライバも PyTorch も無いので、「Maxwell 以降なら更新すれば動く。Kepler・Fermi 以前は更新しても動かない」と書く。
@@ -456,14 +470,14 @@ GPU の名前から世代を決める表:
   - ROCm on Radeon/Ryzen の Windows の表は gfx1200/1201/1100/1101 と gfx1150/1151 だけ(https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)。
   - ComfyUI の README は RDNA 2〜4 とする。
   - TheRock(ComfyUI が使う ROCm)は RDNA 2・780M(gfx1103)も Windows でリリースの対象にしている(https://github.com/ROCm/TheRock/blob/main/SUPPORTED_GPUS.md)。
-  - RX 6000 系と 780M は ComfyUI に合わせて使うが、この種類の GPU で動いた実測がまだ無いので段階は Good まで。
+  - RX 6000 系と 780M は ComfyUI に合わせて使う(段階は同じ基準。この種類の GPU で動いた実測は、まだ無い)。
 - **RDNA 1・Vega・Polaris**: llmfit は名前と VRAM が取れれば GPU 扱い、Ollama・llama.cpp は Vulkan で動かせる。ただ ComfyUI の README の対象外なので CPU。
 - **2 CU の内蔵 GPU(gfx1036)**: TheRock は対象にしているが、生成で CPU より速い見込みが無いので CPU(対応の有無ではなく性能の判断。理由の文もそう書く)。
 - **Van Gogh(Steam Deck、gfx1033)**:
   - 0.8.0 までは gfx1036 と一緒に「2 CU の小さな内蔵 GPU」として CPU にしていた。
   - Valve の仕様(https://www.steamdeck.com/en/tech 「GPU: 8 RDNA 2 CUs, 1.6GHz (1.6 TFlops FP32)」)で 8 CU ある。
   - TheRock の SUPPORTED_GPUS.md(2026-10-22 に読んだ main)は gfx1033 を Linux・Windows とも Release Ready にしている。ComfyUI の README は「supported architectures include RDNA 2」。
-  - そこで 680M(12 CU)・660M(6 CU)と同じく GPU(共有メモリ、段階は Good まで)にした。
+  - そこで 680M(12 CU)・660M(6 CU)と同じく GPU(共有メモリ)にした。
   - pytorch.org の ROCm 版には入っていないので TheRock の版を使う、と notes に出る。
 
 ## CPU で動く系統(0.7.0、#39)
@@ -485,10 +499,9 @@ ComfyUI の CPU での動き:
 
 必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
 
-- 搭載量に収まれば Marginal(CPU、遅い)。
+- 搭載量に収まれば、メインメモリの使用率の帯(60 / 85 / 98%)で決め、生成は Marginal まで(CPU、遅い)。CPU で実時間に動く設計の読み上げ・1 回の計算の道具は Good まで(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「CPU で動かすとき」)。
 - 仮想メモリの範囲なら Marginal(遅い)。
 - 超えたら Too tight。
-- 段階は CPU なので Marginal まで。
 - CPU で動くこと自体が推定なので、理由に「CPU は推定・実測なし」と書く(AI生成キットのカタログの `cpu_ok` は設計の印で、実測ではない)。
 
 ## 同じ GPU で成功した実測(0.7.0、#26)
@@ -520,9 +533,10 @@ ComfyUI の CPU での動き:
 
 - 精度の直しで作業用メモリを倍にした GPU では使わない。
 - メインメモリの判定はそのまま行う。
-- 理由の先頭に「この PC と同じ GPU(…)・同じ設定で、別々の N つの出どころの実測がそろって最後まで動いた …(段階は実測で決めた)」と書く。表の VRAM は段階に使った量(m / c)。
+- 理由の先頭に「この PC と同じ GPU(…)・同じ設定で、別々の N つの出どころの実測がそろって最後まで動いた …(段階は実測で決めた)」と書く。表の VRAM は段階に使った量(m)。
+- 実測は見積もりより良いときだけ段階に使う(下げない)。NVIDIA 以外の GPU も同じ(0.11.0 で、実測で Perfect を Good に下げる分岐を外した)。
 - 実測が別の GPU のもの・出どころが 1 つだけ・そろっていないときは「段階は見積もりで決めた(…)」と理由を書く。
-- 例: Wan 2.2 5B(作者の RTX 5080 16 GB の実測 15.8 / 15.0 GB の 2 行。合わせて 1 つの出どころで、動的 VRAM で重みの一部を逃がして動いた記録)は、640x640・73 コマを指定しても、重み + 固定分(約 18.4 GB)が 15.9 GB に収まらないので、0.11.0 から段階は見積もり(Marginal / offload。0.7.0〜0.10 は Good / GPU)。RTX 3060 12 GB では Marginal / offload のまま。
+- 例: Wan 2.2 5B(作者の RTX 5080 16 GB の実測 15.8 / 15.0 GB の 2 行。合わせて 1 つの出どころで、動的 VRAM で重みの一部を逃がして動いた記録)は、640x640・73 コマを指定しても、重み + 固定分(約 18.4 GB)が 15.9 GB に収まらないので、0.11.0 から段階は見積もり(今の段ごとの式では部品を順に載せ替えて Good / GPU~。0.7.0〜0.10 は Good / GPU)。RTX 3060 12 GB では逃がして Good / offload。
 
 ## すべての環境(0.11.0、#101)
 
@@ -565,7 +579,7 @@ ComfyUI の CPU での動き:
 - メモリ(`memory: shared`):
   - 総量は `/proc/meminfo` の MemTotal(段階は総量で決める決まり)。割り引かない(Apple の 3/4 は Metal の目安の代わりで、GB10 に当てる根拠が無い)。メインメモリと共有で、二重に数えない(`carveout_gb` 0。逃がす動かし方は無い)。
   - 空きは NVIDIA の known-issues の例どおり MemAvailable + SwapFree(HugePages を使っていれば空きの HugePages × 大きさ、swap は数えない)で、今の空きの注意(`vram_free_short`)だけに使う。
-- この種類の GPU(NVIDIA の統合メモリ、DGX Spark)で動いた実測がまだ無いので **Good まで**(同じ GPU の実測が 2 つ以上そろえば外れる。上の「同じ GPU で成功した実測」)。理由に「GB10 は統合メモリ。GPU だけの上限は NVIDIA の文書に無い」と書く。
+- 段階は NVIDIA の専用 VRAM の GPU と同じ基準で決める(0.11.0、#108。上限なし。Perfect は速さの保証ではなく、帯域の狭い DGX Spark でも使用率で決める)。この種類(`nvidia/shared`)の実測は同梱の一覧に無いので、✓ 確認済みの種類は付かない。理由に「GB10 は統合メモリ。GPU だけの上限は NVIDIA の文書に無い」と書く。
 - PyTorch の表: compute capability 12.1 は今の `_code_runs`(同じ主番号で下位が小さい機械語は動く)で sm_120 の機械語が動くと判定する(新しい規則は要らない)。cu128 の aarch64(PyTorch 2.7〜2.11)を表に足した。
 - 注意: 「sm_121 では CUTLASS・xformers の fmha のカーネルが失敗した報告があり、直ったかは確かめていない」。
 - 名前が GB10 でない、VRAM を返さない NVIDIA の GPU は、理由(Jetson は上の表、ほかは「共有メモリの NVIDIA の GPU は ComfyUI の公式の手順を確かめた GB10 だけ」)を書いて CPU。
@@ -586,7 +600,7 @@ ComfyUI の CPU での動き:
 2. **Windows 側の GPU を読む**: 相互運用で `powershell.exe`(PATH に無ければ `/etc/wsl.conf` の `[automount] root`(既定 `/mnt/`)の下の `c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`)を `-NoProfile -NonInteractive`・時間切れ 8 秒で呼ぶ。台本(`hardware._PS_WSL`)は WMI の Name・AdapterRAM・PNPDeviceID・ConfigManagerErrorCode・DriverVersion と、レジストリの画面の部品のクラスキー(`0###`)の DriverDesc・MatchingDeviceId・`HardwareInformation.qwMemorySize`・`MemorySize`(REG_BINARY はバイト列から変換)だけを読み、UTF-8 の JSON で返す。PNPDeviceID は Windows と同じく後半(差し場所)を捨てる。失敗(相互運用が無効・時間切れ)は例外にせず注意にする。
 3. **WSL の中の準備**: AMD は `rocminfo`(PATH か `/opt/rocm/bin`)が通り、GPU のエージェントの `Name: gfx…` が読めること(一番強い証拠)。読むのは行の頭で照合した `Name: gfx…`・`Marketing Name:`・`Device Type:` だけで、UUID などほかの行は読まない・notes・ログ・例外に出さない。Intel は `clinfo -l` に Intel の GPU の Device が出ること。
 
-使う条件(この種類の GPU で動いた実測がまだ無いので、段階は Good まで):
+使う条件(段階は NVIDIA と同じ基準。この種類の GPU で動いた実測は、まだ無い):
 
 - AMD: AMD の WSL の対応表(ROCm 7.2.1)の製品名と完全に一致するもの(`hardware.WSL_AMD_SUPPORTED`: RX 9070 / 9070 XT / 9070 GRE、AI PRO R9700 / R9600D、RX 9060 / 9060 XT、RX 7900 XTX / XT / GRE、PRO W7900(Dual Slot)/ W7800(48GB)/ W7700、RX 7800 XT、RX 7700 / 7700 XT)。APU は公式の表に無い(librocdxg の README だけで、リポジトリは deprecated)ので使わない。
 - Intel: Arc A・B、Core Ultra の Arc Graphics(`gputables.INTEL_XPU_RULES`)で、Windows のドライバが 32.0.101.8801 以上(3 つ目と 4 つ目の欄をつないだ 7 桁で比べる。`int(f"{p3}{p4:04d}") >= 1018801`)。版が読めなければ断らず注意。内蔵の Arc Graphics は WSL のメモリ(Windows の搭載量以下)の半分を共有の分とみなす(少なめの見積もり)。
@@ -624,7 +638,7 @@ ComfyUI の CPU での動き:
 - Windows で時間切れのコマンドは子だけを止める(孫のプロセスは残りうる)。読む口は閉じず(閉じると孫が終わるまで止まる)、1 秒だけ待って返す。
 - WSL の中の VRAM の空き(約 3 GB 少ない報告)は値に入れていない。
 - MIG の区画の大きさは自動では読まない(`--vram` で指定する)。
-- GB10 の段階は Good まで(この種類の GPU で動いた実測がまだ無い)。GPU だけで使える上限の数字は NVIDIA の文書に無い。
+- GB10 はこの種類の GPU で動いた実測がまだ無い(✓ 確認済みの種類は付かない)。GPU だけで使える上限の数字は NVIDIA の文書に無い。
 - Jetson・GH200 / GB200 の統合メモリは扱わない(別の Issue)。
 - WSL2 の内蔵 GPU(Intel の Arc Graphics)の共有の分は、WSL のメモリから少なめに見積もる。
 

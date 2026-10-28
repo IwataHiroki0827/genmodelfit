@@ -37,13 +37,12 @@ def fit_rank(fit: str) -> int:
 # 推定の根拠
 BASIS = ("measured", "estimated")
 # 根拠の細かい段階(Estimate.basis_detail。#34)。上ほど確か。basis は後方互換のため 2 値のまま:
-# measured / measured_community → basis "measured"、calibrated / estimated → basis "estimated"
-#   measured           同梱の実測(作者が測ったもの)か、この PC で bench が保存した実測で、設定も同じ
-#   measured_community ほかの利用者の実測(data/contrib を contrib aggregate でまとめた中央値。1 件から使う。
-#                      件数は Estimate.sample_count)。設定も同じ
+# measured → basis "measured"、calibrated / estimated → basis "estimated"
+#   measured           設定も同じ実測(作者・この PC の bench・ほかの利用者のまとめを分けない。#108 で
+#                      measured_community をまとめた。別々の出どころの数は Estimate.sample_count)
 #   calibrated         設定の違う実測でずらした推定
 #   estimated          式だけの推定
-BASIS_DETAILS = ("measured", "measured_community", "calibrated", "estimated")
+BASIS_DETAILS = ("measured", "calibrated", "estimated")
 # 実測の出どころ(Measurement.origin)。None = 同梱の作者の実測・この PC の bench の実測
 ORIGIN_COMMUNITY = "community"
 # 実測の結果。ok=最後まで動いた、oom=メモリ不足で失敗、error=ほかの理由で失敗

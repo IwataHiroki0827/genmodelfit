@@ -304,7 +304,8 @@ def test_gb10_is_used_as_unified_memory(monkeypatch, tmp_path):
     assert g.vram_free_gb == round((119876544 + 16777212) / 2**20, 2)  # MemAvailable + SwapFree
     assert g.compute_capability == "12.1" and g.arch == "blackwell"
     assert g.torch_cuda == ["cu132", "cu130", "cu129", "cu128"]  # sm_121 は sm_120 の機械語で動く
-    assert any("GB10" in n and "段階は Good まで" in n and "DGX Spark" in n for n in g.notes)
+    assert any("GB10" in n and "同じ基準で決めた" in n and "DGX Spark" in n for n in g.notes)
+    assert not any("Good まで" in n for n in g.notes)  # 上限は #108 で無くした
     assert any("sm_121" in n for n in g.notes)
     assert not any("判定に使わない" in n for n in g.notes)
 
@@ -314,16 +315,19 @@ def test_gb10_free_with_hugepages(monkeypatch, tmp_path):
     assert g.vram_free_gb == 80.0  # 空きの HugePages 40960 × 2 MiB、swap は数えない
 
 
-def test_gb10_level_is_capped_at_good(monkeypatch, tmp_path):
+def test_gb10_level_has_no_platform_cap_and_is_not_verified(monkeypatch, tmp_path):
+    """#108: DGX Spark にも段階の上限は無い(使用率で決める。Perfect は速さの保証ではない)。
+    同梱の実測に GB10(nvidia/shared)は無いので確認済みではない。"""
+    from genmodelfit.estimate import platform_verification
+
     g = _gb10(monkeypatch, tmp_path)
     system = SystemInfo(
         os="Linux", cpu="-", cpu_cores=20, ram_total_gb=g.vram_total_gb, ram_available_gb=110.0, gpus=[g]
     )
     e = estimate(entry(6.0), system, coefficients=Coefficients())
-    assert e.fit == "good" and e.run_mode == "gpu"
-    assert any(
-        "この種類の GPU(NVIDIA の統合メモリ、DGX Spark)で動いた実測がまだ無いので" in r for r in e.reasons
-    )
+    assert e.fit == "perfect" and e.run_mode == "gpu"
+    pv = platform_verification(system)
+    assert (pv["verified"], pv["kind"], pv["models"]) == (False, "nvidia/shared", [])
 
 
 @pytest.mark.parametrize(

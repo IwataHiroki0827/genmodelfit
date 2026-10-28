@@ -132,6 +132,11 @@ SOURCES: dict[str, Source] = {
         "https://www.amd.com/en/products/processors/laptop/ryzen/7000-series/amd-ryzen-9-7940hx.html",
         "2026-10-22",
     ),
+    "amd-ryzen-ai-5-330": Source(
+        "AMD product page: Ryzen AI 5 330 (Graphics Model: AMD Radeon 820M, Graphics Core Count: 2)",
+        "https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-5-330.html",
+        "2026-10-28",
+    ),
     "linux-amdkfd": Source(
         "Linux drivers/gpu/drm/amd/amdkfd/kfd_device.c (GC IP version → gfx_target_version)",
         "https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/amd/amdkfd/kfd_device.c",
@@ -346,7 +351,7 @@ ARCH_MIN_DRIVER_RULES: tuple[Rule, ...] = (
 # Jetson など、同じ世代の機械語が動かない compute capability(PyTorch の DEVICE_REQUIREMENT と同じ)。
 # PyTorch v2.14.1 は CUDA 13.2 以降のビルドで 8.0 / 8.6 の機械語を 8.7(Jetson Orin)でも動くとする
 # (DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION)が、genmodelfit は Jetson を判定に使わない
-# (JetPack 専用の版・統合メモリ。docs/hardware.md「NVIDIA の統合メモリ」)ので、この表は変えない(#103)
+# (JetPack 専用の版・統合メモリ。docs/hardware.md「DGX Spark(GB10)」)ので、この表は変えない(#103)
 SOLO_CC = ValueSet(
     "solo_cc",
     frozenset({53, 62, 72, 87, 101, 110}),
@@ -435,6 +440,19 @@ AMD_DISPLAY_ONLY = ValueSet(
         "2-CU display-only integrated GPU (a judgment; no measurement)",
     ),
 )
+# 名前で断る 2 CU の内蔵 GPU(#108)。gfx(gfx1152・1153)では 840M・860M と分けられないので、表の行の鍵
+# (AMD_NAME_RULES・AMD_CPU_IGPU_RULES の鍵)で決める。Radeon 820M は 2 CU(AMD の Ryzen AI 5 330 の製品ページの
+# 「Graphics Core Count: 2」)で、610M と同じく生成では CPU より速い見込みが無い(判断。実測なし)
+AMD_DISPLAY_ONLY_NAMES = ValueSet(
+    "display_only_name_rules",
+    frozenset({r"820m", r"ryzen ai 5 (pro )?330\b"}),
+    ("amd-ryzen-ai-5-330",),
+    verified="2026-10-28",
+    note=(
+        "2 CU の内蔵 GPU(Radeon 820M。判断。実測なし)",
+        "2-CU integrated GPU (Radeon 820M; a judgment, no measurement)",
+    ),
+)
 AMD_UNVERIFIED = ValueSet(
     "unverified_gfx",
     # TheRock の SUPPORTED_GPUS.md で Release Ready でない gfx。gfx117x は Linux・Windows とも Build Passing
@@ -479,6 +497,9 @@ PYTORCH_ROCM_LINUX = ValueSet(
 # が先(#101)なので、名前が要るのは主に Windows
 _TRR = ("therock-releases", "rocm-hw-specs")
 _PCI = ("pci-ids",)
+# 新しい pci.ids の「Radeon 820M / 840M」(1902)。名前では 820M か 840M か決まらない(CPU の名前で 820M と
+# 分かれば 2 CU として CPU。hardware.classify_adapter。#108)
+AMD_820M_840M = r"820m\s*/\s*840m"
 AMD_NAME_RULES: tuple[Rule, ...] = (
     _r(r"rx\s*9070|ai pro r9[67]00|navi\s*48\b", ("gfx1201", False), *_TRR),
     _r(r"rx\s*90[456]0|navi\s*44\b", ("gfx1200", False), *_TRR),  # RX 9060 / 9060 XT は Navi 44
@@ -492,8 +513,10 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
     # 判定(使う・pytorch.org の ROCm 版に無い)は同じ。
     # Linux は amdkfd の値が先。1902 は型番 ID の表に入れない。新しい pci.ids の lspci の名前「Radeon 820M /
     # 840M」(1902)もこの行に当たるよう、860M / 840M の行より前に置く(#103)
+    # 「Radeon 820M / 840M」(新しい pci.ids の 1902)は 820M か 840M か決まらないので使う(840M は 4 CU)。
+    # 820M だけの名前は下の行で断る(2 CU。AMD_DISPLAY_ONLY_NAMES。#108)
     _r(
-        r"820m",
+        AMD_820M_840M,
         ("gfx1153", True),
         "therock-releases",
         "rocm-hw-specs",
@@ -504,6 +527,14 @@ AMD_NAME_RULES: tuple[Rule, ...] = (
             "The gfx of the 820M differs between official sources (TheRock RELEASES.md: gfx1153;"
             " ROCm hw specs: gfx1152). If the TheRock wheel does not work, try the gfx1152 one",
         ),
+    ),
+    _r(
+        r"820m",
+        ("gfx1153", True),
+        "therock-releases",
+        "rocm-hw-specs",
+        "amd-ryzen-ai-5-330",
+        added="0.11.0",
     ),
     _r(r"860m|840m|krackan", ("gfx1152", True), *_TRR),
     _r(
@@ -810,6 +841,7 @@ def value_sets() -> tuple[ValueSet, ...]:
         COMFY_FP16_PASCAL,
         COMFY_FP16_BROKEN,
         AMD_DISPLAY_ONLY,
+        AMD_DISPLAY_ONLY_NAMES,
         AMD_UNVERIFIED,
         PYTORCH_ROCM_LINUX,
         WSL_AMD,

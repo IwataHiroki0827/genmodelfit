@@ -236,9 +236,11 @@ Mapping more families is future work ("Known limits" below).
   - above that: Too tight
 - Caps by mode:
   - All on GPU: no cap.
-  - Swapped in turn (GPU~): up to Good.
-  - Offload (GPU+RAM) and CPU: up to Marginal.
-- The mode with the best level is taken. The main-memory check ("Main memory (RAM)" below) comes after that.
+  - Swapped in turn (GPU~) and offload (GPU+RAM): up to Good (offload was up to Marginal until 0.11.0).
+  - CPU: generation up to Marginal, speech built for real-time CPU use and one-pass tools up to Good (0.11.0, #108).
+  - No cap by GPU vendor (until 0.11.0, non-NVIDIA GPUs and DGX Spark were capped at Good).
+  - The full rules are in [scoring.md](scoring.md) "Level caps".
+- The mode with the best level is taken (no offloading on a tie). The main-memory check ("Main memory (RAM)" below) comes after that.
 - If the size is unknown, no level is given (`unknown`, shown as `?`; "Models of unknown size" below).
 - Before, it was "Perfect if all-on-GPU is within 90% of VRAM, Good if within VRAM".
 - Effect on the bundled list (all 341 entries of the list at the time the levels changed, before the HF lower bound was raised; the bundled list of 0.9.1 (2026-10-21) has 329):
@@ -455,7 +457,7 @@ How to read it:
 - **Main memory**: neither the formula nor the 1.5× factor is checked by measurement ("Main memory (RAM)" above).
 - **Non-NVIDIA GPUs** (0.7.0, #22): there are 0 measurements on AMD, Intel or Apple.
   - The per-stage working memory keeps the SDPA formula (GPUs with split attention only get a note). AMD multiplies the KL VAE by 2.73.
-  - No measurement has run on this kind of GPU yet, so levels are capped at Good (lifted once two or more measurements of the same GPU agree; 2026-10-22. The reason text was corrected from "estimate" in #103).
+  - No measurement has run on this kind of GPU yet. Before 0.11.0 the level was capped at Good (2026-10-22); 0.11.0 (#108) dropped the cap and shows this by not giving the verified-kind mark (✓).
   - The share of memory treated as GPU memory is a guideline from primary sources, not measured ([hardware.md](hardware.md), "Shared memory").
 - **CPU-capable families** (#39): the CPU main memory of SD-family and Stable Audio models comes from a formula derived from ComfyUI's code, not measured.
   - The formula widens the main model and VAE to fp32 and doubles the working memory (the heaviest stage × 2 with the per-stage formula).
@@ -540,7 +542,7 @@ The rules below describe how submissions will be handled once they arrive.
 
 - Lower bound: the all-on-GPU value is not lowered below **weights + fixed part** (working memory 0).
   - A smaller measurement means some weights were held in main memory (dynamic VRAM, partial) or the measurement was wrong.
-  - The estimate is set to the lower bound. `basis` is estimated (`basis_detail` is measured_community). The reason says 「下限の値にした」 ("set to the lower bound").
+  - The estimate is set to the lower bound. `basis` is estimated (`basis_detail` is calibrated; measured_community before 0.11.0). The reason says 「下限の値にした」 ("set to the lower bound").
   - The condition that validate used to flag for review (`offload: none` and smaller than weights + fixed part) is now clamped in the estimate.
 - Upper bound: the measured GPU's total × 1.02 + 0.25 GiB (the same as validate's "impossible value").
   - A larger value is clamped to this bound (total × 1.02 + 0.25 GiB) (`estimate._prepare`).
@@ -577,24 +579,21 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
   - If this amount does not fit this PC's VRAM, the level is not set (for example, Wan2.2 5B's weights + fixed part is about 18.4 GB, which does not fit the RTX 5080's 15.9 GB).
   - Perfect needs 60% or less. A pinned measurement is not a basis for Perfect (up to Good).
 - A `torch_reserved` value gets 0.5 GiB added for the context before the band is decided, and it can also be a basis for Perfect (0.9.0).
-- **The "up to Good" cap for non-NVIDIA GPUs is lifted when the level is decided by measurements.**
-  - The level rises as far as the measurements decide (it can become Perfect).
-  - When they do not decide it (one source, for example), it stays capped at Good as before.
+- Measurements only raise the level and never lower it (non-NVIDIA GPUs too since 0.11.0; #108 dropped their "up to Good" cap).
 
 **Basis levels** (`Estimate.basis_detail`) and the number of sources (`Estimate.sample_count`; the number of submissions until 0.11.0):
 
 - `basis` stays two-valued (measured / estimated) for backward compatibility.
 - `sample_count` was only added to the JSON.
 - How they show:
-  - `info`: `measured_community n=3`
-  - the mark on the table's VRAM: `c`
+  - `info`: `measured n=3`
+  - the mark on the table's VRAM: `m` (the same as the maintainer's; 0.11.0 dropped `c`, #108)
   - the reason: "measurements by other users (3 source(s); median 7.02 GB)" (「ほかの利用者の実測(出どころ 3。中央値 7.02 GB)」)
 
 | level | basis | meaning |
 |---|---|---|
-| `measured` | measured | the maintainer's bundled measurement, or a measurement the bench saved on this PC, with the same settings |
-| `measured_community` | measured (estimated when clamped by the lower or upper bound) | other users' measurement (from one), with the same settings |
-| `calibrated` | estimated | an estimate shifted by a measurement with different settings (the maintainer's or other users') |
+| `measured` | measured | a measurement with the same settings (the maintainer's bundled measurements, this PC's saved bench results and other users' measurements (from one) are not told apart; 0.11.0 merged measured_community) |
+| `calibrated` | estimated | an estimate shifted by a measurement with different settings (the maintainer's or other users'), or a same-settings value clamped by the lower or upper bound |
 | `estimated` | estimated | a formula-only estimate (no measurement, precision changed, or no GPU) |
 
 **Validation** (`contrib validate`, contrib.yml in CI): **only mechanical checks fail.**
@@ -608,7 +607,7 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
 - Shown only as a "notice" above the job summary:
   - More than 40% off the formula (`deviation`).
   - All on GPU (`offload: none`) but smaller than weights + fixed part (`below_weights`).
-  - The level changes on a PC with the same GPU as the submission (name, model ID, vendor; VRAM from the submission's `vram_gb`) × 16 / 32 / 64 GB of memory (`fit_change`; it also reports a level going up on the same GPU, or the "up to Good" cap being lifted).
+  - The level changes on a PC with the same GPU as the submission (name, model ID, vendor; VRAM from the submission's `vram_gb`) × 16 / 32 / 64 GB of memory (`fit_change`; it also reports a level going up on the same GPU).
   - A model not in the list.
   - A GPU not in the table.
 - The mechanism where a person checks each sha8 (`--allow-review`, `data/contrib/REVIEWED`) was removed.
@@ -650,7 +649,7 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
 
 ### Bench on non-NVIDIA GPUs (0.9.0)
 
-Non-NVIDIA GPUs (AMD, Intel, Apple) have 0 measurements; since no measurement has run on this kind of GPU yet, their level is capped at Good (see [hardware.md](hardware.md)).
+Non-NVIDIA GPUs (AMD, Intel, Apple) have 0 measurements, so they get no verified-kind mark (✓) (the level rules are the same; [scoring.md](scoring.md) "Verified GPU kinds").
 To make measurements easier to collect, the bench's "is the GPU idle?" check also uses each vendor's tools (`gpustat.py`).
 
 - AMD on Linux: amd-smi → rocm-smi

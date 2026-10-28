@@ -226,13 +226,13 @@ def test_measured_mark_and_status_mark():
         (
             "en",
             "Recommended",
-            "PC: Test GPU 8.0 GiB VRAM, RAM 32.0 GiB (32.0 available)",
+            "PC: Test GPU 8.0 GiB VRAM ✓ verified GPU kind, RAM 32.0 GiB (32.0 available)",
             "Recommended: 1 of 5 (5 hidden: uncensored 3, tools 2)",
         ),
         (
             "ja",
             "おすすめ",
-            "PC: Test GPU VRAM 8.0 GiB、メモリ 32.0 GiB(空き 32.0)",
+            "PC: Test GPU VRAM 8.0 GiB ✓ 確認済みの種類、メモリ 32.0 GiB(空き 32.0)",
             "おすすめ: 5 件中 1 件(隠した 5 件: 無検閲 3・補助ツール 2)",
         ),
     ],
@@ -245,7 +245,7 @@ def test_header_hidden_and_count(lang, title, pc_line, head):
             [fit("a")], title=title, system=pc(), console=make_console(buf), matched=5, hidden=hidden
         )
     lines = buf.getvalue().splitlines()
-    assert lines[0] == pc_line
+    assert lines[0] == pc_line  # NVIDIA の専用 VRAM は同梱の実測で確認済みの種類(#108)
     assert lines[1] == head
     assert any("--uncensored" in x for x in lines)
 
@@ -299,9 +299,9 @@ def test_no_verified_column(lang):
         cells = row_of(out, mid).split()
         assert cells[-1] == "apache-2.0" and not {"workflow", "held", "yes"} & set(cells)
     order = (
-        "Order: runs, Perfect/Good, Marginal (faster Mode first), official, popularity, Score."
+        "Order: runs, Perfect/Good (GPU+RAM, CPU last), Marginal (faster first), official, popularity, Score."
         if lang == "en"
-        else "並び: 動く → Perfect/Good → Marginal(速い Mode が先)→ 公式 → 人気 → Score。"
+        else "並び: 動く → Perfect/Good(GPU+RAM・CPU は後)→ Marginal(速い Mode が先)→ 公式 → 人気 → Score。"
     )
     assert order in out
 
