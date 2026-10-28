@@ -9,6 +9,8 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 
 | What you want | Command | More |
 |---|---|---|
+| Install | `pipx install genmodelfit` (or `uv tool install genmodelfit` / `pip install genmodelfit`); to try without installing, `uvx genmodelfit recommend` | [README, "Install"](../README.md#install) |
+| `genmodelfit` is "not found" after installing | `python -m genmodelfit recommend` (the same program; works without PATH) | [README, "Install"](../README.md#install) |
 | See which models run on this PC | `genmodelfit recommend` | [README, "Quick start"](../README.md#quick-start) |
 | Find a model of one type (music here) | `genmodelfit recommend -m music` (or `genmodelfit search <word>`) | [`recommend`](#genmodelfit-recommend), [`types`](#genmodelfit-types) |
 | See everything that runs, in one table | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -17,7 +19,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Change where downloads go | `genmodelfit config set comfyui-dir D:/ComfyUI` (once only: `--comfyui-dir D:/ComfyUI`) | [download.md, "genmodelfit config"](download.md#genmodelfit-config) |
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
-| Use it from a script or an app | add `--json` (and `--yes` to download) | [schema.md](schema.md) |
+| Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
 | Measure a model and send the result | `genmodelfit bench <id> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
@@ -27,6 +29,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 |---|---|
 | fit level (`Status`) | How much of the memory a model needs on this PC (VRAM on the GPU, RAM on the CPU): `perfect` up to 60%, `good` up to 85%, `marginal` up to 98%, `too_tight` above 98% (does not run), `unknown` / `?` not judged (the size is not known). Some run modes cap the level: [README, "Fit levels"](../README.md#fit-levels). |
 | runnable | `perfect`, `good` or `marginal` (what `fit` shows by default). |
+| offload | Keeping part of the weights in RAM instead of VRAM and moving them over while running (`GPU+RAM`). It lets a model run on a smaller GPU, but slowly. "Without offloading" means `GPU` or `GPU~`. |
 | run mode (`Mode`) | `GPU` everything on the GPU; `GPU~` the parts are moved onto the GPU one after another; `GPU+RAM` part of the weights is offloaded to RAM (slow); `CPU` (slow); `-` does not run. [README, "Columns"](../README.md#columns) |
 | Score | 0–100, the memory headroom (100 up to 70% use). Not speed or quality. |
 | model / workflow | A workflow is one ComfyUI template (or Hugging Face entry) with an id such as `image_z_image_turbo_int8`. A model is the weights (family + size) that several workflows share; they differ only in precision or use. Tables show one row per model (`--all-workflows`: one per workflow). `info` and `download` accept either. |
@@ -80,7 +83,7 @@ link here.
 | `--ram` | `GB` | detected on this PC | judge with this much system RAM in GB (GiB), e.g. 32; to judge another PC | `system`, `recommend`, `fit`, `search`, `info`, `download` |
 | `--db` | `PATH` | the list fetched by update, else the bundled list | use this model list file (db.json) | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `gate`, `bench` |
 | `--no-cache` |  |  | use the bundled list, not the one fetched by update | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `gate`, `review list`, `bench` |
-| `--license-allowlist` | `LIST\|FILE` | the allowlist in [gate.md](gate.md) | licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line). Default: [gate.md](gate.md) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
+| `--license-allowlist` | `LIST\|FILE` | the allowlist in [gate.md](gate.md) | licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line). Default: [gate.md](gate.md). An empty string ("") is the same as not giving it | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--comfyui-version` | `VER` | the latest release recorded in the list | the ComfyUI version in use; apps should always pass theirs (default: the latest release recorded by update) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--max-head-age-days` | `DAYS` | `30` | trust HEAD checks for this many days (default 30; none for no limit) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--allow-uncensored-auto` |  |  | allow uncensored models in automatic recommendations (Verified); not a display filter and not download consent | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
@@ -98,16 +101,25 @@ link here.
 | `--task` | `USE[,USE]` |  | filter by use (gen / edit / i2v / lipsync / motion / voice / upscale / tool, or task codes such as t2i, i2i, inpaint; see `genmodelfit types`) | `recommend`, `fit`, `search` |
 | `--all-workflows` |  |  | one row per workflow instead of grouping the same model (differing only in precision or use) | `recommend`, `fit`, `search` |
 
+## Preconditions of the commands that judge this PC
+
+The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
+
+- Nothing to prepare.
+- The GPU and RAM are detected; `--vram` / `--ram` override them.
+- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
+- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+
 ## Environment variables
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `GENMODELFIT_LANG` | every command (read in `src/genmodelfit/i18n.py`) | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
-| `GENMODELFIT_COMFYUI_DIR` | `download` (read in `src/genmodelfit/cli.py`) | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download` (read in `src/genmodelfit/comfyfind.py`) | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
-| `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings (read in `src/genmodelfit/config.py`) | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
-| `GENMODELFIT_CACHE_DIR` | `update`, `bench`, `contrib`, and every command that reads the cached list (read in `src/genmodelfit/db.py`) | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
-| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command (read in `src/genmodelfit/signing.py`) | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
+| `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
+| `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
+| `GENMODELFIT_CACHE_DIR` | `update`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
+| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
 
 Network access also follows the usual proxy and certificate variables (`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, ...);
 `~/.netrc` credentials are never sent.
@@ -145,7 +157,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved `b
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does (130 on Linux and macOS, another code on Windows); `bench` first cancels its job and exits 1. |
+| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` first cancels its job and exits 1. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -204,10 +216,7 @@ Show this PC (GPU, RAM, free disk) and whether the model list in use is still fr
 
 **Preconditions**
 
-- Nothing to prepare.
-- The GPU and RAM are detected; `--vram` / `--ram` override them.
-- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
-- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+- [The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)
 
 **Side effects**
 
@@ -256,7 +265,7 @@ Recommend generation models for this PC, best first.
 - One row per model; the precision and workflow that fit best are chosen (`--all-workflows`: all).
 - Order: models that run, then Perfect/Good, then Marginal (faster mode first), official templates, popularity (rank among the same type and source), Score, id (`--json` puts auto-recommendable ones, gate: auto, before the levels).
 - Score 0-100 is the memory headroom (100 up to 70% use; not speed).
-- Rules: [scoring.md](scoring.md).
+- Score rules: [scoring.md](scoring.md).
 - Uncensored models and utility tools are hidden unless asked.
 - The output is a table; add `--json` for apps.
 
@@ -274,10 +283,7 @@ Recommend generation models for this PC, best first.
 
 **Preconditions**
 
-- Nothing to prepare.
-- The GPU and RAM are detected; `--vram` / `--ram` override them.
-- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
-- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+- [The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)
 
 **Side effects**
 
@@ -353,10 +359,7 @@ genmodelfit fit [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH
 
 **Preconditions**
 
-- Nothing to prepare.
-- The GPU and RAM are detected; `--vram` / `--ram` override them.
-- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
-- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+- [The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)
 
 **Side effects**
 
@@ -431,10 +434,7 @@ genmodelfit search [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db P
 
 **Preconditions**
 
-- Nothing to prepare.
-- The GPU and RAM are detected; `--vram` / `--ram` override them.
-- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
-- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+- [The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)
 
 **Side effects**
 
@@ -535,7 +535,7 @@ genmodelfit info [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PAT
 
 - Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the other workflows that use the same model.
 - An exact id always matches (uncensored included).
-- Otherwise a part of the id or name is searched within `--content`; several matches are an error that lists the candidates.
+- When the id does not match, a part of the id or name is searched within `--content`; several matches are an error that lists the candidates.
 
 **Options and arguments**
 
@@ -547,10 +547,7 @@ genmodelfit info [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PAT
 
 **Preconditions**
 
-- Nothing to prepare.
-- The GPU and RAM are detected; `--vram` / `--ram` override them.
-- GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
-- The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
+- [The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)
 
 **Side effects**
 
@@ -602,9 +599,9 @@ genmodelfit update [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
 
 - Get a newer model list.
 - Users: run `genmodelfit update --from-release`.
-- It takes in the signed latest list published by this project (only db.json and db.json.sig are downloaded) and checks the signature; the other commands then use it instead of the bundled list (`--no-cache` goes back to the bundled one).
+- `--from-release` takes in the signed latest list published by this project (only db.json and db.json.sig are downloaded) and checks the signature; after that, the other commands use it instead of the bundled list (`--no-cache` goes back to the bundled one).
 - Without options, update rebuilds the whole list from upstream (ComfyUI templates, the Hugging Face Hub, a HEAD request to every download URL).
-- That is for maintainers: it is slow (many requests; Hugging Face rate limits make it wait, see `--rate-limit-budget`).
+- Rebuilding is for maintainers: it is slow (many requests; Hugging Face rate limits make it wait, see `--rate-limit-budget`).
 - Maintainers can also redo only the HEAD checks (`--heads-only`), re-apply only the app fields and the hand-added models (`--fields-only`), or re-read only the file headers (`--inspect-only`).
 - The policy options (`--comfyui-version`, `--max-head-age-days`, ...) only change the auto-recommendable count printed at the end.
 - `--db` / `--no-cache` choose the list that `--heads-only`, `--fields-only` and `--inspect-only` start from.
@@ -670,26 +667,33 @@ genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db
 Download the files of a model for this PC (all files of one workflow), checking sha256.
 
 - MODEL is a model name (as in the tables), a workflow id, or a part of either (like info).
-- For a model name, the workflow and precision are chosen like recommend: the highest precision that runs on this PC without offloading (`--precision` picks one; `--budget` caps the download).
-- Files go to `<ComfyUI>/models/<folder>/<file>` (the folder comes from the template: diffusion_models, text_encoders, vae, loras, checkpoints, ...).
-- The place is the first of: `--comfyui-dir` (or `--output-dir` for a folder outside ComfyUI, same layout), the environment variable GENMODELFIT_COMFYUI_DIR, comfyui-dir saved with `genmodelfit config`, or a ComfyUI found automatically (the current folder, a ComfyUI running on 127.0.0.1 port 8188 or 8000, the ComfyUI Desktop and comfy-cli settings, usual places such as C:/ComfyUI).
-- The plan always says which.
-- When none or several are found, a terminal lets you pick one or type a path; with `--yes`, `--json` or without a terminal nothing is downloaded (exit 1).
+- For a model name, the workflow is chosen like recommend: the highest precision that runs on this PC without offloading (good or better on the GPU); when none does, the best fit level, then the faster run mode, then the higher precision.
+- The plan says which rule chose it.
+- `--precision` downloads the workflow of that precision instead.
+- `--budget` prefers the best workflow whose download stays under the limit; when none does, the download is refused.
+- Files go to `<ComfyUI>/models/<folder>/<file>`, where the folder comes from the template (diffusion_models, text_encoders, vae, loras, checkpoints, ...).
+- The place is the first of: `--comfyui-dir` (for a folder outside ComfyUI, `--output-dir`, with the same order of priority), the environment variable GENMODELFIT_COMFYUI_DIR, comfyui-dir saved with `genmodelfit config`, or a ComfyUI found automatically (the current folder, a ComfyUI running on 127.0.0.1 port 8188 or 8000, the ComfyUI Desktop and comfy-cli settings, usual places such as C:/ComfyUI).
+- The plan always says which of these decided the place.
+- When no place or several places are found, a terminal lets you pick one or type a path, while with `--yes`, `--json` or without a terminal nothing is downloaded (exit 1).
+- `--list` does not ask a running ComfyUI, so it may show the place as "not decided" although the real download would find one (pass `--comfyui-dir` to see the exact plan).
 - An is_default section in the ComfyUI folder's extra_model_paths.yaml is honored.
-- Files whose ComfyUI folder is unknown go to other/, which ComfyUI does not read: move them before use.
+- Files whose ComfyUI folder is unknown go to other/; ComfyUI does not read other/, so move them to the right folder (diffusion_models, ...) before use.
 - Before downloading, the files, each license and its URL (or the page to check when no license is stated), the total size and the free disk are shown and you are asked [y/N/c] (c changes the place; `--yes` skips the question).
 - The first time a place found automatically is used, you are asked whether to save it for next time ([Y/n]; `genmodelfit config` shows or removes it).
+- Only a ComfyUI folder can be saved: an `--output-dir` place must be given each time.
 - Uncensored models and files with an unknown license need your consent: in a terminal the question names them (y/N); with `--yes`, `--json` or without a terminal pass `--uncensored` and/or `--any-license` (old forms: `--content all`, `--include-unknown-license`; consent flags must be written in full).
-- When only these are missing, the plan ends with one command that adds them (it never adds them by itself).
+- When only the consent is missing, the plan ends with one command that adds it (genmodelfit never adds it by itself).
 - Refused (no option lifts these): gated files (no login is used), too little disk (needs the download + 1 GB), names that would land outside the folder, hosts other than Hugging Face / GitHub.
+- To use the files: reload ComfyUI in the browser if it was open, then open, from ComfyUI's template list, the template titled as in the first line of info (the id in [ ] is the template's file name).
+- Models whose id starts with hf: have no ComfyUI template: their Hugging Face page (`https://huggingface.co/<owner>/<repo>`) says how to use them.
 
 **Options and arguments**
 
 | Option / argument | Value | Default | Description |
 |---|---|---|---|
 | `model` |  |  | model name (the Model column), workflow id, or a part of either |
-| `--precision` | `PREC` | the highest precision that runs on this PC without offloading | download the workflow of the same model that has this precision (e.g. fp8 / bf16 / int8 / gguf-q8_0; the Prec column and info show which exist, and an unknown one is an error that lists them). Not the same as `--precision` of recommend etc. (which converts the estimate) |
-| `--budget` | `GB` |  | the most to download in GB (files already there are not counted) |
+| `--precision` | `PREC` | chosen like recommend (see above) | download the workflow of the same model that has this precision (e.g. fp8 / bf16 / int8 / gguf-q8_0; the Prec column and info show which exist, and an unknown one is an error that lists them). Not the same as `--precision` of recommend etc. (which converts the estimate) |
+| `--budget` | `GB` |  | the most to download in GB (files already there are not counted); the best workflow within it is chosen, and when none fits the download is refused |
 | `--list` |  |  | only list the files and the total (no download, no network) |
 | `--output-dir` | `DIR` | none (decided as for `--comfyui-dir`) | a destination outside ComfyUI; files go to `<DIR>/<folder>/<file>` (folder: diffusion_models, vae, ...; the same layout as ComfyUI's models folder, so passing that models folder itself also works) |
 | `--comfyui-dir` | `DIR` | GENMODELFIT_COMFYUI_DIR, then config, then found automatically | the ComfyUI folder; files go to `<DIR>/models/<folder>/<file>` (default: $GENMODELFIT_COMFYUI_DIR, then comfyui-dir in `genmodelfit config`, then found automatically) |
@@ -763,7 +767,8 @@ Keys:
 comfyui-dir  the ComfyUI folder download uses (after --comfyui-dir / --output-dir and
              GENMODELFIT_COMFYUI_DIR). `set` checks that the folder looks like ComfyUI
              (4 of main.py, comfy, nodes.py, comfy_extras, comfy_api, or a ComfyUI Desktop
-             folder: models, input, user, output, custom_nodes).
+             folder: models, input, user, output, custom_nodes). A folder outside ComfyUI
+             (download --output-dir) cannot be saved: pass --output-dir each time.
 lang         the display language, en or ja (--lang and GENMODELFIT_LANG win).
 ```
 
@@ -883,7 +888,7 @@ genmodelfit gate [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
 
 Count how many models in the list can be recommended automatically (Verified, "auto" in JSON) and why the others are held. The checks are the same as in info (one model) and in the "auto" / held_reasons fields of recommend `--json`.
 
-- How to read the output: the first line is the ComfyUI version the checks used; then the number of models, how many are auto and how many held.
+- How to read the output: the first line is the ComfyUI version the checks used, and the second the number of models, how many are auto and how many held.
 - The table has one row per check: "failing" is how many models fail that check, "first-failing" how many models fail it as their first failed check (the check to fix first).
 - `--only-auto` / `--only-held` also list the model ids (held ones with the first reason).
 - The checks and the allowlist: [gate.md](gate.md)
@@ -915,7 +920,7 @@ Count how many models in the list can be recommended automatically (Verified, "a
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Error: an empty `--license-allowlist` (e.g. a broken `--db` file; with `--json` the error is in "error") |
+| 1 | Error: an empty `--license-allowlist` ("," or an empty file) (e.g. a broken `--db` file; with `--json` the error is in "error") |
 | 2 | Usage error (unknown option or value) |
 
 **Examples for scripts and apps**
@@ -941,7 +946,9 @@ genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] 
                  [old] [new]
 ```
 
-- Compare two model lists (db.json) and show what changed for users: added / removed models, and for each changed model (name (type) — id) added / removed / changed files (with their license and source), license (the permissive side is marked with !), newly uncensored, runtime / use, auto-recommendation, prompt / speech languages, size, precision, review status, and the names of any other changed fields ("other changes").
+- Compare two model lists (db.json) and show what changed for users.
+- Shown are added / removed models and, for each changed model (name (type) — id), the changes below.
+- Changes of a model: added / removed / changed files (with their license and source), license (the permissive side is marked with !), newly uncensored, runtime / use, auto-recommendation, prompt / speech languages, size, precision, review status, and the names of any other changed fields ("other changes").
 - Changed models are in three sections, each cut by `--limit` separately: files / license / uncensored / runtime and use first, then auto-recommendation changes (ids always listed), then license provenance, languages, size, review marks and the rest; within a section the most important change comes first, so `--limit` never hides it; the same low-importance change on many models (e.g. a review mark added to all) is one line with a count.
 - Every changed field is shown somewhere (or counted for `--all`).
 - The raw JSON is compared, so unknown keys count (as in merge-check).
@@ -949,7 +956,8 @@ genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] 
 - With no arguments, compares the bundled list with the list fetched by `update` (the cache).
 - With one argument, compares the bundled list with that file.
 - With two, compares the two files.
-- `--all` adds the maintenance view (the content of the weekly PR): all failed HEAD checks (not only new ones), 401 repos, the changed numbers in `sources`, models where only popularity numbers, dates or HEAD results changed, and the ids of collapsed lines; it has no line limit unless `-n` is given (default `-n` 20 per section otherwise).
+- `--all` adds the maintenance view (the content of the weekly PR): all failed HEAD checks (not only new ones), 401 repos, the changed numbers in `sources`, models where only popularity numbers, dates or HEAD results changed, and the ids of collapsed lines.
+- With `--all` there is no line limit unless `-n` is given (without `--all` the default is `-n` 20 per section).
 
 **Options and arguments**
 
@@ -966,7 +974,7 @@ genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] 
 **Preconditions**
 
 - No arguments: a fetched list in the cache (run `genmodelfit update --from-release` first; without it, a short how-to is printed and the exit code is 0).
-- Otherwise one or two db.json files.
+- With arguments: one or two db.json files.
 - A warning is printed when the new list is older (generated_at) than the old one.
 
 **Side effects**
@@ -1128,14 +1136,16 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 ```
 
 - Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
-- TEMPLATE is the workflow id from the list (as in info).
-- Your saved results are used when this PC is judged, and you can share them (`--share`; [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed)).
+- TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id in [ ] on the first line of info).
+- Model names and parts of ids are not accepted, and hf: models have no template (pass an API-format workflow with `--workflow` instead).
+- Your saved results are used when this PC is judged.
+- `--share` prepares a submission and opens GitHub's "new file" page in your browser if you answer y: sign in to GitHub (an account is needed), press "Propose changes", then "Create pull request" ([CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed)).
 
 **Options and arguments**
 
 | Option / argument | Value | Default | Description |
 |---|---|---|---|
-| `template` |  |  | the workflow (template) id (see info) |
+| `template` |  |  | the exact workflow id of a ComfyUI template (the id in [ ] on the first line of info) |
 | `--url` | `URL` |  | URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188; no default) |
 | `--workflow` | `PATH` |  | workflow in API format (default: built from the template) |
 | `--width` | `PX` | the template's value | width in pixels (omitted: as in the template) |
@@ -1154,7 +1164,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--source` | `SOURCE` |  | who measured it where (goes into source) |
 | `--note` | `NOTE` |  | text to add to the result's note |
 | `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 1). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
-| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and print the URL of the GitHub page to share it; in a terminal, ask whether to open it in a browser. Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
+| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and print the URL of the GitHub page to share it; in a terminal, ask whether to open it in a browser. Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
 
@@ -1162,7 +1172,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 
 - A ComfyUI running at `--url` with all the model files of TEMPLATE in its models folder (use `genmodelfit download` first).
 - The GPU must be free: when another program uses it, or its free memory cannot be checked (nvidia-smi), bench refuses unless `--force`.
-- Measure on a ComfyUI only you use; `--free` unloads its models first.
+- Measure on a ComfyUI only you use; `--free` makes bench unload that ComfyUI's models first.
 
 **Side effects**
 
@@ -1227,7 +1237,12 @@ aggregate [dir] --check
 | Code | Meaning |
 |---|---|
 | 0 | Success (validate: every file passed; show: nothing to fix) |
-| 1 | Error / validate: a file failed the mechanical checks, or has a warning with `--strict` (notices for the maintainer who merges never fail) / show: something to fix / share: a privacy check is NG or the checks have errors (cannot share) / aggregate: no such folder, or an empty result with `--output` (unless `--allow-empty`) / aggregate `--check`: submissions not in the bundled aggregate yet, or re-aggregating it differs |
+| 1 | Error (an unreadable file, an unknown shape, ...) |
+| 1 | validate: a file failed the mechanical checks, or has a warning with `--strict` (notices for the maintainer who merges never fail) |
+| 1 | show: something to fix |
+| 1 | share: a privacy check is NG or the checks have errors (cannot share) |
+| 1 | aggregate: no such folder, or an empty result with `--output` (unless `--allow-empty`) |
+| 1 | aggregate `--check`: submissions not in the bundled aggregate yet, or re-aggregating it differs |
 | 2 | Usage error |
 | 3 | aggregate `--report` `--fail-on-breach`: an error exceeded the threshold |
 
@@ -1363,3 +1378,6 @@ genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--outp
 The command sections are generated from the program's argument parser by `tools/cli_reference.py`, so they always
 match the program. Do not edit them by hand; change the help texts in `src/genmodelfit/cli.py` and run
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
+
+The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
+(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`) and `signing.py` (`GENMODELFIT_SIGNING_KEY`).

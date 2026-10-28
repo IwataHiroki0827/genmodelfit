@@ -19,10 +19,10 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
 ```
 
 - **Which files**: all files of one workflow.
-  - A model name (as in the tables) picks the workflow and precision like `recommend`: the highest precision that runs on this PC without offloading.
+  - A model name (as in the tables) picks the workflow and precision like `recommend`: the highest precision that runs on this PC without offloading (good or better on the GPU); when none does, the best fit level, then the faster run mode, then the higher precision. The plan says which rule chose it.
   - A workflow id is used as is.
   - `--precision int8` picks a precision.
-  - `--budget 15` (GB) caps the download (files already there are not counted).
+  - `--budget 15` (GB) caps the download (files already there are not counted): the best workflow within it is chosen, and when none fits the download is refused.
 - **Where**: each file goes to the ComfyUI folder the template names (`models/diffusion_models`, `text_encoders`, `vae`, `loras`, `checkpoints`, ...). Subfolders in the file name are kept. Which ComfyUI is decided as in [Choosing the place](#choosing-the-place) below; `--output-dir` uses the same layout for a folder outside ComfyUI.
   - Files whose ComfyUI folder is unknown (many Hugging Face models) go to `other/`. ComfyUI does not read `models/other`: the plan says so, and you move them (to `checkpoints`, `diffusion_models`, `loras`, ... as the model page says) before use.
   - For a file without a folder in the list (from any source) the folder is inferred only from one piece of evidence in the bundled list: the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all matching files are in one folder (`unet` and `diffusion_models`, `clip` and `text_encoders` count as one; e.g. an SDXL all-in-one file has the same count as `sd_xl_base_1.0.safetensors`, so `checkpoints`). The plan shows the basis (`directory_basis` in JSON). Names and tags are not used to guess. A GGUF file placed in `diffusion_models` / `text_encoders` this way needs the ComfyUI-GGUF custom nodes; the plan says so.

@@ -4071,7 +4071,7 @@ One row per model; the precision and workflow that fit best are chosen (--all-wo
 Order: models that run, then Perfect/Good, then Marginal (faster mode first), official
 templates, popularity (rank among the same type and source), Score, id (--json puts
 auto-recommendable ones, gate: auto, before the levels). Score 0-100 is the memory headroom
-(100 up to 70% use; not speed). Rules: docs/scoring.md. Uncensored models and
+(100 up to 70% use; not speed). Score rules: docs/scoring.md. Uncensored models and
 utility tools are hidden unless asked. The output is a table; add --json for apps.
 
 """
@@ -4133,7 +4133,7 @@ AGENT USAGE:
   Details: docs/schema.md""",
     "info": """Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the
 other workflows that use the same model.
-An exact id always matches (uncensored included). Otherwise a part of the id or name is
+An exact id always matches (uncensored included). When the id does not match, a part of the id or name is
 searched within --content; several matches are an error that lists the candidates.
 
 """
@@ -4168,11 +4168,12 @@ AGENT USAGE:
   checked_at } } }
   Details: docs/schema.md""",
     "update": """Get a newer model list.
-Users: run `genmodelfit update --from-release`. It takes in the signed latest list published by this
-project (only db.json and db.json.sig are downloaded) and checks the signature; the other commands
-then use it instead of the bundled list (--no-cache goes back to the bundled one).
+Users: run `genmodelfit update --from-release`.
+--from-release takes in the signed latest list published by this project (only db.json and
+db.json.sig are downloaded) and checks the signature; after that, the other commands use it instead
+of the bundled list (--no-cache goes back to the bundled one).
 Without options, update rebuilds the whole list from upstream (ComfyUI templates, the Hugging Face
-Hub, a HEAD request to every download URL). That is for maintainers: it is slow (many requests;
+Hub, a HEAD request to every download URL). Rebuilding is for maintainers: it is slow (many requests;
 Hugging Face rate limits make it wait, see --rate-limit-budget). Maintainers can also redo only the
 HEAD checks (--heads-only), re-apply only the app fields and the hand-added models (--fields-only),
 or re-read only the file headers (--inspect-only).
@@ -4195,11 +4196,12 @@ EXIT CODES:
   1  Error (network, bad signature, older list, ...; with --json the error is in "error")
   2  Usage error
 """,
-    "diff": """Compare two model lists (db.json) and show what changed for users: added / removed models, and
-for each changed model (name (type) — id) added / removed / changed files (with their license and
-source), license (the permissive side is marked with !), newly uncensored, runtime / use,
-auto-recommendation, prompt / speech languages, size, precision, review status, and the names of
-any other changed fields ("other changes"). Changed models are in three sections, each cut by
+    "diff": """Compare two model lists (db.json) and show what changed for users.
+Shown are added / removed models and, for each changed model (name (type) — id), the changes below.
+Changes of a model: added / removed / changed files (with their license and source), license (the
+permissive side is marked with !), newly uncensored, runtime / use, auto-recommendation, prompt /
+speech languages, size, precision, review status, and the names of any other changed fields
+("other changes"). Changed models are in three sections, each cut by
 --limit separately: files / license / uncensored / runtime and use first, then auto-recommendation
 changes (ids always listed), then license provenance, languages, size, review marks and the rest;
 within a section the most important change comes first, so --limit never hides it; the same
@@ -4211,12 +4213,12 @@ With no arguments, compares the bundled list with the list fetched by `update` (
 With one argument, compares the bundled list with that file. With two, compares the two files.
 --all adds the maintenance view (the content of the weekly PR): all failed HEAD checks (not only
 new ones), 401 repos, the changed numbers in `sources`, models where only popularity numbers,
-dates or HEAD results changed, and the ids of collapsed lines; it has no line limit unless -n is
-given (default -n 20 per section otherwise).
+dates or HEAD results changed, and the ids of collapsed lines. With --all there is no line limit
+unless -n is given (without --all the default is -n 20 per section).
 
 PRECONDITIONS:
   No arguments: a fetched list in the cache (run `genmodelfit update --from-release` first; without
-  it, a short how-to is printed and the exit code is 0). Otherwise one or two db.json files.
+  it, a short how-to is printed and the exit code is 0). With arguments: one or two db.json files.
   A warning is printed when the new list is older (generated_at) than the old one.
 
 SIDE EFFECTS:
@@ -4244,30 +4246,43 @@ AGENT USAGE:
     "download": """Download the files of a model for this PC (all files of one workflow), checking sha256.
 
 MODEL is a model name (as in the tables), a workflow id, or a part of either (like info).
-For a model name, the workflow and precision are chosen like recommend: the highest precision
-that runs on this PC without offloading (--precision picks one; --budget caps the download).
-Files go to <ComfyUI>/models/<folder>/<file> (the folder comes from the template:
-diffusion_models, text_encoders, vae, loras, checkpoints, ...). The place is the first of:
---comfyui-dir (or --output-dir for a folder outside ComfyUI, same layout), the environment
-variable GENMODELFIT_COMFYUI_DIR, comfyui-dir saved with `genmodelfit config`, or a ComfyUI
-found automatically (the current folder, a ComfyUI running on 127.0.0.1 port 8188 or 8000,
-the ComfyUI Desktop and comfy-cli settings, usual places such as C:/ComfyUI). The plan always
-says which. When none or several are found, a terminal lets you pick one or type a path; with
---yes, --json or without a terminal nothing is downloaded (exit 1). An is_default section in
-the ComfyUI folder's extra_model_paths.yaml is honored. Files whose ComfyUI folder is unknown
-go to other/, which ComfyUI does not read: move them before use.
+For a model name, the workflow is chosen like recommend: the highest precision that runs on
+this PC without offloading (good or better on the GPU); when none does, the best fit level,
+then the faster run mode, then the higher precision. The plan says which rule chose it.
+--precision downloads the workflow of that precision instead.
+--budget prefers the best workflow whose download stays under the limit; when none does, the
+download is refused.
+Files go to <ComfyUI>/models/<folder>/<file>, where the folder comes from the template
+(diffusion_models, text_encoders, vae, loras, checkpoints, ...).
+The place is the first of: --comfyui-dir (for a folder outside ComfyUI, --output-dir, with the
+same order of priority), the environment variable GENMODELFIT_COMFYUI_DIR, comfyui-dir saved
+with `genmodelfit config`, or a ComfyUI found automatically (the current folder, a ComfyUI
+running on 127.0.0.1 port 8188 or 8000, the ComfyUI Desktop and comfy-cli settings, usual
+places such as C:/ComfyUI). The plan always says which of these decided the place.
+When no place or several places are found, a terminal lets you pick one or type a path, while
+with --yes, --json or without a terminal nothing is downloaded (exit 1).
+--list does not ask a running ComfyUI, so it may show the place as "not decided" although the
+real download would find one (pass --comfyui-dir to see the exact plan).
+An is_default section in the ComfyUI folder's extra_model_paths.yaml is honored.
+Files whose ComfyUI folder is unknown go to other/; ComfyUI does not read other/, so move them to
+the right folder (diffusion_models, ...) before use.
 Before downloading, the files, each license and its URL (or the page to check when no license
 is stated), the total size and the free disk are shown and you are asked [y/N/c] (c changes
 the place; --yes skips the question). The first time a place found automatically is used, you
 are asked whether to save it for next time ([Y/n]; `genmodelfit config` shows or removes it).
+Only a ComfyUI folder can be saved: an --output-dir place must be given each time.
 Uncensored models and files with an unknown license need your consent: in a terminal the
 question names them (y/N); with --yes, --json or without a terminal pass --uncensored and/or
 --any-license (old forms: --content all, --include-unknown-license; consent flags must be
-written in full). When only these are missing, the plan ends with one command that adds them
-(it never adds them by itself).
+written in full). When only the consent is missing, the plan ends with one command that adds
+it (genmodelfit never adds it by itself).
 Refused (no option lifts these): gated files (no login is used), too little disk (needs the
 download + 1 GB), names that would land outside the folder, hosts other than Hugging Face /
 GitHub.
+To use the files: reload ComfyUI in the browser if it was open, then open, from ComfyUI's template
+list, the template titled as in the first line of info (the id in [ ] is the template's file
+name). Models whose id starts with hf: have no ComfyUI template: their
+Hugging Face page (https://huggingface.co/<owner>/<repo>) says how to use them.
 
 PRECONDITIONS:
   Network access to huggingface.co (or github.com) for the download. --list needs none.
@@ -4313,7 +4328,8 @@ Keys:
   comfyui-dir  the ComfyUI folder download uses (after --comfyui-dir / --output-dir and
                GENMODELFIT_COMFYUI_DIR). `set` checks that the folder looks like ComfyUI
                (4 of main.py, comfy, nodes.py, comfy_extras, comfy_api, or a ComfyUI Desktop
-               folder: models, input, user, output, custom_nodes).
+               folder: models, input, user, output, custom_nodes). A folder outside ComfyUI
+               (download --output-dir) cannot be saved: pass --output-dir each time.
   lang         the display language, en or ja (--lang and GENMODELFIT_LANG win).
 Without an action, shows each setting and where it comes from (option, environment variable,
 config file, default).
@@ -4345,14 +4361,14 @@ AGENT USAGE:
 JSON) and why the others are held. The checks are the same as in info (one model) and in the
 "auto" / held_reasons fields of recommend --json.
 
-How to read the output: the first line is the ComfyUI version the checks used; then the number of
-models, how many are auto and how many held. The table has one row per check: "failing" is how many
+How to read the output: the first line is the ComfyUI version the checks used, and the second the
+number of models, how many are auto and how many held. The table has one row per check: "failing" is how many
 models fail that check, "first-failing" how many models fail it as their first failed check (the
 check to fix first). --only-auto / --only-held also list the model ids (held ones with the first
 reason). The checks and the allowlist: docs/gate.md
 
 """
-    + _COMMON_HELP.format(zero="", one=": an empty --license-allowlist").replace(
+    + _COMMON_HELP.format(zero="", one=': an empty --license-allowlist ("," or an empty file)').replace(
         _DETECT_HELP, "  Nothing to prepare. The PC is not judged.\n"
     )
     + """
@@ -4365,14 +4381,19 @@ AGENT USAGE:
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   Details: docs/schema.md""",
     "bench": """Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
-TEMPLATE is the workflow id from the list (as in info). Your saved results are used when this PC
-is judged, and you can share them (--share; CONTRIBUTING.md "The easy way").
+TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id
+in [ ] on the first line of info). Model names and parts of ids are not accepted, and hf: models
+have no template (pass an API-format workflow with --workflow instead).
+Your saved results are used when this PC is judged.
+--share prepares a submission and opens GitHub's "new file" page in your browser if you answer y:
+sign in to GitHub (an account is needed), press "Propose changes", then "Create pull request"
+(CONTRIBUTING.md "The easy way").
 
 PRECONDITIONS:
   A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
   genmodelfit download first). The GPU must be free: when another program uses it, or its free
   memory cannot be checked (nvidia-smi), bench refuses unless --force. Measure on a ComfyUI only you
-  use; --free unloads its models first.
+  use; --free makes bench unload that ComfyUI's models first.
 
 SIDE EFFECTS:
   Network: only the ComfyUI at --url (it sends one job and reads the results), plus the official
@@ -4441,7 +4462,7 @@ _HELP_JA = {
 並べ方: 動くもの → Perfect/Good → Marginal(速い動かし方が先)→ 公式のテンプレート →
 人気(同じ種類・同じ出どころの中の順位)→ Score → ID
 (--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
-Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。決まりは docs/scoring.md。
+Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。Score の決まりは docs/scoring.md。
 無検閲のモデルと補助ツールは、指定しなければ出さない。出力は表。アプリは --json を付ける。
 
 """
@@ -4505,7 +4526,8 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
   詳しくは docs/schema.md""",
     "info": """1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動のおすすめの条件・
 同じモデルのほかのワークフロー)を出す。
-ID がそのまま合えば必ずそのモデル(無検閲も)。合わなければ ID・名前の一部を --content の中で探す。
+ID がそのまま合えば必ずそのモデル(無検閲も)。
+ID がそのまま合わなければ、ID・名前の一部を --content の中で探す。
 2 件以上合えば失敗にして候補を並べる。
 
 """
@@ -4542,11 +4564,12 @@ HEAD の確認の日付・期限切れか・いつまで有効か・自動のお
   checked_at } } }
   詳しくは docs/schema.md""",
     "update": """新しい一覧を取る。
-利用者は `genmodelfit update --from-release` を実行する。このプロジェクトが配る署名つきの最新の一覧を
-取り込み(落とすのは db.json と db.json.sig だけ)、署名を確かめる。ほかのコマンドは、それからは同梱の
-一覧の代わりにこれを使う(--no-cache で同梱に戻る)。
+利用者は `genmodelfit update --from-release` を実行する。
+--from-release は、このプロジェクトが配る署名つきの最新の一覧を取り込み(落とすのは db.json と
+db.json.sig だけ)、署名を確かめる。取り込んだ後は、ほかのコマンドも同梱の一覧の代わりにこれを使う
+(--no-cache で同梱に戻る)。
 オプションなしの update は、一覧を上流(ComfyUI のテンプレート・Hugging Face Hub・すべてのダウンロードの
-URL への HEAD)から作り直す。これは保守する人向けで、時間がかかる(問い合わせが多く、Hugging Face の
+URL への HEAD)から作り直す。作り直しは保守する人向けで、時間がかかる(問い合わせが多く、Hugging Face の
 上限で待つ。--rate-limit-budget を見る)。保守する人は、HEAD の確認だけ(--heads-only)、アプリ向けの
 項目と手で足したモデルだけ(--fields-only)、ファイルの見出しだけ(--inspect-only)をやり直すこともできる。
 方針のオプション(--comfyui-version・--max-head-age-days など)が変えるのは、最後に出す自動のおすすめの
@@ -4567,26 +4590,28 @@ URL への HEAD)から作り直す。これは保守する人向けで、時間�
   1  失敗(通信・署名が合わない・前より古い一覧など。--json なら誤りは "error" に入る)
   2  使い方の誤り
 """,
-    "diff": """2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す: 増えた・消えたモデルと、変わったモデル
-(名前 (種類) — ID)ごとの、増えた・消えた・変わったファイル(ライセンスと出どころつき)、ライセンス
-(寛容な側に ! を付ける)、新しく無検閲になったもの、動かし方・用途、自動のおすすめ、指示・読み上げの
-言語、大きさ、精度、確認の状態と、ほかに変わった項目の名前(「その他の変化」)。
+    "diff": """2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す。
+出すのは、増えた・消えたモデルと、変わったモデル(名前 (種類) — ID)ごとの次の違い。
+変わったモデルの違い: 増えた・消えた・変わったファイル(ライセンスと出どころつき)、ライセンス(寛容な
+側に ! を付ける)、新しく無検閲になったもの、動かし方・用途、自動のおすすめ、指示・読み上げの言語、
+大きさ、精度、確認の状態、ほかに変わった項目の名前(「その他の変化」)。
 変わったモデルは 3 つの節に分け、節ごとに --limit で切る: ファイル・ライセンス・無検閲・動かし方と
 用途が先、次に自動のおすすめの変化(ID は必ず出す)、最後にライセンスの出どころ・言語・大きさ・
-確認の印など。節の中では大事な変化を先に出すので、--limit で隠れない。大事さの低い同じ変化が多くの
-モデルにあれば(全部に確認の印が付いたなど)、件数つきの 1 行にまとめる。
-変わった項目はどこかに必ず出る(--all では数える)。JSON をそのまま比べるので、知らない鍵の変化も
-数える(merge-check と同じ)。
+確認の印など。
+節の中では大事な変化を先に出すので、大事な変化は --limit で隠れない。
+大事さの低い同じ変化が多くのモデルにあれば(全部に確認の印が付いたなど)、件数つきの 1 行にまとめる。
+変わった項目はどこかに必ず出る(--all では数える)。
+JSON をそのまま比べるので、知らない鍵の変化も数える(merge-check と同じ)。
 
-引数なしなら、同梱の一覧と `update` で取ってきた一覧(キャッシュ)を比べる。1 つなら同梱の一覧と
-そのファイル、2 つならその 2 つを比べる。
+引数なしなら、同梱の一覧と `update` で取ってきた一覧(キャッシュ)を比べる。引数が 1 つなら同梱の
+一覧とそのファイル、2 つならその 2 つを比べる。
 --all は保守用の内容(毎週の PR の中身)を足す: 新しいものに限らずすべての HEAD の失敗、401 の
 リポジトリ、`sources` の変わった数、人気の数・日付・HEAD の結果だけが変わったモデル、まとめた行の
-ID。-n を付けなければ行の上限は無い(--all でなければ節ごとに既定 -n 20)。
+ID。--all のときは、-n を付けなければ行の上限は無い(--all でなければ節ごとに既定 -n 20)。
 
 前提:
   引数なし: キャッシュに取ってきた一覧があること(先に `genmodelfit update --from-release`。無ければ
-  短い案内を出して終了コード 0)。ほかは db.json のファイルを 1 つか 2 つ。
+  短い案内を出して終了コード 0)。引数があるときは db.json のファイルを 1 つか 2 つ。
   新しい一覧(generated_at)が前の一覧より古ければ注意を出す。
 
 副作用:
@@ -4615,26 +4640,39 @@ ID。-n を付けなければ行の上限は無い(--all でなければ節ご�
 sha256 で確かめる)。
 
 MODEL はモデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部(info と同じ)。
-モデルの名前なら、ワークフローと精度は recommend と同じ選び方: この PC で逃がさずに動く中で一番高い
-精度(--precision で選ぶ。--budget で落とす量の上限を決める)。
+モデルの名前なら、ワークフローは recommend と同じ選び方で決める: この PC で逃がさずに載る(good 以上で
+GPU)中で一番精度の高いもの、それが無ければ段階が一番良いもの(同じなら逃がさない載せ方、次に精度の
+高いもの)。どの決まりで選んだかは計画に出す。
+--precision を付けると、その精度のワークフローを落とす。
+--budget を付けると、落とす量が上限に収まる中で一番良いワークフローを選び、収まるものが無ければ断る。
 ファイルは <ComfyUI>/models/<folder>/<file> に置く(folder はテンプレートで決まる:
-diffusion_models・text_encoders・vae・loras・checkpoints など)。置き場所は次の順で最初に決まったもの:
---comfyui-dir(ComfyUI の外なら --output-dir。同じ並び)、環境変数 GENMODELFIT_COMFYUI_DIR、
-`genmodelfit config` で保存した comfyui-dir、自動で見つけた ComfyUI(今いるフォルダ、127.0.0.1 の
-8188・8000 で起動中の ComfyUI、ComfyUI デスクトップ版と comfy-cli の設定、C:/ComfyUI などの
-よくある場所)。どれで決めたかを計画に必ず出す。見つからない・2 つ以上見つかったときは、端末なら
-選ぶかパスを入れる。--yes・--json・端末でないときは落とさない(終了コード 1)。ComfyUI のフォルダの
-extra_model_paths.yaml に is_default の節があれば、そこに置く。ComfyUI のどのフォルダか分からない
-ファイルは other/ に置く。ComfyUI は読まないので、使う前に移す。
+diffusion_models・text_encoders・vae・loras・checkpoints など)。
+置き場所は次の順で最初に決まったもの: --comfyui-dir(ComfyUI の外は --output-dir。優先の順は同じ)、
+環境変数 GENMODELFIT_COMFYUI_DIR、`genmodelfit config` で保存した comfyui-dir、自動で見つけた
+ComfyUI(今いるフォルダ、127.0.0.1 の 8188・8000 で起動中の ComfyUI、ComfyUI デスクトップ版と
+comfy-cli の設定、C:/ComfyUI などのよくある場所)。置き場所をどれで決めたかは、計画に必ず出す。
+置き場所が見つからない・2 つ以上見つかったときは、端末なら選ぶかパスを入れ、--yes・--json・端末で
+ないときは落とさない(終了コード 1)。
+--list は起動中の ComfyUI に尋ねないので、本当に落とすときは見つかる場所でも「置き場所: 未定」と
+出ることがある(正しい計画を見るには --comfyui-dir を付ける)。
+ComfyUI のフォルダの extra_model_paths.yaml に is_default の節があれば、そこに置く。
+ComfyUI のどのフォルダか分からないファイルは other/ に置く。ComfyUI は other/ を読まないので、使う
+前に正しいフォルダ(diffusion_models など)へ移す。
 落とす前に、ファイル・それぞれのライセンスと URL(記載が無ければ確かめる場所)・合計の大きさ・
-ディスクの空きを出し、[y/N/c] で尋ねる(c で置き場所を変える。--yes で尋ねない)。自動で見つけた
-場所に初めて落とすときは、次からもそこにするかを尋ねる([Y/n]。`genmodelfit config` で見る・消す)。
-無検閲のモデルとライセンスの分からないファイルには同意が要る: 端末ならそれを書いて y/N で尋ねる。
+ディスクの空きを出し、[y/N/c] で尋ねる(c で置き場所を変える。--yes で尋ねない)。
+自動で見つけた場所に初めて落とすときは、次からもそこにするかを尋ねる([Y/n]。`genmodelfit config`
+で見る・消す)。保存できるのは ComfyUI のフォルダだけで、--output-dir の場所は毎回指定する。
+無検閲のモデルとライセンスの分からないファイルには同意が要る: 端末ならそれを書いて y/N で尋ね、
 --yes・--json・端末でないときは --uncensored・--any-license を指定する(前からの書き方:
---content all、--include-unknown-license。同意の指定は略さずに書く)。足りないのがこれだけなら、
-計画の最後にそれを足したコマンドを 1 つ出す(勝手には足さない)。
+--content all、--include-unknown-license。同意の指定は略さずに書く)。
+足りないのが同意だけなら、計画の最後に同意を足したコマンドを 1 つ出す(genmodelfit が勝手に足して
+落とすことはしない)。
 断るもの(どのオプションでも変わらない): gated のファイル(ログインしない)、ディスクの空きが
 足りない(落とす量 + 1 GB が要る)、置き場所の外に出る名前、Hugging Face / GitHub 以外のホスト。
+落としたファイルを使うには: ComfyUI を開いていたらブラウザで読み込み直し、ComfyUI のテンプレートの
+一覧から、info の 1 行目の名前のテンプレートを開く([ ] の中の ID はテンプレートのファイル名)。
+ID が hf: で始まるモデルには ComfyUI のテンプレートが無いので、使い方は Hugging Face のページ
+(https://huggingface.co/<owner>/<repo>)を見る。
 
 前提:
   落とすには huggingface.co(か github.com)と通信できること。--list は通信しない。
@@ -4643,8 +4681,9 @@ extra_model_paths.yaml に is_default の節があれば、そこに置く。Com
   通信: 一覧の URL の GET だけ(https。転送先もすべて Hugging Face / GitHub のホストに限る)。
   この PC のことは何も送らない(User-Agent: genmodelfit/<版>。~/.netrc の資格情報もトークンも
   使わない)。書くのは置き場所のフォルダの中だけ: 落としている間は <file>.part(Ctrl-C や失敗では
-  残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば <file> に名前を変える。sha256 が
-  合わなければ消す。sha256 の合う既にあるファイルは飛ばし、ほかの既にあるファイルは上書きしない。
+  残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば <file> に名前を変える。落とした
+  ファイルの sha256 が合わなければ消す。sha256 の合う既にあるファイルは飛ばし、ほかの既にある
+  ファイルは上書きしない。
   置き場所の指定(オプション・環境変数・設定)が無いときは、この PC で起動中の ComfyUI にフォルダの
   場所を尋ねる(GET http://127.0.0.1:8188 と :8000 の /internal/folder_paths。時間切れ 2 秒)。
   「次からも」に Y と答えると、設定ファイルに comfyui-dir を書く(`genmodelfit config path`)。
@@ -4677,7 +4716,8 @@ extra_model_paths.yaml に is_default の節があれば、そこに置く。Com
   comfyui-dir  download が使う ComfyUI のフォルダ(--comfyui-dir・--output-dir と
                GENMODELFIT_COMFYUI_DIR の次)。set はそのフォルダが ComfyUI に見えることを確かめる
                (main.py・comfy・nodes.py・comfy_extras・comfy_api のうち 4 つ、または ComfyUI
-               デスクトップ版のフォルダ: models・input・user・output・custom_nodes)。
+               デスクトップ版のフォルダ: models・input・user・output・custom_nodes)。ComfyUI の外の
+               フォルダ(download の --output-dir)は保存できないので、毎回 --output-dir を付ける。
   lang         表示の言語。en か ja(--lang と GENMODELFIT_LANG が優先)。
 操作を書かなければ、それぞれの設定と、どこから来たか(指定・環境変数・設定ファイル・既定)を出す。
 
@@ -4707,15 +4747,15 @@ extra_model_paths.yaml に is_default の節があれば、そこに置く。Com
     "gate": """一覧のうち、自動でおすすめに出せる(Verified。JSON では "auto")モデルの数と、ほかが保留になる
 理由を数える。条件は info(1 つのモデル)や recommend --json の "auto"・held_reasons と同じ。
 
-出力の読み方: 1 行目は条件に使った ComfyUI の版。次にモデルの数と、出せる数・保留の数。表は条件ごとに
+出力の読み方: 1 行目は条件に使った ComfyUI の版、2 行目はモデルの数と、出せる数・保留の数。表は条件ごとに
 1 行で、「落ちた数」はその条件に通らないモデルの数、「最初に落ちた数」はそれが最初に落ちた条件である
 モデルの数(先に直すところ)。--only-auto / --only-held はモデルの ID も並べる(保留は最初の理由つき)。
 条件と許可リストは docs/gate.md
 
 """
-    + _COMMON_HELP_JA.format(zero="", one=": 壊れた --db のファイル、空の --license-allowlist など").replace(
-        _DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n"
-    )
+    + _COMMON_HELP_JA.format(
+        zero="", one=": 壊れた --db のファイル、空の --license-allowlist(「,」や空のファイル)など"
+    ).replace(_DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n")
     + """
 使い方の例(エージェント・アプリ向け):
   genmodelfit gate
@@ -4726,14 +4766,19 @@ extra_model_paths.yaml に is_default の節があれば、そこに置く。Com
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   詳しくは docs/schema.md""",
     "bench": """動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
-TEMPLATE は一覧のワークフローの ID(info と同じ)。保存した結果はこの PC の判定に使い、送ることも
-できる(--share。CONTRIBUTING.md「かんたんな送り方」)。
+TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのもの(例 image_z_image_turbo_int8。info の
+1 行目の [ ] の中)。モデルの名前や ID の一部は受けない。hf: のモデルにはテンプレートが無い
+(代わりに --workflow で API 形式のワークフローを渡す)。
+保存した結果はこの PC の判定に使う。
+--share は提出の用意をし、y と答えるとブラウザで GitHub の「新しいファイル」のページを開く:
+GitHub にログインし(アカウントが要る)、「Propose changes」、次に「Create pull request」を押す
+(CONTRIBUTING.md「かんたんな送り方」)。
 
 前提:
   --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
   (先に genmodelfit download で落とす)。GPU が空いていること: ほかのプログラムが使っている、または
   空きを確かめられない(nvidia-smi)ときは、--force が無ければ測らない。自分だけが使う ComfyUI で測る。
-  --free で先にそのモデルを解放する。
+  --free を付けると、先にその ComfyUI のモデルを解放する。
 
 副作用:
   通信: --url の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。その ComfyUI にテンプレートが無ければ、
@@ -5208,9 +5253,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LIST|FILE",
         help=tr(
             "自動のおすすめに許すライセンス(「mit,apache-2.0」か、1"
-            " 行に 1 つ書いたファイル)。既定は docs/gate.md",
+            ' 行に 1 つ書いたファイル)。既定は docs/gate.md。空の文字("")は指定なしと同じ',
             'licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line).'
-            " Default: docs/gate.md",
+            ' Default: docs/gate.md. An empty string ("") is the same as not giving it',
         ),
     )
     _doc(allow, "docs/gate.md の許可リスト", "the allowlist in docs/gate.md")
@@ -5656,16 +5701,18 @@ def build_parser() -> argparse.ArgumentParser:
                 " lists them). Not the same as --precision of recommend etc. (which converts the estimate)",
             ),
         ),
-        "この PC で逃がさずに動く一番高い精度",
-        "the highest precision that runs on this PC without offloading",
+        "recommend と同じ選び方(上を見る)",
+        "chosen like recommend (see above)",
     )
     sp.add_argument(
         "--budget",
         type=_positive_float,
         metavar="GB",
         help=tr(
-            "落とす量の上限(GB。既にあるファイルは数えない)",
-            "the most to download in GB (files already there are not counted)",
+            "落とす量の上限(GB。既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、"
+            "収まるものが無ければ断る",
+            "the most to download in GB (files already there are not counted); the best workflow within it"
+            " is chosen, and when none fits the download is refused",
         ),
     )
     sp.add_argument(
@@ -5975,7 +6022,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub_parser("bench", tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"), [common])
     sp.add_argument(
         "template",
-        help=tr("ワークフロー(テンプレート)の ID(info で分かる)", "the workflow (template) id (see info)"),
+        help=tr(
+            "ComfyUI のテンプレートのワークフローの ID そのもの(info の 1 行目の [ ] の中)",
+            "the exact workflow id of a ComfyUI template (the id in [ ] on the first line of info)",
+        ),
     )
     sp.add_argument(
         "--url",
@@ -6101,10 +6151,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
             "中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。"
-            "何も送らない(CONTRIBUTING.md)",
+            "送るには GitHub のアカウントが要る。genmodelfit は何も送らない(CONTRIBUTING.md)",
             "write the submission JSON (to the cache's submissions folder without --submission),"
             " show it with the checks, and print the URL of the GitHub page to share it;"
-            " in a terminal, ask whether to open it in a browser. Nothing is sent (CONTRIBUTING.md)",
+            " in a terminal, ask whether to open it in a browser. Sending needs a GitHub account;"
+            " genmodelfit itself sends nothing (CONTRIBUTING.md)",
         ),
     )
     sp.set_defaults(func=cmd_bench)
@@ -6378,11 +6429,13 @@ CONTRIBUTING.md)。
 
 終了コード:
   0  成功(validate: すべてのファイルが通った。show: 直すところが無い)
-  1  失敗 / validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
-     (マージする人向けの確認では失敗にしない)/ show: 直すところがある /
-     share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない)/
-     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)/
-     aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
+  1  失敗(読めないファイル・知らない形など)
+  1  validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
+     (マージする人向けの確認では失敗にしない)
+  1  show: 直すところがある
+  1  share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない)
+  1  aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)
+  1  aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
   2  使い方の誤り
   3  aggregate --report --fail-on-breach: 誤差が閾値を超えた
 
@@ -6415,12 +6468,13 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
-  1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
-     maintainer who merges never fail) /
-     show: something to fix / share: a privacy check is NG or the checks have errors (cannot share) /
-     aggregate: no such folder, or an empty result with --output
-     (unless --allow-empty) / aggregate --check: submissions not in the bundled aggregate yet, or
-     re-aggregating it differs
+  1  Error (an unreadable file, an unknown shape, ...)
+  1  validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
+     maintainer who merges never fail)
+  1  show: something to fix
+  1  share: a privacy check is NG or the checks have errors (cannot share)
+  1  aggregate: no such folder, or an empty result with --output (unless --allow-empty)
+  1  aggregate --check: submissions not in the bundled aggregate yet, or re-aggregating it differs
   2  Usage error
   3  aggregate --report --fail-on-breach: an error exceeded the threshold
 

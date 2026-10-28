@@ -19,10 +19,10 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
 ```
 
 - **落とすもの**: 1 つのワークフローの全部のファイル。
-  - モデル名(表の Model)なら、`recommend` と同じく、この PC で逃がさずに載る中で一番精度の高いワークフローを選ぶ。
+  - モデル名(表の Model)なら、`recommend` と同じく、この PC で逃がさずに載る(good 以上で GPU)中で一番精度の高いワークフローを選ぶ。それが無ければ段階が一番良いもの(同じなら逃がさない載せ方、次に精度の高いもの)。どの決まりで選んだかは計画に出す。
   - ID を指定すればそのまま使う。
   - `--precision int8` で精度を決められる。
-  - `--budget 15`(GB)で落とす量の上限を決められる(既にあるファイルは数えない)。
+  - `--budget 15`(GB)で落とす量の上限を決められる(既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、収まるものが無ければ断る。
 - **置き場所**: テンプレートの置き場所(`models/diffusion_models`・`text_encoders`・`vae`・`loras`・`checkpoints` など)に置く。ファイル名の中のサブフォルダは保つ。どの ComfyUI かは下の[置き場所の決め方](#置き場所の決め方)で決める。`--output-dir` は ComfyUI の外のフォルダに同じ並びで置く。
   - ComfyUI のどのフォルダか分からないファイル(Hugging Face のモデルに多い)は `other/` に置く。ComfyUI は `models/other` を読まないので、計画の中でそう知らせる。使う前に(モデルのページの説明に従って `checkpoints`・`diffusion_models`・`loras` などへ)移すこと。
   - 一覧に置き場所の無いファイル(出どころによらない)の置き場所は、同梱の一覧の 1 つの根拠だけで決める: 本体のファイルのヘッダのパラメータ数が、公式の ComfyUI テンプレートのファイルと 0.001% の幅で一致し、一致したファイルの置き場所が 1 つだけのとき(`unet` と `diffusion_models`、`clip` と `text_encoders` は同じとみなす。例 SDXL の全部入りのファイルは `sd_xl_base_1.0.safetensors` と同じ数なので `checkpoints`)。計画に根拠を出す(JSON は `directory_basis`)。名前やタグからの推測はしない。こうして `diffusion_models`・`text_encoders` に置く GGUF のファイルは、読むのにカスタムノード ComfyUI-GGUF が要る(計画にそう出す)。

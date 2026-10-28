@@ -41,6 +41,8 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 
 | What you want | Command | More |
 |---|---|---|
+| Install | `pipx install genmodelfit` (or `uv tool install genmodelfit` / `pip install genmodelfit`); to try without installing, `uvx genmodelfit recommend` | [README, "Install"](../README.md#install) |
+| `genmodelfit` is "not found" after installing | `python -m genmodelfit recommend` (the same program; works without PATH) | [README, "Install"](../README.md#install) |
 | See which models run on this PC | `genmodelfit recommend` | [README, "Quick start"](../README.md#quick-start) |
 | Find a model of one type (music here) | `genmodelfit recommend -m music` (or `genmodelfit search <word>`) | [`recommend`](#genmodelfit-recommend), [`types`](#genmodelfit-types) |
 | See everything that runs, in one table | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -49,7 +51,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Change where downloads go | `genmodelfit config set comfyui-dir D:/ComfyUI` (once only: `--comfyui-dir D:/ComfyUI`) | [download.md, "genmodelfit config"](download.md#genmodelfit-config) |
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
-| Use it from a script or an app | add `--json` (and `--yes` to download) | [schema.md](schema.md) |
+| Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
 | Measure a model and send the result | `genmodelfit bench <id> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
@@ -59,6 +61,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 |---|---|
 | fit level (`Status`) | How much of the memory a model needs on this PC (VRAM on the GPU, RAM on the CPU): `perfect` up to {perfect}%, `good` up to {good}%, `marginal` up to {marginal}%, `too_tight` above {marginal}% (does not run), `unknown` / `?` not judged (the size is not known). Some run modes cap the level: [README, "Fit levels"](../README.md#fit-levels). |
 | runnable | `perfect`, `good` or `marginal` (what `fit` shows by default). |
+| offload | Keeping part of the weights in RAM instead of VRAM and moving them over while running (`GPU+RAM`). It lets a model run on a smaller GPU, but slowly. "Without offloading" means `GPU` or `GPU~`. |
 | run mode (`Mode`) | `GPU` everything on the GPU; `GPU~` the parts are moved onto the GPU one after another; `GPU+RAM` part of the weights is offloaded to RAM (slow); `CPU` (slow); `-` does not run. [README, "Columns"](../README.md#columns) |
 | Score | 0–100, the memory headroom (100 up to 70% use). Not speed or quality. |
 | model / workflow | A workflow is one ComfyUI template (or Hugging Face entry) with an id such as `image_z_image_turbo_int8`. A model is the weights (family + size) that several workflows share; they differ only in precision or use. Tables show one row per model (`--all-workflows`: one per workflow). `info` and `download` accept either. |
@@ -108,16 +111,22 @@ link here.
 |---|---|---|---|---|
 {shared_rows}
 
+## Preconditions of the commands that judge this PC
+
+The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
+
+{common_pre}
+
 ## Environment variables
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `GENMODELFIT_LANG` | every command (read in `src/genmodelfit/i18n.py`) | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
-| `GENMODELFIT_COMFYUI_DIR` | `download` (read in `src/genmodelfit/cli.py`) | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download` (read in `src/genmodelfit/comfyfind.py`) | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
-| `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings (read in `src/genmodelfit/config.py`) | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
-| `GENMODELFIT_CACHE_DIR` | `update`, `bench`, `contrib`, and every command that reads the cached list (read in `src/genmodelfit/db.py`) | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
-| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command (read in `src/genmodelfit/signing.py`) | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
+| `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
+| `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
+| `GENMODELFIT_CACHE_DIR` | `update`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
+| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
 
 Network access also follows the usual proxy and certificate variables (`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, ...);
 `~/.netrc` credentials are never sent.
@@ -155,7 +164,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved `b
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does (130 on Linux and macOS, another code on Windows); `bench` first cancels its job and exits 1. |
+| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` first cancels its job and exits 1. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -170,6 +179,9 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
 The command sections are generated from the program's argument parser by `tools/cli_reference.py`, so they always
 match the program. Do not edit them by hand; change the help texts in `src/genmodelfit/cli.py` and run
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
+
+The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
+(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`) and `signing.py` (`GENMODELFIT_SIGNING_KEY`).
 """,
     "ja": """# コマンド一覧
 
@@ -182,6 +194,8 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 
 | したいこと | コマンド | 詳しく |
 |---|---|---|
+| 入れる | `pipx install genmodelfit`(か `uv tool install genmodelfit` / `pip install genmodelfit`)。入れずに試すなら `uvx genmodelfit recommend` | [README「入れ方」](../README.ja.md#入れ方) |
+| 入れたのに `genmodelfit` が「見つからない」 | `python -m genmodelfit recommend`(中身は同じ。PATH に関係なく動く) | [README「入れ方」](../README.ja.md#入れ方) |
 | この PC で動くモデルを知る | `genmodelfit recommend` | [README「すぐ試す」](../README.ja.md#すぐ試す) |
 | 1 つの種類のモデルを探す(例は音楽) | `genmodelfit recommend -m music`(か `genmodelfit search <語>`) | [`recommend`](#genmodelfit-recommend)・[`types`](#genmodelfit-types) |
 | 動くものを全部 1 つの表で見る | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -190,7 +204,7 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 | 落とす場所を変える | `genmodelfit config set comfyui-dir D:/ComfyUI`(1 回だけなら `--comfyui-dir D:/ComfyUI`) | [download.ja.md「genmodelfit config」](download.ja.md#genmodelfit-config) |
 | 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
-| スクリプト・アプリから使う | `--json` を付ける(落とすときは `--yes` も) | [schema.ja.md](schema.ja.md) |
+| スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
 | 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
 | モデルを実測して送る | `genmodelfit bench <ID> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
@@ -200,6 +214,7 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 |---|---|
 | 段階(`Status`) | モデルがこの PC のメモリ(GPU なら VRAM、CPU ならメモリ)をどれだけ使うか: `perfect` は {perfect}% まで、`good` は {good}% まで、`marginal` は {marginal}% まで、`too_tight` は {marginal}% を超える(動かない)、`unknown` / `?` は判定していない(大きさが分からない)。動かし方による上限もある: [README「段階」](../README.ja.md#段階)。 |
 | runnable | `perfect`・`good`・`marginal` のどれか(`fit` が既定で出すもの)。 |
+| 逃がす(offload) | 重みの一部を VRAM ではなくメモリに置き、動かしながら GPU へ移すこと(`GPU+RAM`)。小さい GPU でも動くが遅い。「逃がさずに」は `GPU` か `GPU~` のこと。 |
 | 動かし方(`Mode`) | `GPU` 全部 GPU に載せる、`GPU~` 部品を順に GPU へ載せ替える、`GPU+RAM` 重みの一部をメモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない。[README「列」](../README.ja.md#列) |
 | Score | 0〜100 のメモリの余裕(使用率 70% までは 100)。速さや品質ではない。 |
 | モデル / ワークフロー | ワークフローは ComfyUI のテンプレート(か Hugging Face の項目)1 つで、`image_z_image_turbo_int8` のような ID を持つ。モデルは、いくつかのワークフローが共有する重み(系統 + 大きさ)で、ワークフローどうしは精度か使い方だけが違う。表はモデルごとに 1 行(`--all-workflows` ならワークフローごと)。`info` と `download` はどちらでも受ける。 |
@@ -247,16 +262,22 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 |---|---|---|---|---|
 {shared_rows}
 
+## この PC を判定するコマンドの前提
+
+`system`・`recommend`・`fit`・`search`・`info` の前提は次のとおりです。
+
+{common_pre}
+
 ## 環境変数
 
 | 変数 | 使うところ | 内容 |
 |---|---|---|
-| `GENMODELFIT_LANG` | すべてのコマンド(`src/genmodelfit/i18n.py` で読む) | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
-| `GENMODELFIT_COMFYUI_DIR` | `download`(`src/genmodelfit/cli.py` で読む) | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download`(`src/genmodelfit/comfyfind.py` で読む) | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
-| `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド(`src/genmodelfit/config.py` で読む) | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
-| `GENMODELFIT_CACHE_DIR` | `update`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド(`src/genmodelfit/db.py` で読む) | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
-| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない。`src/genmodelfit/signing.py` で読む) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
+| `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
+| `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
+| `GENMODELFIT_CACHE_DIR` | `update`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
+| `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
 
 通信は、プロキシと証明書の環境変数(`HTTPS_PROXY`・`REQUESTS_CA_BUNDLE` など)にも従います。`~/.netrc` の資格情報は送りません。
 
@@ -293,7 +314,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` は 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります(Linux・macOS では 130、Windows では別の値)。`bench` は送った仕事を取り消してから 1 で終わります。 |
+| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench` は送った仕事を取り消してから 1 で終わります。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 
@@ -308,6 +329,10 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 コマンドの節は、プログラムの引数の解釈から `tools/cli_reference.py` が作っているので、プログラムといつも一致します。
 手で直さず、`src/genmodelfit/cli.py` の説明の文を直して `python tools/cli_reference.py` を実行してください
 (このページが古いと `tests/test_commands_doc.py` が落ちます)。
+
+環境変数を読むのは `src/genmodelfit/` の `i18n.py`(`GENMODELFIT_LANG`)・`cli.py`(`GENMODELFIT_COMFYUI_DIR`)・
+`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
+`signing.py`(`GENMODELFIT_SIGNING_KEY`)です。
 """,
 }
 
@@ -332,6 +357,7 @@ LABELS = {
         "meaning": "Meaning",
         "group": "Group",
         "every": "every command",
+        "common_pre": "[The same as for the other commands that judge this PC](#preconditions-of-the-commands-that-judge-this-pc)",
     },
     "ja": {
         "usage": "使い方",
@@ -353,6 +379,7 @@ LABELS = {
         "meaning": "意味",
         "group": "まとまり",
         "every": "すべてのコマンド",
+        "common_pre": "[この PC を判定するほかのコマンドと同じ](#この-pc-を判定するコマンドの前提)",
     },
 }
 
@@ -537,7 +564,8 @@ def _join(lines: list[str], lang: str) -> str:
             text += " " + line
             continue
         a, b = text[-1], line[0]
-        glue = (a.isascii() or b.isascii()) and a not in "、。(「・/(" and b not in "、。)」・)"
+        glue = (a.isascii() or b.isascii()) and a not in "、。(「・/(" and b not in "、。)」・)("
+        glue = glue or "→" in (a, b)
         text += (" " if glue else "") + line
     return text
 
@@ -669,6 +697,23 @@ def _schema_link(command: str, lang: str) -> str | None:
     return ("・" if lang == "ja" else ", ").join(links) if links else None
 
 
+_COMMON_PRE: dict[str, list[str]] = {}  # この PC を判定するコマンドに共通の前提(_render で入れる)
+
+
+def _bullets(body: list[str], lang: str, pairs) -> list[str]:
+    out: list[str] = []
+    for para in _paragraphs(body):
+        out += _prose([_clean(x, pairs) for x in para], lang, bullets=True)
+    return out
+
+
+def _common_pre(template: str, lang: str, pairs) -> list[str]:
+    """cli._COMMON_HELP(_JA) の前提の節を箇条書きにしたもの。"""
+    _, sections = _split_sections(template)
+    body = next(lines for kind, lines in sections if kind == "pre")
+    return _bullets([ln for ln in body if ln.startswith(" ")], lang, pairs)
+
+
 def _render_help(text: str, command: str, lang: str, pairs) -> list[str]:
     """--help の説明(と例)を Markdown にする。"""
     lab = LABELS[lang]
@@ -680,8 +725,12 @@ def _render_help(text: str, command: str, lang: str, pairs) -> list[str]:
         free = [ln for ln in lines if ln.strip() and not ln.startswith(" ")]
         if kind in ("pre", "side"):
             out += [f"**{lab[kind]}**", ""]
-            for para in _paragraphs(body):
-                out += _prose([_clean(x, pairs) for x in para], lang, bullets=True)
+            items = _bullets(body, lang, pairs)
+            if kind == "pre" and items == _COMMON_PRE.get(lang):
+                # この PC を判定するコマンドに共通の前提は、前置きの節に 1 回だけ載せる
+                out += [f"- {lab['common_pre']}", ""]
+            else:
+                out += items
         elif kind == "exit":
             rows: list[list[str]] = []
             for ln in body:
@@ -961,6 +1010,13 @@ def _render(lang: str) -> str:
     from genmodelfit.gate import DEFAULT_MAX_HEAD_AGE_DAYS
 
     pairs = _placeholders()
+    _COMMON_PRE[lang] = _common_pre(
+        (cli._COMMON_HELP_JA if lang == "ja" else cli._COMMON_HELP)
+        .replace("{zero}", "")
+        .replace("{one}", ""),
+        lang,
+        pairs,
+    )
     lab = LABELS[lang]
     with i18n.forced(lang), cli._argparse_language():
         top = cli.build_parser()
@@ -987,6 +1043,7 @@ def _render(lang: str) -> str:
     for key, value in {
         "{global_rows}": "\n".join(global_rows),
         "{shared_rows}": "\n".join(shared_rows),
+        "{common_pre}": "\n".join(_COMMON_PRE[lang]).strip(),
         "{perfect}": str(bands["perfect"]),
         "{good}": str(bands["good"]),
         "{marginal}": str(bands["marginal"]),
