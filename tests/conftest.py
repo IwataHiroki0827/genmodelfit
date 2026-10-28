@@ -38,6 +38,12 @@ def _no_real_hardware(monkeypatch):
     monkeypatch.setattr(bench, "find_server_process", lambda url: None)
     monkeypatch.setattr(hardware, "_reg_display_entries", lambda: None)
     monkeypatch.setattr(hardware, "_reg_paging_files", lambda: None)
+    # #101: 本物の sysfs の PCI の部品・amdkfd・WSL2 の状態も読まない(CI の仮想マシンの画面や、
+    # WSL で流すときの /dev/dxg で結果が変わらないように)。使う試験は tests/test_detect_everywhere.py
+    # のように一時ディレクトリの木(hardware._ROOT)と元の関数で差し替える
+    monkeypatch.setattr(hardware, "_sysfs_slots", lambda: [])
+    monkeypatch.setattr(hardware, "kfd_gfx_targets", lambda: {})
+    monkeypatch.setattr(hardware, "wsl_state", lambda: None)
 
 
 @pytest.fixture(autouse=True)

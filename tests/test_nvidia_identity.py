@@ -21,7 +21,7 @@ import pytest
 
 from genmodelfit import hardware
 from genmodelfit.estimate import gpu_key, same_gpu, same_vram
-from genmodelfit.hardware import QUERY, cc_from_name, classify_gpu, nvidia_name_known, parse_nvidia_smi
+from genmodelfit.hardware import QUERY, cc_from_name, classify_gpu, nvidia_name_well_formed, parse_nvidia_smi
 from genmodelfit.models import Gpu
 
 # nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used,driver_version,compute_cap の行(MiB)
@@ -70,8 +70,8 @@ def test_local_pci_id_is_never_read_for_nvidia(monkeypatch):
 
 
 @pytest.mark.parametrize("name", ADA_WORKSTATION)
-def test_ada_workstation_and_laptop_names_are_known(name):
-    assert nvidia_name_known(name)
+def test_ada_workstation_and_laptop_names_are_well_formed(name):
+    assert nvidia_name_well_formed(name)
     assert cc_from_name(name) == (8, 9)
 
 

@@ -108,16 +108,20 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - Score は収まり(`memory_fit`。llmfit の fit_score と同じ曲線)だけ。人気は Score に混ぜず並びの鍵(`popularity.py`)。
   並び・Score・人気の式は docs/scoring にある
 - 実測の提出(`data/contrib`)の受け付けの決まり(足すだけ・置き場所・個人の情報・`files_fp`・GPU 名)は docs/schema.md「contrib」。
+  GPU 名は表でなく形で見る(断るのは汎用の名前・名前の代わりの値だけ。形に合わない名前・公称に合わない VRAM は確認。#101)。
   同梱のまとめ(`measurements_community.json`)は版を出す手順で作る(docs/release.md)。大きさの入力が無いテンプレートは手の表
   `estimate.NO_SIZE_INPUT`(ほかの利用者の提出では決めない)
 
 ## ハードウェアの検出(2026-10-20、#21。docs/hardware.md が正本)
 
 - NVIDIA の GPU があれば、nvidia-smi で確かめたもの(backend `cuda` の最大の 1 枚)を使う。PyTorch の CUDA 版のビルドが
-  どれも対応しない世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
-  世代・ドライバが分からないときは断らない。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
+  どれも対応しない古い世代・どれにもドライバが足りない GPU は backend `none`(CPU として判定し、理由を notes に書く)。
+  世代・ドライバが分からないとき、表より新しい世代は断らない(#101)。VRAM を返さない NVIDIA は、名前が `NVIDIA GB10` と
+  完全一致の Linux aarch64(DGX Spark)だけ統合メモリ(MemTotal、段階は good まで)で使う。Jetson・GH200 は範囲外。表(`hardware.TORCH_CUDA_BUILDS`・`_NAME_CC`)を変えたら docs/hardware.md の出典も直す
 - 判定に使える NVIDIA の GPU が無いときだけ、AMD(ROCm: RDNA 2 以降、Windows 11・Linux)・Intel(XPU: Arc A/B・Core Ultra の Arc Graphics)・Apple(MPS: macOS 14 以降)を一次資料の対応表(`hardware.classify_adapter`、docs/hardware.md「NVIDIA 以外の GPU」)で判定に使う。推定で段階は good まで(同じ設定の実測で段階が決まれば外す。実測で段階を決める決まりは上の「判定・Score の決まり」)、NVIDIA の実測は較正だけに使う。共有メモリの GPU は逃がさず、メインメモリに GPU の分(取り分けを超える分)も足す。OS の版・世代が分からないものは CPU。表を変えたら docs/hardware.md の出典も直す。
-  見つけた GPU は `system --all-gpus` で調べる
+  見つけた GPU は `system --all-gpus` で調べる。WSL2 の AMD・Intel は、/dev/dxg・相互運用・powershell.exe で Windows 側を読み、
+  rocminfo / clinfo -l で準備を確かめ、公式の WSL の対応表にあるときだけ使う(#101。docs/hardware.md「WSL2」。
+  rocminfo の UUID の行は読まない)。検出は環境ごとに docs/hardware.md「すべての環境」の表に従う
 - 精度の直しは ComfyUI のコード(should_use_fp16・supported_inference_dtypes・VAE の working_dtypes)で確かなところだけ。
   系統の表は `families.py`(行番号は ComfyUI のコミット付き)。表・判定の規則を変えたら同梱の一覧の `comfy_family` も作り直す
   (`families.assign`。tests/test_hardware.py が一致を検査)。VRAM の量で変わる動き(fp32・fp16 に広げる)は

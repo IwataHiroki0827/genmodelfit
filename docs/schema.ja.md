@@ -76,7 +76,7 @@ User-Agent は `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit
 |---|---|---|
 | `os`、`cpu` | str | |
 | `cpu_cores` | int | 論理スレッド数 |
-| `ram_total_gb`、`ram_available_gb` | float | GiB |
+| `ram_total_gb`、`ram_available_gb` | float | GiB。0 = 不明(0.11.0。メモリが読めないとき。見積もりはメインメモリで断らない) |
 | `gpus` | Gpu[] | `nvidia-smi` で確かめた NVIDIA の GPU。使える NVIDIA の GPU が無いときは、[hardware.md](hardware.ja.md) の対応表が受け付ける(0.7.0、#22) AMD / Intel / Apple の GPU も入る |
 | `best_gpu` | Gpu \| null | 判定に使う GPU。`backend` が `cuda` の GPU のうち VRAM が最大のもの。無ければ `rocm` / `xpu` / `mps` の GPU(専用 VRAM のものが先、次に最大のもの)。null は CPU として判定する |
 | `disk_free_gb` | float \| null | ホームディレクトリ(または `--disk-path`)の空き容量 |
@@ -110,7 +110,7 @@ Gpu:
 | `compute_dtype` | str \| null | この GPU で ComfyUI が既定で計算する精度: `fp16` / `bf16` / `fp32`(fp32 では作業メモリが 2 倍になる)。`backend` が `none` のとき、または世代が不明のときは null |
 | `bf16`、`fp8` | bool \| null | ComfyUI から見た bf16 / fp8 計算の対応(null は上と同じ)。bf16 が無いと、ComfyUI が fp16 では計算しない系統のモデルは fp32 で計算する([hardware.md](hardware.ja.md)) |
 | `notes` | str[] | この GPU の理由と注意 |
-| `memory` | str | (0.7.0)`dedicated`(専用の VRAM)/ `shared`(システム RAM を使う内蔵 GPU または APU)/ `unified`(Apple silicon)。shared と unified の GPU は逃がさない(`GPU+RAM` にしない) |
+| `memory` | str | (0.7.0)`dedicated`(専用の VRAM)/ `shared`(システム RAM を使う内蔵 GPU または APU。0.11.0 から DGX Spark の GB10 も: 総量は MemTotal)/ `unified`(Apple silicon)。shared と unified の GPU は逃がさない(`GPU+RAM` にしない) |
 | `gfx_target` | str \| null | (0.7.0)AMD の LLVM ターゲット。例: `gfx1100` |
 | `carveout_gb` | float \| null | (0.7.0)`memory: shared` のとき、BIOS が確保する VRAM(`ram_total_gb` には含まれない)。RAM の確認では、これを超える GPU 使用分だけ数える。それ以外は null |
 | `pci_id` | str \| null | (0.9.0)AMD / Intel の GPU の PCI 型番 ID `vendor:device`(`1002:744c`)。Windows の WMI `PNPDeviceID`、Linux の `lspci -nn` から取る。NVIDIA(nvidia-smi の名前はどこでも一致する)と Apple では null。同じ GPU でのほかの利用者の実測と照らすのに使う(`estimate.same_gpu`) |
@@ -118,7 +118,7 @@ Gpu:
 Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / `unknown`)、
 `vram_gb`(Windows: レジストリの `HardwareInformation.qwMemorySize`、無ければ 4 GiB 未満の WMI `AdapterRAM`。Linux の AMD: sysfs。Linux の Intel Arc: 名前から小さいほうのモデルの VRAM。不明なら null)、
 `vram_source`(`registry` / `wmi` / `sysfs` / `name` / null)、
-`source`(`wmi` / `lspci` / `system_profiler`)。
+`source`(`wmi` / `lspci` / `system_profiler`。0.11.0 で `sysfs`(lspci が無い Linux)と `wsl`(WSL2 から読んだ Windows 側の部品)を足した)。
 
 0.7.0(#22)で追加:
 - `integrated`(bool | null)
@@ -128,6 +128,12 @@ Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / 
 - `needs`(string | null。GPU を使えるようにするのに要るもの。今は、既知の Windows 10 のビルドだけが理由のときの `"Windows 11"` だけ。表の見出しは `needs Windows 11 for generation`)
 
 0.9.0 で追加: `pci_id`(str | null。Windows の WMI `PNPDeviceID` または Linux の `lspci -nn` から取った PCI 型番 ID `vendor:device`。どのベンダーでも。バスアドレスは取らない)。
+
+0.11.0 で追加(#101。[hardware.ja.md](hardware.ja.md)「すべての環境」):
+- `driver`(str | null。Windows の WMI の DriverVersion。Intel の WSL2 の条件に使う)
+- `gfx_target`(str | null。名前より確かな所から読んだ AMD の世代: Linux の amdkfd の `gfx_target_version`、WSL2 の rocminfo の `Name: gfx…`)
+- `wsl_runtime`(bool | null。WSL2 から読んだ部品で、WSL の中の準備(AMD は rocminfo、Intel は `clinfo -l`)ができているか)
+- `config_error`(int | null。WMI の ConfigManagerErrorCode が 0 以外のとき。22・28・43 の AMD・Intel の部品は判定に使わない)
 
 ## Data status / 一覧の新しさ
 
@@ -931,7 +937,7 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `consistent` | bool \| null | community の行: 使った提出が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無い。係数の較正(`calibrate`)に入るのは consistent の行だけ。見積もりは、1 件の提出からの `ok` の行すべてを使う(2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
-| `gpu_known` | bool \| null | (#90)community の行: false は名前の表に無い NVIDIA の GPU(記録として残し、判定には使わない) |
+| `gpu_known` | bool \| null | (#90、#101)community の行: false は GPU 名が汎用の名前・名前の代わりの値(記録として残し、判定には使わない) |
 | `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
 | `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(コミットの先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
 | `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
@@ -1059,8 +1065,8 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **読めない形**: UTF-8 の BOM は消さずに理由を出して断り、同じオブジェクトの中に同じキーが 2 回ある JSON も断る(後の値が黙って勝つため)。
 - **個人の情報**: base64 らしい続き(`=` の詰め物があれば 16 字から、無ければ 20 字から)・32 桁以上の 16 進(ちょうど 40 桁の git のコミットと 64 桁の sha256 は除く)・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。公開の置き場のドメイン(`contrib.PUBLIC_DOMAINS`)は、ホスト名がその名前で終わるときだけ外す(`nvidia.com.taro.jp` は当てる)。
 - **測ったファイル**: bench は測った時点の一覧のモデルのファイルの指紋 `files_fp`(ファイルの sha256 を小文字にして並べ替え、改行でつないだ文字列の sha256。sha256 の無いファイルが 1 つでもあれば書かない)を書き、一覧のファイルが変わった(指紋が違う)実測は使わない。
-- **GPU の名前**: NVIDIA の GPU は名前の表(`hardware.nvidia_name_known`。後ろの決まった語は 1 回ずつ外してよく、一緒に付かない組(`RTX 3060 Ti D` など)は断る)に丸ごと当たる名前だけを判定に使い、当たらない名前(`NVIDIA Graphics Device` など)の行は `gpu_known: false` の記録として残すだけにする(確認 `unknown_gpu`)。
-- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は名前だけで当て、量は見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ誤り `gpu_inconsistent`(Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
+- **GPU の名前**(0.11.0、#101 で名前の表をやめた): 判定に使わない(`gpu_known: false` の記録として残すだけ。確認 `unknown_gpu`)のは、名前の代わりの値(空・`n/a`・`none`・`null`・`unknown`・`-`)と汎用の名前(`NVIDIA Graphics Device` など)だけ。NVIDIA の名前は形(`hardware.nvidia_name_well_formed`。[hardware.ja.md](hardware.ja.md)「GPU 名の形」)で見て、合わない名前は誤りでなく確認 `gpu_name_form`(メンテナが確かめる)、形に合うが表に無い名前は確認 `unknown_gpu`(判定には使う)。作った名前は同じ文字列を返す PC にしか当たらない(`estimate.same_gpu`)。名前の文字には括弧の世代名(`(Pascal)` など)も使える。
+- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は量を見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ確認 `gpu_vram_nominal`(0.11.0 で誤りから下げた。改造品があるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る。Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
 - **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
@@ -1151,7 +1157,9 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 
 通知(ファイルは有効で、集計される。マージする保守者のために CI の要約に出る。マージがレビュー):
 - `unknown_model`: 同梱の一覧に無い。
-- `unknown_gpu`: GPU の名前の表に無い(例: AMD / Intel / Apple)。
+- `unknown_gpu`: GPU の名前の表に無い(例: AMD / Intel / Apple・新しい NVIDIA。判定には使う)か、汎用の名前・名前の代わりの値(判定には使わない)。
+- `gpu_name_form`: NVIDIA の GPU 名が名前の形に合わない(0.11.0。メンテナが確かめる。個人の名前などが入っていないか)。
+- `gpu_vram_nominal`: VRAM が名前の公称の量に合わない(0.11.0。改造品でなければ誤り)。
 - `batch_sizeless`: 大きさの入力の無いテンプレート(`estimate.NO_SIZE_INPUT`)なのに `batch` が 1 でない(0.10.1 の bench が MoGe の処理の単位を枚数と記録した。判定は batch 1 なので同じ設定の実測にならない。#90)。
 - `deviation`: ピーク VRAM が、その設定での式の全部載せの見積もりから 40% より離れている。
 - `below_weights`: `offload: none` なのにピーク VRAM が 重み + 固定の上乗せより小さい。見積もりは、これより小さいすべての提出に対して、その下限を使う(dynamic VRAM や部分的な読み込みでは、小さなピークは普通)。

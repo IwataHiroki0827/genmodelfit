@@ -21,6 +21,7 @@ import pytest
 from genmodelfit import cli, contrib
 from genmodelfit.db import Database, load
 from genmodelfit.estimate import files_fingerprint, pick_measurement
+from genmodelfit.hardware import nvidia_name_well_formed
 from genmodelfit.models import Gpu, Measurement, SystemInfo
 
 TEMPLATE = {
@@ -237,20 +238,36 @@ def test_bom_and_duplicate_keys_are_clear_read_errors(tmp_path):
 
 @pytest.mark.parametrize(
     "name",
-    ["NVIDIA Graphics Device", "GPU", "NVIDIA GeForce RTX 3070 taro yamada"],
-    ids=["A7_odd_name", "A7b_fake_name_GPU", "F14_gpu_name_hidden"],
+    ["NVIDIA Graphics Device", "GPU", "none", "null"],
+    ids=["A7_odd_name", "A7b_fake_name_GPU", "placeholder_none", "placeholder_null"],
 )
-def test_unknown_nvidia_names_are_kept_but_never_used(name, db):
+def test_generic_nvidia_names_are_kept_but_never_used(name, db):
+    """#101: 断るのは汎用の名前と名前の代わりの値だけ(llmfit と同じ)。"""
     gpu = {"name": name, "vram_gb": 8.0, "driver": "610.88", "vendor": "nvidia", "backend": "cuda"}
     d = sub(gpu=gpu, peak_vram_gb=6.0)
     r = contrib.validate_submission(d, db, check_filename=False)
-    assert r.ok and "unknown_gpu" in codes(r, "notices"), (r.errors, r.notices)
+    assert "unknown_gpu" in codes(r, "notices"), (r.errors, r.notices)
     rows = contrib.aggregate([as_sub(d)])
     assert rows[0]["gpu_known"] is False
     entry = db.get("image_sdxl_simple")
     system = pc(name, 8.0)
     m = pick_measurement([Measurement.from_dict(rows[0])], entry, None, system.best_gpu)
-    assert m is None  # 名前の表に無い GPU の行は判定に使わない
+    assert m is None
+
+
+def test_ill_formed_name_is_a_maintainer_notice_and_only_matches_itself(db):
+    """F14(#101 で変えた): 形に合わない名前(人名入り)は誤りでなく確認 gpu_name_form(メンテナが確かめ、
+    本人は contrib show で見る)。判定には使うが、同じ文字列を返す PC にしか当たらない(same_gpu)。"""
+    name = "NVIDIA GeForce RTX 3070 taro yamada"
+    gpu = {"name": name, "vram_gb": 8.0, "driver": "610.88", "vendor": "nvidia", "backend": "cuda"}
+    d = sub(gpu=gpu, peak_vram_gb=6.0)
+    r = contrib.validate_submission(d, db, check_filename=False)
+    assert r.ok and "gpu_name_form" in codes(r, "notices"), (r.errors, r.notices)
+    rows = contrib.aggregate([as_sub(d)])
+    assert rows[0]["gpu_known"] is True
+    entry = db.get("image_sdxl_simple")
+    row = Measurement.from_dict(rows[0])
+    assert pick_measurement([row], entry, None, pc("NVIDIA GeForce RTX 3070", 8.0).best_gpu) is None
 
 
 @pytest.mark.parametrize(
@@ -262,14 +279,17 @@ def test_unknown_nvidia_names_are_kept_but_never_used(name, db):
         ("NVIDIA GeForce RTX 4060 Ti", 15.99, True),
         ("NVIDIA GeForce RTX 4060 Ti", 12.0, False),
         ("NVIDIA GeForce RTX 4070 Laptop GPU", 8.0, True),  # A4: ノート用は量の表に入れない
+        ("NVIDIA GeForce RTX 4090", 47.99, False),  # #101: 改造品の 48 GB 版
     ],
 )
-def test_vram_must_match_the_name(name, vram, ok, db):
+def test_vram_off_the_name_is_a_notice(name, vram, ok, db):
+    """#101 で変えた: 公称の量に合わない VRAM は誤り(gpu_inconsistent)でなく確認 gpu_vram_nominal
+    (改造品があるため。別の VRAM の PC に混ざらないことは same_gpu の VRAM の比が守る)。"""
     gpu = {"name": name, "vram_gb": vram, "driver": "610.88", "vendor": "nvidia", "backend": "cuda"}
     r = contrib.validate_submission(sub(gpu=gpu, peak_vram_gb=5.0), db, check_filename=False)
-    assert ("gpu_inconsistent" not in codes(r)) is ok, r.errors
-    if ok:
-        assert contrib.aggregate([as_sub(sub(gpu=gpu, peak_vram_gb=5.0))])[0]["gpu_known"] is True
+    assert "gpu_inconsistent" not in codes(r), r.errors
+    assert ("gpu_vram_nominal" not in codes(r, "notices")) is ok, r.notices
+    assert contrib.aggregate([as_sub(sub(gpu=gpu, peak_vram_gb=5.0))])[0]["gpu_known"] is True
 
 
 def test_non_nvidia_gpus_keep_their_behaviour(db):
@@ -558,11 +578,12 @@ def test_reported_vram_totals_are_accepted(name, vram, db):
     assert "gpu_inconsistent" not in codes(r), r.errors
 
 
-def test_far_vram_is_still_an_error(db):
+def test_far_vram_is_a_notice(db):
+    """#101 で変えた(以前は誤り): 名前の公称の量から遠い VRAM は確認 gpu_vram_nominal。"""
     for name, vram in (("NVIDIA GeForce RTX 3070", 7.4), ("NVIDIA GeForce RTX 3050 6GB", 7.99)):
         gpu = {"name": name, "vram_gb": vram, "driver": "580.65.06", "vendor": "nvidia", "backend": "cuda"}
         r = contrib.validate_submission(sub(gpu=gpu, peak_vram_gb=3.0), db, check_filename=False)
-        assert "gpu_inconsistent" in codes(r), (name, vram)
+        assert "gpu_inconsistent" not in codes(r) and "gpu_vram_nominal" in codes(r, "notices"), (name, vram)
 
 
 KNOWN_NVIDIA = [
@@ -609,33 +630,77 @@ KNOWN_NVIDIA = [
     "NVIDIA GB10",
     "NVIDIA GeForce MX550",
 ]
-UNKNOWN_NVIDIA = [
-    "NVIDIA GeForce RTX 3070 taro",
-    "NVIDIA Graphics Device",
-    "NVIDIA GeForce RTX 3060 1234",
-    "NVIDIA GeForce RTX 3060 3060",
-    "NVIDIA GeForce RTX 3060 Ti Ti super",
+# #101 で変えた: 名前の表(#90 の nvidia_name_known)をやめ、断るのは汎用の名前・名前の代わりの値だけ。
+# 以前「知らない」とした名前のうち、形に合うもの(表に無い実在の CMP 30HX・改造品の 4090 48GB・数字の語が
+# 1 つの「RTX 3060 3060」など)は確認もなく使い、形に合わないもの(人名・数字の続き・知らない語)は確認
+# gpu_name_form にして使う(作った名前は同じ文字列を返す PC にしか当たらない)
+FORMED_NVIDIA = [
     "NVIDIA GeForce RTX 3060 16GB",
     "NVIDIA GeForce RTX 3070 99GB",
-    "NVIDIA Quadro RTX 31337",
     "NVIDIA GeForce GTX 1660 SUPER generation design with",
-    "NVIDIA GeForce RTX 3060 Ti D",  # D の版は 4090・5090 だけ
+    "NVIDIA GeForce RTX 3060 Ti D",
     "NVIDIA GeForce RTX 3070 D v2 OEM",
+    "NVIDIA GeForce RTX 3070 sxm5",
+    "NVIDIA GeForce RTX 4090 48GB",
+    "NVIDIA CMP 30HX",
+    # Checker の指摘で通すようにした実在の名前
+    "Tesla V100-DGXS-32GB",
+    "Tesla V100-FHHL-16GB",
+    "NVIDIA P106-100",
+    "NVIDIA P104-100",
+    "NVIDIA P102-100",
+    "NVIDIA RTX6000-Ada-48Q",
+    "NVIDIA RTX 6000-Ada-48Q",
+    "NVIDIA H20-3e",
+    "NVIDIA GeForce MX450",
+    "GRID RTX8000-48Q",
+    "NVIDIA H100XM-80C",
+    "NVIDIA A100-1-5C",
+    "Tesla K20Xm",
+    "Quadro GV100",
+]
+ILL_FORMED_NVIDIA = [
+    "NVIDIA GeForce RTX 3070 taro",
+    "NVIDIA GeForce RTX 3060 1234 5678",
+    "NVIDIA GeForce RTX 4090 090-1234-5678",
+    "NVIDIA GeForce RTX 3070 TY1990",
+    "NVIDIA GeForce RTX 4090 ABC123 XYZ99",
+    "NVIDIA Quadro RTX 31337",
+    # Checker の指摘で通さないようにした作った名前(型番の頭の文字は NVIDIA の系列だけ・数字だけの語・繰り返し)
+    "TY1985",
+    "NVIDIA KEN1990",
+    "NVIDIA tom99",
+    "NVIDIA abc123def",
+    "NVIDIA GeForce RTX 4090 A 1985",
+    "NVIDIA GeForce RTX 4090 1985 AC",
+    "NVIDIA GeForce RTX 3060 3060",
     "NVIDIA GeForce RTX 3070 8GB 8GB",
-    "NVIDIA GeForce RTX 3070 sxm5",  # データセンターの載せ方は GeForce に付かない
-    "NVIDIA GeForce RTX 4090 48GB",  # 名前の量が版の量でない(デスクトップの RTX 20〜50 系だけ見る)
-    "NVIDIA CMP 30HX",  # 実在するが表に無い(足すまでは知らない GPU。hardware._NAME_SUFFIXES の説明)
+    "NVIDIA GeForce RTX 3060 Ti Ti super",
+    "NVIDIA GeForce RTX 4090 (Taro)",
+    "NVIDIA GeForce kay12 d",
 ]
 
 
-@pytest.mark.parametrize("name", KNOWN_NVIDIA)
-def test_known_nvidia_names(name):
+@pytest.mark.parametrize("name", KNOWN_NVIDIA + FORMED_NVIDIA + ILL_FORMED_NVIDIA)
+def test_non_generic_nvidia_names_are_used(name):
     assert contrib.gpu_known(name), name
 
 
-@pytest.mark.parametrize("name", UNKNOWN_NVIDIA)
-def test_unknown_nvidia_names(name):
-    assert not contrib.gpu_known(name), name
+@pytest.mark.parametrize("name", KNOWN_NVIDIA + FORMED_NVIDIA)
+def test_known_nvidia_names_are_well_formed(name):
+    assert nvidia_name_well_formed(name), name
+
+
+@pytest.mark.parametrize("name", ILL_FORMED_NVIDIA)
+def test_ill_formed_nvidia_names(name):
+    assert not nvidia_name_well_formed(name), name
+
+
+@pytest.mark.parametrize(
+    "name", ["", " ", "N/A", "n/a", "none", "null", "unknown", "-", "NVIDIA Graphics Device"]
+)
+def test_placeholder_names_are_not_used(name):
+    assert not contrib.gpu_known(name, "nvidia"), name
 
 
 # bench の失敗の理由などに入る、個人の情報ではない文字(ノードの名前・git のコミット・公開のドメイン)

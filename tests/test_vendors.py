@@ -52,7 +52,7 @@ def db():
 
 def _no_nvidia(monkeypatch, adapters: list[Adapter]):
     monkeypatch.setattr(hardware, "find_nvidia_smi", lambda: None)
-    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda **_: (adapters, []))
 
 
 def system_of(monkeypatch, adapters, host: Host, ram_gb: float = 32.0, **kw) -> SystemInfo:
@@ -223,7 +223,7 @@ def test_nvidia_present_keeps_nvidia(monkeypatch):
         comfy_windows=True,
     )
     adapters, _ = parse_wmi_video(fx("wmi_arc_a770.json"), reg("registry_arc_a770.json"))
-    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda **_: (adapters, []))
     s = detect(gpus=[g], memory=Memory(total=32 * GB, available=32 * GB), other_gpus=True, host=WIN11)
     assert s.best_gpu.name == "NVIDIA GeForce RTX 3070" and [x.backend for x in s.gpus] == ["cuda"]
     assert any("判定に使わない" in n for n in s.notes)

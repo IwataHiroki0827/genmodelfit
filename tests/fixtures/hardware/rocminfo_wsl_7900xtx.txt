@@ -1,0 +1,28 @@
+ROCk module is loaded
+=====================
+HSA System Attributes
+=====================
+Runtime Version:         1.18
+System Timestamp Freq.:  1000.000000MHz
+==========
+HSA Agents
+==========
+*******
+Agent 1
+*******
+  Name:                    AMD Ryzen 9 7950X 16-Core Processor
+  Uuid:                    CPU-XX
+  Marketing Name:          AMD Ryzen 9 7950X 16-Core Processor
+  Vendor Name:             CPU
+  Device Type:             CPU
+*******
+Agent 2
+*******
+  Name:                    gfx1100
+  Uuid:                    GPU-7f3a9c2e4b1d6a58
+  Marketing Name:          AMD Radeon RX 7900 XTX
+  Vendor Name:             AMD
+  Feature:                 KERNEL_DISPATCH
+  Device Type:             GPU
+  Compute Unit:            96
+*** Done ***

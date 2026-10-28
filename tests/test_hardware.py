@@ -274,7 +274,8 @@ ARCH_CASES = [
         True,
         ("cuda", "blackwell", "fp16", True, True, ["cu132", "cu130", "cu129", "cu128"]),
     ),
-    ("NVIDIA Future GPU", "13.0", "700.00", True, ("none", "unknown", None, None, None, [])),
+    # #101: 表より新しい世代は断らない(断るのは表より古い世代だけ)
+    ("NVIDIA Future GPU", "13.0", "700.00", True, ("cuda", "unknown", "fp16", True, True, [])),
     # Blackwell は CUDA 12.8 の版のドライバ(570)から
     ("NVIDIA GeForce RTX 5080", "12.0", "566.03", True, ("none", "blackwell", None, None, None, [])),
 ]
@@ -400,11 +401,15 @@ def test_registry_ambiguous_and_binary_values():
 
 
 def test_wmi_notes_for_missing_driver_and_device_errors():
-    adapters, notes = parse_wmi_video(fx("wmi_basic_nvidia.json"), [])
+    adapters, _ = parse_wmi_video(fx("wmi_basic_nvidia.json"), [])
     assert [a.vendor for a in adapters] == ["nvidia", "amd"]
     assert adapters[1].vram_gb == 0.5 and adapters[1].vram_source == "wmi"
-    assert any("NVIDIA のドライバが入っていない" in n for n in notes)
-    assert any("コード 43" in n for n in notes)
+    # #101: ドライバの無い NVIDIA の注意は名前に頼らず _other_gpu_notes が出す(nvidia-smi で判定しないとき)
+    assert any("nvidia-smi で確かめられない" in n for n in hardware._other_gpu_notes(adapters, False))
+    # #101: AMD・Intel のコード 43 の部品は classify_adapter が理由にして断る(注意を 2 回出さない)
+    assert adapters[1].config_error == 43
+    assert hardware.classify_adapter(adapters[1], hardware.Host("Windows", 26100), 32.0) is None
+    assert "コード 43" in adapters[1].reason
 
 
 @pytest.mark.parametrize("text", ["", "null", "not json", "[1, 2]", '{"Name": "x"}'])
@@ -470,7 +475,7 @@ def test_amd_only_pc_is_judged_as_cpu_with_a_note(monkeypatch):
 def test_all_gpus_lists_others_without_using_them(monkeypatch):
     _patch_nvidia(monkeypatch, fx("nvsmi_rtx3070_win.csv"))
     adapters, _ = parse_wmi_video(fx("wmi_basic_nvidia.json"), [])
-    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters[1:], []))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda **_: (adapters[1:], []))
     s = detect(memory=MEM, other_gpus=True)
     assert s.best_gpu.name == "NVIDIA GeForce RTX 3070" and s.vram_gb == 8.0
     assert any("判定に使わない" in n for n in s.notes)
@@ -684,7 +689,7 @@ def test_fit_monotonic_in_ram_with_fixed_pagefile():
 def test_system_json_has_no_private_values(monkeypatch, capsys):
     _patch_nvidia(monkeypatch, fx("nvsmi_rtx3070_win.csv"))
     adapters, _ = parse_wmi_video(fx("wmi_this_pc.json"), reg("registry_this_pc.json"))
-    monkeypatch.setattr(hardware, "detect_other_gpus", lambda: (adapters, []))
+    monkeypatch.setattr(hardware, "detect_other_gpus", lambda **_: (adapters, []))
     monkeypatch.setattr(hardware, "read_memory", lambda: MEM)
     assert cli.main(["system", "--json", "--all-gpus"]) == 0
     out = capsys.readouterr().out
@@ -882,5 +887,5 @@ def test_unusable_gpu_has_no_precision():
     g = classify(gpu("NVIDIA GeForce GTX 780", "3.5", "474.44"))
     assert g.backend == "none" and (g.compute_dtype, g.bf16, g.fp8) == (None, None, None)
     assert any(n.startswith("Kepler 世代") for n in g.notes)
-    future = classify(gpu("NVIDIA Future GPU", "13.0", "700.00"))
-    assert any(n.startswith("この世代") for n in future.notes)
+    future = classify(gpu("NVIDIA Future GPU", "13.0", "700.00"))  # #101: 断らず、注意だけ
+    assert future.backend == "cuda" and any("表" in n and "新しい世代" in n for n in future.notes)
