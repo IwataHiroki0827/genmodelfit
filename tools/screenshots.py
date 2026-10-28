@@ -7,6 +7,7 @@
 使い方(リポジトリの一番上で):
     uvx --from . --with pillow python tools/screenshots.py            # README の画像(docs/images)
     uvx --from . --with pillow python tools/screenshots.py --all DIR  # note などに使う全部を DIR へ
+    uvx --from . --with pillow python tools/screenshots.py --readme   # README の「例」のブロックも同じ GPU で
 
 出力に色を付けて受け取り、HTML にして Edge か Chrome の headless で撮り、余白を切る。
 全角の字は 2 桁の枠に置くので、字体によらず表の列がそろう。
@@ -21,6 +22,8 @@ from __future__ import annotations
 import argparse
 import html
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -180,11 +183,50 @@ def shoot(exe: str, page: Path, png: Path, n_lines: int, tmp: Path) -> None:
     im.crop(crop).save(png, optimize=True)
 
 
+def update_readme_blocks() -> int:
+    """README の「例」の `$ genmodelfit …` のブロックを、架空の GPU(SIM_GPU)の出力で書き直す。
+    コマンドの行(`$ …`)は今のまま使う(--lang ja は言語の指定として読む)。元のブロックが `…` で終わるときは、
+    元の行数だけ残して `…` を付ける。"""
+    fence = "`" * 3
+    pat = re.compile(fence + r"\n(\$ genmodelfit [^\n]*)\n(.*?)" + fence, re.S)
+    for name, default_lang in (("README.md", "en"), ("README.ja.md", "ja")):
+        path = ROOT / name
+        raw = path.read_text(encoding="utf-8")
+        crlf = "\r\n" in raw
+        text = raw.replace("\r\n", "\n")
+
+        def repl(m: re.Match[str], default_lang: str = default_lang) -> str:
+            cmd, old = m.group(1), m.group(2)
+            lang = default_lang
+            argv = shlex.split(cmd[len("$ genmodelfit ") :])
+            if "--lang" in argv:
+                i = argv.index("--lang")
+                lang = argv[i + 1]
+                del argv[i : i + 2]
+            if "--vram" not in argv:
+                return m.group(0)
+            out = Text.from_ansi(run(argv, lang)).plain
+            lines = [ln.rstrip() for ln in out.split("\n")]
+            old_lines = old.rstrip("\n").split("\n")
+            if old_lines[-1] == "…":
+                lines = [*lines[: len(old_lines) - 1], "…"]
+            return f"{fence}\n{cmd}\n" + "\n".join(lines) + f"\n{fence}"
+
+        new = pat.sub(repl, text)
+        if new != text:
+            path.write_text(new.replace("\n", "\r\n") if crlf else new, encoding="utf-8", newline="")
+        print("OK  ", name, "(書き直した)" if new != text else "(変わらない)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="genmodelfit の出力を PNG にする(英語版と日本語版)")
     ap.add_argument("--all", metavar="DIR", help="README の画像に加えて、note などに使う全部を DIR に撮る")
+    ap.add_argument("--readme", action="store_true", help="README の「例」のコードブロックだけを作り直す")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if a.readme:
+        return update_readme_blocks()
     shots = [*README, *MORE] if a.all else README
     out = Path(a.all).resolve() if a.all else ROOT / "docs" / "images"
     out.mkdir(parents=True, exist_ok=True)
