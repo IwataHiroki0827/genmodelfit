@@ -692,7 +692,7 @@ def test_intake_workflow_is_idempotent_and_follows_edits():
     assert run.index("gh pr reopen") < run.index("git push")
     # 開き直すのはボットが閉じた(印のある)PR だけ。メンテナが閉じた PR は開き直さない
     i_reopen = run.index("gh pr reopen")
-    assert 'index(\\"${invalid}\\")' in run[:i_reopen] and "--remove-label" in run[i_reopen : i_reopen + 200]
+    assert 'index(\\"${invalid}\\")' in run[:i_reopen] and "--remove-label" in run[i_reopen - 200 : i_reopen]
     assert "not reopening" in run
     # 別の Issue と同じ中身に変わったら、この Issue の古い PR も閉じる
     i_dup = run.index("dup.md")
@@ -701,7 +701,12 @@ def test_intake_workflow_is_idempotent_and_follows_edits():
     assert "(.isCrossRepository | not)" in run and '.author.login == "app/github-actions"' in run
     assert run.count("gh pr list") == 1 and run.count("bot_prs ") >= 5
     # 同じ理由で断るコメントは 1 回だけ
-    assert "marker.txt" in run and "same reasons as before" in run
+    assert "marker.txt" in run and "same notice as before" in run
+    # 同じ知らせ(同じ中身の別の Issue・メンテナが閉じた)も 1 回だけ。開き直せなければ新しい PR を作る
+    assert 'comment_issue "$OUT/dup.md" "$mark"' in run and 'comment_issue "$OUT/maint.md" "$mark"' in run
+    assert "measurement-intake:duplicate=" in run and "measurement-intake:maintainer-closed" in run
+    assert 'if gh pr reopen "$closed"; then' in run and "opening a new PR" in run
+    assert run.count("gh issue comment") == 3  # comment_issue の中と、PR を作った・直したとき
 
 
 def test_intake_comments_for_edits(db):

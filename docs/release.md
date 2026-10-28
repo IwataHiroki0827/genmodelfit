@@ -184,6 +184,10 @@ One-time setup (the repository's Settings):
 1. Settings → Actions → General → "Workflow permissions" → tick "Allow GitHub Actions to create and approve pull
    requests" → Save.
 2. Issues → Labels → New label → name `measurement` → Create label.
+3. Settings → General → "Pull Requests": keep "Allow merge commits" ticked and untick "Allow squash merging" and
+   "Allow rebase merging" (sources are counted from GitHub's merge commits). The weekly script on the owner's PC
+   (`genmodelfit-weekly.ps1`) merges its PR with `gh pr merge --merge`, which still works; nothing in this repository
+   uses `--squash` or `--rebase`.
 The workflow uses only `GITHUB_TOKEN`; no secrets.
 
 ## Data releases

@@ -1213,8 +1213,10 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
   the same checks.
 - **Sources** (#113): submissions connected by the same pull request (merge commit) or the same person count as
   one source (`contrib.submission_origins` / `submission_sources`; the rules are in [scoring.md](scoring.md)): the
-  `Submitted-by` account only for the intake bot's own branch merged with a merge commit, else the e-mail address
-  of the commit that added the file, GitHub noreply addresses read as the account. The value is the sha256 of the
+  person is a GitHub account: the `Submitted-by` account only for the intake bot's own branch merged with a merge
+  commit, else the pull request's source account from the merge commit's first line (`Merge pull request #N from
+  <account>/<branch>`; commit e-mail addresses are never used for it); only a commit that is not such a merge
+  (directly on main, squash, rebase) falls back to the author's e-mail address (weaker). The value is the sha256 of the
   group's smallest key, so no address is published. They count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
   history or in a shallow clone each submission counts on its own, and the output says so).
 - **OOM-heavy groups**: a row whose OOM sources are at least as many as its ok sources has `runs_evidence: false` (not

@@ -897,19 +897,18 @@ class _Repo:
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
 def test_one_person_is_one_source(tmp_path):
-    """同じ人が別々の PR・Issue で何件送っても 1 つの出どころ(#113)。Issue のボットの PR(このリポジトリの
-    measurement/issue-N のブランチをマージのコミットで入れたもの)は Submitted-by の人で数える。
-    GitHub の noreply の
-    メールアドレスは Issue と同じ人になる。出どころの値にメールアドレスやアカウント名を書かない。"""
+    """同じ人が別々の PR・Issue で何件送っても 1 つの出どころ(#113)。人は GitHub のアカウント: PR は
+    マージのコミットの 1 行目の PR の元のアカウント、Issue のボットの PR は Submitted-by の人。
+    出どころの値にメールアドレスやアカウント名を書かない。"""
     r = _Repo(tmp_path)
-    r.pr("alice-1", [("PR 1", "alice@example.invalid")], n=1)
-    r.pr("alice-2", [("PR 2", "alice@example.invalid")], n=2)  # 同じ人の別の PR
+    r.pr("fix-1", [("PR 1", "alice@example.invalid")], owner="alice", n=1)
+    r.pr("fix-2", [("PR 2", "alice@work.invalid")], owner="alice", n=2)  # 同じアカウント・別のメール(B)
     r.pr("measurement/issue-3", [("issue 3\n\nSubmitted-by: github:Bob", BOT)], n=4)
     r.pr("measurement/issue-5", [("issue 5\n\nSubmitted-by: github:bob", BOT)], n=6)  # 同じ人の別の Issue
-    r.pr("bob-pr", [("PR by bob", "12345+bob@users.noreply.github.com")], n=7)  # 同じ人の PR(noreply)
+    r.pr("bobs-run", [("PR by bob", "bob@example.invalid")], owner="bob", n=7)  # 同じ人の PR
     r.pr("measurement/issue-8", [("issue 8\n\nSubmitted-by: github:carol", BOT)], n=9)
     subs, who, src = r.sources()
-    assert sorted(set(who.values())) == ["email:alice@example.invalid", "github:bob", "github:carol"]
+    assert sorted(set(who.values())) == ["github:alice", "github:bob", "github:carol"]
     assert len(set(src.values())) == 3
     text = json.dumps(src)
     assert "alice" not in text and "bob" not in text and "@" not in text
@@ -920,44 +919,58 @@ def test_one_person_is_one_source(tmp_path):
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_same_account_two_prs_with_different_emails_is_one_source(tmp_path):
+    r = _Repo(tmp_path)
+    r.pr("a", [("1", "one@example.invalid")], owner="taro", n=1)
+    r.pr("b", [("2", "two@example.invalid")], owner="Taro", n=2)
+    _subs, who, src = r.sources()
+    assert set(who.values()) == {"github:taro"} and len(set(src.values())) == 1
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_claimed_noreply_address_does_not_join_the_victim(tmp_path):
+    """PR のコミットに人の noreply のアドレスを書いても、その人の出どころとつながらない
+    (PR の元のアカウントになる)。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("issue\n\nSubmitted-by: github:victim", BOT)], n=2)
+    r.pr("evil", [("x", "123+victim@users.noreply.github.com")], owner="mallory", n=3)
+    _subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["github:mallory", "github:victim"]
+    assert len(set(src.values())) == 2
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
 def test_one_pr_is_at_most_one_source(tmp_path):
     """1 つの PR は、中のコミットの書いた人を何人にしても(ボットのメールアドレスと Submitted-by を偽っても)
-    1 つの出どころ(#90 と同じ。git の書いた人は誰でも書ける)。"""
+    1 つの出どころで、人は PR の元のアカウント(#90 と同じ。git の書いた人は誰でも書ける)。"""
     r = _Repo(tmp_path)
     commits = [(f"run {i}", f"sock{i}@example.invalid") for i in range(4)]
     commits += [(f"fake\n\nSubmitted-by: github:puppet{i}", BOT) for i in range(3)]
-    r.pr("many-names", commits, n=1)
+    r.pr("many-names", commits, owner="sock", n=1)
     subs, who, src = r.sources()
-    assert len(subs) == 7 and len(set(src.values())) == 1
-    assert not any(
-        k.startswith("github:puppet") for k in who.values()
-    )  # このリポジトリのボットのブランチでない
+    assert len(subs) == 7 and len(set(src.values())) == 1 and set(who.values()) == {"github:sock"}
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
 def test_fork_branch_named_like_the_bot_is_not_trusted(tmp_path):
     """フォークの measurement/issue-N のブランチ(マージのコミットの持ち主がこのリポジトリと違う)の
-    Submitted-by は信じない。直接 main に入れたコミット(squash など)の Submitted-by も信じない。"""
+    Submitted-by は信じず、人はフォークの持ち主。直接 main に入れたコミット(squash など)の
+    Submitted-by も信じない。"""
     r = _Repo(tmp_path)
     r.pr("measurement/issue-1", [("x\n\nSubmitted-by: github:victim", BOT)], owner="mallory", n=1)
     r.direct("squashed\n\nSubmitted-by: github:victim2", BOT)
     _subs, who, _src = r.sources()
-    assert not any("victim" in k for k in who.values())
+    assert "github:mallory" in who.values() and not any("victim" in k for k in who.values())
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
-def test_direct_commits_count_per_author(tmp_path):
-    """main に直接入ったコミット(squash・rebase)は、書いた人ごとに 1 つ。"""
+def test_direct_commits_fall_back_to_the_author_email(tmp_path):
+    """GitHub の PR のマージでないもの(main に直接・squash・rebase)は、書いた人のメールアドレスで
+    数える(弱い)。"""
     r = _Repo(tmp_path)
     r.direct("a", "a@example.invalid")
     r.direct("b", "a@example.invalid")
     r.direct("c", "c@example.invalid")
-    _subs, _who, src = r.sources()
+    _subs, who, src = r.sources()
+    assert set(who.values()) == {"email:a@example.invalid", "email:c@example.invalid"}
     assert len(set(src.values())) == 2
-
-
-def test_person_key_normalizes_github_noreply():
-    assert contrib.person_key("12345+Taro@users.noreply.github.com") == "github:taro"
-    assert contrib.person_key("taro@users.noreply.github.com") == "github:taro"
-    assert contrib.person_key(" Taro@Example.COM ") == "email:taro@example.com"
-    assert contrib.person_key(BOT).startswith("email:")  # ボット自身は人にしない

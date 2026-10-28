@@ -121,14 +121,12 @@ jobs:
               --json url,number,headRefName,isCrossRepository,author,labels,mergedAt \
               --jq "[.[] | select(${bot})] | $3"
           }
-          comment_issue() {  # 同じ理由の組をもう書いてあれば書かない(印は断ったときのコメントの最後)
-            if [ -f "$OUT/marker.txt" ]; then
-              last="$(gh issue view "$ISSUE" --json comments --jq \
-                '[.comments[] | select(.author.login == "github-actions" or .author.login == "app/github-actions" or .author.login == "github-actions[bot]")] | last | .body // ""')"
-              if printf '%s' "$last" | grep -qF "$(head -n 1 "$OUT/marker.txt")"; then
-                echo "same reasons as before"
-                return 0
-              fi
+          comment_issue() {  # $1 本文 $2 隠した印。ボットの前のコメントに同じ印があれば書かない(同じ知らせを繰り返さない)
+            last="$(gh issue view "$ISSUE" --json comments --jq \
+              '[.comments[] | select(.author.login == "github-actions" or .author.login == "app/github-actions" or .author.login == "github-actions[bot]")] | last | .body // ""')"
+            if [ -n "$2" ] && printf '%s' "$last" | grep -qF -- "$2"; then
+              echo "same notice as before"
+              return 0
             fi
             gh issue comment "$ISSUE" --body-file "$1"
           }
@@ -141,7 +139,7 @@ jobs:
           pr="$(bot_prs "$branch" open '.[0].url // ""')"
           if [ ! -f "$OUT/path.txt" ]; then
             # 通らない中身: Issue に理由を書く。PR があれば PR にも書いて閉じる(Issue を直すと開き直す)
-            comment_issue "$OUT/comment.md"
+            comment_issue "$OUT/comment.md" "$(head -n 1 "$OUT/marker.txt")"  # 印は断った理由の組の hash
             if [ -n "$pr" ]; then
               close_invalid "$pr" "$OUT/comment_pr_closed.md"
             fi
@@ -168,9 +166,10 @@ jobs:
             if git fetch -q --depth 1 "$remote" "refs/heads/${b}" 2>/dev/null \
                 && git cat-file -e "FETCH_HEAD:${path}" 2>/dev/null; then
               url="$(bot_prs "$b" open '.[0].url // ""')"
-              printf 'The same measurement was already sent: %s\n\n---\n\n同じ実測は既に送られています: %s\n' \
-                "$url" "$url" > "$OUT/dup.md"
-              gh issue comment "$ISSUE" --body-file "$OUT/dup.md"
+              mark="<!-- measurement-intake:duplicate=${want:0:16} -->"
+              printf 'The same measurement was already sent: %s\n\n---\n\n同じ実測は既に送られています: %s\n\n%s\n' \
+                "$url" "$url" "$mark" > "$OUT/dup.md"
+              comment_issue "$OUT/dup.md" "$mark"
               if [ -n "$pr" ]; then
                 close_invalid "$pr" "$OUT/dup.md"
               fi
@@ -183,13 +182,18 @@ jobs:
             closed="$(bot_prs "$branch" closed \
               "[.[] | select(.mergedAt == null and (.labels | map(.name) | index(\"${invalid}\")))][0].url // \"\"")"
             if [ -n "$closed" ]; then
-              gh pr reopen "$closed"
               gh pr edit "$closed" --remove-label "$invalid"
-              pr="$closed"
+              if gh pr reopen "$closed"; then
+                pr="$closed"
+              else
+                # 開き直せない(ブランチが消された・作り直されたなど): 下で新しい PR を作る
+                echo "could not reopen ${closed}; opening a new PR" >&2
+              fi
             elif [ -n "$(bot_prs "$branch" closed '[.[] | select(.mergedAt == null)][0].url // ""')" ]; then
               echo "a maintainer closed this issue's PR; not reopening" >&2
-              printf 'A maintainer closed the earlier pull request for this issue, so the bot does not open a new one. Please reply here if it should be looked at again.\n\n---\n\nこの Issue の前の Pull Request はメンテナが閉じたので、ボットは新しく作りません。もう一度見てほしいときは、ここに返信してください。\n' > "$OUT/maint.md"
-              gh issue comment "$ISSUE" --body-file "$OUT/maint.md"
+              mark="<!-- measurement-intake:maintainer-closed -->"
+              printf 'A maintainer closed the earlier pull request for this issue, so the bot does not open a new one. Please reply here if it should be looked at again.\n\n---\n\nこの Issue の前の Pull Request はメンテナが閉じたので、ボットは新しく作りません。もう一度見てほしいときは、ここに返信してください。\n\n%s\n' "$mark" > "$OUT/maint.md"
+              comment_issue "$OUT/maint.md" "$mark"
               exit 0
             fi
           fi

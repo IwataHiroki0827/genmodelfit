@@ -2401,20 +2401,13 @@ BOT_EMAIL = (
 SUBMITTED_BY = re.compile(
     r"^Submitted-by:[ \t]*github:([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))[ \t]*$", re.M | re.I
 )
-# measurement-intake の PR を GitHub が「Create a merge commit」で入れたときの 1 行目。<owner> が
-# このリポジトリの持ち主(REPO_OWNER)のときだけ、リポジトリの中のボットのブランチ(フォークは持ち主が違う)
-BOT_MERGE = re.compile(r"Merge pull request #\d+ from ([A-Za-z0-9-]+)/measurement/issue-\d+[ \t]*")
+# GitHub が「Create a merge commit」で作るマージのコミットの 1 行目:
+# `Merge pull request #N from <owner>/<branch>`。<owner> は PR の元(head)のリポジトリの持ち主の
+# GitHub アカウント(フォークならフォークの持ち主)で、GitHub が
+# 書く(PR を出した人は変えられない)。人の鍵はこれで決め、コミットのメールアドレス(誰でも書ける)は使わない
+PR_MERGE = re.compile(r"Merge pull request #\d+ from ([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/(\S+)[ \t]*")
+BOT_BRANCH = re.compile(r"measurement/issue-\d+")  # measurement-intake のブランチ
 REPO_OWNER = REPO.split("/", 1)[0].lower()  # 決まった値(contrib.REPO の持ち主)。git の remote は見ない
-_NOREPLY = re.compile(r"(?:\d+\+)?([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))@users\.noreply\.github\.com")
-
-
-def person_key(email: str) -> str:
-    """コミットのメールアドレス → 人の鍵。GitHub の noreply(`<数>+<login>@users.noreply.github.com`・
-    `<login>@users.noreply.github.com`)は `github:<login>`(Issue で送ったときと同じ人になる)、ほかは
-    `email:<小文字>`。"""
-    e = email.strip().lower()
-    m = _NOREPLY.fullmatch(e)
-    return f"github:{m.group(1)}" if m else f"email:{e}"
 
 
 def _git_runner(base: Path):
@@ -2443,13 +2436,15 @@ def submission_origins(
     """提出ごとの (PR, 人)(#113。内容の sha256 → (PR の鍵 か None, 人の鍵), git の履歴を使えたか)。
 
     そのファイルを main に足したコミット(first-parent の履歴で。名前の変更はさかのぼる)を探す。
-    - マージのコミット(PR を「Create a merge commit」で入れたもの): PR の鍵は `pr:<マージのコミット>`。
-      人は PR の側でファイルを足したコミットの書いた人(person_key)。ただし、マージのコミットの 1 行目が
-      `Merge pull request #N from <REPO_OWNER>/measurement/issue-M`(リポジトリの中の intake のブランチ)で、
-      そのコミットが BOT_EMAIL のもので `Submitted-by: github:<login>` があるときだけ、人は `github:<login>`
-      (git の書いた人のメールアドレスは誰でも書けるので、フォークの PR の Submitted-by は信じない)
-    - マージでないコミット(main に直接・squash・rebase): PR の鍵は無く、人はそのコミットの書いた人。
-      実測の PR はマージのコミットで入れる決まり(docs/release.md「実測の Issue を受け取る(#113)」)
+    - GitHub の PR のマージ(1 行目が `Merge pull request #N from <owner>/<branch>`。PR_MERGE): PR の鍵は
+      `pr:<マージのコミット>`、人は PR の元の GitHub アカウント `github:<owner>`(GitHub が書く値。コミットの
+      メールアドレスは誰でも書けるので使わない)。ただし <owner> がこのリポジトリの持ち主(REPO_OWNER)で
+      ブランチが `measurement/issue-<M>`(intake のブランチ)、ファイルを足したコミットが BOT_EMAIL のもので
+      `Submitted-by: github:<login>` があるときは、人は `github:<login>`(Issue を書いた人)。
+      フォークの同じ名前のブランチは <owner> がフォークの持ち主なので、その持ち主になる
+    - それ以外(main に直接・squash・rebase・手で書いたマージ): 人はコミットを書いた人のメールアドレス
+      `email:<小文字>`(弱い。実測の PR は GitHub のマージのコミットで入れる決まり。docs/release.md
+      「実測の Issue を受け取る(#113)」)
     鍵はメールアドレスを含むので、外に書かない(submission_sources は hash にして使う)。
     git の作業ツリーでない・浅い clone・git が無いときは ({}, False)。まだコミットしていない提出は入れない。
     通信しない(手元の git の履歴を読むだけ)。"""
@@ -2496,24 +2491,49 @@ def submission_origins(
         if (commit, path) in cache:
             return cache[(commit, path)]
         parents = (git("rev-list", "--parents", "-n", "1", commit) or "").split()
-        if len(parents) <= 2:  # マージでない: そのコミットを書いた人
-            email = (git("log", "-1", "--format=%ae", commit) or "").strip()
-            out: tuple[str | None, str] = (None, person_key(email))
+        first = (git("log", "-1", "--format=%s", commit) or "").strip()
+        merge = PR_MERGE.fullmatch(first) if len(parents) > 2 else None
+        if merge is None:
+            # GitHub の PR のマージでない(main に直接・squash・rebase、または手で書いたマージ):
+            # コミットを書いた人のメールアドレス(誰でも書けるので弱い。
+            # 実測の PR はマージのコミットで入れる決まり)
+            target = commit
+            if len(parents) > 2:
+                inner = (
+                    git(
+                        "log",
+                        "--diff-filter=A",
+                        "--format=%H",
+                        f"{commit}^1..{commit}^2",
+                        "--",
+                        f":(top){path}",
+                    )
+                    or ""
+                ).split()
+                target = inner[-1] if inner else parents[2]
+            email = (git("log", "-1", "--format=%ae", target) or "").strip().lower()
+            out: tuple[str | None, str] = (f"pr:{commit}" if len(parents) > 2 else None, f"email:{email}")
         else:
-            inner = (
-                git("log", "--diff-filter=A", "--format=%H", f"{commit}^1..{commit}^2", "--", f":(top){path}")
-                or ""
-            ).split()
-            target = inner[-1] if inner else parents[2]
-            info = git("log", "-1", "--format=%ae%x00%B", target) or ""
-            email, _, body = info.partition("\x00")
-            first = (git("log", "-1", "--format=%s", commit) or "").strip()
-            bot = BOT_MERGE.fullmatch(first)
-            trailer = SUBMITTED_BY.search(body)
-            if bot and bot.group(1).lower() == REPO_OWNER and trailer and email.strip().lower() == BOT_EMAIL:
-                person = f"github:{trailer.group(1).lower()}"
-            else:
-                person = person_key(email)
+            owner, branch = merge.group(1).lower(), merge.group(2)
+            person = f"github:{owner}"  # PR の元の GitHub アカウント
+            if owner == REPO_OWNER and BOT_BRANCH.fullmatch(branch):
+                # このリポジトリの中の intake のブランチ: ボットのコミットの Submitted-by(Issue を書いた人)
+                inner = (
+                    git(
+                        "log",
+                        "--diff-filter=A",
+                        "--format=%H",
+                        f"{commit}^1..{commit}^2",
+                        "--",
+                        f":(top){path}",
+                    )
+                    or ""
+                ).split()
+                info = git("log", "-1", "--format=%ae%x00%B", inner[-1] if inner else parents[2]) or ""
+                email, _, body = info.partition("\x00")
+                trailer = SUBMITTED_BY.search(body)
+                if trailer and email.strip().lower() == BOT_EMAIL:
+                    person = f"github:{trailer.group(1).lower()}"
             out = (f"pr:{commit}", person)
         cache[(commit, path)] = out
         return out
@@ -2572,7 +2592,7 @@ def submitter_count(
     root: str | os.PathLike[str], login: str, *, model_id: str | None, gpu_name: str | None
 ) -> int | None:
     """root(リポジトリの data/contrib)にある、GitHub のアカウント login が送った(実測の Issue、
-    または noreply のメールアドレスのコミットの PR)、同じモデル・同じ GPU(gpu_key)の提出の数
+    またはそのアカウントから出した PR)、同じモデル・同じ GPU(gpu_key)の提出の数
     (intake の PR の本文に書く。#113)。git の履歴が無ければ None。"""
     if not Path(root).is_dir():
         return 0
@@ -2969,7 +2989,6 @@ __all__ = [
     "intake_issue",
     "load_dir",
     "measurements_from_file",
-    "person_key",
     "privacy_findings",
     "robust_filter",
     "scan_dir",

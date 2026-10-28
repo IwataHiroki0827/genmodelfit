@@ -171,6 +171,10 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 1. Settings → Actions → General → 「Workflow permissions」→「Allow GitHub Actions to create and approve pull requests」に
    チェック → Save。
 2. Issues → Labels → New label → 名前 `measurement` → Create label。
+3. Settings → General →「Pull Requests」: 「Allow merge commits」はチェックのまま、「Allow squash merging」と
+   「Allow rebase merging」のチェックを外す(出どころは GitHub のマージのコミットで数えるため)。オーナーの PC の毎週の
+   台本(`genmodelfit-weekly.ps1`)は PR を `gh pr merge --merge` でマージするので、そのまま動きます。このリポジトリの中に
+   `--squash`・`--rebase` を使うものはありません。
 ワークフローが使うのは `GITHUB_TOKEN` だけです(シークレットは使わない)。
 
 ## データの配布

@@ -56,7 +56,7 @@ genmodelfit share
 
 **ボットが Pull Request を作ったあとの変更:** Issue の本文を編集してください。新しい中身でもう一度確かめ、通れば Pull Request を直し、通らなければ直すまで Pull Request を閉じます。どうなったかは Issue と Pull Request の両方に書きます。題だけの編集では何も起きません。
 
-**実測が何に使われるか:** 同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリしか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません([accuracy.ja.md](docs/accuracy.ja.md#実測の使い方))。ほかの実測は、その GPU の見積もりを直し、別々の 2 人の実測がそろうと段階も決めます。1 人が何件送っても 1 人として数えます(Issue は書いた人の GitHub のアカウント。「[受け付けたあと](#受け付けたあと)」)。メモリが足りなかった結果は「この GPU では足りない」記録として残り、その設定では実測で段階を決めなくなります。実測が使われるのは、メンテナが受け入れ、genmodelfit の次の版が出てからです。
+**実測が何に使われるか:** 同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリしか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません([accuracy.ja.md](docs/accuracy.ja.md#実測の使い方))。ほかの実測は、その GPU の見積もりを直し、別々の 2 人の実測がそろうと段階も決めます。1 人が何件送っても 1 人として数えます(Issue は書いた人、Pull Request は元のアカウント。どちらも GitHub のアカウント。「[受け付けたあと](#受け付けたあと)」)。メモリが足りなかった結果は「この GPU では足りない」記録として残り、その設定では実測で段階を決めなくなります。実測が使われるのは、メンテナが受け入れ、genmodelfit の次の版が出てからです。
 
 - 点検に `[NG]` があるか、検査の誤りがあると、`share` は何も開かずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
 - 中身が長くて URL に入りきらないときは、`share` が中身をクリップボードに写し(OS の道具 clip・pbcopy・wl-copy・xclip・xsel を使います)、中身の無いフォームを開きます。「Measurement (JSON)」の欄に貼り付けて「Create」を押してください。クリップボードの道具が無ければ、写す中身を 2 つの `---` の行の間に出します。
@@ -238,7 +238,7 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
   - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
 - その PC では **1 件から**、その構成の見積もりの根拠が `measured`(実測。作者の実測と同じ扱いで、表の VRAM に `m` が付きます)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行は合わせて 1 つ、ほかの人は 1 人で 1 つ)がそろうと、段階を決める根拠にもなります。出どころは、同じ Pull Request か同じ人でつながった提出のまとまりで数えます(#113): 1 つの Pull Request は多くて 1 つ、1 人は何件・何回の Pull Request や Issue で送っても 1 つです。実測の Pull Request はマージのコミットで入れます(squash・rebase はしない)。人は、実測の Issue なら Issue を書いた人の GitHub のアカウント(ボットが `Submitted-by: github:<アカウント>` を書く。信じるのは、このリポジトリの中のボット自身のブランチ `measurement/issue-<N>` のときだけ)、自分で出した Pull Request ならファイルを足したコミットのメールアドレス(マージしたメンテナではない)。GitHub の noreply のアドレス(`<番号>+<login>@users.noreply.github.com`)はそのアカウントとして数えるので、Issue で 1 回、そのアドレスの Pull Request で 1 回送っても 1 人です。別々の Pull Request で複数のアカウントやメールアドレスを使う人は何回も数えられてしまうので、メンテナはマージのときにそれを見ます(ボットの Pull Request には、同じアカウントがその GPU・モデルで既に送った数を書きます)。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行は合わせて 1 つ、ほかの人は 1 人で 1 つ)がそろうと、段階を決める根拠にもなります。出どころは、同じ Pull Request か同じ人でつながった提出のまとまりで数えます(#113。`contrib.submission_sources`): 1 つの Pull Request は多くて 1 つ、1 人は何件・何回の Pull Request や Issue で送っても 1 つです。人は **GitHub のアカウント** です: 実測の Issue なら Issue を書いた人(ボットがコミットに `Submitted-by: github:<アカウント>` を書く。信じるのは、マージのコミットが `Merge pull request #N from laxshmate/measurement/issue-M`(このリポジトリの中のボット自身のブランチ)で、コミットがボットのものときだけ)、Pull Request なら、GitHub がマージのコミットの 1 行目に書く Pull Request の元のアカウント(`Merge pull request #N from <アカウント>/<ブランチ>`)。コミットのメールアドレスは誰でも書けるので、これには使いません。実測の Pull Request は「Create a merge commit」だけで入れます。それ以外(main に直接・squash・rebase)は、コミットを書いた人のメールアドレスで数えます(弱い)。複数の GitHub のアカウントを使う人は何回も数えられてしまうので、メンテナはマージのときにそれを見ます(ボットの Pull Request には、同じアカウントがその GPU・モデルで既に送った数を書きます)。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 #### 作者の実測(measurements.json)
