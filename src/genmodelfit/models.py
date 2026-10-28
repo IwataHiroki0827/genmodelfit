@@ -498,12 +498,15 @@ class Estimate:
     # 段階を実測で決めたときは、そろった出どころの合計。実測を使っていない(basis_detail が estimated)
     # ときは None
     sample_count: int | None = None
+    # 全部を載せたまま仕上げまで動かすときに ComfyUI が空けようとする量(#102。VAE はタイルにしない V)。
+    # 98% を超えると全部載せを選ばない(順に載せ替え、good まで)。vram_gb 以上。古い Estimate は None
+    vram_resident_gb: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする
         (Python の属性は計算のため 0.0 のまま。unknown_size を見る)。"""
         d = asdict(self)
         if self.unknown_size:
-            for k in ("vram_gb", "vram_offload_gb", "ram_gb", "vram_sequential_gb"):
+            for k in ("vram_gb", "vram_offload_gb", "ram_gb", "vram_sequential_gb", "vram_resident_gb"):
                 d[k] = None
         return d

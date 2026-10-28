@@ -848,6 +848,10 @@ class Need:
     vae: float = 0.0
     # 段ごとの作業用メモリ(#100。当てられないモデルは None で、act を今までの種類ごとの式で出した)
     stages: StageMem | None = None
+    # 全部を載せたまま仕上げまで動かすときに ComfyUI が空けようとする量(#102。docs/accuracy.md「タイル」)。
+    # VAE はタイルにしない V で見込む。full(使う量)より小さくならない。None は full と同じ
+    # (段ごとに当てられないモデル)。全部載せを選べるかだけに使い、帯の Mem% は full のまま
+    resident: float | None = None
 
 
 def need_staged(
@@ -856,6 +860,8 @@ def need_staged(
     """段ごとの作業用メモリ(#100。docs/accuracy.md「式」)での必要量。
 
     全部載せ      = 固定分 + 全部品の重み + max(0, max(S, V_eff, T) + d)
+    載せたまま    = 固定分 + 全部品の重み + max(0, max(S, V, T) + d)(#102。V はタイルにしない値。
+                    全部載せを選べるかを決める量。docs/accuracy.md「タイル」)
     順に載せ替え  = 固定分 + max(各段の重み + max(0, その段の作業用メモリ + d_段))
     逃がす        = 固定分 + max(各段の重み × offload_fraction + max(0, その段の作業用メモリ + d_段))
     実測からのずらし d は作業用メモリに足し、段ごとに 0 で切る(どの量も重み + 固定分の下限より下げない。#95)。
@@ -868,6 +874,9 @@ def need_staged(
     stage_work = {k: max(0.0, v + d_stage) for k, v in stage_work.items()}
     peak = {s: (parts.denoise_peak if s == "denoise" else parts.stage(s)) for s in STAGES}
     full = c.overhead_gb + parts.total * w + max(0.0, work + delta)
+    # 正のずらし(実測が式より大きい)は、実測にもう VAE の山が入っているので足さない(V を二重に数えない)。
+    # そのときは max(resident, full) で全部載せ(実測を含む)が下限になる
+    resident = c.overhead_gb + parts.total * w + max(0.0, st.resident_peak + min(0.0, delta))
     seq = c.overhead_gb + max(peak[s] * w + stage_work[s] for s in STAGES)
     off = c.overhead_gb + max(peak[s] * w * c.offload_fraction + stage_work[s] for s in STAGES)
     return Need(
@@ -880,6 +889,7 @@ def need_staged(
         main=parts.denoise * w,
         vae=parts.decode * w,
         stages=st,
+        resident=max(resident, full),
     )
 
 
@@ -1869,7 +1879,11 @@ def _estimate(
         if mode == "offload":
             how = "offload"
         else:
-            _lvl, how = gpu_choice(n.full, n.sequential, n.offload, system.vram_gb, allow_offload=False)
+            # 実測で段階を決めたときは載せたままの量で全部載せを外さない(実測が先。#102)
+            resident = None if fit_from == "measurement" else n.resident
+            _lvl, how = gpu_choice(
+                n.full, n.sequential, n.offload, system.vram_gb, allow_offload=False, resident=resident
+            )
         use = {"full": n.full, "seq": n.sequential, "offload": n.offload}[how]
         if fit_from == "measurement" and level_gb is not None:
             use = level_gb
@@ -1902,6 +1916,7 @@ def _estimate(
         vram_sequential_gb=round(n.sequential, 2),
         settings={k: v for k, v in vars(s).items() if v is not None},
         vram_free_short=free_short,
+        vram_resident_gb=round(n.full if n.resident is None else n.resident, 2),
         basis_detail=detail,
         fit_from=fit_from,
         measured_peak_vram_gb=measured_peak,
@@ -2572,6 +2587,7 @@ def gpu_choice(
     *,
     allow_offload: bool = True,
     ram_ratio: float | None = None,
+    resident: float | None = None,
 ) -> tuple[str, str]:
     """(段階, 載せ方)。載せ方は full(全部 GPU)/ seq(部品を順に載せ替え)/ offload(逃がす)。
     全部載せ・順に載せ替えの良いほうを選び、逃がす載せ方はそれより段階が上がるときだけ選ぶ
@@ -2582,10 +2598,13 @@ def gpu_choice(
     逃がす載せ方の段階は、VRAM と メインメモリ(ram_ratio = 逃がすときに要るメモリ ÷ メインメモリ)の
     きついほうの帯(表の Mem% と同じ。98% を超えるメモリは marginal として、足りない分は _ram_check が
     仮想メモリで判定する)。表の VRAM の値もこれで決める。
-    allow_offload=False(メインメモリと共有する GPU。逃がす先が同じメモリ)なら逃がす載せ方は使わない。"""
+    allow_offload=False(メインメモリと共有する GPU。逃がす先が同じメモリ)なら逃がす載せ方は使わない。
+    resident(Need.resident。#102、docs/accuracy.md「タイル」)が 98% を超えるなら全部載せは選べない
+    (ComfyUI が仕上げの前に本体を降ろすので、順に載せ替えと同じ動き)。VRAM によらない値なので、
+    VRAM を増やしても段階は下がらない。"""
     seq = full if sequential is None else sequential
     options = [
-        (fit_band(full, vram), "full"),
+        ("too_tight" if resident_blocks(resident, vram) else fit_band(full, vram), "full"),
         (_cap(fit_band(seq, vram), "good"), "seq"),
     ]
     if allow_offload:
@@ -2595,6 +2614,27 @@ def gpu_choice(
             level = _cap(level, "marginal" if ram_band == "too_tight" else ram_band)
         options.append((_cap(level, "good"), "offload"))
     return min(options, key=lambda o: _LEVELS.index(o[0]))
+
+
+def resident_blocks(resident: float | None, vram: float) -> bool:
+    """全部を載せたまま仕上げの作業用メモリ(タイルにしない V)が入らず、全部載せを選べないか(#102)。"""
+    return resident is not None and fit_band(resident, vram) == "too_tight"
+
+
+def _resident_gated(n: Need, vram: float) -> bool:
+    """全部載せそのものは収まるのに、載せたままの量(Need.resident)で全部載せを外したか(#102)。"""
+    return resident_blocks(n.resident, vram) and fit_band(n.full, vram) != "too_tight"
+
+
+def _resident_note(n: Need) -> str:
+    """全部載せを外した理由(#102。docs/accuracy.md「タイル」)。"""
+    v = n.stages.V if n.stages is not None else 0.0
+    return tr(
+        f"全部を載せたままでは、仕上げ(VAE)に ComfyUI が見込む作業用メモリ {v:.1f} GB が入らないので、"
+        "仕上げの前に本体を降ろす(段階は good まで)",
+        f"With everything loaded, the decode (VAE) working memory ComfyUI reserves ({v:.1f} GB) does not"
+        " fit, so ComfyUI unloads the model before decoding (level capped at good)",
+    )
 
 
 def shared_memory(system: SystemInfo | None) -> bool:
@@ -2614,6 +2654,7 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
         vram,
         allow_offload=not shared,
         ram_ratio=n.ram / ram_total if ram_total else None,
+        resident=n.resident,
     )
     pct = {
         k: round(100 * round(v, 2) / vram)
@@ -2638,15 +2679,28 @@ def _judge_gpu(n: Need, system: SystemInfo, c: Coefficients) -> tuple[str, str, 
         ]
     elif how == "seq":
         mode = "gpu"
+        # 載せたままの量で全部載せを外したときは、その量を出す(全部載せの量は収まるので)
+        gated = _resident_gated(n, vram)
+        whole = n.resident if gated and n.resident is not None else n.full
         reasons = [
             tr(
                 f"VRAM {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
-                f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+                + (
+                    f"(全部を載せたままでは {whole:.1f} GB。段階は good まで)"
+                    if gated
+                    else f"(全部載せは {whole:.1f} GB。段階は good まで)"
+                ),
                 f"VRAM {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are loaded in "
                 "turn"
-                f" (all at once needs {n.full:.1f} GB; level capped at good)",
+                + (
+                    f" (keeping everything loaded needs {whole:.1f} GB; level capped at good)"
+                    if gated
+                    else f" (all at once needs {whole:.1f} GB; level capped at good)"
+                ),
             )
         ]
+        if gated:
+            reasons.append(_resident_note(n))
     else:
         mode = "offload"
         seq = min(n.sequential, n.full)
@@ -2690,7 +2744,9 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
     g = system.best_gpu
     carve = (getattr(g, "carveout_gb", None) or 0.0) if g is not None else 0.0
     best: tuple[str, str, list[str], float] | None = None
-    for _how, use, top, line in (
+    gated = _resident_gated(n, vram)  # #102: 載せたままの量が入らなければ全部載せを外す
+    whole = n.resident if gated and n.resident is not None else n.full
+    for how, use, top, line in (
         (
             "full",
             n.full,
@@ -2706,13 +2762,20 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
             "good",
             tr(
                 f"GPU のメモリ {n.sequential:.1f} / {vram:.1f} GB({pct['seq']}%): 部品を順に載せ替えれば載る"
-                f"(全部載せは {n.full:.1f} GB。段階は good まで)",
+                + (f"(全部を載せたままでは {whole:.1f} GB。" if gated else f"(全部載せは {whole:.1f} GB。")
+                + "段階は good まで)",
                 f"GPU memory {n.sequential:.1f} / {vram:.1f} GB ({pct['seq']}%): fits when the parts are "
-                "loaded"
-                f" in turn (all at once needs {n.full:.1f} GB; level capped at good)",
+                "loaded in turn"
+                + (
+                    f" (keeping everything loaded needs {whole:.1f} GB; level capped at good)"
+                    if gated
+                    else f" (all at once needs {whole:.1f} GB; level capped at good)"
+                ),
             ),
         ),
     ):
+        if how == "full" and resident_blocks(n.resident, vram):
+            continue
         level = _cap(fit_band(use, vram), top)
         if level == "too_tight":
             continue
@@ -2723,7 +2786,8 @@ def _judge_shared(n: Need, system: SystemInfo, pct: dict[str, int]) -> tuple[str
             f"The GPU share ({from_ram:.1f} GB) also comes from main memory, so about {ram_need:.1f} GB of "
             "main memory is needed",
         )
-        fit, mode, reasons = _ram_check(level, "gpu", [line, note], ram_need, system)
+        lines = [line, note, _resident_note(n)] if how == "seq" and gated else [line, note]
+        fit, mode, reasons = _ram_check(level, "gpu", lines, ram_need, system)
         if best is None or _LEVELS.index(fit) < _LEVELS.index(best[0]):
             best = (fit, mode, reasons, ram_need)
     if best is None:

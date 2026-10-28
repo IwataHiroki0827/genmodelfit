@@ -579,6 +579,14 @@ class StageMem:
         """全部載せに足す作業用メモリ(一番重い段)。"""
         return max(self.S, self.V_eff, self.T)
 
+    @property
+    def resident_peak(self) -> float:
+        """全部を載せたまま仕上げまで動かすときに ComfyUI が空けようとする作業用メモリ(#102。
+        docs/accuracy.md「タイル」)。VAE はタイルにしない V で見込む: 復号の前に V を空けようとし
+        (sd.py:1278-1280@426f5ee)、タイルは普通の復号が OOM になったときの逃げ道(sd.py:1314@426f5ee)。
+        使う量(peak)ではなく、全部載せを選べるかを決める量。"""
+        return max(self.S, self.V, self.T)
+
 
 def _dims(entry, s, lat: Latent, *, image_frames: bool) -> Shape:
     mod = entry.modality

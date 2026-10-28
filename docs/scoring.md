@@ -40,7 +40,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 1. PC: VRAM, GPU vendor and generation, system RAM ([hardware.md](hardware.md))
 2. Settings: the per-type defaults or the user's options ("Settings used for judging" below)
 3. Estimate: the VRAM and RAM each run mode needs ([accuracy.md](accuracy.md)); measurements shift the values
-4. Level: pick the run mode and set Perfect / Good / Marginal / too tight from the use. Measurements set the level only when two or more independent sources agree on the same GPU
+4. Level: pick the run mode (all on GPU only when everything, including the VAE decode memory, can stay loaded; [accuracy.md "Tiles"](accuracy.md#tiles)) and set Perfect / Good / Marginal / too tight from the use. Measurements set the level only when two or more independent sources agree on the same GPU
 5. One row per model, then the order, then the Score
 
 ## Settings used for judging
@@ -238,7 +238,7 @@ r per run mode (the table's Mem% and JSON's `utilization_pct` are this r):
 
 ### The promise changed
 
-Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo int8: 100 on GPU~ at 14 GB, 82.3 all on GPU at 16 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
+Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo (bf16): 100 on GPU~ at 25 GB, 78.7 all on GPU at 26 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
 
 ### Left out
 

@@ -92,6 +92,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 - 時間切れ(`--timeout 秒`、既定 1800)や Ctrl+C のときは、自分のプロンプトだけを取り消します。実行中なら prompt_id を付けて中断し、待っている間ならキューから消します。ほかの人の仕事は止めません。
 - 入力の画像が要るテンプレート(画像から 3D など)は、公式テンプレートの画像を ComfyUI にアップロードします。上書きはしません。同じ名前の別の画像があれば ComfyUI が別の名前を付けます。
 - 保存ノードの出力は ComfyUI の output フォルダの `genmodelfit_bench/` に入ります。要らなければ消してください。
+- ComfyUI の動的 VRAM(既定)では、VRAM がぎりぎりの設定で ComfyUI が応答しなくなることがあります(ログに aimdo の `budget_deficit` が出たあと進まない。#102 の RTX 5080 16GB で Wan の 81 コマ)。そのときは bench の時間切れでも取り消せないので、自分で起動した ComfyUI だけを止め、`--disable-dynamic-vram` を付けて起動し直して測ってください。
 
 ### 何を測っているか
 
@@ -101,7 +102,7 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 | `note` の「GPU 全体の増分」 | GPU 全体の使用量(`nvidia-smi`。NVIDIA 以外は上の道具、約 1 秒ごと)の最大値から開始前の値を引いたもの。ほかのアプリの増減も入ります。道具が無ければ書きません |
 | `peak_ram_gb` | ポートで待ち受けている ComfyUI のプロセス(と子プロセス)の常駐メモリの最大値。コマンドラインに `main.py` か `comfy` を含むプロセスだけを数えます。ComfyUI が別の PC のとき・プロセスを特定できないときは空です |
 | `seconds` | ワークフローを送ってから終わるまで(モデルの読み込みを含む)。ComfyUI が数えた実行時間は `note` に入ります |
-| `offload` | ComfyUI のログから読みます: `dynamic`(動的 VRAM)/ `partial`(一部だけ GPU に載せた)/ `lowvram`(`--lowvram` などの起動オプション)/ `none`(全部載った)/ `oom`(メモリ不足で失敗)。分からなければ空 |
+| `offload` | ComfyUI のログから読みます: `dynamic`(動的 VRAM)/ `partial`(一部だけ GPU に載せた)/ `lowvram`(`--lowvram` / `--novram` で起動した)/ `none`(全部載った)/ `oom`(メモリ不足で失敗)。分からなければ空 |
 | `gpu_vram_gb` | `/system_stats` の VRAM の総量を GiB で、小数 2 桁まで丸めた値(公称 8 GB の GPU なら 8.0 前後)。同梱の古い行は公称の値(`16` など)です |
 | `outcome` | `ok`(最後まで動いた)/ `oom`(メモリ不足で失敗)/ `error`(ほかの理由で失敗) |
 | `standard` | 公式テンプレートのまま(大きさ・長さ・ステップ数・seed だけを変えた)で、ほかの仕事が混ざらず、全部のノードを実行したか |

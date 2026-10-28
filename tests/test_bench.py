@@ -405,6 +405,18 @@ def test_offload_from_logs():
     assert offload_from_logs(["nothing"]) is None
 
 
+def test_offload_from_logs_debug_lines_are_not_lowvram():
+    """#102: --verbose DEBUG の「lowvram: loaded module regularly」は全部載った読み込みの行
+    (lowvram ではない)。「Unloaded partially … lowvram patches」は partial。
+    lowvram は --lowvram / --novram で起動したときだけ。"""
+    debug = ["lowvram: loaded module regularly diffusion_model.x Linear", "loaded completely; 9000 MB usable"]
+    assert offload_from_logs(debug) == "none"
+    assert offload_from_logs(["Unloaded partially: 100 MB freed, lowvram patches: 0"]) == "partial"
+    assert offload_from_logs(["Set vram state to: LOW_VRAM"]) == "lowvram"
+    assert offload_from_logs(["Set vram state to: NO_VRAM"]) == "lowvram"
+    assert offload_from_logs(["Set vram state to: NORMAL_VRAM", "loaded completely"]) == "none"
+
+
 # --- 偽の ComfyUI ----------------------------------------------------------------------------------
 
 

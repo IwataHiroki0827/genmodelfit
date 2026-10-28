@@ -92,6 +92,7 @@ Timeout and files:
 - On timeout (`--timeout SECONDS`, default 1800) or Ctrl+C, bench cancels only its own prompt. It interrupts it with the prompt_id if running, or removes it from the queue if waiting. It does not stop other people's jobs.
 - For templates that need an input image (such as image to 3D), bench uploads the official template's image to ComfyUI. It never overwrites: if a different image has the same name, ComfyUI gives a new name.
 - Output of save nodes goes to `genmodelfit_bench/` in ComfyUI's output folder. Delete it if you do not need it.
+- With ComfyUI's dynamic VRAM (the default), ComfyUI can stop responding at settings that barely fit the VRAM (the log stalls after aimdo reports `budget_deficit`; seen in #102 on an RTX 5080 16GB with Wan at 81 frames). bench's timeout cannot cancel it then, so stop only the ComfyUI you started, restart it with `--disable-dynamic-vram` and measure again.
 
 ### What is measured
 
@@ -101,7 +102,7 @@ Timeout and files:
 | "GPU-wide increase" in `note` | The maximum total GPU usage (`nvidia-smi`; the tool above for non-NVIDIA, about every 1 second) minus the value before the start. Changes by other apps are included. Not written if there is no tool. |
 | `peak_ram_gb` | Maximum resident memory of the ComfyUI process (and its child processes) listening on the port. Only processes whose command line contains `main.py` or `comfy` are counted. Empty if ComfyUI is on another PC or the process cannot be identified. |
 | `seconds` | From sending the workflow to its end (including model loading). The run time ComfyUI counted goes into `note`. |
-| `offload` | Read from the ComfyUI log: `dynamic` (dynamic VRAM) / `partial` (only part was put on the GPU) / `lowvram` (a startup option such as `--lowvram`) / `none` (everything fit) / `oom` (failed from out of memory). Empty if unknown. |
+| `offload` | Read from the ComfyUI log: `dynamic` (dynamic VRAM) / `partial` (only part was put on the GPU) / `lowvram` (started with `--lowvram` / `--novram`) / `none` (everything fit) / `oom` (failed from out of memory). Empty if unknown. |
 | `gpu_vram_gb` | Total VRAM from `/system_stats` in GiB, rounded to 2 decimals (about 8.0 for a nominal 8 GB GPU). Old bundled rows hold the nominal value (such as `16`). |
 | `outcome` | `ok` (ran to the end) / `oom` (failed from out of memory) / `error` (failed for another reason) |
 | `standard` | Whether the official template was kept as is (only size, length, steps and seed changed), no other job got mixed in, and all nodes were executed. |

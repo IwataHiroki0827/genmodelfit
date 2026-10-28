@@ -109,7 +109,13 @@ def _how(e: Estimate, vram: float, system: SystemInfo | None = None) -> tuple[st
     if e.run_mode == "offload":
         return e.fit, "offload"
     allow = not shared_memory(system) and e.run_mode != "gpu"
-    return gpu_choice(e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram, allow_offload=allow)
+    # 実測で段階を決めた行は載せたままの量で全部載せを外さない(#102。estimate と同じ)
+    resident = (
+        None if getattr(e, "fit_from", "estimate") == "measurement" else getattr(e, "vram_resident_gb", None)
+    )
+    return gpu_choice(
+        e.vram_gb, e.vram_sequential_gb, e.vram_offload_gb, vram, allow_offload=allow, resident=resident
+    )
 
 
 def level_cap(e: Estimate, system: SystemInfo | None = None) -> str | None:

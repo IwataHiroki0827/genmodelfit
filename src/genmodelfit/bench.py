@@ -660,7 +660,10 @@ def find_server_process(url: str) -> psutil.Process | None:
 _LOG_PARTIAL = re.compile(r"loaded partially", re.I)
 _LOG_FULL = re.compile(r"loaded completely", re.I)
 _LOG_DYNAMIC = re.compile(r"dynamic(ally)?[ _-]?(vram|load)", re.I)
-_LOG_LOWVRAM = re.compile(r"lowvram|novram", re.I)
+# --lowvram / --novram で起動した印(model_management.py:597@426f5ee の「Set vram state to: LOW_VRAM」)だけ。
+# 「lowvram: loaded module regularly」(--verbose DEBUG で全部載った読み込みの行。model_patcher.py:1102)や
+# 「lowvram patches」(loaded partially の行)には当てない(#102: 全部載った実測を lowvram と取り違えていた)
+_LOG_LOWVRAM = re.compile(r"vram state to:\s*(LOW_VRAM|NO_VRAM)", re.I)
 
 
 def offload_from_logs(lines: list[str]) -> str | None:
