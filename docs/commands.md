@@ -247,12 +247,11 @@ recommend models, best first
 **Usage**
 
 ```text
-genmodelfit recommend [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH]
-                      [--no-cache] [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}]
-                      [--uncensored] [--width PX] [--height PX] [--frames N] [--length SEC]
-                      [--precision PREC] [--limit N] [--limits]
-                      [--min-fit {perfect,good,marginal,too_tight}] [--license LIST]
-                      [--fit {perfect,good,marginal,runnable,all}] [--any-license]
+genmodelfit recommend [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                      [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}] [--uncensored]
+                      [--width PX] [--height PX] [--frames N] [--length SEC] [--precision PREC]
+                      [--limit N] [--limits] [--min-fit {perfect,good,marginal,too_tight}]
+                      [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
                       [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
                       [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
                       [--auto-only] [--include-tools]
@@ -410,8 +409,7 @@ genmodelfit search [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db P
                    [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
                    [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
                    [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                   [--sort {type,score,vram,disk,name}] [--all] [--perfect]
-                   query
+                   [--sort {type,score,vram,disk,name}] [--all] [--perfect] query
 ```
 
 - Search models by a part of the id or name (case-insensitive) and judge them for this PC.
@@ -529,8 +527,7 @@ details of one model
 genmodelfit info [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
                  [--content {all,sfw,uncensored}] [--uncensored] [--width PX] [--height PX]
                  [--frames N] [--length SEC] [--precision PREC] [--license-allowlist LIST|FILE]
-                 [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                 model
+                 [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto] model
 ```
 
 - Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the other workflows that use the same model.
@@ -656,12 +653,11 @@ download the files of a model (consent, sha256, resume, ComfyUI folders)
 **Usage**
 
 ```text
-genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH]
-                     [--no-cache] [--license-allowlist LIST|FILE] [--comfyui-version VER]
+genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                     [--license-allowlist LIST|FILE] [--comfyui-version VER]
                      [--max-head-age-days DAYS] [--allow-uncensored-auto] [--precision PREC]
                      [--budget GB] [--list] [--output-dir DIR | --comfyui-dir DIR] [--yes]
-                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}]
-                     model
+                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
 ```
 
 Download the files of a model for this PC (all files of one workflow), checking sha256.
@@ -881,9 +877,9 @@ summary of which models can be auto-recommended
 
 ```text
 genmodelfit gate [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
-                 [--license-allowlist LIST|FILE] [--comfyui-version VER]
-                 [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                 [--modality {image,video,music,sfx,tts,3d}] [--only-auto | --only-held]
+                 [--license-allowlist LIST|FILE] [--comfyui-version VER] [--max-head-age-days DAYS]
+                 [--allow-uncensored-auto] [--modality {image,video,music,sfx,tts,3d}]
+                 [--only-auto | --only-held]
 ```
 
 Count how many models in the list can be recommended automatically (Verified, "auto" in JSON) and why the others are held. The checks are the same as in info (one model) and in the "auto" / held_reasons fields of recommend `--json`.
@@ -942,8 +938,8 @@ differences between two model lists (db.json): added / removed, licenses, auto-r
 **Usage**
 
 ```text
-genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] [--limit N]
-                 [old] [new]
+genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] [--limit N] [old]
+                 [new]
 ```
 
 - Compare two model lists (db.json) and show what changed for users.
@@ -1079,9 +1075,8 @@ approve with evidence (primary-source URLs); rewrites the list file
 **Usage**
 
 ```text
-genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] [--by BY] --db
-                           PATH [--json]
-                           id
+genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] [--by BY] --db PATH
+                           [--json] id
 ```
 
 **Options and arguments**
@@ -1104,8 +1099,7 @@ remove from the list and record it so that update does not add it again
 
 ```text
 genmodelfit review reject [-h] [--lang {en,ja}] --note NOTE --db PATH [--rejected PATH]
-                          [--hide-name] [--json]
-                          id
+                          [--hide-name] [--json] id
 ```
 
 **Options and arguments**
@@ -1131,8 +1125,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
                   [--workflow PATH] [--width PX] [--height PX] [--frames N] [--length SEC]
                   [--steps N] [--output PATH] [--save-failed] [--save-nonstandard]
                   [--resolution WxH] [--set NAME=VALUE] [--free] [--timeout SEC] [--force]
-                  [--source SOURCE] [--note NOTE] [--submission PATH] [--share]
-                  template
+                  [--source SOURCE] [--note NOTE] [--submission PATH] [--share] template
 ```
 
 - Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
@@ -1328,8 +1321,7 @@ check shape, values, personal information and duplicates (also used in CI)
 
 ```text
 genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--strict]
-                             [--no-filename-check] [--markdown]
-                             FILE|DIR [FILE|DIR ...]
+                             [--no-filename-check] [--markdown] FILE|DIR [FILE|DIR ...]
 ```
 
 **Options and arguments**
@@ -1351,10 +1343,9 @@ aggregate by model, settings and GPU, and check the accuracy
 **Usage**
 
 ```text
-genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--output FILE]
-                              [--report] [--threshold PCT] [--fail-on-breach] [--allow-empty]
-                              [--allow-file-sources] [--check]
-                              [dir]
+genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--output FILE] [--report]
+                              [--threshold PCT] [--fail-on-breach] [--allow-empty]
+                              [--allow-file-sources] [--check] [dir]
 ```
 
 **Options and arguments**

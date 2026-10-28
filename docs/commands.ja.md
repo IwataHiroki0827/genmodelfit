@@ -243,12 +243,11 @@ JSON の出力(`--json`): [schema.ja.md「System / PC の情報」](schema.ja.md
 **使い方**
 
 ```text
-genmodelfit recommend [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH]
-                      [--no-cache] [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}]
-                      [--uncensored] [--width PX] [--height PX] [--frames N] [--length SEC]
-                      [--precision PREC] [--limit N] [--limits]
-                      [--min-fit {perfect,good,marginal,too_tight}] [--license LIST]
-                      [--fit {perfect,good,marginal,runnable,all}] [--any-license]
+genmodelfit recommend [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                      [--modality TYPE[,TYPE]] [--content {all,sfw,uncensored}] [--uncensored]
+                      [--width PX] [--height PX] [--frames N] [--length SEC] [--precision PREC]
+                      [--limit N] [--limits] [--min-fit {perfect,good,marginal,too_tight}]
+                      [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
                       [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
                       [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
                       [--auto-only] [--include-tools]
@@ -406,8 +405,7 @@ genmodelfit search [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db P
                    [--license LIST] [--fit {perfect,good,marginal,runnable,all}] [--any-license]
                    [--task USE[,USE]] [--all-workflows] [--license-allowlist LIST|FILE]
                    [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                   [--sort {type,score,vram,disk,name}] [--all] [--perfect]
-                   query
+                   [--sort {type,score,vram,disk,name}] [--all] [--perfect] query
 ```
 
 - ID・名前の一部で探し(大文字小文字は区別しない)、この PC での判定を出す。
@@ -523,8 +521,7 @@ JSON の出力(`--json`): [schema.ja.md「Uses / 用途」](schema.ja.md#uses--�
 genmodelfit info [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
                  [--content {all,sfw,uncensored}] [--uncensored] [--width PX] [--height PX]
                  [--frames N] [--length SEC] [--precision PREC] [--license-allowlist LIST|FILE]
-                 [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                 model
+                 [--comfyui-version VER] [--max-head-age-days DAYS] [--allow-uncensored-auto] model
 ```
 
 - 1 つのモデルの詳細(ファイル・ライセンス・見積もり・この PC での限界・自動のおすすめの条件・同じモデルのほかのワークフロー)を出す。
@@ -652,12 +649,11 @@ genmodelfit update [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
 **使い方**
 
 ```text
-genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH]
-                     [--no-cache] [--license-allowlist LIST|FILE] [--comfyui-version VER]
+genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
+                     [--license-allowlist LIST|FILE] [--comfyui-version VER]
                      [--max-head-age-days DAYS] [--allow-uncensored-auto] [--precision PREC]
                      [--budget GB] [--list] [--output-dir DIR | --comfyui-dir DIR] [--yes]
-                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}]
-                     model
+                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
 ```
 
 モデルのファイルをこの PC 向けに落とす(1 つのワークフローの全部のファイル。sha256 で確かめる)。
@@ -878,9 +874,9 @@ genmodelfit config path [-h] [--lang {en,ja}] [--json]
 
 ```text
 genmodelfit gate [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
-                 [--license-allowlist LIST|FILE] [--comfyui-version VER]
-                 [--max-head-age-days DAYS] [--allow-uncensored-auto]
-                 [--modality {image,video,music,sfx,tts,3d}] [--only-auto | --only-held]
+                 [--license-allowlist LIST|FILE] [--comfyui-version VER] [--max-head-age-days DAYS]
+                 [--allow-uncensored-auto] [--modality {image,video,music,sfx,tts,3d}]
+                 [--only-auto | --only-held]
 ```
 
 一覧のうち、自動でおすすめに出せる(Verified。JSON では "auto")モデルの数と、ほかが保留になる理由を数える。条件は info(1 つのモデル)や recommend `--json` の "auto"・held_reasons と同じ。
@@ -938,8 +934,8 @@ JSON の出力(`--json`): [schema.ja.md「gate」](schema.ja.md#gate)
 **使い方**
 
 ```text
-genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] [--limit N]
-                 [old] [new]
+genmodelfit diff [-h] [--lang {en,ja}] [--json] [--all] [--comfyui-version VER] [--limit N] [old]
+                 [new]
 ```
 
 - 2 つの一覧(db.json)を比べ、利用者に関係のある違いを出す。
@@ -1074,9 +1070,8 @@ genmodelfit review list [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] 
 **使い方**
 
 ```text
-genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] [--by BY] --db
-                           PATH [--json]
-                           id
+genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] [--by BY] --db PATH
+                           [--json] id
 ```
 
 **オプションと引数**
@@ -1099,8 +1094,7 @@ genmodelfit review approve [-h] [--lang {en,ja}] [--evidence URL] [--note NOTE] 
 
 ```text
 genmodelfit review reject [-h] [--lang {en,ja}] --note NOTE --db PATH [--rejected PATH]
-                          [--hide-name] [--json]
-                          id
+                          [--hide-name] [--json] id
 ```
 
 **オプションと引数**
@@ -1126,8 +1120,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
                   [--workflow PATH] [--width PX] [--height PX] [--frames N] [--length SEC]
                   [--steps N] [--output PATH] [--save-failed] [--save-nonstandard]
                   [--resolution WxH] [--set NAME=VALUE] [--free] [--timeout SEC] [--force]
-                  [--source SOURCE] [--note NOTE] [--submission PATH] [--share]
-                  template
+                  [--source SOURCE] [--note NOTE] [--submission PATH] [--share] template
 ```
 
 - 動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
@@ -1327,8 +1320,7 @@ genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
 
 ```text
 genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--strict]
-                             [--no-filename-check] [--markdown]
-                             FILE|DIR [FILE|DIR ...]
+                             [--no-filename-check] [--markdown] FILE|DIR [FILE|DIR ...]
 ```
 
 **オプションと引数**
@@ -1350,10 +1342,9 @@ genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--stric
 **使い方**
 
 ```text
-genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--output FILE]
-                              [--report] [--threshold PCT] [--fail-on-breach] [--allow-empty]
-                              [--allow-file-sources] [--check]
-                              [dir]
+genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--output FILE] [--report]
+                              [--threshold PCT] [--fail-on-breach] [--allow-empty]
+                              [--allow-file-sources] [--check] [dir]
 ```
 
 **オプションと引数**

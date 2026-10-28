@@ -931,6 +931,43 @@ def _shared(top, pairs, lang) -> tuple[dict[tuple, list[str]], dict[tuple, tuple
     return keep, sample
 
 
+def _wrap_usage(text: str, width: int = 100) -> str:
+    """使い方の行を、Python の版によらず同じ形に折り返す(argparse の折り返しの位置は 3.13 で変わった)。
+    1 行につないでから、[ ] と ( ) の外の空白だけで切る。続きの行はコマンド名の後ろにそろえる。"""
+    flat = " ".join(text.split())
+    tokens: list[str] = []
+    cur, depth = "", 0
+    for ch in flat:
+        if ch in "[(":
+            depth += 1
+        elif ch in "])":
+            depth = max(0, depth - 1)
+        if ch == " " and depth == 0:
+            if cur:
+                tokens.append(cur)
+            cur = ""
+            continue
+        cur += ch
+    if cur:
+        tokens.append(cur)
+    if not tokens:
+        return ""
+    head, rest = [tokens[0]], tokens[1:]
+    while rest and rest[0][:1].isalpha() and rest[0].islower() and not rest[0].isupper():
+        head.append(rest.pop(0))
+    prefix = " ".join(head)
+    indent = " " * (len(prefix) + 1)
+    lines, line = [], prefix
+    for tok in rest:
+        if len(line) + 1 + len(tok) > width and line.strip():
+            lines.append(line)
+            line = indent + tok
+        else:
+            line += " " + tok
+    lines.append(line)
+    return "\n".join(lines)
+
+
 def _section(
     name: str, parser, purpose: str, depth: int, lang: str, pairs, toc: list[str], shared
 ) -> list[str]:
@@ -943,7 +980,7 @@ def _section(
         out += [_inline(_clean(purpose, pairs), lang), ""]
     fmt = parser._get_formatter()
     fmt.add_usage(parser.usage, parser._actions, parser._mutually_exclusive_groups, prefix="")
-    usage = fmt.format_help().strip()
+    usage = _wrap_usage(fmt.format_help())
     out += [f"**{lab['usage']}**", "", _fence(_clean(usage, pairs)), ""]
     command = name.removeprefix("genmodelfit ").strip()
     desc = (parser.description or "").strip()
