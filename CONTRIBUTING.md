@@ -19,6 +19,7 @@ For terms, see [README.md](README.md).
 In short: the easiest way is to measure with `genmodelfit bench … --share`, read what it shows, and press two buttons on a GitHub page in your browser ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no clone of a fork needed).
 If you know git, you can also run `genmodelfit bench … --submission data/contrib/` in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file (from "[2. Create the submission JSON](#2-create-the-submission-json)").
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open.
+Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](docs/accuracy.md#how-measurements-are-used)).
 
 ## The easy way (no git needed)
 

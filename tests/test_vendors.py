@@ -476,7 +476,8 @@ def test_issue_26_smaller_gpu_stays_estimated(db):
     e = judge(
         db.get("video_wan2_2_5B_ti2v"), nvidia("NVIDIA GeForce RTX 3060", 12.0), db, settings=WAN22_AT
     ).estimate
-    assert (e.fit, e.run_mode, e.fit_from) == ("marginal", "offload", "estimate")
+    # #100 の段ごとの式で、逃がさずに載る(全部載せ・順に載せ替えの使用率が 85% を超えて marginal)
+    assert (e.fit, e.run_mode, e.fit_from) == ("marginal", "gpu", "estimate")
     assert any("段階は見積もりで決めた" in r for r in e.reasons)
 
 
@@ -597,13 +598,14 @@ def test_other_vendor_community_measurement_only_calibrates(db):
 
 
 def test_shared_igpu_ram_includes_gpu_share(db):
-    """Radeon 780M・メモリ 16 GB: MOSS-Image は GPU 8.3 GB を載せると、メインメモリも足りない。"""
+    """Radeon 780M・メモリ 12 GB: SDXL は GPU の分を載せると、メインメモリも足りない(#100 から MOSS-Image は
+    GPU の分だけで足りないので、SDXL で確かめる)。"""
     a = Adapter(name="AMD Radeon 780M Graphics", vendor="amd", vram_gb=0.5)
-    g = classify_adapter(a, WIN11, 16.0)
+    g = classify_adapter(a, WIN11, 12.0)
     assert g.carveout_gb == 0.5
-    s = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=16.0, ram_available_gb=16.0, gpus=[g])
-    e = judge(db.get("image_moss_image_t2i"), s, db).estimate
-    assert e.ram_gb > 16.0 and e.fit in ("marginal", "too_tight")
+    s = SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=12.0, ram_available_gb=12.0, gpus=[g])
+    e = judge(db.get("image_sdxl_simple"), s, db).estimate
+    assert e.ram_gb > 12.0 and e.fit in ("marginal", "too_tight")
     assert any("メインメモリから使う" in r for r in e.reasons)
 
 

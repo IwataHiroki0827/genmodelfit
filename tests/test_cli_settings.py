@@ -44,18 +44,22 @@ def _rank(est: dict) -> int:
 
 
 def test_image_size_is_reflected_and_vram_grows(run):
-    ests = [_est(run, "image_sdxl_simple", "--width", str(s), "--height", str(s)) for s in (512, 1024, 1536)]
-    for s, e in zip((512, 1024, 1536), ests, strict=True):
+    ests = [_est(run, "image_sdxl_simple", "--width", str(s), "--height", str(s)) for s in (512, 1024, 4096)]
+    for s, e in zip((512, 1024, 4096), ests, strict=True):
         assert e["settings"]["width"] == s and e["settings"]["height"] == s
+    # #100: 全部載せの作業用メモリは一番重い段。SDXL は 512px から 2000px ほどまで VAE のタイル
+    # (VRAM によらない 1.06 GB)が一番重いので同じ値で、それより大きくすると生成の段が効いて増える
     vram = [e["vram_gb"] for e in ests]
-    assert vram[0] < vram[1] < vram[2]
+    assert vram[0] <= vram[1] < vram[2]
+    seq = [e["vram_sequential_gb"] for e in ests]
+    assert seq[0] <= seq[1] < seq[2]
 
 
 def test_image_width_and_height_are_independent(run):
-    wide = _est(run, "image_sdxl_simple", "--width", "1536", "--height", "512")
-    sq = _est(run, "image_sdxl_simple", "--width", "1536", "--height", "1536")
-    assert (wide["settings"]["width"], wide["settings"]["height"]) == (1536, 512)
-    assert wide["vram_gb"] < sq["vram_gb"]
+    wide = _est(run, "image_sdxl_simple", "--width", "4096", "--height", "512")
+    sq = _est(run, "image_sdxl_simple", "--width", "4096", "--height", "4096")
+    assert (wide["settings"]["width"], wide["settings"]["height"]) == (4096, 512)
+    assert wide["vram_gb"] < sq["vram_gb"]  # #100: 上の試験と同じ理由で大きな画像で比べる
 
 
 @pytest.mark.parametrize("vram", [8, 12, 16, 24])

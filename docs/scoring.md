@@ -111,7 +111,8 @@ The four checks:
 
 - Unchanged ([accuracy.md](accuracy.md) "How measurements are used"). Other users' measurements are used from one submission on PCs with the same GPU.
 - Only the models the author measured get more accurate values, and the shift can change the run mode or level (for example HY 3D 2.0 (`3d_hunyuan3d_image_to_model`) on an RTX 4060 8 GB is Good / GPU (6.7 GB) with the measurement and Good / GPU~ (full load 6.85 GB) without). This is accepted as the other side of making values accurate; the table's `m` / `c` marks values that come from measurements.
-- Evidence: llmfit also corrects estimates with measurements (one ratio from a machine's measurements for every model; genmodelfit shifts per model, by about ±0.3 GB).
+- Since #100 a negative shift is clipped at 0 per stage (never below weights + fixed part), a positive shift goes to the all-on-GPU value only, and a shift from a measurement pinned at the GPU limit goes to all three ([accuracy.md](accuracy.md) "How measurements are used" 1).
+- Evidence: llmfit also corrects estimates with measurements (one ratio from a machine's measurements for every model; genmodelfit shifts per model, by about −1 to +2 GB with the per-stage formula of #100).
 - Test: `tests/test_scoring.py::test_d_values_shift_by_at_most_the_delta` (the difference with and without measurements is within the shift).
 
 ## Measurements of templates without a size input
@@ -157,7 +158,7 @@ r per run mode (the table's Mem% and JSON's `utilization_pct` are this r):
 
 ### The promise changed
 
-Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo: 100 with int8 at 12 GB, 82.6 with bf16 on GPU~ at 16 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
+Up to 0.10 the promise was "more VRAM or RAM never lowers the Score". The new Score can drop when more VRAM switches the representative to a heavier precision or run mode (for example Z-Image Turbo int8: 100 on GPU~ at 14 GB, 82.3 all on GPU at 16 GB; llmfit behaves the same). The promise now covers levels only (with the `--vram` exception above). A test checks that more RAM never lowers the Score.
 
 ### Left out
 

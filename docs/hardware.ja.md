@@ -148,7 +148,7 @@ WSL の nvidia-smi は Windows のドライバの版を返すので、Windows �
 
 ## 精度(ComfyUI が選ぶ dtype と VRAM)
 
-ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `comfy/sd.py` を読んだ。
+ComfyUI(コミット 426f5ee、v0.43.0。2026-10-27 に読み直した)の `comfy/model_management.py` と `comfy/sd.py` を読んだ。
 
 - GPL-3.0 なので import しない。名前の一覧だけを事実として写した(`hardware._COMFY_FP16_PASCAL`・`_COMFY_FP16_BROKEN`)。
 - 以下は、起動の引数を付けない既定の動き。
@@ -174,15 +174,16 @@ ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `c
   - 収まるなら fp32(2 倍)で載せる。
 - 半精度を使わない GPU(Maxwell など)も、fp32 にしても収まるときだけ fp32 に広げる。収まらなければ 2 バイトのまま計算だけ fp32。
 - fp8 の重みは、fp8 の計算を持たない GPU では、fp16 に広げても収まれば広げる。収まらなければ fp8 のまま(計算のたびに変換)。
-- fp8_scaled・int8_convrot など量子化の設定を持つ重みは量子化のまま(`quant_config`。sd.py:2268)。
+- fp8_scaled・int8_convrot など量子化の設定を持つ重みは量子化のまま(`quant_config`。sd.py:2277)。
 
 **テキストエンコーダ**: 既定は fp16。ファイルの精度が 2 バイト以下ならその精度のまま載せる(`pick_weight_dtype`)。
 
 **VAE**(`vae_dtype` model_management.py:1290):
 
-- VAE ごとの `working_dtypes`(sd.py。既定は `[bfloat16, float32]`: sd.py:516)の中から選ぶ。fp16 は `should_use_fp16`、bf16 は `should_use_bf16` のときに選び、どちらも無ければ fp32。
-- 2D の KL VAE(SD・SDXL・SD3・Flux の ae・Flux2 の VAE。sd.py:676〜705 の既定の枝)・LTX(780)・Mage(627)は fp16 を持たない。bf16 を持たない GPU では fp32 になる。
-- Wan(849・857・873)・HunyuanVideo(791・824)・CogVideoX(808)などは fp16 を持つ。
+- VAE ごとの `working_dtypes`(sd.py。既定は `[bfloat16, float32]`: sd.py:518)の中から選ぶ。fp16 は `should_use_fp16`、bf16 は `should_use_bf16` のときに選び、どちらも無ければ fp32。
+- 2D の KL VAE(SD・SDXL・SD3・Flux の ae。sd.py:677〜712 の既定の枝)・LTX(784)・Mage(629)は fp16 を持たない。bf16 を持たない GPU では fp32 になる。
+- Flux2 の VAE は、0.40.0 では KL の既定のまま fp16 を持たない(426f5ee では fp16 を足した: sd.py:693)。製品のエンジンが 0.40 なので持たない側で見る。
+- Wan(853・865・881)・HunyuanVideo(795・828)・CogVideoX(812)・Oobleck(742)などは fp16 を持つ。
 - 仕上げで VRAM が足りなければ、ComfyUI はタイルに分けて続ける(遅い)。
 
 **作業用メモリ**: ComfyUI 自身の見積もり(`model_base.memory_required`、VAE の `memory_used_decode`)が、計算の精度の大きさ(`dtype_size`)を掛けている。fp32 で計算すると 2 倍。
@@ -193,7 +194,7 @@ ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `c
 |---|---|---|---|---|
 | 半精度を使わない | Maxwell 全部、GT 1030、Linux の GTX 1080、GTX 1660、T1000 | `fp32` | どれでも | 作業用メモリ × 2、VAE の重み × 2(VAE のファイルが fp32、または VAE がどの GPU でも fp32 なら × 1) |
 | fp16 は使うが bf16 を持たない | Windows の Pascal(1080 など)、Volta、Turing の RTX | `fp16` | fp16 を持たない系統 | 作業用メモリ × 2 |
-| 同上 | 同上 | `fp16` | fp16 を持たない VAE | VAE の重み × 2 |
+| 同上 | 同上 | `fp16` | fp16 を持たない VAE | VAE の重み × 2(#100 から仕上げの段の作業用メモリも × 2) |
 | 同上 | 同上 | `fp16` | fp16 を持つ系統 | 変えない(bf16 の重みには「fp16 で動かす(VRAM は同じ)」と書く) |
 | 同上 | 同上 | `fp16` | 系統が分からない | 変えない。「系統が分からないので入れていない」と書く |
 | fp8 の計算を持たない | Ada より前 | — | fp8 の重み | 変えない。「余裕があれば fp16 に広げる・無ければ遅い」と書く |
@@ -209,52 +210,58 @@ ComfyUI(コミット b1a247c、2026-10-20)の `comfy/model_management.py` と `c
 そのため、世代を固定して VRAM・RAM・ページファイルを増やしても段階は下がらない(`test_fit_monotonic_in_vram_per_arch`)。
 fp32 で計算する場合は、その GPU の実測でない限り `basis` は `estimated` にする(実測は半精度の GPU のもの)。
 
-### 系統の表(`src/genmodelfit/families.py`、ComfyUI コミット b1a247c の行)
+### 系統の表(`src/genmodelfit/families.py`、ComfyUI コミット 426f5ee の行)
 
 本体(`comfy/supported_models.py` の `supported_inference_dtypes`。書いていないクラスは `supported_models_base.py:47` の `[float16, bfloat16, float32]`):
 
 | 系統(鍵) | ComfyUI のクラス | fp16 | 行 |
 |---|---|---|---|
 | sd / sd3 / hunyuan3d / stable_audio | SD15・SDXL・SVD・SD3・Hunyuan3Dv2・StableAudio など | ○ | base:47 |
-| flux | Flux / FluxSchnell(Ovis も Flux として読む: model_detection.py:363) | ○ | 753 |
-| flux_fill | FluxInpaint(in_channels 96 = Fill・OneReward) | × | 783 |
-| flux2 / flux3 | Flux2 / Flux3 | ○ / × | 812 / 855 |
-| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | ○ | 1820 / 2433 / 2023 / 1171 / 1100 |
-| lens / mochi | Lens / GenmoMochi | × | 882 / 924 |
-| ltxv | LTXV / LTXAV(LTX-Video・LTX-2.x) | × | 952 |
-| minimax_h3 | MiniMaxH3(FastVideo FastH3 も) | × | 1000 |
-| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | × | 1027 / 2203 |
-| hunyuan_video15 | HunyuanVideo15 | ○ | 2241 |
-| lumina2 / zimage / ming_image / pixeldit | Lumina2(NewBie: model_detection.py:611)/ ZImage / MingImage / PixelDiTT2I | × | 1213 / 1240 / 1240 / 1298 |
-| wan | WAN21_* / WAN22_*(HuMo・VACE・S2V・Animate・SCAIL・CausalAR など) | ○ | 1366 |
-| trellis2 | Trellis2(Pixal3D も: model_detection.py:125) | × | 1541 |
-| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | 同名 | ○ | 1685 / 1853 / 2512 / 2471 / 2400 / 2576 |
-| hidream / hidream_o1 | HiDream / HiDreamO1 | × | 1710 / 1735 |
-| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | × | 1903 / 2350 / 2376 |
-| omnigen2 | Omnigen2 / Boogu(torch 2.7 以上で float16 を先頭に足す: 1938) | ○ | 1930 |
-| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | × | 1994 / 2052 / 2085 |
-| qwen_image / qwen_image21 / joyimage | QwenImage(FireRed・Marigold v2 も)/ QwenImage21 / JoyImage | × | 2114 / 2144 / 2176 |
-| kandinsky5 / ernie | Kandinsky5 / ErnieImage | × | 2294 / 2495 |
+| flux | Flux / FluxSchnell(Ovis も Flux として読む: model_detection.py:363) | ○ | 754 |
+| flux_fill | FluxInpaint(in_channels 96 = Fill・OneReward) | × | 784 |
+| flux2 / flux3 | Flux2 / Flux3 | ○ / × | 813 / 856 |
+| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | ○ | 1821 / 2462 / 2024 / 1172 / 1101 |
+| lens / mochi | Lens / GenmoMochi | × | 883 / 925 |
+| ltxv | LTXV / LTXAV(LTX-Video・LTX-2.x) | × | 953 |
+| minimax_h3 | MiniMaxH3(FastVideo FastH3 も) | × | 1001 |
+| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | × | 1028 / 2232 |
+| hunyuan_video15 | HunyuanVideo15 | ○ | 2270 |
+| lumina2 / zimage / ming_image / pixeldit | Lumina2(NewBie: model_detection.py:611)/ ZImage / MingImage / PixelDiTT2I | × | 1214 / 1241 / 1241 / 1299 |
+| wan | WAN21_* / WAN22_*(HuMo・VACE・S2V・Animate・SCAIL・CausalAR など) | ○ | 1367 |
+| trellis2 | Trellis2(Pixal3D も: model_detection.py:125) | × | 1542 |
+| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | 同名 | ○ | 1686 / 1854 / 2541 / 2500 / 2429 / 2605 |
+| hidream / hidream_o1 | HiDream / HiDreamO1 | × | 1711 / 1736 |
+| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | × | 1904 / 2379 / 2405 |
+| omnigen2 | Omnigen2 / Boogu(`extended_fp16_support` のとき float16 を先頭に足す: 1939) | ○ | 1931 |
+| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | × | 1995 / 2053 / 2114 |
+| qwen_image / qwen_image21 / joyimage | QwenImage(FireRed・Marigold v2 も)/ QwenImage21 / JoyImage | × | 2143 / 2173 / 2205 |
+| kandinsky5 / ernie | Kandinsky5 / ErnieImage | × | 2323 / 2524 |
 
 Z-Image は、重みの値で `allow_fp16` が立つと fp16 も使う(model_detection.py:624、supported_models.py:1245)。
 ただ、ファイルを読まないと分からないので、fp16 を持たない側(安全側)で見て、理由に書く。
 
 VAE(`comfy/sd.py` の `working_dtypes`。○ は fp16 を持つ、× は持たない):
 
-- `kl`(既定 516。2D の KL)×
-- `ltxv`(780)×
-- `ltx_diffusion`(645)×
-- `mage`(627)×
-- `wan`(849・857・873)○
-- `hunyuan_video`(824)○
-- `hunyuan_video15`(791)○
-- `hunyuan3d`(902)○
-- `trellis2`(594・599)○
-- `seedvr2`(610)○
-- `cogvideox`(808)○
-- `minimax_h3`(1049)○
-- `ace`(917)○
-- `fp32`(540・947・999・1083。どの GPU でも fp32)
+- `kl`(既定 518。2D の KL)×
+- `flux2`(Flux2 の VAE。0.40.0 は既定のまま: 515・693@0.40.0)×
+- `ltxv`(784)×
+- `ltx_diffusion`(647)×
+- `mage`(629)×
+- `pixel`(ピクセル空間。925〜933、既定のまま)×
+- `wan`(881。Wan 2.1・Qwen Image)○
+- `wan22`(865。Wan 2.2、16 倍圧縮)○
+- `qwen21`(853。Qwen Image 2.1、16 倍圧縮)○
+- `oobleck`(742。ACE-Step 1.5・Stable Audio Open)○
+- `yue2`(742・744〜747)○
+- `hunyuan_video`(828)○
+- `hunyuan_video15`(795)○
+- `hunyuan3d`(906)○
+- `trellis2`(596・601)○
+- `seedvr2`(612)○
+- `cogvideox`(812)○
+- `minimax_h3`(1053)○
+- `ace`(921)○
+- `fp32`(542・951・1003・1087。どの GPU でも fp32)
 
 一覧の各項目の系統と VAE の決め方:
 
@@ -281,7 +288,7 @@ NVIDIA の GPU(nvidia-smi で確かめた `cuda`)が使えないときだけ、�
 
 | 会社・部品 | OS | 判定 | 一次資料 |
 |---|---|---|---|
-| AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI b1a247c: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
+| AMD Radeon RDNA 4(RX 9070 / 9060、gfx1200・1201) | Windows 11・Linux | **GPU**(`rocm`) | ComfyUI README「AMD GPUs (Windows, ROCm 10.0)」(Comfy-Org/ComfyUI 426f5ee: 「supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4」「Use Windows 11」)、ROCm/TheRock `SUPPORTED_GPUS.md`・`RELEASES.md`(4639f91、「GFX target lookup table」・Release Ready) |
 | AMD RDNA 3.5 の APU(Ryzen AI Max = gfx1151、Ryzen AI 9 HX 37x = gfx1150、Ryzen AI 7 350 = gfx1152、Radeon 820M = gfx1153) | Windows 11・Linux | **GPU**(`rocm`、共有メモリ) | 同上 |
 | AMD Radeon RDNA 3(RX 7900 = gfx1100、7800 / 7700 = gfx1101、7600 = gfx1102)、Radeon 780M / 760M / 740M・Ryzen Z1 Extreme / Z1(gfx1103) | Windows 11・Linux | **GPU**(`rocm`) | 同上。Linux の pytorch.org の ROCm 版(ComfyUI の Linux の案内 `--index-url …/rocm7.2`)も入れる |
 | AMD Radeon RDNA 2(RX 6900〜6800 = gfx1030、6700 = gfx1031、6600 = gfx1032、6500 / 6400 / 6300・Pro W6400 / W6300 = gfx1034)、Radeon 680M / 660M(gfx1035)、Van Gogh・Sephiroth(Steam Deck・OLED 版。Windows の名前は AMD Custom GPU 0405。8 CU、gfx1033。共有メモリ) | Windows 11・Linux | **GPU**(`rocm`。bf16 なし) | 同上。pytorch.org の ROCm 版は gfx1030 だけ(pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh` の `PYTORCH_ROCM_ARCH`)なので、ほかは AMD の multi-arch 版(TheRock)を使うと notes に書く |
@@ -331,7 +338,7 @@ GPU の名前から世代を決める表:
   - A770 は 8 GB 版と 16 GB 版があるので 8 GB。
   - A570M・A530M・Pro の M は Intel の資料で確かめられなかったので値を持たず、Linux では CPU のまま。
 
-### 精度(ComfyUI b1a247c の `comfy/model_management.py`)
+### 精度(ComfyUI 426f5ee の `comfy/model_management.py`)
 
 - AMD(`torch.version.hip`):
   - `should_use_fp16` は常に True。
@@ -446,7 +453,7 @@ GPU が無い(または GPU に載らない)とき、CPU で動くとみなす�
 ComfyUI の CPU での動き:
 
 - GPU が無ければ CPU で動く(`--cpu`「To use the CPU for everything (slow)」: comfy/cli_args.py)。
-- CPU では本体と VAE を fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model_management.py:1902・1969。テキストエンコーダは fp16 のまま: 1261)。
+- CPU では本体と VAE を fp32 で持つ(`should_use_fp16`・`should_use_bf16` が CPU では False: model_management.py:1912・1979。テキストエンコーダは fp16 のまま: 1261)。
 
 必要なメインメモリ = 固定分 + 全部品 + (2 バイトの本体なら本体をもう 1 つ分)+ VAE をもう 1 つ分 + 作業用メモリ × 2。
 

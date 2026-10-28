@@ -5,7 +5,7 @@
 This page explains how genmodelfit's VRAM and memory estimates are built, which measurements they are fitted to, and how far they can be trusted.
 It is for people who read the estimates, change the numbers, or submit measurements.
 
-As of 2026-10-20 (how other users' measurements are handled: 2026-10-22).
+As of 2026-10-20 (how other users' measurements are handled: 2026-10-22; the working-memory formula became per-stage on 2026-10-27: #100).
 The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them with `python -m genmodelfit.calibrate`
 (`--dry-run` prints the tables without writing). The tables in "Results (leave-one-out)" come from that command's output.
 **All units are GiB (2^30 bytes).** "GB" in the tables and the CLI also means GiB.
@@ -14,6 +14,10 @@ The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them wi
 
 - [Summary](#summary)
 - [Formulas](#formulas)
+  - [Per-stage working memory (#100)](#per-stage-working-memory-100)
+  - [Tiles](#tiles)
+  - [How families are mapped](#how-families-are-mapped)
+  - [Models without a per-stage formula](#models-without-a-per-stage-formula)
   - [Main memory (RAM)](#main-memory-ram)
   - [Models of unknown size](#models-of-unknown-size)
 - [How files are counted (agreement with #2)](#how-files-are-counted-agreement-with-2)
@@ -23,77 +27,198 @@ The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them wi
 - [Known limits](#known-limits)
 - [Other users' measurements (#34, 2026-10-21; handling aligned with llmfit on 2026-10-22)](#other-users-measurements-34-2026-10-21-handling-aligned-with-llmfit-on-2026-10-22)
   - [Bench on non-NVIDIA GPUs (0.9.0)](#bench-on-non-nvidia-gpus-090)
-- [Cross-check against RTX 3070 8GB measurements (bench, 2026-10-19 UTC, not used for fitting)](#cross-check-against-rtx-3070-8gb-measurements-bench-2026-10-19-utc-not-used-for-fitting)
+- [Cross-check (measurements and public figures used neither for fitting nor for levels)](#cross-check-measurements-and-public-figures-used-neither-for-fitting-nor-for-levels)
 
 ## Summary
 
-- **Only 4 models could be evaluated (2 image, 2 3D). The maximum leave-one-out error is 6.4%, the mean 4.6%.**
-  - Leave-one-out = fit on all but one measurement, then predict the one left out.
-  - This is inside the ±20% target.
-  - But it rests on 4 models and one kind of GPU, so it does not show that the target is met.
-- **Video and audio cannot be evaluated: each has only one measurement that is not pinned.**
-  (`by_modality.video.target_met` and `music.target_met` in `calibration.json` are null.)
-  - Leaving that one out sends the coefficient back to its prior value (the placeholder from #1).
-  - So Wan2.1 at -17.2% and ACE-Step at +3.5% only measure how good the prior values were.
+- **Since #100 (2026-10-27) the working memory is ComfyUI's authors' own estimate (the formulas in the code), per stage** ("Formulas" below).
+  The only coefficient still fitted to measurements is the one for 3D among the models without a per-stage formula (`act_3d_gb`).
+- Against the 4 unpinned RTX 5080 measurements of the author (peaks on a GPU with room), the differences are Z-Image int8 +5.1%, SDXL +12.5%,
+  Wan 2.1 1.3B −14.7%, ACE-Step 1.5 +9.2% ("Results" below). The formula is not fitted to them, so this is a cross-check, not a fit.
+  - 4 measurements, one kind of GPU and dynamic-VRAM peaks, so it does not show that the target is met.
+  - For Wan 2.1 1.3B the measurement is 1.96 GB above the formula (VAE at its tile value). It is a peak on a GPU with room, where dynamic VRAM
+    kept the parts loaded and decoded the VAE without tiles (with the untiled VAE the formula gives 14.04 GB, +5.6%).
+    This positive shift is added to the all-on-GPU value only ("How measurements are used" 1 below).
+- The 2 3D measurements miss by +6.4% and −4.6% in leave-one-out (fit on all but one, then predict the one left out).
 - **The 3 pinned measurements (Z-Image bf16, Wan2.2 5B × 2) carry no information.**
   - The weights alone already exceed the measurement, so "prediction ≥ measurement" holds by construction and cannot fail.
-  - They do not count as evidence of accuracy.
 - As a baseline, predicting from "the sum of file sizes only" misses by 22.8% on average over the 6 unpinned measurements.
-- Only the all-on-GPU VRAM (`vram_gb`) was fitted.
-  - **The swapped-in-turn (`vram_sequential_gb`) and offload (`vram_offload_gb`) values and main memory (`ram_gb`) have no measurements and are not verified.**
-  - They need measurements on an 8 GB GPU (the bench in #5).
+- **The swapped-in-turn (`vram_sequential_gb`) and offload (`vram_offload_gb`) values and main memory (`ram_gb`) have no measurements and are not verified.**
+  A bench that measures per-stage peaks is needed (future work).
+- The RTX 3070 sweep (2026-10-27) is not used as evidence: the GPU was pinned at its limit and other work used it in some runs
+  ("Cross-check" below; to be measured again).
 
 ## Formulas
 
 ComfyUI runs "read the text (text encoder) → generate (main model) → finish (VAE)" in turn.
-So the weights are split by stage and three quantities are computed (`estimate.py`).
+So the weights are split by stage and, together with the per-stage working memory (#100, 2026-10-27; see "Per-stage working memory (#100)" below),
+three quantities are computed (`estimate.py`, `working.py`).
 
 | quantity | formula | meaning |
 |---|---|---|
-| `vram_gb` (all on GPU) | fixed + weights of all parts + working memory | what dynamic VRAM uses on a GPU with plenty free. The only one fitted to measurements |
-| `vram_sequential_gb` (swapped in turn) | fixed + max(encoder, main + working, VAE + working, other) | parts are unloaded between stages. A bit slower but usable |
+| `vram_gb` (all on GPU) | fixed + weights of all parts + max(S, V_eff, T) | all weights stay loaded, plus the working memory of the heaviest stage |
+| `vram_sequential_gb` (swapped in turn) | fixed + max(text-stage weights + T, denoise-stage weights + S, decode-stage weights + V_eff, other) | parts are unloaded between stages. A bit slower but usable |
 | `vram_offload_gb` (offload) | fixed + max(weights of each stage × 0.4 + working memory of that stage) | runs with part of the weights left in main memory (lowvram / dynamic VRAM). Slow |
 | `ram_gb` (running on the GPU) | 3.0 + weights of the largest stage | for all on GPU and swapped in turn (see "Main memory (RAM)" below) |
 | `ram_gb` (offload, or CPU) | 3.0 + weights of all parts | the offloaded weights stay in main memory |
 
+- S, V_eff and T are the working memory of the denoise, decode and text stages ("Per-stage working memory (#100)" below).
+- Models that cannot be mapped per stage ("Models without a per-stage formula" below) use the earlier formula for the whole model
+  (the working memory from the per-modality coefficients, the same amount in the denoise and decode stages, 0 in the text stage). Stages are never mixed.
+- The fixed part stays at 1.472 GiB fitted in 0.10 (not refitted; see "Fitting" below).
+  It is close to ComfyUI's own reserve of 1.2 to 1.5 GiB (`minimum_inference_memory` = 0.8 GiB + `EXTRA_RESERVED_VRAM`: 0.6 GiB on Windows (0.7 on GPUs over 15 GB),
+  0.4 elsewhere; model_management.py:877-891@426f5ee).
+  With dynamic VRAM (below) this reserve means something else (weights are loaded and evicted on demand, so it no longer guards free space).
+- The floor of #95 (weights + fixed part) is the value with S = V = T = 0; its definition is unchanged.
+
 **How weights are assigned to a role.** The first rule that matches decides; if none matches, the file is the main model.
 
-1. ComfyUI folder (`directory`)
+1. ComfyUI's location (`directory`)
 2. An explicit `role`
-3. HF folder name
+3. The HF folder name
    - `unet` / `transformer` → main model
    - `text_encoder*` / `tokenizer*` → encoder
    - `vae*` → VAE
    - `image_encoder` → image encoder
    - `controlnet` → same stage as the main model
-4. Known file names
-   - Text encoders: `umt5` / `t5xxl` / `clip_l` / `clip_g` / `qwen_2.5_vl` / `qwen_3_4b` / `gemma` / `llama_3` and similar
+4. A known file name
+   - Text encoders: `umt5` / `t5xxl` / `clip_l` / `clip_g` / `qwen_2.5_vl` / `qwen_3_4b` / `gemma` / `llama_3` and so on
    - VAE: `vae`
 
 Notes:
 
-- Short words such as `qwen` are not matched (`qwen_image_fp8_e4m3fn.safetensors` is a main model).
-- Parts that sit on the GPU together with the main model (`controlnet`, `model_patches`, `loras`, …) go into the generation stage.
-- The audio encoder (`audio_encoders`) runs before generation, so it goes into the reading stage.
+- Short words such as `qwen` are not used for matching (`qwen_image_fp8_e4m3fn.safetensors` is the main model).
+- Parts that sit on the GPU together with the main model (`controlnet`, `model_patches`, `loras`, and so on) go into the denoise stage.
+- Audio encoders (`audio_encoders`) run before generation, so they go into the reading stage.
 
-**All-in-one `checkpoints` (one file holding everything):**
+**All-in-one `checkpoints` in a single file:**
 
-- Split by a breakdown counted from the tensor sizes in the safetensors header (SDXL / ACE-Step 1.5 / Hunyuan3D 2.0 / 2.1, read on 2026-10-20).
-- These are split 75% main model, 20% encoder, 5% VAE (these shares are not verified):
-  - All-in-one files with no known breakdown.
+- Split by the breakdown counted from the tensor sizes in the safetensors header (SDXL / ACE-Step 1.5 / Hunyuan3D 2.0 / 2.1; read on 2026-10-20).
+- These are split as main model 75%, encoders 20%, VAE 5% (these shares are not verified):
+  - All-in-one files with an unknown breakdown.
   - Files with no per-file size, only a template size.
 
-**Working memory:**
+### Per-stage working memory (#100)
+
+**Basis**: the amount ComfyUI's authors expect each model to use as working memory (the formulas in ComfyUI's code; a primary source).
+ComfyUI's code (GPL-3.0) is neither imported nor copied. Only the numbers and the shape of the formulas are kept in the tables of
+`src/genmodelfit/working.py`, with sources as `file:line@426f5ee` (v0.43.0), one key per row. Differences from 0.40.0 (the product's engine) are noted.
+
+- Since ComfyUI 0.40 the default on NVIDIA (and AMD with ROCm 7.14 or later) is dynamic VRAM (comfy-aimdo), and ComfyUI's expected amount
+  does not decide how the model is placed (weights are loaded and evicted on demand; main.py, model_patcher.py, model_management.py).
+  So this does not claim "the same formula as ComfyUI predicts how it runs". It only claims "the amount ComfyUI's authors expect".
+  Predicting how it runs is meaningful only for the older behaviour (`--disable-dynamic-vram`, torch below 2.8, ROCm below 7.14, Intel, Apple).
+- **No correction factor is applied.** The image VAE figure is about 1.8× the measurement (the RTX 3070 sweep), but with so few points it is kept as the safe side.
+
+**S (denoise stage)**: `S = batch × area × 2 bytes × 0.01 × factor MiB` (the SDPA-path formula, model_base.py:424-446@426f5ee).
+
+- 1× (one pass). ComfyUI batches cond and uncond together only when `memory_required × 1.5 < free`, otherwise it runs them one by one
+  (samplers.py:273-284). What it needs to run is 1× (`minimum_memory_required`, sampler_helpers.py:178).
+- Area = the number of latent elements without channels (image (H/s)·(W/s), video latent frames × (H/s) × (W/s), audio latent frames).
+- Families that pass packed latents (LTXAV of LTX-2 / 2.3 and MiniMax H3; NestedTensor of video and audio) also count the channels and
+  the audio latent in the area (samplers.py:1281-1283, utils.py:1445-1453).
+- For editing uses (`i2i`, `relight`), families whose memory estimate includes reference latents (`ref_latents`: Flux, Flux2, Qwen Image,
+  Z-Image, Lumina2 and others; `memory_usage_factor_conds` in model_base.py) add the area of one input image.
+- The factor is `memory_usage_factor` in supported_models.py ("How families are mapped" below).
+- **The SDPA formula for every vendor.** Apple (MPS), CPU and unsupported AMD GPUs use split (sub-quadratic) attention, but ComfyUI itself says its
+  split-path figure (× 0.15) is "too aggressive" for an implementation that splits to fit the free memory (model_base.py:444), so it is not used.
+  On those GPUs the reasons only say "the working memory can be larger" (the level is not changed).
+  AMD uses SDPA on gfx90a, 942, 950, 1100, 1101, 1150, 1151, 1170, 1171, and gfx1200, 1201 with ROCm 7 or later
+  (model_management.py:527-532, `estimate.AMD_SDPA_TARGETS`).
+- Doubled on GPUs that compute the denoise stage in fp32 (docs/hardware, "Precision").
+
+**V (decode stage)**: each VAE's `memory_used_decode` / `memory_used_encode` (sd.py).
+
+- For one image (ComfyUI splits the batch by free ÷ V; sd.py:1282-1283). The batch size is not applied.
+- Uses that turn an input image, video or audio into latents (`i2i`, `i2v`, `v2v`, `inpaint` and so on) also count encoding:
+  V = max(decode, encode). The encoded input is the whole video for whole-video uses (`v2v`, `control`, `inpaint` and so on) and for Wan
+  (which encodes all frames even for image to video: nodes_wan.py:48, 54), otherwise one image.
+- VAE dtype: VAEs without fp16 in working_dtypes (KL, Flux2 (0.40), LTX, Mage) use 4 bytes (2×) on GPUs without bf16.
+  float32-only VAEs (such as the LTX-2 audio VAE) use 4 bytes on every GPU.
+- On AMD the KL VAE (also the Flux2 VAE) is × 2.73 (`VAE_KL_MEM_RATIO`, sd.py:503-506). The reasons say so.
+- **The Flux2 VAE is × 4** (the KL formula on the 16× latent, × 4). 0.40.0 always multiplies by 4 (sd.py:693@0.40.0);
+  426f5ee uses × 1 on GPUs that can use the fused norm (sd.py:698). The product's engine is 0.40, so × 4 is used and the reasons say so.
+- The VAE of each family: "How families are mapped" below. LTX-2 / 2.3 also take the larger of the audio VAE (float32, sd.py:991-992),
+  and MiniMax H3 the larger of its audio VAE (sd.py:1089-1096).
+
+**T (text stage)**: only text encoders for which ComfyUI estimates working memory (`memory_estimation_function`, sd.py:469-474). 0 for the rest.
+
+| family | formula (bf16 GPU; doubled without bf16) | source |
+|---|---|---|
+| ACE-Step 1.5 LM | 5 × seconds tokens × 0.4375 MiB (0.5625 for the 4B LM) × 0.5 | text_encoders/ace15.py:243-246, 323-326, 384-391 |
+| LTX-2 / 2.3 Gemma | at least 642 tokens × 6 MiB × 0.5 ≈ 1.88 GiB | text_encoders/lt.py:246-256 |
+| YuE2 | with the song-stage length L = seconds × 25 + 2: (2 × 28 × 8 × 128 × L + L² + L × 34816) × 2 bytes | text_encoders/yue2.py:129-137 |
+
+- The template's default token counts are unknown, so the minimum is used (the YuE2 score stage, 8192 tokens by default, is not included; future work).
+- Ming's image encoder (text_encoders/ming_image.py:332) also has an estimate, but Ming has no VAE formula and cannot be mapped (earlier formula).
+
+### Tiles
+
+The V used for the level is **V_eff = min(V, V_tile)**. When V does not fit (when an OOM occurs), ComfyUI splits the VAE into tiles
+(sd.py:1269-1357, 1422-1474). V_tile is the value of the **smallest tile, independent of VRAM** (adding VRAM never lowers the level).
+
+| shape | decode tile | encode tile |
+|---|---|---|
+| image (2D) | the largest of latent 64×64, 32×128, 128×32 (up to the image's latent size; sd.py:1182-1194). A 512 px square at 8× compression, 1024 px at 16× (Flux2, Qwen Image 2.1, Mage) | the largest of pixels 512×512, 256×1024, 1024×256 (sd.py:1214-1225) |
+| video (3D) | 2 latent frames in time (1 for a single frame), a `256 / compression` square in space (up to the latent size; sd.py:1335-1357) | a 256-pixel square in space, all frames (sd.py:1462-1470) |
+| audio (1D) | 256 latent frames (sd.py:1196); the same for ACE-Step 1 | 256 × 2048 samples (1/16 for ACE-Step 1; sd.py:1227-1235) |
+| VAEs that tile themselves (MiniMax H3) | a 256-pixel square (sd.py:1327-1331, 1335) | a 256-pixel square |
+
+- ComfyUI's 3D budget `min(V, total × 0.8)` depends on VRAM, so the smallest tile is used for the level.
+- When V does not fit the GPU (fixed + decode-stage weights + V > VRAM), the reasons say "ComfyUI splits the VAE into tiles (slower)"
+  (the level is not changed). On Windows, NVIDIA may spill into shared memory (sysmem fallback) and only slow down instead of failing with OOM.
+- **V rarely changes the level**: judging the bundled list (329 entries) on 6, 8, 12, 16 and 24 GB NVIDIA GPUs with V and V_tile set to 0
+  changes the level in 8 of the 1,645 cases (3 audio, 2 Qwen Image 2.1, 2 SDXL workflows, VOID).
+- So SDXL's all-on-GPU value is the same from 512 px to about 2000 px (the heaviest stage is the tiled VAE, 1.06 GB; the denoise stage
+  is 0.26 GB even at 1024 px). Above that the denoise stage takes over and it grows.
+  For most models the weights or the denoise stage dominate. V matters mainly through the "split into tiles (slower)" note when V exceeds VRAM.
+
+### How families are mapped
+
+The row of `working.py` comes from `comfy_family` / `comfy_vae` (`families.py`; docs/hardware, "Family table") and the main model's size.
+
+- **The size is the main file's `header_params`** (element count from the safetensors / GGUF header; else `params_b` of the list), in bins
+  (dim and hidden_size are not read; no cache or schema change, and the values are fixed):
+  - Wan: below 2.5B → dim 1536, below 7B → 3072 (Wan 2.2 5B), otherwise → 5120. Factor = dim / 2222 (supported_models.py:1374).
+    VACE × 1.2 (:1456), WanDancer 1.8 (:1590)
+  - Flux2: below 6B → hidden 3072 (Klein 4B), below 12B → 4096 (Klein 9B), otherwise → 6144 (dev 32B). Factor = 3.1 × 4 × hidden / 2604 (:820)
+  - LTX: 14B or more → LTXAV (LTX-2 / 2.3; factor 0.077, :980), 10B or more → LTXV 13B (11 = 5.5 × 4096 / 2048, :960), otherwise → LTXV (5.5)
+  - SD: an (all-in-one) main model of 3.3B or more → SDXL (0.8, :219), below → SD1.5, SD2, SDXL refiner (all 1.0, :69, 116, 180)
+- Other factors: SD3 1.6, Flux 3.1, Chroma 3.2, LongCat 2.5, HiDream 2.0 (default), Lumina2 1.4, Z-Image 2.8,
+  Omnigen2 1.95 (Boogu 2.15), Kandinsky5 1.25, Krea2 2.2, Qwen Image 1.8, JoyImage 1.8, Anima 0.95, Lens 4.0,
+  Ideogram4 11.6, MOSS-Image 14.6, ERNIE 10.0, MageFlow 6.5, Qwen Image 2.1 6.0, HiDream O1 0.033, PixelDiT 0.04,
+  HunyuanVideo 1.8, HunyuanVideo 1.5 4.0, CogVideoX 2.0 (default), MiniMax H3 0.114, ACE-Step 1.5 4.7, ACE-Step 1 0.5,
+  Stable Audio Open 2.0 (default), YuE2 4.0 (source lines in `working.WORKS`).
+- VAEs (split out in #100): `wan22` (Wan 2.2 5B, 16× compression), `qwen21` (Qwen Image 2.1, 16× compression), `flux2` (the Flux2 VAE × 4),
+  `oobleck` (ACE-Step 1.5, Stable Audio Open), `yue2`, `pixel` (pixel space). The Qwen Image VAE is the Wan 2.1 VAE.
+  When the list's `comfy_vae` does not fit the row's latent (another part's VAE, or a key of an older list), the row's default VAE is used.
+- Temporal compression: 4 for Wan, HunyuanVideo and CogVideoX, 8 for LTX, 17k+5 frames ↔ 5k+2 for MiniMax H3 (sd.py:1051).
+  Pixel-space families (HiDream O1, PixelDiT) are 1 in space too.
+
+### Models without a per-stage formula
+
+These use **the earlier per-modality formula for the whole model** (ComfyUI's default factor 2.0 is not used: it would overestimate
+non-diffusion tools such as SAM3, Depth Anything and frame interpolation).
+
+<!-- fallback-count: 86 -->
+86 of the 329 entries in the bundled list:
+
+- 22 text to speech, 10 3D (the `act_3d_gb` formula; ComfyUI's 3D estimate has a different shape)
+- 27 with an unknown family (13 image, 13 video, 1 music)
+- 20 with a family but no formula: SeedVR2 4, Stable Audio 3 4 (the list does not tell which of the two VAE configurations it uses),
+  SD video (SVD, AnimateDiff) 3, Ming 2 (no VAE formula), Qwen Image video workflows 2, Depth Anything 3 2, SAM3 2, MiniMax Music 1
+- 7 with an unknown size: Flux3 Klein 4 (no header and no `params_b`), Wan 2 (same), SD 1
+
+Mapping more families is future work ("Known limits" below).
+
+**Working memory (models without a per-stage formula):**
 
 - Image = coefficient × megapixels × batch size
 - Video = coefficient × megapixels × (frames / 49)^0.5 × batch size
 - Audio = coefficient × minutes
 - 3D = constant
-- The video exponent 0.5 is not fitted (there is only one measurement).
-- Why it is gentler than linear:
-  - ComfyUI's attention uses memory-saving implementations (SDPA and others), so working memory does not grow with the square of the token count.
-  - The Wan VAE decodes the frames in small chunks, so the frame count does not act directly.
-- The value of the exponent itself has no solid basis.
+- The coefficients stay at the values fitted in 0.10 (from #100 only 3D is refitted; see "Fitting" below).
+- The video exponent 0.5 is not fitted (there is only one measurement). The value itself has no solid basis.
 
 **Precision setting** (`Settings.precision`, CLI `--precision`):
 
@@ -119,8 +244,8 @@ Notes:
 - Effect on the bundled list (all 341 entries of the list at the time the levels changed, before the HF lower bound was raised; the bundled list of 0.9.1 (2026-10-21) has 329):
   - 8 GB / 32 GB: Perfect 44 → 23, Good 22 → 32, Marginal 87 → 97, Too tight 188 → 189.
   - 16 GB / 32 GB: Perfect 95 → 66, Good 67 → 76, Marginal 107 → 124, Too tight 72 → 75.
-- At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 and Wan 2.1 1.3B use 96–97%, so they are Marginal
-  (they still run on the GPU; tests/test_estimate.py).
+- At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 uses 94% swapped in turn, so it is Marginal (it runs on the GPU).
+  Wan 2.1 1.3B is also Marginal swapped in turn (97% used). tests/test_estimate.py.
 - If offload still does not fit on the GPU, the result is compared with the no-GPU judgment (Marginal for small types that run on CPU), and the better one is taken.
   - Before, adding a small GPU could turn a CPU-capable model into "does not run", so adding VRAM lowered the level (#17).
 
@@ -197,9 +322,22 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
 13.2 GB on a 16 GB card (Z-Image int8) is not a lower bound of what the model needs. So:
 
 1. A measurement is used as the all-on-GPU value (`vram_gb`).
-   - The model's working memory is shifted by "measurement − formula value", and the same shift is added to the swapped-in-turn and offload values.
+   - The working memory is shifted by d = "measurement − formula value". The formula value is the per-stage formula at the measurement's settings (VAE at its tile value V_eff).
+   - **A negative shift** is added to the working memory of each stage of all three amounts and clipped at 0 per stage (#100),
+     so no amount goes below weights + fixed part (zero working memory; the floor of #95).
+   - **A positive shift goes to the all-on-GPU value only** (for models with and without a per-stage formula). An unpinned measurement above
+     the formula is a peak on a GPU with room, where dynamic VRAM kept the parts loaded and decoded the VAE without tiles
+     (Wan 2.1 1.3B's +1.96 GB is nearly the gap between the untiled V of 3.42 GB and the tiled V of 0.27 GB);
+     this does not happen when swapping in turn or offloading.
+   - **A shift from a measurement pinned at the GPU limit** (used only as a lower bound) goes to all three.
+     Which one applies depends on the measurement, so it is monotonic in the VRAM of the PC being judged.
+   - v3's "the same shift for all three" (`max(a + d, b + d) = max(a, b) + d`) holds only when the shift is an error of the fixed part.
+     Gaps with other causes (dynamic VRAM using free space, no tiling) differ by stage, hence the rules above.
+   - A measurement (the author's or other users') below the floor is raised to the floor (it ran with part of the weights in main memory).
+     Within 0.1 GB it is rounding or measurement noise: `basis: "measured"` stays, the value is the floor, and the reasons say so
+     (ACE-Step 1.5: 10.80 GB against a floor of 10.82 GB, 0.02 GB; `estimate.MEASURED_FLOOR_TOLERANCE`).
    - On a small GPU, even if all-on-GPU does not fit, the result **falls to swapped in turn or offload**.
-     Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.6 GB swapped in turn. Use is 96%, so the level is Marginal.
+     Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.5 GB swapped in turn. Use is 94%, so the level is Marginal.
    - A measured value larger than the GPU does not by itself make a model Too tight.
 2. If the measurement is 90% or more of the GPU's capacity (or offload is lowvram or similar), it counts as "pinned at the limit".
    - **It is used only as a lower bound** (all on GPU = max(formula, measurement)).
@@ -223,116 +361,118 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
 6. These measurements are used neither for estimates nor for refitting (written by the bench in #5):
    - `outcome` is not `ok` (OOM, error).
    - `standard: false` (custom workflows or extra overrides).
-7. Measured values are taken as GiB (`unit` in `measurements.json`).
+7. **Working-memory-only measurements** (#100): measurements with `vram_metric: torch_reserved` and `offload: dynamic`
+   (taken by bench with dynamic VRAM) exclude the weights (dynamic VRAM loads and evicts the weights on demand).
+   - Until per-stage peaks can be measured, they **neither set the level nor shift the estimate; they are only cross-checked** (below; `estimate.working_only`).
+   - The 9 bundled RTX 5080 rows (`vram_metric` null) are total amounts as before.
+   - The same for other users' submissions (bench results): they are aggregated and kept, but do not move estimates ([schema.md](schema.md), "contrib").
+8. Measured values are taken as GiB (`unit` in `measurements.json`).
    - AI生成キット's records do not state the unit.
    - It is an **assumption** from the fact that ComfyUI and nvidia-smi count in MiB.
 
 ## Fitting
 
-- Five coefficients are fitted: the fixed part `overhead_gb`, and the working memory `act_image_gb_per_mp` / `act_video_gb_per_mp` / `act_audio_gb_per_min` / `act_3d_gb`.
-- These stay fixed: the weight factor (1.0), the offload share (0.4), the video exponent (0.5), the fixed main-memory part (3.0) and the memory factor (1.5).
-- The prediction is linear in every coefficient. What is minimized is the sum of:
-  - **the sum of squared relative errors** (a pinned measurement counts only when the prediction falls below it: a one-sided square)
-  - a weak penalty (weight 1e-4) on the relative distance from the prior values (the placeholders from #1, set before looking at the measurements)
-- The minimum is found by coordinate descent inside physically possible ranges. The objective is convex, so the result does not depend on the starting point.
-- With 5 coefficients for 9 points, it would overfit without the penalty. The penalty is weak because measurements should win where they exist.
-- Accuracy is measured by leave-one-out (a prediction from a fit on all the data shows goodness of fit, not accuracy).
-- The target check (`target_met`) is made only for types with 2 or more unpinned measurements.
+- **Since #100 only `act_3d_gb` (3D working memory) is fitted**, on the 2 3D measurements.
+  - The working memory of models with a per-stage formula is ComfyUI's estimate and has no coefficient (it is not fitted to measurements).
+  - The image, video and audio coefficients of models without a per-stage formula (`act_image_gb_per_mp` / `act_video_gb_per_mp` / `act_audio_gb_per_min`)
+    and the fixed part `overhead_gb` are frozen at the values fitted to the 9 measurements in 0.10 (`calibrate.FROZEN`; `frozen` in calibration.json).
+  - The fixed part will be refitted after the RTX 3070 is measured again ("Cross-check" below).
+- Fixed: the weight factor (1.0), the offload share (0.4), the video exponent (0.5), the main-memory fixed part (3.0), the memory factor (1.5).
+- Only the bundled measurements are used (`measurements.json`, `measurements_community.json`). This PC's bench results in the cache are excluded
+  and their count is printed (calibration.json is the same whichever PC builds it; #100).
+- What is minimized (over the 2 3D measurements):
+  - **The sum of squared relative errors** (a pinned measurement counts only when the prediction is below it: a one-sided square)
+  - A weak penalty on the relative distance from the prior values (the placeholders from #1), weight 1e-4
+- Accuracy is measured by leave-one-out. Rows that are not fitted (all but 3D) have the same all-fit and LOO predictions (no measurement is used in the formula).
+- The target check (`target_met`) is made only for modalities with at least 2 unpinned measurements.
 
-**Relation to human-set guidelines (stated honestly):**
+**Relation to the human guidelines (stated honestly):**
 
-- The minimum / recommended VRAM in AI生成キット's catalog were not used to fit the 5 coefficients.
-- But **the offload share 0.4 is a hyperparameter chosen by looking at those guidelines.**
-  - It cannot be set by measurement, so it was chosen from the range consistent with two statements: "SDXL runs on 4GB" and "bf16 Z-Image does not run on 4GB".
-  - For the coefficients refitted in GiB (before the list from #2 was imported), that range was 0.21–0.51. 0.4 is in the upper half of it.
-  - That range was the author's judgment at the time and has not been re-measured with the coefficients after the import.
-- "bf16 Z-Image does not run on 4GB" is not stated in the catalog; it is **this PR's author's judgment**.
-  - In the list at the time, of 19.4 GiB of weights, 40% of the 11.5 GiB main model plus about 6 GiB of fixed and working memory is needed.
-  - In the bundled list of 0.9.1 the weights are 19.27 GiB.
-- `tests/test_estimate.py` compares the results with these guidelines. The outcome is not fed back into the fit.
+- The minimum / recommended VRAM of the AI生成キット catalog is used neither in the formula nor in the coefficients.
+- But **the offload share 0.4 is a hyperparameter chosen with the guidelines in view.**
+  - It cannot be set from measurements, so it was chosen from the range that agrees with both "SDXL runs on 4GB" and "bf16 Z-Image does not run on 4GB".
+  - That range was the author's view with the formula before #100 and has not been measured again with the per-stage formula.
+- "bf16 Z-Image does not run on 4GB" is not in the catalog; it is the author's judgment.
+- `tests/test_estimate.py` compares against the guidelines. Those results are not fed back into the fit.
 
-Fitted result (2026-10-20, n = 9, of which 3 pinned):
+Fitted result (2026-10-27, n = 9, of which 3 pinned; only the 2 3D measurements are fitted):
 
 | coefficient | value | prior | range |
 |---|---:|---:|---|
-| overhead_gb | 1.472 | 0.6 | 0.3–1.5 |
-| act_image_gb_per_mp | 0.2284 | 0.5 | 0–4 |
-| act_video_gb_per_mp | 9.8704 | 2.4 | 0–30 |
-| act_audio_gb_per_min | 0.0455 | 1.0 | 0–5 |
-| act_3d_gb | 0.784 | 2.0 | 0–4 |
+| overhead_gb | 1.472 (frozen) | — | — |
+| act_image_gb_per_mp | 0.2284 (frozen) | — | — |
+| act_video_gb_per_mp | 9.8704 (frozen) | — | — |
+| act_audio_gb_per_min | 0.0455 (frozen) | — | — |
+| act_3d_gb | 0.7839 | 2.0 | 0 to 4 |
 
-- The fixed part rose close to the top of its range (1.5).
-- The fixed part absorbs the roughly 7% that the weights shrank by when everything was aligned to GiB, instead of the per-type working memory.
-- With 9 points, working memory and the fixed part are hard to tell apart. **Do not read a physical meaning into each coefficient.**
+- The 4 frozen values were fitted to the 9 measurements in 0.10 (the fixed part close to the top of its range, 1.5). **Do not read a physical meaning into each coefficient.**
 
 ## Results (leave-one-out)
 
-The output of `python -m genmodelfit.calibrate`, which prints Japanese, translated here; the original output is in [accuracy.ja.md](accuracy.ja.md#結果leave-one-out).
-
-| model | settings | measured GB | predicted GB (fit on all) | LOO predicted GB | LOO error | error, weights only |
+| Model | Settings | Measured GB | Fit-on-all prediction GB | LOO prediction GB | LOO error | Weights-only error |
 |---|---|---:|---:|---:|---:|---:|
-| image_z_image_turbo_int8 | 768x768 | 13.2 | 12.94 | 12.85 | -2.7% | -14.1% |
-| image_z_image_turbo | 768x768 | 15.0 | 20.88 | 20.88 | pinned (the weights alone exceed the measurement, so no information) | +28.5% |
-| image_sdxl_simple | 832x832 | 8.0 | 8.09 | 8.38 | +4.7% | -19.2% |
-| text_to_video_wan | 512x512, 49 frames | 13.3 | 13.21 | 11.02 | -17.2% | -31.2% |
-| video_wan2_2_5B_ti2v | 640x640, 73 frames | 15.8 | 23.31 | 23.31 | pinned (the weights alone exceed the measurement, so no information) | +7.0% |
-| video_wan2_2_5B_ti2v | 640x640, 73 frames, from text | 15.0 | 23.31 | 23.31 | pinned (the weights alone exceed the measurement, so no information) | +12.7% |
-| audio_ace_step_1_5_checkpoint | 20 s | 10.8 | 10.83 | 11.18 | +3.5% | -13.5% |
+| image_z_image_turbo_int8 | 768x768 | 13.2 | 13.87 | 13.87 | +5.1% | -14.1% |
+| image_z_image_turbo | 768x768 | 15.0 | 21.80 | 21.80 | pinned (weights alone exceed the measurement, no information) | +28.5% |
+| image_sdxl_simple | 832x832 | 8.0 | 9.00 | 9.00 | +12.5% | -19.2% |
+| text_to_video_wan | 512x512, 49 frames | 13.3 | 11.34 | 11.34 | -14.7% | -31.2% |
+| video_wan2_2_5B_ti2v | 640x640, 73 frames | 15.8 | 19.35 | 19.35 | pinned (weights alone exceed the measurement, no information) | +7.0% |
+| video_wan2_2_5B_ti2v | 640x640, 73 frames, text to video | 15.0 | 19.35 | 19.35 | pinned (weights alone exceed the measurement, no information) | +12.7% |
+| audio_ace_step_1_5_checkpoint | 20 s | 10.8 | 11.79 | 11.79 | +9.2% | -13.5% |
 | 3d_hunyuan3d_image_to_model | - | 6.7 | 6.85 | 7.13 | +6.4% | -31.5% |
 | 3d_hunyuan3d-v2.1 | - | 9.4 | 9.12 | 8.97 | -4.6% | -27.0% |
 
-4 measurements could be evaluated (3d 2, image 2); max LOO error 6.4% (mean 4.6%). Inside the ±20% target.
-music and video have 1 or fewer unpinned measurements, so they cannot be evaluated (target_met is null).
-Of the 3 pinned measurements, 3 are exceeded by the weights alone and carry no information. For reference: over all 6 unpinned measurements, mean absolute LOO error 6.5%, max 17.2% (weights only: mean 22.8%)
+4 could be evaluated (3d 2, image 2); maximum LOO error 12.5% (mean 7.2%). Inside the ±20% target.
+music and video have at most 1 unpinned measurement and cannot be evaluated (target_met is null).
+All 3 of the 3 pinned measurements are exceeded by the weights alone and carry no information. For reference: LOO mean absolute error over all 6 unpinned measurements 8.8%, maximum 14.7% (weights only: mean 22.8%)
 
-Cross-check (measured a different way, so not used for fitting; values predicted with the coefficients fitted on all data):
+Cross-check (measured differently, so not used for fitting; predicted with the coefficients fitted on all):
 
-| model | GPU | source | settings | measured GiB | estimated GiB (all on GPU) | error |
-|---|---|---|---|---:|---:|---:|
-| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | maintainer | - | 1.25 | 2.13 | +70% |
-| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | maintainer | - | 0.72 | 2.87 | +299% |
+| Model | GPU | Source | Settings | Compared | Measured GiB | Estimated GiB | Error |
+|---|---|---|---|---|---:|---:|---:|
+| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 1.25 | 0.24 | -81% |
+| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 0.72 | 0.78 | +9% |
 
 How to read it:
 
-- "Predicting an unknown model" is measured by only 2 image and 2 3D measurements.
-  The working-memory coefficient of each type is set by just one other measurement of the same type, so the count is very small.
-- Wan2.1 at -17.2% and ACE-Step at +3.5% are the result of leaving out the only measurement of their type, so they are errors of the prior values (the placeholders from #1).
-  Nothing can be said about video and audio accuracy.
-- The audio coefficient is small: 0.05 GiB/min (0.0455).
-  - The gap between the ACE-Step measurement and the formula is almost fully explained by the fixed part, so the effect of length is not visible.
-  - **The audio limit "up to how many seconds" (`limits.max_seconds`) is currently a value that assumes VRAM hardly grows with length.**
-- The video coefficient (9.9 GiB per megapixel) is set by the single Wan2.1 measurement.
-  That one measurement very likely includes memory that dynamic VRAM placed in the free space.
+- Rows other than 3D are not fitted, so "fit on all" and "LOO" are the same: they are cross-check errors.
+- For the 2 image rows (Z-Image int8 +5.1%, SDXL +12.5%) the heaviest stage is ComfyUI's VAE figure (tile value 1.06 GB), which leans high
+  (the VAE figure is about 1.8× the measurement; "Per-stage working memory (#100)" above).
+- Wan 2.1 1.3B at −14.7% is the gap between the peak on a GPU with room (VAE not tiled) and the formula, as in "Summary" above.
+- ACE-Step 1.5 at +9.2%: the heaviest stage is the tile value of its VAE (Oobleck), 0.98 GB.
+- The 2 cross-check rows are working-memory-only measurements (#100), so they are compared with the working-memory estimate (the formula for models without a per-stage formula).
+  BiRefNet at −81% shows that the image coefficient (0.23 GB per megapixel), fitted to diffusion models, is too small for tools.
 
 ## Known limits
 
-- **Only one kind of GPU**: all 9 measurements are RTX 5080 16GB with dynamic VRAM.
+- **Only one kind of GPU**: the 9 total-amount measurements used for fitting and cross-checking are all RTX 5080 16GB with dynamic VRAM.
   - The swapped-in-turn and offload values on small GPUs are not verified.
-  - Two bench measurements on an RTX 3070 8GB exist, but they are small models measured a different way (torch_reserved), so they are used only for the cross-check
-    (see "Cross-check against RTX 3070 8GB measurements" below).
-  - Once bench measurements of large models on 8GB (the bench in #5) arrive, the swapped-in-turn and offload values will be fitted.
 - **Dynamic VRAM**: it uses more when more is free, so a measurement is "what that GPU used", not "what is needed".
-  The all-on-GPU value may also come out larger than the real need on a GPU with little free memory.
-- **Pinned measurements**: the all-on-GPU values of Z-Image bf16 and Wan2.2 5B are decided by the formula alone; the measurements do not cap them from above.
-- **Wan aspect ratio**: video measurements record only the long side (512px / 640px), so a square was assumed.
-  If the real shape was 16:9, the pixel count is about 56% and the video coefficient would be re-estimated about 1.8 times smaller.
-- **Date unknown**: the measurement date and ComfyUI version were not recorded (the date in measurements.json is empty).
-- **Unit**: measurements were assumed to be GiB (7 under "How measurements are used" above). If they were GB (decimal), the measurements are 7% smaller and the coefficients change.
-- **Main memory**: neither the formula nor the factor 1.5 has been checked by measurement (see "Main memory (RAM)" above).
-- **Non-NVIDIA GPUs** (0.7.0, #22): there are 0 measurements on AMD, Intel and Apple.
-  - NVIDIA's coefficients are used as they are, and the level is capped at Good (lifted when other users' measurements of that GPU arrive; 2026-10-22).
-  - The shares counted as GPU memory are guidelines taken from the behavior described in primary sources, and are not measured (see "Shared memory" in [hardware.md](hardware.md)).
-    - 3/4 of unified memory on Apple silicon
-    - 1/2 of main memory for integrated GPUs and APUs (the Linux TTM default)
-- **CPU-capable families** (#39): the CPU main memory for SD-family and Stable Audio is a formula taken from ComfyUI's code, not measured.
-  - The formula expands the main model and VAE to fp32 and uses working memory × 2.
-  - That these run on CPU is itself an estimate; there are 0 CPU measurements (the slowness is also unknown).
-- **Known misses** (cross-check with the human-set guidelines, recorded by `tests/test_estimate.py` as a strict xfail):
-  - Wan2.2 5B comes out Too tight on 8GB and Marginal on 12GB (the guideline is minimum 8GB, recommended 12GB).
-    - It comes out strict because the video working memory is extended from the single Wan2.1 measurement.
-    - Wan2.2 compresses more in its VAE and has fewer tokens per pixel, but the same coefficient is used.
-    - It will not be fixed until refitted with an 8GB measurement (moving the coefficients to match the guideline would make the numbers in these tables meaningless).
-  - The other 7 models are not Too tight at the guideline's minimum VRAM and are Good or better at the recommended VRAM.
+  Since #100 a positive shift (+1.96 GB for Wan 2.1 1.3B) is added to the all-on-GPU value only ("How measurements are used" 1 above).
+- **Pinned measurements**: the all-on-GPU values of Z-Image bf16 and Wan2.2 5B come from the formula only and are not bounded from above by measurements.
+- **Wan aspect ratio**: the video measurements record only the long side (512px / 640px), assumed square.
+- **Unknown dates**: the measurements have no date or ComfyUI version (date in measurements.json is empty).
+- **Units**: measurements are assumed to be GiB ("How measurements are used" 8 above).
+- **Main memory**: neither the formula nor the 1.5× factor is checked by measurement ("Main memory (RAM)" above).
+- **Non-NVIDIA GPUs** (0.7.0, #22): there are 0 measurements on AMD, Intel or Apple.
+  - The per-stage working memory keeps the SDPA formula (GPUs with split attention only get a note). AMD multiplies the KL VAE by 2.73.
+  - Levels are capped at Good (lifted when other users measure this GPU; 2026-10-22).
+  - The share of memory treated as GPU memory is a guideline from primary sources, not measured ([hardware.md](hardware.md), "Shared memory").
+- **CPU-capable families** (#39): the CPU main memory of SD-family and Stable Audio models comes from a formula derived from ComfyUI's code, not measured.
+  - The formula widens the main model and VAE to fp32 and doubles the working memory (the heaviest stage × 2 with the per-stage formula).
+- **Known misses** (against the human guidelines, recorded as strict xfail in `tests/test_estimate.py`):
+  - No misses now: all 8 models are not Too tight at the guideline's minimum VRAM and run on the GPU at the recommended VRAM.
+  - The Wan2.2 5B miss (Too tight on 8GB before #100) is fixed by the per-stage formula (ComfyUI's Wan 2.2 VAE estimate).
+  - At the app's settings (512px, 49 frames), Wan 2.1 1.3B is Marginal offloaded on 6GB and Marginal swapped in turn on 8GB (97% used).
+- **Future work** (#100):
+  1. Text-stage working memory ComfyUI does not estimate: image tokens of Qwen2.5-VL, Flux2's Mistral, the YuE2 score stage (8192 tokens),
+     the KV of the ACE-Step 1.5 LM, and so on
+  2. Measure per-stage peaks with bench (split at stage boundaries), so that working-memory-only measurements ("How measurements are used" 7 above) can be used
+  3. Reduce the models without a per-stage formula (86): the Flux3 size, the Stable Audio 3 VAE, the SeedVR2 and Ming VAEs, and so on
+  4. Measure the RTX 3070 again ("Cross-check" below), and Wan2.1 at 832x480, 81 frames
+  5. The share of weights kept on the GPU when offloading (now 0.4). ComfyUI on NVIDIA uses `MIN_WEIGHT_MEMORY_RATIO = 0` (model_management.py:458-460@426f5ee).
+     A likely reason why reports of Wan 14B fp8 running on 12 GB disagree
+  6. Measurements at the edges of the levels: Klein 9B and Flux3 Klein on 6 GB, Z-Image bf16 on 16 GB (swapped-in-turn use 0.864), and so on
+  7. What the CPU working memory (doubled in main memory) really contains
 - **Models with an unknown all-in-one breakdown** (such as the HF models that #2 adds) are split by general shares, so the swapped-in-turn and offload values can be far off.
 - **Role guessing**: a file with neither a folder nor a location gets its role from the list of known names.
   A text encoder not in the list is counted as the main model (the all-on-GPU value does not change, but the swapped-in-turn and offload values come out larger).
@@ -553,24 +693,42 @@ With Apple's MPS, ComfyUI's GPU name is `mps`.
 - An `mps` measurement is used only as vendor apple, and never counts as a measurement of the same GPU.
 - `contrib validate` limits GPU names of vendor apple to a chip name or `mps`.
 
-## Cross-check against RTX 3070 8GB measurements (bench, 2026-10-19 UTC, not used for fitting)
+## Cross-check (measurements and public figures used neither for fitting nor for levels)
 
-`genmodelfit bench` measured 2 models on this PC (RTX 3070 8GB, AI生成キット's engine ComfyUI 0.40.0).
+### The author's RTX 3070 8GB measurements (bench, 2026-10-19 UTC)
 
-- The way of measuring differs from the 9 RTX 5080 measurements.
-  - `vram_metric: torch_reserved` = the maximum of what the ComfyUI process's torch reserved; it does not include the CUDA context and the like.
-  - What the 9 RTX 5080 measurements recorded was not kept.
-- So they are not used for fitting, only for the cross-check (`calibrate.CALIBRATION_METRIC`).
-- `python -m genmodelfit.calibrate` makes this cross-check under the table in "Results (leave-one-out)" above (`check` in calibration.json; since #34).
+The 2 bundled rows (BiRefNet, MoGe) are torch reservations measured by bench with dynamic VRAM (`vram_metric: torch_reserved`,
+`offload: dynamic`): working memory only, without the weights (#100; "How measurements are used" 7 above).
+`python -m genmodelfit.calibrate` builds the cross-check below the table in "Results" (compared with the working-memory estimate).
 
-| model | GPU | measured GiB (torch_reserved) | estimated GiB (all on GPU) | error | level in the estimate (8 GiB) |
-|---|---|---:|---:|---:|---|
-| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | 1.25 | 2.13 | +70% | Perfect |
-| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | 0.72 | 2.87 | +299% | Perfect |
+- Both are models without a per-stage formula (tools, 3D), so they are compared with the per-modality coefficient formula.
+- The miss (BiRefNet −81%) is because the image coefficient was fitted to diffusion models and does not represent a tool's working memory.
 
-- **For small models the estimate comes out large** (+70%, +299%).
-  - The fixed part (overhead, about 1.47 GiB) was fitted on the 9 RTX 5080 measurements (models of 5–20 GiB), and it makes up most of the estimate for a model under 1 GiB.
-  - But the difference in the way of measuring (no CUDA context or other memory outside the process) is also part of the gap, and how much comes from each has not been separated.
-- The error is in the safe direction (the need is overestimated), and the level at 8 GiB stays Perfect for both.
-- Measuring a large model (main model 5 GiB or more) on the RTX 3070 was put off because this PC's free memory (commit) was not enough (genmodelfit#5).
-- Once more measurements taken the same way exist, it is better to split the fixed part by way of measuring and refit.
+### RTX 3070 sweep (2026-10-27, **not used as evidence**)
+
+SDXL (512, 768, 1024 px), Wan 2.1 1.3B (512 px, 17 / 49 / 81 frames) and ACE-Step 1.5 (10, 30, 60 s) were measured.
+**Not used as evidence of accuracy**: the whole GPU was pinned at its limit (7.2 to 7.5 / 8 GB), and other work used 1.6 to 6.6 GB before the runs.
+SDXL at 1024 px started at 60% prior utilization (against the shared-machine rule). To be measured again
+(only when the GPU is idle, keeping ComfyUI's log of switching the VAE to tiles; the bench's pre-run check will also be stricter).
+
+| Model | Settings | Measured GiB (torch_reserved, dynamic VRAM) | Per-stage formula max(S, V_eff, T) | Reference: untiled V |
+|---|---|---:|---:|---:|
+| image_sdxl_simple | 512 px | 0.22 | 1.06 | 1.06 |
+| image_sdxl_simple | 768 px | 1.31 | 1.06 | 2.39 |
+| image_sdxl_simple | 1024 px | 2.28 | 1.06 | 4.25 |
+| text_to_video_wan | 512 px, 17 frames | 2.69 | 0.28 | 3.42 |
+| text_to_video_wan | 512 px, 49 frames | 3.06 | 0.72 | 3.42 |
+| text_to_video_wan | 512 px, 81 frames | 2.94 | 1.16 | 3.42 |
+| audio_ace_step_1_5_checkpoint | 10 s | 1.00 | 0.95 | 0.95 |
+| audio_ace_step_1_5_checkpoint | 30 s | 2.72 | 0.98 | 2.86 |
+| audio_ace_step_1_5_checkpoint | 60 s | 4.94 | 0.98 | 5.72 |
+
+### Public figures (not used for fitting)
+
+| Model | Public figure | genmodelfit (per-stage formula, all on GPU) | Difference |
+|---|---|---:|---|
+| HunyuanVideo 720×1280, 129 frames | 60 GB (README of Tencent-Hunyuan/HunyuanVideo, "GPU Peak Memory"; one 80 GB GPU) | 51.2 GiB | −15% (73 GiB with the untiled V) |
+| HunyuanVideo 544×960, 129 frames | 45 GB (same) | 44.0 GiB | −2% (56 GiB with the untiled V) |
+| CogVideoX-5B | diffusers BF16 from 5 GB (with sequential CPU offload, VAE tiling and slicing; about 3× without them), 15 GB with multiple GPUs, SAT BF16 26 GB (README of THUDM/CogVideo) | VOID (two CogVideoX 5B models) at 720×480, 49 frames: all on GPU 41.8, swapped in turn 14.6, offload 10.0 GiB | not the same setup, so not comparable (reference only) |
+
+- These are values from implementations other than ComfyUI and other precisions, so they are not used for fitting.

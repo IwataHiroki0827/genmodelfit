@@ -283,11 +283,12 @@ def _app_style(db, mid, name, vram, driver="560.94"):
 
 
 def test_gpu_memory_required_for_cpu_run_mode(app_db):
-    # 3 GB の GPU では SDXL は載らず CPU で動く(4 GB なら GPU+RAM の載せ替えで動く)
-    fit = _app_style(app_db, "image_sdxl_simple", "NVIDIA GeForce GTX 1650", 3.0)
+    # 2 GB の GPU では SDXL は載らず CPU で動く(4 GB なら GPU+RAM の載せ替えで動く。#100 の段ごとの式で
+    # 逃がすときの量が下がり、3 GB でも逃がして動くようになった)
+    fit = _app_style(app_db, "image_sdxl_simple", "NVIDIA GeForce GTX 1650", 2.0)
     d = fit.to_dict()
     assert d["run_mode"] == "cpu" and d["memory_kind"] == "ram"
-    assert d["gpu_memory_required_gb"] is not None and d["gpu_memory_required_gb"] > 3.0
+    assert d["gpu_memory_required_gb"] is not None and d["gpu_memory_required_gb"] > 2.0
     assert d["memory_required_gb"] > d["gpu_memory_required_gb"]  # RAM の量
     assert d["gpu_memory_required_gb"] == round(fit.estimate.vram_offload_gb, 2)
     four = _app_style(app_db, "image_sdxl_simple", "NVIDIA GeForce GTX 1650", 4.0).to_dict()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import getpass
+import importlib
 import json
 import os
 import platform
@@ -30,6 +31,8 @@ from genmodelfit.hardware import (
     torch_support,
 )
 from genmodelfit.models import Gpu, ModelEntry, ModelFile, SystemInfo
+
+E = importlib.import_module("genmodelfit.estimate")
 
 FIX = Path(__file__).parent / "fixtures" / "hardware"
 GB = 2**30
@@ -785,15 +788,23 @@ def test_family_precision_per_arch(arch, main, vae, act2, vae2):
     name, cc = FAMILY_GPUS[arch]
     g = arch_gpu(name, cc, "581.57")
     e = image("bf16", 6.0, main=main, vae=vae)
-    base = estimate(e, pc(48, g=arch_gpu("NVIDIA GeForce RTX 3090", "8.6", "581.57")), coefficients=c)
+    ampere = pc(48, g=arch_gpu("NVIDIA GeForce RTX 3090", "8.6", "581.57"))
+    base = estimate(e, ampere, coefficients=c)
     got = estimate(e, pc(48, g=g), coefficients=c)
-    act = c.act_image_gb_per_mp * 1024 * 1024 / 1e6
-    if g.compute_dtype == "fp32":  # 半精度を使わない GPU はこれまでどおり作業用メモリと VAE を 2 倍
-        want = act + 0.3
-    elif g.bf16 is False:
-        want = (act if act2 else 0) + (0.3 if vae2 else 0)
+    fp32 = g.compute_dtype == "fp32"  # 半精度を使わない GPU はこれまでどおり作業用メモリと VAE を 2 倍
+    work2 = fp32 or (g.bf16 is False and act2)
+    vae2x = fp32 or (g.bf16 is False and vae2)
+    s = E.settings_for(e, None)
+    st0 = E.stages_for(e, s, E.gpu_precision(e, ampere, s))
+    if st0 is None:  # 段ごとに当てられない(系統・VAE が分からない)ものは今までの種類ごとの式
+        act = c.act_image_gb_per_mp * 1024 * 1024 / 1e6
+        want = (act if work2 else 0) + (0.3 if vae2x else 0)
     else:
-        want = 0.0
+        # 段ごとの作業用メモリ(#100): 生成の段 S は fp32 の計算で 2 倍、仕上げの段 V は VAE が fp32 で 2 倍
+        st = E.stages_for(e, s, E.gpu_precision(e, pc(48, g=g), s))
+        assert pytest.approx(st0.S * (2 if work2 else 1)) == st.S, (arch, main)
+        assert pytest.approx(st0.V * (2 if vae2x else 1)) == st.V, (arch, main)
+        want = (0.3 if vae2x else 0) + st.peak - st0.peak
     assert got.vram_gb - base.vram_gb == pytest.approx(want, abs=0.02), (arch, main)
     if g.bf16 is False and g.compute_dtype != "fp32" and act2:
         assert any("fp16 で動かさない" in r for r in got.reasons)
@@ -813,16 +824,16 @@ def test_unknown_family_is_noted_only_where_it_matters():
     ("name", "family", "vae"),
     [
         ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image", "wan"),  # VAE のファイルが無ければ系統の既定
-        ("qwen_image_2.1_int8_convrot.safetensors", "qwen_image21", "wan"),
+        ("qwen_image_2.1_int8_convrot.safetensors", "qwen_image21", "qwen21"),  # #100
         ("ltx-2.3-22b-dev-fp8.safetensors", "ltxv", "ltxv"),
         ("Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors", "wan", "wan"),
         ("anima-base-v1.0.safetensors", "anima", "wan"),
         ("flux1-fill-dev.safetensors", "flux_fill", "kl"),
         ("flux1-canny-dev.safetensors", "flux", "kl"),
-        ("flux-2-klein-4b-fp8.safetensors", "flux2", "kl"),
-        ("flux3-image-klein-int8-convrot.safetensors", "flux3", "kl"),
+        ("flux-2-klein-4b-fp8.safetensors", "flux2", "flux2"),  # #100: Flux2 の VAE を分けた
+        ("flux3-image-klein-int8-convrot.safetensors", "flux3", "flux2"),
         ("hunyuanvideo1.5_720p_t2v_fp16.safetensors", "hunyuan_video15", "hunyuan_video15"),
-        ("ace_step_1.5_turbo_aio.safetensors", "ace15", None),
+        ("ace_step_1.5_turbo_aio.safetensors", "ace15", "oobleck"),  # #100
         ("ace_step_v1_3.5b.safetensors", "ace", "ace"),
         ("capybara_v0.1.safetensors", None, None),
         ("moge_2_vitl_normal_fp16.safetensors", None, None),

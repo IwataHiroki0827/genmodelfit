@@ -21,7 +21,9 @@
     生成の段を本体ごとの組(Parts.experts)に分ける。ComfyUI は次のサンプラーで本体を読み込むとき、
     使っていない前の本体を必要な分だけ降ろす(出典は EXPERT_SOURCE)。そこで「順に載せ替え」「逃がす」は
     1 組ずつ数え、「全部載せ」とメインメモリは全部を数える(降ろした本体はメインメモリに残る)
-  - 作業用メモリ: 画像は画素数 × 枚数、動画は画素数 × コマ数の平方根、音声は長さ、3D は一定
+  - 作業用メモリ(#100): ComfyUI の作者の見込みを段ごとに使う(生成の段 S・仕上げの段 V・文章の段 T。
+    working.py)。全部載せは 一番重い段、順に載せ替え・逃がすは段ごと。当てられないモデルは今までの式
+    (画像は画素数 × 枚数、動画は画素数 × コマ数の平方根、音声は長さ、3D は一定)
   - 実測があれば、そのモデルの作業用メモリを実測に合わせてずらす。設定が実測と同じなら basis="measured"
   - 大きさが分からないモデルは判定しない(fit は unknown、unknown_size。0 GB として「載る」とも
     「動かない」とも言わない。0.1.0 までは too_tight だった)
@@ -52,6 +54,7 @@ from .models import (
     Settings,
     SystemInfo,
 )
+from .working import StageMem, stage_memory
 
 GIB = 1024**3  # 大きさはすべて GiB で扱う(nvidia-smi の MiB / 1024、psutil のバイト / 2^30 と同じ単位)
 
@@ -89,15 +92,15 @@ def unknown_size_reason() -> str:
 
 
 # サンプラーごとに別の本体を使うとき、ComfyUI が前の本体を降ろしてから次を載せる根拠
-# (Comfy-Org/ComfyUI のコミット b1a247c9cf9dbfda4b2c0a0c1d50950667eeaa0c。v0.42.1 の後の master、
-# 2026-10-20 に読んだ):
-#   comfy/samplers.py:1241 サンプラーごとに sampler_helpers.prepare_sampling を呼ぶ
+# (Comfy-Org/ComfyUI のコミット 426f5eea52a7ece1dd599fff4cb6cd1f352ddd24。v0.43.0、
+# 2026-10-27 に読み直した。b1a247c から行は samplers.py だけ 1 つずれた):
+#   comfy/samplers.py:1242 サンプラーごとに sampler_helpers.prepare_sampling を呼ぶ
 #   comfy/sampler_helpers.py:201 → model_management.load_models_gpu([その本体] + 付属のモデル)
 #   comfy/model_management.py:1001 load_models_gpu が free_memory(要る量 × 1.1 + 作業用, device) を呼ぶ
 #   comfy/model_management.py:905 / 919 今載っているモデルのうち今回使わないもの(keep_loaded に無いもの)を、
 #     足りない分(memory_required − 空き)だけ model_unload で降ろす(メインメモリへ移す)
 #   comfy/model_management.py:914 動的 VRAM のモデルどうしは降ろさず、要るときに読み込む(同時に全部は載せない)
-EXPERT_SOURCE = "ComfyUI b1a247c comfy/model_management.py:1001 load_models_gpu → free_memory"
+EXPERT_SOURCE = "ComfyUI 426f5ee comfy/model_management.py:1001 load_models_gpu → free_memory"
 
 # 段の名前(ComfyUI が順に動かす単位)
 STAGES = ("encode", "denoise", "decode", "other")
@@ -843,6 +846,58 @@ class Need:
     act: float = 0.0
     main: float = 0.0
     vae: float = 0.0
+    # 段ごとの作業用メモリ(#100。当てられないモデルは None で、act を今までの種類ごとの式で出した)
+    stages: StageMem | None = None
+
+
+def need_staged(
+    parts: Parts, st: StageMem, c: Coefficients, delta: float = 0.0, *, full_only: bool = False
+) -> Need:
+    """段ごとの作業用メモリ(#100。docs/accuracy.md「式」)での必要量。
+
+    全部載せ      = 固定分 + 全部品の重み + max(0, max(S, V_eff, T) + d)
+    順に載せ替え  = 固定分 + max(各段の重み + max(0, その段の作業用メモリ + d_段))
+    逃がす        = 固定分 + max(各段の重み × offload_fraction + max(0, その段の作業用メモリ + d_段))
+    実測からのずらし d は作業用メモリに足し、段ごとに 0 で切る(どの量も重み + 固定分の下限より下げない。#95)。
+    full_only(余裕のある GPU の山からの正のずらし。_prepare)なら、ずらしは全部載せにだけ足す(d_段 = 0)。
+    そうでなければ d_段 = d(固定分の誤差なら max(a + d, b + d) = max(a, b) + d)。"""
+    w = c.weight_factor
+    work = st.peak
+    d_stage = 0.0 if (full_only and delta > 0) else delta
+    stage_work = {"encode": st.T, "denoise": st.S, "decode": st.V_eff, "other": 0.0}
+    stage_work = {k: max(0.0, v + d_stage) for k, v in stage_work.items()}
+    peak = {s: (parts.denoise_peak if s == "denoise" else parts.stage(s)) for s in STAGES}
+    full = c.overhead_gb + parts.total * w + max(0.0, work + delta)
+    seq = c.overhead_gb + max(peak[s] * w + stage_work[s] for s in STAGES)
+    off = c.overhead_gb + max(peak[s] * w * c.offload_fraction + stage_work[s] for s in STAGES)
+    return Need(
+        full=full,
+        sequential=min(seq, full),
+        offload=min(off, seq, full),
+        ram=c.ram_extra_gb + parts.total * w,
+        ram_gpu=c.ram_extra_gb + parts.largest * w,
+        act=max(0.0, work + delta),
+        main=parts.denoise * w,
+        vae=parts.decode * w,
+        stages=st,
+    )
+
+
+def stages_for(entry: ModelEntry, s: Settings, prec: GpuPrecision | None = None) -> StageMem | None:
+    """段ごとの作業用メモリ(working.stage_memory)。prec は判定に使う GPU の精度(None は NVIDIA の半精度)。"""
+    p = prec or GpuPrecision()
+    return stage_memory(entry, s, act_factor=p.act_factor, gpu_fp32=p.gpu_fp32, no_bf16=p.no_bf16, amd=p.amd)
+
+
+def formula_need(entry: ModelEntry, s: Settings, c: Coefficients, parts: Parts | None = None) -> Need:
+    """実測を使わない式だけの必要量(NVIDIA の半精度)。段ごとに当てられるモデルは need_staged、
+    当てられないモデルは今までの種類ごとの式(activation_gb)。"""
+    if parts is None:
+        parts = apply_precision(components(entry), entry, s)
+    st = stages_for(entry, s)
+    if st is not None:
+        return need_staged(parts, st, c)
+    return need(parts, activation_gb(entry, s, c), c)
 
 
 def need(parts: Parts, act: float, c: Coefficients) -> Need:
@@ -875,8 +930,7 @@ def need(parts: Parts, act: float, c: Coefficients) -> Need:
 def raw_estimate(entry: ModelEntry, s: Settings, c: Coefficients) -> tuple[float, float, float]:
     """(全部載せの VRAM, 逃がしたときの VRAM, 逃がしたときのメインメモリ) を GiB で返す。
     実測を使わない式だけの値。"""
-    parts = apply_precision(components(entry), entry, s)
-    n = need(parts, activation_gb(entry, s, c), c)
+    n = formula_need(entry, s, c)
     return n.full, n.offload, n.ram
 
 
@@ -896,6 +950,14 @@ def usable(m: Measurement) -> bool:
 
 def is_community(m: Measurement) -> bool:
     return getattr(m, "origin", None) == ORIGIN_COMMUNITY
+
+
+def working_only(m: Measurement) -> bool:
+    """作業用メモリだけの実測か(#100。docs/schema.md「Measurement」)。torch の確保量(torch_reserved)を
+    動的 VRAM(offload が dynamic)で測ったものは、重みを必要なときだけ読み込む・追い出すので重みを含まない。
+    段ごとの山を測れるようになるまで、段階にも値のずらしにも使わず、照合(docs/accuracy.md)だけに使う。
+    vram_metric の無い実測(同梱の RTX 5080 の 9 件)は今までどおり全体の量。"""
+    return getattr(m, "vram_metric", None) == "torch_reserved" and (m.offload or "").lower() == "dynamic"
 
 
 # 「これ以上」としてだけ使う測り方。torch_reserved は ComfyUI のプロセスの torch の確保量で、CUDA の文脈などを
@@ -1167,6 +1229,7 @@ def pick_measurement(
         for m in measurements
         if m.model_id == entry.id
         and usable(m)
+        and not working_only(m)
         and files_match(m, entry)
         and (not is_community(m) or (m.gpu_known is not False and measured_on_this_gpu(m, gpu)))
     ]
@@ -1267,6 +1330,11 @@ class _Model:
     # ほかの利用者の実測を設定の違う推定に広げるときのずらし(COMMUNITY_CALIBRATION_RANGE で抑えたもの)。
     # None は delta と同じ
     delta_other: float | None = None
+    # 正のずらしを全部載せにだけ足すか(#100): 実測した GPU の VRAM が式の全部載せ以上(余裕のある GPU の山。
+    # 動的 VRAM が部品を載せたままにし、VAE もタイルに分けずに仕上げた)なら True
+    full_only: bool = False
+    # 作者の実測が下限(重み + 固定分)をわずかに下回った(MEASURED_FLOOR_TOLERANCE 以内)ので下限にした
+    near_floor: bool = False
 
     def parts_for(self, s: Settings) -> Parts:
         return apply_precision(replace(self.parts, notes=list(self.parts.notes)), self.entry, s)
@@ -1276,14 +1344,30 @@ class _Model:
         if self.own is not None and m is not None and _precision_changed(m, s, self.entry):
             return self.own.need(s, prec)  # 精度を変えたら、ほかの利用者の実測は使わない(own のまま)
         parts = self.parts_for(s)
-        act = activation_gb(self.entry, s, self.c)
+        delta = 0.0
         if m is not None and not _precision_changed(m, s, self.entry):
             same = _settings_match(m.settings, s, self.entry)
-            act += self.delta if same or self.delta_other is None else self.delta_other
+            delta = self.delta if same or self.delta_other is None else self.delta_other
+        st = stages_for(self.entry, s, prec)
+        if st is not None:
+            # 段ごとに当てられるモデル(#100): GPU の精度・会社は stages_for が作業用メモリに入れる。
+            # 実測からのずらしは段ごとに 0 で切る。余裕のある GPU の山からの正のずらしは全部載せにだけ足す
+            if prec is not None and prec.vae_factor != 1:
+                parts.decode *= prec.vae_factor
+            return need_staged(parts, st, self.c, delta, full_only=self.full_only)
+        # 当てられないモデル: 正のずらしは段ごとの式と同じく全部載せにだけ足す(full_only)
+        extra = delta if (self.full_only and delta > 0) else 0.0
+        act = activation_gb(self.entry, s, self.c) + delta - extra
+        f = 1.0
         if prec is not None and (prec.act_factor != 1 or prec.vae_factor != 1):
             parts.decode *= prec.vae_factor
             act = max(0.0, act) * prec.act_factor
-        return need(parts, act, self.c)
+            f = prec.act_factor
+        n = need(parts, act, self.c)
+        if extra:
+            n.full += extra * f
+            n.act += extra * f
+        return n
 
 
 def _prepare(
@@ -1300,8 +1384,9 @@ def _prepare(
     if m is None:
         return _Model(entry, c, None, 0.0, settings_for(entry, None, sized=sized), parts)
     at = settings_for(entry, m.settings, sized=sized)
-    act_m = activation_gb(entry, at, c)
-    est = need(parts, act_m, c).full
+    n_m = formula_need(entry, at, c, parts)  # 今までどおり重みは精度を換算しない(一覧のファイルのまま)
+    act_m = n_m.act  # 実測の設定での作業用メモリ(段ごとなら一番重い段)
+    est = n_m.full
     delta = m.peak_vram_gb - est
     if is_community(m):
         # ほかの利用者の実測は両方の向きに使う(2026-10-22 のオーナーの決定。llmfit に合わせた)。抑えるのは
@@ -1312,17 +1397,64 @@ def _prepare(
         own = _prepare(entry, [x for x in measurements if not is_community(x)], c, s, gpu)
         lo = 0.0 if is_censored(m) else -max(0.0, act_m)
         hi = max(lo, peak_vram_cap(m) - est)
-        clamp = "floor" if delta < lo else ("cap" if delta > hi else None)
+        # 下限との差が MEASURED_FLOOR_TOLERANCE 以内なら、作者の実測と同じく数え方の誤差として実測のまま扱う
+        near = delta < lo and lo - delta <= MEASURED_FLOOR_TOLERANCE
+        clamp = "floor" if (delta < lo and not near) else ("cap" if delta > hi else None)
         delta = min(max(delta, lo), hi)
         # 設定の違う推定へは、実測 ÷ 式 を COMMUNITY_CALIBRATION_RANGE に収めて広げる
         r_lo, r_hi = COMMUNITY_CALIBRATION_RANGE
         other = min(max(delta, est * (r_lo - 1), lo), max(lo, est * (r_hi - 1)))
-        return _Model(entry, c, m, delta, own.base, parts, clamp is not None, own, clamp, other)
-    clamped = False
+        return _Model(
+            entry,
+            c,
+            m,
+            delta,
+            own.base,
+            parts,
+            clamp is not None,
+            own,
+            clamp,
+            other,
+            _full_only(m, est, delta),
+            near,
+        )
+    clamped = near = False
     if is_censored(m) or lower_bound_only(m):
         clamped = delta < 0 and lower_bound_only(m)
         delta = max(0.0, delta)  # 張り付いた実測・下限の実測は「これ以上」としてだけ使う
-    return _Model(entry, c, m, delta, at, parts, clamped, clamp="floor" if clamped else None)
+    elif delta < -max(0.0, act_m):
+        # 全部載せの値は重み + 固定分(作業用メモリ 0)より下げない(#95 の下限。#100 で段ごとの式にして、作者の
+        # 動的 VRAM の実測が下限より小さく出ることがある: 重みの一部をメインメモリに置いていた)。
+        # 下限との差が MEASURED_FLOOR_TOLERANCE 以内なら、数え方の誤差として実測のまま扱う
+        # (値は下限、理由に出す)
+        near = -max(0.0, act_m) - delta <= MEASURED_FLOOR_TOLERANCE
+        clamped = not near
+        delta = -max(0.0, act_m)
+    return _Model(
+        entry,
+        c,
+        m,
+        delta,
+        at,
+        parts,
+        clamped,
+        clamp="floor" if clamped else None,
+        full_only=_full_only(m, est, delta),
+        near_floor=near,
+    )
+
+
+# 実測(作者・ほかの利用者)が下限(重み + 固定分)を下回っても、この幅(GiB)以内なら丸め・測りの揺れとして
+# 実測のまま扱う(値は下限、理由に出す。#100。例: ACE-Step 1.5 の 10.80 GB と下限 10.82 GB の 0.02 GB)
+MEASURED_FLOOR_TOLERANCE = 0.1
+
+
+def _full_only(m: Measurement, est_full: float, delta: float) -> bool:
+    """正のずらしを全部載せにだけ足すか(#100。docs/accuracy.md「実測の使い方」)。正のずらしは全部載せにだけ足す
+    (張り付いていない実測が式より大きいのは、余裕のある GPU で動的 VRAM が部品を載せたままにし、VAE もタイルに
+    分けずに仕上げた山: 順に載せ替え・逃がすでは起きない)。GPU の上限に張り付いた実測(これ以上としてだけ使う)
+    からのずらしは 3 つに足す。実測で決まるので、判定する PC の VRAM について単調。"""
+    return delta > 0 and not is_censored(m)
 
 
 @dataclass(frozen=True)
@@ -1332,6 +1464,13 @@ class GpuPrecision:
     act_factor: float = 1.0  # 作業用メモリの倍率(fp32 で計算する GPU は 2)
     vae_factor: float = 1.0  # VAE(仕上げの段)の重みの倍率(fp32 で載せる GPU は、fp32 でない VAE を 2)
     notes: tuple[str, ...] = ()
+    # 段ごとの作業用メモリ(#100)に渡す GPU の性質: 半精度を使わない・bf16 を持たない・AMD
+    gpu_fp32: bool = False
+    no_bf16: bool = False
+    amd: bool = False
+    # ComfyUI がこの GPU で SDPA(pytorch の注意機構)を使うか。False は分割式(Apple・CPU・対応外の AMD)で、
+    # 作業用メモリが見積もりより多くなることがある(注意だけ。model_management.py:462-475・527-538@426f5ee)
+    sdpa: bool = True
 
 
 def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrecision:
@@ -1343,8 +1482,9 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
       (2) bf16 を持たない GPU(Pascal・Volta・Turing)で、fp16 で動かせない系統(families.FAMILIES の fp16 が
       False: LTX・Qwen Image・Z-Image・HunyuanVideo・ACE-Step など)を動かすとき(unet_manual_cast が float32)
     - VAE を fp32 で載せる場合は VAE の重みを 2 倍にする(ファイルが fp32 なら同じ)。半精度を使わない GPU と、
-      bf16 を持たない GPU で working_dtypes に fp16 が無い VAE(2D の KL・LTX など)。仕上げの作業用メモリは
-      足りなければ ComfyUI がタイルに分けるので変えない
+      bf16 を持たない GPU で working_dtypes に fp16 が無い VAE(2D の KL・LTX など)。段ごとに当てられるモデルの
+      仕上げの作業用メモリ(#100)も、VAE の計算の精度で 2 倍になる(working.stage_memory。足りなければ
+      ComfyUI がタイルに分ける)
     - 本体の重みは変えない。ComfyUI は fp32 にしても `総量 × 0.88 − 最小の作業用メモリ` に収まるときだけ
       fp32 で載せ、収まらなければ元の 2 バイト(bf16・fp16)のまま計算だけ fp32 にする(unet_dtype)。
       VRAM が増えたときだけ使う量が増える動きなので、見積もりに入れると VRAM を増やして段階が下がる。
@@ -1355,8 +1495,13 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
     from .families import FAMILIES, VAES, family_of, shown, vae_of
 
     g = system.best_gpu
-    if g is None or system.vram_gb <= 0 or g.compute_dtype is None:
+    if g is None or system.vram_gb <= 0:
         return GpuPrecision()
+    vendor = getattr(g, "vendor", "nvidia")
+    amd = vendor == "amd"
+    sdpa = sdpa_attention(g)
+    if g.compute_dtype is None:
+        return GpuPrecision(amd=amd, sdpa=sdpa)
     prec = norm_precision(s.precision) or source_precision(entry)
     notes: list[str] = []
     fam_key = getattr(entry, "comfy_family", None) or family_of(entry)
@@ -1456,7 +1601,38 @@ def gpu_precision(entry: ModelEntry, system: SystemInfo, s: Settings) -> GpuPrec
                 " otherwise keeps fp8 and converts at every step (slow). The estimate keeps the fp8 size",
             )
         )
-    return GpuPrecision(act, vae, tuple(notes))
+    return GpuPrecision(act, vae, tuple(notes), gpu_fp32=gpu_fp32, no_bf16=no_bf16, amd=amd, sdpa=sdpa)
+
+
+# ComfyUI が AMD で SDPA(pytorch の注意機構)を使う GPU(model_management.py:527-532@426f5ee。aotriton が使えて
+# torch 2.7 以上の gfx90a・942・950・1100・1101・1150・1151・1170・1171、ROCm 7 以上の gfx1200・1201)
+AMD_SDPA_TARGETS = frozenset(
+    {
+        "gfx90a",
+        "gfx942",
+        "gfx950",
+        "gfx1100",
+        "gfx1101",
+        "gfx1150",
+        "gfx1151",
+        "gfx1170",
+        "gfx1171",
+        "gfx1200",
+        "gfx1201",
+    }
+)
+
+
+def sdpa_attention(g: Any) -> bool:
+    """ComfyUI がこの GPU で SDPA の経路を使うか(model_management.py:462-475・527-532・1785-1801@426f5ee)。
+    NVIDIA・Intel は使う。AMD は対応の世代だけ(ROCm・torch の版は分からないので世代だけで見る)。Apple(MPS)は
+    使わない(分割式)。"""
+    vendor = getattr(g, "vendor", "nvidia")
+    if vendor in ("nvidia", "intel"):
+        return True
+    if vendor == "amd":
+        return (getattr(g, "gfx_target", None) or "").split(":")[0] in AMD_SDPA_TARGETS
+    return False
 
 
 def ram_limit(system: SystemInfo) -> tuple[float, float | None]:
@@ -1580,7 +1756,7 @@ def _estimate(
         elif same_settings and prep.clamped:
             # 実測の値をそのまま使わなかった(下限・上限で切り詰めた): 値は実測ではないので basis は estimated
             detail = "measured_community" if is_community(m) else "calibrated"
-            if not is_community(m):
+            if not is_community(m) and lower_bound_only(m):
                 reasons.append(
                     tr(
                         f"{on} の実測 {m.peak_vram_gb:.2f} GB は下限としてだけ使い、"
@@ -1621,6 +1797,18 @@ def _estimate(
         elif same_settings:
             basis, measured_on = "measured", on
             detail = "measured_community" if is_community(m) else "measured"
+            if prep.near_floor:
+                reasons.append(
+                    tr(
+                        f"{on} の実測 {m.peak_vram_gb:.2f} GB は、全部 GPU に載せたときの下限(重み + 固定分 "
+                        f"{n.full:.2f} GB)をわずかに下回るので下限の値にした(差が "
+                        f"{MEASURED_FLOOR_TOLERANCE:g} GB 以内なら丸め・測りの揺れとして実測のまま扱う)",
+                        f"The measurement on {on} ({m.peak_vram_gb:.2f} GB) is slightly below the full-load"
+                        f" floor (weights + fixed {n.full:.2f} GB), so the floor is used (within"
+                        f" {MEASURED_FLOOR_TOLERANCE:g} GB it still counts as measured: rounding or"
+                        " measurement noise)",
+                    )
+                )
             if is_censored(m):
                 reasons.append(
                     tr(
@@ -1711,6 +1899,7 @@ def _estimate(
         elif fit_from != "measurement":
             why = [*why, tr(f"推定({label}・実測なし)", f"Estimated ({label}, no measurement)")]
     reasons.extend(prec.notes)
+    reasons.extend(_stage_notes(n, parts, system, prec, prep.c))
     free_short = False
     g = system.best_gpu
     if g is not None and g.vram_free_gb is not None and mode in ("gpu", "offload") and system.vram_gb > 0:
@@ -1762,6 +1951,52 @@ def _estimate(
     if with_limits:
         est.limits = limits(prep, system, s)
     return est
+
+
+def _stage_notes(n: Need, parts: Parts, system: SystemInfo, prec: GpuPrecision, c: Coefficients) -> list[str]:
+    """段ごとの作業用メモリの注意(#100。段階は変えない)。"""
+    st = n.stages
+    if st is None:
+        return []
+    out = list(st.notes)
+    vram = system.vram_gb
+    if vram > 0 and st.V_tile < st.V and c.overhead_gb + parts.decode * c.weight_factor + st.V > vram:
+        # 段階は VRAM によらないタイルの値 min(V, V_tile) で決める(VRAM を増やして段階が下がらない)
+        out.append(
+            tr(
+                f"仕上げ(VAE)の作業用メモリ {st.V:.1f} GB はこの GPU に入らないので、ComfyUI は VAE を"
+                f"タイルに分けて動かす(遅い。タイルなら {st.V_tile:.1f} GB)",
+                f"The decode (VAE) working memory, {st.V:.1f} GB, does not fit this GPU, so ComfyUI splits"
+                f" the VAE into tiles (slower; {st.V_tile:.1f} GB tiled)",
+            )
+        )
+    if st.kl_ratio != 1:
+        out.append(
+            tr(
+                f"AMD の GPU では ComfyUI が KL の VAE の作業用メモリを {st.kl_ratio:g} 倍に見込む"
+                "(sd.py:503-506)ので、その値で見積もった",
+                f"On AMD GPUs ComfyUI expects {st.kl_ratio:g} × the KL VAE working memory (sd.py:503-506),"
+                " so that value was used",
+            )
+        )
+    if vram > 0 and not prec.sdpa:
+        out.append(
+            tr(
+                "この GPU では ComfyUI が分割式の注意機構を使うので、作業用メモリが見積もり(SDPA の式)より"
+                "多くなることがある(段階には入れていない)",
+                "ComfyUI uses split (sub-quadratic) attention on this GPU, so the working memory can be"
+                " larger than the estimate (SDPA formula; not included in the level)",
+            )
+        )
+    elif vram <= 0:
+        out.append(
+            tr(
+                "CPU では ComfyUI が分割式の注意機構を使うので、作業用メモリが見積もりより多くなることがある",
+                "On the CPU ComfyUI uses split (sub-quadratic) attention, so the working memory can be larger"
+                " than the estimate",
+            )
+        )
+    return out
 
 
 # 同じ GPU とみなす VRAM の比(小さい ÷ 大きい)の下限(#26、0.9.1。0.11.0 で 0.97 → 0.95。
@@ -1897,6 +2132,7 @@ def measured_level(
         for m in measurements
         if m.model_id == entry.id
         and m.standard is not False
+        and not working_only(m)
         and (m.outcome or "ok") in ("ok", "oom")
         and files_match(m, entry)
         and (not is_community(m) or m.gpu_known is not False)

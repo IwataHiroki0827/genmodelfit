@@ -186,7 +186,11 @@ def test_measurement_corrects_other_settings(db):
     e = db.get("image_sdxl_simple")
     other = estimate(e, pc(16), Settings(width=1024, height=1024), db.measurements)
     assert other.basis == "estimated" and any("実測" in r and "補正" in r for r in other.reasons)
-    assert other.vram_gb > 8.0  # 832px の実測 8.0 GB より大きい
+    # 832px の実測 8.0 GB より小さくならない。#100 から全部載せの作業用メモリは一番重い段
+    # (SDXL は 512px から 2000px ほどまで VAE のタイルの 1.06 GB が一番重い)なので同じ値
+    at = estimate(e, pc(16), Settings(width=832, height=832), db.measurements)
+    assert other.vram_gb >= at.vram_gb == 8.0
+    assert other.vram_sequential_gb >= at.vram_sequential_gb
 
 
 # --- 設定と単調さ --------------------------------------------------------------------------------
@@ -203,15 +207,25 @@ def test_settings_scaling_is_monotonic(db, coef):
     def v(e, **kw):
         return estimate(e, pc(16), Settings(**kw), db.measurements, coef).vram_gb
 
-    sides = [v(img, width=px, height=px) for px in (512, 768, 1024, 1536)]
+    def seq(e, **kw):
+        return estimate(e, pc(16), Settings(**kw), db.measurements, coef).vram_sequential_gb
+
+    # 全部載せは増えるか同じ(#100: 一番重い段が VRAM によらないタイルの VAE なら同じ)。生成の段が効く
+    # 順に載せ替えの量は増える
+    # 作者の SDXL の実測のずらし(−1.0 GB)は段ごとに 0 で切るので、生成の段の作業用メモリが 1 GB を超える
+    # 2048px より上で初めて増える
+    sides = [v(img, width=px, height=px) for px in (512, 768, 1024, 1536, 4096)]
     assert sides == sorted(sides) and sides[0] < sides[-1]
-    assert v(img, width=1024, height=1024, batch=1) < v(img, width=1024, height=1024, batch=4)
+    sides_seq = [seq(img, width=px, height=px) for px in (512, 768, 1024, 1536, 4096)]
+    assert sides_seq == sorted(sides_seq) and sides_seq[0] < sides_seq[-1]
+    assert v(img, width=1024, height=1024, batch=1) <= v(img, width=1024, height=1024, batch=16)
+    assert seq(img, width=1024, height=1024, batch=1) < seq(img, width=1024, height=1024, batch=16)
     frames = [v(vid, width=512, height=512, frames=n) for n in (17, 49, 81, 121)]
     assert frames == sorted(frames) and frames[0] < frames[-1]
-    secs = [v(aud, seconds=t) for t in (10, 30, 120)]
+    secs = [v(aud, seconds=t) for t in (10, 30, 600)]
     assert secs == sorted(secs)
-    if coef.act_audio_gb_per_min > 0:
-        assert secs[0] < secs[-1]
+    secs_seq = [seq(aud, seconds=t) for t in (10, 30, 600)]
+    assert secs_seq == sorted(secs_seq) and secs_seq[0] < secs_seq[-1]
 
 
 def test_limits_are_the_largest_good_settings(db):
@@ -223,7 +237,14 @@ def test_limits_are_the_largest_good_settings(db):
     over = Settings(width=lim["max_side_px"] + 32, height=lim["max_side_px"] + 32, frames=49)
     assert estimate(e, pc(10), at, db.measurements).fit in ("perfect", "good")
     assert estimate(e, pc(10), over, db.measurements).fit not in ("perfect", "good")
-    more = estimate(e, pc(10), Settings(width=512, height=512, frames=lim["max_frames"] + 4), db.measurements)
+    # #100: 512px ではコマ数は調べる範囲の上限まで good(段ごとの式では Wan 2.1 の VAE はコマ数で増えない)。
+    # 768px で、限界のすぐ上が good でないことを見る
+    assert lim["at_cap"] == ["max_frames"]
+    wide = Settings(width=768, height=768, frames=49)
+    lim768 = limits_for(e, pc(10), wide, db.measurements)
+    more = estimate(
+        e, pc(10), Settings(width=768, height=768, frames=lim768["max_frames"] + 4), db.measurements
+    )
     assert more.fit not in ("perfect", "good")
     # 大きな GPU ほど限界は上がる
     lim16 = limits_for(e, pc(24), base, db.measurements)
@@ -247,13 +268,8 @@ CURATED = {  # id: (最低, 推奨)
     "3d_hunyuan3d_image_to_model": (6, 8),
     "3d_hunyuan3d-v2.1": (8, 12),
 }
-# 動画の作業用メモリを Wan2.1 の 1 件から伸ばしているため厳しめに出る(直ったら strict の xfail が知らせる)
-KNOWN_MISS = pytest.mark.xfail(
-    strict=True, reason="Wan2.2 5B は厳しめに出る(docs/accuracy.md の「分かっている外れ」)"
-)
-CURATED_IDS = [
-    pytest.param(i, marks=KNOWN_MISS) if i == "video_wan2_2_5B_ti2v" else i for i in sorted(CURATED)
-]
+# #100 で Wan 2.2 5B と Wan 2.1 1.3B の外れは直った(strict の xfail を外した)
+CURATED_IDS = sorted(CURATED)
 
 
 def app_settings(db, model_id):
@@ -273,7 +289,7 @@ def test_curated_min_is_not_too_tight(db, model_id):
 @pytest.mark.parametrize("model_id", CURATED_IDS)
 def test_curated_recommended_runs_on_gpu(db, model_id):
     """推奨の VRAM では GPU で動く(逃がさない)。段階は使用率で決めるので、推奨ぎりぎり(85% 超)なら
-    marginal のこともある(Z-Image Turbo int8 と Wan 2.1 1.3B は 8 GB で 96〜97%)。"""
+    marginal のこともある(Z-Image Turbo int8 は 8 GB で 94%)。"""
     _, vrec = CURATED[model_id]
     e = estimate(db.get(model_id), pc(vrec), app_settings(db, model_id), db.measurements)
     assert e.run_mode == "gpu" and e.fit != "too_tight"
@@ -303,6 +319,11 @@ def test_calibration_is_reproducible():
     assert again["coefficients"] == committed["coefficients"]
     assert again["summary"] == committed["summary"]
     assert again["n"] == committed["n"] == 9
+    assert again["frozen"] == committed["frozen"]  # #100: 合わせ直すのは act_3d_gb だけ
+    # 照合の行も同じ(空のキャッシュで作る: この PC の bench の実測を混ぜない。#100 のチェッカーの M2)
+    assert again["check"] == committed["check"]
+    assert again["loo"] == committed["loo"]
+    assert set(again["coefficients"]) - set(again["frozen"]) == {"act_3d_gb"}
     assert load_coefficients().overhead_gb == committed["coefficients"]["overhead_gb"]
 
 
@@ -549,11 +570,12 @@ def test_failed_or_nonstandard_measurements_are_ignored():
         model_id="m12", gpu_name="g", gpu_vram_gb=8, peak_vram_gb=7.6, settings=s, standard=False
     )
     assert estimate(e, pc(8), s, [custom]).basis == "estimated"
-    ok = Measurement(model_id="m12", gpu_name="g", gpu_vram_gb=16, peak_vram_gb=13.0, settings=s)
+    # 重み 12 + 固定分 1.47 より大きい実測(下限より小さい実測は下限で止める。#100)
+    ok = Measurement(model_id="m12", gpu_name="g", gpu_vram_gb=16, peak_vram_gb=14.0, settings=s)
     assert estimate(e, pc(16), s, [ok]).basis == "measured"
     # 合わせ直しにも使わない
     rows = build_rows(Database(models=[e], measurements=[oom, custom, ok]))
-    assert [r.m.peak_vram_gb for r in rows] == [13.0]
+    assert [r.m.peak_vram_gb for r in rows] == [14.0]
 
 
 def test_negative_settings_are_ignored_and_cli_rejects_them(db, capsys):

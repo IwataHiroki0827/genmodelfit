@@ -148,7 +148,7 @@ nvidia-smi on WSL returns the Windows driver version, so read it against the Win
 
 ## Precision (dtype and VRAM chosen by ComfyUI)
 
-This section is based on `comfy/model_management.py` and `comfy/sd.py` of ComfyUI (commit b1a247c, 2026-10-20).
+This section is based on `comfy/model_management.py` and `comfy/sd.py` of ComfyUI (commit 426f5ee, v0.43.0; re-read on 2026-10-27).
 
 - It is GPL-3.0, so nothing is imported. Only lists of names were copied, as facts (`hardware._COMFY_FP16_PASCAL`, `_COMFY_FP16_BROKEN`).
 - Everything below is the default behavior, without launch arguments.
@@ -174,15 +174,16 @@ This section is based on `comfy/model_management.py` and `comfy/sd.py` of ComfyU
   - If it fits, they are loaded in fp32 (double size).
 - GPUs that use no half precision (such as Maxwell) also widen to fp32, but only if it fits. If not, the weights stay at 2 bytes and only the computation is fp32.
 - fp8 weights on a GPU without fp8 compute: widened to fp16 if that fits; if not, they stay fp8 (converted at every computation).
-- Weights with a quantization config, such as fp8_scaled and int8_convrot, stay quantized (`quant_config`, sd.py:2268).
+- Weights with a quantization config, such as fp8_scaled and int8_convrot, stay quantized (`quant_config`, sd.py:2277).
 
 **Text encoder**: fp16 by default. If the file's precision is 2 bytes or less, it is loaded as is (`pick_weight_dtype`).
 
 **VAE** (`vae_dtype` model_management.py:1290):
 
-- Chosen from each VAE's `working_dtypes` (sd.py; default `[bfloat16, float32]`: sd.py:516). fp16 is chosen when `should_use_fp16` holds, bf16 when `should_use_bf16` holds, and fp32 if neither does.
-- The 2D KL VAEs (SD, SDXL, SD3, Flux's ae, Flux2's VAE; the default branch at sd.py:676 to 705), LTX (780) and Mage (627) have no fp16. On GPUs without bf16 they are fp32.
-- Wan (849, 857, 873), HunyuanVideo (791, 824), CogVideoX (808) and others have fp16.
+- Chosen from each VAE's `working_dtypes` (sd.py; default `[bfloat16, float32]`: sd.py:518). fp16 is chosen when `should_use_fp16` holds, bf16 when `should_use_bf16` holds, and fp32 if neither does.
+- The 2D KL VAEs (SD, SDXL, SD3, Flux's ae; the default branch at sd.py:677 to 712), LTX (784) and Mage (629) have no fp16. On GPUs without bf16 they are fp32.
+- The Flux2 VAE keeps the KL default without fp16 in 0.40.0 (426f5ee adds fp16: sd.py:693). The product's engine is 0.40, so it is treated as having no fp16.
+- Wan (853, 865, 881), HunyuanVideo (795, 828), CogVideoX (812), Oobleck (742) and others have fp16.
 - If VRAM runs short at the final decoding, ComfyUI continues in tiles (slow).
 
 **Working memory**: ComfyUI's own estimates (`model_base.memory_required`, and the VAE's `memory_used_decode`) multiply by the size of the computation precision (`dtype_size`). Computing in fp32 doubles it.
@@ -193,7 +194,7 @@ How this is applied to the estimate (`estimate.gpu_precision`; only what the cod
 |---|---|---|---|---|
 | No half precision | All Maxwell, GT 1030, GTX 1080 on Linux, GTX 1660, T1000 | `fp32` | any | working memory x 2, VAE weights x 2 (x 1 if the VAE file is fp32, or the VAE is fp32 on every GPU) |
 | Uses fp16 but has no bf16 | Pascal on Windows (1080 etc.), Volta, Turing RTX | `fp16` | family without fp16 | working memory x 2 |
-| same | same | `fp16` | VAE without fp16 | VAE weights x 2 |
+| same | same | `fp16` | VAE without fp16 | VAE weights x 2 (since #100 also the decode-stage working memory x 2) |
 | same | same | `fp16` | family with fp16 | no change (for bf16 weights, the reason says "runs in fp16 (same VRAM)") |
 | same | same | `fp16` | family unknown | no change; the reason says "not applied because the family is unknown" |
 | No fp8 compute | before Ada | — | fp8 weights | no change; the reason says "widened to fp16 if there is room, slow if not" |
@@ -209,52 +210,58 @@ Working memory x 2 and VAE x 2 depend only on the GPU generation and family, not
 So with the generation fixed, adding VRAM, RAM or page file never lowers the level (`test_fit_monotonic_in_vram_per_arch`).
 When computing in fp32, `basis` is `estimated` unless the measurement is from that GPU (measurements are from half-precision GPUs).
 
-### Family table (`src/genmodelfit/families.py`, lines of ComfyUI commit b1a247c)
+### Family table (`src/genmodelfit/families.py`, lines of ComfyUI commit 426f5ee)
 
 Main model (`supported_inference_dtypes` in `comfy/supported_models.py`; classes without one use `[float16, bfloat16, float32]` from `supported_models_base.py:47`):
 
 | Family (key) | ComfyUI class | fp16 | Line |
 |---|---|---|---|
 | sd / sd3 / hunyuan3d / stable_audio | SD15, SDXL, SVD, SD3, Hunyuan3Dv2, StableAudio, etc. | yes | base:47 |
-| flux | Flux / FluxSchnell (Ovis is also read as Flux: model_detection.py:363) | yes | 753 |
-| flux_fill | FluxInpaint (in_channels 96 = Fill, OneReward) | no | 783 |
-| flux2 / flux3 | Flux2 / Flux3 | yes / no | 812 / 855 |
-| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | yes | 1820 / 2433 / 2023 / 1171 / 1100 |
-| lens / mochi | Lens / GenmoMochi | no | 882 / 924 |
-| ltxv | LTXV / LTXAV (LTX-Video, LTX-2.x) | no | 952 |
-| minimax_h3 | MiniMaxH3 (also FastVideo FastH3) | no | 1000 |
-| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | no | 1027 / 2203 |
-| hunyuan_video15 | HunyuanVideo15 | yes | 2241 |
-| lumina2 / zimage / ming_image / pixeldit | Lumina2 (NewBie: model_detection.py:611) / ZImage / MingImage / PixelDiTT2I | no | 1213 / 1240 / 1240 / 1298 |
-| wan | WAN21_* / WAN22_* (HuMo, VACE, S2V, Animate, SCAIL, CausalAR, etc.) | yes | 1366 |
-| trellis2 | Trellis2 (also Pixal3D: model_detection.py:125) | no | 1541 |
-| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | same names | yes | 1685 / 1853 / 2512 / 2471 / 2400 / 2576 |
-| hidream / hidream_o1 | HiDream / HiDreamO1 | no | 1710 / 1735 |
-| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | no | 1903 / 2350 / 2376 |
-| omnigen2 | Omnigen2 / Boogu (with torch 2.7 or newer, float16 is added at the front: 1938) | yes | 1930 |
-| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | no | 1994 / 2052 / 2085 |
-| qwen_image / qwen_image21 / joyimage | QwenImage (also FireRed, Marigold v2) / QwenImage21 / JoyImage | no | 2114 / 2144 / 2176 |
-| kandinsky5 / ernie | Kandinsky5 / ErnieImage | no | 2294 / 2495 |
+| flux | Flux / FluxSchnell (Ovis is also read as Flux: model_detection.py:363) | yes | 754 |
+| flux_fill | FluxInpaint (in_channels 96 = Fill, OneReward) | no | 784 |
+| flux2 / flux3 | Flux2 / Flux3 | yes / no | 813 / 856 |
+| chroma / longcat / krea2 / anima / cosmos | Chroma / LongCatImage / Krea2 / Anima / Cosmos | yes | 1821 / 2462 / 2024 / 1172 / 1101 |
+| lens / mochi | Lens / GenmoMochi | no | 883 / 925 |
+| ltxv | LTXV / LTXAV (LTX-Video, LTX-2.x) | no | 953 |
+| minimax_h3 | MiniMaxH3 (also FastVideo FastH3) | no | 1001 |
+| hunyuan_video / hunyuan_image21 | HunyuanVideo / HunyuanImage21 | no | 1028 / 2232 |
+| hunyuan_video15 | HunyuanVideo15 | yes | 2270 |
+| lumina2 / zimage / ming_image / pixeldit | Lumina2 (NewBie: model_detection.py:611) / ZImage / MingImage / PixelDiTT2I | no | 1214 / 1241 / 1241 / 1299 |
+| wan | WAN21_* / WAN22_* (HuMo, VACE, S2V, Animate, SCAIL, CausalAR, etc.) | yes | 1367 |
+| trellis2 | Trellis2 (also Pixal3D: model_detection.py:125) | no | 1542 |
+| triposplat / seedvr2 / sam3 / depth_anything3 / minimax_music3 / cogvideox | same names | yes | 1686 / 1854 / 2541 / 2500 / 2429 / 2605 |
+| hidream / hidream_o1 | HiDream / HiDreamO1 | no | 1711 / 1736 |
+| ace / ace15 / yue2 | ACEStep / ACEStep15 / YuE2 | no | 1904 / 2379 / 2405 |
+| omnigen2 | Omnigen2 / Boogu (with `extended_fp16_support`, float16 is added at the front: 1939) | yes | 1931 |
+| ideogram4 / moss_image / mage_flow | Ideogram4 / MOSSImage / MageFlow | no | 1995 / 2053 / 2114 |
+| qwen_image / qwen_image21 / joyimage | QwenImage (also FireRed, Marigold v2) / QwenImage21 / JoyImage | no | 2143 / 2173 / 2205 |
+| kandinsky5 / ernie | Kandinsky5 / ErnieImage | no | 2323 / 2524 |
 
 Z-Image also uses fp16 when `allow_fp16` is set by the weight values (model_detection.py:624, supported_models.py:1245).
 That cannot be known without reading the file, so it is treated as having no fp16 (the safe side), and the reason says so.
 
 VAE (`working_dtypes` in `comfy/sd.py`; "yes" has fp16, "no" does not):
 
-- `kl` (default, 516; 2D KL): no
-- `ltxv` (780): no
-- `ltx_diffusion` (645): no
-- `mage` (627): no
-- `wan` (849, 857, 873): yes
-- `hunyuan_video` (824): yes
-- `hunyuan_video15` (791): yes
-- `hunyuan3d` (902): yes
-- `trellis2` (594, 599): yes
-- `seedvr2` (610): yes
-- `cogvideox` (808): yes
-- `minimax_h3` (1049): yes
-- `ace` (917): yes
-- `fp32` (540, 947, 999, 1083): fp32 on every GPU
+- `kl` (default, 518; 2D KL): no
+- `flux2` (the Flux2 VAE; 0.40.0 keeps the default: 515, 693@0.40.0): no
+- `ltxv` (784): no
+- `ltx_diffusion` (647): no
+- `mage` (629): no
+- `pixel` (pixel space; 925 to 933, the default): no
+- `wan` (881; Wan 2.1, Qwen Image): yes
+- `wan22` (865; Wan 2.2, 16× compression): yes
+- `qwen21` (853; Qwen Image 2.1, 16× compression): yes
+- `oobleck` (742; ACE-Step 1.5, Stable Audio Open): yes
+- `yue2` (742, 744 to 747): yes
+- `hunyuan_video` (828): yes
+- `hunyuan_video15` (795): yes
+- `hunyuan3d` (906): yes
+- `trellis2` (596, 601): yes
+- `seedvr2` (612): yes
+- `cogvideox` (812): yes
+- `minimax_h3` (1053): yes
+- `ace` (921): yes
+- `fp32` (542, 951, 1003, 1087): fp32 on every GPU
 
 How the family and VAE of each list entry are decided:
 
@@ -281,7 +288,7 @@ Only when no NVIDIA GPU is usable (`cuda`, confirmed by nvidia-smi), AMD, Intel 
 
 | Vendor / part | OS | Verdict | Primary sources |
 |---|---|---|---|
-| AMD Radeon RDNA 4 (RX 9070 / 9060, gfx1200, 1201) | Windows 11, Linux | **GPU** (`rocm`) | ComfyUI README "AMD GPUs (Windows, ROCm 10.0)" (Comfy-Org/ComfyUI b1a247c: "supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4", "Use Windows 11"), ROCm/TheRock `SUPPORTED_GPUS.md`, `RELEASES.md` (4639f91, "GFX target lookup table", Release Ready) |
+| AMD Radeon RDNA 4 (RX 9070 / 9060, gfx1200, 1201) | Windows 11, Linux | **GPU** (`rocm`) | ComfyUI README "AMD GPUs (Windows, ROCm 10.0)" (Comfy-Org/ComfyUI 426f5ee: "supported architectures include RDNA 2, RDNA 3, RDNA 3.5, and RDNA 4", "Use Windows 11"), ROCm/TheRock `SUPPORTED_GPUS.md`, `RELEASES.md` (4639f91, "GFX target lookup table", Release Ready) |
 | AMD RDNA 3.5 APUs (Ryzen AI Max = gfx1151, Ryzen AI 9 HX 37x = gfx1150, Ryzen AI 7 350 = gfx1152, Radeon 820M = gfx1153) | Windows 11, Linux | **GPU** (`rocm`, shared memory) | same |
 | AMD Radeon RDNA 3 (RX 7900 = gfx1100, 7800 / 7700 = gfx1101, 7600 = gfx1102), Radeon 780M / 760M / 740M, Ryzen Z1 Extreme / Z1 (gfx1103) | Windows 11, Linux | **GPU** (`rocm`) | same. On Linux, the ROCm build from pytorch.org is also installed (ComfyUI's Linux instructions use `--index-url .../rocm7.2`) |
 | AMD Radeon RDNA 2 (RX 6900 to 6800 = gfx1030, 6700 = gfx1031, 6600 = gfx1032, 6500 / 6400 / 6300, Pro W6400 / W6300 = gfx1034), Radeon 680M / 660M (gfx1035), Van Gogh, Sephiroth (Steam Deck and OLED model; Windows name AMD Custom GPU 0405; 8 CU, gfx1033; shared memory) | Windows 11, Linux | **GPU** (`rocm`; no bf16) | same. The ROCm build on pytorch.org covers gfx1030 only (`PYTORCH_ROCM_ARCH` in pytorch/pytorch v2.14.1 `.ci/docker/manywheel/build.sh`), so notes says to use AMD's multi-arch build (TheRock) for the others |
@@ -331,7 +338,7 @@ Names added in 0.9.0 (#56; primary sources read on 2026-10-22):
   - A770 has 8 GB and 16 GB versions, so 8 GB.
   - A570M, A530M and the Pro M models could not be confirmed in Intel's documents, so they have no value and stay CPU on Linux.
 
-### Precision (`comfy/model_management.py` of ComfyUI b1a247c)
+### Precision (`comfy/model_management.py` of ComfyUI 426f5ee)
 
 - AMD (`torch.version.hip`):
   - `should_use_fp16` is always True.
@@ -446,7 +453,7 @@ When there is no GPU (or the model does not fit on the GPU), these are taken as 
 How ComfyUI behaves on CPU:
 
 - Without a GPU, ComfyUI runs on CPU (`--cpu`, "To use the CPU for everything (slow)": comfy/cli_args.py).
-- On CPU it holds the main model and the VAE in fp32 (`should_use_fp16` and `should_use_bf16` are False on CPU: model_management.py:1902, 1969. The text encoder stays fp16: 1261).
+- On CPU it holds the main model and the VAE in fp32 (`should_use_fp16` and `should_use_bf16` are False on CPU: model_management.py:1912, 1979. The text encoder stays fp16: 1261).
 
 Required main memory = fixed part + all components + (one more copy of the main model if it is 2 bytes) + one more copy of the VAE + working memory x 2.
 

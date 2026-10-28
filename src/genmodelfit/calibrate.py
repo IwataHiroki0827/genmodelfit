@@ -5,8 +5,11 @@
 """実測から見積もりの係数を合わせる。`python -m genmodelfit.calibrate`
 
 合わせるのは「全部載せ」の VRAM(estimate の vram_gb)だけ:
-    予測 = overhead_gb + 重みの合計 + Σ 作業用メモリの係数 × 設定から決まる量
-係数は 5 つ(overhead と、画像・動画・音声・3D の作業用メモリ)。どれも上の式に 1 次で効くので、
+    予測 = overhead_gb + 重みの合計 + 作業用メモリ
+作業用メモリは、段ごとに当てられるモデル(#100。working.stage_memory)は ComfyUI の見込み max(S, V_eff, T) で、
+係数を持たない。当てられないモデルは今までの種類ごとの式(Σ 係数 × 設定から決まる量)。
+#100 から合わせ直すのは 3D の作業用メモリ(act_3d_gb)だけ。固定分と画像・動画・音声の係数は 0.10 で合わせた値に
+固定する(FROZEN。固定分は RTX 3070 を測り直してから決める。docs/accuracy.md「合わせ方」)。
 「相対誤差の 2 乗和 + 事前値(#1 の仮の値)からのずれへの弱い罰」を、範囲付きの座標降下で最小にする。
 
 - GPU の上限に張り付いた実測(estimate.is_censored)は「予測がこれ以上」という片側の条件としてだけ使う
@@ -24,17 +27,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import i18n
-from .db import Database
+from .db import Database, load_measurements
 from .db import load as load_db
 from .estimate import (
     FITTED,
     Coefficients,
     activation_features,
     components,
+    formula_need,
     is_censored,
     is_community,
+    no_size_input,
     settings_for,
     usable,
+    working_only,
 )
 from .i18n import tr
 from .models import Measurement
@@ -47,23 +53,37 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "act_audio_gb_per_min": (0.0, 5.0),
     "act_3d_gb": (0.0, 4.0),
 }
-PRIOR = {k: getattr(Coefficients(), k) for k in FITTED}
+# 合わせ直す係数(#100 から 3D だけ)と、固定する係数
+# (0.10 の calibration.json の値。2026-10-20 に 9 件で合わせた)
+FIT = ("act_3d_gb",)
+FROZEN = {
+    "overhead_gb": 1.472,
+    "act_image_gb_per_mp": 0.2284,
+    "act_video_gb_per_mp": 9.8704,
+    "act_audio_gb_per_min": 0.0455,
+}
+assert set(FIT) | set(FROZEN) == set(FITTED)
+PRIOR = {k: getattr(Coefficients(), k) for k in FIT}
 RIDGE = 1e-4  # 事前値への罰の重み((値 - 事前値) / 事前値 の 2 乗に掛ける)
 SWEEPS = 300
 
 
 @dataclass
 class Row:
-    """実測 1 件を「予測 = 重み + Σ 係数 × 特徴」の形にしたもの。"""
+    """実測 1 件を「予測 = 定数 + Σ 合わせる係数 × 特徴」の形にしたもの。定数 = 固定分 + 重み + 作業用メモリの
+    うち合わせない分(段ごとの見込み、または固定した係数 × 特徴)。"""
 
     m: Measurement
     weights_gb: float
-    features: dict[str, float]  # overhead_gb は常に 1
+    features: dict[str, float]  # 合わせる係数(FIT)の特徴だけ
     censored: bool
     modality: str = ""
+    const_gb: float = 0.0
+    work_gb: float = 0.0  # 合わせる前の作業用メモリ(照合で作業用メモリだけの実測と比べる)
+    staged: bool = False
 
     def predict(self, theta: dict[str, float]) -> float:
-        return self.weights_gb + sum(theta[k] * v for k, v in self.features.items())
+        return self.const_gb + sum(theta[k] * v for k, v in self.features.items())
 
 
 # 係数を合わせる実測の測り方。v0.1 は記録の無い RTX 5080 の 9 件(None)で合わせる。
@@ -71,8 +91,13 @@ class Row:
 CALIBRATION_METRIC: str | None = None
 
 
+def frozen_coefficients() -> Coefficients:
+    """合わせない係数を固定した値にした Coefficients(FIT の係数は事前値のまま。Row は FIT を特徴で持つ)。"""
+    return Coefficients(**FROZEN)
+
+
 def _rows(db: Database, c: Coefficients | None, *, same_metric: bool) -> list[Row]:
-    c = c or Coefficients()
+    c = c or frozen_coefficients()
     rows = []
     for m in db.measurements:
         e = db.get(m.model_id)
@@ -85,9 +110,19 @@ def _rows(db: Database, c: Coefficients | None, *, same_metric: bool) -> list[Ro
         parts = components(e)
         if parts.unknown:
             continue
-        s = settings_for(e, m.settings)
-        feats = {"overhead_gb": 1.0, **activation_features(e.modality, s, c)}
-        rows.append(Row(m, parts.total * c.weight_factor, feats, is_censored(m), e.modality))
+        s = settings_for(e, m.settings, sized=not no_size_input(e))
+        n = formula_need(e, s, c, parts)
+        weights = parts.total * c.weight_factor
+        if n.stages is not None:
+            feats: dict[str, float] = {}
+            const = n.full
+            work = n.act
+        else:
+            act = activation_features(e.modality, s, c)
+            feats = {k: v for k, v in act.items() if k in FIT}
+            work = sum(getattr(c, k) * v for k, v in act.items() if k not in FIT)
+            const = c.overhead_gb + weights + work
+        rows.append(Row(m, weights, feats, is_censored(m), e.modality, const, work, n.stages is not None))
     return rows
 
 
@@ -110,7 +145,9 @@ def _origin(m: Measurement) -> str:
 def check(rows: list[Row], theta: dict[str, float]) -> list[dict]:
     out = []
     for r in rows:
-        pred = r.predict(theta)
+        # 作業用メモリだけの実測(estimate.working_only)は作業用メモリの見積もりと比べる
+        only = working_only(r.m)
+        pred = r.work_gb + sum(theta[k] * v for k, v in r.features.items()) if only else r.predict(theta)
         y = r.m.peak_vram_gb
         out.append(
             {
@@ -124,6 +161,7 @@ def check(rows: list[Row], theta: dict[str, float]) -> list[dict]:
                 "settings": {k: v for k, v in vars(r.m.settings).items() if v is not None and k != "batch"},
                 "measured_gb": y,
                 "censored": r.censored,
+                "quantity": "work" if only else "full",
                 "predicted_gb": round(pred, 2),
                 "error_pct": round((pred - y) / y * 100, 1),
             }
@@ -139,7 +177,7 @@ def _loss(rows: list[Row], theta: dict[str, float]) -> float:
         if r.censored:
             rel = min(0.0, rel)  # 予測が実測以上なら罰なし
         total += rel * rel
-    for k in FITTED:
+    for k in FIT:
         total += RIDGE * ((theta[k] - PRIOR[k]) / PRIOR[k]) ** 2
     return total
 
@@ -167,7 +205,7 @@ def fit(rows: list[Row]) -> dict[str, float]:
     theta = dict(PRIOR)
     for _ in range(SWEEPS):
         before = _loss(rows, theta)
-        for k in FITTED:
+        for k in FIT:
             lo, hi = BOUNDS[k]
             theta[k] = _argmin_1d(lambda v, k=k: _loss(rows, {**theta, k: v}), lo, hi)
         if before - _loss(rows, theta) < 1e-12:
@@ -242,8 +280,17 @@ def summarize(loo: list[dict], target_pct: float = 20.0) -> dict:
     }
 
 
+def bundled_db() -> tuple[Database, int]:
+    """同梱の一覧と同梱の実測だけの Database と、除いたこの PC の bench の実測(キャッシュ)の件数。
+    calibration.json はどの PC で作っても同じにする(#100。オーナーの PC のキャッシュの実測が混ざっていた)。"""
+    db = load_db(use_cache=False)
+    every = len(db.measurements)
+    db.measurements = load_measurements(include_cache=False)
+    return db, every - len(db.measurements)
+
+
 def calibrate(db: Database | None = None, date: str | None = None) -> dict:
-    db = db or load_db(use_cache=False)
+    db = db or bundled_db()[0]
     rows = build_rows(db)
     theta = fit(rows)
     loo = leave_one_out(rows)
@@ -253,15 +300,20 @@ def calibrate(db: Database | None = None, date: str | None = None) -> dict:
         "source": "calibration.json",
         "date": date or _dt.date.today().isoformat(),
         "method": (
-            "全部載せの VRAM = overhead + 重み + 作業用メモリ。5 係数を相対誤差の 2 乗和"
+            "全部載せの VRAM = overhead + 重み + 作業用メモリ。作業用メモリは段ごとに当てられるモデルは"
+            " ComfyUI の見込み max(S, V_eff, T)(係数なし)、ほかは種類ごとの式。"
+            "合わせるのは act_3d_gb だけで、"
+            "固定分と画像・動画・音声の係数は 0.10 の値に固定(frozen)。相対誤差の 2 乗和"
             "(張り付いた実測は片側)"
-            f" + 事前値への罰(重み {RIDGE})で、範囲付きの座標降下により最小化。精度は leave-one-out"
+            f" + 事前値への罰(重み {RIDGE})を、範囲付きの座標降下で最小化。精度は leave-one-out"
         ),
         "n": len(rows),
         "n_censored": sum(r.censored for r in rows),
-        "coefficients": theta,
+        "n_staged": sum(r.staged for r in rows),
+        "coefficients": {**FROZEN, **theta},
+        "frozen": dict(FROZEN),
         "prior": PRIOR,
-        "bounds": {k: list(v) for k, v in BOUNDS.items()},
+        "bounds": {k: list(BOUNDS[k]) for k in FIT},
         "fixed": {
             k: getattr(fixed, k)
             for k in (
@@ -358,19 +410,24 @@ def check_table(rows: list[dict]) -> list[str]:
         ),
         "",
         tr(
-            "| モデル | GPU | 出どころ | 設定 | 実測 GiB | 推定 GiB(全部載せ) | 誤差 |",
-            "| Model | GPU | Source | Settings | Measured GiB | Estimated GiB (all on GPU) | Error |",
+            "| モデル | GPU | 出どころ | 設定 | 比べた量 | 実測 GiB | 推定 GiB | 誤差 |",
+            "| Model | GPU | Source | Settings | Compared | Measured GiB | Estimated GiB | Error |",
         ),
-        "|---|---|---|---|---:|---:|---:|",
+        "|---|---|---|---|---|---:|---:|---:|",
     ]
     for x in rows:
         who = tr("ほかの利用者", "other users") if x["origin"] == "community" else tr("作者", "author")
         if x["origin"] == "community" and x.get("n_submissions"):
             who += tr(f"({x['n_submissions']} 件)", f" ({x['n_submissions']})")
         err = tr("張り付き", "censored") if x["censored"] else f"{x['error_pct']:+.0f}%"
+        what = (
+            tr("作業用メモリ(重みを含まない実測)", "working memory (measurement without weights)")
+            if x.get("quantity") == "work"
+            else tr("全部載せ", "all on GPU")
+        )
         lines.append(
             f"| {md_cell(x['model_id'])} | {md_cell(x['gpu_name'])} | {who} |"
-            f" {_settings_text(x['settings'])} |"
+            f" {_settings_text(x['settings'])} | {what} |"
             f" {x['measured_gb']:.2f} | {x['predicted_gb']:.2f} | {err} |"
         )
     return lines
@@ -394,7 +451,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _main(args: argparse.Namespace) -> int:
-    result = calibrate(date=args.date)
+    db, excluded = bundled_db()
+    if excluded:
+        print(f"この PC の bench の実測(キャッシュ){excluded} 件は使わない(同梱の実測だけで合わせる)")
+    result = calibrate(db, date=args.date)
     if not args.dry_run:
         args.output.write_text(
             json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n"

@@ -19,6 +19,7 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 流れの要約: いちばんかんたんなのは、`genmodelfit bench … --share` で測り、出てきた中身を読んで、ブラウザの GitHub のページでボタンを 2 つ押す方法です(下の「[かんたんな送り方](#かんたんな送り方git-は要らない)」。git もフォークの clone も要りません)。
 git に慣れていれば、フォークの clone の中で `genmodelfit bench … --submission data/contrib/` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出すこともできます(「[2. 提出用の JSON を作る](#2-提出用の-json-を作る)」から)。
 **genmodelfit 自身は何も送りません**。共有は、あなたが出す Pull Request を通してだけ行われます。
+今の NVIDIA の bench の提出(ComfyUI の動的 VRAM、`vram_metric: torch_reserved`)は作業用メモリだけを持つので、段ごとの山を測れるようになるまでは照合だけに使い、見積もりにも段階にも使いません(#100。[accuracy.ja.md](docs/accuracy.ja.md#実測の使い方))。
 
 ## かんたんな送り方(git は要らない)
 

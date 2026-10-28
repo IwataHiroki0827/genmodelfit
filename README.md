@@ -194,20 +194,20 @@ line-breaking rules apply (no line starts with a closing mark or comma, or ends 
 ```
 $ genmodelfit recommend --vram 8 --ram 32 -n 2
 PC: assumed 8.0 GiB VRAM (--vram), RAM 32.0 GiB (--ram)
-Recommended: 12 of 80 (224 hidden: uncensored 26, tools 34, license unknown 28, too tight 136; 25
+Recommended: 12 of 81 (226 hidden: uncensored 26, tools 34, license unknown 28, too tight 138; 22
     more workflows merged into their models)
-== image: top 2 of 37  (-m image for more)
+== image: top 2 of 30  (-m image for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Good        100 Anima Base 1.0             gen,edit  bf16   5.8  72% GPU~     5.4 other
-image ● Good         88 SDXL1.0 Base               gen       fp16   6.4  80% GPU~     6.5 openrail++
-== video: top 2 of 4  (-m video for more)
+image ● Good         99 Anima Base 1.0             gen,edit  bf16   5.8  73% GPU~     5.4 other
+image ● Good         92 SDXL1.0 Base               gen       fp16   6.2  78% GPU~     6.5 openrail++
+== video: top 2 of 12  (-m video for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-video ● Marginal     43 Wan 2.1 1.3B T2V           gen       fp16   7.7  96% GPU+RAM  9.2 apache-2.0
-video ● Marginal     42 Wan 2.1 ControlNet 1.3B    edit      bf16   7.7  96% GPU+RAM 10.6 apache-2.0
+video ● Marginal     40 Wan 2.1 1.3B T2V           gen       fp16   7.8  97% GPU~     9.2 apache-2.0
+video ● Marginal     96 Wan 2.2 5B TI2V            gen       fp16   6.1  76% GPU+RAM 16.9 apache-2.0
 == music: top 2 of 10  (-m music for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 music ● Good         96 ACE-Step 1.5 Turbo         gen       bf16   6.0  76% GPU~     9.3 mit
-music ● Good        100 YuE2 3B                    gen,edit  int8   5.2  65% GPU      3.7 cc-by-nc-…
+music ● Good         84 YuE2 3B                    gen,edit  int8   6.5  82% GPU      3.7 cc-by-nc-…
 == sfx: top 2 of 2  (-m sfx for more)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
 sfx   ● Good        100 stable-audio-open-1.0      gen       fp32   4.9  61% GPU~     5.3 other
@@ -242,12 +242,12 @@ PC: assumed 24.0 GiB VRAM (--vram), RAM 128.0 GiB (--ram)
 All models: 6 of 60 (218 hidden: other types 166, uncensored 21, tools 19, license unknown 12; 51
     more workflows merged into their models)
 Type  Status      Score Model                      Use       Prec  VRAM Mem% Mode    Disk License
-image ● Perfect     100 MOSS-Image SFT             gen       int8  13.8  58% GPU     12.1 apache-2.0
-image ● Perfect     100 Anima Base 1.0             gen,edit  bf16   7.1  30% GPU      5.4 other
-image ● Perfect     100 SDXL1.0 Base               gen       fp16   8.1  34% GPU      6.5 openrail++
-image ● Perfect     100 FLUX.2 [Klein] 4B Base     edit      fp8   13.2  55% GPU     11.5 apache-2.0
-image ● Perfect     100 MOSS-Image Base            gen       int8  13.8  58% GPU     12.1 apache-2.0
+image ● Perfect     100 Anima Base 1.0             gen,edit  bf16   7.2  30% GPU      5.4 other
+image ● Perfect     100 SDXL1.0 Base               gen       fp16   8.0  33% GPU      6.5 openrail++
 image ● Perfect     100 Anima Preview 3 Base       gen       bf16   7.0  29% GPU      5.2 other
+image ● Perfect     100 NetaYume Lumina            gen       bf16  12.4  52% GPU      9.9 gemma
+image ● Perfect     100 SDXL Turbo 1.0             gen       fp16   9.0  38% GPU      6.5 other
+image ● Perfect     100 PixelDiT 1300M             gen       bf16   9.6  40% GPU      7.3 other
 Order: Type, Status, official, popularity, Score (--sort).
 Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed, m = measured.
 …
@@ -386,6 +386,7 @@ shows exactly what it holds: the GPU name, VRAM, driver, vendor / backend, for A
 (such as `1002:744c`), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results. `bench` does
 not write host or user names, paths, GPU UUID, PCI address, IP, CPU name or exact time. genmodelfit does not send
 measurements; you open the pull request yourself. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
+Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
 
 ### Privacy
 
