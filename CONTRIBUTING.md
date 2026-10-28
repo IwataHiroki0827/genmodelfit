@@ -8,6 +8,7 @@ For terms, see [README.md](README.md).
 
 ## Contents
 
+- [The easy way (no git needed)](#the-easy-way-no-git-needed)
 - [1. Measure](#1-measure)
 - [2. Create the submission JSON](#2-create-the-submission-json)
 - [3. Check the contents](#3-check-the-contents)
@@ -15,8 +16,30 @@ For terms, see [README.md](README.md).
 - [Other changes](#other-changes)
 - [License](#license)
 
-In short: install `genmodelfit>=0.9.1` (or `pip install -e .` in your clone, so that local checks match CI), run `genmodelfit bench` against your own ComfyUI in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file.
+In short: the easiest way is to measure with `genmodelfit bench … --share`, read what it shows, and press two buttons on a GitHub page in your browser ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no clone of a fork needed).
+If you know git, you can also run `genmodelfit bench … --submission data/contrib/` in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file (from "[2. Create the submission JSON](#2-create-the-submission-json)").
 **genmodelfit itself never sends anything**; sharing happens only through the pull request you open.
+
+## The easy way (no git needed)
+
+`--share` is available from the version after 0.10.1. With [uv](https://docs.astral.sh/uv/) you can run it without installing (otherwise `pip install -U genmodelfit`, then `genmodelfit bench …`).
+
+```powershell
+uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+```
+
+1. bench measures and writes the submission JSON (`<cache>/submissions/<GPU>/<date>-<sha8>.json`). For preparation and cautions before measuring, see "[1. Measure](#1-measure)".
+2. It shows everything that will be shared and the privacy checklist. **Read it yourself, including the note.**
+3. If the content may be shared, answer `y` to "Open the page in a browser?". GitHub's "new file" page opens with the file name and content filled in.
+4. Sign in to GitHub (you need an account).
+5. Press "Propose changes" at the bottom of the page. If you cannot write to the repository, GitHub makes a fork for you.
+6. Press "Create pull request" on the next page. The rest is the same as step 3 of "[4. Send a pull request](#4-send-a-pull-request)" (the CI checks and the merge).
+
+- With an `[NG]` in the checklist or an error in the checks, it stops without a URL. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
+- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use "Paste and share" in the output: open the same page with only the name filled in (`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<name>`), copy the file content printed just above it between the two `---` lines, paste it into the large box, then press "Propose changes" and "Create pull request". The file's location is shown too (GitHub's upload page needs write access, so it is not used).
+- A submission file you made earlier can be sent the same way with `genmodelfit contrib share <file>`.
+- Without a terminal, or with `--json`, it does not open a browser and only prints the URLs.
+- genmodelfit makes no network access. It only opens the page in your browser; the file is sent only when you press the buttons on the GitHub page.
 
 ## 1. Measure
 
@@ -90,6 +113,8 @@ Out-of-memory (OOM) data is welcome too: it is important data saying "this GPU c
 
 ## 2. Create the submission JSON
 
+From here on is the way with git and a clone of your fork (if you used "[the easy way](#the-easy-way-no-git-needed)", you can skip it; the table of what goes in is the same).
+
 Clone your fork (GitHub Fork) and run bench with `--submission` in that folder. Running `pip install -e .` in the clone lets you run `contrib validate` with the same main version as CI.
 
 ```powershell
@@ -120,7 +145,14 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 **What does not go in**: PC name, user name, folder paths, GPU UUID, PCI slot address (bus number; different from the model ID), serial numbers, IP / MAC addresses, CPU name, time, the text given to bench's `--source`, and prompts.
 Fields other than the defined ones are rejected by the CI check.
-However, the automatic check looks only at the shape of the text. It cannot spot a name written in ordinary words in `note` (such as "measured on Taro Yamada's PC") or a path rewritten with base64 and the like. Read the file yourself in step 3.
+However, the automatic check reads patterns, not meaning. It misses things like these, so read the `note` yourself in step 3:
+- names written in ordinary words ("measured on Taro Yamada's PC", `user: yamada`, `my name is ...`)
+- PC names without a fixed form (`yamada-desktop`, `yamada-ws`)
+- letters separated by spaces (`t a r o @ g m a i l`), short base64 (`dGFybw==`) and base64 that looks like words
+- addresses, postal codes and IDs of other services (Discord, Steam, ...)
+- user names under public domains (`github.com/taro`, `hf.co/yamada`; the domains are treated as public places)
+
+On the other hand, ComfyUI node names (such as `HunyuanVideo15ImageToVideo`), 40-digit git commits, 64-digit sha256 and public domains (huggingface.co, hf.co, github.com, comfy.org, pytorch.org, nvidia.com, python.org) are not treated as personal information.
 
 ## 3. Check the contents
 
@@ -144,6 +176,8 @@ This prints everything in the file in readable form, and prints the result of a 
 1. Add only `data/contrib/<GPU>/<date>-<sha8>.json`.
    - Do not change other files (put code changes in a separate PR).
    - The `Contrib` workflow fails a PR that changes files outside data/contrib.
+   - A submission PR **only adds files**. A PR that deletes, modifies or renames an existing file in data/contrib, adds a file whose name or place is not `<GPU>/<date>-<sha8>.json` (lowercase `.json`), or adds no submission at all also fails (#90).
+   - To fix a submission you sent before, send the fixed one as a new file and write the old file's name and the reason in the PR description. The maintainer removes the old file (docs/release.md "Releasing later versions").
 2. Create a branch, commit, and push to your fork:
 
    ```powershell
@@ -166,14 +200,14 @@ This prints everything in the file in readable form, and prints the result of a 
 
 ### After it is accepted
 
-- The maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD).
+- After the merge, your file is in data/contrib, but it **reaches users with the next version** of genmodelfit (#90). When making a release, the maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD; [docs/release.md](docs/release.md)). `genmodelfit contrib aggregate --check` shows the submissions not in it yet.
 - Only **PCs with the same GPU as the measured one** use the result. Judgments for PCs with other GPUs do not change (0.9.1; the same approach as llmfit). "Same GPU" means:
   - the PCI model ID is the same (when both have it), otherwise the normalized name is the same (a generic name is not counted as a match), and
   - the ratio of total VRAM is 0.97 or more. An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
 - On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured_community` (other users' measurements), and the count (`sample_count`) is shown.
 - The value is used in both directions, lowering or raising the required amount. A value for everything on the GPU is never lowered below weights + fixed part, and never raised above the GPU's total.
 - A measurement of the same GPU and the same settings also becomes grounds for deciding the level. For GPUs other than NVIDIA, the Good cap is lifted if that GPU has a measurement. See [docs/accuracy.md](docs/accuracy.md) for details.
-- For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements.
+- For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements for a release.
 
 ### Maintainer measurements (measurements.json)
 

@@ -104,10 +104,27 @@ Steps:
 
 ## Releasing later versions
 
-1. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
+1. Put other users' measurements (data/contrib) into the bundled aggregate (#90).
+   - A submission PR changes only data/contrib, so merging it does not reach users. Only a package release does
+     (the weekly data release ships db.json only).
+   - `genmodelfit contrib aggregate --check` counts the submissions not in it yet (exit code 1 if any). Until the first
+     submission is merged there is no data/contrib, so `--check` exits 1 (no such folder); that is expected.
+   - If there are any, rebuild it with `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`
+     (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
+   - Make the aggregate in a clone with git history (not shallow): sources (submissions added by the same PR count as
+     one) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
+     and the output says so).
+   - If someone resubmitted a fixed submission, remove the old file in a maintainer PR (write the reason in the PR
+     description; a submission PR only adds files and cannot remove them). The "add only" check of the `Contrib`
+     workflow fails on this PR, which is expected (it is a check for submission PRs; the maintainer reviews and merges).
+   - If `--check` lists rows that are not used (their `files_fp` differs from the current list), upstream files have
+     changed. Those rows are not used for judging, so they can stay; wait for submissions measured with the new files.
+   - If the consistent groups (`consistent`) changed, refit with `python -m genmodelfit.calibrate` and update
+     docs/accuracy.ja.md and docs/accuracy.md (CLAUDE.md).
+2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
    Write the change in `CHANGELOG.md` and merge it to main by PR.
    ci.yml does not run on the PR, so put the result of `tools/ci_local.py --linux` in the PR description.
-2. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
+3. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
    Then tag the head of main as `v<version>` and push it (same as steps 3 to 5 above).
 
 About manual runs and PyPI:

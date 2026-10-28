@@ -214,6 +214,11 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
    - **So in the `fit` list, models with a measurement (768–832px and so on) and models without (1024px and so on) are compared at different settings**
      (shown in each row's `estimate.settings` and in the reason's 「設定:」 ("Settings:") line).
    - To compare at the same settings, give `--width` and the like.
+   - A template without a size input (depth estimation, background removal and the like, which work from an input image) has no size in its judging settings (#90).
+     - Which templates have no size input is decided only by a hand table the maintainer checked (`estimate.NO_SIZE_INPUT`; the evidence is a bench record or the template's nodes), never by other users' submissions (so that one submission cannot change the judgment of a model with a size input on every PC).
+     - A new template is added when its first bench record is reviewed (the bench writes a width and height only when the template has a size input; a size-less submission for a model not in the table gets the `settings_missing` warning in its PR, which tells the maintainer).
+     - A size-less measurement then has the same settings as a judgment without settings. With `--width` and the like, things work as before.
+     - The working memory is still estimated at the default size for the type (image 1024px and so on).
 5. Without a GPU (`--vram 0` and so on), GPU measurements are not used: `basis: "estimated"`, `measured_on: null`.
 6. These measurements are used neither for estimates nor for refitting (written by the bench in #5):
    - `outcome` is not `ok` (OOM, error).
@@ -338,6 +343,8 @@ Users add the submission JSON made by `genmodelfit bench --submission` through a
 (steps: [CONTRIBUTING.md](../CONTRIBUTING.md); format: "contrib" in [schema.md](schema.md)).
 **As of 2026-10-22, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
 The rules below describe how submissions will be handled once they arrive.
+
+**Files measured (#90)**: other users' submissions (contrib_schema 2) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
 
 **Maintainer's decision of 2026-10-22:** follow the same approach as llmfit (main, read on 2026-10-22).
 

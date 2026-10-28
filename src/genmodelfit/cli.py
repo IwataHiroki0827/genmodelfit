@@ -1702,6 +1702,10 @@ def cmd_bench(args: argparse.Namespace) -> int:
             extra["not_saved"] = not_saved
         if sub_path is not None:
             extra["submission"] = {"saved_to": str(sub_path), "path_in_repo": sub_repo}
+            if args.share:
+                share_code, info = _share(sub_path, args, as_json=True)
+                extra["submission"]["share"] = info
+                code = max(code, share_code)
         _out(_envelope("bench", None, None, **extra, **result.to_dict()))
         return code
     for w in result.warnings:
@@ -1727,6 +1731,9 @@ def cmd_bench(args: argparse.Namespace) -> int:
         print(f"Saved to:  {out_path}" if out_path else f"Not saved: {not_saved}")
         if sub_path is not None:
             print(f"Submission: {sub_path}")
+            if args.share:
+                print()
+                return max(code, _share(sub_path, args, as_json=False)[0])
             print(
                 "           check it with genmodelfit contrib"
                 f" show {sub_path}; in the PR it goes to {sub_repo}"
@@ -1750,14 +1757,22 @@ def cmd_bench(args: argparse.Namespace) -> int:
     print(f"保存先:   {out_path}" if out_path else f"保存:     {not_saved}")
     if sub_path is not None:
         print(f"提出用:   {sub_path}")
+        if args.share:
+            print()
+            return max(code, _share(sub_path, args, as_json=False)[0])
         print(f"          中身は genmodelfit contrib show {sub_path} で確かめ、PR では {sub_repo} に置きます")
     return code
 
 
 def _bench_submission(args: argparse.Namespace, m) -> tuple[Path | None, str | None]:
     """bench --submission: 提出用の JSON を書く(#34)。ComfyUI が同じ PC のときだけ、この PC の
-    OS の種類・メモリ・GPU の世代を入れる。"""
+    OS の種類・メモリ・GPU の世代を入れる。--share で --submission が無いときは
+    <キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json に書く(#90)。"""
     target = getattr(args, "submission", None)
+    if not target and getattr(args, "share", False):
+        from .db import cache_dir
+
+        target = str(cache_dir() / "submissions") + os.sep
     if not target:
         return None, None
     from .bench import is_local
@@ -1919,36 +1934,27 @@ def cmd_contrib_make(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_contrib_show(args: argparse.Namespace) -> int:
+def _contrib_inspect(path: str | Path, args: argparse.Namespace) -> tuple[Any, str, list, Any, bool]:
+    """contrib show / share の点検: (中身, 文字列, 個人の情報の点検, 検査の結果, 直すところが無いか)。"""
     from .contrib import privacy_checklist, read_submission, validate_submission
 
     try:
-        data, raw = read_submission(args.file)
+        data, raw = read_submission(path)
     except (OSError, ValueError) as e:
         raise CliError(
             tr(
-                f"提出用の JSON を読めません: {args.file}: {type(e).__name__}",
-                f"cannot read the submission JSON: {args.file}: {type(e).__name__}",
+                f"提出用の JSON を読めません: {path}: {type(e).__name__}",
+                f"cannot read the submission JSON: {path}: {type(e).__name__}",
             )
         ) from e
     checks = privacy_checklist(data, raw)
-    report = validate_submission(data, _contrib_db(args), path=args.file, raw=raw, check_filename=False)
+    report = validate_submission(data, _contrib_db(args), path=path, raw=raw, check_filename=False)
     good = report.ok and all(c["ok"] is not False for c in checks)
-    if args.json:
-        _out(
-            _envelope(
-                "contrib",
-                None,
-                None,
-                action="show",
-                file=str(args.file),
-                ok=good,
-                submission=data,
-                checklist=checks,
-                report=report.to_dict(),
-            )
-        )
-        return 0 if good else 1
+    return data, raw, checks, report, good
+
+
+def _print_inspection(data: Any, checks: list, report: Any, good: bool) -> None:
+    """contrib show の表示(中身のすべて・個人の情報の点検・検査の結果)。share も同じものを出す。"""
     if isinstance(data, dict):
         for line in format_submission(data):
             print(line)
@@ -1977,7 +1983,163 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
         + ("ok" if good else tr("NG(直してから出してください)", "NG (fix it before submitting)"))
         + (tr(f"(注意 {nw} 件)", f" ({nw} warnings)") if report.warnings else "")
     )
+
+
+def cmd_contrib_show(args: argparse.Namespace) -> int:
+    data, _raw, checks, report, good = _contrib_inspect(args.file, args)
+    if args.json:
+        _out(
+            _envelope(
+                "contrib",
+                None,
+                None,
+                action="show",
+                file=str(args.file),
+                ok=good,
+                submission=data,
+                checklist=checks,
+                report=report.to_dict(),
+            )
+        )
+        return 0 if good else 1
+    _print_inspection(data, checks, report, good)
     return 0 if good else 1
+
+
+def _share(path: str | Path, args: argparse.Namespace, *, as_json: bool) -> tuple[int, dict[str, Any]]:
+    """contrib share・bench --share: 点検して、GitHub で送るページの URL を出す(#90)。
+    通信しない。ブラウザは端末で y と答えたときだけ開く(--json・端末でないときは URL を出すだけ)。
+    (終了コード, JSON に入れる中身)。"""
+    from .contrib import share_check, share_urls
+
+    data, raw, checks, report, _good = _contrib_inspect(path, args)
+    if isinstance(data, dict):
+        why = share_check(checks, report)
+    else:
+        why = [tr("提出の形ではありません", "not a submission")]
+    urls = share_urls(data, raw) if not why else None
+    info: dict[str, Any] = {
+        "file": str(path),
+        "ok": not why,
+        "refused": why,
+        "checklist": checks,
+        "report": report.to_dict(),
+        "share": urls,
+        "opened": False,
+    }
+    if as_json:
+        return (0 if not why else 1), info
+    _print_inspection(data, checks, report, not why)
+    print()
+    if why:
+        print(
+            tr(
+                "送れません。次を直してから、もう一度 genmodelfit contrib share で確かめてください:",
+                "Cannot share it. Fix the following, then check again with genmodelfit contrib share:",
+            ),
+            file=sys.stderr,
+        )
+        for w in why:
+            print(f"  - {w}", file=sys.stderr)
+        return 1, info
+    assert urls is not None
+    local = Path(path).resolve()
+    print(tr("=== GitHub で送る ===", "=== Share on GitHub ==="))
+    if urls["new_file_url"]:
+        print(
+            tr(
+                "1. 次のページをブラウザで開き、GitHub にログインします(ファイルの名前と中身は入力済み):",
+                "1. Open this page in a browser and sign in to GitHub"
+                " (the file name and content are filled in):",
+            )
+        )
+        print(f"   {urls['new_file_url']}")
+        print(
+            tr(
+                "2. ページの下の「Propose changes」を押します"
+                "(書き込みの権限が無ければ、GitHub が自動であなたのフォークを作ります)",
+                '2. Press "Propose changes" at the bottom'
+                " (if you cannot write to the repository, GitHub makes a fork for you)",
+            )
+        )
+        print(
+            tr(
+                "3. 次のページで「Create pull request」を押します",
+                '3. Press "Create pull request" on the next page',
+            )
+        )
+        print(
+            tr(
+                "ページに中身が出ないときは、下の「貼り付けて送る」を使ってください。",
+                'If the page does not show the content, use "Paste and share" below.',
+            )
+        )
+    else:
+        print(
+            tr(
+                f"中身が長いので(URL が {urls['new_file_url_length']} 字。上限 {urls['url_limit']} 字)、"
+                "下の「貼り付けて送る」を使ってください。",
+                f"The content is long (the URL would be {urls['new_file_url_length']} characters; limit"
+                f' {urls["url_limit"]}), so use "Paste and share" below.',
+            )
+        )
+    print()
+    # 写す範囲(--- の行の間)にはファイルの中身だけを置く(パスにはユーザ名が入るので、範囲の外に出す)
+    print(
+        tr(
+            "貼り付けて送る: 下の 2 つの --- の行の間(ファイルの中身)をそのまま写す",
+            "Paste and share: copy everything between the two --- lines below (the file content)",
+        )
+    )
+    print(tr(f"ファイル: {local}", f"File: {local}"))
+    print("---")
+    print(raw.replace("\r\n", "\n"), end="" if raw.endswith("\n") else "\n")
+    print("---")
+    print(
+        tr(
+            "   1. 次のページを開く(ファイルの名前は入力済み):",
+            "   1. Open this page (the file name is filled in):",
+        )
+    )
+    print(f"      {urls['paste_url']}")
+    print(
+        tr(
+            "   2. 上の中身を写して、ページの大きな欄に貼り付ける",
+            "   2. Copy the content above and paste it into the large box",
+        )
+    )
+    print(
+        tr(
+            "   3. 「Propose changes」を押し、次のページで「Create pull request」を押す",
+            '   3. Press "Propose changes", then "Create pull request" on the next page',
+        )
+    )
+    print(
+        tr(
+            "genmodelfit は何も送りません。送られるのは、あなたがブラウザで押したときだけです。",
+            "genmodelfit sends nothing. The file is sent only when you press the buttons in the browser.",
+        )
+    )
+    url = urls["new_file_url"] or urls["paste_url"]
+    if _interactive() and _ask(
+        [
+            tr(
+                "note(メモ)も読み、送ってよい中身でしたか? ブラウザでこのページを開きますか?",
+                "Did you read the note too, and may this content be shared? Open the page in a browser?",
+            )
+        ]
+    ):
+        import webbrowser
+
+        info["opened"] = bool(webbrowser.open(url))
+    return 0, info
+
+
+def cmd_contrib_share(args: argparse.Namespace) -> int:
+    code, info = _share(args.file, args, as_json=args.json)
+    if args.json:
+        _out(_envelope("contrib", None, None, action="share", **info))
+    return code
 
 
 def _result_word(r) -> str:
@@ -2038,15 +2200,24 @@ def _validate_markdown(reports: list) -> list[str]:
 
 
 def cmd_contrib_validate(args: argparse.Namespace) -> int:
-    from .contrib import find_files, validate_files
+    from .contrib import layout_report, scan_dir, validate_files
 
     files: list[Path] = []
+    misplaced: list[Path] = []
     for f in args.files:
         p = Path(f)
-        files += find_files(p) if p.is_dir() else [p]
+        if p.is_dir():
+            ok, ng = scan_dir(p)
+            files += ok
+            misplaced += ng
+        else:
+            files.append(p)
     reports = validate_files(files, _contrib_db(args), check_filename=not args.no_filename_check)
+    # 置けない場所・形のファイルも誤り(CI の「足したファイルの形」と同じ。#90)
+    reports = sorted([*reports, *(layout_report(b) for b in misplaced)], key=lambda r: r.path)
     bad = [r for r in reports if not r.ok or (args.strict and r.warnings)]
-    code = 1 if bad else 0
+    # 提出が 1 件も無いのも失敗(フォルダの指定の間違い・空の PR を通さない。#90)
+    code = 1 if bad or not reports else 0
     if args.json:
         _out(
             _envelope(
@@ -2069,7 +2240,15 @@ def cmd_contrib_validate(args: argparse.Namespace) -> int:
             print(line)
         return code
     if not reports:
-        print(tr("検査するファイルがありません", "no files to check"))
+        print(
+            tr(
+                "検査する提出がありません(data/contrib のように <GPU>/<日付>-<sha8>.json の入ったフォルダを"
+                "渡してください)",
+                "no submissions to check"
+                " (pass a folder like data/contrib that holds <GPU>/<date>-<sha8>.json)",
+            ),
+            file=sys.stderr,
+        )
     err_w, notice_w, warn_w = tr("誤り", "error"), tr("確認", "notice"), tr("注意", "warning")
     for r in reports:
         what = ", ".join(x for x in (r.model_id, r.gpu_name) if x)
@@ -2179,6 +2358,81 @@ def format_report(rep: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _contrib_aggregate_check(args: argparse.Namespace) -> int:
+    """aggregate --check: 同梱のまとめに入っていない提出を数える(#90。まとめは版を出すときに作る)。
+    提出のフォルダが無ければ誤り(指定の間違いを 0 件として通さない)。今の一覧とファイルの違う行も知らせる。"""
+    from .contrib import bundled_status
+    from .db import COMMUNITY_FILE, bundled_text
+
+    if args.output or args.report:
+        raise CliError(
+            tr(
+                "--check は --output・--report と一緒に使えません",
+                "--check cannot be used with --output / --report",
+            )
+        )
+    if not Path(args.dir).is_dir():
+        raise CliError(
+            tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
+        )
+    st = bundled_status(args.dir, json.loads(bundled_text(COMMUNITY_FILE)), _contrib_db(args))
+    code = 0 if st["ok"] and not st["pending"] else 1
+    if args.json:
+        _out(_envelope("contrib", None, None, action="aggregate_check", dir=str(args.dir), **st))
+        return code
+    print(
+        tr(
+            f"同梱のまとめ: 提出 {st['listed']} 件"
+            f"({'それだけをまとめ直すと同じ' if st['matches'] else 'まとめ直すと違う'})",
+            f"Bundled aggregate: {st['listed']} submissions"
+            + (
+                " (re-aggregating them gives the same file)"
+                if st["matches"]
+                else " (re-aggregating them differs)"
+            ),
+        )
+    )
+    for h in st["missing"]:
+        print(
+            tr(
+                f"  {args.dir} に無い(または検査を通らない)提出: {h[:8]}",
+                f"  missing from {args.dir} (or failing the checks): {h[:8]}",
+            )
+        )
+    print(
+        tr(
+            f"{args.dir} の検査を通った提出 {st['valid']} 件のうち、同梱のまとめにまだ入っていないもの"
+            f" {len(st['pending'])} 件",
+            f"{len(st['pending'])} of the {st['valid']} valid submissions in {args.dir}"
+            " are not in the bundled aggregate yet",
+        )
+    )
+    for path in st["pending"]:
+        print(f"  {path}")
+    if st["stale"]:
+        # 一覧のファイルが変わった(上流の差し替え)行は判定に使われない(estimate.files_match)。知らせるだけ
+        print(
+            tr(
+                f"同梱のまとめのうち、測ったときの一覧のファイル(files_fp)が今の一覧と違い、使われない行"
+                f" {len(st['stale'])} 件:",
+                f"{len(st['stale'])} rows of the bundled aggregate were measured with files (files_fp)"
+                " that differ from the current list, so they are not used:",
+            )
+        )
+        for model_id, gpu_name in st["stale"]:
+            print(f"  {model_id}  {gpu_name}")
+    if st["pending"] or not st["ok"]:
+        print(
+            tr(
+                "版を出すときに genmodelfit contrib aggregate --output"
+                " src/genmodelfit/data/measurements_community.json で入れ直します(docs/release.md)",
+                "Rebuild it when making a release: genmodelfit contrib aggregate --output"
+                " src/genmodelfit/data/measurements_community.json (docs/release.md)",
+            )
+        )
+    return code
+
+
 def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     from .contrib import (
         accuracy_report,
@@ -2187,16 +2441,20 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         load_dir,
         md_cell,
         report_db,
+        submission_sources,
         write_community,
     )
 
+    if args.check:
+        return _contrib_aggregate_check(args)
     if not Path(args.dir).is_dir():
         raise CliError(
             tr(f"提出のフォルダがありません: {args.dir}", f"no such submissions folder: {args.dir}")
         )
     db = _contrib_db(args)
     subs, reports = load_dir(args.dir, db)
-    rows = aggregate(subs)
+    sources, via_git = submission_sources(args.dir, subs)
+    rows = aggregate(subs, sources)
     if args.output and not rows and not args.allow_empty:
         raise CliError(
             tr(
@@ -2206,7 +2464,7 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
                 " empty one; use --allow-empty to write it anyway)",
             )
         )
-    written = str(write_community(rows, args.output)) if args.output else None
+    written = str(write_community(rows, args.output, subs, sources)) if args.output else None
     rep = accuracy_report(report_db(db, rows), args.threshold) if args.report else None
     code = EXIT_BREACH if (rep and rep["breach"] and args.fail_on_breach) else 0
     stats = {
@@ -2218,10 +2476,12 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
         "submissions_used": len(subs),
         "groups": len(rows),
         "consistent": sum(1 for r in rows if r["consistent"]),
+        # 出どころ(#90): git = リポジトリに足したコミットごと、files = git の履歴が無いので提出ごと
+        "sources_from": "git" if via_git else "files",
     }
     if args.json:
         payload: dict[str, Any] = {"action": "aggregate", **stats, "written_to": written}
-        payload["community"] = community_document(rows)
+        payload["community"] = community_document(rows, subs, sources)
         if rep is not None:
             payload["report"] = rep
         _out(_envelope("contrib", None, None, **payload))
@@ -2238,12 +2498,24 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
             " from one submission)",
         )
     )
+    if not via_git:
+        print(
+            tr(
+                "git の履歴(浅くない clone)が無いので、出どころは提出ごとに数えた(同じ PR の提出も別々)",
+                "No git history (a non-shallow clone), so each submission was counted as its own source"
+                " (even submissions from the same PR)",
+            )
+        )
     for r in rows:
         if r["outcome"] != "ok":
             mark = tr("oom だけ", "oom only")
         else:
             mark = tr("そろった", "consistent") if r["consistent"] else tr("使う", "used")
-        counts = f"n={r['n_submissions']}, used={r['n_used']}, outliers={r['n_outliers']}, oom={r['n_oom']}, "
+        counts = (
+            f"n={r['n_submissions']}, used={r['n_used']}, sources={r['n_sources']},"
+            f" outliers={r['n_outliers']},"
+            f" oom={r['n_oom']}, error={r['n_error']}, "
+        )
         spread = tr(f"ばらつき {r['spread_rel_pct']:g}%", f"spread {r['spread_rel_pct']:g}%")
         print(
             f"  {md_cell(r['model_id'])}  {md_cell(r['gpu_name'])}  {r['peak_vram_gb']:g} GiB  "
@@ -4753,6 +5025,18 @@ def build_parser() -> argparse.ArgumentParser:
             " (pass your fork's data/contrib to open a PR as is). Nothing is sent (CONTRIBUTING.md)",
         ),
     )
+    sp.add_argument(
+        "--share",
+        action="store_true",
+        help=tr(
+            "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
+            "中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。"
+            "何も送らない(CONTRIBUTING.md)",
+            "write the submission JSON (to the cache's submissions folder without --submission),"
+            " show it with the checks, and print the URL of the GitHub page to share it;"
+            " in a terminal, ask whether to open it in a browser. Nothing is sent (CONTRIBUTING.md)",
+        ),
+    )
     sp.set_defaults(func=cmd_bench)
 
     cj = argparse.ArgumentParser(add_help=False, parents=[lang])
@@ -4816,6 +5100,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     c.add_argument("file", help=tr("提出用の JSON", "the submission JSON"))
     c.set_defaults(func=cmd_contrib_show)
+    c = csub.add_parser(
+        "share",
+        parents=[cj],
+        help=tr(
+            "中身と点検を見せ、GitHub で送るページの URL を出す"
+            "(端末ならブラウザで開くかを尋ねる。何も送らない)",
+            "show it with the checks and print the URL of the GitHub page to share it (in a terminal, asks"
+            " whether to open a browser; nothing is sent)",
+        ),
+    )
+    c.add_argument("file", help=tr("提出用の JSON", "the submission JSON"))
+    c.set_defaults(func=cmd_contrib_share)
     c = csub.add_parser(
         "validate",
         parents=[cj],
@@ -4908,6 +5204,14 @@ def build_parser() -> argparse.ArgumentParser:
             "write to --output even if the result is empty (by default an empty result does not overwrite)",
         ),
     )
+    c.add_argument(
+        "--check",
+        action="store_true",
+        help=tr(
+            "書き出さず、同梱のまとめにまだ入っていない提出を数える(あれば終了コード 1)",
+            "write nothing; count the submissions not in the bundled aggregate yet (exit code 1 if any)",
+        ),
+    )
     c.set_defaults(func=cmd_contrib_aggregate)
     return p
 
@@ -4978,24 +5282,32 @@ CONTRIBUTING.md)。
 
   make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
   show      <file>                 送る中身と個人の情報の点検(同意のため)
+  share     <file>                 show と同じ点検のあと、GitHub で送るページの URL を出す
+                                   (端末ならブラウザで開くかを尋ねる。開くだけで、送るのはブラウザで押したとき)
   validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
+  aggregate [dir] --check
+            同梱のまとめにまだ入っていない提出を数える(まとめは版を出すときに作る)
 
 副作用:
   通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。
+  share は端末で y と答えたときだけブラウザを開く(--json・端末でないときは URL を出すだけ)。
 
 終了コード:
   0  成功(validate: すべてのファイルが通った。show: 直すところが無い)
   1  失敗 / validate: 機械的な検査に通らないファイルがある、または --strict で注意がある
      (マージする人向けの確認では失敗にしない)/ show: 直すところがある /
-     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)
+     share: 個人の情報の点検に NG がある、または検査の誤りがある(送れない)/
+     aggregate: フォルダが無い、または --output で結果が空(--allow-empty が無いとき)/
+     aggregate --check: 同梱のまとめに入っていない提出がある、またはまとめ直すと違う
   2  使い方の誤り
   3  aggregate --report --fail-on-breach: 誤差が閾値を超えた
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
   genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
+  genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
   genmodelfit contrib validate data/contrib --json
   genmodelfit contrib aggregate --report --json --fail-on-breach
 詳しくは docs/schema.md「contrib」"""
@@ -5006,25 +5318,34 @@ account; CONTRIBUTING.md).
 
   make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
   show      <file>                 what will be shared, and the privacy checklist (for consent)
+  share     <file>                 the same checks as show, then the URL of the GitHub page to share it
+                                   (in a terminal, asks whether to open a browser; it only opens the page)
   validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             group by model, settings and GPU, drop outliers by median and MAD, check the calibration error
+  aggregate [dir] --check
+            count the submissions not in the bundled aggregate yet (it is rebuilt for each release)
 
 SIDE EFFECTS:
   No network access. make writes the submission files; aggregate writes only with --output.
+  share opens a browser only when you answer y in a terminal (with --json or without a terminal it only prints
+  the URLs).
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
   1  Error / validate: a file failed the mechanical checks, or has a warning with --strict (notices for the
      maintainer who merges never fail) /
-     show: something to fix / aggregate: no such folder, or an empty result with --output
-     (unless --allow-empty)
+     show: something to fix / share: a privacy check is NG or the checks have errors (cannot share) /
+     aggregate: no such folder, or an empty result with --output
+     (unless --allow-empty) / aggregate --check: submissions not in the bundled aggregate yet, or
+     re-aggregating it differs
   2  Usage error
   3  aggregate --report --fail-on-breach: an error exceeded the threshold
 
 AGENT USAGE:
   genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
   genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
+  genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
   genmodelfit contrib validate data/contrib --json
   genmodelfit contrib aggregate --report --json --fail-on-breach
 Details: docs/schema.md ("contrib")"""

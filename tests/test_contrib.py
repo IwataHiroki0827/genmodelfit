@@ -274,7 +274,7 @@ BAD_CASES = [
     ("measurement.note", "http://example.org/x", "privacy"),
     ("date", "2026-10-20T10:11:12Z", "date"),
     ("date", "2027-01-01", "date"),
-    ("contrib_schema", 2, "schema"),
+    ("contrib_schema", 3, "schema"),
     ("measurement.peak_vram_gb", 9.5, "value"),
     ("measurement.peak_vram_gb", -1, "value"),
     ("measurement.seconds", 0, "value"),
@@ -550,14 +550,79 @@ def test_wide_spread_is_not_consistent():
     assert rows[0]["n_used"] == 2 and rows[0]["consistent"] is False
 
 
-def test_bundled_community_file_is_regenerated_from_data_contrib(db):
-    """同梱の measurements_community.json は data/contrib から作り直したものと一致する
-    (提出を足したら
-    `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`)。"""
+def test_bundled_community_file_is_regenerated_from_its_listed_submissions(db):
+    """同梱の measurements_community.json は、submissions に並べた data/contrib の提出をまとめ直したものと
+    一致する(版を出すときに
+    `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`。
+    docs/release.md)。マージしてまだまとめていない提出が data/contrib にあってもよい(#90。提出の PR は
+    data/contrib だけを変えるので、マージで main の試験を落とさない)。"""
     root = Path(__file__).parent.parent / "data" / "contrib"
-    subs, reports = contrib.load_dir(root, db)
-    assert all(r.ok for r in reports)
-    assert json.loads(bundled_text(COMMUNITY_FILE)) == contrib.community_document(contrib.aggregate(subs))
+    doc = json.loads(bundled_text(COMMUNITY_FILE))
+    st = contrib.bundled_status(root, doc, db)
+    assert st["invalid"] == [] and st["missing"] == [], st
+    assert st["matches"] and st["ok"], st
+    hashes = [e["sha256"] for e in doc["submissions"]]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes) and hashes == sorted(hashes)
+    assert all(isinstance(e["source"], str) and e["source"] for e in doc["submissions"])
+
+
+def test_unlisted_new_submission_keeps_the_bundled_check_green(tmp_path, db):
+    """提出の PR をマージした直後(data/contrib に新しい提出があり、同梱のまとめにはまだ無い)も通る。
+    まとめに入れた提出が消えた・まとめを手で変えたときは通らない。"""
+    root = tmp_path / "data" / "contrib"
+    first, second = SDXL_3070[0], SDXL_3070[1]
+    for f in (first, second):
+        (root / "rtx-3070").mkdir(parents=True, exist_ok=True)
+        shutil.copy(f, root / "rtx-3070" / f.name)
+    subs, _ = contrib.load_dir(root, db)
+    listed = [s for s in subs if s.path.endswith(first.name)]
+    doc = contrib.community_document(contrib.aggregate(listed), listed)
+    st = contrib.bundled_status(root, doc, db)
+    assert st["ok"] and st["listed"] == 1 and [Path(x).name for x in st["pending"]] == [second.name]
+    # 空のまとめ(今の main)と、提出のフォルダが無いとき
+    empty = contrib.community_document([], [])
+    assert contrib.bundled_status(tmp_path / "none", empty, db)["ok"]
+    assert contrib.bundled_status(root, empty, db)["ok"]
+    # まとめに入れた提出が無い・まとめの値が違う
+    (root / "rtx-3070" / first.name).unlink()
+    assert not contrib.bundled_status(root, doc, db)["ok"]
+    shutil.copy(first, root / "rtx-3070" / first.name)
+    bad = copy.deepcopy(doc)
+    bad["measurements"][0]["peak_vram_gb"] += 1
+    assert not contrib.bundled_status(root, bad, db)["matches"]
+    # 古い版の読み方(measurements だけ)で読める
+    assert len(parse_measurements(doc)) == 1
+
+
+def test_cli_aggregate_check(tmp_path, capsys, monkeypatch):
+    from genmodelfit import db as dbmod
+
+    # 同梱のまとめの中身によらない(版を出すときに提出が入っても通る): 空のまとめに差し替える
+    real = dbmod.bundled_text
+    empty = contrib.dumps(contrib.community_document([], []))
+    monkeypatch.setattr(dbmod, "bundled_text", lambda name: empty if name == COMMUNITY_FILE else real(name))
+    root = tmp_path / "contrib"
+    (root / "rtx-3070").mkdir(parents=True)
+    # フォルダが無いのは指定の間違い(0 件として通さない)
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(tmp_path / "none"), "--check"]) == 1
+    assert "提出のフォルダがありません" in capsys.readouterr().err
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(root), "--check"]) == 0
+    out = capsys.readouterr().out
+    assert "まだ入っていないもの 0 件" in out
+    shutil.copy(SDXL_3070[0], root / "rtx-3070" / SDXL_3070[0].name)
+    assert cli.main(["--lang", "ja", "contrib", "aggregate", str(root), "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "まだ入っていないもの 1 件" in out and SDXL_3070[0].name in out and "--output" in out
+    assert cli.main(["contrib", "aggregate", str(root), "--check", "--json"]) == 1
+    d = json.loads(capsys.readouterr().out)
+    assert d["action"] == "aggregate_check" and len(d["pending"]) == 1 and d["ok"] is True
+    assert cli.main(["contrib", "aggregate", str(root), "--check", "--output", str(tmp_path / "x.json")]) == 1
+    # aggregate --output は使った提出の hash を残す
+    out_file = tmp_path / "c.json"
+    assert cli.main(["contrib", "aggregate", str(root), "--output", str(out_file)]) == 0
+    doc = json.loads(out_file.read_text(encoding="utf-8"))
+    h = contrib.content_hash(json.loads(SDXL_3070[0].read_text(encoding="utf-8")))
+    assert doc["submissions"] == [{"sha256": h, "source": f"file:{h}"}]  # git の外なので提出ごと
 
 
 # --- 根拠の段階 -----------------------------------------------------------------------------------
@@ -705,6 +770,166 @@ def test_torch_reserved_is_a_lower_bound(db):
         without = estimate(entry, pc(8), Settings(**{k: v for k, v in with_m.settings.items()}), [])
         assert with_m.vram_gb >= without.vram_gb > ms[0].peak_vram_gb
         assert with_m.basis == "estimated" and with_m.basis_detail == "calibrated"
+
+
+# --- 大きさの入力の無いテンプレート(#90) -----------------------------------------------------------
+
+SIZELESS = ("utility_birefnet_remove_background", "utility_moge_depth_estimation")
+
+
+def _sizeless_sub(mid: str, peak: float, gpu: str = "NVIDIA GeForce RTX 3070") -> contrib.Submission:
+    """bench が大きさの入力の無いテンプレートで書く提出(settings に幅・高さが無い)。"""
+    d = good()
+    d["system"]["gpu"]["name"] = gpu
+    d["measurement"].update(
+        model_id=mid, peak_vram_gb=peak, settings={"precision": "fp16"}, offload="dynamic"
+    )
+    return contrib.Submission(path="-", sha256=contrib.content_hash(d), data=d)
+
+
+def _own(db) -> list[Measurement]:
+    """同梱の作者の実測だけ(同梱のほかの利用者のまとめの中身によらない試験にする)。"""
+    return [m for m in db.measurements if m.origin != "community"]
+
+
+def test_no_size_input_is_decided_only_by_the_hand_table(db):
+    from genmodelfit.estimate import NO_SIZE_INPUT, no_size_input
+
+    assert no_size_input(db.get("utility_birefnet_remove_background"))
+    assert no_size_input(db.get("utility_moge_depth_estimation"))
+    # 3d は大きさを持たない種類、表に無いモデルは今までどおり
+    assert not no_size_input(db.get("3d_moge_perspective_to_mesh"))
+    assert not no_size_input(db.get("image_sdxl_simple"))
+    # 表の項目はどれも画像・動画のモデルで、根拠の文がある
+    for mid, why in NO_SIZE_INPUT.items():
+        e = db.get(mid)
+        assert e is not None and e.modality in ("image", "video") and why, mid
+    # 同梱の作者の、標準で大きさの無い画像・動画の実測は、どれも表にある
+    for m in _own(db):
+        e = db.get(m.model_id)
+        if (
+            e
+            and e.modality in ("image", "video")
+            and m.standard
+            and not (m.settings.width or m.settings.height)
+        ):
+            assert m.model_id in NO_SIZE_INPUT, m.model_id
+
+
+def test_one_sizeless_community_row_does_not_change_a_sized_model(db):
+    """チェッカーの再現(flux_schnell): 大きさの入力のあるモデルに大きさの無い提出が 1 件あっても、判定の設定は
+    既定の大きさのまま、段階も上がらない(大きさの入力の有無は手の表だけで決める)。"""
+    e = db.get("flux_schnell")
+    d = good()
+    d["system"]["gpu"].update(name="NVIDIA GeForce RTX 3060", vram_gb=12.0)
+    d["measurement"].update(model_id=e.id, peak_vram_gb=6.0, settings={"steps": 4}, note="x")
+    cm = [
+        Measurement.from_dict(r)
+        for r in contrib.aggregate([contrib.Submission("-", contrib.content_hash(d), d)])
+    ]
+    system = pc(12, "NVIDIA GeForce RTX 3060")
+    before = estimate(e, system, None, _own(db))
+    after = estimate(e, system, None, [*_own(db), *cm])
+    assert after.settings["width"] == before.settings["width"] == 1024
+    assert (after.fit, after.basis, after.fit_from) == (before.fit, before.basis, before.fit_from)
+    assert after.vram_gb >= before.vram_gb - 1e-9 or after.basis_detail != "measured_community"
+    # validate は settings_missing を出す(提出そのものを根拠に数えない)
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
+
+
+def test_bundled_sizeless_author_measurements_match_without_a_size(db):
+    """同梱の作者の実測(RTX 3070、大きさ無し)が、指定の無い判定と同じ設定になって使われる。作者の
+    torch_reserved は下限としてだけ使う(test_torch_reserved_is_a_lower_bound)ので、値は式のまま。"""
+    from genmodelfit.estimate import _prepare, _settings_match, load_coefficients
+
+    for mid in ("utility_birefnet_remove_background", "3d_moge_perspective_to_mesh"):
+        entry = db.get(mid)
+        system = pc(8)
+        est = estimate(entry, system, None, _own(db))
+        s = Settings(**est.settings)
+        assert s.width is None and s.height is None and s.batch == 1, est.settings
+        prep = _prepare(entry, _own(db), load_coefficients(), s, system.best_gpu)
+        m = prep.measurement
+        assert (
+            m is not None
+            and m.gpu_name == "NVIDIA GeForce RTX 3070"
+            and _settings_match(m.settings, s, entry)
+        )
+        assert prep.clamped and est.basis_detail == "calibrated" and est.fit == "perfect"
+        # 値は今までどおり(作業用メモリは種類の既定の大きさで見積もる)
+        if entry.modality == "image":
+            at1024 = estimate(entry, system, Settings(width=1024, height=1024), _own(db))
+            assert at1024.settings["width"] == 1024 and at1024.vram_gb == est.vram_gb
+            assert estimate(entry, system, None, []).vram_gb == est.vram_gb
+
+
+def test_sizeless_community_measurement_is_used_on_the_same_gpu(db):
+    """#90 の通し試験: 大きさの無い提出(MoGe 深度推定。PR #92)が、同じ GPU の PC の判定に使われる
+    (BiRefNet は同じ GPU の作者の実測が先に選ばれる。pick_measurement の並び)。"""
+    for mid in ("utility_moge_depth_estimation",):
+        entry = db.get(mid)
+        before = estimate(entry, pc(8), None, _own(db))
+        peak = round(_floor(entry, Settings(precision="fp16")) + 0.2, 2)
+        cm = [Measurement.from_dict(r) for r in contrib.aggregate([_sizeless_sub(mid, peak)])]
+        after = estimate(entry, pc(8), None, [*_own(db), *cm])
+        assert "width" not in after.settings
+        assert after.basis == "measured" and after.basis_detail == "measured_community", (mid, after)
+        assert after.measured_on == "NVIDIA GeForce RTX 3070 (8 GB)" and after.sample_count == 1
+        assert after.vram_gb == peak and after.vram_gb < before.vram_gb
+        # 別の GPU の PC の判定は変えない
+        other = pc(24, "NVIDIA GeForce RTX 4090")
+        a, b = (
+            estimate(entry, other, None, _own(db)),
+            estimate(entry, other, None, [*_own(db), *cm]),
+        )
+        assert (a.vram_gb, a.basis, a.fit) == (b.vram_gb, b.basis, b.fit) and b.basis == "estimated"
+        # 大きさを指定したときは今までどおり(実測とは違う設定 = 補正した推定)
+        sized = estimate(entry, pc(8), Settings(width=1024, height=1024), [*_own(db), *cm])
+        assert sized.basis == "estimated" and sized.settings["width"] == 1024
+
+
+def test_settings_missing_only_for_templates_with_a_size_input(db):
+    for mid in SIZELESS:
+        r = contrib.validate_submission(_sizeless_sub(mid, 1.5).data, db, today=TODAY, check_filename=False)
+        assert r.ok and "settings_missing" not in {w["code"] for w in r.warnings}, (mid, r.warnings)
+    d = good()  # image_sdxl_simple は作者の実測に大きさがある(大きさの入力のあるテンプレート)
+    d["measurement"]["settings"] = {"steps": 20}
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
+    d["measurement"]["settings"] = {"width": 832, "steps": 20}  # 片方だけも
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert "settings_missing" in {w["code"] for w in r.warnings}
+    # 表のモデルで batch が 1 でない(0.10.1 の bench が MoGe の batch_size を枚数と記録した)ときは確認を出す
+    sub = _sizeless_sub("utility_moge_depth_estimation", 1.5).data
+    sub["measurement"]["settings"]["batch"] = 4
+    r = contrib.validate_submission(sub, db, today=TODAY, check_filename=False)
+    assert r.ok and "batch_sizeless" in {v["code"] for v in r.notices}
+    r = contrib.validate_submission(
+        _sizeless_sub("utility_moge_depth_estimation", 1.5).data, db, today=TODAY, check_filename=False
+    )
+    assert "batch_sizeless" not in {v["code"] for v in r.notices}
+
+
+def test_unmeasured_models_keep_the_default_size(db):
+    """実測の無い画像・動画のモデルの判定の設定と値は今までどおり(種類の既定の大きさ)。"""
+    from genmodelfit.estimate import NO_SIZE_INPUT
+
+    measured = {m.model_id for m in db.measurements}
+    n = 0
+    for e in db.models:
+        if e.modality not in ("image", "video") or e.id in measured:
+            continue
+        est = estimate(e, pc(8), None, db.measurements)
+        if est.unknown_size:
+            continue
+        if e.id in NO_SIZE_INPUT:  # 手の表のモデルは大きさを持たないが、値は既定の大きさと同じ
+            at = estimate(e, pc(8), Settings(width=1024, height=1024), db.measurements)
+            assert "width" not in est.settings and est.vram_gb == at.vram_gb, e.id
+            continue
+        assert est.settings["width"] and est.settings["height"], e.id
+        n += 1
+    assert n > 100
 
 
 ORDER = ["too_tight", "marginal", "good", "perfect", "unknown"]
@@ -1070,8 +1295,11 @@ def test_cli_make_from_bench_file(tmp_path, capsys):
 
 
 def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
+    # git の外に写して数える(リポジトリの中では、同じコミットで足した 3 件が 1 つの出どころになる。#90)
+    fix = tmp_path / "fix"
+    shutil.copytree(FIX, fix)
     out = tmp_path / "community.json"
-    args = ["contrib", "aggregate", str(FIX), "--output", str(out), "--json"]
+    args = ["contrib", "aggregate", str(fix), "--output", str(out), "--json"]
     assert cli.main(args) == 0
     d = json.loads(capsys.readouterr().out)
     keys = {
@@ -1086,16 +1314,16 @@ def test_cli_aggregate_json_report_and_breach(tmp_path, capsys):
         "consistent",
     }
     assert keys <= set(d)
-    assert (d["files"], d["groups"], d["consistent"]) == (4, 2, 1)
+    assert (d["files"], d["groups"], d["consistent"], d["sources_from"]) == (4, 2, 1, "files")
     assert json.loads(out.read_text(encoding="utf-8")) == d["community"]
     assert "report" not in d
     assert (
-        cli.main(["contrib", "aggregate", str(FIX), "--report", "--threshold", "10", "--fail-on-breach"]) == 3
+        cli.main(["contrib", "aggregate", str(fix), "--report", "--threshold", "10", "--fail-on-breach"]) == 3
     )
     text = capsys.readouterr().out
     assert "警告: 誤差が閾値 10% を超えた" in text and "| 種類 | LOO 件数 |" in text
     assert "### ほかの利用者の実測で変わる段階" in text
-    assert cli.main(["contrib", "aggregate", str(FIX), "--report", "--json"]) == 0  # 既定の 25% は超えない
+    assert cli.main(["contrib", "aggregate", str(fix), "--report", "--json"]) == 0  # 既定の 25% は超えない
     rep = json.loads(capsys.readouterr().out)["report"]
     assert rep["breach"] is False and rep["threshold_pct"] == 25.0
     assert {"breach", "breaches", "by_modality", "summary", "loo", "check", "n_fit", "fit_changes"} <= set(
@@ -1129,6 +1357,9 @@ def test_library_writes_nothing(tmp_path, capfd, db):
     contrib.write_community(rows, tmp_path / "c.json")
     contrib.validate_files([*GOOD, tmp_path / "missing.json"], db)
     contrib.privacy_checklist(good())
+    contrib.share_urls(good(), contrib.dumps(good()))
+    contrib.share_check(contrib.privacy_checklist(good()), contrib.validate_submission(good(), db))
+    contrib.bundled_status(FIX, contrib.community_document(rows, subs), db)
     m = subs[0].measurement
     contrib.write_submission(contrib.build_submission(m), tmp_path / "s" / "x.json")
     copy.deepcopy(rows)
@@ -1679,3 +1910,196 @@ def test_community_effect_also_checks_nvidia_vram_variants(db, monkeypatch):
     assert all(c["vram_gb"] in (8.0, 12.0) for c in changes)
     # 8 GB 版の PC では 12 GB の実測は使われないので、段階は変わらない
     assert not [c for c in changes if c["vram_gb"] == 8.0]
+
+
+# --- ブラウザで送る(share。#90) ------------------------------------------------------------------
+
+
+def _pr92(tmp_path: Path) -> Path:
+    """PR #92 と同じ形の提出(MoGe 深度推定、RTX 3070。値は試験用)を書く。"""
+    d = good()
+    d["measurement"].update(
+        model_id="utility_moge_depth_estimation",
+        settings={"precision": "fp16"},
+        peak_vram_gb=0.78,
+        note="SYNTHETIC TEST FIXTURE。GPU 全体(nvidia-smi)の増分 1.46 GB。計測 13 回",
+    )
+    return contrib.write_submission(d, str(tmp_path / "subs") + "/")
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """この中で通信したら落とす(share は URL を作るだけ。README「Privacy」)。"""
+    import socket
+
+    import requests
+
+    def deny(*a, **k):
+        raise AssertionError("network used")
+
+    for name in ("connect", "connect_ex"):
+        monkeypatch.setattr(socket.socket, name, deny)
+    monkeypatch.setattr(socket, "create_connection", deny)
+    monkeypatch.setattr(socket, "getaddrinfo", deny)
+    monkeypatch.setattr(requests.Session, "request", deny)
+
+
+@pytest.fixture
+def browser(monkeypatch):
+    opened: list[str] = []
+    import webbrowser
+
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    return opened
+
+
+def test_share_urls_prefill_the_exact_file(tmp_path):
+    from urllib.parse import parse_qs, urlparse
+
+    path = _pr92(tmp_path)
+    text = path.read_text(encoding="utf-8")
+    data = json.loads(text)
+    u = contrib.share_urls(data, text)
+    assert u["path_in_repo"] == contrib.suggested_path(data) and u["path_in_repo"].endswith(path.name)
+    url = urlparse(u["new_file_url"])
+    assert f"{url.scheme}://{url.netloc}{url.path}" == (
+        "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070"
+    )
+    q = parse_qs(url.query)
+    assert q["filename"] == [path.name] and q["value"] == [text]
+    # 代わりのページは名前だけを入れた同じページ(/upload/ は書き込みの権限が要るので使わない)
+    assert u["paste_url"] == (
+        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}"
+    )
+    assert "upload" not in json.dumps(u)
+    assert u["new_file_url_length"] == len(u["new_file_url"]) <= contrib.SHARE_URL_LIMIT
+    # 改行は LF にそろえる。名前の sha8 は内容(canonical)の hash なので字下げでは変わらない
+    crlf = contrib.share_urls(data, text.replace("\n", "\r\n"))
+    assert crlf["new_file_url"] == u["new_file_url"]
+    assert contrib.share_urls(json.loads(json.dumps(data)), json.dumps(data))["file_name"] == path.name
+    # 長すぎる中身は URL に入れず、アップロードのページだけ
+    long = contrib.share_urls(data, text + " " * contrib.SHARE_URL_LIMIT)
+    assert long["new_file_url"] is None and long["paste_url"] == u["paste_url"]
+
+
+def test_share_check_refuses_ng_and_errors_only(db):
+    d = good()
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert contrib.share_check(contrib.privacy_checklist(d), r) == []
+    d["measurement"]["note"] = r"saved in C:\Users\John Smith\x.json"
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    why = contrib.share_check(contrib.privacy_checklist(d), r)
+    assert why and any("privacy" in w for w in why)
+    d = good()
+    d["measurement"]["peak_vram_gb"] = 0.5  # 確認(deviation・below_weights)だけでは断らない
+    r = contrib.validate_submission(d, db, today=TODAY, check_filename=False)
+    assert r.notices and contrib.share_check(contrib.privacy_checklist(d), r) == []
+
+
+def test_cli_share_prints_urls_without_a_terminal(tmp_path, capsys, monkeypatch, no_network, browser):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "これがファイルの中身のすべてです" in out and "=== 個人の情報の点検 ===" in out
+    assert "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename=" in out
+    assert (
+        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}\n"
+        in out
+    )
+    assert path.read_text(encoding="utf-8") in out  # 貼り付ける中身をそのまま出す
+    # 写す範囲(2 つの --- の行の間)は中身だけ。ファイルの場所(ユーザ名が入る)はその外の行
+    lines = out.splitlines()
+    a = lines.index("---")
+    b = lines.index("---", a + 1)
+    between = "\n".join(lines[a + 1 : b])
+    assert between + "\n" == path.read_text(encoding="utf-8") and str(path.resolve()) not in between
+    assert any(str(path.resolve()) in x for x in lines[:a])
+    assert "Propose changes" in out and "Create pull request" in out and str(path.resolve()) in out
+    assert "genmodelfit は何も送りません" in out and "[y/N]" not in out
+    assert browser == []  # 端末でなければ開かない
+
+
+@pytest.mark.parametrize(("answer", "opens"), [("y", True), ("", False), ("n", False), (None, False)])
+def test_cli_share_asks_before_opening_the_browser(
+    answer, opens, tmp_path, capsys, monkeypatch, no_network, browser
+):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+
+    def ask(prompt=""):
+        if answer is None:
+            raise EOFError
+        return answer
+
+    monkeypatch.setattr("builtins.input", ask)
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "ブラウザでこのページを開きますか" in out
+    if opens:
+        text = path.read_text(encoding="utf-8")
+        assert browser == [contrib.share_urls(json.loads(text), text)["new_file_url"]]
+    else:
+        assert browser == []
+
+
+def test_cli_share_json_never_opens_a_browser(tmp_path, capsys, monkeypatch, no_network, browser):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    assert cli.main(["contrib", "share", str(path), "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["action"] == "share" and d["ok"] is True and d["opened"] is False and browser == []
+    assert d["refused"] == [] and d["share"]["file_name"] == path.name
+    assert d["share"]["new_file_url"].startswith("https://github.com/laxshmate/genmodelfit/new/main/")
+
+
+def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, no_network, browser):
+    d = good()
+    d["measurement"]["note"] = r"saved in C:\Users\John Smith\x.json"
+    path = tmp_path / "leaky.json"
+    path.write_text(contrib.dumps(d), encoding="utf-8")
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 1
+    cap = capsys.readouterr()
+    assert "送れません" in cap.err and "github.com/laxshmate" not in cap.out and browser == []
+    assert cli.main(["contrib", "share", str(path), "--json"]) == 1
+    j = json.loads(capsys.readouterr().out)
+    assert j["ok"] is False and j["share"] is None and j["refused"]
+
+
+def test_bench_share_writes_to_the_cache_and_shows_the_urls(tmp_path, capsys, monkeypatch, browser):
+    from test_bench import GPU0, FakeComfy
+
+    from genmodelfit import bench
+    from genmodelfit.db import cache_dir
+
+    # 本物の GPU には触らない(偽の GPU が 1 枚あり、空いていることにする。tests/test_bench.py と同じ)
+    monkeypatch.setattr(bench, "smi_gpus", lambda: [dict(GPU0)])
+    monkeypatch.setattr(bench, "smi_compute_apps", lambda: [])
+    monkeypatch.setattr(bench, "gpu_used_now", lambda gpu_id: (1024.0, 0.0))
+    monkeypatch.setattr(bench.time, "sleep", lambda s: None)
+    real_run = bench.run
+
+    def run(*a, **k):  # 偽の ComfyUI はすぐ終わり、時間が 0.1 秒未満(検査の誤り)になることがあるので
+        res = real_run(*a, **k)
+        res.measurement.seconds = 2.0
+        return res
+
+    monkeypatch.setattr(bench, "run", run)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    with FakeComfy() as fake:
+        assert cli.main(["--lang", "ja", "bench", "image_sdxl_simple", "--url", fake.url, "--share"]) == 0
+    out = capsys.readouterr().out
+    subs = list((cache_dir() / "submissions" / "rtx-3070").glob("*.json"))
+    assert len(subs) == 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json", subs[0].name)
+    assert "=== GitHub で送る ===" in out and f"filename={subs[0].name}" in out and browser == []
+    with FakeComfy() as fake:
+        args = ["bench", "image_sdxl_simple", "--url", fake.url, "--share", "--json"]
+        args += ["--submission", str(tmp_path / "mine") + "/"]
+        assert cli.main(args) == 0
+    d = json.loads(capsys.readouterr().out)
+    share = d["submission"]["share"]
+    assert share["ok"] is True and share["opened"] is False
+    assert Path(d["submission"]["saved_to"]).parent.parent == tmp_path / "mine"

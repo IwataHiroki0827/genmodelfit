@@ -278,6 +278,11 @@ MEASUREMENT = {
     "n_oom",
     "gpu_backend",  # 0.9.0(測った GPU の backend)
     "gpu_pci_id",  # 0.9.0(測った GPU の PCI の型番 ID)
+    "files_fp",  # #90(測ったときの一覧のファイルの指紋)
+    "gpu_known",  # #90(以下はほかの利用者のまとめの行)
+    "n_sources",
+    "n_error",
+    "runs_evidence",
 }
 MEASUREMENT_SETTINGS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 

@@ -371,7 +371,9 @@ are only counted; `--all` lists them (the content of the weekly pull request). `
 ### Contributing measurements
 
 Measured runs on more GPUs make the estimates better. On your running ComfyUI (NVIDIA, AMD, Intel or Apple GPU),
-`genmodelfit bench <id> --url http://127.0.0.1:8188 --submission data/contrib/` measures and writes a submission file
+`genmodelfit bench <id> --url http://127.0.0.1:8188 --share` measures, shows what will be shared, and gives a GitHub
+page with the file filled in (no git needed; you sign in and press "Propose changes" and "Create pull request").
+`--submission data/contrib/` instead writes the submission file into your fork's clone
 (a saved result can be converted with `genmodelfit contrib make --from <file>`). `genmodelfit contrib show <file>`
 shows exactly what it holds: the GPU name, VRAM, driver, vendor / backend, for AMD / Intel GPUs the PCI model ID
 (such as `1002:744c`), ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results. `bench` does
@@ -385,6 +387,8 @@ measurements; you open the pull request yourself. Steps: [CONTRIBUTING.md](https
   `db.json` and its signature. `download` only fetches model files. `bench` talks only to your `--url`.
 - genmodelfit never sends hardware details, measurements or prompts. A measurement is shared only if you open a
   pull request yourself ([Contributing measurements](https://github.com/laxshmate/genmodelfit#contributing-measurements)).
+  `bench --share` / `contrib share` only print a GitHub link and, if you answer y in a terminal, open it in your
+  browser; genmodelfit itself sends nothing, and the file is sent only when you press the buttons on GitHub.
   No `~/.netrc` credentials, no telemetry.
 - Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects) ("Side effects").
 

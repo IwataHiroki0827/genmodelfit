@@ -176,7 +176,7 @@
     "seconds": null,
     "steps": null,
     "precision": "fp16",
-    "batch": 4
+    "batch": 1
    },
    "peak_ram_gb": 4.05,
    "seconds": 3.6,
@@ -185,7 +185,7 @@
    "offload": "dynamic",
    "source": "genmodelfit bench, RTX 3070 8GB, ComfyUI 0.40.0 (AI生成キットのエンジン)",
    "date": "2026-10-19",
-   "note": "GPU 全体(nvidia-smi)の増分 1.97 GB(開始前 3.83 GB 使用、最大 5.80 GB)。/system_stats の GPU 全体の増分 1.11 GB。開始前に /free でモデルを解放(解放前 torch 0.03 GB、解放後 0.03 GB)。ComfyUI の実行時間 3.45 秒。計測 17 回",
+   "note": "GPU 全体(nvidia-smi)の増分 1.97 GB(開始前 3.83 GB 使用、最大 5.80 GB)。/system_stats の GPU 全体の増分 1.11 GB。開始前に /free でモデルを解放(解放前 torch 0.03 GB、解放後 0.03 GB)。ComfyUI の実行時間 3.45 秒。計測 17 回。batch は MoGe の batch_size(処理の単位 4)を枚数と読んでいたので 1 に直した(#90)",
    "outcome": "ok",
    "standard": true,
    "vram_metric": "torch_reserved"

@@ -8,6 +8,7 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 
 ## 目次
 
+- [かんたんな送り方(git は要らない)](#かんたんな送り方git-は要らない)
 - [1. 測る](#1-測る)
 - [2. 提出用の JSON を作る](#2-提出用の-json-を作る)
 - [3. 中身を確かめる](#3-中身を確かめる)
@@ -15,8 +16,30 @@ genmodelfit の見積もりは、実際の PC で測った値(実測)がある�
 - [そのほかの変更](#そのほかの変更)
 - [ライセンス](#ライセンス)
 
-流れの要約: `genmodelfit>=0.9.1` を入れ(または clone したフォルダで `pip install -e .`。手元の検査が CI と同じになります)、フォークの clone の中で自分の ComfyUI に対して `genmodelfit bench` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出します。
+流れの要約: いちばんかんたんなのは、`genmodelfit bench … --share` で測り、出てきた中身を読んで、ブラウザの GitHub のページでボタンを 2 つ押す方法です(下の「[かんたんな送り方](#かんたんな送り方git-は要らない)」。git もフォークの clone も要りません)。
+git に慣れていれば、フォークの clone の中で `genmodelfit bench … --submission data/contrib/` を実行し、`genmodelfit contrib show` で中身を確かめ、そのファイルだけを足した Pull Request を出すこともできます(「[2. 提出用の JSON を作る](#2-提出用の-json-を作る)」から)。
 **genmodelfit 自身は何も送りません**。共有は、あなたが出す Pull Request を通してだけ行われます。
+
+## かんたんな送り方(git は要らない)
+
+`--share` は 0.10.1 の次の版から使えます。[uv](https://docs.astral.sh/uv/) があれば、入れずにそのまま動かせます(無ければ `pip install -U genmodelfit` のあと `genmodelfit bench …`)。
+
+```powershell
+uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+```
+
+1. bench が測り、提出用の JSON を書きます(`<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json`)。測る前の準備と注意は「[1. 測る](#1-測る)」を見てください。
+2. 送る中身のすべてと、個人の情報の点検が出ます。**note(メモ)も含めて自分で読んでください**。
+3. 送ってよい中身なら、「ブラウザでこのページを開きますか?」に `y` と答えます。GitHub の「新しいファイル」のページが、ファイルの名前と中身を入れた状態で開きます。
+4. GitHub にログインします(アカウントが要ります)。
+5. ページの下の「Propose changes」を押します。書き込みの権限が無い人は、GitHub が自動であなたのフォークを作ります。
+6. 次のページで「Create pull request」を押します。あとは「[4. Pull Request で送る](#4-pull-request-で送る)」の 3 からと同じです(CI の検査・マージ)。
+
+- 点検に `[NG]` があるか、検査の誤りがあると、URL を出さずに止まります。直し方は「[3. 中身を確かめる](#3-中身を確かめる)」にあります。
+- **入力済みのページに中身が出ないとき**(長い URL がブラウザや GitHub で切られることがあります)や、中身が長くて入力済みの URL を作らなかったときは、表示の「貼り付けて送る」を使ってください: 名前だけを入れた同じページ(`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<名前>`)を開き、すぐ上の 2 つの `---` の行の間に出たファイルの中身を写して大きな欄に貼り付け、「Propose changes」「Create pull request」を押します。ファイルの場所も表示されます(GitHub のアップロードのページは書き込みの権限が要るので使いません)。
+- 前に作った提出のファイルは `genmodelfit contrib share <ファイル>` で同じように送れます。
+- 端末でないとき・`--json` のときはブラウザを開かず、URL を出すだけです。
+- genmodelfit は通信しません。ブラウザでページを開くだけで、ファイルが送られるのはあなたが GitHub のページでボタンを押したときだけです。
 
 ## 1. 測る
 
@@ -90,6 +113,8 @@ genmodelfit bench 3d_hunyuan3d_image_to_model --url http://127.0.0.1:8188 --step
 
 ## 2. 提出用の JSON を作る
 
+ここからは、git とフォークの clone で送る方法です(「[かんたんな送り方](#かんたんな送り方git-は要らない)」で送ったなら、ここは読まなくて構いません。入るもの・入らないものの表は同じです)。
+
 自分のフォーク(GitHub の Fork)を手元に clone し、そのフォルダで bench に `--submission` を付けて測ります。clone したフォルダで `pip install -e .` すると、CI と同じ main の版で `contrib validate` を流せます。
 
 ```powershell
@@ -120,7 +145,14 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 832
 
 **入らないもの**: PC の名前、ユーザー名、フォルダのパス、GPU の UUID、PCI の差し場所(バス番号。型番 ID とは別物)、シリアル番号、IP / MAC アドレス、CPU の名前、時刻、bench の `--source` に書いた文、プロンプト。
 決まった項目以外は CI の検査で断ります。
-ただし自動の点検は文字の形を見るだけで、`note` に普通の言葉で書いた名前(「山田太郎の PC で測った」など)や、base64 などで書き換えたパスは見分けられません。手順 3 で自分で読んでください。
+ただし自動の点検は文字の形を見るだけで、意味は分かりません。次のようなものは見逃します。手順 3 で `note` を自分で読んでください。
+- 普通の言葉で書いた名前(「山田太郎の PC で測った」、`user: yamada`、`my name is ...`)
+- 形の決まっていない PC の名前(`yamada-desktop`、`yamada-ws`)
+- 1 字ずつ空けた文字(`t a r o @ g m a i l`)・短い base64(`dGFybw==`)・語に見える base64
+- 住所・郵便番号・ほかのサービスの ID(Discord・Steam など)
+- 公開のドメインの下のユーザ名(`github.com/taro`・`hf.co/yamada`。ドメインは公開の置き場として扱うため)
+
+逆に、ComfyUI のノードの名前(`HunyuanVideo15ImageToVideo` など)、40 桁の git のコミット・64 桁の sha256、公開のドメイン(huggingface.co・hf.co・github.com・comfy.org・pytorch.org・nvidia.com・python.org)は個人の情報として扱いません。
 
 ## 3. 中身を確かめる
 
@@ -144,6 +176,8 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 1. 足すのは `data/contrib/<GPU>/<日付>-<sha8>.json` のファイルだけにします。
    - ほかのファイルは変えません(コードの変更は別の PR に)。
    - data/contrib の外のファイルを変えた PR は、`Contrib` のワークフローが失敗にします。
+   - 提出の PR は**足すだけ**です。data/contrib の既にあるファイルを消す・書き換える・名前を変える PR、`<GPU>/<日付>-<sha8>.json`(小文字の `.json`)でない名前・場所のファイルを足す PR、提出を 1 件も足さない PR も失敗にします(#90)。
+   - 前に出した提出を直したいときは、直したものを新しいファイルとして出し、PR の説明に古いファイルの名前と理由を書いてください。古いファイルはメンテナが外します(docs/release.ja.md「次からの版を出す手順」)。
 2. ブランチを作ってコミットし、自分のフォークに push します:
 
    ```powershell
@@ -166,14 +200,14 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 
 ### 受け付けたあと
 
-- メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く)。
+- マージされると data/contrib に入りますが、利用者に**届くのは genmodelfit の次の版から**です(#90)。版を出すときに、メンテナが `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で、同じモデル・設定・GPU の提出をまとめます(中央値と MAD で外れ値を除く。[docs/release.ja.md](docs/release.ja.md))。まだまとめに入っていない提出は `genmodelfit contrib aggregate --check` で見られます。
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
   - PCI の型番 ID が同じ(両方にあるとき)。無ければ、そろえた名前が同じ(汎用の名前は一致としない)。
   - かつ、VRAM の総量の比が 0.97 以上。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
 - その PC では **1 件から**、その構成の見積もりの根拠が `measured_community`(ほかの利用者の実測)になり、件数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
 - 同じ GPU の同じ設定の実測は、段階を決める根拠にもなります。NVIDIA 以外の GPU も、その GPU の実測があれば Good の上限が外れます。詳しくは [docs/accuracy.ja.md](docs/accuracy.ja.md) を見てください。
-- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが実測を取り込むときに `python -m genmodelfit.calibrate` で作り直します。
+- 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
 ### 作者の実測(measurements.json)
 

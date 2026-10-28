@@ -104,10 +104,21 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 
 ## 次からの版を出す手順
 
-1. `src/genmodelfit/_version.py` の `__version__` を上げる(pyproject.toml は hatch がここから読む)。
+1. ほかの利用者の実測(data/contrib)を同梱のまとめに入れる(#90)。
+   - 提出の PR は data/contrib だけを変えるので、マージしただけでは利用者に届かない。届くのは版のリリースだけ
+     (毎週のデータの配布は db.json だけ)。
+   - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。最初の提出をマージするまでは data/contrib が無いので、`--check` は終了コード 1(フォルダが無い)になる。それで正しい。
+   - あれば `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で作り直す
+     (使った提出の sha256 が `submissions` に入る。試験はそれだけをまとめ直して一致を確かめる)。
+   - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ PR で足した提出は 1 つ)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。
+   - 直した提出を出し直した人がいれば、古いファイルをメンテナの PR で外す(PR の説明に理由を書く。提出の PR は足すだけで、消せない)。この PR では `Contrib` のワークフローの「足すだけ」の検査が失敗するが、それでよい(提出の PR だけを通す検査。メンテナが確かめてマージする)。
+   - `--check` が「使われない行」(`files_fp` が今の一覧と違う行)を出したら、上流のファイルが変わったということ。行は判定に使われないので、そのままでもよい。新しいファイルで測り直した提出が来るのを待つ。
+   - そろった組(`consistent`)が変わったら `python -m genmodelfit.calibrate` で合わせ直し、
+     docs/accuracy.ja.md と docs/accuracy.md を直す(CLAUDE.md)。
+2. `src/genmodelfit/_version.py` の `__version__` を上げる(pyproject.toml は hatch がここから読む)。
    `CHANGELOG.md` に書いて PR で main に入れる。
    PR では ci.yml が動かないので、PR の説明に `tools/ci_local.py --linux` の結果を書く。
-2. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめる。
+3. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめる。
    そのうえで、main の先頭にタグ `v<版>` を付けて push する(上の 3〜5 と同じ)。
 
 手動実行と PyPI について:

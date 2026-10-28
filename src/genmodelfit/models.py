@@ -324,6 +324,14 @@ class Measurement:
     # 0.9.0、bench が ComfyUI と同じ PC の検出から書く)。同じ GPU かの照合に名前より先に使う
     # (estimate.same_gpu)
     gpu_pci_id: str | None = None
+    # 測ったときの一覧のモデルのファイルの指紋(#90。estimate.files_fingerprint)。一覧のファイルが変わったら
+    # (指紋が違えば)その実測は使わない。None は記録が無い(古い行・作者の measurements.json)
+    files_fp: str | None = None
+    # 以下はほかの利用者の実測のまとめの行だけ(#90)
+    gpu_known: bool | None = None  # False = 名前の表に無い GPU(記録として残すだけで判定に使わない)
+    n_sources: int | None = None  # 使った提出の、別々の出どころ(リポジトリに足したコミット = PR)の数
+    n_error: int | None = None  # 同じ構成で ok・oom 以外(error)で終わった提出の数(行の値には使わない)
+    runs_evidence: bool | None = None  # False = OOM の出どころが ok の出どころ以上(「動く」根拠にしない)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Measurement:

@@ -58,8 +58,8 @@ CLI の表示の「GB」も GiB。
 | `update --fields-only` | `languages` を決めるカードの `language` を読むための Hugging Face Hub API への GET(主なファイルのリポジトリと、その `license_from`)。手で足したモデルでは、HEAD、ファイルの見出しの範囲指定 GET、上流のカードの API も行う。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
-| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も |
-| `contrib` | なし(genmodelfit は提出を送らない。Pull Request は自分で出す) | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`show` / `validate`: なし |
+| `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `contrib share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
+| `contrib` | なし(genmodelfit は提出を送らない。Pull Request は自分で出す)。`share` は URL を出し、端末で y と答えたときだけブラウザで開く(送るのはブラウザで利用者が押したとき) | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`show` / `validate` / `share` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
 | `python -m genmodelfit.weekly merge-check` | なし | なし |
 | `python -m genmodelfit.review publish SRC DST` | なし | DST(確認待ちを除いた一覧。data.yml が署名する) |
@@ -924,6 +924,11 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `n_oom` | int \| null | community の行: 同じグループでメモリ不足になった提出数。`ok` と `oom` のあるグループは `ok` の中央値を使い、この数を残す(理由に出す。こうした行は決して Perfect にならない) |
 | `consistent` | bool \| null | community の行: 使った提出が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無い。係数の較正(`calibrate`)に入るのは consistent の行だけ。見積もりは、1 件の提出からの `ok` の行すべてを使う(2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
+| `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
+| `gpu_known` | bool \| null | (#90)community の行: false は名前の表に無い NVIDIA の GPU(記録として残し、判定には使わない) |
+| `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
+| `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
+| `runs_evidence` | bool \| null | (#90)community の行: false は OOM の出どころが ok の出どころ以上(「動く」根拠にしない。使い方は段階の決まり PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM も 3% 以内でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE` 0.97。共有 / 統合メモリには適用しない) |
 | `standard` | bool | 公式テンプレートをそのまま使い(width / height / frames / length / steps / seed だけ変えた)、到達できるノードがすべて実際に動き(部分的なキャッシュが無い)、間にほかのジョブが動いていないとき `true`。既定は `true` |
 
@@ -943,7 +948,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
-| `submission` | object | `--submission` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照) |
+| `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`contrib share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`。ブラウザは開かない) |
 
 bench が Measurement を埋める方法(測り方):
 
@@ -962,10 +967,10 @@ bench が Measurement を埋める方法(測り方):
 ## contrib
 
 利用者の実測の提出(#34)。
-genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。
+genmodelfit は、これを**決して送らない**。利用者が自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。`contrib share`(`bench --share`)は、ブラウザでファイルを足す GitHub のページの URL を出すだけ(#90)。
 コードは `src/genmodelfit/contrib.py`。
 
-### Submission file (`contrib_schema` 1) / 提出ファイル
+### Submission file (`contrib_schema` 1・2) / 提出ファイル
 
 `genmodelfit bench … --submission PATH` または `genmodelfit contrib make --from <bench の結果>` が書く。
 リポジトリでは `data/contrib/<gpu-slug>/<date>-<sha8>.json` に置く。
@@ -1012,7 +1017,8 @@ genmodelfit は、これを**決して送らない**。利用者が自分のフ�
 - (0.9.0、任意)`pci_id`(PCI 型番 ID `1002:744c`、小文字)。そのベンダー ID は `vendor` と合わなければならない。`hardware.PCI_DEVICE_NAMES` にある ID は、`name` と同じ GPU を指さなければならない(AMD は gfx、Intel は世代と公称 VRAM で)。一覧に無い ID は `unknown_gpu` の通知。
 
 その他の決まり:
-- これらが無い古いファイルも有効のまま(`contrib_schema` は 1 のまま)。
+- これらが無い古いファイルも有効のまま。
+- `contrib_schema` は 1 と 2 を受け付ける(#90)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.10.1 の次の版から書く。1 に `files_fp` があれば誤り。
 - 名前には `(R)`、`(TM)`、`™`、`®` を含んでよい。`vendor` と別のベンダーの名前はエラー。`apple` はチップ名(`Apple M2 Pro`)か `mps` だけ。
 - 256 GiB を超える `vram_gb`、`ram_total_gb` × 1.05 + 1 GiB を超える `peak_ram_gb`、NaN / 無限大 / 負の数はエラー(ファイルの NaN は読むときに断る)。
 
@@ -1021,7 +1027,6 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 **限界(正直に)**: 確認はパターンで、理解ではない。
 **検出しないもの**:
 - 平文の個人名や、ほかの身元が分かる言葉(例: `山田太郎のPCで測った`、`on Taro's desktop`、`github KoyoYeager`)
-- base64 などの別の符号化で書いたパス(URL エンコードの `%2F` / `%5C` / `%3A` は検出する)
 - 区切りのない、言葉で書いたパス
 
 だから `contrib show` は、利用者に note を読むよう求め、人が Pull Request を 1 件ずつ確かめる。
@@ -1032,10 +1037,29 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - `precision`: 既知の精度のどれか
 - `model_id`: `[A-Za-z0-9_.:/+-]` で最大 200 文字
 - ほかの文字列: 100 文字
-- `note`: 2000 文字
+- `note`: 500 文字(#90 で 2000 から下げた。bench の note は長いと切り詰める)
 - どこでも、制御文字・改行・見えない文字は不可
 - 知らないキー、配列、深さ 8 を超える入れ子は断る
 - 64 KB を超えるファイルとシンボリックリンクは読まない
+
+### 提出の流れの決まり(#90)
+
+どれも 1 文で説明できる決まりにした。分析で作った約 60 種の提出(tests/test_contrib_robust.py)で確かめている。
+
+- **足すだけ**: 提出の PR は `data/contrib` に新しいファイルを足すだけで、既にあるファイルを消す・書き換える・名前を変える PR は CI(contrib.yml)が失敗にする(外すのはメンテナの PR)。
+- **置き場所**: 置けるのは `data/contrib/<GPU>/<日付>-<sha8>.json`(小文字の `.json`)だけで、ほかの形・場所のファイルは CI でも `contrib validate <フォルダ>` でも誤り `layout` になる。
+- **空の提出**: 提出のファイルが 1 件も無い PR・フォルダは失敗にする(`contrib validate` は終了コード 1)。
+- **読めない形**: UTF-8 の BOM は消さずに理由を出して断り、同じオブジェクトの中に同じキーが 2 回ある JSON も断る(後の値が黙って勝つため)。
+- **個人の情報**: base64 らしい続き(`=` の詰め物があれば 16 字から、無ければ 20 字から)・32 桁以上の 16 進(ちょうど 40 桁の git のコミットと 64 桁の sha256 は除く)・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。公開の置き場のドメイン(`contrib.PUBLIC_DOMAINS`)は、ホスト名がその名前で終わるときだけ外す(`nvidia.com.taro.jp` は当てる)。
+- **測ったファイル**: bench は測った時点の一覧のモデルのファイルの指紋 `files_fp`(ファイルの sha256 を小文字にして並べ替え、改行でつないだ文字列の sha256。sha256 の無いファイルが 1 つでもあれば書かない)を書き、一覧のファイルが変わった(指紋が違う)実測は使わない。
+- **GPU の名前**: NVIDIA の GPU は名前の表(`hardware.nvidia_name_known`。後ろの決まった語は 1 回ずつ外してよく、一緒に付かない組(`RTX 3060 Ti D` など)は断る)に丸ごと当たる名前だけを判定に使い、当たらない名前(`NVIDIA Graphics Device` など)の行は `gpu_known: false` の記録として残すだけにする(確認 `unknown_gpu`)。
+- **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は名前だけで当て、量は見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ誤り `gpu_inconsistent`(Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
+- **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
+- **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
+- **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
+- **OOM の多い組**: OOM の出どころが ok の出どころ以上の行は `runs_evidence: false`(「動く」根拠にしない。使い方は PR #95)。
+- **版**: 検査する genmodelfit より新しい版で作った提出(`tool_newer`)、テンプレートが求めるより古い ComfyUI(`comfyui_old`)、一覧が知る最新より 6 つ以上新しい ComfyUI の版(`comfyui_newer`)は確認だけにする。
+- **大きさの入力の無いテンプレート**で `batch` が 1 でない提出は確認 `batch_sizeless`(0.10.1 の bench の記録の誤り)。
 
 ### `contrib make --from FILE [--output PATH] [--no-pc-info] [--json]`
 
@@ -1050,6 +1074,19 @@ bench の結果を読めないときは終了コード 1。
 `--json`: 外枠 + `action: "show"`、`file`、`ok`、`submission`、`checklist` [{id, label, ok (null = 利用者が確かめる), detail}]、`report`(下)。
 直すべきものがあれば終了コード 1。
 
+### `contrib share FILE [--json]`
+
+`show` と同じ点検(中身のすべて・プライバシーのチェックリスト・`validate` の結果。ファイル名は見ない)のあと、GitHub で送るページの URL を出す(#90。`bench … --share` も、書いた提出に同じことをする)。
+- チェックリストに NG があるか、`validate` の誤り(errors)があれば送れない(理由を出して終了コード 1)。注意(warnings)と確認(notices)では断らない。
+- `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<中身>`。中身はファイルのまま(改行は LF)を URL エンコードしたもの。名前の sha8 は `contrib.canonical` の hash なので、字下げ・改行の違いでは変わらない。
+- URL が 8000 字(`contrib.SHARE_URL_LIMIT`)を超えるときは `new_file_url` を null にし、`paste_url` だけを案内する(長い URL は途中で切られることがあるため)。
+- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`(名前だけを入れた同じページ。入力済みのページに中身が出ないときの代わり)。テキストの出力では、その直前に、2 つの `---` の行の間にファイルの中身だけを出す(ファイルの場所はその外の行に出す。場所にはユーザ名が入るので、写す範囲に入れない)。写して貼り付け、「Propose changes」「Create pull request」を押す。GitHub のアップロードのページ(`/upload/`)は書き込みの権限が要るので使わない。
+- 端末(標準入力と標準出力がどちらも端末)では、ブラウザで開くかを y/N で尋ねる(既定は No)。y のときだけ開く。`--json` と端末でないときは URL を出すだけで、開かない。
+- 通信しない。送られるのは、利用者がブラウザでボタンを押したときだけ。リポジトリの名前は `contrib.REPO` の 1 か所。
+
+`--json`: 外枠 + `action: "share"`、`file`、`ok`、`refused`(断った理由)、`checklist`、`report`、`share`(`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, paste_url}`。送れないときは null)、`opened`(常に false)。
+終了コード: 0 = 送れる / 1 = 送れない(または読めない)/ 2 使い方の誤り。
+
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 
 ファイルごとに、レポート `{path, ok, errors: [{code, message}], warnings: [{code, message}], notices: [{code, message}], sha256, suggested_path, model_id, gpu_name}` を出す。
@@ -1062,7 +1099,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 |---|---|
 | `read` | 読めない、JSON でない、64 KB を超える、入れ子が深すぎる、またはシンボリックリンク(シンボリックリンクのフォルダは辿らない) |
 | `string` | 制御文字・改行・見えない文字・双方向の文字を含む文字列、長すぎる文字列やキー、配列、深さ 8 を超える入れ子 |
-| `schema` | `contrib_schema` ≠ 1、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
+| `schema` | `contrib_schema` が 1・2 でない、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
 | `unknown_field` | 決まりに無いキー(`settings` の中を含め、どこでも) |
 | `privacy` | 値かキー(NFKC 正規化し、幅ゼロの文字を除き、`¥` を `\` と読んだあと)に、次のどれかが含まれる(詳細は下) |
 | `date` | `YYYY-MM-DD` でない、または未来 |
@@ -1072,6 +1109,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 | `filename` | 名前が `<date>-<sha8>.json` でない、date や sha8 が中身と合わない、フォルダが GPU の slug でない |
 | `value`(厳密な形) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` が、上の形の外 |
 | `duplicate` | 同じ実行の前のファイルと中身のハッシュが同じ |
+| `layout` | (#90)フォルダの検査で、`<GPU>/<日付>-<sha8>.json`(小文字の `.json`)でない場所・形のファイル |
 
 `privacy` が断るもの:
 - ドライブのパス(`C:\`、`C:/`)
@@ -1107,6 +1145,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 通知(ファイルは有効で、集計される。マージする保守者のために CI の要約に出る。マージがレビュー):
 - `unknown_model`: 同梱の一覧に無い。
 - `unknown_gpu`: GPU の名前の表に無い(例: AMD / Intel / Apple)。
+- `batch_sizeless`: 大きさの入力の無いテンプレート(`estimate.NO_SIZE_INPUT`)なのに `batch` が 1 でない(0.10.1 の bench が MoGe の処理の単位を枚数と記録した。判定は batch 1 なので同じ設定の実測にならない。#90)。
 - `deviation`: ピーク VRAM が、その設定での式の全部載せの見積もりから 40% より離れている。
 - `below_weights`: `offload: none` なのにピーク VRAM が 重み + 固定の上乗せより小さい。見積もりは、これより小さいすべての提出に対して、その下限を使う(dynamic VRAM や部分的な読み込みでは、小さなピークは普通)。
 - `fit_change`: この提出だけで、提出された GPU の PC の段階が変わる。
@@ -1116,12 +1155,12 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
   - ほかの GPU には、0.9.0 から影響しない。
   - 0.8.0 までは これらは「要レビュー」で、sha8 ごとの承認(`--allow-review`、`data/contrib/REVIEWED`)が要った。どちらも廃止した。
 
-警告(受け付けるが報告する。`--strict` では失敗にする): `nonstandard`(記録として残すが、集計はしない)、`metric_missing`、`driver_missing`、`comfyui_version_missing`、`ram_not_rounded`、`settings_missing` / `settings_modality`、`offload_outcome`、`date_old`。
+警告(受け付けるが報告する。`--strict` では失敗にする): `nonstandard`(記録として残すが、集計はしない)、`metric_missing`、`driver_missing`、`comfyui_version_missing`、`ram_not_rounded`、`settings_missing` / `settings_modality`、`offload_outcome`、`date_old`。`settings_missing` は、画像・動画のモデルで幅・高さが無く、モデルが大きさの入力の無いテンプレートの手の表(`estimate.NO_SIZE_INPUT`)に無いときに出す(#90。新しいテンプレートなら、メンテナが bench の記録を確かめて表に足す)。
 
 `--markdown` は、すべてのセルをエスケープする(`| \` < > [ ] & @`、改行、GFM の自動リンク `://` と `www.`)。だからファイル名や値が、CI の要約に Markdown、HTML、リンク、ワークフローコマンドを差し込めない。
 CI は genmodelfit の stderr も、同じエスケープを通して要約に足す。
 
-終了コード: 0 = すべてのファイルが通った(警告と通知は許す)/ 1 = ファイルが失敗した、または `--strict` で警告がある / 2 = 使い方の誤り。
+終了コード: 0 = すべてのファイルが通った(警告と通知は許す)/ 1 = ファイルが失敗した、`--strict` で警告がある、または提出が 1 件も無い(#90)/ 2 = 使い方の誤り。
 
 ### `contrib aggregate [DIR] [--output FILE] [--report] [--threshold PCT] [--fail-on-breach] [--json]`
 
@@ -1130,16 +1169,25 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - GPU(PCI 型番 ID があればそれ、無ければ `estimate.gpu_key` で正規化した名前: 大文字小文字、空白・記号、`(R)` `(TM)` `™` `®`、`NVIDIA` / `GeForce`)
 - GPU の VRAM を 1 GB に丸めたもの(RTX 4060 Ti の 8 GB と 16 GB は別のグループ)
 - `vram_metric`
-- 設定(精度は正規化: `BF16` = `bfloat16` = `bf16`)
+- 設定(精度は正規化: `BF16` = `bfloat16` = `bf16`。ステップ数は入れない。#90)
+- 測ったときの一覧のファイルの指紋 `files_fp`(#90)
 
 集計の方法:
-- グループの `ok` の実行のうち、|x − 中央値| / (1.4826 × MAD) > 3.5 の値は外れ値(実行が 3 件以上のときだけ。MAD は中央値の 2% を下限にする)。
-- 残りの中央値が値になる。`n_used` と `n_oom` を付ける(OOM の実行だけのグループは、`outcome: oom` の 1 行になり、決して使われない)。
-- グループが `consistent`(較正に入る)になるのは、使った実行が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無いとき。
+- `error` の提出は値に使わず `n_error` に数える(#90)。
+- `ok` の提出は出どころ(`contrib.submission_sources`: そのファイルを足したコミット。git の履歴が無い・浅い clone では提出ごと)ごとに中央値をとり、その出どころの値のうち |x − 中央値| / (1.4826 × MAD) > 3.5 のものは外れ値(出どころが 3 つ以上のときだけ。MAD は中央値の 2% を下限にする)。
+- 残りの出どころの値の中央値が値になる。`n_used`(使った提出の数)・`n_sources`(使った出どころの数)・`n_oom`・`n_error`・`runs_evidence`(OOM の出どころが ok の出どころより少ないか)・`gpu_known`・`files_fp` を付ける(OOM の実行だけのグループは、`outcome: oom` の 1 行になり、決して使われない)。
+- グループが `consistent`(較正に入る)になるのは、使った出どころが 2 つ以上で、その幅が中央値の 15% 以内で、グループに OOM が無いとき。
+- `--json` と出力の 1 行目の下に、出どころの数え方(`sources_from`: `git` / `files`)を出す。同梱のまとめは、履歴のある clone で版を出すときに作る(docs/release.ja.md「次からの版を出す手順」)。
 - 出力の行は、`origin: "community"` の Measurement の記録(Measurement を参照)で、順は固定。だから同じ入力は常に同じファイルになる。
 
-`--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
+`--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, submissions, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
+- `submissions`(#90)は、まとめに渡した提出(検査を通ったもの)ごとの `{sha256, source}` を sha256 の順に並べたもの。`sha256` は内容の hash(`contrib.canonical`。ファイル名の sha8 の元)、`source` はまとめたときの出どころ(足したコミット、git の履歴が無ければ `file:<sha256>`)。
+- `contrib aggregate --check` と試験は、git の履歴を読まずに、この記録した出どころでまとめ直して比べる(浅い clone・git の外でも同じ結果)。最初の形(sha256 の文字列だけ)も読む(出どころは提出ごと)が、今の形で作り直すまで `--check` は「まとめ直すと違う」(`matches: false`)と出す(書き出す形が違うため)。
+- 古い版は知らないキーとして読み飛ばす(読むのは `measurements` だけ)。
+
 同梱の写しは `src/genmodelfit/data/measurements_community.json` で、ほかの実測と一緒に読み込まれる。
+- 作り直すのは版を出すとき(docs/release.ja.md「次からの版を出す手順」)。提出の PR は data/contrib だけを変えるので、マージしてもまだ入らない。
+- 試験は、`submissions` の提出がすべて data/contrib にあり、それだけをまとめ直すと同梱のファイルと同じになることを確かめる。まだ入っていない提出が data/contrib にあってもよい。
 
 `--report` は、同梱の保守者の行 + 新しい community の行(ローカルのキャッシュは決して使わない)で較正(`calibrate.calibrate`)をやり直し、`report` を返す: `{threshold_pct, n_fit, coefficients, summary, by_modality, loo, check, breaches, breach, fit_changes}`。
 - `by_modality` は `{<modality>: {loo_n, loo_mean_abs_pct, loo_max_abs_pct, evaluable, check_n, check_mean_abs_pct, check_max_abs_pct}}`。
@@ -1151,6 +1199,16 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 `--json`: 外枠 + `action: "aggregate"`、`dir`、`files`、`valid`、`invalid`、`notices`、`submissions_used`、`groups`、`consistent`、`written_to`、`community`(上の文書)、`--report` のときは `report`。
 終了コード: 0 / 1 エラー(フォルダが無い。`--allow-empty` 無しの `--output` で結果が空)/ 2 使い方の誤り / **3** `--report --fail-on-breach` で上限を超えた。
+
+### `contrib aggregate [DIR] --check [--json]`
+
+何も書かず、同梱のまとめと `DIR`(既定 `data/contrib`。無ければ誤りで終了コード 1)を比べる(#90)。`--output`・`--report` とは一緒に使えない。
+- まだまとめに入っていない、検査を通った提出(マージした後の提出)のパスを出す。
+- まとめの `submissions` にあるのに `DIR` に無い(または検査を通らない)提出と、それだけをまとめ直したときに同梱のファイルと同じになるかも出す。
+- 同梱のまとめのうち、測ったときの一覧のファイル(`files_fp`)が今の一覧と違い、判定に使われない行(`stale`)も出す(知らせるだけ。毎週の一覧の更新で上流のファイルが変わると起きる)。
+
+`--json`: 外枠 + `action: "aggregate_check"`、`dir`、`listed`(まとめの提出の数)、`valid`、`invalid`(検査を通らないファイル)、`pending`(まだ入っていない提出のパス)、`missing`(まとめにあるのに無い hash)、`stale`([model_id, gpu_name])、`matches`、`ok`(missing が無く matches)。
+終了コード: 0 = まだ入っていない提出が無く ok / 1 = まだ入っていない提出がある、または ok でない / 2 使い方の誤り。
 
 ## download
 

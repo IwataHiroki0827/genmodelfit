@@ -31,6 +31,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterable
@@ -801,6 +802,10 @@ def apply_precision(parts: Parts, entry: ModelEntry, s: Settings) -> Parts:
 def activation_features(modality: str, s: Settings, c: Coefficients) -> dict[str, float]:
     """作業用メモリの係数に掛ける量。calibrate も同じものを使う。負の値は 0 に切り上げる。"""
     mp = max(0.0, s.megapixels or 0.0)
+    if not s.width and not s.height and modality in ("image", "video"):
+        # 大きさの入力の無いテンプレート(no_size_input。入力の画像から作る)の設定は大きさを持たない。
+        # 作業用メモリは今までどおり種類の既定の大きさで見積もる(#90)
+        mp = DEFAULT_SETTINGS[modality].megapixels or 0.0
     batch = max(1, s.batch or 1)
     if modality == "image":
         return {"act_image_gb_per_mp": mp * batch}
@@ -978,6 +983,11 @@ GENERIC_GPU_KEYS = frozenset(
         "intel-iris-xe-graphics",
         "intel-hd-graphics",
         "apple-gpu",
+        # #90: ドライバが名前を知らない GPU(「NVIDIA Graphics Device」)・汎用の表示用の名前
+        "graphics-device",
+        "video-controller",
+        "microsoft-basic-display-adapter",
+        "display-adapter",
     }
 )
 
@@ -1007,6 +1017,64 @@ NVIDIA_VRAM_VARIANTS: dict[str, tuple[float, ...]] = {
     "rtx-4060-ti": (8.0, 16.0),
     "rtx-5060-ti": (8.0, 16.0),
 }
+
+
+# デスクトップの GeForce RTX 20〜50 系の公称の VRAM(GB。gpu_key の形 → 版の VRAM)。#90: ほかの利用者の提出の
+# vram_gb が名前の GPU に無い量(RTX 3070 で 16 GB など)なら誤りにする。NVIDIA の比較ページ
+# https://www.nvidia.com/en-us/geforce/graphics-cards/compare/ で 2026-10-27 に確かめた値。量の違う版は
+# NVIDIA_VRAM_VARIANTS と同じ。ノート用・業務用は名前と量の対応が一つに決まらないので入れない
+NVIDIA_NOMINAL_VRAM: dict[str, tuple[float, ...]] = {
+    **NVIDIA_VRAM_VARIANTS,
+    "rtx-5090": (32.0,),
+    "rtx-5080": (16.0,),
+    "rtx-5070-ti": (16.0,),
+    "rtx-5070": (12.0,),
+    "rtx-5060": (8.0,),
+    "rtx-5050": (8.0,),
+    "rtx-4090": (24.0,),
+    "rtx-4080-super": (16.0,),
+    "rtx-4080": (16.0,),
+    "rtx-4070-ti-super": (16.0,),
+    "rtx-4070-ti": (12.0,),
+    "rtx-4070-super": (12.0,),
+    "rtx-4070": (12.0,),
+    "rtx-4060": (8.0,),
+    "rtx-3090-ti": (24.0,),
+    "rtx-3090": (24.0,),
+    "rtx-3080-ti": (12.0,),
+    "rtx-3070-ti": (8.0,),
+    "rtx-3070": (8.0,),
+    "rtx-3060-ti": (8.0,),
+    "rtx-2080-ti": (11.0,),
+    "rtx-2080-super": (8.0,),
+    "rtx-2080": (8.0,),
+    "rtx-2070-super": (8.0,),
+    "rtx-2070": (8.0,),
+    "rtx-2060-super": (8.0,),
+}
+# 提出の vram_gb(GiB。/system_stats の総量)と公称の VRAM の比の許容(1 枚の GPU の数え方の違いだけを許す)。
+# CUDA が報告する総量は公称より少ない: Linux で 6 GB の版は 5934 MiB = 5.80 GiB(比 0.967)、8 GB は 7.79、
+# 12 GB は 11.77、24 GB は 23.69。Windows は 7.99・15.92 など。下を 0.95 にした(版の違いの比は 0.83 以下)
+NOMINAL_VRAM_TOLERANCE = (0.95, 1.03)
+
+
+def nvidia_nominal_vram(name: str | None) -> tuple[float, ...]:
+    """名前の表で分かる NVIDIA の GPU の公称の VRAM(GB)。表に無ければ空。名前に量が付いている
+    (「RTX 3050 6GB」)ときは、表にその量の版があればその量だけ、無ければ空(contrib.gpu_size_ok が断る)。"""
+    k = gpu_key(name)
+    m = re.fullmatch(r"(.+)-(\d+)gb", k)
+    if m and m.group(1) in NVIDIA_NOMINAL_VRAM:
+        size = float(m.group(2))
+        return (size,) if size in NVIDIA_NOMINAL_VRAM[m.group(1)] else ()
+    return NVIDIA_NOMINAL_VRAM.get(k, ())
+
+
+def nvidia_size_ok(name: str | None) -> bool:
+    """名前に付いた量(「RTX 3060 16GB」)が、名前の表のその GPU の量のどれかか(表に無い GPU は True)。"""
+    m = re.fullmatch(r"(.+)-(\d+)gb", gpu_key(name))
+    return not (
+        m and m.group(1) in NVIDIA_NOMINAL_VRAM and float(m.group(2)) not in NVIDIA_NOMINAL_VRAM[m.group(1)]
+    )
 
 
 def nvidia_vram_variants(name: str | None) -> tuple[float, ...]:
@@ -1053,6 +1121,24 @@ def same_gpu_name(a: str | None, b: str | None) -> bool:
     return bool(a) and bool(b) and gpu_key(a) == gpu_key(b) and not generic_gpu_name(a)
 
 
+def files_fingerprint(entry: ModelEntry) -> str | None:
+    """一覧のモデルのファイルの指紋(#90): ファイルの sha256(16 進の小文字)を並べ替えて改行でつないだ文字列の
+    sha256。ファイルが無い・sha256 の無いファイルが 1 つでもあるときは None(比べない)。bench が実測に書き、
+    一覧のファイルが変わった(上流が重みを差し替えた)ときに古い実測を使わないために比べる。"""
+    shas = [(f.sha256 or "").strip().lower() for f in entry.files]
+    if not shas or not all(re.fullmatch(r"[0-9a-f]{64}", s) for s in shas):
+        return None
+    return hashlib.sha256("\n".join(sorted(shas)).encode("ascii")).hexdigest()
+
+
+def files_match(m: Measurement, entry: ModelEntry) -> bool:
+    """実測が今の一覧のファイルで測ったものか(#90)。両方に指紋があって違うときだけ False(指紋の無い古い実測・
+    作者の measurements.json は今までどおり使う)。"""
+    fp = getattr(m, "files_fp", None)
+    now = files_fingerprint(entry) if fp else None
+    return not (fp and now and fp != now)
+
+
 def measured_on_this_gpu(m: Measurement, gpu: Any) -> bool:
     return same_gpu(m.gpu_name, getattr(m, "gpu_pci_id", None), gpu, m.gpu_vram_gb)
 
@@ -1071,7 +1157,10 @@ def pick_measurement(
     cands = [
         m
         for m in measurements
-        if m.model_id == entry.id and usable(m) and (not is_community(m) or measured_on_this_gpu(m, gpu))
+        if m.model_id == entry.id
+        and usable(m)
+        and files_match(m, entry)
+        and (not is_community(m) or (m.gpu_known is not False and measured_on_this_gpu(m, gpu)))
     ]
     if not cands:
         return None
@@ -1093,11 +1182,41 @@ def pick_measurement(
 _POSITIVE = ("width", "height", "frames", "seconds", "steps")
 
 
-def settings_for(entry: ModelEntry, settings: Settings | None, base: Settings | None = None) -> Settings:
+# 大きさ(幅・高さ)の入力の無いテンプレートの手の表(#90。入力の画像から作る深度推定・背景除去など)。
+# メンテナが bench の記録(workflow.size_input が偽 = 実測に幅・高さが無い)か、テンプレートのノードで
+# 確かめたものだけを書く。ほかの利用者の提出では決めない(1 件の提出で、大きさの入力のあるモデルの判定を
+# どの PC でも変えないため)。新しいテンプレートは、最初の bench の記録(提出の PR の settings_missing)を
+# 見て足す(docs/accuracy.md「実測の使い方」)。画像・動画のモデルだけ(3d・音声は既定の設定に大きさが無い)。
+# 値は根拠の 1 行
+NO_SIZE_INPUT: dict[str, str] = {
+    "utility_birefnet_remove_background": (
+        "bench 2026-10-19 RTX 3070(measurements.json に幅・高さ無し)。ノードは LoadImage → BiRefNet だけで、"
+        "幅・高さの入力が無い"
+    ),
+    "utility_moge_depth_estimation": (
+        "bench 2026-10-27 RTX 3070・ComfyUI 0.40.0(#90 の PR #92)。大きさは ResizeImageMaskNode"
+        "(scale longer dimension 2048)で入力の画像から決まり、幅・高さの入力が無い"
+    ),
+}
+
+
+def no_size_input(entry: ModelEntry) -> bool:
+    """テンプレートに大きさ(幅・高さ)の入力が無いか(手の表 NO_SIZE_INPUT だけで決める。#90)。
+    判定(_prepare の設定)と contrib validate の settings_missing がこれを使う。
+    誰がいつ判定しても同じ結果になる。"""
+    return entry.modality in ("image", "video") and entry.id in NO_SIZE_INPUT
+
+
+def settings_for(
+    entry: ModelEntry, settings: Settings | None, base: Settings | None = None, *, sized: bool = True
+) -> Settings:
     """指定の無い項目を埋める。base(実測の設定)があればそれを、無ければ種類ごとの既定を使う。
-    0 以下の解像度・コマ数・長さは指定が無いものとして扱う。"""
+    0 以下の解像度・コマ数・長さは指定が無いものとして扱う。sized が False(大きさの入力の無いテンプレート。
+    no_size_input)なら、既定の大きさは入れない(指定があれば使う。#90)。"""
     src = base or DEFAULT_SETTINGS.get(entry.modality, Settings())
     merged = Settings(**vars(src))
+    if not sized and base is None:
+        merged.width = merged.height = None
     if settings is not None:
         for k, v in vars(settings).items():
             if v is None or (k in _POSITIVE and not v > 0):
@@ -1169,11 +1288,12 @@ def _prepare(
     gpu: Any = None,
 ) -> _Model:
     measurements = list(measurements)
+    sized = not no_size_input(entry)  # 大きさの入力があるか(手の表。#90)
     parts = components(entry)
     m = None if parts.unknown else pick_measurement(measurements, entry, s, gpu)
     if m is None:
-        return _Model(entry, c, None, 0.0, settings_for(entry, None), parts)
-    at = settings_for(entry, m.settings)
+        return _Model(entry, c, None, 0.0, settings_for(entry, None, sized=sized), parts)
+    at = settings_for(entry, m.settings, sized=sized)
     act_m = activation_gb(entry, at, c)
     est = need(parts, act_m, c).full
     delta = m.peak_vram_gb - est

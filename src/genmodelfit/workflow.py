@@ -574,6 +574,13 @@ def _size_nodes(api: dict[str, dict[str, Any]]) -> list[str]:
     ]
 
 
+def size_input(api: dict[str, dict[str, Any]]) -> bool:
+    """テンプレートに大きさ(幅・高さ)の入力があるか: 大きさを決めるノード(_size_nodes)に、値を書ける幅と高さが
+    あるか。無いテンプレート(入力の画像から作る深度推定・背景除去など)では、bench は設定に幅・高さを書かない。
+    判定と contrib はその記録で見分ける(estimate.no_size_input。#90)。"""
+    return any(_literal(api[nid], "width") and _literal(api[nid], "height") for nid in _size_nodes(api))
+
+
 FRAME_KEYS = ("length", "frames", "num_frames", "video_frames")
 SECONDS_KEYS = ("seconds", "duration", "audio_length")
 
@@ -642,9 +649,14 @@ def _first(api: dict[str, dict[str, Any]], keys: tuple[str, ...], nodes: list[st
 
 
 def effective_settings(api: dict[str, dict[str, Any]], precision: str | None = None) -> Settings:
-    """API 形式のワークフローから、実際に使う設定を読む。"""
+    """API 形式のワークフローから、実際に使う設定を読む。幅・高さは大きさの入力があるとき(size_input)だけ
+    書く(無いテンプレートの実測は大きさを持たない。estimate.no_size_input がそれで見分ける)。
+    枚数(batch_size)は大きさを決めるノード、無ければ名前に Latent を含むノード(音声の潜在など)から読む
+    (MoGe の batch_size のような処理の単位は枚数ではない。#90)。"""
     size = _size_nodes(api)
     latent = [nid for nid in size if "Latent" in api[nid]["class_type"]] or size
+    batch_nodes = latent or [nid for nid, n in api.items() if "Latent" in n["class_type"]]
+    sized = size_input(api)
 
     def num(v: Any, cast: type) -> Any:
         try:
@@ -652,10 +664,10 @@ def effective_settings(api: dict[str, dict[str, Any]], precision: str | None = N
         except (TypeError, ValueError):
             return None
 
-    batch = num(_first(api, ("batch_size",), latent or None), int) or 1
+    batch = num(_first(api, ("batch_size",), batch_nodes), int) or 1
     return Settings(
-        width=num(_first(api, ("width",), latent), int),
-        height=num(_first(api, ("height",), latent), int),
+        width=num(_first(api, ("width",), latent), int) if sized else None,
+        height=num(_first(api, ("height",), latent), int) if sized else None,
         frames=num(_first(api, FRAME_KEYS, latent), int),
         seconds=num(_first(api, SECONDS_KEYS), float),
         steps=num(_first(api, ("steps",)), int),

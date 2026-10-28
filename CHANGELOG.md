@@ -7,6 +7,83 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90). They run the same checks
+  as `contrib show` and `contrib validate` (all fields, the privacy checklist, the mechanical checks), refuse to share
+  when a privacy check is NG or the checks have errors (warnings and notices do not stop it), and print the URL of
+  GitHub's "new file" page under `data/contrib/<GPU>` with the file name and content filled in, plus a fallback: the
+  same page with only the name filled in, with the content printed to copy and paste (GitHub's upload page needs
+  write access, so it is not used). In a terminal they ask y/N (default No) before opening the browser; with `--json` or without a
+  terminal they only print the URLs. A URL longer than 8000 characters is not offered (fallback only).
+  `bench --share` without `--submission` writes the submission to `<cache>/submissions/<GPU>/<date>-<sha8>.json`.
+  genmodelfit itself still sends nothing. CONTRIBUTING now puts this easy path first; the git / fork path stays as
+  the alternative.
+
+### Changed
+
+- **Submissions are checked more robustly** (#90; about 60 crafted kinds of submissions in
+  `tests/test_contrib_robust.py`; each rule is one sentence in docs/schema.md "Rules of the submission pipeline"):
+  - A submission PR may only add files: the `Contrib` workflow fails on deleted / modified / renamed files under
+    `data/contrib`, on added files not named `data/contrib/<GPU>/<date>-<sha8>.json` (lowercase `.json`), and on PRs
+    that add no submission. `contrib validate <folder>` reports misplaced or non-`.json` files as the error `layout` and
+    exits 1 when there is no submission. A fixed resubmission is a new file; the maintainer removes the old one.
+  - New privacy errors in `note`: base64-like runs, 32+ hex digits, domain names, phone numbers, dotted MAC addresses,
+    obfuscated e-mail, 「製品番号」. `note` is limited to 500 characters (was 2000; bench truncates). A UTF-8 BOM and
+    duplicate JSON keys are refused with a clear message.
+  - `contrib_schema` 2 adds `measurement.files_fp`, the fingerprint of the model's files in the list when measured
+    (bench writes it for local measurements and submissions); a measurement whose fingerprint differs from the
+    current list is not used. Schema 1 stays valid.
+  - NVIDIA GPU names must fully match the name table; other names (e.g. `NVIDIA Graphics Device`) are kept as records
+    with `gpu_known: false` and never used for judging. A `vram_gb` that does not match the GPU's nominal VRAM
+    (desktop RTX 20–50, from NVIDIA's comparison page) is an error.
+  - `contrib aggregate`: `error` runs are counted (`n_error`) instead of becoming OOM rows; the step count is no longer
+    part of the key (matching already ignored it); submissions added by the same commit / PR count as one source
+    (`n_sources`; outliers are judged between sources; without git history each file counts on its own and the output
+    says so); rows whose OOM sources are at least their ok sources get `runs_evidence: false`.
+  - Notices for a submission made by a newer genmodelfit, a ComfyUI older than the template needs, or much newer than
+    the latest the list knows.
+  - Follow-ups after review: the bundled aggregate records each submission's source (`submissions: [{sha256,
+    source}]`), so `--check` and the test re-aggregate without git history (shallow clones, ci_local's WSL copy);
+    sources follow renames back to the first add; the nominal-VRAM check accepts what CUDA reports on Linux (6 GB as
+    5.80 GiB; range 0.95–1.03); the NVIDIA name table strips only known suffixes (Ti, SUPER, D, v2, Laptop GPU,
+    with Max-Q Design, Workstation Edition, OEM, a VRAM size the model has, …) once each; node names, 40-digit commits
+    and public domains (huggingface.co, github.com, …) no longer trip the privacy check; the paste fallback keeps the
+    local path outside the `---` lines; `contrib.yml` compares the merge commit with its first parent and refuses
+    links / submodules; `aggregate --check` errors on a missing folder and lists bundled rows whose `files_fp` no
+    longer matches.
+    Public domains count only when the host name ends with them; 32+ hex digits are caught again except exactly 40
+    (git commit) and 64 (sha256); padded base64 is caught from 16 characters; tests never run the real `nvidia-smi`
+    from bench.
+
+### Fixed
+
+- **Measurements of templates without a size input are now used** (#90). Templates that work from an input image
+  (depth estimation, background removal, MoGe, BiRefNet, …) have no width / height input, so the bench records no
+  size; judging used the image default (1024x1024), so such measurements never matched and were never used (the
+  bundled RTX 3070 BiRefNet measurement, and every community one). Templates without a size input are now listed in a
+  hand table checked by the maintainer (`estimate.NO_SIZE_INPUT`: BiRefNet background removal and MoGe depth
+  estimation, each with its evidence; never decided by community submissions), and when no size is given their
+  judging settings carry no size, so a size-less measurement matches. The working memory is still estimated at the
+  default size, so the estimated values do not change. `contrib validate` warns `settings_missing` only for models
+  not in the table, and gives the notice `batch_sizeless` for a model in the table with `batch` other than 1. The
+  bench writes a size only when the template has a size input (`workflow.size_input`). The bench no longer reads a `batch_size` outside the size / latent nodes as the
+  batch (MoGe's processing batch of 4 was recorded as `batch: 4`); the bundled RTX 3070 MoGe measurement is corrected
+  to `batch: 1` (calibration unchanged). A MoGe submission made by 0.10.1 still says `batch: 4` and does not match
+  (measure again, or make it again without `batch`).
+- **Merging a valid submission PR no longer breaks main's tests** (#90). The test required the bundled
+  `measurements_community.json` to equal the aggregate of all of `data/contrib`, but a submission PR may only change
+  `data/contrib` and the aggregate was a later maintainer step, so every merge turned main red. The aggregate is now
+  rebuilt when making a release (docs/release.md "Releasing later versions"; community measurements reach users only
+  through package releases): `contrib aggregate --output` records the content sha256 of the submissions it used in
+  a new top-level `submissions` list (older versions ignore it), and the test checks that every listed submission is
+  in `data/contrib` and that re-aggregating exactly those reproduces the file; submissions not yet listed are
+  allowed. New `contrib aggregate --check` lists them (exit code 1 if any).
+- **Tests no longer read the user's real cache** (#90): `tests/conftest.py` points `GENMODELFIT_CACHE_DIR` at an empty
+  folder for the whole session and for each test, so a local bench result no longer breaks the suite. Tests that
+  compare community data no longer assume an empty bundled aggregate. `tools/ci_local.py` shows
+  `contrib aggregate --check` as information (not a failure).
+
 ## [0.10.1] - 2026-10-26
 
 ### Changed
