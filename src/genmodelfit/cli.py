@@ -4041,8 +4041,9 @@ _JSON_FIELDS = (
 )
 
 _DETECT_HELP = (
-    "  None. The GPU and RAM are detected; --vram / --ram override them. GPU: NVIDIA via nvidia-smi;\n"
-    "  otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).\n"
+    "  Nothing to prepare. The GPU and RAM are detected; --vram / --ram override them. GPU: NVIDIA\n"
+    "  via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or\n"
+    "  system_profiler (macOS).\n"
 )
 
 _COMMON_HELP = (
@@ -4071,8 +4072,7 @@ Order: models that run, then Perfect/Good, then Marginal (faster mode first), of
 templates, popularity (rank among the same type and source), Score, id (--json puts
 auto-recommendable ones, gate: auto, before the levels). Score 0-100 is the memory headroom
 (100 up to 70% use; not speed). Rules: docs/scoring.md. Uncensored models and
-utility tools are hidden unless asked. The default output is a table (llmfit uses JSON by
-default); add --json for apps.
+utility tools are hidden unless asked. The output is a table; add --json for apps.
 
 """
     + _COMMON_HELP.format(zero="", one="")
@@ -4085,7 +4085,11 @@ AGENT USAGE:
 
 """
     + _JSON_FIELDS,
-    "fit": """Judge every model for this PC (too tight ones included), in the same order as recommend.
+    "fit": """Judge the models for this PC and show them in one table (not cut to the top few like recommend).
+By default only the models that run (--fit runnable: perfect, good, marginal), without utility
+tools and models with files of unknown license. --all also shows too_tight and unknown ones, utility
+tools and unknown licenses; uncensored models need --uncensored (with or without --all).
+Order: type, then fit level, official templates, popularity, Score (--sort changes it).
 
 """
     + _COMMON_HELP.format(zero="", one="")
@@ -4116,7 +4120,7 @@ with counts. The use names are what --task accepts.
 """
     + _COMMON_HELP.format(zero="", one="").replace(
         _DETECT_HELP,
-        "  None. The PC is not judged.\n",
+        "  Nothing to prepare. The PC is not judged.\n",
     )
     + """
 AGENT USAGE:
@@ -4125,14 +4129,15 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, database, filters: {content}, types: [{ modality,
   label, label_ja, models, workflows, uses: {use: workflows} }], uses: [{ use, label,
-  label_ja, tasks }], aliases }. Details: docs/schema.md""",
+  label_ja, tasks }], aliases }
+  Details: docs/schema.md""",
     "info": """Show one model: files, licenses, estimate, limits on this PC, the gate checks, and the
 other workflows that use the same model.
 An exact id always matches (uncensored included). Otherwise a part of the id or name is
 searched within --content; several matches are an error that lists the candidates.
 
 """
-    + _COMMON_HELP.format(zero="", one=": no such model, several matches (candidates listed), or")
+    + _COMMON_HELP.format(zero="", one=": no such model or several matches (candidates listed); other errors")
     + """
 AGENT USAGE:
   genmodelfit info image_z_image_turbo_int8 --json
@@ -4140,14 +4145,17 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
   gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
-  memory_required_gb, disk_size_gb, auto, matched}] } / on error: { error, candidates? }.
+  memory_required_gb, disk_size_gb, auto, matched}] }
+  On error: { error, candidates? }.
   Details: docs/schema.md""",
     "system": """Show this PC (GPU, RAM, free disk) and whether the model list in use is still fresh
 (Data: source, HEAD check dates, expired / valid until, auto-recommendable count).
 
 """
     + _COMMON_HELP.format(
-        zero=" (also when the list has expired: see Data / database.status.expired)", one=""
+        zero=" (also when the list has expired: see Data / database.status.expired;"
+        " run genmodelfit update --from-release to renew it)",
+        one="",
     )
     + """
 AGENT USAGE:
@@ -4157,10 +4165,20 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, system, database: { origin, generated_at, models,
   measurements, status: { source, generated_at, heads_checked_oldest, heads_checked_newest,
   max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
-  checked_at } } }. Details: docs/schema.md""",
-    "update": """Rebuild the model list from upstream, redo the HEAD checks (--heads-only), re-apply only the
-app fields and the hand-added models (--fields-only), or take in the signed list published by this
-project (--from-release).
+  checked_at } } }
+  Details: docs/schema.md""",
+    "update": """Get a newer model list.
+Users: run `genmodelfit update --from-release`. It takes in the signed latest list published by this
+project (only db.json and db.json.sig are downloaded) and checks the signature; the other commands
+then use it instead of the bundled list (--no-cache goes back to the bundled one).
+Without options, update rebuilds the whole list from upstream (ComfyUI templates, the Hugging Face
+Hub, a HEAD request to every download URL). That is for maintainers: it is slow (many requests;
+Hugging Face rate limits make it wait, see --rate-limit-budget). Maintainers can also redo only the
+HEAD checks (--heads-only), re-apply only the app fields and the hand-added models (--fields-only),
+or re-read only the file headers (--inspect-only).
+The policy options (--comfyui-version, --max-head-age-days, ...) only change the
+auto-recommendable count printed at the end. --db / --no-cache choose the list that --heads-only,
+--fields-only and --inspect-only start from.
 
 PRECONDITIONS:
   Network access.
@@ -4220,8 +4238,9 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, old, new, old_label, new_label, policy, summary, added,
   removed, license_changes, auto_changes, size_changes, precision_changes, newly_uncensored,
   head_failures, unauthorized, partial_counts, stats, classification, field_changes,
-  model_changes, top_changes, warnings }. With no fetched list: the same keys, empty, plus
-  "note". Details: docs/schema.md""",
+  model_changes, top_changes, warnings }
+  With no fetched list: the same keys, empty, plus "note".
+  Details: docs/schema.md""",
     "download": """Download the files of a model for this PC (all files of one workflow), checking sha256.
 
 MODEL is a model name (as in the tables), a workflow id, or a part of either (like info).
@@ -4285,7 +4304,7 @@ AGENT USAGE:
   disk_free_bytes, disk_needed_bytes, blocked, blocked_codes, warnings, alternatives, ok },
   result: { downloaded, resumed,
   restarted, skipped, bytes_downloaded, seconds, files } | null, destination_from,
-  comfyui_dir, extra_model_paths, destination_candidates, error? }.
+  comfyui_dir, extra_model_paths, destination_candidates, error? }
   Details: docs/schema.md""",
     "config": """Show or change the settings of the genmodelfit command line (the Python API never reads
 them).
@@ -4320,15 +4339,74 @@ AGENT USAGE:
 
   JSON (--json): { genmodelfit, command, action, path, settings: { comfyui-dir: { value, from },
   lang: { value, from } }, warnings } for show; { ..., action, path, key, value } for set,
-  { ..., key, removed } for unset, { ..., path } for path. Details: docs/schema.md""",
+  { ..., key, removed } for unset, { ..., path } for path.
+  Details: docs/schema.md""",
+    "gate": """Count how many models in the list can be recommended automatically (Verified, "auto" in
+JSON) and why the others are held. The checks are the same as in info (one model) and in the
+"auto" / held_reasons fields of recommend --json.
+
+How to read the output: the first line is the ComfyUI version the checks used; then the number of
+models, how many are auto and how many held. The table has one row per check: "failing" is how many
+models fail that check, "first-failing" how many models fail it as their first failed check (the
+check to fix first). --only-auto / --only-held also list the model ids (held ones with the first
+reason). The checks and the allowlist: docs/gate.md
+
+"""
+    + _COMMON_HELP.format(zero="", one=": an empty --license-allowlist").replace(
+        _DETECT_HELP, "  Nothing to prepare. The PC is not judged.\n"
+    )
+    + """
+AGENT USAGE:
+  genmodelfit gate
+  genmodelfit gate -m video --only-held
+  genmodelfit gate --comfyui-version 0.40.0 --json
+
+  JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
+  failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
+  Details: docs/schema.md""",
+    "bench": """Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
+TEMPLATE is the workflow id from the list (as in info). Your saved results are used when this PC
+is judged, and you can share them (--share; CONTRIBUTING.md "The easy way").
+
+PRECONDITIONS:
+  A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
+  genmodelfit download first). The GPU must be free: when another program uses it, or its free
+  memory cannot be checked (nvidia-smi), bench refuses unless --force. Measure on a ComfyUI only you
+  use; --free unloads its models first.
+
+SIDE EFFECTS:
+  Network: only the ComfyUI at --url (it sends one job and reads the results), plus the official
+  template file from GitHub when that ComfyUI does not have it. Nothing about this PC is sent
+  elsewhere; --share only prints a URL and opens your browser if you answer y.
+  Writes the result JSON to <cache>/measurements/ (or --output). Failed results and results under
+  non-standard conditions are only shown unless --save-failed / --save-nonstandard / --output.
+  --submission / --share also write a submission JSON.
+  Settings you leave out (--width, --height, --frames, --length, --steps) stay as in the template.
+
+EXIT CODES:
+  0  Success
+  1  Error: ComfyUI cannot be reached, the GPU is busy (without --force), the template or a file is
+     missing, the run failed (out of memory or another error), timeout, Ctrl-C (our job is
+     cancelled first)
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+  genmodelfit bench video_wan2_2_5B_ti2v --url http://127.0.0.1:8188 --resolution 640x640 --json
+
+  JSON (--json): { genmodelfit, command, measurement, saved_to, not_saved?, workflow_source,
+  warnings, failed?, submission? }
+  Details: docs/schema.md""",
 }
 
 
 # --- 日本語の説明(#76。英語の _HELP_EN と同じ内容を日本語だけで書く。JSON の鍵・コマンドは同じ) ---
 
 _DETECT_HELP_JA = (
-    "  なし。GPU とメモリは調べて決める(--vram / --ram で置き換える)。GPU は NVIDIA なら nvidia-smi、\n"
-    "  ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・system_profiler(macOS)で調べる。\n"
+    "  用意するものは無い。GPU とメモリは調べて決める(--vram / --ram で置き換える)。\n"
+    "  GPU は NVIDIA なら nvidia-smi、ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・\n"
+    "  system_profiler(macOS)で調べる。\n"
 )
 
 _COMMON_HELP_JA = (
@@ -4364,8 +4442,7 @@ _HELP_JA = {
 人気(同じ種類・同じ出どころの中の順位)→ Score → ID
 (--json は自動でおすすめに出せるもの(gate: auto)を段階より先にする)。
 Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さではない)。決まりは docs/scoring.md。
-無検閲のモデルと補助ツールは、指定しなければ出さない。既定の出力は表(llmfit の既定は JSON)。
-アプリは --json を付ける。
+無検閲のモデルと補助ツールは、指定しなければ出さない。出力は表。アプリは --json を付ける。
 
 """
     + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA)
@@ -4378,7 +4455,11 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
 
 """
     + _JSON_FIELDS_JA,
-    "fit": """すべてのモデルをこの PC で判定して表にする(動かないものも。並べ方は recommend と同じ)。
+    "fit": """この PC でモデルを判定し、1 つの表にする(recommend のように上位だけに絞らない)。
+既定は動くもの(--fit runnable: perfect・good・marginal)だけで、補助ツールとライセンスの分からない
+ファイルを含むモデルは出さない。--all で too_tight・判定できないもの・補助ツール・ライセンス不明も出す。
+無検閲のモデルは --uncensored で出す(--all だけでは出ない)。
+並べ方: 種類 → 段階 → 公式のテンプレート → 人気 → Score(--sort で変える)。
 
 """
     + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA)
@@ -4410,7 +4491,9 @@ Score 0〜100 はメモリの余裕(使用率 70% までは 100。速さでは�
 用途の名前は --task に使う。
 
 """
-    + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA).replace(_DETECT_HELP_JA, "  なし。PC は判定しない。\n")
+    + _COMMON_HELP_JA.format(zero="", one=_ONE_DB_JA).replace(
+        _DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n"
+    )
     + """
 使い方の例(エージェント・アプリ向け):
   genmodelfit types
@@ -4437,13 +4520,16 @@ ID がそのまま合えば必ずそのモデル(無検閲も)。合わなけれ
   JSON (--json): { genmodelfit, command, system, database, model: ModelEntry, estimate,
   gate, measurements, group_key, same_model: [{id, name, tasks, use, precision, fit_level,
   memory_required_gb, disk_size_gb, auto, matched}] }
-  失敗のときは { error, candidates? }。詳しくは docs/schema.md""",
+  失敗のときは { error, candidates? }。
+  詳しくは docs/schema.md""",
     "system": """この PC(GPU・メモリ・ディスクの空き)と、使っている一覧がまだ新しいか(一覧の欄: 出どころ・
 HEAD の確認の日付・期限切れか・いつまで有効か・自動のおすすめの数)を出す。
 
 """
     + _COMMON_HELP_JA.format(
-        zero="(一覧が期限切れのときも。一覧の欄・database.status.expired を見る)", one=_ONE_DB_JA
+        zero="(一覧が期限切れのときも。一覧の欄・database.status.expired を見る。"
+        "新しくするには genmodelfit update --from-release)",
+        one=_ONE_DB_JA,
     )
     + """
 使い方の例(エージェント・アプリ向け):
@@ -4455,9 +4541,16 @@ HEAD の確認の日付・期限切れか・いつまで有効か・自動のお
   max_head_age_days, expired, expires_at, models, auto_count, auto_count_if_fresh,
   checked_at } } }
   詳しくは docs/schema.md""",
-    "update": """一覧を上流から作り直す。HEAD の確認だけをやり直す(--heads-only)、アプリ向けの項目と手で足した
-モデルだけを当て直す(--fields-only)、このプロジェクトが配る署名つきの一覧を取り込む(--from-release)
-こともできる。
+    "update": """新しい一覧を取る。
+利用者は `genmodelfit update --from-release` を実行する。このプロジェクトが配る署名つきの最新の一覧を
+取り込み(落とすのは db.json と db.json.sig だけ)、署名を確かめる。ほかのコマンドは、それからは同梱の
+一覧の代わりにこれを使う(--no-cache で同梱に戻る)。
+オプションなしの update は、一覧を上流(ComfyUI のテンプレート・Hugging Face Hub・すべてのダウンロードの
+URL への HEAD)から作り直す。これは保守する人向けで、時間がかかる(問い合わせが多く、Hugging Face の
+上限で待つ。--rate-limit-budget を見る)。保守する人は、HEAD の確認だけ(--heads-only)、アプリ向けの
+項目と手で足したモデルだけ(--fields-only)、ファイルの見出しだけ(--inspect-only)をやり直すこともできる。
+方針のオプション(--comfyui-version・--max-head-age-days など)が変えるのは、最後に出す自動のおすすめの
+数だけ。--db / --no-cache は、--heads-only・--fields-only・--inspect-only が元にする一覧を選ぶ。
 
 前提:
   通信できること。
@@ -4516,7 +4609,8 @@ ID。-n を付けなければ行の上限は無い(--all でなければ節ご�
   removed, license_changes, auto_changes, size_changes, precision_changes, newly_uncensored,
   head_failures, unauthorized, partial_counts, stats, classification, field_changes,
   model_changes, top_changes, warnings }
-  取ってきた一覧が無いときは、同じ鍵が空で "note" が付く。詳しくは docs/schema.md""",
+  取ってきた一覧が無いときは、同じ鍵が空で "note" が付く。
+  詳しくは docs/schema.md""",
     "download": """モデルのファイルをこの PC 向けに落とす(1 つのワークフローの全部のファイル。
 sha256 で確かめる)。
 
@@ -4608,7 +4702,62 @@ extra_model_paths.yaml に is_default の節があれば、そこに置く。Com
 
   JSON (--json): show は { genmodelfit, command, action, path, settings: { comfyui-dir: { value,
   from }, lang: { value, from } }, warnings }。set は { ..., action, path, key, value }、unset は
-  { ..., key, removed }、path は { ..., path }。詳しくは docs/schema.md""",
+  { ..., key, removed }、path は { ..., path }。
+  詳しくは docs/schema.md""",
+    "gate": """一覧のうち、自動でおすすめに出せる(Verified。JSON では "auto")モデルの数と、ほかが保留になる
+理由を数える。条件は info(1 つのモデル)や recommend --json の "auto"・held_reasons と同じ。
+
+出力の読み方: 1 行目は条件に使った ComfyUI の版。次にモデルの数と、出せる数・保留の数。表は条件ごとに
+1 行で、「落ちた数」はその条件に通らないモデルの数、「最初に落ちた数」はそれが最初に落ちた条件である
+モデルの数(先に直すところ)。--only-auto / --only-held はモデルの ID も並べる(保留は最初の理由つき)。
+条件と許可リストは docs/gate.md
+
+"""
+    + _COMMON_HELP_JA.format(zero="", one=": 壊れた --db のファイル、空の --license-allowlist など").replace(
+        _DETECT_HELP_JA, "  用意するものは無い。PC は判定しない。\n"
+    )
+    + """
+使い方の例(エージェント・アプリ向け):
+  genmodelfit gate
+  genmodelfit gate -m video --only-held
+  genmodelfit gate --comfyui-version 0.40.0 --json
+
+  JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
+  failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
+  詳しくは docs/schema.md""",
+    "bench": """動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
+TEMPLATE は一覧のワークフローの ID(info と同じ)。保存した結果はこの PC の判定に使い、送ることも
+できる(--share。CONTRIBUTING.md「かんたんな送り方」)。
+
+前提:
+  --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
+  (先に genmodelfit download で落とす)。GPU が空いていること: ほかのプログラムが使っている、または
+  空きを確かめられない(nvidia-smi)ときは、--force が無ければ測らない。自分だけが使う ComfyUI で測る。
+  --free で先にそのモデルを解放する。
+
+副作用:
+  通信: --url の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。その ComfyUI にテンプレートが無ければ、
+  GitHub から公式のテンプレートのファイルを読む。この PC のことはほかへ送らない。--share は URL を
+  出し、y と答えたときだけブラウザを開く。
+  結果の JSON を <cache>/measurements/(か --output)に書く。失敗した結果と標準でない条件の結果は、
+  --save-failed・--save-nonstandard・--output が無ければ表示だけ。--submission・--share は提出用の
+  JSON も書く。
+  省いた設定(--width・--height・--frames・--length・--steps)はテンプレートのまま。
+
+終了コード:
+  0  成功
+  1  失敗: ComfyUI につながらない、GPU が使われている(--force なし)、テンプレートやファイルが無い、
+     実行の失敗(メモリ不足など)、時間切れ、Ctrl-C(送った自分の仕事を先に取り消す)
+  2  使い方の誤り
+
+使い方の例(エージェント・アプリ向け):
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188
+  genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+  genmodelfit bench video_wan2_2_5B_ti2v --url http://127.0.0.1:8188 --resolution 640x640 --json
+
+  JSON (--json): { genmodelfit, command, measurement, saved_to, not_saved?, workflow_source,
+  warnings, failed?, submission? }
+  詳しくは docs/schema.md""",
 }
 
 
@@ -4829,6 +4978,59 @@ def _examples(name: str) -> str:
     return "\n".join(lines)
 
 
+def _doc(action: argparse.Action, ja: str | None = None, en: str | None = None) -> argparse.Action:
+    """argparse の既定(default)が None のオプションに、利用者向けの既定の言い方を付ける。
+    docs/commands.md の「既定」の欄に出す(動きは変えない。tools/cli_reference.py が読む)。"""
+    if en is not None:
+        action.doc_default = tr(ja or en, en)  # type: ignore[attr-defined]
+    return action
+
+
+def _tune(
+    parser: argparse.ArgumentParser,
+    option: str,
+    *,
+    help: str | None = None,
+    default: tuple[str, str] | None = None,
+    hide: bool = False,
+) -> None:
+    """親(parents)から受け継いだオプションの説明・既定の言い方を、このコマンドだけ変える。
+    親の Action はほかのコマンドと共有なので、写しを作って差し替える(引数の解釈は変わらない)。
+    hide は --help と文書から隠す(受け付けるのは前と同じ。前からのスクリプトを壊さないため)。"""
+    import copy
+
+    old = parser._option_string_actions[option]
+    new = copy.copy(old)
+    if help is not None:
+        new.help = help
+    if default is not None:
+        new.doc_default = tr(*default)  # type: ignore[attr-defined]
+    if hide:
+        new.help = argparse.SUPPRESS
+    parser._actions[parser._actions.index(old)] = new
+    for name in old.option_strings:
+        parser._option_string_actions[name] = new
+    for group in [*parser._action_groups, *parser._mutually_exclusive_groups]:
+        acts = group._group_actions
+        if old in acts:
+            acts[acts.index(old)] = new
+
+
+def _no_effect(parser: argparse.ArgumentParser, *options: str) -> None:
+    """このコマンドでは何もしないオプションを隠し、そう書いた 1 行を --help の最後に足す。"""
+    from .table import wrap_text
+
+    for o in options:
+        _tune(parser, o, hide=True)
+    text = tr(
+        f"{'・'.join(options)} も受け付けますが、このコマンドでは何もしません(前からのスクリプトのため)。",
+        f"{', '.join(options)} {'are' if len(options) > 1 else 'is'} also accepted but"
+        f" {'have' if len(options) > 1 else 'has'} no effect in this command (kept for older scripts).",
+    )
+    line = "\n".join(wrap_text(text, _help_width(), space_room=False))
+    parser.epilog = f"{parser.epilog}\n\n{line}" if parser.epilog else line
+
+
 def build_parser() -> argparse.ArgumentParser:
     """引数の解釈。説明の文は今の言語で作る(main は --lang を先に読んでから呼ぶ。#73)。"""
     lang = argparse.ArgumentParser(add_help=False)
@@ -4844,19 +5046,42 @@ def build_parser() -> argparse.ArgumentParser:
     json_help = tr("JSON で出す", "output JSON")
     common = argparse.ArgumentParser(add_help=False, parents=[lang])
     common.add_argument("--json", action="store_true", help=json_help)
-    common.add_argument(
-        "--vram",
-        type=_non_negative_float,
-        metavar="GB",
-        help=tr("GPU の VRAM を上書きする(例: 8)", "override the GPU VRAM (e.g. 8)"),
+    _doc(
+        common.add_argument(
+            "--vram",
+            type=_non_negative_float,
+            metavar="GB",
+            help=tr(
+                "GPU の VRAM を GB(GiB)で決める(例: 8。0 なら GPU なしとして判定)。"
+                "別の PC として判定するときに",
+                "judge with this much GPU VRAM in GB (GiB), e.g. 8 (0: no GPU); to judge another PC",
+            ),
+        ),
+        "この PC から調べる",
+        "detected on this PC",
     )
-    common.add_argument(
-        "--ram",
-        type=_positive_float,
-        metavar="GB",
-        help=tr("メインメモリを上書きする(例: 32)", "override the system RAM (e.g. 32)"),
+    _doc(
+        common.add_argument(
+            "--ram",
+            type=_positive_float,
+            metavar="GB",
+            help=tr(
+                "メインメモリを GB(GiB)で決める(例: 32)。別の PC として判定するときに",
+                "judge with this much system RAM in GB (GiB), e.g. 32; to judge another PC",
+            ),
+        ),
+        "この PC から調べる",
+        "detected on this PC",
     )
-    common.add_argument("--db", metavar="PATH", help=tr("一覧のファイルを指定する", "model list file to use"))
+    _doc(
+        common.add_argument(
+            "--db",
+            metavar="PATH",
+            help=tr("この一覧のファイル(db.json)を使う", "use this model list file (db.json)"),
+        ),
+        "update で取った一覧、無ければ同梱の一覧",
+        "the list fetched by update, else the bundled list",
+    )
     common.add_argument(
         "--no-cache",
         action="store_true",
@@ -4874,14 +5099,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TYPE[,TYPE]",
         help=tr("種類で絞る(カンマ区切り可): ", "filter by type (comma-separated): ") + ", ".join(MODALITIES),
     )
-    filt.add_argument(
-        "--content",
-        choices=CONTENT_FILTERS,
-        default=None,
-        help=tr(
-            "sfw / uncensored(無検閲だけ)/ all で絞る。既定は sfw(無検閲も出すなら --uncensored)",
-            "sfw / uncensored (only uncensored) / all. Default sfw (--uncensored also shows uncensored)",
-        ),
+    content_help = tr(
+        "内容の印で絞る: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。--uncensored と同じ)。"
+        "--uncensored と一緒に使えるのは all だけ。略さずに書く",
+        "filter by the content mark: sfw (default) / uncensored (only uncensored) / all (both; same as"
+        " --uncensored). Only all can be combined with --uncensored. Write it in full",
+    )
+    _doc(
+        filt.add_argument("--content", choices=CONTENT_FILTERS, default=None, help=content_help), "sfw", "sfw"
     )
 
     filt.add_argument(
@@ -4892,33 +5117,93 @@ def build_parser() -> argparse.ArgumentParser:
             "include uncensored models (same as --content all)",
         ),
     )
-    filt.add_argument("--width", type=_positive_int)
-    filt.add_argument("--height", type=_positive_int)
-    filt.add_argument("--frames", type=_positive_int, help=tr("動画のコマ数", "video frames"))
-    filt.add_argument(
-        "--length", type=_positive_float, metavar="SEC", help=tr("音声の長さ(秒)", "audio length (seconds)")
-    )
-    filt.add_argument(
-        "--precision",
-        help=tr(
-            "本体の精度を換算する(例: fp8。元の精度が分かるときだけ)",
-            "convert the weights to this precision (e.g. fp8; only when the original precision is known)",
+    from .estimate import DEFAULT_SETTINGS, PRECISION_BYTES
+
+    def per_type(key: str, unit_ja: str = "", unit_en: str = "") -> tuple[str, str]:
+        vals = [(m, getattr(s, key)) for m, s in DEFAULT_SETTINGS.items() if getattr(s, key)]
+        return (
+            "種類ごと: " + "、".join(f"{m} {v:g}{unit_ja}" for m, v in vals),
+            "by type: " + ", ".join(f"{m} {v:g}{unit_en}" for m, v in vals),
+        )
+
+    _doc(
+        filt.add_argument(
+            "--width",
+            type=_positive_int,
+            metavar="PX",
+            help=tr(
+                "画像・動画の幅(ピクセル)で判定する。省いた設定は種類ごとの既定",
+                "judge images / videos at this width in pixels; settings left out use the defaults by type",
+            ),
         ),
+        *per_type("width"),
+    )
+    _doc(
+        filt.add_argument(
+            "--height",
+            type=_positive_int,
+            metavar="PX",
+            help=tr("画像・動画の高さ(ピクセル)で判定する", "judge images / videos at this height in pixels"),
+        ),
+        *per_type("height"),
+    )
+    _doc(
+        filt.add_argument(
+            "--frames",
+            type=_positive_int,
+            metavar="N",
+            help=tr("動画のコマ数で判定する", "judge videos at this number of frames"),
+        ),
+        *per_type("frames"),
+    )
+    _doc(
+        filt.add_argument(
+            "--length",
+            type=_positive_float,
+            metavar="SEC",
+            help=tr(
+                "音楽・効果音・読み上げの長さ(秒)で判定する",
+                "judge music / sound effects / speech at this length in seconds",
+            ),
+        ),
+        *per_type("seconds", " 秒", " s"),
+    )
+    _doc(
+        filt.add_argument(
+            "--precision",
+            metavar="PREC",
+            help=tr(
+                "見積もりで本体の重みをこの精度に換算する("
+                + "・".join(PRECISION_BYTES)
+                + "。元の精度が分かるときだけ)。download の --precision(落とすワークフローを選ぶ)とは別",
+                "estimate as if the weights were converted to this precision ("
+                + ", ".join(PRECISION_BYTES)
+                + "; only when the original precision is known). Not the same as download --precision,"
+                " which picks the workflow to download",
+            ),
+        ),
+        "一覧にある精度のまま",
+        "the precision in the list",
     )
     filt.add_argument(
-        "--limit", "-n", type=_positive_int, help=tr("出す件数(1 以上)", "number of rows to show (1 or more)")
+        "--limit",
+        "-n",
+        type=_positive_int,
+        metavar="N",
+        help=tr("出す行の数(1 以上)", "number of rows to show (1 or more)"),
     )
     filt.add_argument(
         "--limits",
         action="store_true",
         help=tr(
-            "この PC で good になる最大の解像度・長さも出す(JSON の limits)",
-            "also show the largest resolution / length that is good on this PC (limits in JSON)",
+            "この PC の GPU で逃がさずに good になる最大の解像度・コマ数・長さも出す(JSON の limits)",
+            "also show the largest resolution / frames / length that is good on this PC's GPU without"
+            " offloading (limits in JSON)",
         ),
     )
 
     gate = argparse.ArgumentParser(add_help=False)
-    gate.add_argument(
+    allow = gate.add_argument(
         "--license-allowlist",
         metavar="LIST|FILE",
         help=tr(
@@ -4928,7 +5213,8 @@ def build_parser() -> argparse.ArgumentParser:
             " Default: docs/gate.md",
         ),
     )
-    gate.add_argument(
+    _doc(allow, "docs/gate.md の許可リスト", "the allowlist in docs/gate.md")
+    cver = gate.add_argument(
         "--comfyui-version",
         metavar="VER",
         help=tr(
@@ -4937,6 +5223,7 @@ def build_parser() -> argparse.ArgumentParser:
             " (default: the latest release recorded by update)",
         ),
     )
+    _doc(cver, "一覧が記録した最新のリリース", "the latest release recorded in the list")
     gate.add_argument(
         "--max-head-age-days",
         type=_head_age,
@@ -5002,8 +5289,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         [common, gate],
     )
-    sp.add_argument(
-        "--disk-path", help=tr("空きを調べる場所(既定はホーム)", "where to check free disk (default: home)")
+    _doc(
+        sp.add_argument(
+            "--disk-path",
+            metavar="PATH",
+            help=tr("ディスクの空きを調べる場所(フォルダ)", "the folder whose disk's free space is shown"),
+        ),
+        "ホームのフォルダ",
+        "your home folder",
     )
     sp.add_argument(
         "--all-gpus",
@@ -5094,6 +5387,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_recommend)  # 既定の 10 件・marginal は cmd_recommend で決める(親の引数は共有)
+    _tune(sp, "--limit", default=("種類ごとに 3(-m・--task があれば 10)", "3 per type (10 with -m / --task)"))
+    _tune(sp, "--min-fit", default=("marginal", "marginal"))
 
     listing = argparse.ArgumentParser(add_help=False)
     listing.add_argument(
@@ -5133,6 +5428,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--include-tools", action="store_true", help=tools_help)
     sp.set_defaults(func=cmd_fit)
+    _tune(sp, "--limit", default=("全部", "all"))
+    _tune(sp, "--fit", default=("runnable(--all なら all)", "runnable (all with --all)"))
 
     sp = sub_parser(
         "search",
@@ -5150,6 +5447,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_search)
+    _tune(sp, "--limit", default=("全部", "all"))
+    _tune(sp, "--fit", default=("すべての段階", "every level"))
 
     sp = sub.add_parser(
         "types",
@@ -5161,7 +5460,21 @@ def build_parser() -> argparse.ArgumentParser:
         description=_help("types"),
         formatter_class=_HelpFormatter,
     )
-    sp.add_argument("--content", choices=CONTENT_FILTERS, default=None)
+    _doc(
+        sp.add_argument(
+            "--content",
+            choices=CONTENT_FILTERS,
+            default=None,
+            help=tr(
+                "数えるモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方。--uncensored と同じ)。"
+                "略さずに書く",
+                "which content marks to count: sfw (default) / uncensored (only uncensored) / all"
+                " (both; same as --uncensored). Write it in full",
+            ),
+        ),
+        "sfw",
+        "sfw",
+    )
     sp.add_argument(
         "--uncensored",
         action="store_true",
@@ -5171,13 +5484,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_types)
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub_parser("info", tr("1 つのモデルの詳細", "details of one model"), [common, filt, gate])
-    sp.add_argument("model", help=tr("モデルの ID または名前の一部", "model id, or a part of the id or name"))
+    sp.add_argument(
+        "model",
+        help=tr(
+            "モデルの名前(表の Model)・ワークフローの ID・そのどちらかの一部",
+            "model name (the Model column), workflow id, or a part of either",
+        ),
+    )
     sp.set_defaults(func=cmd_info)
+    _no_effect(sp, "--modality", "--limit", "--limits")
 
     sp = sub_parser(
-        "update", tr("一覧を上流から作り直す", "rebuild the model list from upstream"), [common, gate]
+        "update",
+        tr(
+            "新しい一覧を取る(利用者は --from-release。オプションなしは上流から作り直す)",
+            "get a newer model list (users: --from-release; without options it rebuilds from upstream)",
+        ),
+        [common, gate],
     )
     sp.add_argument(
         "--offline-sources",
@@ -5232,10 +5558,17 @@ def build_parser() -> argparse.ArgumentParser:
             " use only the cached headers and repository precision",
         ),
     )
-    sp.add_argument(
-        "--output",
-        metavar="PATH",
-        help=tr("書き出し先(既定はキャッシュ)", "where to write (default: the cache)"),
+    _doc(
+        sp.add_argument(
+            "--output",
+            metavar="PATH",
+            help=tr(
+                "一覧の書き出し先(既定はキャッシュの db.json)",
+                "where to write the list (default: db.json in the cache)",
+            ),
+        ),
+        "キャッシュの db.json",
+        "db.json in the cache",
     )
     sp.add_argument(
         "--from-release",
@@ -5273,7 +5606,27 @@ def build_parser() -> argparse.ArgumentParser:
             " stops when exceeded",
         ),
     )
+    sp._actions[-1].doc_default = "900"  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_update)
+    only_with = tr(
+        "(--heads-only・--fields-only・--inspect-only のときだけ使う)",
+        " (used only with --heads-only, --fields-only or --inspect-only)",
+    )
+    _tune(
+        sp,
+        "--db",
+        help=tr("元にする一覧のファイル(db.json)", "the list file (db.json) to start from") + only_with,
+    )
+    _tune(
+        sp,
+        "--no-cache",
+        help=tr(
+            "update で取った一覧ではなく、同梱の一覧を元にする",
+            "start from the bundled list, not the one fetched by update",
+        )
+        + only_with,
+    )
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub_parser(
         "download",
@@ -5290,13 +5643,21 @@ def build_parser() -> argparse.ArgumentParser:
             "model name (the Model column), workflow id, or a part of either",
         ),
     )
-    sp.add_argument(
-        "--precision",
-        metavar="PREC",
-        help=tr(
-            "精度を指定する(例: fp8 / bf16 / int8 / gguf-q8_0)",
-            "precision to use (e.g. fp8 / bf16 / int8 / gguf-q8_0)",
+    _doc(
+        sp.add_argument(
+            "--precision",
+            metavar="PREC",
+            help=tr(
+                "同じモデルのワークフローのうち、この精度のものを落とす(例: fp8 / bf16 / int8 / gguf-q8_0。"
+                "あるものは表の Prec・info で分かり、無ければ誤りにして並べる)。recommend などの --precision"
+                "(見積もりの換算)とは別",
+                "download the workflow of the same model that has this precision (e.g. fp8 / bf16 / int8 /"
+                " gguf-q8_0; the Prec column and info show which exist, and an unknown one is an error that"
+                " lists them). Not the same as --precision of recommend etc. (which converts the estimate)",
+            ),
         ),
+        "この PC で逃がさずに動く一番高い精度",
+        "the highest precision that runs on this PC without offloading",
     )
     sp.add_argument(
         "--budget",
@@ -5320,20 +5681,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         metavar="DIR",
         help=tr(
-            "ComfyUI の外の置き場所(ComfyUI の models と同じ並びで置く)",
-            "a destination outside ComfyUI (same layout as ComfyUI's models)",
+            "ComfyUI の外の置き場所。ファイルは <DIR>/<folder>/<file> に置く"
+            "(folder は diffusion_models・vae など。ComfyUI の models と同じ並びなので、"
+            "ComfyUI の models のフォルダそのものを渡してもよい)",
+            "a destination outside ComfyUI; files go to <DIR>/<folder>/<file> (folder: diffusion_models,"
+            " vae, ...; the same layout as ComfyUI's models folder, so passing that models folder itself"
+            " also works)",
         ),
     )
     where.add_argument(
         "--comfyui-dir",
         metavar="DIR",
         help=tr(
-            "ComfyUI のフォルダ。models/<diffusion_models など>/ に置く(既定は環境変数"
+            "ComfyUI のフォルダ。ファイルは <DIR>/models/<folder>/<file> に置く(既定は環境変数"
             " GENMODELFIT_COMFYUI_DIR、genmodelfit config の comfyui-dir、自動で見つけたもの)",
-            "the ComfyUI folder; files go to models/<diffusion_models etc.>/"
+            "the ComfyUI folder; files go to <DIR>/models/<folder>/<file>"
             " (default: $GENMODELFIT_COMFYUI_DIR, then comfyui-dir in genmodelfit config, then found"
             " automatically)",
         ),
+    )
+    _doc(
+        where._group_actions[0], "なし(--comfyui-dir の決め方で決める)", "none (decided as for --comfyui-dir)"
+    )
+    _doc(
+        where._group_actions[1],
+        "GENMODELFIT_COMFYUI_DIR → config の comfyui-dir → 自動で見つけたもの",
+        "GENMODELFIT_COMFYUI_DIR, then config, then found automatically",
     )
     sp.add_argument(
         "--yes",
@@ -5376,10 +5749,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=CONTENT_FILTERS,
         default=None,
         help=tr(
-            "sfw / uncensored / all(--uncensored は all と同じ。既定 sfw)",
-            "sfw / uncensored / all (--uncensored is the same as all; default sfw)",
+            "名前で探すモデルの内容の印: sfw(既定)/ uncensored(無検閲だけ)/ all(両方)。"
+            "uncensored と all は無検閲のモデルを落とす同意にもなる"
+            "(--uncensored は all と同じ。--uncensored と一緒に使えるのは all だけ)",
+            "which content marks the name search looks at: sfw (default) / uncensored (only uncensored) / all"
+            " (both). uncensored and all also give consent to download uncensored models (--uncensored is the"
+            " same as all; only all can be combined with --uncensored)",
         ),
     )
+    sp._actions[-1].doc_default = "sfw"  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_download)
 
     # genmodelfit config(#111。docs/download.ja.md「genmodelfit config」)
@@ -5396,12 +5774,21 @@ def build_parser() -> argparse.ArgumentParser:
     c = csub.add_parser(
         "show",
         parents=[lang],
-        help=tr("今の設定と出どころ(既定)", "current settings and where they come from"),
+        help=tr(
+            "今の設定と出どころ(サブコマンドを省いたときはこれ)",
+            "current settings and where they come from (the default when no subcommand is given)",
+        ),
     )
     c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
     c = csub.add_parser("set", parents=[lang], help=tr("値を保存する", "save a value"))
     c.add_argument("key", help=tr("comfyui-dir か lang", "comfyui-dir or lang"))
-    c.add_argument("value")
+    c.add_argument(
+        "value",
+        help=tr(
+            "comfyui-dir なら ComfyUI のフォルダのパス、lang なら en か ja",
+            "for comfyui-dir: the path of the ComfyUI folder; for lang: en or ja",
+        ),
+    )
     c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
     c = csub.add_parser("unset", parents=[lang], help=tr("値を消す", "remove a value"))
     c.add_argument("key", help=tr("comfyui-dir か lang", "comfyui-dir or lang"))
@@ -5410,12 +5797,17 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help=json_help)
     sp.set_defaults(func=cmd_config)
 
-    sp = sub.add_parser(
+    sp = sub_parser(
         "gate",
-        parents=[common, gate],
-        help=tr("自動でおすすめに出せるかの集計", "summary of which models can be auto-recommended"),
+        tr("自動でおすすめに出せるかの集計", "summary of which models can be auto-recommended"),
+        [common, gate],
     )
-    sp.add_argument("--modality", "-m", choices=MODALITIES)
+    sp.add_argument(
+        "--modality",
+        "-m",
+        choices=MODALITIES,
+        help=tr("この種類だけ数える(1 つだけ)", "count only this type (one type)"),
+    )
     only = sp.add_mutually_exclusive_group()
     only.add_argument(
         "--only-auto",
@@ -5428,6 +5820,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("保留のものの ID と理由も並べる", "also list the ids of held models and why"),
     )
     sp.set_defaults(func=cmd_gate)
+    _no_effect(sp, "--vram", "--ram")
 
     sp = sub.add_parser(
         "diff",
@@ -5475,11 +5868,13 @@ def build_parser() -> argparse.ArgumentParser:
         "-n",
         type=_positive_int,
         default=None,
+        metavar="N",
         help=tr(
             "1 つの節に出す行の上限(既定 20。--all では全部)",
             "max lines per section (default 20; all with --all)",
         ),
     )
+    sp._actions[-1].doc_default = tr("20(--all なら全部)", "20 (all with --all)")  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_diff)
 
     db_cache_help = tr(
@@ -5494,8 +5889,9 @@ def build_parser() -> argparse.ArgumentParser:
         "review",
         parents=[lang],
         help=tr(
-            "確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(#42)",
-            "list, approve or reject models waiting for review (new entries, license changes, ...) (#42)",
+            "確認待ち(新しい項目・ライセンスの変化など)の一覧・確かめる・外す(保守する人向け)",
+            "list, approve or reject models waiting for review (new entries, license changes, ...;"
+            " for maintainers)",
         ),
         description=_review_help(),
         formatter_class=_HelpFormatter,
@@ -5576,12 +5972,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--json", action="store_true", help=json_help)
     r.set_defaults(func=cmd_review_reject)
 
-    sp = sub.add_parser(
-        "bench",
-        parents=[common],
-        help=tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"),
+    sp = sub_parser("bench", tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"), [common])
+    sp.add_argument(
+        "template",
+        help=tr("ワークフロー(テンプレート)の ID(info で分かる)", "the workflow (template) id (see info)"),
     )
-    sp.add_argument("template", help=tr("テンプレート名(モデルの ID)", "template name (model id)"))
     sp.add_argument(
         "--url",
         required=True,
@@ -5598,11 +5993,23 @@ def build_parser() -> argparse.ArgumentParser:
             "workflow in API format (default: built from the template)",
         ),
     )
-    sp.add_argument("--width", type=_positive_int)
-    sp.add_argument("--height", type=_positive_int)
-    sp.add_argument("--frames", type=_positive_int)
-    sp.add_argument("--length", type=_positive_float, metavar="SEC")
-    sp.add_argument("--steps", type=_positive_int)
+    as_template = ("テンプレートの値", "the template's value")
+    for flag, metavar, kind, ja, en in (
+        ("--width", "PX", _positive_int, "幅(ピクセル)", "width in pixels"),
+        ("--height", "PX", _positive_int, "高さ(ピクセル)", "height in pixels"),
+        ("--frames", "N", _positive_int, "動画のコマ数", "number of video frames"),
+        ("--length", "SEC", _positive_float, "音声の長さ(秒)", "audio length in seconds"),
+        ("--steps", "N", _positive_int, "サンプラーのステップ数", "number of sampler steps"),
+    ):
+        _doc(
+            sp.add_argument(
+                flag,
+                type=kind,
+                metavar=metavar,
+                help=tr(f"{ja}(省くとテンプレートのまま)", f"{en} (omitted: as in the template)"),
+            ),
+            *as_template,
+        )
     sp.add_argument(
         "--output",
         metavar="PATH",
@@ -5610,6 +6017,9 @@ def build_parser() -> argparse.ArgumentParser:
             "結果の JSON の書き出し先(失敗・標準でない結果もここへ書く)",
             "where to write the result JSON (failed and non-standard results are written here too)",
         ),
+    )
+    sp._actions[-1].doc_default = tr(  # type: ignore[attr-defined]
+        "キャッシュの measurements/", "measurements/ in the cache"
     )
     sp.add_argument(
         "--save-failed",
@@ -5661,6 +6071,7 @@ def build_parser() -> argparse.ArgumentParser:
             "待つ時間の上限(0 より大きい秒数。既定 1800)", "the most time to wait (seconds > 0; default 1800)"
         ),
     )
+    sp._actions[-1].doc_default = "1800"  # type: ignore[attr-defined]
     sp.add_argument(
         "--force",
         action="store_true",
@@ -5697,6 +6108,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_bench)
+    _no_effect(sp, "--vram", "--ram")
 
     cj = argparse.ArgumentParser(add_help=False, parents=[lang])
     cj.add_argument("--json", action="store_true", help=json_help)
@@ -5885,7 +6297,8 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-_REVIEW_HELP_JA = """確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す(#42)。
+_REVIEW_HELP_JA = """確認待ち(review.status = pending)の項目を出す・根拠を付けて確かめる・一覧から外す
+(保守する人向け)。
 pending は update が前の一覧と比べて付ける
 (new / license_permissive / need_decreased / uncensored_new / files_changed)。
 確かめるまで自動のおすすめに出さない(gate の reviewed)。
@@ -5912,7 +6325,7 @@ pending は update が前の一覧と比べて付ける
   genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "商用には使えない"
 詳しくは docs/schema.md「review」、docs/release.md「毎週のスキル」"""
 
-_REVIEW_HELP_EN = """List, approve or reject models waiting for review (#42).
+_REVIEW_HELP_EN = """List, approve or reject models waiting for review (for maintainers).
 update marks an entry pending (review.status = pending) when it differs from the previous list
 (new / license_permissive / need_decreased / uncensored_new / files_changed).
 Pending entries are not auto-recommended until approved (gate check: reviewed).

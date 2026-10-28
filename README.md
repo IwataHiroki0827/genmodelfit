@@ -329,7 +329,7 @@ Every page of the documentation, with who each one is for: [docs/README.md](http
 | `config [set KEY VALUE \| unset KEY \| path]` | settings: the ComfyUI folder for `download` and the display language ([docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md#genmodelfit-config)) |
 | `review`, `bench`, `contrib` | maintenance and measurements (below) |
 
-Each command's `--help` lists options, exit codes and examples. Common options: `--json`, `--vram`, `--ram`,
+Every command and option, the environment variables, exit codes and examples are on one page: [docs/commands.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/commands.md) (the same text as each command's `--help`). Common options: `--json`, `--vram`, `--ram`,
 `--uncensored` (include uncensored models; old form `--content all`), `--any-license` (include unknown licenses; old form `--include-unknown-license`), `--content uncensored` (only uncensored), `--license apache-2.0,mit`, `--comfyui-version`.
 
 ### Data sources

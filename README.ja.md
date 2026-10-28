@@ -322,7 +322,7 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `config [set KEY VALUE \| unset KEY \| path]` | 設定: `download` の ComfyUI のフォルダと表示の言語([docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md#genmodelfit-config)) |
 | `review`・`bench`・`contrib` | 保守と実測(下) |
 
-オプション・終了コード・例は各コマンドの `--help` にあります。よく使うオプション: `--json`・`--vram`・`--ram`・
+すべてのコマンドとオプション・環境変数・終了コード・例は [docs/commands.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/commands.ja.md) にまとめてあります(各コマンドの `--help` と同じ内容)。よく使うオプション: `--json`・`--vram`・`--ram`・
 `--uncensored`(無検閲も含める。前からの書き方は `--content all`)・`--any-license`(ライセンス不明も含める。前からの書き方は `--include-unknown-license`)・`--content uncensored`(無検閲だけ)・`--license apache-2.0,mit`・`--comfyui-version`。
 
 ### データ源
