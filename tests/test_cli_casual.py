@@ -25,6 +25,7 @@ SUBCOMMANDS = [
     "diff",
     "contrib",
     "review",
+    "config",
 ]
 HW = ["--vram", "8", "--ram", "32", "--no-cache"]
 

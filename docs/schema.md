@@ -23,6 +23,7 @@ It is for app developers who read that output, and for contributors who change t
 - [bench](#bench)
 - [contrib](#contrib)
 - [download](#download)
+- [config](#config)
 - [Python API (stable)](#python-api-stable)
 - [Database file (`db.json`)](#database-file-dbjson)
 - [update](#update)
@@ -41,7 +42,7 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
 | `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `types` / `gate` / `update` / `bench` / `diff` / `review` / `contrib` |
 | `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `diff` / `contrib` / `review approve` / `review reject` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
@@ -64,7 +65,8 @@ The same as the SIDE EFFECTS of each command's `--help` and [README, "Privacy"](
 | `python -m genmodelfit.weekly merge-check` | none | none |
 | `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
 | `python -m genmodelfit.review apply DECISIONS --db PATH` | none | the `--db` file; rejects also append to `review_rejected.txt` |
-| `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts); none with `--list` | the files under the destination (`<file>.part` while downloading); nothing with `--list` |
+| `download` | GET of the model URLs in the list (https; redirects only to Hugging Face / GitHub hosts). When the place is not given (no `--comfyui-dir` / `--output-dir`, environment variable or config), also `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (a ComfyUI running on this PC; 2 s timeout, no redirects, no proxy). None with `--list` | the files under the destination (`<file>.part` while downloading); `comfyui-dir` in the config file when you answer Y to "next time"; nothing with `--list` |
+| `config` | none | `set` / `unset`: the config file (`config path`); `show` / `path`: none |
 
 No telemetry; nothing about the PC or the user is sent. HTTP uses `fetch.make_session()`: User-Agent
 `genmodelfit/<version> (+https://github.com/laxshmate/genmodelfit)`, proxy / CA environment variables honored, `~/.netrc`
@@ -1353,7 +1355,9 @@ Exit codes: 0 = nothing pending and ok / 1 = something pending, sources counted 
 `--list --json` prints the plan only (`listed: true`, `result: null`; no network access, nothing written, exit 0 even
 when `plan.ok` is false). Downloading with `--json` needs `--yes`. On failure (exit 1, or 130 after Ctrl-C) `error` is
 set, `result` is null and `plan` is the plan (when it was made). A model that is not found or matches several
-models gives `error` (and `candidates`) without `plan`.
+models gives `error` (and `candidates`) without `plan`. When the place is not decided (nothing or several ComfyUI
+folders found, and no question can be asked), `plan` is null and `destination_candidates` lists what was found
+([download.md](download.md) "Choosing the place").
 Python: `gmf.plan_download(...)` returns `DownloadPlan` (`.to_dict()` is `plan`), `gmf.download(...)` returns
 `DownloadResult` (`.to_dict()` is `result`).
 
@@ -1362,6 +1366,10 @@ Python: `gmf.plan_download(...)` returns `DownloadPlan` (`.to_dict()` is `plan`)
 | `listed` | bool | true for `--list` (nothing downloaded) |
 | `plan` | DownloadPlan | what is (or would be) downloaded |
 | `result` | DownloadResult \| null | what happened; null for `--list` and on failure |
+| `destination_from` | str \| null | (0.11.0, #111) how the place was decided: `comfyui_dir_option`, `output_dir_option`, `env` (`GENMODELFIT_COMFYUI_DIR`), `config` (`genmodelfit config`), found automatically: `cwd`, `running` (a running ComfyUI), `desktop` (ComfyUI Desktop settings), `comfy_cli`, `common` (usual places), or `typed` (a path typed in the terminal). null = not decided (`--list`, or the error above) |
+| `comfyui_dir` | str \| null | (0.11.0) the ComfyUI folder; null for `--output-dir` and when not decided |
+| `extra_model_paths` | object \| null | (0.11.0) the `is_default` section used: `file`, `section`, `root` (the place), `folders` (str[] of the folder keys in the section, or null with `download_model_base`); null when none is used |
+| `destination_candidates` | object[] | (0.11.0) the ComfyUI folders found automatically: `comfyui_dir`, `from` (as `destination_from`), `detail` (e.g. `127.0.0.1:8188`, the settings file). Empty when the place was given |
 
 DownloadPlan:
 
@@ -1372,8 +1380,8 @@ DownloadPlan:
 | `modality`, `content`, `precision` | str / str / str \| null | as in ModelEntry |
 | `fit_level`, `run_mode_label`, `auto` | str / str / bool | the judgement on this PC (as in `recommend`) |
 | `chosen` | str | why this workflow was chosen (in the display language, `en` / `ja`) |
-| `layout` | str | `comfyui` (`--comfyui-dir`: `root` is `<dir>/models`) / `output` (`--output-dir` or the default; same layout) |
-| `root` | str | absolute path of the folder files go into (`<root>/<directory>/<name>`) |
+| `layout` | str | `comfyui` (`--comfyui-dir`: `root` is `<dir>/models`) / `output` (`--output-dir` or the Python default; same layout. The CLI also uses `output` for an `is_default` section or the models folder a running ComfyUI reported) |
+| `root` | str | absolute path of the folder files go into (`<root>/<directory>/<name>`); "" when the place is not decided (CLI `--list`) |
 | `files` | PlannedFile[] | one per file of the workflow |
 | `total_bytes` | int | sum of the file sizes |
 | `download_bytes` | int | still to download (minus files already there and `.part` bytes) |
@@ -1395,7 +1403,7 @@ PlannedFile:
 |---|---|---|
 | `name` | str | file name in the list (may contain ComfyUI subfolders, `/`) |
 | `relpath` | str | path under `root` (`<directory>/<name>`; `other/<name>` when the ComfyUI folder is unknown; ComfyUI does not read `other`, move such files before use); "" when refused |
-| `dest` | str | absolute destination path; "" when refused |
+| `dest` | str | absolute destination path; "" when refused or when the place is not decided |
 | `url`, `sha256`, `size_bytes`, `role` | | from ModelFile |
 | `directory` | str \| null | the ComfyUI folder: from ModelFile, or inferred when the list has none (see `directory_basis`); null = unknown (`other/`) |
 | `directory_basis` | object \| null | why `directory` was inferred for a file the list gives no folder (any source; optional, since #75): the main file's header parameter count matches a file of an official ComfyUI template within 0.001%, and all such files are in one folder (`unet` counts as `diffusion_models`, `clip` as `text_encoders`; e.g. an SDXL all-in-one file = `sd_xl_base_1.0.safetensors` → `checkpoints`). Keys: `kind` (`header_params`), `template` (the template id), `file` (its file), `params`, `reference_params`, and `needs` (`ComfyUI-GGUF` for a GGUF file in `diffusion_models` / `text_encoders`). null = from the list, or unknown |
@@ -1423,6 +1431,22 @@ DownloadResult:
 | `bytes_downloaded` | int | bytes received in this run |
 | `seconds` | float | wall time |
 | `files` | object[] | `relpath`, `dest`, `sha256` of every file |
+
+## config
+
+`genmodelfit config [show|set|unset|path] --json` (0.11.0, #111; [download.md](download.md) "genmodelfit config").
+The envelope has no `system` / `database`.
+
+| key | type | meaning |
+|---|---|---|
+| `action` | str | `show` (also with no action) / `set` / `unset` / `path` |
+| `path` | str | the config file (it may not exist yet) |
+| `settings` | object | `show`: `comfyui-dir` and `lang`, each `{ value, from }`. `from`: `option` (`--lang`), `env` (`GENMODELFIT_COMFYUI_DIR` / `GENMODELFIT_LANG`), `file`, `default` (`comfyui-dir`: value null, download looks for ComfyUI; `lang`: `en`) |
+| `warnings` | str[] | `show`: why the file or a value was not used (broken JSON, wrong type) |
+| `key`, `value` | str | `set`: what was saved (`comfyui-dir` as an absolute path) |
+| `removed` | bool | `unset`: false when the key was not set |
+
+Errors (exit 1: unknown key, invalid value, broken or unwritable file) give `{ genmodelfit, command, error }`.
 
 ## Python API (stable)
 

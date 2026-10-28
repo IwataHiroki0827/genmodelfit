@@ -82,7 +82,8 @@ PATH を変える前に開いた端末には反映されないので、新しい
 ### 通信するもの
 
 判定には通信しません。PC の情報は手元で読みます。通信するのは `update`・`download`・`bench` だけで、
-相手は公開の情報か、指定した ComfyUI だけです。利用状況の送信(テレメトリ)もありません。詳しくは[送るもの・送らないもの](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#送るもの送らないもの)。
+相手は公開の情報か、指定した ComfyUI だけです(フォルダを指定しないときは、`download` がこの PC(127.0.0.1)で
+起動中の ComfyUI にもフォルダの場所を尋ねます)。利用状況の送信(テレメトリ)もありません。詳しくは[送るもの・送らないもの](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#送るもの送らないもの)。
 
 ## 2. 手順
 
@@ -112,6 +113,7 @@ PATH を変える前に開いた端末には反映されないので、新しい
 
 5. **ダウンロードする。** `--list` は、落とさずにファイル・ライセンス・大きさ・空きだけを見せます。
    そのあと ComfyUI のフォルダへ落とします。始める前に確認があり、どのファイルも sha256 で確かめます。
+   `--comfyui-dir` が無ければ ComfyUI を探し、見つけた場所を出します(見つからない・2 つ以上なら尋ねます)。
    ```
    genmodelfit download "Z-Image-Turbo" --list
    genmodelfit download "Z-Image-Turbo" --comfyui-dir C:\ComfyUI   # ComfyUI を入れたフォルダ
@@ -166,7 +168,8 @@ db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", stat
 ### 表示の言語
 
 出力の既定は英語。日本語にするには、どのコマンドでも `--lang ja` を付ける(例 `genmodelfit recommend --lang ja`)か、
-環境変数 `GENMODELFIT_LANG=ja` を置くか、Python で `gmf.set_language("ja")` を呼ぶ(優先は `--lang`、環境変数、
+環境変数 `GENMODELFIT_LANG=ja` を置くか、`genmodelfit config set lang ja` で保存する(コマンドラインだけ)か、
+Python で `gmf.set_language("ja")` を呼ぶ(優先は `--lang`、環境変数、コマンドラインは保存した設定・Python は
 `set_language` の順。OS の言語は見ない)。変わるのは文(理由・注意・エラー・表の見出しと説明・`--help`)だけで、
 JSON のキー・ID・コード・判定はどちらの言語でも同じ。英語の出力には日本語が出ず、日本語の出力には英語だけの文が出ない
 (1 行に 2 つの言語の文を並べない)。
@@ -316,6 +319,7 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `update [--from-release]` | 一覧を上流から作り直す、または署名付きの一覧を取り込む |
 | `gate` | Verified のモデルの数と、ほかが保留の理由 |
 | `diff [OLD] [NEW] [--all]` | 2 つの一覧の違い([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#一覧の変化)) |
+| `config [set KEY VALUE \| unset KEY \| path]` | 設定: `download` の ComfyUI のフォルダと表示の言語([docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md#genmodelfit-config)) |
 | `review`・`bench`・`contrib` | 保守と実測(下) |
 
 オプション・終了コード・例は各コマンドの `--help` にあります。よく使うオプション: `--json`・`--vram`・`--ram`・
@@ -349,7 +353,10 @@ sha256 と大きさが分かる、内容が `sfw`、確認待ちでない。満�
 置き場所の外には書きません。gated は落としません。無検閲のモデルとライセンス不明のファイルは、同意があるときだけ落とします。
 端末では、それを名指しした同意の質問(y/N。既定は No)で尋ねます。`--yes`・`--json`・スクリプトでは `--uncensored`・
 `--any-license` が要ります(足したコマンドを 1 行と、それぞれの意味を出します。勝手に足して落とすことはしません)。ComfyUI のどのフォルダか分からないファイルは `other/` に置きます。ComfyUI は読まないので、
-計画の中でそう知らせます(使う前に移す)。環境変数 `GENMODELFIT_COMFYUI_DIR` に ComfyUI のフォルダを入れておけば `--comfyui-dir` を省けます。
+計画の中でそう知らせます(使う前に移す)。置き場所は `--comfyui-dir`(か `--output-dir`)、環境変数 `GENMODELFIT_COMFYUI_DIR`、
+`genmodelfit config set comfyui-dir <フォルダ>`、この PC で見つけた ComfyUI(今いるフォルダ・起動中の ComfyUI・デスクトップ版と
+comfy-cli の設定・よくある場所)の順で決め、どれで決めたかを計画に必ず出します。見つからない・2 つ以上見つかったときは、
+端末なら選び、スクリプトでは ComfyUI が読まないフォルダに落とさずに誤りで止めます。質問は `[y/N/c]`(`c` で置き場所を変える)。
 詳しい決まりと Python の関数は [docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md)。
 
 ### 一覧の保守
@@ -385,7 +392,8 @@ IP・CPU 名・正確な時刻を書きません。genmodelfit は実測を送�
 
 - 判定のコマンドと Python の関数(自分で呼ぶ `update_from_release` と `download` を除く)は**ネットにつなぎません**(すべてのソケットをふさいだ試験で確かめています)。
 - `update` は公開の情報(GitHub・Hugging Face の API・モデルの URL への HEAD)を読むだけ、`--from-release` は `db.json` と署名を取るだけです。
-  `download` はモデルのファイルを取るだけ、`bench` は `--url` で指定した ComfyUI とだけ話します。
+  `download` はモデルのファイルを取るだけ(フォルダを指定しないときは、この PC で起動中の ComfyUI(127.0.0.1 の
+  8188・8000)にフォルダの場所も尋ねる)、`bench` は `--url` で指定した ComfyUI とだけ話します。
 - genmodelfit は PC の情報・実測・プロンプトを送りません。実測が共有されるのは、ご自身で Pull Request を出したときだけです
   ([実測を出す](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測を出すpull-request))。
   `bench --share` / `contrib share` は GitHub のページの URL を出し、端末で y と答えたときにブラウザで開くだけです。
