@@ -4181,7 +4181,7 @@ def _measure_roots(args: argparse.Namespace, running: Any) -> list[Path]:
     return list(dict.fromkeys(roots))
 
 
-def _seconds_text(secs: int, basis: str) -> str:
+def _seconds_text(secs: int, basis: str, scaled: bool = False) -> str:
     why = {
         "measured": (
             "同じモデルのほかの GPU の実測から",
@@ -4189,6 +4189,11 @@ def _seconds_text(secs: int, basis: str) -> str:
         ),
         "typical": ("種類ごとのおおよその値", "a rough value for the type"),
     }[basis]
+    if scaled:  # 設定を変えた測定(#116)
+        why = (
+            why[0] + "、設定の画素数・コマ数・長さの比で伸び縮みさせた",
+            why[1] + ", scaled by the ratio of pixels, frames or length",
+        )
     return tr(f"約 {secs} 秒(目安。{why[0]})", f"about {secs} s (rough guide; {why[1]})")
 
 
@@ -4262,6 +4267,9 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
 
 
 def _suggestion_lines(sugg: list) -> list[str]:
+    from .measure import MAX_SUGGEST_SECONDS as max_secs
+    from .measure import VARIANTS_PER_MODEL as per_model
+
     out = [
         tr(
             "=== 測ると役に立つモデル(この GPU の実測がまだ無いもの) ===",
@@ -4272,28 +4280,81 @@ def _suggestion_lines(sugg: list) -> list[str]:
         kind = tr(_MODALITY_JA.get(x.modality, x.modality), x.modality)
         prec = f"、{x.precision}" if x.precision else ""
         prec_en = f", {x.precision}" if x.precision else ""
+        what = " ".join([x.model_id, *x.args])  # [ ] の中をそのまま measure に渡せる(#116)
         out.append(
             tr(
-                f"  {i:>2}. {x.model_name} [{x.model_id}]({kind}{prec})  {_installed_text(x.installed)}"
+                f"  {i:>2}. {x.model_name} [{what}]({kind}{prec})  {_installed_text(x.installed)}"
                 f"  約 {x.seconds} 秒",
-                f"  {i:>2}. {x.model_name} [{x.model_id}] ({kind}{prec_en})  {_installed_text(x.installed)}"
+                f"  {i:>2}. {x.model_name} [{what}] ({kind}{prec_en})  {_installed_text(x.installed)}"
                 f"  about {x.seconds} s",
             )
         )
     out.append(
         tr(
             "時間は目安(同じモデルのほかの GPU の実測、無ければ種類ごとのおおよその値。"
-            "落とす時間は入れない)。"
+            "設定を変えた行は画素数・コマ数・長さの比で伸び縮みさせた値。落とす時間は入れない)。"
+            "--resolution・--frames・--length の付いた行は、設定を変えて測ります"
+            "(予測式の確かめに使います。この GPU にテンプレートのままの実測があるモデルだけで、"
+            f"1 つのモデルに {per_model} 件まで出します)。約 {max_secs} 秒を超えるものは出しません。"
             "入っていないものは、選ぶと download と同じ確かめをしてから落とします。",
             "Times are rough guides (from measurements of the same model on other GPUs, else a rough value"
-            " for the type; downloading is not included). Choosing one that is not installed downloads it"
-            " first, with the same questions as download.",
+            " for the type; rows with other settings are scaled by the ratio of pixels, frames or length;"
+            " downloading is not included). Rows with --resolution, --frames or --length measure at those"
+            " settings (used to check the estimate's formula; only for models already measured on this GPU"
+            f" as in the template, at most {per_model} per model). Runs over about {max_secs} s are not"
+            " listed. Choosing one that is not installed downloads it first, with the same questions as"
+            " download.",
         )
     )
     return out
 
 
-def _measure_screen(fit, url: str | None, found_by: str | None, inst, secs: int, basis: str) -> list[str]:
+def _settings_text(settings) -> str:
+    """測る前の画面の「設定」(#116)。変えた項目と、ほかはテンプレートのままであること。"""
+    from .measure import settings_dict
+
+    d = settings_dict(settings)
+    if not d:
+        return tr(
+            "公式のテンプレートのまま(解像度・コマ数・長さ・ステップ数)",
+            "as in the official template (resolution, frames, length, steps)",
+        )
+    ja: list[str] = []
+    en: list[str] = []
+    if d.get("width") and d.get("height"):
+        ja.append(f"解像度 {d['width']}x{d['height']}")
+        en.append(f"resolution {d['width']}x{d['height']}")
+    if d.get("frames"):
+        ja.append(f"コマ数 {d['frames']}")
+        en.append(f"{d['frames']} frames")
+    if d.get("seconds"):
+        ja.append(f"長さ {d['seconds']:g} 秒")
+        en.append(f"length {d['seconds']:g} s")
+    return tr(
+        "、".join(ja) + "(ほかは公式のテンプレートのまま)",
+        ", ".join(en) + " (the rest as in the official template)",
+    )
+
+
+def _measure_settings(args: argparse.Namespace):
+    """measure の --resolution・--frames・--length(bench と同じ)。どれも無ければ None。"""
+    from .bench import BenchError, parse_resolution
+    from .models import Settings
+
+    width = height = None
+    if args.resolution:
+        try:
+            width, height = parse_resolution(args.resolution)
+        except BenchError as e:
+            raise CliError(str(e)) from e
+    if width is None and args.frames is None and args.length is None:
+        return None
+    return Settings(width=width, height=height, frames=args.frames, seconds=args.length)
+
+
+def _measure_screen(
+    fit, url: str | None, found_by: str | None, inst, secs: int, basis: str, settings=None
+) -> list[str]:
     m = fit.model
     kind = tr(_MODALITY_JA.get(m.modality, m.modality), m.modality)
     prec = m.precision or tr("不明", "unknown")
@@ -4303,15 +4364,14 @@ def _measure_screen(fit, url: str | None, found_by: str | None, inst, secs: int,
             f"モデル:     {fit.model_name or m.name} [{m.id}]({kind}、精度 {prec})",
             f"Model:      {fit.model_name or m.name} [{m.id}] ({kind}, precision {prec})",
         ),
-        tr(
-            "設定:       公式のテンプレートのまま(解像度・コマ数・長さ・ステップ数)",
-            "Settings:   as in the official template (resolution, frames, length, steps)",
-        ),
+        tr(f"設定:       {_settings_text(settings)}", f"Settings:   {_settings_text(settings)}"),
         tr(f"ComfyUI:    {_comfyui_text(url, found_by)}", f"ComfyUI:    {_comfyui_text(url, found_by)}"),
         tr(f"ファイル:   {_installed_text(inst)}", f"Files:      {_installed_text(inst)}"),
         tr(
-            f"時間:       {_seconds_text(secs, basis)}。初めはモデルの読み込みで長くなります",
-            f"Time:       {_seconds_text(secs, basis)}; the first run takes longer to load the model",
+            f"時間:       {_seconds_text(secs, basis, settings is not None)}。"
+            "初めはモデルの読み込みで長くなります",
+            f"Time:       {_seconds_text(secs, basis, settings is not None)};"
+            " the first run takes longer to load the model",
         ),
         tr(
             "送るもの:   何も送りません。結果はこの PC に保存するだけです"
@@ -4341,6 +4401,14 @@ def _measure_next_step(msg: str, model_id: str) -> str:
             "ComfyUI を起動し直してから、もう一度実行してください。",
             f"Next: download the files with genmodelfit download {model_id} (use --comfyui-dir for the"
             " folder your ComfyUI reads), restart ComfyUI, then run it again.",
+        )
+    if "頼んだ設定" in msg or "requested settings" in msg:
+        return tr(
+            f"次にすること: このテンプレートでは、その設定を変えられません。設定を付けずに"
+            f" genmodelfit measure {model_id} で測るか、"
+            "genmodelfit measure の一覧からほかのものを選んでください。",
+            f"Next: this template cannot change that setting. Measure it without settings"
+            f" (genmodelfit measure {model_id}) or choose another one from the genmodelfit measure list.",
         )
     if "キュー" in msg or "queue" in msg.lower():
         return tr(
@@ -4407,9 +4475,29 @@ def cmd_measure(args: argparse.Namespace) -> int:
     from .contrib import build_submission, suggested_path, write_submission
     from .downloader import DownloadError, directory_refs
     from .estimate import files_fingerprint
-    from .measure import installed_state, resolve, submissions_dir, suggestions, time_hint
+    from .measure import (
+        installed_state,
+        resolve,
+        same_variant,
+        settings_dict,
+        submissions_dir,
+        suggestions,
+        time_hint,
+    )
     from .workflow import WorkflowError
 
+    settings = _measure_settings(args)
+    if settings is not None and not args.model:
+        raise CliError(
+            tr(
+                "--resolution・--frames・--length は、測るモデルといっしょに指定してください"
+                "(例: genmodelfit measure image_sdxl_simple --resolution 1536x1536)。"
+                "引数なしの一覧には、設定を変えた測定も出ます",
+                "Give --resolution, --frames or --length with the model to measure"
+                " (e.g. genmodelfit measure image_sdxl_simple --resolution 1536x1536)."
+                " The list without arguments also shows measurements at other settings",
+            )
+        )
     if args.json and args.model and not args.yes:
         raise CliError(
             tr(
@@ -4458,8 +4546,8 @@ def cmd_measure(args: argparse.Namespace) -> int:
             sys.stdout.flush()
             print(
                 tr(
-                    "測るときは genmodelfit measure <ID>(例: [ ] の中の ID)",
-                    "To measure one: genmodelfit measure <id> (the id in [ ])",
+                    "測るときは genmodelfit measure <ID>([ ] の中をそのまま。設定の引数があればそれも)",
+                    "To measure one: genmodelfit measure <id> (what is in [ ], with the settings if any)",
                 ),
                 file=sys.stderr,
             )
@@ -4472,7 +4560,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
         if k is None:
             print(tr("測りませんでした", "Nothing measured"), file=sys.stderr)
             return 0
-        fit = sugg[k].fit
+        fit, settings = sugg[k].fit, sugg[k].settings
         print()
     else:
         try:
@@ -4483,9 +4571,10 @@ def cmd_measure(args: argparse.Namespace) -> int:
             raise err from e
     entry = fit.model
     inst = installed_state(entry, roots, directory_refs(db))
-    secs, basis = time_hint(entry, db.measurements)
+    secs, basis = time_hint(entry, db.measurements, settings)
     plan = {
         "model_id": entry.id,
+        "settings": settings_dict(settings),
         "comfyui": comfy,
         "installed": inst.to_dict(),
         "time_hint": {"seconds": secs, "basis": basis},
@@ -4502,7 +4591,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
         return 1
 
     if not args.json:
-        _emit(_measure_screen(fit, url, found_by, inst, secs, basis))
+        _emit(_measure_screen(fit, url, found_by, inst, secs, basis, settings))
     if url is None:
         lines = _not_running_lines(entry.id, inst)
         return fail(lines[0], lines[1:])
@@ -4553,12 +4642,26 @@ def cmd_measure(args: argparse.Namespace) -> int:
         timeout=args.timeout or 1800.0,
         precision=entry.precision,
         files_fp=files_fingerprint(entry),
+        width=settings.width if settings else None,
+        height=settings.height if settings else None,
+        frames=settings.frames if settings else None,
+        seconds=settings.seconds if settings else None,
+        strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
     )
     try:
         result = run(opts, log=_progress(args))
     except (BenchError, WorkflowError) as e:
         return fail(str(e), [_measure_next_step(str(e), entry.id)])
     m = result.measurement
+    if settings is not None and not same_variant(m.settings, settings):
+        result.warnings.append(
+            tr(
+                "測った設定が頼んだ設定と違います(実測には測った設定を書きました): "
+                f"{settings_dict(m.settings)}",
+                f"The measured settings differ from the requested ones (the measured ones were recorded):"
+                f" {settings_dict(m.settings)}",
+            )
+        )
     out_path, not_saved = save_decision(m, None, False, False)
     if out_path is not None:
         save(m, out_path)
@@ -5142,13 +5245,22 @@ AGENT USAGE:
   Details: docs/schema.md""",
     "measure": """Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
 Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on
-the GPU) with no measurement on this GPU yet, those already installed first, then the shorter
-time, then the smaller download; choose one by number (q quits). MODEL is a model name, a
-workflow id or a part of either, chosen like download (only workflows with a ComfyUI template).
-Before measuring one screen shows the model and precision, the settings (as in the template),
-which ComfyUI and how it was found, whether the files are installed, a rough time and that
-nothing is sent, then asks [Y/n] (--yes skips it). The time is a rough guide: the median of
-measurements of the same model on other GPUs, else a rough value per type.
+the GPU) with no measurement on this GPU at the template's settings yet, those already
+installed first, then the shorter time, then the smaller download; choose one by number (q
+quits). Once a model has that measurement, the list offers runs at other settings that help
+check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video
+frames 17/33/49/81 at the template's size (text or image to video), music and sound length
+10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better)
+and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are
+not listed. Each run is one generation (a few minutes); running measure again picks the next one.
+MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows
+with a ComfyUI template); --resolution, --frames and --length change the settings like bench.
+Before measuring one screen shows the model and precision, the settings (as in the template, or
+the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough
+time and that nothing is sent, then asks [Y/n] (--yes skips it). The time is a rough guide: the
+median of measurements of the same model on other GPUs, else a rough value per type, scaled by
+the ratio of pixels, frames or length when the settings are changed. When the template cannot
+take a requested setting, it stops before generating.
 A model that is not installed is downloaded first, with the same questions and consent rules as
 download. Afterwards it shows the result and where it saved it, and one line pointing to
 genmodelfit share, which sends it (it never asks whether to send).
@@ -5175,10 +5287,11 @@ AGENT USAGE:
   genmodelfit measure --json
   genmodelfit measure image_z_image_turbo_int8 --yes --json
   genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+  genmodelfit measure image_sdxl_simple --resolution 1536x1536 --yes --json
 
   JSON (--json): { genmodelfit, command, system, database, action: suggest | measure,
-  comfyui: { url, found_by }, suggestions? | model_id, installed, time_hint, measurement,
-  saved_to, submission, hint, error? }
+  comfyui: { url, found_by }, suggestions? [{ ..., settings, args }] | model_id, settings,
+  installed, time_hint, measurement, saved_to, submission, hint, error? }
   Details: docs/schema.md""",
     "share": """Send a measurement: show exactly what will be sent and open the GitHub form for it.
 Without FILE it lists the measurements saved by measure (and bench --share) that are not marked
@@ -5601,13 +5714,21 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   詳しくは docs/schema.md""",
     "measure": """起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
-MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU の
-実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
-番号で選ぶ(q でやめる)。MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ
-選び方で決める(ComfyUI のテンプレートのあるワークフローだけ)。
-測る前に 1 画面で、モデルと精度、設定(テンプレートのまま)、どの ComfyUI か・どう見つけたか、
-ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(--yes で尋ねない)。
-時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。
+MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU に
+テンプレートの設定のままの実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの →
+落とす量が少ないもの。番号で選ぶ(q でやめる)。その実測があるモデルには、予測式の確かめに役立つ
+「設定を変えた測定」を出す(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、動画の
+コマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ
+10・30・60・120 秒(文章から音声)。その設定で GPU に載り(good 以上)、この GPU にその設定の実測が
+無いものだけで、1 つのモデルに 2 件まで。時間の目安が約 300 秒を超えるものは出さない。
+1 回は生成 1 回(数分)で、もう一度 measure を実行すると次のものを選べる。
+MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI の
+テンプレートのあるワークフローだけ)。--resolution・--frames・--length で bench と同じく設定を変える。
+測る前に 1 画面で、モデルと精度、設定(テンプレートのまま、または変えた設定)、どの ComfyUI か・
+どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる
+(--yes で尋ねない)。時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとの
+おおよその値。設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。テンプレートが頼んだ
+設定を受け付けないときは、生成の前に止める。
 入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。終わると結果と保存した
 場所を出し、最後に genmodelfit share(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
 
@@ -5633,10 +5754,11 @@ MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU 
   genmodelfit measure --json
   genmodelfit measure image_z_image_turbo_int8 --yes --json
   genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+  genmodelfit measure image_sdxl_simple --resolution 1536x1536 --yes --json
 
   JSON (--json): { genmodelfit, command, system, database, action: suggest | measure,
-  comfyui: { url, found_by }, suggestions? | model_id, installed, time_hint, measurement,
-  saved_to, submission, hint, error? }
+  comfyui: { url, found_by }, suggestions? [{ ..., settings, args }] | model_id, settings,
+  installed, time_hint, measurement, saved_to, submission, hint, error? }
   詳しくは docs/schema.md""",
     "share": """実測を送る: 送る中身をそのまま見せ、GitHub の提出のフォームを開く。
 FILE を省くと、measure(と bench --share)が保存した実測のうち送った印の無いものを新しい順に
@@ -6808,6 +6930,32 @@ def build_parser() -> argparse.ArgumentParser:
             "測る前に尋ねない(入っていないモデルは download --yes と同じ決まりで落とす)",
             "do not ask before measuring (a model that is not installed is downloaded under the same rules as"
             " download --yes)",
+        ),
+    )
+    sp.add_argument(
+        "--resolution",
+        metavar="WxH",
+        help=tr(
+            "幅と高さ(例: 1536x1536)を変えて測る(bench と同じ。省くとテンプレートのまま)",
+            "measure at this width and height (e.g. 1536x1536; like bench; omitted: as in the template)",
+        ),
+    )
+    sp.add_argument(
+        "--frames",
+        type=_positive_int,
+        metavar="N",
+        help=tr(
+            "動画のコマ数を変えて測る(bench と同じ。省くとテンプレートのまま)",
+            "measure at this number of video frames (like bench; omitted: as in the template)",
+        ),
+    )
+    sp.add_argument(
+        "--length",
+        type=_positive_float,
+        metavar="SEC",
+        help=tr(
+            "音声の長さ(秒)を変えて測る(bench と同じ。省くとテンプレートのまま)",
+            "measure at this audio length in seconds (like bench; omitted: as in the template)",
         ),
     )
     sp.add_argument(

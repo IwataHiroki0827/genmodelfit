@@ -39,14 +39,18 @@ no programming.
 2. **`genmodelfit share`**: choose the measurement; the GitHub form opens in your browser, already filled in.
 3. **Press "Create".** A bot checks it within a few minutes and replies on the page.
 
+One run measures one generation. If you have a few more minutes, run `genmodelfit measure` again a few times: each time
+it offers the next model or setting that has no measurement on your GPU yet, and every one of them helps.
+
 Step by step, in detail:
 
 1. Start ComfyUI (the one you normally use is fine) and close other generation jobs. For the cautions before measuring, see "[1. Measure](#1-measure)".
 2. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have no measurement on this GPU yet. Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
-   - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`).
+   - Once a model is measured on this GPU at the template's settings, the list also has runs at other settings, which help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px, text-to-image), video frames (17 / 33 / 49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s). They are shown with `--resolution`, `--frames` or `--length`, only when they fit this GPU at that setting and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are not listed. If the template cannot take a setting, measure stops before generating.
+   - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`). Add `--resolution 1536x1536`, `--frames 81` or `--length 120` to change the settings, like `bench`.
    - It finds a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000); for another one, add `--url http://<host>:<port>`. When none runs, it says how to start ComfyUI.
 3. Before measuring, one screen shows the model and precision, the settings (as in the official template), which ComfyUI and how it was found, whether the model files are installed, a rough time and that nothing is sent. Answer `Y` (Enter) to measure.
-   - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type. Downloading is not included.
+   - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed. Downloading is not included.
    - A model that is not installed is downloaded first, with the same questions and consent rules as `genmodelfit download`.
    - When another program uses the GPU, it does not measure (the same as `bench`).
 4. It shows the result and where it saved it (`<cache>/submissions/<GPU>/<date>-<sha8>.json`), and one line pointing to `genmodelfit share`. It never asks whether to send.

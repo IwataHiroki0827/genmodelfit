@@ -3,6 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """`measure` と `share` の材料(#113)。何を測ると役に立つか・入っているか・時間の目安・送っていない実測。
+設定を変えた測定の提案(#116。予測式の段ごとの作業用メモリを確かめる材料: 解像度・コマ数・長さ)もここ。
 
 ライブラリの関数は何も表示しない(表示は cli.py)。通信しない(ComfyUI を探すのは cli.py の comfyfind)。
 """
@@ -20,7 +21,7 @@ from typing import Any
 
 from .db import Database, cache_dir
 from .i18n import tr
-from .models import Measurement, ModelEntry, SystemInfo
+from .models import Measurement, ModelEntry, Settings, SystemInfo
 
 # テンプレートのある(bench で測れる)モデルの出どころ
 TEMPLATE_SOURCE = "comfyui-template"
@@ -33,6 +34,27 @@ TYPICAL_SECONDS = {"image": 60, "video": 300, "music": 90, "sfx": 60, "tts": 60,
 DEFAULT_TYPICAL_SECONDS = 120
 SUBMISSIONS_DIR = "submissions"  # キャッシュの中の、送る前の提出の置き場所(bench --share と同じ)
 SHARED_FILE = "submissions_shared.json"  # 送った印(内容の sha256 → 日付)
+
+# 設定を変えた測定(#116)。#102 の台本の組み合わせ(SDXL 512〜1536 px、Wan 2.1 1.3B 17〜81 コマ、
+# ACE-Step 10〜120 秒)にならう。予測式の段ごとの作業用メモリ(画素数・コマ数・長さで変わる部分)を、
+# 同じモデル・同じ GPU で設定だけ変えて確かめる材料にする。
+# 画像は正方形の辺(px)、動画はコマ数(大きさはテンプレートのまま)、音声は長さ(秒)
+VARIANT_PIXELS = (512, 768, 1024, 1536)
+VARIANT_FRAMES = (17, 33, 49, 81)
+VARIANT_SECONDS = (10, 30, 60, 120)
+# 設定を入力で決める用途だけ(画像は文章から作るもの。入力の画像から大きさが決まるもの・道具は変えられない。
+# 動画は文章・画像から作るもの。音楽・効果音は文章から作るもの)。テンプレートの中は見ない(通信しないため)
+VARIANT_TASKS = {"image": ("t2i",), "video": ("t2v", "i2v"), "music": ("t2a",), "sfx": ("t2a",)}
+# 引数なしの一覧で、同じモデル(groups の鍵)に出す設定を変えた測定の数の上限
+# (一覧が 1 つのモデルで埋まらないように)
+VARIANTS_PER_MODEL = 2
+# measure・bench で変えられる設定の項目(--resolution・--frames・--length)。時間の目安の比と
+# 「同じ設定の実測があるか」は、指定した項目だけで見る
+SETTING_KEYS = ("width", "height", "frames", "seconds")
+# 引数なしの一覧に出す時間の目安の上限(秒)。measure は 1 回 1〜5 分(#116 のオーナーの決定)
+MAX_SUGGEST_SECONDS = 300
+# 動画の設定を変えた測定で、時間の目安が種類ごとのおおよその値(実測が無い)のときに出すコマ数の上限
+TYPICAL_VIDEO_FRAMES_MAX = 33
 
 
 @dataclass
@@ -82,34 +104,150 @@ def installed_state(entry: ModelEntry, roots: list[Path], refs: Any = ()) -> Ins
     return Installed("no" if missing_files else "yes", missing, total, missing_files)
 
 
-def has_measurement_here(entry: ModelEntry, measurements: list[Measurement], gpu: Any) -> bool:
-    """この GPU(estimate.same_gpu)で、今の一覧のファイル(files_match)・標準の条件で最後まで測った実測
-    (ok か oom)があるか(作者・この PC・ほかの利用者)。作業用メモリだけの実測(estimate.working_only。
-    今の NVIDIA の bench)も数える: 同じ GPU でもう一度測っても照合の材料が増えないため。"""
-    from .estimate import files_match, measured_on_this_gpu
+def settings_dict(settings: Settings | None) -> dict[str, Any] | None:
+    """設定のうち指定した項目(SETTING_KEYS)だけ。何も無ければ None(テンプレートのまま)。"""
+    if settings is None:
+        return None
+    d = {k: getattr(settings, k) for k in SETTING_KEYS if getattr(settings, k)}
+    return d or None
 
-    return any(
+
+def same_variant(m: Settings, want: Settings) -> bool:
+    """実測の設定 m が、測りたい設定 want と同じか(want で指定した項目だけ比べる。
+    動画の大きさのように指定しない項目はテンプレートのままなので比べない)。"""
+    keys = [k for k in SETTING_KEYS if getattr(want, k)]
+    return all(getattr(m, k) is not None and float(getattr(m, k)) == float(getattr(want, k)) for k in keys)
+
+
+def _finished(m: Measurement, entry: ModelEntry) -> bool:
+    """そのワークフローを、今の一覧のファイル・標準の条件で最後まで測った実測(ok か oom)か。"""
+    from .estimate import files_match
+
+    return (
         m.model_id == entry.id
         and (m.outcome or "ok") in ("ok", "oom")
         and m.standard is not False
         and files_match(m, entry)
+    )
+
+
+def has_measurement_here(
+    entry: ModelEntry, measurements: list[Measurement], gpu: Any, settings: Settings | None = None
+) -> bool:
+    """この GPU(estimate.same_gpu)で、今の一覧のファイル(files_match)・標準の条件で最後まで測った実測
+    (ok か oom)があるか(作者・この PC・ほかの利用者)。作業用メモリだけの実測(estimate.working_only。
+    今の NVIDIA の bench)も数える: 同じ GPU でもう一度測っても照合の材料が増えないため。
+    settings が None なら、テンプレートの設定のままで測った実測(settings_override の無いもの。記録の無い
+    古い行も含む)だけを数える(#116)。settings を渡すと、その設定(same_variant)の実測を、設定を変えたか
+    どうかによらず数える。"""
+    from .estimate import measured_on_this_gpu
+
+    return any(
+        _finished(m, entry)
         and measured_on_this_gpu(m, gpu)
+        and (
+            not getattr(m, "settings_override", None)
+            if settings is None
+            else same_variant(m.settings, settings)
+        )
         for m in measurements
     )
 
 
-def time_hint(entry: ModelEntry, measurements: list[Measurement]) -> tuple[int, str]:
+def template_settings(entry: ModelEntry, measurements: list[Measurement]) -> Settings | None:
+    """テンプレートの設定のまま測った実測(どの GPU でもよい)に記録された設定(bench が読んだ、その
+    テンプレートの幅・高さ・コマ数・長さ)。日付の新しいものを使う。無ければ None(分からない)。"""
+    rows = [m for m in measurements if _finished(m, entry) and not getattr(m, "settings_override", None)]
+    if not rows:
+        return None
+    return max(rows, key=lambda m: m.date or "").settings
+
+
+def variants(entry: ModelEntry, measurements: list[Measurement] | None = None) -> list[Settings]:
+    """設定を変えた測定の候補(#116)。画像は VARIANT_PIXELS の正方形、動画は VARIANT_FRAMES のコマ数
+    (大きさはテンプレートのまま)、音楽・効果音は VARIANT_SECONDS の長さ。設定を入力で決める用途
+    (VARIANT_TASKS)だけで、大きさの入力の無いテンプレート(estimate.no_size_input)の画像は無し。
+    measurements を渡すと、テンプレートのままの実測(template_settings)にその項目が無いもの(その入力が
+    無い。コマ数を batch_size で決める AnimateDiff など)も出さない。分からないときは出し、measure が
+    生成の前に確かめて止める(bench の strict_settings)。"""
+    from .estimate import no_size_input
+
+    tasks = VARIANT_TASKS.get(entry.modality, ())
+    if not any(t in tasks for t in entry.tasks):
+        return []
+    known = template_settings(entry, measurements or [])
+    if entry.modality == "image":
+        if no_size_input(entry) or (known is not None and not known.width):
+            return []
+        return [Settings(width=px, height=px) for px in VARIANT_PIXELS]
+    if entry.modality == "video":
+        if known is not None and not known.frames:
+            return []
+        return [Settings(frames=n) for n in VARIANT_FRAMES]
+    if known is not None and not known.seconds:
+        return []
+    return [Settings(seconds=float(sec)) for sec in VARIANT_SECONDS]
+
+
+def judged_settings(entry: ModelEntry, measurements: list[Measurement], want: Settings) -> Settings:
+    """設定を変えた測定を判定する設定(#116)。動画のコマ数だけを変えるときは、大きさをテンプレートの値
+    (template_settings。分かるとき)にする。分からなければ種類ごとの既定(832x480)のまま。"""
+    if entry.modality != "video" or want.width or want.height:
+        return want
+    known = template_settings(entry, measurements)
+    if known is None or not (known.width and known.height):
+        return want
+    return Settings(width=known.width, height=known.height, frames=want.frames, seconds=want.seconds)
+
+
+def bench_args(settings: Settings | None) -> list[str]:
+    """設定を bench・measure の引数にしたもの(--resolution WxH / --frames N / --length S)。"""
+    d = settings_dict(settings) or {}
+    out: list[str] = []
+    if d.get("width") and d.get("height"):
+        out += ["--resolution", f"{d['width']}x{d['height']}"]
+    if d.get("frames"):
+        out += ["--frames", str(d["frames"])]
+    if d.get("seconds"):
+        out += ["--length", f"{d['seconds']:g}"]
+    return out
+
+
+def work_ratio(entry: ModelEntry, want: Settings | None, ref: Settings | None) -> float:
+    """設定 want で測る量 ÷ 設定 ref で測った量(#116)。want で指定した項目だけの比の積
+    (画像は画素数、動画はコマ数、音声は長さ)。ref に無い値は種類ごとの既定(estimate.settings_for)で埋める。
+    ステップ数は want で変えない(テンプレートのまま)ので入れない。want が None なら 1。"""
+    from .estimate import settings_for
+
+    if want is None:
+        return 1.0
+    base = settings_for(entry, ref)
+    ratio = 1.0
+    for k in SETTING_KEYS:
+        w, r = getattr(want, k), getattr(base, k)
+        if w and r:
+            ratio *= float(w) / float(r)
+    return ratio
+
+
+def time_hint(
+    entry: ModelEntry, measurements: list[Measurement], settings: Settings | None = None
+) -> tuple[int, str]:
     """測るのにかかる時間の目安(秒, 根拠)。根拠は measured(そのモデルのほかの GPU の実測の中央値)か
-    typical(種類ごとのおおよその値 TYPICAL_SECONDS)。10 秒単位に切り上げる。モデルを落とす時間は入れない。"""
+    typical(種類ごとのおおよその値 TYPICAL_SECONDS)。10 秒単位に切り上げる。モデルを落とす時間は入れない。
+    settings(設定を変えた測定。#116)を渡すと、それぞれの実測の時間を設定の比(work_ratio)で伸び縮みさせて
+    から中央値を取る(typical は種類ごとの既定の設定での値として伸び縮みさせる)。読み込みの時間も
+    同じ比で動かすので、小さい設定では短めに出る(目安)。"""
     secs = [
-        float(m.seconds)
+        float(m.seconds) * work_ratio(entry, settings, m.settings)
         for m in measurements
         if m.model_id == entry.id and m.seconds and m.seconds > 0 and (m.outcome or "ok") == "ok"
     ]
     if secs:
         value, basis = statistics.median(secs), "measured"
     else:
-        value, basis = float(TYPICAL_SECONDS.get(entry.modality, DEFAULT_TYPICAL_SECONDS)), "typical"
+        typical = float(TYPICAL_SECONDS.get(entry.modality, DEFAULT_TYPICAL_SECONDS))
+        value, basis = typical * work_ratio(entry, settings, None), "typical"
     return max(10, int(-(-value // 10) * 10)), basis
 
 
@@ -128,6 +266,12 @@ class Suggestion:
     seconds_basis: str
     group_key: str = ""
     fit: Any = field(default=None, repr=False, compare=False)
+    settings: Settings | None = None  # 設定を変えた測定(#116)。None はテンプレートのまま
+
+    @property
+    def args(self) -> list[str]:
+        """measure・bench に付ける設定の引数(テンプレートのままなら空)。"""
+        return bench_args(self.settings)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -142,13 +286,23 @@ class Suggestion:
             "total_bytes": self.installed.total_bytes,
             "seconds": self.seconds,
             "seconds_basis": self.seconds_basis,
+            "settings": settings_dict(self.settings),
+            "args": self.args,
         }
 
 
 def _order(s: Suggestion) -> tuple:
     """並び: 入っているもの → 時間が短いもの → 落とす量が少ないもの → 名前。"""
     inst = s.installed
-    return (inst.state != "yes", s.seconds, inst.missing_bytes, s.model_name.lower(), s.model_id)
+    return (
+        inst.state != "yes",
+        s.seconds,
+        inst.missing_bytes,
+        s.model_name.lower(),
+        s.model_id,
+        s.settings is not None,
+        s.args,
+    )
 
 
 def suggestions(
@@ -158,12 +312,20 @@ def suggestions(
     roots: list[Path] | None = None,
     content: str = "sfw",
     policy: Any = None,
+    variants_per_model: int | None = VARIANTS_PER_MODEL,
 ) -> list[Suggestion]:
     """測ると役に立つモデル(#113): テンプレートがあり、この PC の GPU に載り(perfect / good で GPU)、
-    この GPU の見積もりに使える実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
+    この GPU にテンプレートの設定のままの実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
     無ければ recommend と同じ選び方の一番良いワークフロー)。
+    設定を変えた測定(#116。variants)も同じ一覧に混ぜる: この GPU にそのワークフローのテンプレートのままの
+    実測があり(先にテンプレートのままを測ってもらう)、その設定(judged_settings)で見積もって GPU に載り、
+    この GPU でその設定の実測が無いもの。同じモデル・同じ設定は 1 件(選び方は同じ)で、同じモデルの設定を
+    変えた測定は、並べた順に variants_per_model 件まで(None なら全部)。
+    時間の目安が MAX_SUGGEST_SECONDS を超えるものは出さない。動画の設定を変えた測定で、時間の目安が
+    種類ごとのおおよその値のときは TYPICAL_VIDEO_FRAMES_MAX コマまで。
     並びは入っているもの → 時間 → 落とす量。GPU が無ければ空。"""
     from .downloader import directory_refs
+    from .estimate import estimate, load_coefficients
     from .recommend import evaluate, variant_key
 
     gpu = system.best_gpu
@@ -171,33 +333,70 @@ def suggestions(
         return []
     roots = roots or []
     refs = directory_refs(db)
-    per_group: dict[str, list[Suggestion]] = {}
-    for f in evaluate(db, system, content=content, policy=policy):
+    c = load_coefficients()
+    ms = db.measurements
+    per_key: dict[tuple, list[Suggestion]] = {}
+    for f in evaluate(db, system, content=content, policy=policy, coefficients=c):
         m, e = f.model, f.estimate
-        if m.source != TEMPLATE_SOURCE or e.fit not in SUGGEST_LEVELS or e.run_mode != SUGGEST_MODE:
+        if m.source != TEMPLATE_SOURCE:
             continue
-        if has_measurement_here(m, db.measurements, gpu):
-            continue
-        secs, basis = time_hint(m, db.measurements)
-        s = Suggestion(
-            model_id=m.id,
-            model_name=f.model_name or m.name,
-            name=m.name,
-            modality=m.modality,
-            precision=m.precision,
-            fit_level=e.fit,
-            installed=installed_state(m, roots, refs),
-            seconds=secs,
-            seconds_basis=basis,
-            group_key=f.group_key or m.id,
-            fit=f,
-        )
-        per_group.setdefault(s.group_key, []).append(s)
-    out = [
-        min(group, key=lambda s: (s.installed.state != "yes", variant_key(s.fit), s.model_id))
-        for group in per_group.values()
-    ]
-    return sorted(out, key=_order)
+        rows: list[tuple[Settings | None, str]] = []
+        if not has_measurement_here(m, ms, gpu):
+            if e.fit in SUGGEST_LEVELS and e.run_mode == SUGGEST_MODE:
+                rows.append((None, e.fit))
+        else:
+            for v in variants(m, ms):
+                ve = estimate(m, system, judged_settings(m, ms, v), ms, c)
+                if (
+                    ve.fit in SUGGEST_LEVELS
+                    and ve.run_mode == SUGGEST_MODE
+                    and not has_measurement_here(m, ms, gpu, v)
+                ):
+                    rows.append((v, ve.fit))
+        inst = installed_state(m, roots, refs) if rows else None
+        for settings, level in rows:
+            secs, basis = time_hint(m, ms, settings)
+            if secs > MAX_SUGGEST_SECONDS:
+                continue
+            if (
+                settings is not None
+                and m.modality == "video"
+                and basis == "typical"
+                and (settings.frames or 0) > TYPICAL_VIDEO_FRAMES_MAX
+            ):
+                continue
+            s = Suggestion(
+                model_id=m.id,
+                model_name=f.model_name or m.name,
+                name=m.name,
+                modality=m.modality,
+                precision=m.precision,
+                fit_level=level,
+                installed=inst,
+                seconds=secs,
+                seconds_basis=basis,
+                group_key=f.group_key or m.id,
+                fit=f,
+                settings=settings,
+            )
+            key = (s.group_key, tuple(s.args))
+            per_key.setdefault(key, []).append(s)
+    picked = sorted(
+        (
+            min(group, key=lambda s: (s.installed.state != "yes", variant_key(s.fit), s.model_id))
+            for group in per_key.values()
+        ),
+        key=_order,
+    )
+    out: list[Suggestion] = []
+    count: dict[str, int] = {}
+    for s in picked:
+        if s.settings is not None and variants_per_model is not None:
+            if count.get(s.group_key, 0) >= variants_per_model:
+                continue
+            count[s.group_key] = count.get(s.group_key, 0) + 1
+        out.append(s)
+    return out
 
 
 def resolve(db: Database, system: SystemInfo, query: str, *, content: str = "sfw", policy: Any = None):

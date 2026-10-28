@@ -992,6 +992,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
 | `files_fp` | str \| null | (#90) fingerprint of the model's files in the list when measured (`estimate.files_fingerprint`; see "Rules of the submission pipeline" below). If it differs from the current list's fingerprint, the measurement is not used. null = not recorded (the maintainer's measurements.json, older rows; used as before) |
+| `settings_override` | bool \| null | (0.12.0, #116; optional) `true` when bench / measure changed the template's settings (`--width`, `--height`, `--resolution`, `--frames`, `--length`, `--steps`). null / absent = as in the template (older rows without the key too). `measure` uses it to tell whether this GPU has a measurement at the template's settings |
 | `gpu_known` | bool \| null | (#90, #101) community rows: false = the GPU name is a generic name or a placeholder (kept as a record, never used for judging) |
 | `n_sources` | int \| null | (#90) community rows: number of independent sources (the people who sent the submissions; #113) behind the value |
 | `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the sha256 of the sender key, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
@@ -1043,8 +1044,11 @@ How bench fills Measurement:
 - Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by}` (`found_by` is `option` for `--url`, `running` for
   a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found) and `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis}]. Nothing is measured.
-- With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `comfyui`, `installed`
+  seconds_basis, settings, args}]. `settings` (0.12.0, #116) is null for a run as in the template, else the changed
+  settings (`{width, height}`, `{frames}` or `{seconds}`); `args` is the same as `measure` / `bench` arguments
+  (`["--resolution", "1536x1536"]`, empty for the template's settings). Nothing is measured.
+- With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `settings` (0.12.0; the settings given with
+  `--resolution` / `--frames` / `--length` or chosen from the list, null when as in the template), `comfyui`, `installed`
   `{state, missing_bytes, total_bytes, missing_files}`, `time_hint` `{seconds, basis}`, then the keys of `bench`
   (`measurement`, `workflow_source`, `warnings`, `failed?`, `saved_to`, `not_saved`), `submission`
   `{saved_to, path_in_repo}` (null when no submission was written) and `hint` (the line about `genmodelfit share`, or
@@ -1053,18 +1057,43 @@ How bench fills Measurement:
 Rules:
 
 - **Suggestions**: models from an official ComfyUI template (`source: comfyui-template`) whose judgment on this PC is
-  `perfect` or `good` with run mode `gpu`, and that have no measurement on this GPU yet (`measure.has_measurement_here`:
-  same GPU by `estimate.same_gpu`, same files by `files_match`, standard, outcome `ok` or `oom`; a working-memory-only
-  measurement counts too, since measuring it again on the same GPU adds nothing). One per model (`groups` key): the
+  `perfect` or `good` with run mode `gpu`, and that have no measurement on this GPU at the template's settings yet
+  (`measure.has_measurement_here`: same GPU by `estimate.same_gpu`, same files by `files_match`, standard, outcome `ok`
+  or `oom`, no `settings_override` (0.12.0; rows without the key count); a working-memory-only measurement counts too,
+  since measuring it again on the same GPU adds nothing). One per model (`groups` key): the
   installed workflow, else the one `recommend` would pick. Order: installed first, then `seconds`, then
   `download_bytes`, then the name. Default 10 (`--limit`).
+- **Runs at other settings** (0.12.0, #116; `measure.variants`), mixed into the same list and order, to check the
+  formula's per-stage working memory: text-to-image workflows (`t2i`, not in `estimate.NO_SIZE_INPUT`) at 512 / 768 /
+  1024 / 1536 px square (`VARIANT_PIXELS`), text / image-to-video (`t2v`, `i2v`) at 17 / 33 / 49 / 81 frames
+  (`VARIANT_FRAMES`; size as in the template), text-to-audio music and sfx (`t2a`) at 10 / 30 / 60 / 120 s
+  (`VARIANT_SECONDS`), after the #102 plan. They are offered only for a workflow that already has a measurement on
+  this GPU at the template's settings (so that run is collected first; measuring a run at other settings does not
+  hide the template's row), and not for an item the template has no input for: when a measurement at the template's
+  settings (`measure.template_settings`, any GPU) records no width, frames or length, there is no variant for it
+  (AnimateDiff, whose frames come from `batch_size`). One is listed when its estimate at that setting is `perfect` /
+  `good` on `gpu` and this GPU has no measurement at that setting (`has_measurement_here` with `settings`: the given
+  items must match, other items are not compared, with or without `settings_override`; so the template's own value,
+  such as 1024 px, is not offered again). Video runs are judged at the template's width and height from that
+  measurement (`measure.judged_settings`), else at the per-type default 832x480. One per model and setting (chosen
+  like above), at most `measure.VARIANTS_PER_MODEL` (2) per model after ordering, so measuring one shows the next.
+- **Time limit**: rows whose time is over `measure.MAX_SUGGEST_SECONDS` (300 s) are not listed (`measure` is one run
+  of 1–5 minutes). Video runs at other settings whose time is the per-type rough value (`basis: typical`) are offered
+  only up to `measure.TYPICAL_VIDEO_FRAMES_MAX` (33) frames.
+- **Settings that cannot be set**: with settings (from `--resolution` / `--frames` / `--length` or the list), measure
+  runs bench with `strict_settings`: if the workflow after `apply_settings` does not carry the requested values
+  (`workflow.effective_settings`; the input is missing or comes from another node), it stops before generating with
+  an error and nothing is measured. If the recorded settings still differ after the run, `warnings` says so.
 - **Installed** (`installed.state`): `yes` when every file of the workflow exists with the listed size under one of the
   models folders (`--comfyui-dir`, else the folder decided like `download` without asking a ComfyUI, plus the folder a
   running ComfyUI reported); `no` otherwise (`missing_bytes` is what `download` would fetch); `unknown` when no folder
   was found or the list has no files for it. sha256 is not computed (download checks it).
 - **Time** (`seconds`, rounded up to 10 s): the median `seconds` of `ok` measurements of the same workflow on any GPU
   (`basis: measured`), else a rough value per type (`basis: typical`; `measure.TYPICAL_SECONDS`: image 60, video 300,
-  music 90, sfx 60, tts 60, 3d 120). A rough guide only; downloading is not included.
+  music 90, sfx 60, tts 60, 3d 120). A rough guide only; downloading is not included. With changed settings each
+  measurement's time is scaled by the ratio of the changed items (pixels, frames or length; `measure.work_ratio`,
+  missing values taken as the per-type defaults) before the median, and the typical value is scaled from the per-type
+  default settings. Steps are not changed, so not scaled; loading is scaled too, so small settings come out short.
 - **MODEL** is resolved like `download` (`downloader.resolve_candidates`), keeping only workflows with a template; an
   exact id is used as is, a name picks the workflow `recommend` would pick.
 - The submission draft goes to `<cache>/submissions/<GPU>/<date>-<sha8>.json` (only for standard results with outcome
@@ -1165,6 +1194,9 @@ Other rules:
 - Older files without these stay valid.
 - `contrib_schema` 1 and 2 are accepted (#90). 2 is 1 plus `measurement.files_fp` (optional; 64 lowercase hex
   digits), written from the version after 0.10.1. `files_fp` in a schema 1 file is an error.
+- (0.12.0, #116, optional) `measurement.settings_override`: `true` when the template's settings were changed
+  (written only then; anything but true / false is an error). `contrib_schema` stays as is, like the optional GPU
+  keys of 0.9.0. `contrib aggregate` keeps such submissions in their own rows and marks the row with it.
 - The name may contain `(R)`, `(TM)`, `™`, `®`. A name of another vendor than `vendor` is an error. For `apple` only a chip name (`Apple M2 Pro`) or `mps`.
 - `vram_gb` above 256 GiB, `peak_ram_gb` above `ram_total_gb` × 1.05 + 1 GiB, and any NaN / infinity / negative number are errors (NaN in the file is refused when reading).
 

@@ -354,6 +354,10 @@ class Measurement:
     # 測ったときの一覧のモデルのファイルの指紋(#90。estimate.files_fingerprint)。一覧のファイルが変わったら
     # (指紋が違えば)その実測は使わない。None は記録が無い(古い行・作者の measurements.json)
     files_fp: str | None = None
+    # テンプレートの設定(幅・高さ・コマ数・長さ・ステップ数)を変えて測ったか(#116。bench・measure が
+    # 変えたときだけ True を書く)。None・False はテンプレートのまま(記録の無い古い行もそう扱う)。
+    # measure の「テンプレートのままの実測がこの GPU にあるか」に使う
+    settings_override: bool | None = None
     # 以下はほかの利用者の実測のまとめの行だけ(#90)
     gpu_known: bool | None = None  # False = 名前の表に無い GPU(記録として残すだけで判定に使わない)
     n_sources: int | None = None  # 使った提出の、別々の出どころ(リポジトリに足したコミット = PR)の数

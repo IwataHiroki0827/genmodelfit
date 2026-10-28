@@ -758,14 +758,19 @@ pick a model worth measuring and measure it on your running ComfyUI (nothing is 
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--yes] [--limit N] [--timeout SEC] [model]
+                    [--comfyui-dir DIR] [--yes] [--resolution WxH] [--frames N] [--length SEC]
+                    [--limit N] [--timeout SEC] [model]
 ```
 
 - Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
-- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
-- MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows with a ComfyUI template).
-- Before measuring one screen shows the model and precision, the settings (as in the template), which ComfyUI and how it was found, whether the files are installed, a rough time and that nothing is sent, then asks [Y/n] (`--yes` skips it).
-- The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type.
+- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU at the template's settings yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
+- Once a model has that measurement, the list offers runs at other settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better) and this GPU has no measurement at that setting, at most 2 per model.
+- Runs over about 300 s are not listed.
+- Each run is one generation (a few minutes); running measure again picks the next one.
+- MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows with a ComfyUI template); `--resolution`, `--frames` and `--length` change the settings like bench.
+- Before measuring one screen shows the model and precision, the settings (as in the template, or the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough time and that nothing is sent, then asks [Y/n] (`--yes` skips it).
+- The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed.
+- When the template cannot take a requested setting, it stops before generating.
 - A model that is not installed is downloaded first, with the same questions and consent rules as download.
 - Afterwards it shows the result and where it saved it, and one line pointing to `genmodelfit share`, which sends it (it never asks whether to send).
 
@@ -777,6 +782,9 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `--url` | `URL` | a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000) | URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188) |
 | `--comfyui-dir` | `DIR` | decided like download | your ComfyUI folder (to see whether the model is installed, and where to download it) |
 | `--yes`, `-y` |  |  | do not ask before measuring (a model that is not installed is downloaded under the same rules as download `--yes`) |
+| `--resolution` | `WxH` |  | measure at this width and height (e.g. 1536x1536; like bench; omitted: as in the template) |
+| `--frames` | `N` |  | measure at this number of video frames (like bench; omitted: as in the template) |
+| `--length` | `SEC` |  | measure at this audio length in seconds (like bench; omitted: as in the template) |
 | `--limit`, `-n` | `N` |  | how many suggestions to list without a model (default 10) |
 | `--timeout` | `SEC` | `1800` | the most time to wait (seconds > 0; default 1800) |
 
@@ -807,6 +815,7 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 genmodelfit measure --json
 genmodelfit measure image_z_image_turbo_int8 --yes --json
 genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+genmodelfit measure image_sdxl_simple --resolution 1536x1536 --yes --json
 ```
 
 JSON output (`--json`): [schema.md, "measure"](schema.md#measure)

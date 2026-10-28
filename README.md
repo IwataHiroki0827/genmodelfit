@@ -428,6 +428,13 @@ Intel or Apple GPU):
    the shorter time, then the smaller download). Choose one; it shows what it will do (model, settings, which ComfyUI,
    whether the files are installed, a rough time, that nothing is sent) and measures on the ComfyUI running on this PC
    (or `--url`). A model that is not installed is downloaded first with the same questions as `download`.
+   Once a model has a measurement on your GPU at the template's settings, the list also has runs at other settings
+   that help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px), video frames (17 / 33 /
+   49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s), only when they fit your GPU at
+   that setting and have no measurement at it on this GPU, at most 2 per model and about 5 minutes or less
+   (shown with `--resolution`, `--frames` or `--length`; `genmodelfit measure <id> --resolution 1536x1536` picks
+   one yourself). Each run is one generation of a few minutes; running `measure` again a few times, for other
+   models or settings, helps even more.
 2. `genmodelfit share` lists the measurements you have not sent, shows exactly what will be sent, and opens the
    measurement form on GitHub in your browser with it filled in.
 3. Sign in and press "Create". A bot checks it within a few minutes and replies on the page; if it is fine, it goes

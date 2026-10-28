@@ -190,11 +190,12 @@ def test_suggestions_rules(db):
     for x in sugg:
         m = by_id[x.model_id]
         assert m.source == "comfyui-template" and not x.model_id.startswith("hf:")
-        f = judge(m, s, db)
+        f = judge(m, s, db, settings=x.settings)  # 設定を変えた測定は、その設定で載るもの(#116)
         assert f.estimate.fit in ("perfect", "good") and f.estimate.run_mode == "gpu"
-        assert not measure.has_measurement_here(m, db.measurements, s.best_gpu)
-        assert x.group_key not in keys  # 同じモデルは 1 件
-        keys.add(x.group_key)
+        assert not measure.has_measurement_here(m, db.measurements, s.best_gpu, x.settings)
+        key = (x.group_key, tuple(x.args))
+        assert key not in keys  # 同じモデル・同じ設定は 1 件
+        keys.add(key)
         assert x.installed.state == "unknown" and x.seconds % 10 == 0
     order = [(x.seconds, x.installed.missing_bytes) for x in sugg]
     assert order == sorted(order)
@@ -221,7 +222,9 @@ def test_suggestions_put_installed_first_and_drop_measured(db, tmp_path):
     # この GPU で測ったら出さない
     db2 = load_db(use_cache=False)
     db2.measurements.append(meas(model_id=first[0].model_id))
-    assert first[0].model_id not in [x.model_id for x in measure.suggestions(db2, s)]
+    # テンプレートのままの行は出さない(設定を変えた測定は、その設定の実測が無いので残る。#116)
+    rows = [x for x in measure.suggestions(db2, s) if x.model_id == first[0].model_id]
+    assert all(x.settings is not None for x in rows)
 
 
 def test_resolve_keeps_template_workflows(db):
@@ -820,3 +823,387 @@ def test_intake_writes_the_numeric_account_id(db, tmp_path):
         == 0
     )
     assert "Submitted-by-id: 77" in (tmp_path / "o" / "commit_msg.txt").read_text(encoding="utf-8")
+
+
+# --- 設定を変えた測定(#116) ------------------------------------------------------------------------
+
+
+def _set(**kw):
+    from genmodelfit.models import Settings
+
+    return Settings(**kw)
+
+
+def defaults_measured(db=None, **override_seconds):
+    """この GPU(RTX 3070)で、テンプレートのままの実測がある一覧(設定を変えた測定が出る前提)。"""
+    db = db or load_db(use_cache=False)
+    rows = {
+        "image_sdxl_simple": (_set(width=1024, height=1024, steps=20), 20.0),
+        "text_to_video_wan": (_set(width=832, height=480, frames=33, steps=20), 120.0),
+        "audio_ace_step_1_5_checkpoint": (_set(seconds=120.0, steps=8), 60.0),
+    }
+    for model_id, (st, secs) in rows.items():
+        db.measurements.append(meas(model_id, settings=st, seconds=override_seconds.get(model_id, secs)))
+    return db
+
+
+@pytest.fixture
+def measured_db(monkeypatch):
+    db = defaults_measured()
+    monkeypatch.setattr(cli, "_db", lambda args: db)
+    return db
+
+
+def test_variants_per_modality():
+    img = measure.variants(entry(tasks=["t2i"]))
+    assert [(v.width, v.height) for v in img] == [(512, 512), (768, 768), (1024, 1024), (1536, 1536)]
+    assert all(v.frames is None and v.seconds is None for v in img)
+    vid = measure.variants(entry(id="video_x", modality="video", tasks=["i2v"]))
+    # 動画の大きさはテンプレートのまま
+    assert [v.frames for v in vid] == [17, 33, 49, 81] and all(v.width is None for v in vid)
+    mus = measure.variants(entry(id="audio_x", modality="music", tasks=["t2a"]))
+    assert [v.seconds for v in mus] == [10, 30, 60, 120]
+    sfx = measure.variants(entry(id="sfx_x", modality="sfx", tasks=["t2a"]))
+    assert [v.seconds for v in sfx] == [10, 30, 60, 120]
+    # 設定を入力で決めない用途・種類には出さない
+    assert measure.variants(entry(tasks=["i2i"])) == []
+    assert measure.variants(entry(tasks=["upscale"])) == []
+    assert measure.variants(entry(id="3d_x", modality="3d", tasks=["i23d"])) == []
+    assert measure.variants(entry(id="tts_x", modality="tts", tasks=["tts"])) == []
+    assert measure.variants(entry(id="video_x", modality="video", tasks=["v2v"])) == []
+    # 大きさの入力の無いテンプレート(estimate.NO_SIZE_INPUT)
+    assert measure.variants(entry(id="utility_birefnet_remove_background", tasks=["t2i"])) == []
+
+
+def test_variants_skip_inputs_the_template_does_not_have():
+    """テンプレートのままの実測にその項目が無い(入力が無い)ものは出さない(コマ数を batch_size で決める
+    AnimateDiff など)。設定を変えた実測は手がかりにしない。"""
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    no_frames = meas("video_x", settings=_set(width=512, height=512, steps=20))
+    assert measure.variants(v, [no_frames]) == []
+    assert [x.frames for x in measure.variants(v, [meas("video_x", settings=_set(frames=16))])] == [
+        17,
+        33,
+        49,
+        81,
+    ]
+    overridden = meas("video_x", settings=_set(width=512, height=512), settings_override=True)
+    assert len(measure.variants(v, [overridden])) == 4  # 設定を変えた実測からは分からない
+    img = entry(tasks=["t2i"])
+    assert measure.variants(img, [meas(settings=_set(steps=20))]) == []  # 幅・高さの入力が無い
+    a = entry(id="audio_x", modality="music", tasks=["t2a"])
+    assert measure.variants(a, [meas("audio_x", settings=_set(steps=8))]) == []
+
+
+def test_variant_args_and_settings_dict():
+    assert measure.bench_args(None) == [] and measure.settings_dict(None) is None
+    assert measure.settings_dict(_set()) is None
+    assert measure.bench_args(_set(width=1536, height=1536)) == ["--resolution", "1536x1536"]
+    assert measure.bench_args(_set(frames=81)) == ["--frames", "81"]
+    assert measure.bench_args(_set(seconds=120.0)) == ["--length", "120"]
+    assert measure.settings_dict(_set(seconds=30.0, steps=8)) == {"seconds": 30.0}  # ステップ数は変えない
+
+
+def test_has_measurement_here_with_settings():
+    e = entry(tasks=["t2i"])
+    g = pc().best_gpu
+    at512 = meas(settings=_set(width=512, height=512, steps=20))
+    want512, want1024 = _set(width=512, height=512), _set(width=1024, height=1024)
+    assert measure.has_measurement_here(e, [at512], g)  # 記録の無い古い行はテンプレートのまま
+    assert measure.has_measurement_here(e, [at512], g, want512)
+    assert not measure.has_measurement_here(e, [at512], g, want1024)
+    assert not measure.has_measurement_here(e, [meas()], g, want512)  # 設定の無い実測は別の設定
+    # 設定を変えた実測は、その設定には数えるが、テンプレートのままには数えない
+    over = meas(settings=want512, settings_override=True)
+    assert measure.has_measurement_here(e, [over], g, want512)
+    assert not measure.has_measurement_here(e, [over], g)
+    # 同じ設定でも、ほかの GPU・標準でない・失敗は数えない
+    other_gpu = meas(settings=want512, gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24)
+    assert not measure.has_measurement_here(e, [other_gpu], g, want512)
+    assert not measure.has_measurement_here(e, [meas(settings=want512, standard=False)], g, want512)
+    assert not measure.has_measurement_here(e, [meas(settings=want512, outcome="error")], g, want512)
+    assert measure.has_measurement_here(e, [meas(settings=want512, outcome="oom")], g, want512)
+    # 動画はコマ数だけ比べる(大きさはテンプレートのまま)
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    m49 = meas("video_x", settings=_set(width=832, height=480, frames=49))
+    assert measure.has_measurement_here(v, [m49], g, _set(frames=49))
+    assert not measure.has_measurement_here(v, [m49], g, _set(frames=81))
+
+
+def test_video_variants_are_judged_at_the_template_size():
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    want = _set(frames=81)
+    assert measure.judged_settings(v, [], want) is want  # 分からなければ種類ごとの既定(832x480)
+    old = meas("video_x", settings=_set(width=640, height=640, frames=73), date="2026-10-01")
+    new = meas("video_x", settings=_set(width=1280, height=704, frames=121), date="2026-10-20")
+    over = meas("video_x", settings=_set(width=320, height=320), settings_override=True, date="2026-10-27")
+    got = measure.judged_settings(v, [old, new, over], want)
+    assert (got.width, got.height, got.frames) == (1280, 704, 81)  # テンプレートのままの新しい実測から
+    img = entry(tasks=["t2i"])
+    assert measure.judged_settings(img, [old], _set(width=512, height=512)).width == 512
+
+
+def test_time_hint_scales_with_settings():
+    e = entry(tasks=["t2i"])
+    # 種類ごとの値(画像 60 秒)は既定の 1024x1024 での値として伸び縮みさせる
+    assert measure.time_hint(e, [], _set(width=512, height=512)) == (20, "typical")  # 60 × 1/4 = 15
+    assert measure.time_hint(e, [], _set(width=1536, height=1536)) == (140, "typical")  # 60 × 2.25 = 135
+    # 実測はそれぞれの設定から伸び縮みさせてから中央値(512 の 20 秒 → 80 秒、既定の 40 秒 → 40 秒)
+    ms = [meas(seconds=20.0, settings=_set(width=512, height=512)), meas(seconds=40.0)]
+    assert measure.time_hint(e, ms, _set(width=1024, height=1024)) == (60, "measured")
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    assert measure.time_hint(v, [], _set(frames=17)) == (70, "typical")  # 300 × 17/81 = 63
+    mv = [meas("video_x", seconds=100.0, settings=_set(width=512, height=512, frames=49))]
+    # 大きさは変えないので、比はコマ数だけ
+    assert measure.time_hint(v, mv, _set(frames=98)) == (200, "measured")
+    a = entry(id="audio_x", modality="music", tasks=["t2a"])
+    ma = [meas("audio_x", seconds=20.0, settings=_set(seconds=20.0))]
+    assert measure.time_hint(a, ma, _set(seconds=120.0)) == (120, "measured")
+    assert measure.time_hint(a, ma) == (20, "measured")  # 設定を渡さなければ今までどおり
+
+
+def _rows(sugg, model_id):
+    return [x for x in sugg if x.model_id == model_id]
+
+
+def test_variants_come_after_the_template_run(db):
+    """設定を変えた測定は、この GPU にテンプレートのままの実測があるモデルだけ(先にそちらを測ってもらう)。
+    設定を変えた実測では、テンプレートのままの行は消えない。"""
+    s = pc()
+    first = _rows(measure.suggestions(db, s, variants_per_model=None), "image_sdxl_simple")
+    assert [x.settings for x in first] == [None]
+    db2 = load_db(use_cache=False)
+    db2.measurements.append(
+        meas("image_sdxl_simple", settings=_set(width=512, height=512), settings_override=True)
+    )
+    rows = _rows(measure.suggestions(db2, s, variants_per_model=None), "image_sdxl_simple")
+    assert [x.settings for x in rows] == [None]  # まだテンプレートのまま
+    done = _rows(measure.suggestions(defaults_measured(), s, variants_per_model=None), "image_sdxl_simple")
+    assert done and all(x.settings is not None for x in done)
+    # テンプレートの値(1024x1024)は、テンプレートのままの実測があるので出さない(重ならない)
+    assert {x.settings.width for x in done} == {512, 768, 1536}
+
+
+def test_suggestions_mix_variants_and_cap_per_model():
+    s = pc()
+    db = defaults_measured()
+    sugg = measure.suggestions(db, s)
+    var = [x for x in sugg if x.settings is not None]
+    assert var, "RTX 3070 で設定を変えて測れるものがある"
+    assert any(x.settings is None for x in sugg)  # テンプレートのままの行も同じ一覧に
+    per_model: dict[str, int] = {}
+    for x in var:
+        per_model[x.group_key] = per_model.get(x.group_key, 0) + 1
+        assert x.args and x.to_dict()["settings"] == measure.settings_dict(x.settings)
+        assert x.to_dict()["args"] == x.args
+    assert max(per_model.values()) <= measure.VARIANTS_PER_MODEL
+    # 上限を外すと、同じモデルの設定がもっと出る(上限は並べたあとで切る: 残るのは先に並ぶもの)
+    every = measure.suggestions(db, s, variants_per_model=None)
+    assert len(every) > len(sugg)
+    for key in per_model:
+        all_of = [x for x in every if x.group_key == key and x.settings is not None]
+        kept = [x for x in var if x.group_key == key]
+        assert [x.args for x in kept] == [x.args for x in all_of[: len(kept)]]
+    # 並びは入っているもの → 時間 → 落とす量(テンプレートのままと設定を変えたものを混ぜて)
+    order = [(x.installed.state != "yes", x.seconds, x.installed.missing_bytes) for x in sugg]
+    assert order == sorted(order)
+    # どの行も、その設定(動画はテンプレートの大きさ)で GPU に載る
+    from genmodelfit.estimate import estimate
+
+    for x in every:
+        m = db.get(x.model_id)
+        st = measure.judged_settings(m, db.measurements, x.settings) if x.settings else None
+        e = estimate(m, s, st, db.measurements)
+        assert e.fit in ("perfect", "good") and e.run_mode == "gpu"
+
+
+def test_suggestions_drop_variants_measured_here(db):
+    s = pc()
+    db2 = defaults_measured()
+    db2.measurements.append(
+        meas("image_sdxl_simple", settings=_set(width=512, height=512), settings_override=True)
+    )
+    widths = {
+        x.settings.width
+        for x in _rows(measure.suggestions(db2, s, variants_per_model=None), "image_sdxl_simple")
+    }
+    assert widths == {768, 1536}
+
+
+def test_suggestions_cap_the_time():
+    s = pc()
+    every = measure.suggestions(defaults_measured(), s, variants_per_model=None)
+    assert every and all(x.seconds <= measure.MAX_SUGGEST_SECONDS for x in every)
+    # SDXL を 1024 px で 400 秒なら、1536 px は(ほかの GPU の実測との中央値でも)300 秒を超えるので出さない
+    slow = defaults_measured(image_sdxl_simple=400.0)
+    widths = {
+        x.settings.width
+        for x in _rows(measure.suggestions(slow, s, variants_per_model=None), "image_sdxl_simple")
+    }
+    assert widths == {512, 768}
+    # 動画で時間が種類ごとのおおよその値(時間の実測が無い)なら、17・33 コマだけ
+    # (RTX 4090 24 GB で、テンプレートのまま 49 コマの実測があり、時間はどの実測にも無い)
+    big = pc(vram=24.0, name="NVIDIA GeForce RTX 4090")
+    wan = "text_to_video_wan"
+    db = load_db(use_cache=False)
+    db.measurements = [x for x in db.measurements if x.model_id != wan]
+    here = {"gpu_name": "NVIDIA GeForce RTX 4090", "gpu_vram_gb": 24.0}
+    db.measurements.append(meas(wan, settings=_set(width=832, height=480, frames=49), **here))
+    rows = _rows(measure.suggestions(db, big, variants_per_model=None), wan)
+    assert {x.settings.frames for x in rows} == {17, 33}
+    assert all(x.seconds_basis == "typical" for x in rows)
+    # 時間の実測があれば 81 コマも(49 はテンプレートのままの実測と同じなので出さない)
+    db.measurements[-1].seconds = 60.0
+    rows = _rows(measure.suggestions(db, big, variants_per_model=None), wan)
+    assert {x.settings.frames for x in rows} == {17, 33, 81}
+    assert all(x.seconds_basis == "measured" for x in rows)
+
+
+def test_measure_lists_variants_with_their_arguments(capsys, monkeypatch, this_pc, measured_db):
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "en", "measure", "-n", "40"]) == 0
+    out = capsys.readouterr().out
+    assert re.search(r"\[\S+ --(resolution \d+x\d+|frames \d+|length \d+)\]", out)
+    assert cli.main(["measure", "--json", "-n", "40"]) == 0
+    rows = json.loads(capsys.readouterr().out)["suggestions"]
+    assert any(r["settings"] is None and r["args"] == [] for r in rows)
+    v = next(r for r in rows if r["settings"])
+    assert v["args"][0] in ("--resolution", "--frames", "--length")
+
+
+def test_measure_settings_need_a_model_and_a_good_resolution(capsys, this_pc):
+    assert cli.main(["--lang", "ja", "measure", "--resolution", "512x512"]) == 1
+    assert "測るモデルといっしょに" in capsys.readouterr().err
+    assert cli.main(["--lang", "en", "measure", "image_sdxl_simple", "--resolution", "512"]) == 1
+    assert "WIDTHxHEIGHT" in capsys.readouterr().err
+
+
+def test_measure_passes_settings_to_bench(capsys, monkeypatch, this_pc, fake_gpu):
+    from test_bench import FakeComfy
+
+    seen = []
+    real_run = bench.run
+    monkeypatch.setattr(bench, "run", lambda opts, *a, **k: seen.append(opts) or real_run(opts, *a, **k))
+    with FakeComfy() as fake:
+        argv = ["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url]
+        assert cli.main([*argv, "--resolution", "1536x1536"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert (seen[0].width, seen[0].height, seen[0].frames, seen[0].seconds) == (1536, 1536, None, None)
+    assert seen[0].strict_settings and d["settings"] == {"width": 1536, "height": 1536}
+    # 設定を変えた印が実測と提出に入る
+    assert d["measurement"]["settings_override"] is True
+    sub = json.loads(Path(d["submission"]["saved_to"]).read_text(encoding="utf-8"))
+    assert sub["measurement"]["settings_override"] is True
+    rep = contrib.validate_submission(sub, check_filename=False)
+    assert not [e for e in rep.errors if "settings_override" in e["message"]]
+    big = d["time_hint"]["seconds"]
+    seen.clear()
+    with FakeComfy() as fake:
+        assert cli.main(["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["settings"] is None and seen[0].width is None and not seen[0].strict_settings
+    assert d["measurement"]["settings_override"] is None
+    sub = json.loads(Path(d["submission"]["saved_to"]).read_text(encoding="utf-8"))
+    assert "settings_override" not in sub["measurement"]
+    assert big > d["time_hint"]["seconds"]  # 時間の目安も設定に合わせて伸びる
+
+
+def test_measure_stops_before_generating_when_a_setting_cannot_be_set(capsys, monkeypatch, this_pc, fake_gpu):
+    """テンプレートに無い入力(画像のコマ数)を頼んだら、生成の前に止めて理由を言う。"""
+    from test_bench import FakeComfy
+
+    with FakeComfy() as fake:
+        argv = ["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", fake.url, "--frames", "81"]
+        assert cli.main(argv) == 1
+        assert fake.submitted == []  # 生成を送っていない
+    err = capsys.readouterr().err
+    assert (
+        "頼んだ設定を書けません" in err and "frames 81" in err and "次にすること: このテンプレートでは" in err
+    )
+    assert not (cache_dir() / "submissions").exists()
+
+
+def test_bench_without_strict_keeps_going(monkeypatch):
+    """bench(strict_settings なし)は今までどおり、書けない設定を注意にして測る。"""
+    opts = bench.BenchOptions(model_id="x", url="u", frames=81)
+    assert opts.settings_override and not opts.strict_settings
+    assert not bench.BenchOptions(model_id="x", url="u").settings_override
+    assert bench.BenchOptions(model_id="x", url="u", steps=4).settings_override
+
+
+def test_measure_warns_when_the_measured_settings_differ(capsys, monkeypatch, this_pc, fake_gpu):
+    from test_bench import FakeComfy
+
+    real_run = bench.run
+
+    def run(opts, *a, **k):
+        res = real_run(opts, *a, **k)
+        res.measurement.settings.width = 1024  # 書けたはずの値が、測った設定では違った
+        return res
+
+    monkeypatch.setattr(bench, "run", run)
+    with FakeComfy() as fake:
+        argv = [
+            "measure",
+            "image_sdxl_simple",
+            "--json",
+            "--yes",
+            "--url",
+            fake.url,
+            "--resolution",
+            "512x512",
+        ]
+        assert cli.main(argv) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert any("differ" in w or "違います" in w for w in d["warnings"])
+
+
+def test_measure_screen_shows_the_settings(capsys, monkeypatch, this_pc):
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("起動していなければ尋ねない"))
+    argv = ["--lang", "ja", "measure", "audio_ace_step_1_5_checkpoint", "--length", "120"]
+    assert cli.main(argv) == 1
+    out = capsys.readouterr().out
+    assert "設定:       長さ 120 秒(ほかは公式のテンプレートのまま)" in out
+    assert "比で伸び" in out
+
+
+def test_measure_choosing_a_variant_measures_it(capsys, monkeypatch, this_pc, fake_gpu, measured_db):
+    from test_bench import FakeComfy
+
+    sugg = measure.suggestions(measured_db, pc())[: cli.MEASURE_LIMIT]
+    k = next(i for i, x in enumerate(sugg) if x.settings is not None)
+    want = sugg[k].settings
+    seen = []
+    real_run = bench.run
+    monkeypatch.setattr(bench, "run", lambda opts, *a, **kw: seen.append(opts) or real_run(opts, *a, **kw))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(cli, "_choose_number", lambda n: k)
+    answers(monkeypatch, "")
+    with FakeComfy() as fake:
+        cli.main(["--lang", "ja", "measure", "--url", fake.url])
+    out = capsys.readouterr().out
+    got = (seen[0].width, seen[0].height, seen[0].frames, seen[0].seconds)
+    assert got == (want.width, want.height, want.frames, want.seconds)
+    assert "ほかは公式のテンプレートのまま" in out
+
+
+def test_settings_override_in_submissions_and_aggregate(db):
+    m = meas("image_sdxl_simple", settings=_set(width=512, height=512, steps=20), settings_override=True)
+    m.vram_metric, m.offload = "torch_reserved", "dynamic"
+    sub = contrib.build_submission(m, pc())
+    assert sub["measurement"]["settings_override"] is True
+    assert contrib.to_measurement(sub).settings_override is True
+    assert not [
+        e
+        for e in contrib.validate_submission(sub, db, check_filename=False).errors
+        if "override" in e["message"]
+    ]
+    bad = json.loads(json.dumps(sub))
+    bad["measurement"]["settings_override"] = "yes"
+    errs = contrib.validate_submission(bad, db, check_filename=False).errors
+    assert any("settings_override" in e["message"] for e in errs)
+    # 印の無い提出はテンプレートのまま
+    plain = contrib.build_submission(meas("image_sdxl_simple", settings=_set(width=1024, height=1024)), pc())
+    assert "settings_override" not in plain["measurement"]
+    assert contrib.to_measurement(plain).settings_override is None

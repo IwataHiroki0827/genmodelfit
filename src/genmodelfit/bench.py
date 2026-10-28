@@ -771,6 +771,13 @@ class BenchOptions:
     precision: str | None = None
     busy_util_pct: float = 30.0
     files_fp: str | None = None  # 測る時点の一覧のファイルの指紋(estimate.files_fingerprint。#90)
+    # 頼んだ設定(幅・高さ・コマ数・長さ)をワークフローに書けなければ、生成の前に止める(measure。#116)
+    strict_settings: bool = False
+
+    @property
+    def settings_override(self) -> bool:
+        """テンプレートの設定(幅・高さ・コマ数・長さ・ステップ数)を変えて測るか(#116)。"""
+        return any(v is not None for v in (self.width, self.height, self.frames, self.seconds, self.steps))
 
 
 @dataclass
@@ -944,6 +951,8 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         wf, width=opts.width, height=opts.height, frames=opts.frames, seconds=opts.seconds, steps=opts.steps
     )
     warnings += notes
+    if opts.strict_settings:
+        _check_requested_settings(wf, opts, notes)
     nonstandard: list[str] = []
     if opts.workflow_path:
         nonstandard.append("自分のワークフロー(--workflow)")
@@ -1248,6 +1257,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         gpu_backend=BACKEND_OF_VENDOR.get(vendor),
         gpu_pci_id=pci_id,
         files_fp=opts.files_fp,
+        settings_override=True if opts.settings_override else None,
     )
     return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
 
@@ -1296,19 +1306,53 @@ def _timeout_error() -> str:
     return tr("--timeout は 0 より大きい秒数にしてください", "--timeout must be a number of seconds above 0")
 
 
+def _check_requested_settings(wf: dict[str, Any], opts: BenchOptions, notes: list[str]) -> None:
+    """頼んだ設定が、書き換えたワークフローから読める設定(effective_settings。実測に書く値)と同じか(#116)。
+    違えば(その入力が無い・他のノードから来る)生成の前に BenchError で止める。"""
+    got = effective_settings(wf)
+    wrong = []
+    for key, want in (
+        ("width", opts.width),
+        ("height", opts.height),
+        ("frames", opts.frames),
+        ("seconds", opts.seconds),
+    ):
+        have = getattr(got, key)
+        if want is not None and (have is None or float(have) != float(want)):
+            wrong.append(f"{key} {want:g} → {have if have is not None else '-'}")
+    if wrong:
+        raise BenchError(
+            "\n".join(
+                [
+                    tr(
+                        "このテンプレートでは、頼んだ設定を書けません(測りませんでした): " + "、".join(wrong),
+                        "This template cannot take the requested settings (nothing was measured): "
+                        + ", ".join(wrong),
+                    ),
+                    *notes,
+                ]
+            )
+        )
+
+
+def parse_resolution(res: str) -> tuple[int, int]:
+    """--resolution の 幅x高さ(bench と measure)。形が違えば BenchError。"""
+    mres = re.fullmatch(r"\s*(\d+)\s*[xX*×]\s*(\d+)\s*", res)
+    if not mres or not int(mres.group(1)) or not int(mres.group(2)):
+        raise BenchError(
+            tr(
+                f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}",
+                f"Write --resolution as WIDTHxHEIGHT (e.g. 768x768): {res}",
+            )
+        )
+    return int(mres.group(1)), int(mres.group(2))
+
+
 def options_from_args(args: argparse.Namespace) -> BenchOptions:
     width, height = getattr(args, "width", None), getattr(args, "height", None)
     res = getattr(args, "resolution", None)
     if res:
-        mres = re.fullmatch(r"\s*(\d+)\s*[xX*×]\s*(\d+)\s*", res)
-        if not mres:
-            raise BenchError(
-                tr(
-                    f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}",
-                    f"Write --resolution as WIDTHxHEIGHT (e.g. 768x768): {res}",
-                )
-            )
-        width, height = int(mres.group(1)), int(mres.group(2))
+        width, height = parse_resolution(res)
     timeout = getattr(args, "timeout", None)
     timeout = 1800.0 if timeout is None else timeout
     if timeout <= 0:

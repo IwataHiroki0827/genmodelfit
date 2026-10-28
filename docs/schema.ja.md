@@ -952,6 +952,7 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `consistent` | bool \| null | community の行: 使った提出が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無い。係数の較正(`calibrate`)に入るのは consistent の行だけ。見積もりは、1 件の提出からの `ok` の行すべてを使う(2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
+| `settings_override` | bool \| null | (0.12.0、#116。任意)bench・measure がテンプレートの設定を変えて測ったとき(`--width`・`--height`・`--resolution`・`--frames`・`--length`・`--steps`)だけ `true`。null・無しはテンプレートのまま(キーの無い古い行も)。`measure` が、この GPU にテンプレートの設定のままの実測があるかを見分けるのに使う |
 | `gpu_known` | bool \| null | (#90、#101)community の行: false は GPU 名が汎用の名前・名前の代わりの値(記録として残し、判定には使わない) |
 | `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(提出を送った人。#113)の数 |
 | `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(送った人の鍵の sha256 の先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
@@ -999,8 +1000,11 @@ bench が Measurement を埋める方法(測り方):
 - MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by}`(`found_by` は `--url` なら `option`、127.0.0.1 の
   8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null)と `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis}]。測らない。
-- MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`comfyui`・`installed`
+  seconds_basis, settings, args}]。`settings`(0.12.0、#116)はテンプレートのままなら null、設定を変えた測定なら
+  変えた設定(`{width, height}`・`{frames}`・`{seconds}`)。`args` は同じものを `measure`・`bench` の引数にしたもの
+  (`["--resolution", "1536x1536"]`。テンプレートのままなら空)。測らない。
+- MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`settings`(0.12.0。`--resolution`・`--frames`・
+  `--length` で指定したか一覧で選んだ設定。テンプレートのままなら null)・`comfyui`・`installed`
   `{state, missing_bytes, total_bytes, missing_files}`・`time_hint` `{seconds, basis}`、続けて `bench` の鍵
   (`measurement`・`workflow_source`・`warnings`・`failed?`・`saved_to`・`not_saved`)、`submission`
   `{saved_to, path_in_repo}`(提出を書かなかったときは null)、`hint`(`genmodelfit share` を案内する 1 行。無ければ null)。
@@ -1009,17 +1013,39 @@ bench が Measurement を埋める方法(測り方):
 決まり:
 
 - **提案**: ComfyUI の公式テンプレートのモデル(`source: comfyui-template`)で、この PC の判定が `perfect` か `good` で
-  動かし方が `gpu`、この GPU の実測がまだ無いもの(`measure.has_measurement_here`: `estimate.same_gpu` で同じ GPU、
-  `files_match` で同じファイル、標準の条件、結果が `ok` か `oom`。作業用メモリだけの実測も数える。同じ GPU で
-  測り直しても材料が増えないため)。同じモデル(`groups` の鍵)は 1 件: 入っているワークフロー、無ければ `recommend` が
+  動かし方が `gpu`、この GPU にテンプレートの設定のままの実測がまだ無いもの(`measure.has_measurement_here`:
+  `estimate.same_gpu` で同じ GPU、`files_match` で同じファイル、標準の条件、結果が `ok` か `oom`、`settings_override`
+  が無い(0.12.0。キーの無い行は数える)。作業用メモリだけの実測も数える。同じ GPU で測り直しても材料が増えないため)。同じモデル(`groups` の鍵)は 1 件: 入っているワークフロー、無ければ `recommend` が
   選ぶもの。並びは 入っているもの → `seconds` → `download_bytes` → 名前。既定 10 件(`--limit`)。
+- **設定を変えた測定**(0.12.0、#116。`measure.variants`): 予測式の段ごとの作業用メモリを確かめるため、同じ一覧・
+  同じ並びに混ぜる。文章から画像(`t2i`。`estimate.NO_SIZE_INPUT` に無いもの)は 512・768・1024・1536 px の正方形
+  (`VARIANT_PIXELS`)、文章・画像から動画(`t2v`・`i2v`)は 17・33・49・81 コマ(`VARIANT_FRAMES`。大きさはテンプレート
+  のまま)、文章から音楽・効果音(`t2a`)は 10・30・60・120 秒(`VARIANT_SECONDS`)。#102 の台本にならった。その設定の
+  見積もりが `gpu` で `perfect` か `good` で、この GPU にその設定の実測が無いもの(`has_measurement_here` の
+  `settings`: 指定した項目が同じなら同じ設定とみなし、ほかの項目は比べない。`settings_override` は問わないので、
+  1024 px のようなテンプレートの値は重ねて出さない)だけを出す。出すのは、この GPU にそのワークフローのテンプレートの
+  設定のままの実測があるものだけ(先にそれを測ってもらう。設定を変えた実測ではテンプレートのままの行は消えない)。
+  テンプレートにその入力が無い項目も出さない: テンプレートのままの実測(`measure.template_settings`。どの GPU でも)に
+  幅・コマ数・長さが記録されていなければ、その項目の測定は出さない(コマ数を `batch_size` で決める AnimateDiff など)。
+  動画は、その実測の幅・高さで判定する(`measure.judged_settings`。無ければ種類ごとの既定 832x480)。同じモデル・同じ
+  設定は 1 件(選び方は上と同じ)で、並べたあと 1 つのモデルに `measure.VARIANTS_PER_MODEL`(2)件まで。1 つ測ると
+  次が出る。
+- **時間の上限**: 時間の目安が `measure.MAX_SUGGEST_SECONDS`(300 秒)を超える行は出さない(`measure` は 1 回 1〜5 分)。
+  動画の設定を変えた測定で、時間の目安が種類ごとのおおよその値(`basis: typical`)のときは
+  `measure.TYPICAL_VIDEO_FRAMES_MAX`(33)コマまで。
+- **書けない設定**: 設定を付けて測るとき(`--resolution`・`--frames`・`--length` か一覧で選んだもの)、measure は bench を
+  `strict_settings` で動かす: `apply_settings` のあとのワークフローに頼んだ値が無ければ(`workflow.effective_settings`。
+  入力が無い・ほかのノードから来る)、生成の前に誤りで止め、何も測らない。測ったあとの設定がそれでも違えば `warnings` で知らせる。
 - **入っているか**(`installed.state`): ワークフローのファイルがすべて、一覧の大きさで models のフォルダのどれか
   (`--comfyui-dir`、無ければ `download` と同じ決め方で ComfyUI に尋ねずに決めたフォルダ、と起動中の ComfyUI が
   答えたフォルダ)にあれば `yes`、無ければ `no`(`missing_bytes` は `download` が落とす量)、フォルダが見つからない・一覧にファイルが無ければ
   `unknown`。sha256 は計らない(download が確かめる)。
 - **時間**(`seconds`。10 秒単位に切り上げ): 同じワークフローのどの GPU でもよい `ok` の実測の `seconds` の中央値
   (`basis: measured`)、無ければ種類ごとのおおよその値(`basis: typical`。`measure.TYPICAL_SECONDS`: image 60・
-  video 300・music 90・sfx 60・tts 60・3d 120)。目安だけで、落とす時間は入れない。
+  video 300・music 90・sfx 60・tts 60・3d 120)。目安だけで、落とす時間は入れない。設定を変えたときは、それぞれの
+  実測の時間を、変えた項目の比(画素数・コマ数・長さ。`measure.work_ratio`。値の無い項目は種類ごとの既定)で
+  伸び縮みさせてから中央値を取り、おおよその値は種類ごとの既定の設定から伸び縮みさせる。ステップ数は変えないので
+  比に入れない。読み込みの時間も同じ比で動くので、小さい設定では短めに出る。
 - **MODEL** は `download` と同じ探し方(`downloader.resolve_candidates`)で、テンプレートのあるワークフローだけに
   絞る。ID がそのまま合えばそれ、名前なら `recommend` が選ぶワークフロー。
 - 送るための下書きは `<cache>/submissions/<GPU>/<date>-<sha8>.json` に書く(標準の条件で結果が `ok` か `oom` の
@@ -1115,6 +1141,7 @@ genmodelfit は、これを**決して送らない**。利用者が `share` の�
 その他の決まり:
 - これらが無い古いファイルも有効のまま。
 - `contrib_schema` は 1 と 2 を受け付ける(#90)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.10.1 の次の版から書く。1 に `files_fp` があれば誤り。
+- (0.12.0、#116、任意)`measurement.settings_override`: テンプレートの設定を変えて測ったときだけ `true` を書く(true / false 以外は誤り)。0.9.0 の GPU の任意の項目と同じく、`contrib_schema` は上げない。`contrib aggregate` は、この印の付いた提出を別の行にまとめ、行にも印を付ける。
 - 名前には `(R)`、`(TM)`、`™`、`®` を含んでよい。`vendor` と別のベンダーの名前はエラー。`apple` はチップ名(`Apple M2 Pro`)か `mps` だけ。
 - 256 GiB を超える `vram_gb`、`ram_total_gb` × 1.05 + 1 GiB を超える `peak_ram_gb`、NaN / 無限大 / 負の数はエラー(ファイルの NaN は読むときに断る)。
 
