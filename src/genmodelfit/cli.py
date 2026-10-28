@@ -4267,6 +4267,7 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
 
 
 def _suggestion_lines(sugg: list) -> list[str]:
+    from .measure import MAX_SUGGEST_SECONDS as max_secs
     from .measure import VARIANTS_PER_MODEL as per_model
 
     out = [
@@ -4293,13 +4294,16 @@ def _suggestion_lines(sugg: list) -> list[str]:
             "時間は目安(同じモデルのほかの GPU の実測、無ければ種類ごとのおおよその値。"
             "設定を変えた行は画素数・コマ数・長さの比で伸び縮みさせた値。落とす時間は入れない)。"
             "--resolution・--frames・--length の付いた行は、設定を変えて測ります"
-            f"(予測式の確かめに使います。1 つのモデルに {per_model} 件まで出します)。"
+            "(予測式の確かめに使います。この GPU にテンプレートのままの実測があるモデルだけで、"
+            f"1 つのモデルに {per_model} 件まで出します)。約 {max_secs} 秒を超えるものは出しません。"
             "入っていないものは、選ぶと download と同じ確かめをしてから落とします。",
             "Times are rough guides (from measurements of the same model on other GPUs, else a rough value"
             " for the type; rows with other settings are scaled by the ratio of pixels, frames or length;"
             " downloading is not included). Rows with --resolution, --frames or --length measure at those"
-            f" settings (used to check the estimate's formula; at most {per_model} per model). Choosing one"
-            " that is not installed downloads it first, with the same questions as download.",
+            " settings (used to check the estimate's formula; only for models already measured on this GPU"
+            f" as in the template, at most {per_model} per model). Runs over about {max_secs} s are not"
+            " listed. Choosing one that is not installed downloads it first, with the same questions as"
+            " download.",
         )
     )
     return out
@@ -4398,6 +4402,14 @@ def _measure_next_step(msg: str, model_id: str) -> str:
             f"Next: download the files with genmodelfit download {model_id} (use --comfyui-dir for the"
             " folder your ComfyUI reads), restart ComfyUI, then run it again.",
         )
+    if "頼んだ設定" in msg or "requested settings" in msg:
+        return tr(
+            f"次にすること: このテンプレートでは、その設定を変えられません。設定を付けずに"
+            f" genmodelfit measure {model_id} で測るか、"
+            "genmodelfit measure の一覧からほかのものを選んでください。",
+            f"Next: this template cannot change that setting. Measure it without settings"
+            f" (genmodelfit measure {model_id}) or choose another one from the genmodelfit measure list.",
+        )
     if "キュー" in msg or "queue" in msg.lower():
         return tr(
             "次にすること: ComfyUI のキューの仕事が終わるのを待ってから、もう一度実行してください。",
@@ -4463,7 +4475,15 @@ def cmd_measure(args: argparse.Namespace) -> int:
     from .contrib import build_submission, suggested_path, write_submission
     from .downloader import DownloadError, directory_refs
     from .estimate import files_fingerprint
-    from .measure import installed_state, resolve, settings_dict, submissions_dir, suggestions, time_hint
+    from .measure import (
+        installed_state,
+        resolve,
+        same_variant,
+        settings_dict,
+        submissions_dir,
+        suggestions,
+        time_hint,
+    )
     from .workflow import WorkflowError
 
     settings = _measure_settings(args)
@@ -4626,12 +4646,22 @@ def cmd_measure(args: argparse.Namespace) -> int:
         height=settings.height if settings else None,
         frames=settings.frames if settings else None,
         seconds=settings.seconds if settings else None,
+        strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
     )
     try:
         result = run(opts, log=_progress(args))
     except (BenchError, WorkflowError) as e:
         return fail(str(e), [_measure_next_step(str(e), entry.id)])
     m = result.measurement
+    if settings is not None and not same_variant(m.settings, settings):
+        result.warnings.append(
+            tr(
+                "測った設定が頼んだ設定と違います(実測には測った設定を書きました): "
+                f"{settings_dict(m.settings)}",
+                f"The measured settings differ from the requested ones (the measured ones were recorded):"
+                f" {settings_dict(m.settings)}",
+            )
+        )
     out_path, not_saved = save_decision(m, None, False, False)
     if out_path is not None:
         save(m, out_path)
@@ -5215,20 +5245,22 @@ AGENT USAGE:
   Details: docs/schema.md""",
     "measure": """Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
 Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on
-the GPU) with no measurement on this GPU yet, those already installed first, then the shorter
-time, then the smaller download; choose one by number (q quits). The list also has runs at other
-settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px
-(text to image), video frames 17/33/49/81 at the template's size (text or image to video), music
-and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting
-(good or better) and this GPU has no measurement at that setting, at most 2 per model. Each run
-is one generation (a few minutes); running measure again picks the next one.
+the GPU) with no measurement on this GPU at the template's settings yet, those already
+installed first, then the shorter time, then the smaller download; choose one by number (q
+quits). Once a model has that measurement, the list offers runs at other settings that help
+check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video
+frames 17/33/49/81 at the template's size (text or image to video), music and sound length
+10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better)
+and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are
+not listed. Each run is one generation (a few minutes); running measure again picks the next one.
 MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows
 with a ComfyUI template); --resolution, --frames and --length change the settings like bench.
 Before measuring one screen shows the model and precision, the settings (as in the template, or
 the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough
 time and that nothing is sent, then asks [Y/n] (--yes skips it). The time is a rough guide: the
 median of measurements of the same model on other GPUs, else a rough value per type, scaled by
-the ratio of pixels, frames or length when the settings are changed.
+the ratio of pixels, frames or length when the settings are changed. When the template cannot
+take a requested setting, it stops before generating.
 A model that is not installed is downloaded first, with the same questions and consent rules as
 download. Afterwards it shows the result and where it saved it, and one line pointing to
 genmodelfit share, which sends it (it never asks whether to send).
@@ -5682,19 +5714,21 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   詳しくは docs/schema.md""",
     "measure": """起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
-MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU の
-実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
-番号で選ぶ(q でやめる)。一覧には、予測式の確かめに役立つ「設定を変えた測定」も混ぜる(#116):
-画像の解像度 512・768・1024・1536 px(文章から画像)、動画のコマ数 17・33・49・81(大きさは
-テンプレートのまま。文章・画像から動画)、音楽・効果音の長さ 10・30・60・120 秒(文章から音声)。
-その設定で GPU に載り(good 以上)、この GPU にその設定の実測が無いものだけで、1 つのモデルに 2 件まで。
+MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU に
+テンプレートの設定のままの実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの →
+落とす量が少ないもの。番号で選ぶ(q でやめる)。その実測があるモデルには、予測式の確かめに役立つ
+「設定を変えた測定」を出す(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、動画の
+コマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ
+10・30・60・120 秒(文章から音声)。その設定で GPU に載り(good 以上)、この GPU にその設定の実測が
+無いものだけで、1 つのモデルに 2 件まで。時間の目安が約 300 秒を超えるものは出さない。
 1 回は生成 1 回(数分)で、もう一度 measure を実行すると次のものを選べる。
 MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI の
 テンプレートのあるワークフローだけ)。--resolution・--frames・--length で bench と同じく設定を変える。
 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま、または変えた設定)、どの ComfyUI か・
 どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる
 (--yes で尋ねない)。時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとの
-おおよその値。設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。
+おおよその値。設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。テンプレートが頼んだ
+設定を受け付けないときは、生成の前に止める。
 入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。終わると結果と保存した
 場所を出し、最後に genmodelfit share(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
 

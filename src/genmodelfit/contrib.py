@@ -140,6 +140,9 @@ MEASUREMENT_KEYS = {
     "vram_metric",
     "note",
     "files_fp",  # contrib_schema 2 だけ(#90)
+    # テンプレートの設定を変えて測った印(#116。任意で、true のときだけ書く。contrib_schema は上げない:
+    # 0.9.0 の GPU の任意の項目と同じ)
+    "settings_override",
 }
 _FILES_FP = re.compile(r"[0-9a-f]{64}")
 SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
@@ -732,6 +735,8 @@ def build_submission(
             "note": note,
             # 測った時点の一覧のファイルの指紋(contrib_schema 2。#90)。分からなければ入れない
             **({"files_fp": m.files_fp} if getattr(m, "files_fp", None) else {}),
+            # テンプレートの設定を変えて測ったときだけ(#116)
+            **({"settings_override": True} if getattr(m, "settings_override", None) else {}),
         },
     }
 
@@ -1130,6 +1135,7 @@ def to_measurement(data: dict[str, Any]) -> Measurement:
         gpu_backend=gpu.get("backend"),
         gpu_pci_id=gpu.get("pci_id"),
         files_fp=mm.get("files_fp"),
+        settings_override=True if mm.get("settings_override") is True else None,
     )
 
 
@@ -1758,6 +1764,14 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
             tr(
                 f"measurement.outcome は {' / '.join(OUTCOMES)} です: {outcome!r}",
                 f"measurement.outcome must be {' / '.join(OUTCOMES)}: {outcome!r}",
+            ),
+        )
+    if "settings_override" in mm and not isinstance(mm.get("settings_override"), bool):
+        r.error(
+            "value",
+            tr(
+                "measurement.settings_override は true / false です",
+                "measurement.settings_override must be true / false",
             ),
         )
     std = mm.get("standard", True)
@@ -2671,6 +2685,7 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
             m.vram_metric or "",
             _settings_key(m.settings),
             getattr(m, "files_fp", None) or "",  # 測ったときの一覧のファイルが違えば別の行(#90)
+            bool(getattr(m, "settings_override", None)),  # 設定を変えた実測は別の行(#116)
         )
         groups.setdefault(key, []).append(sub)
     out: list[dict[str, Any]] = []
@@ -2737,6 +2752,8 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
                 # 汎用の名前・名前の代わりの値の GPU は記録として残すだけで、判定に使わない(#90、#101)
                 "gpu_known": gpu_known(gpu_name, vendor),
                 "files_fp": getattr(first, "files_fp", None),
+                # 設定を変えて測った行だけ印を付ける(#116。measure のテンプレートのままの実測の見分け)
+                **({"settings_override": True} if getattr(first, "settings_override", None) else {}),
                 "peak_vram_gb": round(med, 2),
                 "settings": settings,
                 "peak_ram_gb": _med([m.peak_ram_gb for m in base]),

@@ -763,12 +763,14 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 ```
 
 - Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
-- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
-- The list also has runs at other settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better) and this GPU has no measurement at that setting, at most 2 per model.
+- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU at the template's settings yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
+- Once a model has that measurement, the list offers runs at other settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better) and this GPU has no measurement at that setting, at most 2 per model.
+- Runs over about 300 s are not listed.
 - Each run is one generation (a few minutes); running measure again picks the next one.
 - MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows with a ComfyUI template); `--resolution`, `--frames` and `--length` change the settings like bench.
 - Before measuring one screen shows the model and precision, the settings (as in the template, or the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough time and that nothing is sent, then asks [Y/n] (`--yes` skips it).
 - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed.
+- When the template cannot take a requested setting, it stops before generating.
 - A model that is not installed is downloaded first, with the same questions and consent rules as download.
 - Afterwards it shows the result and where it saved it, and one line pointing to `genmodelfit share`, which sends it (it never asks whether to send).
 

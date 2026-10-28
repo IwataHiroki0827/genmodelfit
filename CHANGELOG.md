@@ -33,7 +33,18 @@ All notable changes to this project are documented here. The format is based on
   `measure <name>` takes `--resolution WxH`, `--frames N` and `--length S` like `bench`; the screen before measuring
   and the JSON show the settings (`suggestions[].settings` / `args`, `settings`). Each run is still one generation;
   `share` sends the settings as before. New: `measure.variants`, `bench_args`, `settings_dict`, `same_variant`,
-  `work_ratio`, `bench.parse_resolution`; `has_measurement_here` and `time_hint` take optional `settings`.
+  `work_ratio`, `template_settings`, `judged_settings`, `bench.parse_resolution`; `has_measurement_here` and
+  `time_hint` take optional `settings`.
+  - Runs at other settings are offered only after this GPU has a measurement of the workflow at the template's
+    settings, so that run is collected first; the template's own value (e.g. 1024 px) is not offered again.
+  - New optional `Measurement.settings_override` (also `measurement.settings_override` in submissions, written only
+    when true; `contrib_schema` unchanged): bench / measure set it when the template's settings were changed. Only
+    rows without it count as "measured at the template's settings"; `contrib aggregate` keeps them in their own rows.
+  - With settings, measure stops before generating when the template cannot take them (`BenchOptions.strict_settings`;
+    e.g. frames on an image template or AnimateDiff), and warns if the recorded settings still differ. Variants are
+    not offered for an item that a measurement at the template's settings shows the template has no input for.
+  - Video runs are judged at the template's size from that measurement (else 832x480). Rows over about 300 s are not
+    listed, and video runs whose time is only the per-type rough value go up to 33 frames.
 
 ### Changed
 

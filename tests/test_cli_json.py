@@ -289,6 +289,7 @@ MEASUREMENT = {
     "gpu_backend",  # 0.9.0(測った GPU の backend)
     "gpu_pci_id",  # 0.9.0(測った GPU の PCI の型番 ID)
     "files_fp",  # #90(測ったときの一覧のファイルの指紋)
+    "settings_override",  # #116(テンプレートの設定を変えて測ったか)
     "gpu_known",  # #90(以下はほかの利用者のまとめの行)
     "n_sources",
     "source_ids",  # #95: 出どころの ID(count_sources が和集合で数える)
