@@ -17,6 +17,9 @@
   (相手が Range に応じなければ最初から)。既にあるファイルは sha256 が合えば飛ばし、合わなければ上書きしない
 - 空きは「落とす残り + 1 GiB」を見る。gated・無検閲(content を指定しないとき)・ライセンス不明
   (include_unknown_license を指定しないとき)は落とさない
+- テンプレートの既定の値で使わない部品のうち、無効・素通しのノードや出力につながらないノードにしかないもの
+  (ModelFile.optional が inactive。#81)は落とさない(with_optional=True で落とす)。スイッチで切ってある部品
+  (switch_off)は ComfyUI の検証で要るので落とす
 
 ライブラリの関数は何も表示しない。進み具合は progress に渡す(DownloadProgress)。
 """
@@ -402,6 +405,8 @@ class DownloadPlan:
     alternatives: list[dict[str, Any]] = field(default_factory=list)  # 同じモデルのほかの精度・使い方
     license_url: str | None = None  # モデル一式のライセンスの場所
     chosen: str = ""  # なぜこのワークフローを選んだか
+    # 落とさない任意の部品(ModelFile.optional が inactive。#81。with_optional=True なら空)のファイル名
+    skipped_optional: list[str] = field(default_factory=list)
 
     @property
     def total_bytes(self) -> int:
@@ -762,6 +767,18 @@ def _model_blocks(
     return out
 
 
+def download_files(m: ModelEntry, with_optional: bool = False) -> tuple[list[ModelFile], list[str]]:
+    """落とすファイルと、落とさない任意の部品の名前(#81)。無効・素通しのノードや出力につながらないノードに
+    しかない部品(inactive)は prompt に入らず ComfyUI の検証もされないので、with_optional でなければ
+    落とさない。"""
+    from .estimate import optional_kind
+
+    if with_optional:
+        return list(m.files), []
+    keep = [f for f in m.files if optional_kind(f) != "inactive"]
+    return keep, [f.name for f in m.files if optional_kind(f) == "inactive"]
+
+
 def plan_download(
     model: str,
     *,
@@ -778,6 +795,7 @@ def plan_download(
     db: Database | None = None,
     comfyui_version: str | None = None,
     policy: GatePolicy | None = None,
+    with_optional: bool = False,
 ) -> DownloadPlan:
     """落とす計画を作る(通信しない・何も書かない)。CLI の `download --list` と同じ。
 
@@ -790,6 +808,8 @@ def plan_download(
     output_dir(既定は default_output_dir())も同じ並び。content: 無検閲は "all" / "uncensored" のときだけ
     落とせる。include_unknown_license: ライセンスの分からないファイルを含んでも落とせる。
     verify_existing: 既に置いてあるファイルの sha256 を計る(False なら大きさだけ)。
+    with_optional: テンプレートの既定の値で使わない部品のうち、無効のノードなどにしかないもの(inactive。#81)も
+    落とす(既定は落とさず、plan.skipped_optional に名前を入れる)。
     止める理由は plan.blocked、知らせることは plan.warnings(例外にはしない)。名前が合わない・
     2 件以上合う・置き場所が ComfyUI に見えないときは ModelNotFound / DownloadRefused。
     """
@@ -856,7 +876,8 @@ def plan_download(
     plans: list[tuple[tuple, DownloadPlan, Fit]] = []
     for fit in fits:
         m = fit.model
-        files = [_plan_file(f, root, allow, verify_existing and len(fits) == 1, m, refs) for f in m.files]
+        use, skipped = download_files(m, with_optional)
+        files = [_plan_file(f, root, allow, verify_existing and len(fits) == 1, m, refs) for f in use]
         p = DownloadPlan(
             model_id=m.id,
             name=m.name,
@@ -872,6 +893,7 @@ def plan_download(
             files=files,
             budget_bytes=budget,
             license_url=m.license_url,
+            skipped_optional=skipped,
         )
         for code, text in _model_blocks(m, content, include_unknown_license, files):
             _block(p, code, text)
@@ -882,7 +904,8 @@ def plan_download(
     _, plan, fit = plans[0]
     if len(plans) > 1 and verify_existing:
         # 選んだものだけ計り直す
-        plan.files = [_plan_file(f, root, allow, True, fit.model, refs) for f in fit.model.files]
+        use = download_files(fit.model, with_optional)[0]
+        plan.files = [_plan_file(f, root, allow, True, fit.model, refs) for f in use]
     plan.alternatives = [_alt_dict(x[2], x[1]) for x in plans[1:]]
     plan.chosen = (
         tr("ID で指定", "Given by id")
@@ -1007,6 +1030,19 @@ def _finish(plan: DownloadPlan, fit: Fit, allow: frozenset[str]) -> None:
             tr(
                 LAYOUT_WARNING_JA,
                 LAYOUT_WARNING_EN,
+            )
+        )
+    if plan.skipped_optional:
+        n = len(plan.skipped_optional)
+        names = ", ".join(plan.skipped_optional[:4]) + (f" (+{n - 4})" if n > 4 else "")
+        plan.warnings.append(
+            tr(
+                "テンプレートが既定で使わない部品(無効・素通しのノードなどにしかないもの)"
+                f"{n} 個は落としません: {names}。"
+                "そのノードを有効にして使うなら with_optional=True(CLI は --with-optional)",
+                f"Not downloading {n} part(s) the template does not use by default (only on muted or bypassed"
+                f" nodes, or nodes that reach no output): {names}. To enable those nodes, pass"
+                " with_optional=True (CLI: --with-optional)",
             )
         )
     gguf = [f.name for f in plan.files if (f.directory_basis or {}).get("needs") == GGUF_NODE]

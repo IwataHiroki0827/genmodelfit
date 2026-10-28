@@ -392,7 +392,9 @@ Only https URLs in the list, redirects only to Hugging Face / GitHub hosts, sha2
 after Ctrl-C, never outside the destination. Gated files are never downloaded. Uncensored models and files with an
 unknown license are downloaded only with your consent: in a terminal the consent question names them (y/N, default
 No); with `--yes`, `--json` or in scripts pass `--uncensored` / `--any-license` (the plan then shows one ready command
-with them added and what each means; it never adds them by itself). Files whose ComfyUI folder is unknown go to `other/`, which
+with them added and what each means; it never adds them by itself). Parts the template does not use by default (only on muted or bypassed nodes) are not downloaded unless you pass
+`--with-optional`; parts behind a switch that is off are downloaded, because ComfyUI checks them before running.
+Files whose ComfyUI folder is unknown go to `other/`, which
 ComfyUI does not read (the plan says so; move them before use). The place is `--comfyui-dir` (or `--output-dir`),
 then `GENMODELFIT_COMFYUI_DIR`, then `genmodelfit config set comfyui-dir <folder>`, then a ComfyUI found on this PC
 (the current folder, a running ComfyUI, ComfyUI Desktop / comfy-cli settings, usual places); the plan always says

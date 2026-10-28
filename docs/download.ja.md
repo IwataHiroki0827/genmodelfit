@@ -92,6 +92,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
 - `c` で、見つけた場所の一覧(またはパスを入れる画面)を出す。選ぶと計画を出し直して聞き直す。空で答えれば置き場所はそのまま。
 - 自動で見つけた場所(上の 4、または入れたパス)に初めて落とすときは、`y` のあとに「次からもここに落としますか? [Y/n]」と尋ねる。`Y` なら `comfyui-dir` に保存する。
 - 無検閲・ライセンスの記載が無いファイルの同意の質問は今までと同じ(同じ質問の文に入る)。
+- テンプレートが既定で使わない部品のうち、無効・素通しのノードや出力に届かないノードにしかないもの(`ModelFile.optional` が `inactive`。0.11.0、#81)は落とさず、知らせに名前を出す(計画の `skipped_optional`)。そのノードを有効にして使うなら `--with-optional`(Python は `with_optional=True`)。スイッチで切ってある部品(`switch_off`)は、ComfyUI が動かす前の検証で選ばれない枝のファイルも確かめる(無いと「Value not in list」で止まる)ので落とす。分け方は [sources.ja.md](sources.ja.md)「任意の部品」。
 
 ## genmodelfit config
 

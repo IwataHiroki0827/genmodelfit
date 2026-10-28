@@ -656,8 +656,8 @@ genmodelfit update [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache]
 genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
                      [--license-allowlist LIST|FILE] [--comfyui-version VER]
                      [--max-head-age-days DAYS] [--allow-uncensored-auto] [--precision PREC]
-                     [--budget GB] [--list] [--output-dir DIR | --comfyui-dir DIR] [--yes]
-                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
+                     [--budget GB] [--with-optional] [--list] [--output-dir DIR | --comfyui-dir DIR]
+                     [--yes] [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
 ```
 
 モデルのファイルをこの PC 向けに落とす(1 つのワークフローの全部のファイル。sha256 で確かめる)。
@@ -691,6 +691,7 @@ genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db
 | `model` |  |  | モデルの名前(表の Model)・ワークフローの ID・その一部 |
 | `--precision` | `PREC` | recommend と同じ選び方(上を見る) | 同じモデルのワークフローのうち、この精度のものを落とす(例: fp8 / bf16 / int8 / gguf-q8_0。あるものは表の Prec・info で分かり、無ければ誤りにして並べる)。recommend などの `--precision`(見積もりの換算)とは別 |
 | `--budget` | `GB` |  | 落とす量の上限(GB。既にあるファイルは数えない)。収まる中で一番良いワークフローを選び、収まるものが無ければ断る |
+| `--with-optional` |  |  | テンプレートが既定で使わない部品(無効・素通しのノードなどにしかないもの)も落とす(#81) |
 | `--list` |  |  | 落とすファイルと合計を出すだけ(落とさない・通信しない) |
 | `--output-dir` | `DIR` | なし(`--comfyui-dir` の決め方で決める) | ComfyUI の外の置き場所。ファイルは `<DIR>/<folder>/<file>` に置く(folder は diffusion_models・vae など。ComfyUI の models と同じ並びなので、ComfyUI の models のフォルダそのものを渡してもよい) |
 | `--comfyui-dir` | `DIR` | GENMODELFIT_COMFYUI_DIR → config の comfyui-dir → 自動で見つけたもの | ComfyUI のフォルダ。ファイルは `<DIR>/models/<folder>/<file>` に置く(既定は環境変数 GENMODELFIT_COMFYUI_DIR、`genmodelfit config` の comfyui-dir、自動で見つけたもの) |

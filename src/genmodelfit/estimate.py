@@ -9,6 +9,7 @@
   - 重み: 部品(本体・テキストエンコーダ・VAE・その他)ごとにファイルの大きさで数える。
     同じ部品の別の形式・精度のファイル(HF のリポジトリに並ぶ fp16 / fp32、.safetensors / .bin など)は
     1 組だけ数える(select_files。決まりは docs/accuracy.md の「ファイルの数え方」)。
+    テンプレートの既定の値で読み込まれない任意の部品(ModelFile.optional。#81)は VRAM・メモリに数えない
     1 ファイルに全部入りのチェックポイント(`checkpoints`)は、safetensors の見出しで確かめた内訳で分ける
     (内訳が分からないものは一般的な割合で分ける)
   - ComfyUI は「文章の読み取り → 生成 → 仕上げ(VAE)」を順に行い、
@@ -398,9 +399,26 @@ def _known_all_in_one(f: ModelFile) -> bool:
     return any(re.search(pat, f.name.lower()) for pat, _s, _l in CHECKPOINT_SPLITS)
 
 
-def select_files(entry: ModelEntry) -> tuple[list[ModelFile], list[str]]:
+# 任意の部品の数え方(select_files の options): default = 既定で読み込む部品だけ(VRAM・メモリ)、
+# disk = 検証で要る部品まで(switch_off も。ディスク・download の量)、all = スイッチを全部入れた上限
+OPTIONS_DEFAULT = "default"
+OPTIONS_DISK = "disk"
+OPTIONS_ALL = "all"
+
+
+def optional_kind(f: ModelFile) -> str | None:
+    """任意の部品の分け方(inactive / switch_off)。知らない値・無い値は None(今までどおり数える)。"""
+    from .optional import OPTIONAL_KINDS
+
+    v = getattr(f, "optional", None)
+    return v if v in OPTIONAL_KINDS else None
+
+
+def select_files(entry: ModelEntry, options: str = OPTIONS_DEFAULT) -> tuple[list[ModelFile], list[str]]:
     """数えるファイルを選ぶ。決まり(docs/accuracy.md の「ファイルの数え方」):
 
+    0. 任意の部品(ModelFile.optional。#81)は options で選ぶ: default は数えない、disk と all は
+       switch_off(選ばれない枝。検証でたどられるのでディスクには要る)を数える。inactive はどれでも数えない
     1. 重みでないファイル(.json など)と、ComfyUI で使わない形式(onnx / flax など)は数えない
     2. 部品ごとに 1 組だけ数える。部品 = ComfyUI の置き場所 + 名前(精度・形式・分割番号を除く)、
        HF の diffusers のフォルダ(VAE は 1 つ)、フォルダの外の本体
@@ -419,6 +437,9 @@ def select_files(entry: ModelEntry) -> tuple[list[ModelFile], list[str]]:
     # runtime が ComfyUI 以外と決まっているもの(piper の onnx など。#36)は、その形式が本体なので数える
     own_runtime = entry.runtime not in (None, "comfyui")
     for f in entry.files:
+        kind = optional_kind(f)
+        if kind == "inactive" or (kind == "switch_off" and options == OPTIONS_DEFAULT):
+            continue
         folder, base = _path(f)
         ext = _ext(base)
         if not own_runtime and (
@@ -587,10 +608,11 @@ def _fallback_size(entry: ModelEntry, p: Parts) -> int:
     return 0
 
 
-def components(entry: ModelEntry) -> Parts:
-    """モデル一式を段ごとの重み(GiB)に分ける。大きさが分からなければ unknown=True(重みは 0 のまま)。"""
+def components(entry: ModelEntry, options: str = OPTIONS_DEFAULT) -> Parts:
+    """モデル一式を段ごとの重み(GiB)に分ける。大きさが分からなければ unknown=True(重みは 0 のまま)。
+    options は select_files と同じ(既定は既定で読み込む部品だけ。files_gb はいつも検証で要る部品まで)。"""
     p = Parts()
-    files, notes = select_files(entry)
+    files, notes = select_files(entry, options)
     p.notes.extend(notes)
     # 本体のファイルが一覧に無い一式(#2 が files_complete=False を付ける)は、
     # ファイルの合計では小さく出るので、
@@ -672,7 +694,8 @@ def components(entry: ModelEntry) -> Parts:
             continue
         stage = ROLE_STAGE[role]
         setattr(p, stage, p.stage(stage) + gb)
-    p.files_gb = sum(f.size_bytes for f in files) / GIB
+    disk_files = files if options != OPTIONS_DEFAULT else select_files(entry, OPTIONS_DISK)[0]
+    p.files_gb = sum(f.size_bytes for f in disk_files if _size_ok(f)) / GIB
     if p.denoise == 0 and p.total > 0:  # 本体が見つからない(役割の付け方が違う)ときは最大の段を本体とみなす
         biggest = max(STAGES, key=p.stage)
         p.denoise, value = p.stage(biggest), p.denoise
@@ -1380,6 +1403,15 @@ class _Model:
         return n
 
 
+def _with_options(prep: _Model, entry: ModelEntry, options: str) -> _Model:
+    """下ごしらえの重みだけを任意の部品の数え方 options に替える(実測からのずらしは既定の部品で決めたまま。
+    実測は既定の値で測ったもの)。"""
+    if options == OPTIONS_DEFAULT:
+        return prep
+    own = _with_options(prep.own, entry, options) if prep.own is not None else None
+    return replace(prep, parts=components(entry, options), own=own)
+
+
 def _prepare(
     entry: ModelEntry,
     measurements: Iterable[Measurement],
@@ -1690,6 +1722,64 @@ def estimate(
     return _estimate(entry, system, settings, list(measurements), c, with_limits)
 
 
+def optional_parts(entry: ModelEntry) -> list[dict[str, Any]]:
+    """任意の部品の一覧(Estimate.optional_parts。#81)。kind は replace(使うと既定の部品の代わりに読み込む:
+    スイッチなら切り替えたときに読み込まなくなる部品があるもの、無効のノードなら既定の本体と同じ本体の役割の
+    もの)か add(足すだけ)。"""
+    mains = [f.name for f in entry.files if optional_kind(f) is None and _role_of(f) == "main"]
+    out: list[dict[str, Any]] = []
+    for f in entry.files:
+        k = optional_kind(f)
+        if k is None:
+            continue
+        if k == "switch_off":
+            repl = list(f.optional_replaces or [])
+        else:
+            repl = list(mains) if _role_of(f) == "main" else []
+        out.append(
+            {
+                "name": f.name,
+                "size_gb": round(f.size_bytes / GIB, 2) if _size_ok(f) else None,
+                "optional": k,
+                "kind": "replace" if repl else "add",
+                "replaces": repl,
+            }
+        )
+    return out
+
+
+def _options_note(parts: list[dict[str, Any]], all_est: Estimate, gb: float | None) -> str:
+    """スイッチで切ってある部品を入れると段階が変わるときの 1 文(#81)。"""
+    off = [p for p in parts if p["optional"] == "switch_off"]
+
+    def size(p: dict[str, Any]) -> str:
+        return f"{p['size_gb']:.1f} GB" if p["size_gb"] is not None else "?"
+
+    ja = []
+    en = []
+    for p in off:
+        if p["kind"] == "replace":
+            instead = ", ".join(p["replaces"])
+            ja.append(f"切り替えると別の部品({p['name']}、{size(p)})を {instead} の代わりに読み込みます")
+            en.append(f"switching loads another part ({p['name']}, {size(p)}) instead of {instead}")
+        else:
+            ja.append(f"{p['name']}({size(p)})")
+            en.append(f"{p['name']} ({size(p)})")
+    # 入れ替えの部品は両方を足した上限なので、そうと書く(#81 の確認)
+    upper = any(p["kind"] == "replace" for p in off)
+    if gb is not None:
+        mark_ja, mark_en = ("(上限)", " (upper bound)") if upper else ("", "")
+        tail_ja = f"全部入れると目安 {gb:.1f} GB{mark_ja}で、この PC では {all_est.fit}"
+        tail_en = f"With all of them on, about {gb:.1f} GB{mark_en}; on this PC: {all_est.fit}"
+    else:
+        tail_ja = f"全部入れると、この PC では {all_est.fit}"
+        tail_en = f"With all of them on, on this PC: {all_est.fit}"
+    return tr(
+        f"既定で切ってある部品: {'; '.join(ja)}。{tail_ja}",
+        f"Parts switched off by default: {'; '.join(en)}. {tail_en}",
+    )
+
+
 def _sample_count(m: Measurement) -> int:
     """値の元になった実測の、別々の出どころの数(Estimate.sample_count。#95 で件数から出どころの数に変えた)。
     作者・この PC の実測は 1、ほかの利用者のまとめは n_sources(measurement_sources)。"""
@@ -1716,12 +1806,15 @@ def _estimate(
     measurements: list[Measurement],
     c: Coefficients,
     with_limits: bool,
+    options: str = OPTIONS_DEFAULT,
 ) -> Estimate:
     g0 = system.best_gpu
     gname = g0 if g0 is not None and system.vram_gb > 0 else None
     # 指定の無い項目は、実測の有無によらず種類ごとの既定で埋める(#95。docs/scoring.md「判定に使う設定」)
     s = settings_for(entry, settings, sized=not no_size_input(entry))
     prep = _prepare(entry, measurements, c, s, gname)  # 設定が同じ実測があればそれを選ぶ
+    # スイッチを全部入れた上限(#81)は重みだけ替える(実測は既定の値で測ったもの)
+    prep = _with_options(prep, entry, options)
     if prep.parts.unknown:
         return _unknown_estimate(entry, prep.parts, s)
     prec = gpu_precision(entry, system, s)
@@ -1849,7 +1942,9 @@ def _estimate(
     floor_parts.decode *= prec.vae_factor
     floor_gb = need(floor_parts, 0.0, prep.c).full
     band, not_why = (
-        measured_level(measurements, entry, s, system, prec, floor_gb) if m is not None else (None, None)
+        measured_level(measurements, entry, s, system, prec, floor_gb)
+        if m is not None and options == OPTIONS_DEFAULT  # 実測は既定の値のもの: 上限の段階は決めない
+        else (None, None)
     )
     promoted = band if band is not None and _LEVELS.index(band.level) < _LEVELS.index(fit) else None
     if promoted is not None:
@@ -1929,7 +2024,32 @@ def _estimate(
     )
     if with_limits:
         est.limits = limits(prep, system, s)
+    if options == OPTIONS_DEFAULT:
+        _add_options(est, entry, system, settings, measurements, c)
     return est
+
+
+def _add_options(
+    est: Estimate,
+    entry: ModelEntry,
+    system: SystemInfo,
+    settings: Settings | None,
+    measurements: list[Measurement],
+    c: Coefficients,
+) -> None:
+    """任意の部品の一覧と、スイッチで切ってある部品を全部入れた上限(#81)。段階が変わるときだけ理由に 1 文。"""
+    parts = optional_parts(entry)
+    est.optional_parts = parts
+    if not any(p["optional"] == "switch_off" for p in parts):
+        return
+    from .recommend import gpu_need
+
+    all_est = _estimate(entry, system, settings, measurements, c, False, OPTIONS_ALL)
+    gb = gpu_need(all_est, system)
+    est.vram_gb_all_options = round(gb, 2) if gb is not None else None
+    est.fit_all_options = all_est.fit
+    if all_est.fit != est.fit:
+        est.reasons.append(_options_note(parts, all_est, est.vram_gb_all_options))
 
 
 def _stage_notes(n: Need, parts: Parts, system: SystemInfo, prec: GpuPrecision, c: Coefficients) -> list[str]:

@@ -528,6 +528,9 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測の有無によらず種類ごとの既定で埋める。0.11.0。それまでは実測があれば実測の設定) |
 | `limits` | Limits \| null | この PC の GPU で、逃がさずに `good` に届く最大の設定(0.11.0。GPU の無い PC では null)。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
 | `vram_free_short` | bool | GPU で動くと判定したが、今の空き VRAM(`nvidia-smi` の `memory.free`)が選んだ動かし方に要る量を下回る: ほかのアプリを閉じること。段階は全体の VRAM のまま。空き VRAM が不明(`--vram`)のときは常に false |
+| `optional_parts` | object[] | (0.11.0、#81)テンプレートの既定の値で読み込まれない部品(上の量には入れていない)。1 つずつ `name`、`size_gb`(null は不明)、`optional`(`inactive` / `switch_off`。`ModelFile.optional`)、`kind`(`replace` = 使うと既定の部品の代わりに読み込む / `add` = 足すだけ)、`replaces`(代わりに読み込まなくなる既定の部品の名前)。無ければ `[]`。[scoring.ja.md](scoring.ja.md)「既定で切ってある部品」 |
+| `vram_gb_all_options` | float \| null | (0.11.0、#81)スイッチで切ってある部品(`switch_off`)を全部入れたときの、判定に使う VRAM(上限。`gpu_memory_required_gb` と同じ選び方)。`switch_off` が無い・GPU が無い・大きさ不明なら null |
+| `fit_all_options` | str \| null | (0.11.0、#81)そのときの段階。`switch_off` が無ければ null。`fit` と違うときだけ `reasons` に 1 文 |
 | `unknown_size` | bool | 重みの大きさが不明で、何も判定していない。`fit` は `unknown`(`?` と表示。「Too tight」にはしない)、`run_mode` は `unknown`(0.2.0。以前は `none`)、VRAM / RAM の値は JSON で `null`(`Estimate.to_dict`。Python の属性は 0.0 のまま)、`limits` は null、最初の理由は「大きさが分からないため判定できません」。`recommend` はこれを落とし、`fit` / `search` は最後に並べる |
 
 `basis_detail`(#34)。実測に近い順に並べる(`models.BASIS_DETAILS`):
@@ -925,6 +928,7 @@ ModelFile: `name`、`url`、`sha256`、`size_bytes`、`directory`(ComfyUI のフ
 この 2 つは、Hugging Face の主な重みのファイルだけについて `update` / `update --inspect-only` が読む(`headers.py`。最初の 8 バイトと JSON の見出し、GGUF では最初の 1〜数 MiB の範囲指定 GET。重みは決して取らない)。null は未読。
 主なファイルとは、`main` の役割のものと、`groups.main_files` が主なファイルとして扱うもの(どのファイルにも `main` の役割が無いときの、エンコーダ / VAE 以外で最大のファイル。例: BiRefNet。0.2.0)。
 `repo_precision` / `repo_precision_source`(str \| null、任意、0.2.0): 置いてあるリポジトリから読んだ精度(`hf_api` か `config`。「Models」を参照)。見出しも名前も何も教えない最大の主なファイルにだけ設定する。
+`optional`(str \| null、任意、0.11.0、#81): 公式テンプレートの既定の値で読み込まれない部品。`inactive`(無効・素通しのノードや、どの出力のノードにも届かないノードにしかない。VRAM・メモリ・`disk_gb`・`download` に数えない)か `switch_off`(値の決まったスイッチの選ばれない枝にしかない。VRAM・メモリに数えず、`disk_gb`・`download` には数える)。null は既定で読み込む(または分からない。HF・手のモデル)。知らない値は null と同じ(数える)。`optional_replaces`(str[] \| null、任意): `switch_off` の部品のスイッチを切り替えると読み込まなくなる既定の部品のファイル名(空・null は足すだけ)。決め方は [sources.ja.md](sources.ja.md)「任意の部品」。古い読み手はこの 2 つを捨て、今までどおり全部を数える。
 推定器は、ファイルがどの部品かを、まず `directory`、次に `role`、次に Hugging Face のフォルダ / 既知のファイル名で決め、部品ごとに 1 つの版を数える([accuracy.md](accuracy.ja.md)「ファイルの数え方」)。
 
 Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`、`requires_custom_nodes`、`usage`、`date`、`size_bytes`、`username`(作った人。`ComfyUI` 以外は community のテンプレート)。
@@ -1358,6 +1362,7 @@ DownloadPlan:
 | `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto`、`ok`(任意。#75 から。gated・取得できない・同じ名前の別のファイルが無ければ true。無検閲・ライセンス不明・空き・上限は数えない) |
 | `license_url` | str \| null | モデルのライセンスのページ |
 | `ok` | bool | `blocked` が空 |
+| `skipped_optional` | str[] | (0.11.0、#81)落とさない任意の部品(`ModelFile.optional` が `inactive`)のファイル名。`with_optional=True`(CLI は `--with-optional`)なら空 |
 
 PlannedFile:
 
@@ -1496,6 +1501,7 @@ db = gmf.update_from_release(
 - (#3)`ModelFile.head_status` / `head_checked_at`
 - (#30)`ModelEntry.workflow_precision` / `precision_source` と `ModelFile.repo_precision` / `repo_precision_source`
 - (#36、0.5.0)`ModelEntry.languages` / `runtime` / `description` / `card_languages` と `source: "manual"`
+- (#81、0.11.0)`ModelFile.optional` / `optional_replaces`
 
 task の `tool` は、既知のタグが無い Image Tools / Video Tools のテンプレートのために足した。
 
@@ -1521,7 +1527,7 @@ task の `tool` は、既知のタグが無い Image Tools / Video Tools のテ�
 | `counts` | `models`、`modality`、`content`、`source`、`license`(null は不明)、`license_tier`、`files_complete_false` |
 | `head_check` | `checked_at`、`urls`(HEAD を送った重複しない HF の URL)、`status`(ステータスコードごとの数)、`unchecked`(答えなし)、`not_sent`(ほかのホストのファイル。ホストごと) |
 | `file_headers` | `files`、`urls`(HF の主な重みのファイル)、`from_cache`、`fetched`、`failed`、`skipped_offline`、`errors`(最初の 20)、`checked_at`、`precision_unknown`(精度がまだ null のエントリ) |
-| `sampler_stages` | `update --inspect-only` の後だけ: `templates`、`failed`、`multi_stage`(サンプラーの組が 2 つ以上のエントリ)、`workflow_precision`(ローダのノードから精度を推したエントリ)、`checked_at` |
+| `sampler_stages` | `update --inspect-only` の後だけ: `templates`、`failed`、`multi_stage`(サンプラーの組が 2 つ以上のエントリ)、`workflow_precision`(ローダのノードから精度を推したエントリ)、`optional_parts`(任意の部品のあるエントリ。0.11.0、#81)、`checked_at` |
 | `repo_precision` | `files`(見出しも名前も精度を教えない、HF の最大の主なファイル)、`repos`、`from_cache`、`fetched`(リクエスト)、`hf_api`、`config`、`unknown`(それぞれで決まったファイル / どちらでも決まらなかったファイル)、`skipped_offline`、`unauthorized`(API が 401 を返したリポジトリ)、`size_mismatch`(大きさが合わず API の dtype を使わなかったリポジトリ)、`errors`(最初の 20)、`checked_at`、`precision_unknown`(精度がまだ null のエントリ。最終)、`precision_source`(出どころごとのエントリ数。`unknown` = null) |
 | `manual` | `models`(`src/genmodelfit/data/manual.json` から手で足したモデルの数)、`ids`(0.5.0) |
 | `app_fields` | `languages_prompt`、`languages_speech`(空でないリストを持つエントリ)、`runtime`、`description`、`from_card`(保存した Hugging Face のカードの言語 `card_languages` を持つエントリ)(0.5.0)、`card_languages_carried`(カードの言語を前の一覧から引き継いだエントリ。完全な `update` だけ) |

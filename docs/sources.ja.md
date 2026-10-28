@@ -158,6 +158,40 @@ Hub API の safetensors の集計は .safetensors だけ)、csm-1b(Hub API は F
 
 パラメータ数(params_b)はファイル名・題の `14B` `1.3B` のような表記から推す(無ければ null)。
 
+### 任意の部品
+
+0.11.0 で足した(#81)。テンプレートの既定の値で読み込まれない部品のファイルに `optional`(と `optional_replaces`)を付ける
+(`optional.optional_files`。update とテンプレートの読み直しが毎回作り直す。形は [schema.ja.md](schema.ja.md)「Models」、
+見積もりへの効き方は [accuracy.ja.md](accuracy.ja.md)「ファイルの数え方」)。ComfyUI のコードは import せず、v0.43.0(426f5ee)の
+動きをテンプレートの JSON の上でまねる。
+
+1. **出発点**: ComfyUI の出力のノード(`OUTPUT_NODE`。型の表 `optional.OUTPUT_NODE_TYPES` は v0.43.0 の nodes.py・comfy_extras・
+   comfy_api_nodes から読んだもの。ComfyUI は出力のノードを、出力がつながっていても全部実行する: execution.py:1183-1185)と、
+   出力がどこにもつながっていないノード(表に無い拡張の出力のノードの代わり。ファイルを読むノード・メモ・Primitive は除く)。
+   どのサブグラフの中でも探す。
+2. **さかのぼり**: 出発点から入力のリンクを逆にたどる。サブグラフの実体は出口(-20)から中へ、中の入口(-10)から外の実体の
+   入力へ出る。出口が見つからない壊れたサブグラフは、中の全部が使われるとみなす(安全側)。
+3. **無効・素通し**: mode 2(無効)のノードはたどらない。mode 4(素通し)のノードは自分のファイルを数えず、入力はたどる
+   (画面が API の prompt に入れないのと同じ)。サブグラフの実体の mode は、一番上の階層の実体のものだけが中身すべてに効く
+   (入れ子の実体の mode は中身に効かない。画面の動きに合わせた)。
+4. **スイッチ**: If/Else Switch(`ComfySwitchNode`)は、`switch` の値が決まっている(ノードの入力欄、サブグラフの実体の入力欄、
+   Primitive のノード)ときだけ、選ばれない側をたどらない(lazy の入力。comfy_execution/graph.py:153-175、
+   comfy_extras/nodes_logic.py:146-150)。Soft Switch(`ComfySoftSwitchNode`)は、選んだ側がつながっていない
+   (または prompt に入らないノードにつながる)ならもう一方をたどる(nodes_logic.py:178-188)。値が決まらなければ両方たどる。
+5. **分け方**: lazy の枝もたどる検証(execution.py:946-969。一覧に無いファイルは「Value not in list」: execution.py:1061-1085)で
+   届かないファイルは `inactive`、実行では届かないが検証では届くファイルは `switch_off`。1 つのファイルを読むノードが複数あれば、
+   どれか 1 つが使われれば任意にしない。
+6. **入れ替え**: スイッチを 1 つずつ逆にして、読み込まなくなる既定の部品があれば `optional_replaces` に入れる
+   (例: Pixal3D / Trellis2 は Trellis2 の本体が Pixal3D の本体の代わり)。無効のノードの部品は、本体の役割なら既定の本体の
+   代わり(`kind: replace`)、ほかは足すだけ(`kind: add`)とみなす。
+7. つながりの線を使わずに値を渡す拡張のノード(`SetNode` / `GetNode`・`Anything Everywhere`)があるテンプレート、出発点の無い
+   テンプレートは分けない(全部を数える)。
+
+同梱の一覧(テンプレート 278 件。分け方は Comfy-Org/workflow_templates の 0cc0fba の JSON で作った。ファイルの組は同梱の一覧と
+全件同じ)では、任意の部品があるのは 66 件(`inactive` のあるもの 22 件・`switch_off` のあるもの 44 件)。多くは既定で切った
+高速化の LoRA で、ほかに Qwen-Image 2.1 の指示の書き直し(`qwen3.5_9b_…_pe_*`、8.8 GB)・LTX-2 の distilled の本体・
+Wan VACE 14B の 1.3B の枝・HunyuanVideo 1.5 720p の 1080p の仕上げ・FLUX.2 Klein の素通しにした本体など。
+
 ## ライセンス
 
 一覧はソース非公開の商用アプリ(AI生成キット)の自動のおすすめに使う。**寛容の側に間違えることが一番悪い**ので、
@@ -461,6 +495,8 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
    (https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B のカードは 17 言語で、「Performance varies by language」は歌の話。
    歌の入らない `audio_ace_step_1_t2a_instrumentals` の指示にも 17 言語が付いていた)。歌の言語は手の表で書く
 3. **カードが無い(言語が書いていない)ときだけ、文字を読む部品の表**: 表に当たれば `["en"]`。
+   テンプレートの既定の値で読み込まない部品([「任意の部品」](#任意の部品)。0.11.0、#81)は材料にしない
+   (カードを読む本体も、既定で読み込む本体だけ)。
    多言語の部品でも、表だけでは `ja` を付けない(部品が読める言語と、モデルが学習した説明文の言語は違う。
    Wan・Qwen-Image・HunyuanVideo 1.5 は多言語の部品を使うが、カードは `en` `zh`。Kandinsky 5・Anima のように
    日本語で確かめた資料が無いものに `ja` を付けないため)
@@ -486,7 +522,7 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
 部品が複数あるとき: 多言語が 1 つでもあれば多言語、すべて英語の部品なら英語だけ、表に無い部品(Gemma・Mistral・Llama・
 Qwen3-VL・gpt-oss など。カードに言語の記述が無い、または確かめていない)が混じれば決めない(カードがあればカードのまま)。
 
-手の表 `src/genmodelfit/data/overrides.json` は 12 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
+手の表 `src/genmodelfit/data/overrides.json` は 16 件。アプリが実機で確かめた 9 件(AI生成キットの catalog.json の `notes` と実機の確認に合わせた):
 Z-Image Turbo 2 件・Wan 2.1/2.2 は `prompt` が `en` `ja` `zh`(「日本語の指示もある程度理解しますが、英語で書くとより正確」
 「日本語・英語・中国語の指示を理解します」。Z-Image のカードは `en` だけだが、部品の Qwen3 で日本語の指示も通ることを実機で確かめた)、
 SDXL は `en` のみ(「日本語はほとんど理解しません」)、ACE-Step 1.5 は `prompt` が `en`(「曲の雰囲気は英語で書くとより正確」)・
@@ -501,6 +537,12 @@ https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードに合わせて `en` `
 カードが案内する https://github.com/ace-step/ACE-Step の README「Supports 19 languages with top 10 well-performing languages
 including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean」)。指示は音楽の規則で
 `en`。歌の入らない `audio_ace_step_1_t2a_instrumentals` には付けない。
+残りの 4 件は Qwen-Image 2.1(0.11.0、#81): 指示の書き直しの部品(`qwen3.5_9b_…_pe_*`)を任意の部品にして言語の材料から外すと、
+文字を読む部品が表に無い `qwen3vl_8b` だけになり、言語が決まらなくなる。そこで 4 件とも `prompt` に `en` を書いた(根拠は
+公式テンプレートの既定の指示が英語であること。テンプレートは一次資料)。`image_qwen_image_2_1_image_edit` だけ `ja` も足した:
+オーナーが実機(RTX 3070 8GB、公式の `qwen_image_2.1_int8_convrot`、このテンプレートと同じノード構成)で日本語の指示を翻訳せずに
+渡して正しく編集できた(Issue #81 の 2026-10-26 の追記)。Turbo の編集と文章から画像は日本語で試していないので付けない。
+`zh` は Qwen-Image 2.1 のカード(https://huggingface.co/Qwen/Qwen-Image-2.1 、2026-10-28 に確認)に言語の記述が無いので付けない。
 
 手のモデル `src/genmodelfit/data/manual.json` の 3 件: つくよみちゃんの `speech` は `ja` `en`: カード(https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan)の
 `language` は 6 言語(ja en zh es fr pt)だが、アプリが実機で確かめたのは日本語と英語だけなのでそれだけにした。
