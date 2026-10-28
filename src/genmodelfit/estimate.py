@@ -1765,9 +1765,12 @@ def _options_note(parts: list[dict[str, Any]], all_est: Estimate, gb: float | No
         else:
             ja.append(f"{p['name']}({size(p)})")
             en.append(f"{p['name']} ({size(p)})")
+    # 入れ替えの部品は両方を足した上限なので、そうと書く(#81 の確認)
+    upper = any(p["kind"] == "replace" for p in off)
     if gb is not None:
-        tail_ja = f"全部入れると目安 {gb:.1f} GB で、この PC では {all_est.fit}"
-        tail_en = f"With all of them on, about {gb:.1f} GB; on this PC: {all_est.fit}"
+        mark_ja, mark_en = ("(上限)", " (upper bound)") if upper else ("", "")
+        tail_ja = f"全部入れると目安 {gb:.1f} GB{mark_ja}で、この PC では {all_est.fit}"
+        tail_en = f"With all of them on, about {gb:.1f} GB{mark_en}; on this PC: {all_est.fit}"
     else:
         tail_ja = f"全部入れると、この PC では {all_est.fit}"
         tail_en = f"With all of them on, on this PC: {all_est.fit}"
