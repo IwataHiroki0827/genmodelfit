@@ -109,7 +109,7 @@ main の db.json だけ(data.yml)。試験は同梱の一覧の件数・日付�
 - 判定の設定は、指定が無ければ全モデル種類ごとの既定(実測の設定は、実測からずらす量の計算だけに使う)
 - 実測で段階を決めるのは、同じ GPU(PCI の型番 ID(両方にあるとき)、無ければそろえた名前が同じ(汎用の名前は一致としない)、
   かつ VRAM の比 0.95 以上。`estimate.same_gpu`)・同じ設定で、別々の出どころ 2 つ以上がそろったときだけ
-  (作者の実測は何行あっても 1 つ、ほかの利用者は送った人ごとに 1 つ(Issue は作者の GitHub アカウント、手の PR は足したコミットの作者。#113。`contrib.submitter_count`)。`estimate.count_sources`)。
+  (作者の実測は何行あっても 1 つ、ほかの利用者は「同じ PR」か「同じ人」でつながるまとまりごとに 1 つ(PR 1 本は多くても 1 つ、同じ人も 1 つ。人は Issue なら作者の GitHub アカウント、手の PR なら足したコミットの作者。実測の PR はマージコミットでマージする。#113。`contrib.submission_sources`)。`estimate.count_sources`)。
   段階に使う量は表の VRAM と同じ(実測のピーク + 文脈の分と、重み + 固定分の大きい方)。1 つだけなら値をずらすだけ
 - Score は収まり(`memory_fit`。llmfit の fit_score と同じ曲線)だけ。人気は Score に混ぜず並びの鍵(`popularity.py`)。
   並び・Score・人気の式は docs/scoring にある

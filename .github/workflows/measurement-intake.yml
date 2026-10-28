@@ -27,8 +27,13 @@ name: Measurement intake
 #   (フォームの Issue は作ったときに印が付いているので、同じ Issue で 2 回動かないように)
 # - この Issue の PR が同じ中身を持っていれば、push もコメントもしない
 # - 同じ中身が別の Issue の PR にあれば、PR を作らずにその PR を知らせる
-# - PR ができたあとに本文が変わったら: 通る中身なら PR を直し、PR と Issue に知らせる。通らない中身なら
-#   PR と Issue に理由を書いて PR を閉じる(直すと開き直す)
+# - PR ができたあとに本文が変わったら: 通る中身なら PR を直し、PR と Issue に知らせる。通らない中身(か、別の
+#   Issue の PR と同じ中身)なら PR と Issue に理由を書き、印 measurement-invalid を付けて PR を閉じる。
+#   直ったら、この印のある PR だけを開き直す(メンテナが閉じた PR は開き直さない)
+# - 同じ理由で断るコメントは 1 回だけ(前のボットのコメントの最後の隠した印が同じなら書かない)
+# - 見る PR はボットの PR だけ(isCrossRepository が偽で、作者が GitHub Actions)。フォークの同じ名前のブランチは見ない
+# - 実測の PR は「Create a merge commit」で入れる(squash・rebase はしない)。出どころの数え方がマージのコミットを
+#   見るため(contrib.submission_origins)
 
 on:
   issues:
@@ -105,12 +110,40 @@ jobs:
           set -euo pipefail
           branch="measurement/issue-${ISSUE}"
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          pr="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // ""')"
+          invalid="measurement-invalid"
+          # ボットが作った PR だけを見る(フォークの PR は同じ名前のブランチでも除く)。gh は GitHub Actions の
+          # アプリの作者を app/github-actions と返す(古い版は github-actions[bot])
+          bot='(.isCrossRepository | not) and (.author.login == "app/github-actions" or .author.login == "github-actions[bot]")'
+          bot_prs() {  # $1 ブランチ(空ならすべて) $2 状態 $3 jq の続き
+            local head=()
+            [ -n "$1" ] && head=(--head "$1")
+            gh pr list "${head[@]}" --state "$2" --limit 200 \
+              --json url,number,headRefName,isCrossRepository,author,labels,mergedAt \
+              --jq "[.[] | select(${bot})] | $3"
+          }
+          comment_issue() {  # 同じ理由の組をもう書いてあれば書かない(印は断ったときのコメントの最後)
+            if [ -f "$OUT/marker.txt" ]; then
+              last="$(gh issue view "$ISSUE" --json comments --jq \
+                '[.comments[] | select(.author.login == "github-actions" or .author.login == "app/github-actions" or .author.login == "github-actions[bot]")] | last | .body // ""')"
+              if printf '%s' "$last" | grep -qF "$(head -n 1 "$OUT/marker.txt")"; then
+                echo "same reasons as before"
+                return 0
+              fi
+            fi
+            gh issue comment "$ISSUE" --body-file "$1"
+          }
+          close_invalid() {  # ボットが閉じた印を付けて閉じる(印のある PR だけ、あとで開き直す)
+            gh label create "$invalid" --color d93f0b \
+              --description "Closed by measurement-intake; reopened when the issue is fixed" --force >/dev/null || true
+            gh pr edit "$1" --add-label "$invalid"
+            gh pr close "$1" --comment "$(cat "$2")"
+          }
+          pr="$(bot_prs "$branch" open '.[0].url // ""')"
           if [ ! -f "$OUT/path.txt" ]; then
             # 通らない中身: Issue に理由を書く。PR があれば PR にも書いて閉じる(Issue を直すと開き直す)
-            gh issue comment "$ISSUE" --body-file "$OUT/comment.md"
+            comment_issue "$OUT/comment.md"
             if [ -n "$pr" ]; then
-              gh pr close "$pr" --comment "$(cat "$OUT/comment_pr_closed.md")"
+              close_invalid "$pr" "$OUT/comment_pr_closed.md"
             fi
             exit 0
           fi
@@ -120,35 +153,44 @@ jobs:
             exit 1
           fi
           want="$(sha256sum < "$OUT/submission.json" | cut -d' ' -f1)"
-          # この Issue の PR が同じ中身を持っていれば何もしない(作ったときと同じ中身・題だけの編集など)
+          # この Issue の PR が同じ中身を持っていれば何もしない(作ったときと同じ中身など)
           if [ -n "$pr" ] && git fetch -q --depth 1 "$remote" "refs/heads/${branch}" 2>/dev/null \
               && have="$(git show "FETCH_HEAD:${path}" 2>/dev/null | sha256sum | cut -d' ' -f1)" \
               && [ "$have" = "$want" ]; then
             echo "unchanged"
             exit 0
           fi
-          # 同じ中身(置き場所の名前は中身の hash)が、別の Issue の PR にあれば知らせて止める
-          others="$(gh pr list --state open --limit 200 --json headRefName,isCrossRepository \
-            --jq '.[] | select(.isCrossRepository | not) | .headRefName' \
-            | grep -E '^measurement/issue-[0-9]+$' || true)"
+          # 同じ中身(置き場所の名前は中身の hash)が、別の Issue のボットの PR にあれば知らせて止める。
+          # この Issue の PR が開いていれば、古い中身のままなので閉じる
+          others="$(bot_prs "" open '.[].headRefName' | grep -E '^measurement/issue-[0-9]+$' || true)"
           for b in $others; do
             [ "$b" = "$branch" ] && continue
             if git fetch -q --depth 1 "$remote" "refs/heads/${b}" 2>/dev/null \
                 && git cat-file -e "FETCH_HEAD:${path}" 2>/dev/null; then
-              url="$(gh pr list --head "$b" --state open --json url --jq '.[0].url // ""')"
+              url="$(bot_prs "$b" open '.[0].url // ""')"
               printf 'The same measurement was already sent: %s\n\n---\n\n同じ実測は既に送られています: %s\n' \
                 "$url" "$url" > "$OUT/dup.md"
               gh issue comment "$ISSUE" --body-file "$OUT/dup.md"
+              if [ -n "$pr" ]; then
+                close_invalid "$pr" "$OUT/dup.md"
+              fi
               exit 0
             fi
           done
           if [ -z "$pr" ]; then
-            closed="$(gh pr list --head "$branch" --state closed --json url,mergedAt \
-              --jq '[.[] | select(.mergedAt == null)][0].url // ""')"
+            # ボットが(通らない中身で)閉じた PR だけを開き直す。メンテナが閉じた PR(印が無い)は開き直さない。
+            # GitHub は push のあとでは開き直せないので先に
+            closed="$(bot_prs "$branch" closed \
+              "[.[] | select(.mergedAt == null and (.labels | map(.name) | index(\"${invalid}\")))][0].url // \"\"")"
             if [ -n "$closed" ]; then
-              # 通らない中身で閉じた PR を、直った中身で開き直す(GitHub は push のあとでは開き直せないので先に)
               gh pr reopen "$closed"
+              gh pr edit "$closed" --remove-label "$invalid"
               pr="$closed"
+            elif [ -n "$(bot_prs "$branch" closed '[.[] | select(.mergedAt == null)][0].url // ""')" ]; then
+              echo "a maintainer closed this issue's PR; not reopening" >&2
+              printf 'A maintainer closed the earlier pull request for this issue, so the bot does not open a new one. Please reply here if it should be looked at again.\n\n---\n\nこの Issue の前の Pull Request はメンテナが閉じたので、ボットは新しく作りません。もう一度見てほしいときは、ここに返信してください。\n' > "$OUT/maint.md"
+              gh issue comment "$ISSUE" --body-file "$OUT/maint.md"
+              exit 0
             fi
           fi
           git switch -c "$branch"

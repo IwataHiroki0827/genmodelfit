@@ -162,14 +162,23 @@ twice). It has two jobs:
    - Same content as another issue's open PR: comments the link to that PR and opens nothing.
    - Edited to different valid content after the PR exists: updates the PR (title, body, file) and comments on both the
      PR and the issue. A PR closed earlier because of invalid content is reopened first.
-   - Refused: comments the reasons (English and Japanese) on the issue; if the issue already has an open PR, the PR
-     gets the reasons and is **closed** (fixing the issue reopens it).
+   - Refused: comments the reasons (English and Japanese) on the issue, once per set of reasons (a hidden marker in
+     the comment; the same reasons again are not repeated). If the issue already has an open PR, the PR gets the
+     reasons, the label `measurement-invalid` (created when missing) and is **closed**. When the issue is fixed,
+     only a PR with that label is reopened (and the label removed); a PR a maintainer closed is never reopened
+     (the bot says so on the issue).
+   - Edited to content that another issue's PR already has: links that PR and closes this issue's PR the same way.
+   - Only the bot's own PRs are looked at (`isCrossRepository` false and the author GitHub Actions, which `gh`
+     reports as `app/github-actions`); a fork's PR from a branch with the same name is ignored.
    Merging the PR closes the issue.
 
 What to check before merging: the notices in the PR body (the same as the `Contrib` job summary; contrib.yml does not
 run for a PR made with `GITHUB_TOKEN`), and the line about how many submissions the same account already sent for
 that GPU and model (one person counts as one source however many they send, but someone using several accounts would
-count several times). Keep the `Submitted-by:` line when squash-merging (a merge commit or rebase keeps it anyway).
+count several times). Merge with **"Create a merge commit" only, never squash or rebase**, for the bot's pull requests and for
+measurement pull requests opened by people alike (the same rule as "Releasing later versions"): sources are
+counted from the merge commit (`Merge pull request #N from laxshmate/measurement/issue-M` is what makes the
+`Submitted-by:` line trusted).
 
 One-time setup (the repository's Settings):
 1. Settings → Actions → General → "Workflow permissions" → tick "Allow GitHub Actions to create and approve pull

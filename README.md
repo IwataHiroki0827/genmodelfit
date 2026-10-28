@@ -433,7 +433,8 @@ default today) only the working memory can be measured, so it is used to cross-c
 levels yet (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
 Other measurements adjust the estimate for that GPU, and when two different people's measurements agree they also
 set the level. One person counts once, however many measurements they send. Out-of-memory results are kept as
-records that the GPU was not enough.
+"not enough on this GPU" records, which stop measurements from setting the level for that setup. A measurement takes
+effect after a maintainer accepts it and the next version of genmodelfit is released.
 
 If you edit the issue after the bot made its pull request, the new content is checked again: the pull request is
 updated (or closed, if the new content does not pass) and both pages say so. For git users, `bench --submission

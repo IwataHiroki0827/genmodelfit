@@ -2468,6 +2468,7 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
         write("path.txt", res.path_in_repo + "\n")
     else:
         write("comment_pr_closed.md", res.comment_pr_closed)
+        write("marker.txt", res.marker + "\n")  # 英語の理由の組の印(同じ理由ならコメントしない)
     if args.json:
         _out(_envelope("contrib", None, None, action="intake", ok=res.ok, reasons=len(res.reasons)))
     else:
@@ -4324,28 +4325,33 @@ def _measure_next_step(msg: str, model_id: str) -> str:
 
 def _share_hint(m) -> str:
     """測り終えたときの 1 行(#113)。送った実測が何に使われるかを、測り方に合わせて正直に書く
-    (docs/accuracy.md「実測の使い方」)。作業用メモリだけの実測(今の NVIDIA の動的 VRAM)は照合だけに使う。"""
+    (docs/accuracy.md「実測の使い方」)。作業用メモリだけの実測(今の NVIDIA の動的 VRAM)は照合だけに使う。
+    どれも、メンテナが受け入れて次の版が出てから使われる(同梱のまとめは版を出すときに作る)。"""
     from .estimate import working_only
 
+    when = tr(
+        "メンテナが受け入れ、次の版が出てから使われます",
+        "it takes effect after a maintainer accepts it and the next version is released",
+    )
     if m.outcome == "oom":
         return tr(
-            "genmodelfit share で送ると、この GPU では足りないという記録として、"
-            "同じ GPU を使う人の判定の確かめに使われます",
-            "Send it with genmodelfit share: it is kept as a record that this GPU ran out of memory and is"
-            " used to check the results for people with the same GPU",
+            "genmodelfit share で送ると、「この GPU では足りない」記録として残り、この設定では実測で段階を"
+            f"決めなくなります({when})",
+            "Send it with genmodelfit share: it is kept as a record that this GPU was not enough, which stops"
+            f" measurements from setting the level for this setup ({when})",
         )
     if working_only(m):
         return tr(
             "genmodelfit share で送ると、見積もりの確かめ(照合)に使われ、精度の向上に役立ちます"
-            "(この測り方の値は、まだ段階を決めるのには使いません)",
+            f"(この測り方の値は、まだ段階を決めるのには使いません。{when})",
             "Send it with genmodelfit share: it is used to cross-check the estimates and helps improve their"
-            " accuracy (values measured this way do not set levels yet)",
+            f" accuracy (values measured this way do not set levels yet; {when})",
         )
     return tr(
         "genmodelfit share で送ると、同じ GPU を使う人の見積もりに使われます"
-        "(別の人の実測とそろうと、段階も実測で決まります)",
+        f"(別の人の実測とそろうと、段階も実測で決まります。{when})",
         "Send it with genmodelfit share: it is used in the estimates for people with the same GPU (once"
-        " another person's measurement agrees, it also sets the level)",
+        f" another person's measurement agrees, it also sets the level; {when})",
     )
 
 

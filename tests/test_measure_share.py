@@ -685,10 +685,23 @@ def test_intake_workflow_is_idempotent_and_follows_edits():
     assert "exit 0" in run[i_same : i_same + 80] and run.index("git push") > i_same
     # 別の Issue の PR に同じ中身があれば知らせて止める
     assert "measurement/issue-[0-9]+$" in run and "dup.md" in run
-    # 通らない中身なら PR を閉じ、通る中身なら PR を直して知らせる。閉じた PR は push の前に開き直す
-    assert 'gh pr close "$pr"' in run and "comment_pr_closed.md" in run
+    # 通らない中身なら印を付けて PR を閉じ、通る中身なら PR を直して知らせる。閉じた PR は push の前に開き直す
+    assert 'close_invalid "$pr" "$OUT/comment_pr_closed.md"' in run and 'gh pr close "$1"' in run
+    assert '--add-label "$invalid"' in run and 'invalid="measurement-invalid"' in run
     assert "gh pr edit" in run and "comment_updated.md" in run
     assert run.index("gh pr reopen") < run.index("git push")
+    # 開き直すのはボットが閉じた(印のある)PR だけ。メンテナが閉じた PR は開き直さない
+    i_reopen = run.index("gh pr reopen")
+    assert 'index(\\"${invalid}\\")' in run[:i_reopen] and "--remove-label" in run[i_reopen : i_reopen + 200]
+    assert "not reopening" in run
+    # 別の Issue と同じ中身に変わったら、この Issue の古い PR も閉じる
+    i_dup = run.index("dup.md")
+    assert 'close_invalid "$pr" "$OUT/dup.md"' in run[i_dup:]
+    # 見るのはボットの PR だけ(フォークの同じ名前のブランチを除く)。gh pr list はすべて bot_prs を通す
+    assert "(.isCrossRepository | not)" in run and '.author.login == "app/github-actions"' in run
+    assert run.count("gh pr list") == 1 and run.count("bot_prs ") >= 5
+    # 同じ理由で断るコメントは 1 回だけ
+    assert "marker.txt" in run and "same reasons as before" in run
 
 
 def test_intake_comments_for_edits(db):
@@ -749,12 +762,12 @@ def test_share_without_a_terminal_does_not_mark(capsys, monkeypatch, browser):
     [
         ("ok", "torch_reserved", "dynamic", "照合"),
         ("ok", "torch_reserved", "none", "段階も実測で決まります"),
-        ("oom", "torch_reserved", "oom", "足りないという記録"),
+        ("oom", "torch_reserved", "oom", "段階を決めなくなります"),
     ],
 )
 def test_share_hint_matches_how_it_is_used(outcome, metric, offload, word):
     m = meas(outcome=outcome, vram_metric=metric, offload=offload)
-    assert word in cli._share_hint(m)
+    assert word in cli._share_hint(m) and "次の版が出てから" in cli._share_hint(m)
 
 
 def test_measure_next_step_never_only_says_force():
@@ -764,3 +777,19 @@ def test_measure_next_step_never_only_says_force():
         "必要なファイルがサーバーにありません", "image_x"
     )
     assert "ComfyUI" in cli._measure_next_step("connection refused", "image_x")
+
+
+def test_intake_marker_is_stable_per_reason_set(db, tmp_path):
+    a = contrib.intake_issue("nothing", "x", 1, db=db)
+    b = contrib.intake_issue("still nothing", "x", 1, db=db)
+    c = contrib.intake_issue(_body("{not json"), "x", 1, db=db)
+    assert a.marker == b.marker != c.marker and a.marker.startswith("<!-- measurement-intake:reasons=")
+    assert a.comment.rstrip().endswith(a.marker)
+    ev = tmp_path / "e.json"
+    ev.write_text(json.dumps({"issue": {"number": 1, "body": "nothing", "user": {"login": "x"}}}), "utf-8")
+    assert cli.main(["contrib", "intake", str(ev), "--out", str(tmp_path / "o")]) == 0
+    from genmodelfit import i18n
+
+    with i18n.forced("en"):  # marker.txt は英語の理由の組の印
+        en = contrib.intake_issue("nothing", "x", 1, db=db).marker
+    assert (tmp_path / "o" / "marker.txt").read_text(encoding="utf-8").strip() == en

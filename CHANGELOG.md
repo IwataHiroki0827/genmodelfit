@@ -84,23 +84,30 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **One person is one source** (#113): other users' submissions are counted by the person who sent them, not by the
-  commit / pull request that added them. The person is the `Submitted-by: github:<account>` of the intake bot's
-  commit (trusted only on the bot's commits), else the e-mail address of the commit that added the file (in a merge,
-  the commit on the PR side, so the maintainer who merged it is not counted). Several pull requests or issues from one
-  person are one source, like the author's rows; `source_ids` hold the first 12 hex digits of the sha256 of that key,
-  so no address or account is published. New: `contrib.submission_submitters`, `contrib.submitter_count`.
+- **One person is one source, one pull request at most one** (#113): other users' submissions are counted as groups
+  connected by the same pull request (its merge commit; measurement pull requests are merged with a merge commit,
+  never squash or rebase) or the same person. The person is the `Submitted-by: github:<account>` of the intake bot's
+  commit, trusted only when the merge commit is `Merge pull request #N from laxshmate/measurement/issue-M` (the bot's
+  own branch; a fork's branch of the same name is not trusted), else the e-mail address of the commit that added the
+  file (on the pull request side of a merge), with GitHub noreply addresses read as the account. A commit directly on
+  main counts as its author. `source_ids` hold the first 12 hex digits of the sha256 of the group's smallest key, so
+  no address or account is published. New: `contrib.submission_origins`, `contrib.submission_submitters`,
+  `contrib.submitter_count`, `contrib.person_key`.
 - **`share --json` only previews** (#113): it marks the measurement as sent only with `--mark-sent`; the text output
   without a terminal does not mark it either (opening the browser and `--print-url` do). `share --print-url` without a
   file uses the only unsent measurement. `measure` answered with n exits 0, and a failed measurement ends with a plain
   "Next:" line. The line after measuring says honestly what the measurement is used for (working-memory-only NVIDIA
-  results are for cross-checking).
+  results are for cross-checking; out-of-memory results stop measured levels for that setup; every measurement
+  takes effect after a maintainer accepts it and the next version is released).
 - **Measurement intake is idempotent and follows edits** (#113): it runs on issues opened and on body edits only (not
   on labels or title edits), does nothing when the PR already has the same content, refuses content that another
   issue's PR already has, updates the PR and comments on both pages when the issue is edited to different valid
   content, and closes the PR when the issue is edited to invalid content (reopened when fixed). It is split into a
   read-only job that installs genmodelfit and a write job that only uses git and gh. The privacy check no longer
   treats the runner's host / user name as the sender's.
+  It only looks at the bot's own pull requests (not a fork's with the same branch name), reopens only pull requests
+  it closed itself (label `measurement-invalid`), closes the issue's pull request when an edit duplicates another
+  issue's, and comments the same refusal reasons only once.
 - **`contrib` is for maintainers** (#113): the README command table and `--help` list `measure` and `share` for
   users; `review`, `bench` and `contrib` are described as maintenance commands. The commands stay as they were
   (`contrib share` is the same as `share`).

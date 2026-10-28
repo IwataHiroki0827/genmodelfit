@@ -1211,10 +1211,11 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
   (branch `measurement/issue-<N>`, made by GitHub Actions; the issue author is written in the PR and, as
   `Submitted-by: github:<account>`, in the commit), counted as that account's submission. A PR made with `GITHUB_TOKEN` does not start contrib.yml; the intake already ran
   the same checks.
-- **Sources** (#113): submissions sent by the same person count as one source: the `Submitted-by` account of the
-  intake bot's commit, else the e-mail address of the commit that added the file (in a merge, the commit on the PR
-  side; found through main's first-parent history and renames). The value is the sha256 of that key, so no address
-  is published. They count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
+- **Sources** (#113): submissions connected by the same pull request (merge commit) or the same person count as
+  one source (`contrib.submission_origins` / `submission_sources`; the rules are in [scoring.md](scoring.md)): the
+  `Submitted-by` account only for the intake bot's own branch merged with a merge commit, else the e-mail address
+  of the commit that added the file, GitHub noreply addresses read as the account. The value is the sha256 of the
+  group's smallest key, so no address is published. They count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
   history or in a shallow clone each submission counts on its own, and the output says so).
 - **OOM-heavy groups**: a row whose OOM sources are at least as many as its ok sources has `runs_evidence: false` (not
   evidence that it runs; how it is used is PR #95).

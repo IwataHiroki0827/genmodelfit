@@ -153,14 +153,19 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    - 別の Issue の開いている PR と同じ中身: その PR のリンクをコメントし、何も作りません。
    - PR ができたあとに、通る別の中身に編集された: PR(題・本文・ファイル)を直し、PR と Issue の両方にコメントします。
      前に通らない中身で閉じた PR は、先に開き直します。
-   - 断ったとき: 理由(英語と日本語)を Issue にコメントします。Issue に開いている PR があれば、PR にも理由を書いて
-     **閉じます**(Issue を直すと開き直します)。
+   - 断ったとき: 理由(英語と日本語)を Issue にコメントします。同じ理由の組は 1 回だけ(コメントの隠した印で見分け、
+     同じ理由を繰り返さない)。Issue に開いている PR があれば、PR にも理由を書き、印 `measurement-invalid`(無ければ
+     作る)を付けて **閉じます**。Issue が直ったら、この印のある PR だけを開き直し(印は外す)、メンテナが閉じた PR は
+     開き直しません(Issue にそう書きます)。
+   - 別の Issue の PR と同じ中身に編集された: その PR を知らせ、この Issue の PR を同じように閉じます。
+   - 見るのはボット自身の PR だけ(`isCrossRepository` が偽で、作者が GitHub Actions。`gh` は `app/github-actions` と
+     返す)。フォークの同じ名前のブランチの PR は見ません。
    PR をマージすると Issue は閉じます。
 
 マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
 動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 人は何件送っても 1 つの出どころだが、複数のアカウントを
-使う人は何回も数えられる)。squash でマージするときは `Submitted-by:` の行を残してください(マージのコミット・rebase なら
-そのまま残ります)。
+使う人は何回も数えられる)。マージは、ボットの Pull Request も人が出した実測の Pull Request も **「Create a merge commit」だけで、squash・rebase は
+しない**(「次からの版を出す手順」と同じ決まり)。出どころはマージのコミットで数えるため(`Merge pull request #N from laxshmate/measurement/issue-M` のときだけ `Submitted-by:` の行を信じる)。
 
 一度だけの設定(リポジトリの Settings):
 1. Settings → Actions → General → 「Workflow permissions」→「Allow GitHub Actions to create and approve pull requests」に

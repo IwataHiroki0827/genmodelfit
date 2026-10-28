@@ -844,6 +844,9 @@ class IntakeResult:
     comment: str = ""
     comment_updated: str = ""  # PR ができたあとに Issue の中身が変わったとき(PR と Issue に書く)
     comment_pr_closed: str = ""  # PR ができたあとに通らない中身に変わったとき(PR に書いて閉じる)
+    # 断った理由の組の印(コメントの最後に隠して書く HTML のコメント)。同じ理由で何度も編集されたとき、
+    # measurement-intake は前のボットのコメントにこの印があればコメントを書かない
+    marker: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -924,6 +927,7 @@ def intake_issue(
                 res.content = dumps(data)
                 res.title = issue_title(data)
     if not res.ok:
+        res.marker = reasons_marker(res.reasons)
         res.comment = _md(
             [
                 tr("**実測の提出を受け付けられませんでした**", "**The measurement could not be accepted**"),
@@ -940,6 +944,8 @@ def intake_issue(
                     "どう直せばよいか分からないときは、このまま返信してください。メンテナが手伝います。",
                     "Not sure how to fix it? Just reply here and a maintainer will help.",
                 ),
+                "",
+                res.marker,
             ]
         )
         res.comment_pr_closed = _md(
@@ -1034,6 +1040,12 @@ def intake_issue(
         ]
     )
     return res
+
+
+def reasons_marker(reasons: list[str]) -> str:
+    """断った理由の組の印(HTML のコメント。表示されない)。理由の文(今の言語)の組の sha256 の先頭 16 桁。"""
+    digest = hashlib.sha256("\n".join(sorted(reasons)).encode("utf-8")).hexdigest()[:16]
+    return f"<!-- measurement-intake:reasons={digest} -->"
 
 
 def _already_there(root: str | os.PathLike[str], sha: str) -> bool:
@@ -2389,6 +2401,20 @@ BOT_EMAIL = (
 SUBMITTED_BY = re.compile(
     r"^Submitted-by:[ \t]*github:([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))[ \t]*$", re.M | re.I
 )
+# measurement-intake の PR を GitHub が「Create a merge commit」で入れたときの 1 行目。<owner> が
+# このリポジトリの持ち主(REPO_OWNER)のときだけ、リポジトリの中のボットのブランチ(フォークは持ち主が違う)
+BOT_MERGE = re.compile(r"Merge pull request #\d+ from ([A-Za-z0-9-]+)/measurement/issue-\d+[ \t]*")
+REPO_OWNER = REPO.split("/", 1)[0].lower()  # 決まった値(contrib.REPO の持ち主)。git の remote は見ない
+_NOREPLY = re.compile(r"(?:\d+\+)?([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))@users\.noreply\.github\.com")
+
+
+def person_key(email: str) -> str:
+    """コミットのメールアドレス → 人の鍵。GitHub の noreply(`<数>+<login>@users.noreply.github.com`・
+    `<login>@users.noreply.github.com`)は `github:<login>`(Issue で送ったときと同じ人になる)、ほかは
+    `email:<小文字>`。"""
+    e = email.strip().lower()
+    m = _NOREPLY.fullmatch(e)
+    return f"github:{m.group(1)}" if m else f"email:{e}"
 
 
 def _git_runner(base: Path):
@@ -2411,15 +2437,19 @@ def _git_runner(base: Path):
     return git
 
 
-def submission_submitters(
+def submission_origins(
     root: str | os.PathLike[str], subs: list[Submission]
-) -> tuple[dict[str, str], bool]:
-    """提出ごとの送った人(#113。内容の sha256 → 送った人の鍵, git の履歴を使えたか)。
+) -> tuple[dict[str, tuple[str | None, str]], bool]:
+    """提出ごとの (PR, 人)(#113。内容の sha256 → (PR の鍵 か None, 人の鍵), git の履歴を使えたか)。
 
-    そのファイルを main に足したコミット(first-parent の履歴で。名前の変更はさかのぼる)を探し、マージの
-    コミットなら PR の側でファイルを足したコミットを見る。そのコミットが GitHub Actions のボット(BOT_EMAIL)の
-    もので、本文に `Submitted-by: github:<login>`(measurement-intake が Issue を書いた人を書く)があれば
-    `github:<login>`、ほかは書いた人のメールアドレス `email:<小文字>`(PR を出した人のコミット)。
+    そのファイルを main に足したコミット(first-parent の履歴で。名前の変更はさかのぼる)を探す。
+    - マージのコミット(PR を「Create a merge commit」で入れたもの): PR の鍵は `pr:<マージのコミット>`。
+      人は PR の側でファイルを足したコミットの書いた人(person_key)。ただし、マージのコミットの 1 行目が
+      `Merge pull request #N from <REPO_OWNER>/measurement/issue-M`(リポジトリの中の intake のブランチ)で、
+      そのコミットが BOT_EMAIL のもので `Submitted-by: github:<login>` があるときだけ、人は `github:<login>`
+      (git の書いた人のメールアドレスは誰でも書けるので、フォークの PR の Submitted-by は信じない)
+    - マージでないコミット(main に直接・squash・rebase): PR の鍵は無く、人はそのコミットの書いた人。
+      実測の PR はマージのコミットで入れる決まり(docs/release.md「実測の Issue を受け取る(#113)」)
     鍵はメールアドレスを含むので、外に書かない(submission_sources は hash にして使う)。
     git の作業ツリーでない・浅い clone・git が無いときは ({}, False)。まだコミットしていない提出は入れない。
     通信しない(手元の git の履歴を読むだけ)。"""
@@ -2460,45 +2490,79 @@ def submission_submitters(
         elif parts[0] == "A" and parts[1] in alias:
             s = alias.pop(parts[1])
             added.setdefault(s.sha256, (commit, parts[1]))
-    cache: dict[tuple[str, str], str] = {}
+    cache: dict[tuple[str, str], tuple[str | None, str]] = {}
 
-    def who(commit: str, path: str) -> str:
+    def origin(commit: str, path: str) -> tuple[str | None, str]:
         if (commit, path) in cache:
             return cache[(commit, path)]
-        target = commit
         parents = (git("rev-list", "--parents", "-n", "1", commit) or "").split()
-        if len(parents) > 2:  # マージのコミット: PR の側でファイルを足したコミット(いちばん古いもの)
+        if len(parents) <= 2:  # マージでない: そのコミットを書いた人
+            email = (git("log", "-1", "--format=%ae", commit) or "").strip()
+            out: tuple[str | None, str] = (None, person_key(email))
+        else:
             inner = (
                 git("log", "--diff-filter=A", "--format=%H", f"{commit}^1..{commit}^2", "--", f":(top){path}")
                 or ""
             ).split()
-            if inner:
-                target = inner[-1]
-        info = git("log", "-1", "--format=%ae%x00%B", target) or ""
-        email, _, body = info.partition("\x00")
-        m = SUBMITTED_BY.search(body)
-        key = (
-            f"github:{m.group(1).lower()}"
-            if m and email.strip().lower() == BOT_EMAIL
-            else f"email:{email.strip().lower()}"
-        )
-        cache[(commit, path)] = key
-        return key
+            target = inner[-1] if inner else parents[2]
+            info = git("log", "-1", "--format=%ae%x00%B", target) or ""
+            email, _, body = info.partition("\x00")
+            first = (git("log", "-1", "--format=%s", commit) or "").strip()
+            bot = BOT_MERGE.fullmatch(first)
+            trailer = SUBMITTED_BY.search(body)
+            if bot and bot.group(1).lower() == REPO_OWNER and trailer and email.strip().lower() == BOT_EMAIL:
+                person = f"github:{trailer.group(1).lower()}"
+            else:
+                person = person_key(email)
+            out = (f"pr:{commit}", person)
+        cache[(commit, path)] = out
+        return out
 
-    return {sha: who(c, p) for sha, (c, p) in added.items()}, True
+    return {sha: origin(c, p) for sha, (c, p) in added.items()}, True
+
+
+def submission_submitters(
+    root: str | os.PathLike[str], subs: list[Submission]
+) -> tuple[dict[str, str], bool]:
+    """提出ごとの送った人の鍵(submission_origins の人。内容の sha256 → 鍵, git の履歴を使えたか)。"""
+    origins, ok = submission_origins(root, subs)
+    return {sha: person for sha, (_pr, person) in origins.items()}, ok
 
 
 def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
-    """提出ごとの出どころ(#90・#113)。出どころは**送った人**(submission_submitters: 実測の Issue を書いた人、
-    自分で PR を出した人のコミットのメールアドレス)。同じ人の提出は、別々の PR・Issue でも 1 つの出どころ
-    (1 人が何件送っても 1 つ。作者の実測は何行あっても 1 つ、と同じ考え方。#95)。値は鍵の sha256(16 進。
-    メールアドレス・アカウント名を同梱のまとめに書かない)。まだコミットしていないファイルは 1 件で 1 つ
-    (file:<sha256>)。(内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone・
-    git が無いときは ({}, False)(aggregate はファイルごとに数える)。通信しない。"""
-    who, via_git = submission_submitters(root, subs)
+    """提出ごとの出どころ(#90・#113)。出どころは「同じ PR」と「同じ人」でつながった提出のまとまり
+    (submission_origins の PR の鍵と人の鍵を合わせてつないだもの): 1 つの PR の提出は、中のコミットの
+    書いた人が何人に見えても 1 つ(#90 と同じ)、1 人の提出は何回の PR・Issue でも 1 つ
+    (作者の実測は何行あっても 1 つ、と
+    同じ考え方。#95)。値はまとまりの中でいちばん小さい鍵の sha256(16 進。メールアドレス・アカウント名を同梱の
+    まとめに書かない)。まだコミットしていないファイルは 1 件で 1 つ(file:<sha256>)。
+    (内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone・git が無いときは
+    ({}, False)(aggregate はファイルごとに数える)。通信しない。"""
+    origins, via_git = submission_origins(root, subs)
     if not via_git:
         return {}, False
-    out = {sha: hashlib.sha256(f"submitter:{key}".encode()).hexdigest() for sha, key in who.items()}
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)  # いちばん小さい鍵を代表にする(決まった値になる)
+
+    for pr, person in origins.values():
+        find(person)
+        if pr:
+            union(pr, person)
+    out = {
+        sha: hashlib.sha256(f"source:{find(person)}".encode()).hexdigest()
+        for sha, (_pr, person) in origins.items()
+    }
     for s in subs:
         out.setdefault(s.sha256, f"file:{s.sha256}")  # まだコミットしていないファイルは 1 件で 1 つ
     return out, True
@@ -2507,8 +2571,9 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
 def submitter_count(
     root: str | os.PathLike[str], login: str, *, model_id: str | None, gpu_name: str | None
 ) -> int | None:
-    """root(リポジトリの data/contrib)にある、GitHub のアカウント login が実測の Issue で送った、同じモデル・
-    同じ GPU(gpu_key)の提出の数(intake の PR の本文に書く。#113)。git の履歴が無ければ None。"""
+    """root(リポジトリの data/contrib)にある、GitHub のアカウント login が送った(実測の Issue、
+    または noreply のメールアドレスのコミットの PR)、同じモデル・同じ GPU(gpu_key)の提出の数
+    (intake の PR の本文に書く。#113)。git の履歴が無ければ None。"""
     if not Path(root).is_dir():
         return 0
     subs, _ = load_dir(root)
@@ -2904,12 +2969,14 @@ __all__ = [
     "intake_issue",
     "load_dir",
     "measurements_from_file",
+    "person_key",
     "privacy_findings",
     "robust_filter",
     "scan_dir",
     "scrub_text",
     "share_check",
     "share_urls",
+    "submission_origins",
     "submission_sources",
     "submission_submitters",
     "submitter_count",

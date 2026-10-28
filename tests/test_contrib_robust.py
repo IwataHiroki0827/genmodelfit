@@ -847,76 +847,117 @@ def test_bench_gpu_tools_are_blocked_in_tests():
 BOT = "41898282+github-actions[bot]@users.noreply.github.com"
 
 
+class _Repo:
+    """main にマージのコミットで PR を入れていく試験用のリポジトリ。"""
+
+    def __init__(self, tmp_path: Path):
+        self.repo = tmp_path / "repo"
+        self.root = self.repo / "data" / "contrib"
+        self.root.mkdir(parents=True)
+        self.v = 6.0
+        _git(self.repo, "init", "-q", "-b", "main")
+        (self.repo / "x").write_text("x")
+        _git(self.repo, "add", ".")
+        _git(self.repo, "commit", "-q", "-m", "init")
+
+    def _add(self, msg: str, email: str) -> None:
+        self.v = round(self.v + 0.01, 2)
+        write(self.root, sub(peak_vram_gb=self.v, seconds=40.0 + self.v))
+        _git(self.repo, "add", ".")
+        _git(self.repo, "commit", "-q", "-m", msg, email=email)
+
+    def pr(self, branch: str, commits: list[tuple[str, str]], owner: str = "laxshmate", n: int = 1) -> None:
+        """branch で commits(本文, メール)を足し、GitHub の「Create a merge commit」と同じ 1 行目で
+        マージする。"""
+        _git(self.repo, "switch", "-q", "-c", branch)
+        for msg, email in commits:
+            self._add(msg, email)
+        _git(self.repo, "switch", "-q", "main")
+        _git(
+            self.repo,
+            "merge",
+            "-q",
+            "--no-ff",
+            branch,
+            "-m",
+            f"Merge pull request #{n} from {owner}/{branch}",
+            email="maintainer@example.invalid",
+        )
+
+    def direct(self, msg: str, email: str) -> None:
+        self._add(msg, email)
+
+    def sources(self) -> tuple[list, dict, dict]:
+        subs, _ = contrib.load_dir(self.root)
+        who, ok = contrib.submission_submitters(self.root, subs)
+        src, ok2 = contrib.submission_sources(self.root, subs)
+        assert ok and ok2
+        return subs, who, src
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
 def test_one_person_is_one_source(tmp_path):
-    """同じ人が別々の PR・Issue で何件送っても 1 つの出どころ(#113)。Issue のボットのコミットは
-    Submitted-by の人で数え、ボットでないコミットの Submitted-by は信じない。出どころの値にメールアドレスや
-    アカウント名を書かない。"""
-    repo = tmp_path / "repo"
-    root = repo / "data" / "contrib"
-    root.mkdir(parents=True)
-    _git(repo, "init", "-q", "-b", "main")
-    (repo / "x").write_text("x")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "init")
-
-    def add(v: float, msg: str, email: str) -> None:
-        write(root, sub(peak_vram_gb=v, seconds=40.0 + v))
-        _git(repo, "add", ".")
-        _git(repo, "commit", "-q", "-m", msg, email=email)
-
-    add(6.0, "PR 1", "alice@example.invalid")
-    add(6.1, "PR 2", "alice@example.invalid")  # 同じ人の別の PR
-    add(6.2, "issue 3\n\nSubmitted-by: github:Bob", BOT)
-    add(6.3, "issue 4\n\nSubmitted-by: github:bob", BOT)  # 同じ人の別の Issue(大文字小文字は同じ)
-    add(6.4, "issue 5\n\nSubmitted-by: github:carol", BOT)
-    add(6.5, "fake\n\nSubmitted-by: github:mallory", "alice@example.invalid")  # ボットでなければ信じない
-    subs, _ = contrib.load_dir(root)
-    who, via_git = contrib.submission_submitters(root, subs)
-    assert via_git and sorted(set(who.values())) == [
-        "email:alice@example.invalid",
-        "github:bob",
-        "github:carol",
-    ]
-    sources, _ = contrib.submission_sources(root, subs)
-    assert len(set(sources.values())) == 3
-    text = json.dumps(sources)
+    """同じ人が別々の PR・Issue で何件送っても 1 つの出どころ(#113)。Issue のボットの PR(このリポジトリの
+    measurement/issue-N のブランチをマージのコミットで入れたもの)は Submitted-by の人で数える。
+    GitHub の noreply の
+    メールアドレスは Issue と同じ人になる。出どころの値にメールアドレスやアカウント名を書かない。"""
+    r = _Repo(tmp_path)
+    r.pr("alice-1", [("PR 1", "alice@example.invalid")], n=1)
+    r.pr("alice-2", [("PR 2", "alice@example.invalid")], n=2)  # 同じ人の別の PR
+    r.pr("measurement/issue-3", [("issue 3\n\nSubmitted-by: github:Bob", BOT)], n=4)
+    r.pr("measurement/issue-5", [("issue 5\n\nSubmitted-by: github:bob", BOT)], n=6)  # 同じ人の別の Issue
+    r.pr("bob-pr", [("PR by bob", "12345+bob@users.noreply.github.com")], n=7)  # 同じ人の PR(noreply)
+    r.pr("measurement/issue-8", [("issue 8\n\nSubmitted-by: github:carol", BOT)], n=9)
+    subs, who, src = r.sources()
+    assert sorted(set(who.values())) == ["email:alice@example.invalid", "github:bob", "github:carol"]
+    assert len(set(src.values())) == 3
+    text = json.dumps(src)
     assert "alice" not in text and "bob" not in text and "@" not in text
-    assert contrib.aggregate(subs, sources)[0]["n_sources"] == 3
-    assert (
-        contrib.submitter_count(
-            root, "BOB", model_id=subs[0].data["measurement"]["model_id"], gpu_name="NVIDIA GeForce RTX 3070"
-        )
-        == 2
-    )
-    assert contrib.submitter_count(root, "dave", model_id="image_sdxl_simple", gpu_name="x") == 0
+    assert contrib.aggregate(subs, src)[0]["n_sources"] == 3
+    mid = subs[0].data["measurement"]["model_id"]
+    assert contrib.submitter_count(r.root, "BOB", model_id=mid, gpu_name="NVIDIA GeForce RTX 3070") == 3
+    assert contrib.submitter_count(r.root, "dave", model_id=mid, gpu_name="NVIDIA GeForce RTX 3070") == 0
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
-def test_bot_pr_merged_with_a_merge_commit(tmp_path):
-    """Issue の PR をマージのコミットで入れても、PR の側のボットのコミットの Submitted-by で数える。"""
-    repo = tmp_path / "repo"
-    root = repo / "data" / "contrib"
-    root.mkdir(parents=True)
-    _git(repo, "init", "-q", "-b", "main")
-    (repo / "x").write_text("x")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "init")
-    _git(repo, "switch", "-q", "-c", "measurement/issue-7")
-    write(root, sub(peak_vram_gb=6.0))
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "data\n\nSubmitted-by: github:dora", email=BOT)
-    _git(repo, "switch", "-q", "main")
-    _git(
-        repo,
-        "merge",
-        "-q",
-        "--no-ff",
-        "measurement/issue-7",
-        "-m",
-        "Merge pull request #8",
-        email="maintainer@example.invalid",
-    )
-    subs, _ = contrib.load_dir(root)
-    who, _ = contrib.submission_submitters(root, subs)
-    assert set(who.values()) == {"github:dora"}
+def test_one_pr_is_at_most_one_source(tmp_path):
+    """1 つの PR は、中のコミットの書いた人を何人にしても(ボットのメールアドレスと Submitted-by を偽っても)
+    1 つの出どころ(#90 と同じ。git の書いた人は誰でも書ける)。"""
+    r = _Repo(tmp_path)
+    commits = [(f"run {i}", f"sock{i}@example.invalid") for i in range(4)]
+    commits += [(f"fake\n\nSubmitted-by: github:puppet{i}", BOT) for i in range(3)]
+    r.pr("many-names", commits, n=1)
+    subs, who, src = r.sources()
+    assert len(subs) == 7 and len(set(src.values())) == 1
+    assert not any(
+        k.startswith("github:puppet") for k in who.values()
+    )  # このリポジトリのボットのブランチでない
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_fork_branch_named_like_the_bot_is_not_trusted(tmp_path):
+    """フォークの measurement/issue-N のブランチ(マージのコミットの持ち主がこのリポジトリと違う)の
+    Submitted-by は信じない。直接 main に入れたコミット(squash など)の Submitted-by も信じない。"""
+    r = _Repo(tmp_path)
+    r.pr("measurement/issue-1", [("x\n\nSubmitted-by: github:victim", BOT)], owner="mallory", n=1)
+    r.direct("squashed\n\nSubmitted-by: github:victim2", BOT)
+    _subs, who, _src = r.sources()
+    assert not any("victim" in k for k in who.values())
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git が無い")
+def test_direct_commits_count_per_author(tmp_path):
+    """main に直接入ったコミット(squash・rebase)は、書いた人ごとに 1 つ。"""
+    r = _Repo(tmp_path)
+    r.direct("a", "a@example.invalid")
+    r.direct("b", "a@example.invalid")
+    r.direct("c", "c@example.invalid")
+    _subs, _who, src = r.sources()
+    assert len(set(src.values())) == 2
+
+
+def test_person_key_normalizes_github_noreply():
+    assert contrib.person_key("12345+Taro@users.noreply.github.com") == "github:taro"
+    assert contrib.person_key("taro@users.noreply.github.com") == "github:taro"
+    assert contrib.person_key(" Taro@Example.COM ") == "email:taro@example.com"
+    assert contrib.person_key(BOT).startswith("email:")  # ボット自身は人にしない
