@@ -331,8 +331,9 @@ popularity, Score. (`recommend --json` and `gmf.recommend()` put Verified models
 
 ### Accuracy
 
-As of 0.9.1, the estimates are calibrated on a few runs on one GPU (RTX 5080 16 GB) and checked against a few more
-(RTX 3070 8 GB); no measurements from other users are bundled yet. Treat values without `m` as rough.
+As of 0.12.0, the estimates are calibrated on a few runs on one NVIDIA GPU and cross-checked against two runs on
+another; no measurements from other users are bundled yet (`measurements_community.json`: 0 submissions). Treat
+values without `m` as rough.
 ComfyUI uses more VRAM when more is free, so a peak measured on a large GPU is not the minimum.
 Current counts and error figures: [docs/accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md).
 

@@ -56,7 +56,7 @@ What is read is used locally and never sent anywhere.
   - If free is unknown but total and used are known, free = total - used.
   - Values with units (`8192 MiB`) and comma decimals (`8,6`) are also read.
 - A GPU that returns no total VRAM (one that shares memory with the CPU) is not used for judging (backend `none`, with a reason). DGX Spark (GB10) is the exception and is used as a unified-memory GPU (0.11.0; "DGX Spark (GB10)" below).
-- An old nvidia-smi that does not know `compute_cap` exits with code 2 and "Field "compute_cap" is not a valid field to query." (confirmed on this PC by asking for a field that does not exist; the driver version that introduced it could not be confirmed in primary sources).
+- An old nvidia-smi that does not know `compute_cap` exits with code 2 and "Field "compute_cap" is not a valid field to query." (confirmed on a development PC by asking for a field that does not exist; the driver version that introduced it could not be confirmed in primary sources).
   - It then asks again without `compute_cap` and infers it from the GPU name table (`hardware._NAME_CC`).
   - Ambiguous names (for example the laptop GTX 960M, where one model name mixes generations) are not inferred.
   - The table follows NVIDIA's lists (https://developer.nvidia.com/cuda-gpus, https://developer.nvidia.com/cuda-legacy-gpus).
@@ -139,7 +139,7 @@ nvidia-smi on WSL returns the Windows driver version, so read it against the Win
 | Ada | 8.9 | cu126 to cu132 (8.6 machine code) | same | GPU |
 | Hopper | 9.0 | cu126 to cu132 | same | GPU |
 | Blackwell | 10.x, 12.x | cu128 to cu132 | 570 (generation minimum) / 580 (cu13x) | GPU |
-| Newer than that | 13.x and up | none | — | **GPU** (not refused; the note says "newer than the table; use the latest PyTorch". CPU until 0.11.0) |
+| Newer than that | 13.x and up | none | — | **GPU** (not refused; the note says "newer than the table; use the latest PyTorch". CPU until 0.10) |
 
 - If a generation has no build that runs, or the driver is too old for every build, the backend is set to `none` and the PC is judged as CPU. The reason goes to `Gpu.notes` and `SystemInfo.notes`, including whether "updating the driver makes it run on GPU".
 - If the generation is unknown (nvidia-smi and the name table both fail) or the driver version cannot be read, it does not refuse; it says it does not know.
@@ -376,7 +376,7 @@ Only what the OS does not tell us needs registering: AMD on Windows (name → gf
 - Intel: Arc Pro B65 / B70 (Battlemage G31, e222, e223; the nominal VRAM could not be confirmed, so none is stored), Data Center GPU Max (Ponte Vecchio; Linux only in PyTorch's table, so Windows and WSL2 are CPU).
 - **"Intel(R) Graphics" on Windows and Core Ultra Arc**: with single-channel memory, Intel shows the same silicon's Arc Graphics as "Intel Graphics" in Device Manager (Intel support 000102144, "Intel Arc Graphics Appears As Intel Graphics in Device Manager and Task Manager", https://www.intel.com/content/www/us/en/support/articles/000102144/graphics.html ; the fix is dual-channel memory; read 2026-10-27). The rule that looks up the device ID table for generic names also applies to Windows WMI, so with the device ID of Meteor Lake 7d55, Arrow Lake-H 7d51 or Lunar Lake 64a0, "Intel(R) Graphics" is used as XPU (Linux already used the device ID). The reason says single-channel memory is slower than dual-channel. "Intel(R) Graphics" with a device ID not in the table (Arrow Lake-S etc.) stays CPU.
 - **gfx of the 820M**: TheRock's RELEASES.md says gfx1153, ROCm hw specs says gfx1152 for the Radeon 820M of the Ryzen AI 5 330, and pci.ids puts the 820M and 840M on another die (1902 "Krackan2 [Radeon 820M / 840M]"). The name alone does not decide it, so we follow TheRock (which picks the ROCm wheel) with gfx1153 and add a note about the disagreement. Both are RDNA 3.5. On Linux the amdkfd value comes first. Since 0.11.0 (#108), 820M-only names (and "Radeon 820M / 840M" with a Ryzen AI 5 330 CPU) are judged as CPU as a 2-CU GPU ("Reasons for refusing" above).
-- **Jetson Orin (8.7) and CUDA 13.2 or later**: PyTorch v2.14.1 says 8.0 / 8.6 code runs on 8.7 in builds for CUDA 13.2 or later (`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`). genmodelfit does not judge Jetson (JetPack-only builds, unified memory; "All environments" below), so the table (`SOLO_CC`) is unchanged.
+- **Jetson Orin (8.7) and CUDA 13.2 or later**: PyTorch v2.14.1 says 8.0 / 8.6 code runs on 8.7 in builds for CUDA 13.2 or later (`DEVICE_REQUIREMENT_POST_JETSON_SBSA_UNIFICATION`). genmodelfit does not judge Jetson (JetPack-only builds, unified memory; "Every environment" below), so the table (`SOLO_CC`) is unchanged.
 - Version range of cu129: Windows wheels exist only for 2.8 and 2.9 (2.10 and later are Linux only). cu128 for aarch64 is 2.7 and 2.9 to 2.11 (no 2.8). Only the guidance text changes, not the verdict.
 - With an old driver and an unknown generation (no compute_cap and not in the name table), the reason used to promise "it runs on the GPU after a driver update". Kepler and Fermi have neither a new driver nor PyTorch, so it now says "on Maxwell or newer it runs after a driver update; Kepler, Fermi and older do not".
 
@@ -424,7 +424,7 @@ Only what the OS does not tell us needs registering: AMD on Windows (name → gf
   - Entries whose PNPDeviceID does not start with `PCI\` (virtual displays, Remote Desktop displays) are dropped.
   - The OS version is read from the build number (22000 or higher is Windows 11).
   - `AdapterRAM` is a uint32 (Microsoft's Win32_VideoController description: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller), so it tops out near 4293918720 for 4 GiB and more. Values at or above that are not used.
-  - VRAM comes from `HardwareInformation.qwMemorySize` (REG_QWORD; 8589934592 for the RTX 3070 in this PC) in registry `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx`.
+  - VRAM comes from `HardwareInformation.qwMemorySize` (REG_QWORD; 8589934592 for an 8 GB GPU) in registry `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx`.
     - Microsoft's document (https://learn.microsoft.com/en-us/windows-hardware/drivers/display/registering-hardware-information) has only `HardwareInformation.MemorySize` (ULONG; documented as MB, but real drivers write bytes, which is the same case split as llmfit). qwMemorySize is a driver convention.
     - Values under 64 MiB are taken as a unit mismatch and not used.
   - Matching registry entries:
@@ -551,7 +551,7 @@ The sources were read on 2026-10-27.
 | psutil cannot read the memory | Reads it with `GlobalMemoryStatusEx` on Windows, `/proc/meminfo` on Linux and `sysctl -n hw.memsize` on macOS. If none works, the amount is "unknown" (`Memory.total` is None; `ram_total_gb` in the output is 0 = unknown) and the notes say "give it with --ram". The estimate treats 0 as unknown and does not refuse by main memory. Integrated GPUs, APUs and Apple, whose share of main memory is then unknown, are judged as CPU with a reason unless a reserved VRAM or GTT can be read | psutil fails differently on each OS (implementation decision) |
 | Old kernel without MemAvailable | Available = MemFree + Cached | Linux `Documentation/filesystems/proc.rst` "MemAvailable" |
 | Containers (cgroup v2 and v1) | From this process's cgroup in `/proc/self/cgroup` (v2 `0::/path`, v1 `N:memory:/path`), walks up to the root and uses the smallest limit (`memory.max`, `memory.limit_in_bytes`) as the installed amount; available = limit − usage (`memory.current`, `memory.usage_in_bytes`). `max` means no limit. Inside a namespace the path is `/`, so only the root is read | https://docs.kernel.org/admin-guide/cgroup-v2.html "memory.max", "memory.current"; https://docs.kernel.org/admin-guide/cgroup-v1/memory.html "memory.limit_in_bytes" |
-| A compute capability newer than the PyTorch table (13.0 etc.) | Not refused (stays `cuda`), with the note "newer than the table; use the latest PyTorch". Only generations older than the table are refused | Same as the CLAUDE.md rule "do not refuse when the generation is unknown" |
+| A compute capability newer than the PyTorch table (13.0 etc.) | Not refused (stays `cuda`), with the note "newer than the table; use the latest PyTorch". Only generations older than the table are refused | Same as the rule "do not refuse when the generation is unknown" |
 | Linux on aarch64 / ppc64le / riscv64 etc. | `_machine()` no longer turns unknown kinds into x86_64. If not in the table (keys of `TORCH_CUDA_BUILDS`), "no CUDA build of PyTorch for this machine" and CPU | "Compute capabilities supported by PyTorch CUDA builds" above |
 | Windows on Arm64 + NVIDIA | The table is looked up by (OS, machine) (`torch_platform`). There is no CUDA build for Windows on Arm64, so CPU | The cu indexes of https://download.pytorch.org/whl/ (no `win_arm64` CUDA build) |
 | 32-bit Python | A note only ("PyTorch exists only for 64-bit Python") | The cu indexes of https://download.pytorch.org/whl/ (no 32-bit win32 / i686 wheels) |
@@ -626,12 +626,12 @@ GPU names in other users' submissions (contrib) are checked by form (`hardware.n
 - Form (case-insensitive; at most 10 words): `NAME := [NVIDIA] BRAND* CORE SUFFIX*`
   - BRAND: GeForce, Quadro, Tesla, GRID, TITAN, RTX, PRO, GTX, GTS, GT, MX, CMP, NVS, FX, DGX
   - Exactly one CORE: `PREFIX? \d{1,4}[A-Z]{0,3}` with `(-(SXM\d?|PCIE|DGXS|FHHL|Ada|\d{1,3}GB|\d{1,3}[ABCQE]|\d{1,3}))*` allowed. PREFIX is only an NVIDIA series head (A, B, H, L, T, P, V, K, M, MX, GB, GH, GA, GP, GV, GK, GM, and RTX for vGPU types such as RTX6000-24Q), so "TY1985", "KEN1990" and "tom99" are not model words. Right after TITAN also `V|X|Xp|Z|Black|RTX`. The first "GeForce GTX TITAN", which has no model word, also passes
-  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)`, a generation name in parentheses (`(Pascal)` etc.), A, AC. All-digit words (1985 in "RTX 4090 A 1985") and repeated words ("Ti Ti", "8GB 8GB") do not pass (tightened from v2's "at most one all-digit word" after the checker's review)
+  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)`, a generation name in parentheses (`(Pascal)` etc.), A, AC. All-digit words (1985 in "RTX 4090 A 1985") and repeated words ("Ti Ti", "8GB 8GB") do not pass (tightened from v2's "at most one all-digit word" after review)
 - A name that does not fit the form is not an error but the notice `gpu_name_form` (a maintainer checks it; personal names are seen by the submitter in `contrib show`, which the existing personal-information check covers). A name that fits but is not in the table (`_NAME_CC`) is the notice `unknown_gpu` (still used for judging). A new series adds one word to the word list (not one entry per product).
 - A VRAM amount that does not match the name's nominal VRAM (`estimate.NVIDIA_NOMINAL_VRAM`) was lowered from an error to the notice `gpu_vram_nominal` (modified cards such as a 48 GB 4090 exist; the VRAM ratio of 0.95 keeps them away from PCs with other VRAM).
 - `_NAME_CC` (name → compute capability) is used only to guess the generation with old drivers and to check a submission's compute capability.
 - The characters allowed in a submitted name now include a generation name in parentheses (`(Pascal)` etc.; generation names only).
-- Tests: real names (the checker's 35, the hwaudit list and the checker's ~140 more, such as Tesla V100-DGXS-32GB, P106-100, RTX6000-Ada-48Q and MX450) pass, made-up names (phone numbers, initials + year, name + digits, "ABC123 XYZ99") do not (`tests/test_contrib_robust.py`). In the list, `NVIDIA Graphics Device` (generic), `Orin (nvgpu)`, `NVIDIA Thor` (Jetson words are not BRANDs) and the name with a personal name do not pass.
+- Tests: real names (collected from real GPU lists, such as Tesla V100-DGXS-32GB, P106-100, RTX6000-Ada-48Q and MX450) pass, made-up names (phone numbers, initials + year, name + digits, "ABC123 XYZ99") do not (`tests/test_contrib_robust.py`). In the list, `NVIDIA Graphics Device` (generic), `Orin (nvgpu)`, `NVIDIA Thor` (Jetson words are not BRANDs) and the name with a personal name do not pass.
 
 ### Known limits
 
@@ -653,7 +653,7 @@ GPU names in other users' submissions (contrib) are checked by form (`hardware.n
   - They are output as `commit_limit_gb` and `commit_used_gb`.
   - The current page file size is limit - physical memory (`swap_total_gb`).
 - Page file settings: `PagingFiles` (REG_MULTI_SZ) in registry `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`.
-  - This PC has `?:\pagefile.sys` (automatic on all drives).
+  - `?:\pagefile.sys` is automatic on all drives.
   - `C:\pagefile.sys 0 0`, or a line with no size, is system managed.
   - `C:\pagefile.sys 1024 4096` is minimum and maximum in MB.
   - Empty means no page file.
@@ -673,7 +673,7 @@ Judging (`estimate.ram_limit`): when more main memory is needed than is installe
 
 ## VRAM used by the display etc. (current free)
 
-- `memory.used` and `memory.free` of nvidia-smi are output as `vram_used_gb` and `vram_free_gb` (this PC has about 3.6 GB in use by the display, browser and so on).
+- `memory.used` and `memory.free` of nvidia-smi are output as `vram_used_gb` and `vram_free_gb` (the display, a browser and other programs also use VRAM).
 - **The level is decided by the total** (the VRAM in use is freed by closing other apps).
   - When the VRAM needed by the chosen way of running is more than the current free VRAM, the estimate gets `vram_free_short: true` and the reason "current free VRAM is ... it runs if you close other apps".
 - Reserved amount: ComfyUI keeps 600 MB free for other apps on Windows (700 MB for GPUs with more than 15 GB of VRAM) and 400 MB elsewhere (`EXTRA_RESERVED_VRAM`).
@@ -701,7 +701,7 @@ Judging (`estimate.ram_limit`): when more main memory is needed than is installe
 
 ## Timing
 
-Medians measured on 2026-10-20 on this PC (Windows 11, RTX 3070, i7-13700KF, with load from other work):
+Medians measured on 2026-10-20 on a development PC (Windows 11, NVIDIA GPU, with load from other work):
 
 | Method | Time |
 |---|---|
@@ -714,10 +714,10 @@ Running only nvidia-smi 15 times each, alternating, the query with more fields a
 ## Tests
 
 - `tests/test_hardware.py`, `tests/test_vendors.py` (AMD, Intel, Apple, APU, families that run on CPU, #26), `tests/test_detect_everywhere.py` (every environment, GB10, WSL2; #101) and `tests/fixtures/hardware/`.
-- The tool with which bench reads utilization and used memory of non-NVIDIA GPUs (`gpustat.py`) is tested by `tests/test_gpustat.py` (output examples from official documents and sources, and the actual typeperf output of this PC) and `tests/test_bench_vendors.py`.
+- The tool with which bench reads utilization and used memory of non-NVIDIA GPUs (`gpustat.py`) is tested by `tests/test_gpustat.py` (output examples from official documents and sources, and the actual typeperf output of a development PC) and `tests/test_bench_vendors.py`.
 - The default tests do not call the real nvidia-smi, PowerShell, lspci or registry (`_no_real_hardware` in `tests/conftest.py` blocks `hardware._run`, `_reg_display_entries` and `_reg_paging_files`, and from 0.11.0 also the sysfs device list, amdkfd and the WSL2 state).
 - Fixtures:
-  - Actual output of nvidia-smi, WMI and the registry of this PC (instance IDs replaced with 0).
+  - Actual output of nvidia-smi, WMI and the registry of a development PC (instance IDs replaced with 0).
   - Multiple GPUs, an old version without compute_cap, `[N/A]`, broken output, output when the driver is not running or there is no GPU.
   - AMD only, Intel + NVIDIA, WMI of an NVIDIA GPU without a driver, a registry that keeps a removed GPU, lspci.
 - What is checked:

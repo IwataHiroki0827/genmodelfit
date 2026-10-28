@@ -92,7 +92,7 @@ Do you agree to use the files above under their licenses and terms (URLs), and d
 - `c` shows the places found (or asks for a path); after you choose, the plan is shown again and you are asked again. An empty answer keeps the place.
 - The first time you download into a place found automatically (step 4, or a path you typed), `y` is followed by "Download here next time too? [Y/n]". `Y` saves it as `comfyui-dir`.
 - The consent questions for uncensored models and files with no stated license are the same as before (they are part of the same question).
-- Parts the template does not use by default that sit only on muted or bypassed nodes, or on nodes that reach no output (`ModelFile.optional` is `inactive`; 0.11.0, #81), are not downloaded; a notice names them (`skipped_optional` in the plan). To enable those nodes, pass `--with-optional` (Python: `with_optional=True`). Parts behind a switch that is off (`switch_off`) are downloaded, because ComfyUI's validation before running also checks the files on the unselected branch (it stops with "Value not in list" if one is missing). How parts are classed: [sources.md](sources.md) "Optional parts".
+- Parts the template does not use by default that sit only on muted or bypassed nodes, or on nodes that reach no output (`ModelFile.optional` is `inactive`; 0.12.0, #81), are not downloaded; a notice names them (`skipped_optional` in the plan). To enable those nodes, pass `--with-optional` (Python: `with_optional=True`). Parts behind a switch that is off (`switch_off`) are downloaded, because ComfyUI's validation before running also checks the files on the unselected branch (it stops with "Value not in list" if one is missing). How parts are classed: [sources.md](sources.md) "Optional parts".
 
 ## genmodelfit config
 
@@ -132,6 +132,7 @@ result = gmf.download(plan, confirm=ask, progress=show)
 # or gmf.download("Z-Image-Turbo", yes=True, comfyui_dir=...) when the app already asked
 ```
 
+- Without `comfyui_dir` / `output_dir` the library still uses genmodelfit's data folder, which ComfyUI does not read; pass `comfyui_dir`.
 - The library prints nothing.
 - `gmf.download` raises `gmf.DownloadRefused` (blocked, no consent) and `gmf.DownloadError` (network, sha256 mismatch, disk).
 - It lets `KeyboardInterrupt` through and keeps the `.part` file for the next call.

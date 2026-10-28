@@ -89,7 +89,7 @@ genmodelfit share
 3. 測ります:
 
 ```powershell
-pip install -U "genmodelfit>=0.9.1"
+pip install -U "genmodelfit>=0.11.0"
 genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 1024x1024 --steps 6
 genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 832x480 --frames 81 --steps 20
 genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 30 --steps 8
@@ -159,7 +159,7 @@ pip install -e .
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 1024x1024 --submission data/contrib/
 ```
 
-- 書くのは提出ファイル(`contrib_schema` 1)です。`--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます。例: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`(`sha8` は中身の sha256 の先頭 8 桁(16 進))。ファイル名を渡せばその名前で書きます。
+- 書くのは提出ファイル(`contrib_schema` 2)です。`--submission` にフォルダを渡すと、`data/contrib/<GPU>/<日付>-<sha8>.json` という名前で書きます。例: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`(`sha8` は中身の sha256 の先頭 8 桁(16 進))。ファイル名を渡せばその名前で書きます。
 - フォルダは末尾に `/` を付けて渡してください(`data/contrib/`)。最初の提出ではまだフォルダが無く、`/` が無いと `data/contrib` という名前のファイルになります。
 - 前に測って保存した結果(`<キャッシュ>/measurements/….json` や `--output` のファイル)からも作れます: `genmodelfit contrib make --from <bench の結果> --output data/contrib/`
 - ComfyUI が別の PC だったときは `--no-pc-info` を付けると、この PC の OS・メモリ・GPU の世代を入れません。
@@ -213,7 +213,7 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
    - ほかのファイルは変えません(コードの変更は別の PR に)。
    - data/contrib の外のファイルを変えた PR は、`Contrib` のワークフローが失敗にします。
    - 提出の PR は**足すだけ**です。data/contrib の既にあるファイルを消す・書き換える・名前を変える PR、`<GPU>/<日付>-<sha8>.json`(小文字の `.json`)でない名前・場所のファイルを足す PR、提出を 1 件も足さない PR も失敗にします(#90)。
-   - 前に出した提出を直したいときは、直したものを新しいファイルとして出し、PR の説明に古いファイルの名前と理由を書いてください。古いファイルはメンテナが外します(docs/release.ja.md「次からの版を出す手順」)。
+   - 前に出した提出を直したいときは、直したものを新しいファイルとして出し、PR の説明に古いファイルの名前と理由を書いてください。古いファイルはメンテナが外します(docs/release.ja.md「版を出す手順」)。
 2. ブランチを作ってコミットし、自分のフォークに push します:
 
    ```powershell
@@ -240,12 +240,12 @@ genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
 - 使うのは**測った GPU と同じ GPU の PC だけ**です。ほかの GPU の PC の判定は変わりません(0.9.1。llmfit と同じ考え方)。「同じ GPU」とは次のとおりです:
   - PCI の型番 ID が同じ(両方にあるとき)。無ければ、そろえた名前が同じ(汎用の名前は一致としない)。
   - かつ、VRAM の総量の比が 0.95 以上(同じカードでも Linux と Windows で総量の数え方が少し違うため)。RTX 4060 Ti の 8 GB と 16 GB は別の GPU として扱います。
-- その PC では **1 件から**、その構成の見積もりの根拠が `measured`(実測。作者の実測と同じ扱いで、表の VRAM に `m` が付きます)になり、出どころの数(`sample_count`)も出ます。
+- その PC では **1 件から**、その構成の見積もりの根拠が `measured`(実測。メンテナの実測と同じ扱いで、表の VRAM に `m` が付きます)になり、出どころの数(`sample_count`)も出ます。
 - 値は必要量を下げる向きにも上げる向きにも使います。全部載せの値は重み + 固定分より下げず、GPU の総量より上げません。
-- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(作者の実測の行は合わせて 1 つ、ほかの人は 1 人で 1 つ)がそろうと、段階を決める根拠にもなります。出どころは、同じ Pull Request か同じ人でつながった提出のまとまりで数えます(#113。`contrib.submission_sources`): 1 つの Pull Request は多くて 1 つ、1 つの GitHub アカウントは何件・何回の Pull Request や Issue で送っても 1 つです。人は **GitHub のアカウント** です: 実測の Issue なら Issue を書いた人(ボットがコミットに `Submitted-by: github:<アカウント>` と `Submitted-by-id: <アカウントの数の ID>` を書き、名前を変えても変わらない数の ID で数える。ID の無い前の版のボットのコミットはアカウント名で数える。これらの行を信じるのは、マージのコミットが `Merge pull request #N from laxshmate/measurement/issue-M`(このリポジトリの中のボット自身のブランチ)で、コミットがボットのもののときだけ)、Pull Request なら、GitHub がマージのコミットの 1 行目に書く Pull Request の元のアカウント(`Merge pull request #N from <アカウント>/<ブランチ>`。git から分かるのは名前だけ)。コミットのメールアドレスは誰でも書けるので、これには使いません。実測の Pull Request は「Create a merge commit」だけで入れます。それ以外(main に直接・squash・rebase)は、コミットを書いた人のメールアドレスで数えます(弱い)。**1 つのアカウントは 1 回だけ数えますが、別のアカウント・その人の組織・(Pull Request では)名前を変えたあとのアカウントから出したものは別の人として数えられる**ので、メンテナはマージのときに Pull Request や Issue を書いた人を確かめます(ボットの Pull Request には、同じアカウントがその GPU・モデルで既に送った数と、確かめる項目を書きます)。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
+- 同じ GPU の同じ設定の実測は、**別々の 2 つ以上の出どころ**(メンテナの実測の行は合わせて 1 つ、ほかの人は 1 人で 1 つ)がそろうと、段階を決める根拠にもなります。出どころは、同じ Pull Request か同じ人でつながった提出のまとまりで数えます(#113。`contrib.submission_sources`): 1 つの Pull Request は多くて 1 つ、1 つの GitHub アカウントは何件・何回の Pull Request や Issue で送っても 1 つです。人は **GitHub のアカウント** です: 実測の Issue なら Issue を書いた人(ボットがコミットに `Submitted-by: github:<アカウント>` と `Submitted-by-id: <アカウントの数の ID>` を書き、名前を変えても変わらない数の ID で数える。ID の無い前の版のボットのコミットはアカウント名で数える。これらの行を信じるのは、マージのコミットが `Merge pull request #N from laxshmate/measurement/issue-M`(このリポジトリの中のボット自身のブランチ)で、コミットがボットのもののときだけ)、Pull Request なら、GitHub がマージのコミットの 1 行目に書く Pull Request の元のアカウント(`Merge pull request #N from <アカウント>/<ブランチ>`。git から分かるのは名前だけ)。コミットのメールアドレスは誰でも書けるので、これには使いません。実測の Pull Request は「Create a merge commit」だけで入れます。それ以外(main に直接・squash・rebase)は、コミットを書いた人のメールアドレスで数えます(弱い)。**1 つのアカウントは 1 回だけ数えますが、別のアカウント・その人の組織・(Pull Request では)名前を変えたあとのアカウントから出したものは別の人として数えられる**ので、メンテナはマージのときに Pull Request や Issue を書いた人を確かめます(ボットの Pull Request には、同じアカウントがその GPU・モデルで既に送った数と、確かめる項目を書きます)。実測は段階を上げるだけで、下げません。詳しくは [docs/scoring.ja.md](docs/scoring.ja.md) を見てください。
 - 提出の PR では、`Contrib` のワークフローが `contrib aggregate --report` の結果をまとめに出します。校正の表(calibration.json・[docs/accuracy.ja.md](docs/accuracy.ja.md))は、メンテナが版を出すときに実測を取り込み、`python -m genmodelfit.calibrate` で作り直します。
 
-#### 作者の実測(measurements.json)
+#### メンテナの実測(measurements.json)
 
 同梱の `src/genmodelfit/data/measurements.json` はメンテナが測った実測です。項目は docs/schema.ja.md の「[Measurement](docs/schema.ja.md#measurement--実測)」の節、提出の形は「[contrib](docs/schema.ja.md#contrib)」の節にあります。利用者の実測は data/contrib に出してください(measurements.json は直接変えない)。
 

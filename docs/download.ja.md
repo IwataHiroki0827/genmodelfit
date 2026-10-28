@@ -92,7 +92,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
 - `c` で、見つけた場所の一覧(またはパスを入れる画面)を出す。選ぶと計画を出し直して聞き直す。空で答えれば置き場所はそのまま。
 - 自動で見つけた場所(上の 4、または入れたパス)に初めて落とすときは、`y` のあとに「次からもここに落としますか? [Y/n]」と尋ねる。`Y` なら `comfyui-dir` に保存する。
 - 無検閲・ライセンスの記載が無いファイルの同意の質問は今までと同じ(同じ質問の文に入る)。
-- テンプレートが既定で使わない部品のうち、無効・素通しのノードや出力に届かないノードにしかないもの(`ModelFile.optional` が `inactive`。0.11.0、#81)は落とさず、知らせに名前を出す(計画の `skipped_optional`)。そのノードを有効にして使うなら `--with-optional`(Python は `with_optional=True`)。スイッチで切ってある部品(`switch_off`)は、ComfyUI が動かす前の検証で選ばれない枝のファイルも確かめる(無いと「Value not in list」で止まる)ので落とす。分け方は [sources.ja.md](sources.ja.md)「任意の部品」。
+- テンプレートが既定で使わない部品のうち、無効・素通しのノードや出力に届かないノードにしかないもの(`ModelFile.optional` が `inactive`。0.12.0、#81)は落とさず、知らせに名前を出す(計画の `skipped_optional`)。そのノードを有効にして使うなら `--with-optional`(Python は `with_optional=True`)。スイッチで切ってある部品(`switch_off`)は、ComfyUI が動かす前の検証で選ばれない枝のファイルも確かめる(無いと「Value not in list」で止まる)ので落とす。分け方は [sources.ja.md](sources.ja.md)「任意の部品」。
 
 ## genmodelfit config
 
@@ -114,13 +114,13 @@ genmodelfit config path                     # where the config file is
 ```python
 import genmodelfit as gmf
 
-plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir=r"C:\ComfyUI")  # no network, writes nothing
+plan = gmf.plan_download("Z-Image-Turbo", comfyui_dir=r"C:\ComfyUI")  # 通信しない・何も書かない
 for f in plan.files:  # status: download / resume / present / conflict / unavailable
     print(f.relpath, f.size_bytes, f.license, f.license_url, f.status)
 print(plan.blocked, plan.warnings, plan.download_bytes, plan.disk_free_bytes)
 
 
-def ask(plan) -> bool:  # show licenses, URLs, total and free disk; True to go on
+def ask(plan) -> bool:  # ライセンス・URL・合計・ディスクの空きを見せ、続けるなら True
     ...
 
 
@@ -129,9 +129,10 @@ def show(p):  # gmf.DownloadProgress
 
 
 result = gmf.download(plan, confirm=ask, progress=show)
-# or gmf.download("Z-Image-Turbo", yes=True, comfyui_dir=...) when the app already asked
+# アプリが先に尋ねてあれば gmf.download("Z-Image-Turbo", yes=True, comfyui_dir=...) でもよい
 ```
 
+- `comfyui_dir` / `output_dir` を渡さないと、ライブラリは今も ComfyUI が読まない genmodelfit のデータのフォルダを使う。`comfyui_dir` を渡すこと。
 - ライブラリは何も表示しない。
 - `gmf.download` は `gmf.DownloadRefused`(ブロック・同意なし)と `gmf.DownloadError`(通信・sha256 の不一致・空き)を投げる。
 - `KeyboardInterrupt` はそのまま通し、`.part` を次の呼び出しのために残す。

@@ -21,6 +21,8 @@ It is for app developers who read that output, and for contributors who change t
 - [info](#info)
   - [ModelEntry](#modelentry) · [Measurement](#measurement)
 - [bench](#bench)
+- [measure](#measure)
+- [share](#share)
 - [contrib](#contrib)
 - [download](#download)
 - [config](#config)
@@ -42,9 +44,9 @@ Every command with `--json` prints one object:
 | key | type | meaning |
 |---|---|---|
 | `genmodelfit` | str | tool version |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
-| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `types` / `gate` / `update` / `bench` / `diff` / `review` / `contrib` |
-| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `diff` / `contrib` / `review approve` / `review reject` / `update --from-release` |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `measure` / `share` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
+| `system` | System | the PC that was judged (after `--vram` / `--ram` overrides). Not in `types` / `gate` / `update` / `bench` / `share` / `diff` / `review` / `contrib` / `config` |
+| `database` | object | `origin` (`bundled` / `cache` / `path`), `generated_at`, `models`, `measurements` (counts). In `system` also `status` (DataStatus, below). Not in `bench` / `share` / `diff` / `contrib` / `config` / `review approve` / `review reject` / `update --from-release` |
 | `error` | str | only on failure (exit code 1) |
 | `candidates` | object[] | only when `info` matched several models (see info) |
 
@@ -124,7 +126,7 @@ Adapter (`other_gpus`): `name`, `vendor` (`nvidia` / `amd` / `intel` / `apple` /
 `HardwareInformation.qwMemorySize`, else WMI `AdapterRAM` below 4 GiB; Linux AMD: sysfs; Intel Arc on Linux: the
 smaller model's VRAM from the name; null if unknown), `vram_source` (`registry` / `wmi` / `sysfs` / `name` / null),
 `source` (`wmi` / `lspci` / `system_profiler`; 0.11.0 added `sysfs` (Linux without lspci) and `wsl` (Windows-side
-adapters read from WSL2), and `app` (given to `gmf.system_from`, whose `vram_source` is `app` too; #96)). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
+adapters read from WSL2); 0.12.0 added `app` (given to `gmf.system_from`, whose `vram_source` is `app` too; #96)). Added in 0.7.0 (#22): `integrated` (bool | null), `usable` (bool | null;
 null for NVIDIA, which `nvidia-smi` decides), `reason` (a sentence in the display language: why it is or is not used), `shared_gb`
 (Linux amdgpu GTT, sysfs `mem_info_gtt_total`), `needs` (string | null: what would make the GPU usable, currently only
 `"Windows 11"` when a known Windows 10 build was the only reason; the table header says `needs Windows 11 for generation`).
@@ -229,7 +231,7 @@ JSON: an unknown **value** is `null` (`precision`, `license`, `memory_required_g
 
 **Breaking in 0.2.0** (JSON, size-unknown models only): `run_mode` `"none"` → `"unknown"`, `run_mode_label` `-` →
 `?`, `estimate.vram_gb` / `vram_offload_gb` / `ram_gb` / `vram_sequential_gb` `0.0` → `null`, `memory_available_gb`
-`null` → the PC's amount. See CHANGELOG.md「Breaking (JSON)」for migration. `schema_version` stays 1.
+`null` → the PC's amount. See CHANGELOG.md, "Breaking (JSON)", for migration. `schema_version` stays 1.
 
 `recommend`: without `-m` and `--task` it shows **one section per type** (image, video, music, sfx, tts, 3d), the top
 `-n` (default 3) of each (`filters.per_type`, `limit` null); a type with nothing runnable prints one line in text mode
@@ -420,14 +422,14 @@ Python `Fit.to_dict()` returns exactly this dict (`gmf.recommend()` / `gmf.fit_l
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none` (does not run) / `unknown` (size unknown, not judged; 0.2.0 — until 0.1.1 these were `none`) (= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU` (all on GPU) / `GPU~` (parts swapped in turn) / `GPU+RAM` (offload) / `CPU` / `-` (does not run) / `?` (size unknown) |
-| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `good`; `marginal` up to 0.11.0), `cpu` (generation at most `marginal`, speech built for real-time CPU use and one-pass tools at most `good`; 0.11.0, #108); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
+| `level_cap` | str \| null | the run mode caps the level (0.1.1): `sequential` (`GPU~`, at most `good`), `offload` (`GPU+RAM`, at most `good`; `marginal` until 0.10), `cpu` (generation at most `marginal`, speech built for real-time CPU use and one-pass tools at most `good`; 0.11.0, #108); null for all on GPU or not running. So "Good, 54 %, GPU~" is not a contradiction |
 | `score` | float | 0–100: the memory headroom ("Score" below) |
 | `score_components` | object | `{"memory_fit": …}` (0.11.0; the same value as `score`. The keys up to 0.10, `fit`, `headroom`, `readiness`, `basis`, `popularity`, were removed) |
 | `popularity` | float | (0.11.0) popularity rank 0–100: the percentile within the same type and source (template usage / Hugging Face all-time downloads), the model's value. Only an order key, not part of `score` ([scoring.md](scoring.md) "Popularity") |
 | `memory_kind` | str | `vram` (judged on the GPU) or `ram` (CPU) |
 | `memory_required_gb` | float \| null | the figure the level was judged on: VRAM for all-in / swapping / offload (the table's VRAM column); RAM for CPU. When a GPU is needed but missing: the minimum VRAM. null when the size is unknown |
 | `memory_available_gb` | float \| null | this PC's VRAM (or RAM for CPU); `0.0` when a GPU is needed but missing. Also set when the size is unknown (0.2.0; was null) |
-| `utilization_pct` | float \| null | the use r of the tightest resource of the run mode × 100 (the table's Mem%; the input of `score`). Usually `memory_required_gb / memory_available_gb × 100`; for `GPU+RAM` rows and rows short of RAM, RAM needed ÷ system RAM when that is larger (0.11.0) |
+| `utilization_pct` | float \| null | the use ratio of the tightest resource of the run mode × 100 (the table's Mem%; the input of `score`). Usually `memory_required_gb / memory_available_gb × 100`; for `GPU+RAM` rows and rows short of RAM, RAM needed ÷ system RAM when that is larger (0.11.0) |
 | `gpu_memory_required_gb` | float \| null | (0.7.1, #58) the VRAM the model needs to run on this PC's GPU, also when `run_mode` is `cpu` (where `memory_required_gb` is RAM). Same value as `memory_required_gb` for every GPU run mode and for `too_tight`; for `cpu` it is the same figure `too_tight` uses, the smallest need among the load modes (the GPU+RAM offload figure `estimate.vram_offload_gb`; also for shared / unified memory GPUs, so the meaning does not change between `cpu` and `too_tight`), i.e. "the GPU would need at least this much". null when no GPU is used for judging (CPU-only PC, `gpu_usable=False`, unusable GPU) or the size is unknown. Additive; no other field changes |
 | `ram_required_gb` | float \| null | system RAM needed (= `estimate.ram_gb`; null when the size is unknown) |
 | `disk_size_gb` | float \| null | download size counted (one variant per part, = `estimate.disk_gb`) |
@@ -491,7 +493,7 @@ can fall (for example `--vram 17` on an RTX 5080 PC). Intended: it is a judgemen
 |---|---|---|
 | `vram_gb` | float | peak VRAM when everything stays on the GPU |
 | `vram_sequential_gb` | float \| null | peak VRAM when ComfyUI swaps parts between stages (text encoder → model → VAE). When the workflow runs several diffusion models one sampler after another (Wan 2.2 14B high_noise → low_noise; `ModelEntry.sampler_stages`), the model stage counts only the largest of them (with its LoRAs) |
-| `vram_resident_gb` | float \| null | VRAM ComfyUI tries to keep free while everything stays loaded through the decode: overhead + all weights + the largest stage working memory with the **untiled** VAE working memory (#102; [accuracy.md「Tiles」](accuracy.md#tiles)). Not the amount used (that is `vram_gb`); when it exceeds 98% of VRAM, all-on-GPU is not chosen and the parts are swapped (`GPU~`, level capped at good). Equals `vram_gb` for models without per-stage working memory; ≥ `vram_gb`. Not applied when the level is set by measurements (`fit_from: measurement`). `null` when the size is unknown |
+| `vram_resident_gb` | float \| null | VRAM ComfyUI tries to keep free while everything stays loaded through the decode: overhead + all weights + the largest stage working memory with the **untiled** VAE working memory (#102; [accuracy.md, "Tiles"](accuracy.md#tiles)). Not the amount used (that is `vram_gb`); when it exceeds 98% of VRAM, all-on-GPU is not chosen and the parts are swapped (`GPU~`, level capped at good). Equals `vram_gb` for models without per-stage working memory; ≥ `vram_gb`. Not applied when the level is set by measurements (`fit_from: measurement`). `null` when the size is unknown |
 | `vram_offload_gb` | float | peak VRAM when part of the weights stays in RAM (lowvram / dynamic VRAM); several diffusion models run in turn are counted one at a time as above |
 | `ram_gb` | float | system RAM needed for the chosen run mode: GPU (all-in / swapping) = 3 + largest stage's weights; offload / CPU = 3 + all weights. Short but within RAM + page file (fixed page file / swap; capped at 1.5× RAM; 1.5× RAM when system managed or unknown) → `marginal` (page file, slow); more → `too_tight` |
 | `disk_gb` | float \| null | size of the files counted (one variant per part; see [accuracy.md](accuracy.md)) |
@@ -508,9 +510,9 @@ can fall (for example `--vram 17` on an RTX 5080 PC). Intended: it is a judgemen
 | `settings` | object \| null | settings actually judged (unset items filled with the per-modality defaults whether or not there are measurements; 0.11.0, before that from the measurement when there was one) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC's GPU without offloading (0.11.0; null on PCs without a GPU). Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
-| `optional_parts` | object[] | (0.11.0, #81) parts the official template does not load with its default values (not in the amounts above), each `name`, `size_gb` (null = unknown), `optional` (`inactive` / `switch_off`, as `ModelFile.optional`), `kind` (`replace` = used instead of a default part / `add` = only added) and `replaces` (names of the default parts no longer loaded). `[]` if none. [scoring.md](scoring.md), "Parts switched off by default" |
-| `vram_gb_all_options` | float \| null | (0.11.0, #81) the VRAM used for the level with every switched-off part (`switch_off`) turned on (an upper bound; chosen like `gpu_memory_required_gb`). null with no `switch_off` part, no GPU, or an unknown size |
-| `fit_all_options` | str \| null | (0.11.0, #81) the level in that case. null with no `switch_off` part. Only when it differs from `fit` does one sentence go into `reasons` |
+| `optional_parts` | object[] | (0.12.0, #81) parts the official template does not load with its default values (not in the amounts above), each `name`, `size_gb` (null = unknown), `optional` (`inactive` / `switch_off`, as `ModelFile.optional`), `kind` (`replace` = used instead of a default part / `add` = only added) and `replaces` (names of the default parts no longer loaded). `[]` if none. [scoring.md](scoring.md), "Parts switched off by default" |
+| `vram_gb_all_options` | float \| null | (0.12.0, #81) the VRAM used for the level with every switched-off part (`switch_off`) turned on (an upper bound; chosen like `gpu_memory_required_gb`). null with no `switch_off` part, no GPU, or an unknown size |
+| `fit_all_options` | str \| null | (0.12.0, #81) the level in that case. null with no `switch_off` part. Only when it differs from `fit` does one sentence go into `reasons` |
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」 ("size unknown, cannot judge"). `recommend` drops these; `fit` / `search` list them last |
 
 `basis_detail` (#34), from most to least measured (`models.BASIS_DETAILS`):
@@ -531,7 +533,7 @@ They are bounded only physically:
 Other users' measurements are used only on the same GPU:
 
 - `estimate.same_gpu`: the PCI model ID when both sides have one, else the normalized name.
-- Since 0.9.1, the VRAM ratio must also be 0.95 or more (0.97 until 0.11.0).
+- Since 0.9.1, the VRAM ratio must also be 0.95 or more (0.97 until 0.10).
 - PCs with another GPU are judged as without them.
 
 Other rules:
@@ -587,11 +589,11 @@ GPU, RAM on the CPU), as in llmfit (llmfit's `docs/how-it-works.md`, "Fit analys
 | > 98% | `too_tight` |
 
 Caps per run mode (0.11.0, #108; [scoring.md](scoring.md) "Level caps"): all on the GPU (`GPU`) none; parts swapped
-in turn (`GPU~`) and offload to RAM (`GPU+RAM`) at most `good` (offload was `marginal` up to 0.11.0); on the CPU,
+in turn (`GPU~`) and offload to RAM (`GPU+RAM`) at most `good` (offload was `marginal` until 0.10); on the CPU,
 image, video, music, sound effect and 3D generation and speech whose authors do not say it runs in real time on a CPU
 at most `marginal`, speech whose authors say it runs in real time on a CPU (`estimate.CPU_REALTIME_TTS`) and one-pass tools (all uses in `tool` /
 `estimate` / `matting` / `interp` / `segment` / `separate`) at most `good`, with system RAM as the pool. No cap by GPU
-vendor (up to 0.11.0 non-NVIDIA GPUs and DGX Spark were capped at `good`). The run mode with the best level is used
+vendor (until 0.10 non-NVIDIA GPUs and DGX Spark were capped at `good`). The run mode with the best level is used
 (ties: all-in → swapped → offload), so offloading is chosen only when it raises the level (never when all-in or
 swapped is `good` or better). The use of the offload mode is the tighter of the offloaded VRAM use and RAM needed ÷
 system RAM. A level set by measurements can be `good` even above 98% (an exception). `perfect` means room to spare,
@@ -833,7 +835,7 @@ of two entries).
 
 ```json
 {
-  "genmodelfit": "0.6.0",
+  "genmodelfit": "0.12.0",
   "command": "review",
   "database": {"origin": "path", "generated_at": "2026-10-28T03:12:00Z", "models": 331, "measurements": 21},
   "pending": 1,
@@ -959,7 +961,7 @@ and the JSON header, or of the first MiB(s) of a GGUF, never the weights), null 
 file has the `main` role, e.g. BiRefNet; 0.2.0).
 `repo_precision` / `repo_precision_source` (str \| null, optional, 0.2.0): precision read from the hosting repo
 (`hf_api` or `config`, see "Models"), set only for the largest main file when its header and name tell nothing.
-`optional` (str \| null, optional, 0.11.0, #81): a part the official template does not load with its default values:
+`optional` (str \| null, optional, 0.12.0, #81): a part the official template does not load with its default values:
 `inactive` (only on muted or bypassed nodes, or on nodes that reach no output node; counted in none of VRAM, memory,
 `disk_gb` and `download`) or `switch_off` (only on the unselected branch of a switch with a fixed value; not counted in
 VRAM or memory, counted in `disk_gb` and `download`). null = loaded by default (or not known: HF and manual models). An
@@ -998,7 +1000,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the sha256 of the sender key, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
 | `n_error` | int \| null | (#90) community rows: submissions of the same group that ended in `error` (not used for the value) |
 | `runs_evidence` | bool \| null | (#90) community rows: false = OOM sources are at least as many as ok sources (not evidence that it runs; how it is used is the level rule of PR #95) |
-| `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match); since 0.9.1 the VRAM ratio must also be 0.95 or more (`estimate.same_vram`, `MEASURED_VRAM_TOLERANCE`; 0.97 until 0.11.0; not for shared / unified memory) |
+| `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match); since 0.9.1 the VRAM ratio must also be 0.95 or more (`estimate.same_vram`, `MEASURED_VRAM_TOLERANCE`; 0.97 until 0.10; not for shared / unified memory) |
 | `standard` | bool | `true` when the official template was used as is (only width / height / frames / length / steps / seed changed), every reachable node actually ran (no partial cache) and no other job ran in between. Default `true` |
 
 `outcome` and `standard` were added later as optional fields with defaults, so older files without them still read
@@ -1044,7 +1046,8 @@ How bench fills Measurement:
 - Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by}` (`found_by` is `option` for `--url`, `running` for
   a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found) and `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis, settings, args}]. `settings` (0.12.0, #116) is null for a run as in the template, else the changed
+  seconds_basis, settings, args}]. Here `installed` is only the state string (`yes` / `no` / `unknown`, see
+  "Installed" below); with MODEL it is an object. `settings` (0.12.0, #116) is null for a run as in the template, else the changed
   settings (`{width, height}`, `{frames}` or `{seconds}`); `args` is the same as `measure` / `bench` arguments
   (`["--resolution", "1536x1536"]`, empty for the template's settings). Nothing is measured.
 - With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `settings` (0.12.0; the settings given with
@@ -1151,9 +1154,9 @@ no spaces, UTF-8), so the name does not depend on indentation and two identical 
 
 ```json
 {
- "contrib_schema": 1,
+ "contrib_schema": 2,
  "kind": "genmodelfit-measurement",
- "tool": {"name": "genmodelfit", "version": "0.3.0"},
+ "tool": {"name": "genmodelfit", "version": "0.12.0"},
  "date": "2026-10-20",
  "system": {
   "os_family": "windows",
@@ -1193,7 +1196,7 @@ Other rules:
 
 - Older files without these stay valid.
 - `contrib_schema` 1 and 2 are accepted (#90). 2 is 1 plus `measurement.files_fp` (optional; 64 lowercase hex
-  digits), written from the version after 0.10.1. `files_fp` in a schema 1 file is an error.
+  digits), written since 0.11.0. `files_fp` in a schema 1 file is an error.
 - (0.12.0, #116, optional) `measurement.settings_override`: `true` when the template's settings were changed
   (written only then; anything but true / false is an error). `contrib_schema` stays as is, like the optional GPU
   keys of 0.9.0. `contrib aggregate` keeps such submissions in their own rows and marks the row with it.
@@ -1203,7 +1206,7 @@ Other rules:
 Not written by genmodelfit: host name, user name, paths, GPU UUID, PCI bus id, serial numbers, IP / MAC addresses,
 the measurement's free-text `source`, CPU name, exact time. **Limits (honest)**: the checks are patterns, not
 understanding. **Not detected**: personal names or other identifying words in plain text (e.g. `山田太郎のPCで測った`,
-`on Taro's desktop`, `github KoyoYeager`), addresses (`東京都港区…`), encodings other than base64-like runs
+`on Taro's desktop`, `github some-user`), addresses (`東京都港区…`), encodings other than base64-like runs
 and URL encoding, and paths without separators described in words. That is why `contrib show` asks the user to
 read the note and a person reviews each pull request.
 Free-text fields are kept small: `gpu.name` only letters, digits, space, `.`, `-`, `(R)`, `(TM)`, `™`, `®` and a
@@ -1380,7 +1383,7 @@ submission alone would change the level on a PC with the submitted GPU — same 
 the submission's `vram_gb`, plus the other nominal VRAMs of the same name when known (Intel Arc
 `hardware._INTEL_XPU`; NVIDIA `estimate.NVIDIA_VRAM_VARIANTS`, 0.9.1: RTX 2060 / 3050 / 3060 / 3080 / 4060 Ti /
 5060 Ti) — × RAM 16 / 32 / 64 GB, at the default and the submitted settings; this includes a level
-going up and the AMD / Intel / Apple Good cap being lifted. Other GPUs are never affected since 0.9.0). Up to 0.8.0 these were "review required" and needed a
+going up. Other GPUs are never affected since 0.9.0). Up to 0.8.0 these were "review required" and needed a
 per-sha8 approval (`--allow-review`, `data/contrib/REVIEWED`); both were removed.
 
 Warnings (accepted, but reported; `--strict` makes them fail): `nonstandard` (kept as a record, never aggregated),
@@ -1416,7 +1419,7 @@ values is the value, with `n_used` (submissions used), `n_sources` (sources used
 becomes one `outcome: oom` row, never used). A group is `consistent`
 (enters the calibration) with at least 2 used sources whose range is within 15% of the median and no OOM in the
 group. `--json` and the text output say how sources were counted (`sources_from`: `git` / `files`); the bundled
-aggregate is made from a clone with history when releasing (docs/release.md "Releasing later versions"). Output rows are Measurement records
+aggregate is made from a clone with history when releasing (docs/release.md "Releasing a version"). Output rows are Measurement records
 with `origin: "community"` (see Measurement) in a fixed order, so the same input always gives the same file.
 `--output` writes `{unit, source: "community", contrib_schema, date (latest submission date), method, submissions,
 measurements}` (an empty result is not written unless `--allow-empty`, so the bundled file is never wiped by mistake).
@@ -1431,7 +1434,7 @@ measurements}` (an empty result is not written unless `--allow-empty`, so the bu
 - Older versions skip it as an unknown key (they read only `measurements`).
 
 The bundled copy is `src/genmodelfit/data/measurements_community.json`, which is loaded with the other measurements.
-- It is rebuilt when making a release (docs/release.md "Releasing later versions"). A submission PR changes only
+- It is rebuilt when making a release (docs/release.md "Releasing a version"). A submission PR changes only
   data/contrib, so merging it does not put it in yet.
 - The test checks that every submission in `submissions` is in data/contrib and that re-aggregating exactly those
   gives the bundled file. Submissions in data/contrib that are not in it yet are allowed.
@@ -1517,7 +1520,7 @@ DownloadPlan:
 | `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto`, `ok` (optional, since #75: true when it has no gated, unavailable or conflicting file; uncensored, unknown license, disk and budget are not counted) |
 | `license_url` | str \| null | the model's license page |
 | `ok` | bool | `blocked` is empty |
-| `skipped_optional` | str[] | (0.11.0, #81) file names of optional parts not downloaded (`ModelFile.optional` is `inactive`). Empty with `with_optional=True` (CLI: `--with-optional`) |
+| `skipped_optional` | str[] | (0.12.0, #81) file names of optional parts not downloaded (`ModelFile.optional` is `inactive`). Empty with `with_optional=True` (CLI: `--with-optional`) |
 
 PlannedFile:
 
@@ -1597,14 +1600,14 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 
 | function | returns | notes |
 |---|---|---|
-| `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None, windows_build=None, cpu=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia), "pci_id"?}` or `Gpu`. The largest usable NVIDIA GPU is judged. (0.11.0, #96) GPUs with `vendor` `amd` / `intel` / `apple` go through the same support tables as detection (`hardware.md`, "GPUs other than NVIDIA"; `vram_gb` may be omitted for them: Intel discrete GPUs take the nominal VRAM from the name, integrated GPUs a share of `ram_gb`; `pci_id` such as `1002:744c` resolves generic names) and are judged only when no NVIDIA GPU is usable; each one is in `other_gpus` with `usable`, `reason` (why it is or is not used), `integrated` and `needs` (Adapter above, `source: app`). Before 0.11.0 non-NVIDIA GPUs were always treated as CPU. `windows_build`: the Windows build number (22000 or more is Windows 11, which AMD / Intel need; default: this PC's build when it runs Windows, else unknown, which refuses AMD / Intel; `ValueError` when the OS is not Windows). `cpu`: the CPU name (decides the generation of an AMD integrated GPU named only `AMD Radeon(TM) Graphics`; also `SystemInfo.cpu`; default this PC's). For the support tables `windows=True` is Windows, `False` is Linux (macOS on a Mac), `None` this PC's OS. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, [hardware.md](hardware.md)); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU (for every vendor; `None` / `True` affect NVIDIA only). `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
-| `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, gpu_vendor=None, windows_build=None, cpu=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | (0.11.0, #96) `gpu_vendor` (`amd` / `intel` / `apple`; default nvidia), `windows_build` and `cpu` are passed to `system_from` (`vram_gb=0` means unknown for non-NVIDIA).  `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
-| `gmf.gpu_family(name, vendor, cpu="")` | `dict \| None` | (0.11.0, #96) looks up an AMD / Intel GPU name in genmodelfit's name tables (the same tables the support check uses), e.g. to choose the PyTorch build: `{"vendor": "amd"\|"intel", "backend": "rocm"\|"xpu", "arch": "gfx1101" (AMD gfx; null for Intel), "family": "RDNA 3" / "Arc B-Series (Battlemage)" ("?" for a gfx outside the table), "integrated": bool, "vram_floor_gb": float \| null (Intel discrete: nominal VRAM from the name, the smaller one if versions differ)}`. `None` when the name is not in the tables (e.g. Intel UHD / Iris, a GPU newer than the table). `cpu` decides an AMD integrated GPU named only `AMD Radeon(TM) Graphics`. Being in the table does not mean it runs on a given OS (RDNA 1 is listed); `system_from` decides that. Other vendors raise `ValueError`. No network |
-| `gmf.load_db(path=None, *, use_cache=True, user_measurements=True, source=None)` | `Database` | `path`: a list file; else the cache list (`use_cache`) or the bundled one. (0.11.0, #96) `user_measurements=False` uses only the bundled measurements (the author's `measurements.json` and the community summary), not this PC's `bench` results in the cache, so every PC judges the same. `source`: the origin of `path` (`Database.origin`, the `source` of `gmf.data_status()`): `"path"` (default) or `"release"` for a file your app imported with `update_from_release`; other values, or `source` without `path`, raise `ValueError`. No network |
-| `Database.generated_time` / `DataStatus.generated_time` | `datetime \| None` | (0.11.0, #96) `generated_at` as an aware UTC `datetime` (read like the release import: a trailing `Z`, any number of fraction digits); `None` when missing, malformed or without a time zone. Compare two lists with it. Not in `to_dict()` |
-| `ModelEntry.license_unknown` / `ModelEntry.is_tool` | `bool` | (0.11.0, #96) the per-entry checks behind the default filters of `recommend` / `fit_list` / `search` (`include_unknown_license=False`, `include_tools=False`): some file (or the whole set when there are no files) has an unknown license; the entry is an auxiliary tool (preprocessing, audio separation, …). Properties like `reviewed`; not in `to_dict()` |
-| `gmf.self_check()` | `dict` | (0.11.0, #96) whether the bundled parts are present, e.g. for a smoke test of a frozen app: `{"ok": bool, "version": str, "checks": {"db" \| "measurements" \| "calibration" \| "cryptography" \| "public_keys": {"ok": bool, "detail": str}}}` (`detail`: counts / version, or the error). Never raises, no network, prints nothing |
-| `gmf.parse_safetensors_header(header)` | `HeaderInfo` | (0.11.0, #96) the JSON header of a `.safetensors` file (the bytes after the 8-byte little-endian length) → `HeaderInfo(precision, params, dtypes)` (`precision`: the dtype with the most bytes, as in `ModelFile.header_precision`; `params`: element count; `dtypes`: dtype → bytes; `to_dict()`). A malformed header raises `gmf.HeaderError` (a `ValueError`). No network |
+| `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None, windows_build=None, cpu=None)` | `SystemInfo` | `gpus`: dicts `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (default nvidia), "pci_id"?}` or `Gpu`. The largest usable NVIDIA GPU is judged. (0.12.0, #96) GPUs with `vendor` `amd` / `intel` / `apple` go through the same support tables as detection (`hardware.md`, "GPUs other than NVIDIA"; `vram_gb` may be omitted for them: Intel discrete GPUs take the nominal VRAM from the name, integrated GPUs a share of `ram_gb`; `pci_id` such as `1002:744c` resolves generic names) and are judged only when no NVIDIA GPU is usable; each one is in `other_gpus` with `usable`, `reason` (why it is or is not used), `integrated` and `needs` (Adapter above, `source: app`). Before 0.12.0 non-NVIDIA GPUs were always treated as CPU. `windows_build`: the Windows build number (22000 or more is Windows 11, which AMD / Intel need; default: this PC's build when it runs Windows, else unknown, which refuses AMD / Intel; `ValueError` when the OS is not Windows). `cpu`: the CPU name (decides the generation of an AMD integrated GPU named only `AMD Radeon(TM) Graphics`; also `SystemInfo.cpu`; default this PC's). For the support tables `windows=True` is Windows, `False` is Linux (macOS on a Mac), `None` this PC's OS. `ram_gb` sets total = available and ignores this PC's page file (like `--ram`). `gpu_usable`: `None` = a GPU that no current PyTorch CUDA build supports, or whose driver is too old, is treated as CPU (reason in `notes`, [hardware.md](hardware.md)); `True` = the caller verified it (generation and precision are still decided here); `False` = CPU (for every vendor; `None` / `True` affect NVIDIA only). `windows` (default: this PC): Windows driver table and Windows ComfyUI precision (Pascal fp16). OS, CPU and free disk are this PC's. Bad GPU dicts raise `ValueError` |
+| `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, gpu_vendor=None, windows_build=None, cpu=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | (0.12.0, #96) `gpu_vendor` (`amd` / `intel` / `apple`; default nvidia), `windows_build` and `cpu` are passed to `system_from` (`vram_gb=0` means unknown for non-NVIDIA).  `model`: an exact id is used whatever its content; otherwise the name lookup of `download` (filtered by `content`; several workflows of one model → the representative of the `recommend` row, the others in `fit.workflows`). Not found / several models → `gmf.ModelNotFound` (`.candidates`). PC: `system_info`, else `gpu_name` + `vram_gb` (both, else `ValueError`), else `cpu_only=True` (no GPU), else this PC (`gmf.system()`). `system_info` together with the GPU arguments → `ValueError` |
+| `gmf.gpu_family(name, vendor, cpu="")` | `dict \| None` | (0.12.0, #96) looks up an AMD / Intel GPU name in genmodelfit's name tables (the same tables the support check uses), e.g. to choose the PyTorch build: `{"vendor": "amd"\|"intel", "backend": "rocm"\|"xpu", "arch": "gfx1101" (AMD gfx; null for Intel), "family": "RDNA 3" / "Arc B-Series (Battlemage)" ("?" for a gfx outside the table), "integrated": bool, "vram_floor_gb": float \| null (Intel discrete: nominal VRAM from the name, the smaller one if versions differ)}`. `None` when the name is not in the tables (e.g. Intel UHD / Iris, a GPU newer than the table). `cpu` decides an AMD integrated GPU named only `AMD Radeon(TM) Graphics`. Being in the table does not mean it runs on a given OS (RDNA 1 is listed); `system_from` decides that. Other vendors raise `ValueError`. No network |
+| `gmf.load_db(path=None, *, use_cache=True, user_measurements=True, source=None)` | `Database` | `path`: a list file; else the cache list (`use_cache`) or the bundled one. (0.12.0, #96) `user_measurements=False` uses only the bundled measurements (the author's `measurements.json` and the community summary), not this PC's `bench` results in the cache, so every PC judges the same. `source`: the origin of `path` (`Database.origin`, the `source` of `gmf.data_status()`): `"path"` (default) or `"release"` for a file your app imported with `update_from_release`; other values, or `source` without `path`, raise `ValueError`. No network |
+| `Database.generated_time` / `DataStatus.generated_time` | `datetime \| None` | (0.12.0, #96) `generated_at` as an aware UTC `datetime` (read like the release import: a trailing `Z`, any number of fraction digits); `None` when missing, malformed or without a time zone. Compare two lists with it. Not in `to_dict()` |
+| `ModelEntry.license_unknown` / `ModelEntry.is_tool` | `bool` | (0.12.0, #96) the per-entry checks behind the default filters of `recommend` / `fit_list` / `search` (`include_unknown_license=False`, `include_tools=False`): some file (or the whole set when there are no files) has an unknown license; the entry is an auxiliary tool (preprocessing, audio separation, …). Properties like `reviewed`; not in `to_dict()` |
+| `gmf.self_check()` | `dict` | (0.12.0, #96) whether the bundled parts are present, e.g. for a smoke test of a frozen app: `{"ok": bool, "version": str, "checks": {"db" \| "measurements" \| "calibration" \| "cryptography" \| "public_keys": {"ok": bool, "detail": str}}}` (`detail`: counts / version, or the error). Never raises, no network, prints nothing |
+| `gmf.parse_safetensors_header(header)` | `HeaderInfo` | (0.12.0, #96) the JSON header of a `.safetensors` file (the bytes after the 8-byte little-endian length) → `HeaderInfo(precision, params, dtypes)` (`precision`: the dtype with the most bytes, as in `ModelFile.header_precision`; `params`: element count; `dtypes`: dtype → bytes; `to_dict()`). A malformed header raises `gmf.HeaderError` (a `ValueError`). No network |
 | `gmf.platform_verification(system, measurements=None)` | `dict` | (0.11.0, #108) whether the kind of `system`'s GPU is verified: `{"verified": bool, "kind": "nvidia/dedicated" etc. \| None, "models": [names of the GPU models that ran]}` (verified with two or more). Without `measurements`, the bundled measurements (this PC's bench results are not included). The same as `system.platform_verified` in the CLI's JSON. No network |
 | `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | the display language of the texts that genmodelfit returns (`estimate.reasons`, `notes`, gate `detail`, error messages, …): `"en"` or `"ja"`; `None` clears it. **The default is English**; the OS language is not used. Order (first wins): the CLI `--lang`, the environment variable `GENMODELFIT_LANG`, `set_language()`, `en`. The CLI `--lang` holds only inside that call (a `contextvars.ContextVar`), so it does not change the language of library calls in other threads. A text is fixed in the language that was active when the object holding it was created (a `Fit` made in `ja` keeps Japanese `notes` after `set_language("en")`). Only the language of those texts changes; keys, ids, codes, scores and judgments do not. Free text stored in the list (`review.note`, `license_evidence`, measurement `source` / `note`) is not translated. Other values raise `ValueError` (#73) |
 
@@ -1660,7 +1663,7 @@ really needed, `importlib.import_module("genmodelfit.recommend")` (internal, not
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
 `license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at`, and (#30) `ModelEntry.workflow_precision` /
 `precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.5.0) `ModelEntry.languages` /
-`runtime` / `description` / `card_languages` and `source: "manual"`, and (#81, 0.11.0) `ModelFile.optional` /
+`runtime` / `description` / `card_languages` and `source: "manual"`, and (#81, 0.12.0) `ModelFile.optional` /
 `optional_replaces` were added without changing `schema_version` (optional fields; older
 readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks the keys it knows, and `source` is a free
 string there. `tests/test_appinfo.py` reads the bundled list with a copy of the old reader).
@@ -1687,7 +1690,7 @@ fails this is skipped and the bundled list is used (also as `update`'s previous 
 | `counts` | `models`, `modality`, `content`, `source`, `license` (null = unknown), `license_tier`, `files_complete_false` |
 | `head_check` | `checked_at`, `urls` (unique HF URLs sent a HEAD), `status` (count per status code), `unchecked` (no answer), `not_sent` (files on other hosts, per host) |
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
-| `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `optional_parts` (entries with optional parts; 0.11.0, #81), `checked_at` |
+| `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `optional_parts` (entries with optional parts; 0.12.0, #81), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
 | `manual` | `models` (number of hand-added models from `src/genmodelfit/data/manual.json`), `ids` (0.5.0) |
 | `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries with a saved Hugging Face card language, `card_languages`) (0.5.0), `card_languages_carried` (entries whose card languages were carried over from the previous list; full `update` only) |

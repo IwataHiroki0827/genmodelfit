@@ -134,7 +134,7 @@ def run_tests(r: Runner, ver: str, env_root: Path, cache: Path, *, lint: bool | 
         r.step(f"py{ver} CLI {args[0]}", [exe, *args], env=smoke_env, quiet=True)
     if lint:
         # 知らせるだけ(失敗にしない。ci.yml には無い): 同梱のまとめにまだ入っていない data/contrib の提出。
-        # 入れるのは版を出すとき(docs/release.md「次からの版を出す手順」。#90)
+        # 入れるのは版を出すとき(docs/release.md「版を出す手順」。#90)
         print(f"\n=== [{OS_TAG}] (情報) contrib aggregate --check", flush=True)
         subprocess.run([exe, "contrib", "aggregate", "--check"], cwd=ROOT, env=smoke_env, check=False)
 

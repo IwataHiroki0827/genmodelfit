@@ -8,12 +8,12 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 ## 目次
 
 - [GitHub の environment(2026-10-20 に設定)](#github-の-environment2026-10-20-に設定)
-- [最初の公開(v0.1.0)の手順](#最初の公開v010の手順)
-- [次からの版を出す手順](#次からの版を出す手順)
+- [版を出す手順](#版を出す手順)
 - [実測の Issue を受け取る(#113)](#実測の-issue-を受け取る113)
 - [データの配布](#データの配布)
 - [毎週の一覧の更新(#19)](#毎週の一覧の更新19)
   - [PR で確かめること](#pr-で確かめること)
+  - [GPU 表の見張り(#103)](#gpu-表の見張り103)
   - [毎週のスキル(genmodelfit-weekly、#42)](#毎週のスキルgenmodelfit-weekly42)
   - [手元で同じ流れを試す](#手元で同じ流れを試す)
   - [メンテナが一度だけ設定すること](#メンテナが一度だけ設定すること)
@@ -28,7 +28,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 |---|---|---|---|
 | 版のリリース | パッケージ(sdist と wheel) | `v*` のタグを push(タグは管理者だけが作れる) | PyPI と GitHub Release |
 | データの配布 | モデル一覧 `db.json` と署名 `db.json.sig` | main の db.json が変わった push・手動実行 | GitHub Release `data-latest` |
-| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | メンテナの PC のタスク スケジューラ(毎週月曜 9:00 JST)。weekly-data.yml は手動の予備 | PR(安全な週だけ自動でマージ。下の「[毎週のスキル](#毎週のスキルgenmodelfit-weekly42)」) |
+| 毎週の一覧の更新 | 作り直した `db.json` の PR(配らない) | メンテナの PC のスクリプト(週 1 回)。weekly-data.yml は手動の予備 | PR(安全な週だけ自動でマージ。下の「[毎週のスキル](#毎週のスキルgenmodelfit-weekly42)」) |
 
 - データの配布は `v*` のタグではないので、PyPI には出ません。
 - main はブランチの保護で PR を必須にし、force push と削除を禁じている。
@@ -50,60 +50,9 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 - `gh secret list -R laxshmate/genmodelfit`(空であること)
 - `gh secret list --env data-signing -R laxshmate/genmodelfit`
 
-## 最初の公開(v0.1.0)の手順
+## 版を出す手順
 
-**公開はユーザの承認を得てから。**
-
-- 2026-10-20 にユーザが v0.1.0 のマージ(Claude が行う)と公開を承認した。
-- 環境 `pypi` の承認(Review deployments)はユーザが押す(v0.1.0 のとき)。2026-10-21 に承認者を外した。
-- 2026-10-20 に確認: environment `pypi`(`v*` のタグだけ・承認者 `KoyoYeager`。2026-10-21 に外した)と `data-signing`(`main` だけ・シークレット `GENMODELFIT_SIGNING_KEY` あり)はそろっている。
-- リポジトリ全体のシークレットは空。
-- PyPI の `genmodelfit` はまだ無い(404)。
-
-手順:
-
-1. **PR をマージする**(この順。どれも前の PR のブランチから作ってある):
-   PR #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #20(Issue #17)→ #18 の PR → #21 の PR。
-   - 積み重ねた PR は、土台が前の PR のブランチになっている。そのままマージすると main ではなく前のブランチに入るので、
-     **マージする前に土台を main に付け替える**(`gh pr edit <番号> --base main`)。付け替えると差分はその PR の分だけになる。
-   - **squash や rebase でマージしない**(普通のマージコミット)。squash すると後ろの PR の履歴と合わなくなる。
-   - 付け替えたあと CI(Python 3.10〜3.13 × Ubuntu / Windows、wheel)が全部緑であることを確かめてからマージする。
-     これは v0.1.0 のときの決まり。今はブランチの PR で ci.yml が動かないので、`tools/ci_local.py --linux` を手元で通し、結果を PR に書く。
-2. **一覧を配る**: #18 のマージで main の `src/genmodelfit/data/db.json` が変わっていれば、push で
-   `.github/workflows/data.yml` が動く。動いていなければ Actions の「Data」→「Run workflow」(ブランチ main)で動かす。
-   緑になったら、Release `data-latest` に `db.json` と `db.json.sig` があることを確かめる。
-
-   ```powershell
-   gh release view data-latest -R laxshmate/genmodelfit
-   ```
-3. **タグを push する**(版の正本は `src/genmodelfit/_version.py`。`0.1.0` になっていること):
-
-   ```powershell
-   git switch main; git pull
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-4. `.github/workflows/release.yml` が次の順に進む。
-   - test: ruff と pytest(3.12)
-   - build: `uv build` → タグと `_version.py`・wheel / sdist の名前の版が一致するか確認 → `twine check --strict`
-   - publish: environment `pypi`(承認者なし。`v*` のタグはルールセットで管理者だけが作れる)で PyPI に公開する。
-     Trusted Publishing なので API トークンは使わない
-   - github-release: 同じ dist を付けた GitHub Release `v0.1.0` を作る
-5. **確かめる**(まっさらな venv で。キャッシュも別の場所にする):
-
-   ```powershell
-   uv venv -p 3.12 $env:TEMP\gmf-check
-   uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==0.1.0
-   $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
-   & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit 0.1.0
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data の欄: List: bundled …
-   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # 署名を確かめて取り込む
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release、HEAD checks の期限
-   & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
-   ```
-6. AI生成キット(laxshmate/local_model_ai_gen_kit)の Issue #8 に公開を知らせる。
-
-## 次からの版を出す手順
+**公開はメンテナの承認を得てから。**
 
 1. ほかの利用者の実測(data/contrib)を同梱のまとめに入れる(#90)。
    - 提出の PR は data/contrib だけを変えるので、マージしただけでは利用者に届かない。届くのは版のリリースだけ
@@ -115,22 +64,53 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    - 直した提出を出し直した人がいれば、古いファイルをメンテナの PR で外す(PR の説明に理由を書く。提出の PR は足すだけで、消せない)。この PR では `Contrib` のワークフローの「足すだけ」の検査が失敗するが、それでよい(提出の PR だけを通す検査。メンテナが確かめてマージする)。
    - `--check` が「使われない行」(`files_fp` が今の一覧と違う行)を出したら、上流のファイルが変わったということ。行は判定に使われないので、そのままでもよい。新しいファイルで測り直した提出が来るのを待つ。
    - そろった組(`consistent`)が変わったら `python -m genmodelfit.calibrate` で合わせ直し、
-     docs/accuracy.ja.md と docs/accuracy.md を直す(CLAUDE.md)。
-2. `src/genmodelfit/_version.py` の `__version__` を上げる(pyproject.toml は hatch がここから読む)。
-   `CHANGELOG.md` に書いて PR で main に入れる。
+     docs/accuracy.ja.md と docs/accuracy.md を直す。
+2. `src/genmodelfit/_version.py` の `__version__` を上げ(pyproject.toml は hatch がここから読む)、変更を
+   `CHANGELOG.md` の `## [<版>] - Unreleased` の節に書く。
+3. **タグを打つ前に、その節の `Unreleased` を出す日の日付にする**(`## [0.12.0] - 2026-11-02`)。`CHANGELOG.md` の
+   末尾のリンクの定義も直す。この節が GitHub Release の本文になり、タグの版の節が無い・日付が無い・中身が空なら
+   release.yml は公開の前に止まる(手元では `python tools/changelog_notes.py <版>` で本文か理由が見られる)。
+4. PR で main に入れる。マージは普通のマージコミット(squash・rebase はしない)。
    PR では ci.yml が動かないので、PR の説明に `tools/ci_local.py --linux` の結果を書く。
-3. 承認後、マージの後に main で動いた ci.yml が緑なのを確かめる。
-   そのうえで、main の先頭にタグ `v<版>` を付けて push する(上の 3〜5 と同じ)。
+5. マージの後に main で動いた ci.yml が緑なのを確かめる。
+   マージで `src/genmodelfit/data/db.json` が変わっていれば、data.yml が一覧も配る(「[データの配布](#データの配布)」)。
+6. **タグを push する**。main の先頭に付け、`_version.py` の版と合わせる:
+
+   ```powershell
+   git switch main; git pull
+   git tag v<版>
+   git push origin v<版>
+   ```
+7. `.github/workflows/release.yml` が次の順に進む。
+   - test: ruff と pytest(3.12)
+   - build: `uv build` → タグと `_version.py`・wheel / sdist の名前の版が一致するか確認 → `CHANGELOG.md` からタグの版の節を
+     取り出す(`tools/changelog_notes.py`。日付が無ければ失敗)→ `twine check --strict`
+   - publish: environment `pypi`(承認者なし。`v*` のタグはルールセットで管理者だけが作れる)で PyPI に公開する。
+     Trusted Publishing なので API トークンは使わない
+   - github-release: 同じ dist を付け、`CHANGELOG.md` の節を本文にした GitHub Release `v<版>` を作る
+8. **確かめる**(まっさらな venv で。キャッシュも別の場所にする):
+
+   ```powershell
+   uv venv -p 3.12 $env:TEMP\gmf-check
+   uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==<版>
+   $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
+   & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit <版>
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data の欄: List: bundled …
+   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # 署名を確かめて取り込む
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release、HEAD checks の期限
+   & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
+   ```
+9. AI生成キット(laxshmate/local_model_ai_gen_kit)に公開を知らせる。
+
+最初の公開(v0.1.0、2026-10-20)も同じ手順で、その前に最初の版の積み重ねた PR を順にマージした(どれもマージの前に土台を main に付け替えた)。
 
 手動実行と PyPI について:
 
 - 手動実行(workflow_dispatch)はビルドまでで、公開しない。
   タグを選んで手動実行しても、publish と github-release は `github.event_name == 'push'` の条件で飛ばす。
-  タグを打つ前の試し用。
-- PyPI 側の準備は済み。アカウント `laxshmate`(2 段階認証あり)に、`genmodelfit` / `laxshmate/genmodelfit` / `release.yml` /
-  environment `pypi` の Trusted Publisher を事前登録してある。
-- 事前登録では名前は確保されず、最初の公開で確定する。
-- **PEP 541(放棄された名前の扱い)があるので、中身の無い仮の版で名前だけ押さえない。動く v0.1 を公開する。**
+  タグを打つ前の試し用(`CHANGELOG.md` の日付の確かめはタグで動かしたときだけ)。
+- PyPI では、アカウント `laxshmate`(2 段階認証あり)に、`genmodelfit` / `laxshmate/genmodelfit` / `release.yml` /
+  environment `pypi` の Trusted Publisher を登録してある。
 - 公開した版は消せない(取り下げ=yank だけ)。版の番号は使い回せないので、直すなら次の版を出す。
 
 ## 実測の Issue を受け取る(#113)
@@ -147,7 +127,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    ([schema.ja.md「contrib」](schema.ja.md#contrib))。
 2. `publish`(contents・pull-requests・issues の書き込み。何も入れず、`git` と `gh` だけ):
    - 通って新しいとき: `data/contrib/<GPU>/<日付>-<sha8>.json` をブランチ `measurement/issue-<N>` に push し(コミットに
-     `Submitted-by: github:<アカウント>`)、PR を作り(本文は Issue を書いた人・そのアカウントの前の提出の数・メンテナへの
+     `Submitted-by: github:<アカウント>` と、名前を変えても変わらない `Submitted-by-id: <アカウントの数の ID>`)、PR を作り(本文は Issue を書いた人・そのアカウントの前の提出の数・メンテナへの
      確認・`Closes #N`)、Issue にリンクをコメントします。
    - この Issue の開いている PR と同じ中身: 何もしません(push もコメントもしない)。
    - 別の Issue の開いている PR と同じ中身: その PR のリンクをコメントし、何も作りません。
@@ -165,15 +145,15 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
 動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 つのアカウントは何件送っても 1 つの出どころだが、別のアカウント・
 その人の組織・名前を変えたあとの Pull Request は別の人になる。Pull Request や Issue を書いた人を確かめる)。マージは、ボットの Pull Request も人が出した実測の Pull Request も **「Create a merge commit」だけで、squash・rebase は
-しない**(「次からの版を出す手順」と同じ決まり)。出どころはマージのコミットで数えるため(`Merge pull request #N from laxshmate/measurement/issue-M` のときだけ `Submitted-by:` の行を信じる)。
+しない**(「版を出す手順」と同じ決まり)。出どころはマージのコミットで数えるため(`Merge pull request #N from laxshmate/measurement/issue-M` のときだけ `Submitted-by:` の行を信じる)。
 
 一度だけの設定(リポジトリの Settings):
 1. Settings → Actions → General → 「Workflow permissions」→「Allow GitHub Actions to create and approve pull requests」に
    チェック → Save。
 2. Issues → Labels → New label → 名前 `measurement` → Create label。
 3. Settings → General →「Pull Requests」: 「Allow merge commits」はチェックのまま、「Allow squash merging」と
-   「Allow rebase merging」のチェックを外す(出どころは GitHub のマージのコミットで数えるため)。オーナーの PC の毎週の
-   台本(`genmodelfit-weekly.ps1`)は PR を `gh pr merge --merge` でマージするので、そのまま動きます。このリポジトリの中に
+   「Allow rebase merging」のチェックを外す(出どころは GitHub のマージのコミットで数えるため)。メンテナの毎週の
+   スクリプト(リポジトリの外)は PR を `gh pr merge --merge` でマージするので、そのまま動きます。このリポジトリの中に
    `--squash`・`--rebase` を使うものはありません。
    同じページの「Allow merge commits」の下の「Default commit message」は「Default message」にする。出どころのアカウントを
    マージのコミットの 1 行目 `Merge pull request #N from <owner>/<branch>` から読むため(「Pull request title」などに
@@ -364,19 +344,14 @@ weekly-data.yml(手動の予備。#42 から定期の実行はメンテナの PC
 - 確認待ちの判断だけを Claude Code のスキル `genmodelfit-weekly` に任せる。
 - **weekly-data.yml の定期の実行(schedule)はやめた。** 手動の予備(workflow_dispatch)としてだけ残す。
 
-動かし方(メンテナの PC。起動スクリプトと設定はリポジトリの外に置く):
+動かし方:
 
-- 起動スクリプト: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1`(PowerShell 7 が要る: `#Requires -Version 7`)。
-- Claude の設定: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`。
-  - Read は専用のクローンの中だけ。
-  - WebFetch は huggingface.co・github.com・raw.githubusercontent.com だけ。
-- Claude は `--restricted --tools Read Grep Glob WebFetch --strict-mcp-config` で呼ぶ(実行系の道具・ユーザーの設定・MCP は使えない)。
-- approve は別のモデル(opus)が同じ制限で確かめ直す。
-- 専用のクローン: `C:\workspace\genmodelfit-weekly`。開発用の作業フォルダとは分ける。毎回 main に合わせ、venv を作り直す。
-- タスクの登録(毎週月曜 9:00、ログオン中に実行):
-  `schtasks /Create /TN genmodelfit-weekly /SC WEEKLY /D MON /ST 09:00 /TR "pwsh.exe -NoProfile -File %USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1"`
-- ログ: `%LOCALAPPDATA%\genmodelfit-weekly\logs`(直近 26 回)。失敗したら Issue「毎週の更新が失敗しました」が立ち、次に成功したら閉じる。
-- 試すとき: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush`(GitHub に何も出さない)。別の版の中身で試すなら `-Ref origin/<ブランチ> -NoPush`。
+- スクリプトと設定はリポジトリの外(メンテナの PC)に置く。weekly-data.yml と同じコマンド(作り直し・確かめ・試験)を、
+  この用途だけのクローン(毎回 main に合わせる)で流す。
+- 確認待ちの判断だけを Claude Code のスキルに任せ、読み取り専用で動かす: ファイルを読むことと、huggingface.co・github.com・
+  raw.githubusercontent.com のページを取ることだけができ、コマンド・MCP・ファイルの書き換えは使えない。
+- approve は別のモデルが同じ制限で確かめ直す。
+- 失敗したら Issue「毎週の更新が失敗しました」が立ち、次に成功したら閉じる。
 
 役割を分ける。
 
@@ -475,7 +450,7 @@ weekly-data.yml(手動の予備。#42 から定期の実行はメンテナの PC
 
 - 公開鍵: `src/genmodelfit/data/signing_keys/*.pub`(パッケージに同梱)。取り込む側はこのどれか 1 つで合えば通す。今は `2026-10.pub` の 1 つ。
 - 秘密鍵: environment `data-signing` のシークレット `GENMODELFIT_SIGNING_KEY`(laxshmate/genmodelfit)。
-- 秘密鍵のバックアップ: `%USERPROFILE%\.config\genmodelfit\signing_key.pem`(1 か所だけ。ACL は本人のみ)。
+- 秘密鍵のバックアップ: メンテナがオフラインで暗号化して 1 か所に保管する(メンテナだけが読める。場所は書かない)。
   コミットしない。画面や Issue に貼らない。
 
 ### 鍵を替える(定期・または念のため)
@@ -502,14 +477,15 @@ from cryptography.hazmat.primitives import serialization as s
 k = Ed25519PrivateKey.generate()
 open(sys.argv[1], 'wb').write(k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption()))
 open(sys.argv[2], 'wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo))
-" "$env:USERPROFILE\.config\genmodelfit\signing_key.new.pem" src\genmodelfit\data\signing_keys\2027-04.pub
-icacls "$env:USERPROFILE\.config\genmodelfit" /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
+" "<鍵のパス>\signing_key.new.pem" src\genmodelfit\data\signing_keys\2027-04.pub
 ```
+
+フォルダ `<鍵のパス>` はメンテナだけが読めるようにする(Windows では `icacls` で受け継いだ権限を外す)。
 
 手順 2 でシークレットを替えるとき(値は標準入力から渡し、画面に出さない):
 
 ```powershell
-cmd /c "gh secret set GENMODELFIT_SIGNING_KEY --env data-signing -R laxshmate/genmodelfit < ""%USERPROFILE%\.config\genmodelfit\signing_key.new.pem"""
+cmd /c "gh secret set GENMODELFIT_SIGNING_KEY --env data-signing -R laxshmate/genmodelfit < ""<鍵のパス>\signing_key.new.pem"""
 ```
 
 ### 鍵が漏れたら

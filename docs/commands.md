@@ -17,6 +17,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Check one model (files, licenses, estimate) | `genmodelfit info "Z-Image-Turbo"` | [`info`](#genmodelfit-info) |
 | Put a model into ComfyUI (first time) | `genmodelfit download "Z-Image-Turbo" --list`, then the same without `--list` | [download.md](download.md) |
 | Change where downloads go | `genmodelfit config set comfyui-dir D:/ComfyUI` (once only: `--comfyui-dir D:/ComfyUI`) | [download.md, "genmodelfit config"](download.md#genmodelfit-config) |
+| ComfyUI is not found (`download` / `measure`) | add `--comfyui-dir D:/ComfyUI` (or set it once with `genmodelfit config set comfyui-dir D:/ComfyUI`) | [download.md, "Choosing the place"](download.md#choosing-the-place) |
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
@@ -59,9 +60,12 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
     search looks at, and `uncensored` / `all` also count as consent to download uncensored models.
     `--uncensored` is the same as `--content all`; together with `--content sfw` or `--content uncensored` it is a
     usage error (exit code 2).
-  - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`.
-  - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`.
-  - `--output` and `--force` mean different things in `update`, `bench` and `contrib` (see each command).
+  - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`;
+    measurements already sent too in `share` / `contrib share`.
+  - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`; suggestions listed in
+    `measure`.
+  - `--output` means different things in `update`, `bench` and `contrib`, and `--force` in `update` and `bench`
+    (see each command).
 - With `--json` every command prints JSON for programs; the shapes are in [schema.md](schema.md).
 
 ## Global options
@@ -185,7 +189,7 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
   - [`genmodelfit review list`](#genmodelfit-review-list) — models waiting for review and why
   - [`genmodelfit review approve`](#genmodelfit-review-approve) — approve with evidence (primary-source URLs); rewrites the list file
   - [`genmodelfit review reject`](#genmodelfit-review-reject) — remove from the list and record it so that update does not add it again
-- [`genmodelfit bench`](#genmodelfit-bench) — measure on a running ComfyUI
+- [`genmodelfit bench`](#genmodelfit-bench) — for maintainers: measure on a running ComfyUI (usually: measure)
 - [`genmodelfit contrib`](#genmodelfit-contrib) — for maintainers: make, validate and aggregate measurement submissions (to send one: measure and share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — make a submission JSON from a result saved by bench
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — show what will be shared and the privacy checklist
@@ -728,7 +732,7 @@ Download the files of a model for this PC (all files of one workflow), checking 
 | Code | Meaning |
 |---|---|
 | 0 | Success (also `--list`, even when the plan is blocked: see "blocked") |
-| 1 | Error: no such model / several matches, refused (see above), declined, network, sha256 mismatch (with `--json` the error is in "error") |
+| 1 | Error: no such model / several matches, refused (see above), no consent, declined, network, sha256 mismatch (with `--json` the error is in "error") |
 | 2 | Usage error |
 | 130 | Interrupted (Ctrl-C); run again to resume |
 
@@ -882,8 +886,8 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-s
 
 ```sh
 genmodelfit share --json
-genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
-genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
+genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --json
 ```
 
 JSON output (`--json`): [schema.md, "share"](schema.md#share)
@@ -1266,7 +1270,7 @@ genmodelfit review reject [-h] [--lang {en,ja}] --note NOTE --db PATH [--rejecte
 
 ## `genmodelfit bench`
 
-measure on a running ComfyUI
+for maintainers: measure on a running ComfyUI (usually: measure)
 
 **Usage**
 
@@ -1282,7 +1286,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id in [ ] on the first line of info).
 - Model names and parts of ids are not accepted, and hf: models have no template (pass an API-format workflow with `--workflow` instead).
 - Your saved results are used when this PC is judged.
-- `genmodelfit measure` does the same without the template id (it suggests models and finds ComfyUI).
+- bench is for maintainers: `genmodelfit measure` does the same without the template id (it suggests models and finds ComfyUI).
 - `--share` prepares a submission and opens GitHub's measurement form in your browser: sign in to GitHub (an account is needed) and press "Create" (like `genmodelfit share`).
 
 **Options and arguments**
@@ -1307,7 +1311,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--force` |  |  | measure even when the GPU is in use or its free memory cannot be checked |
 | `--source` | `SOURCE` |  | who measured it where (goes into source) |
 | `--note` | `NOTE` |  | text to add to the result's note |
-| `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 1). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
+| `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 2). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 | `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and open GitHub's measurement form (like `genmodelfit share`; without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
@@ -1357,7 +1361,7 @@ for maintainers: make, validate and aggregate measurement submissions (to send o
 genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-Make, preview, validate and aggregate measurement submissions (contrib_schema 1; for maintainers. To send a measurement use `genmodelfit measure` and `genmodelfit share`). genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a Pull Request yourself; [CONTRIBUTING.md](../CONTRIBUTING.md)).
+Make, preview, validate and aggregate measurement submissions (contrib_schema 2; for maintainers. To send a measurement use `genmodelfit measure` and `genmodelfit share`). genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a Pull Request yourself; [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ```text
 make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
@@ -1396,8 +1400,8 @@ aggregate [dir] --check
 
 ```sh
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
-genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
-genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
+genmodelfit contrib show data/contrib/<GPU>/<date>-<sha8>.json
+genmodelfit contrib share data/contrib/<GPU>/<date>-<sha8>.json --json
 genmodelfit contrib validate data/contrib --json
 genmodelfit contrib aggregate --report --json --fail-on-breach
 ```

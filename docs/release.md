@@ -8,12 +8,12 @@ This page is for the maintainer. App developers who only consume the list can sk
 ## Contents
 
 - [GitHub environments (set up 2026-10-20)](#github-environments-set-up-2026-10-20)
-- [First release (v0.1.0)](#first-release-v010)
-- [Releasing later versions](#releasing-later-versions)
+- [Releasing a version](#releasing-a-version)
 - [Receiving measurement issues (#113)](#receiving-measurement-issues-113)
 - [Data releases](#data-releases)
 - [Weekly list update (#19)](#weekly-list-update-19)
   - [What to check in the PR](#what-to-check-in-the-pr)
+  - [GPU table watch (#103)](#gpu-table-watch-103)
   - [Weekly skill (genmodelfit-weekly, #42)](#weekly-skill-genmodelfit-weekly-42)
   - [Trying the same flow locally](#trying-the-same-flow-locally)
   - [One-time setup by the maintainer](#one-time-setup-by-the-maintainer)
@@ -28,7 +28,7 @@ There are three flows.
 |---|---|---|---|
 | Version release | The package (sdist and wheel) | Push a `v*` tag (only admins can create the tag) | PyPI and a GitHub Release |
 | Data release | The model list `db.json` and its signature `db.json.sig` | A push that changes `db.json` on main, or a manual run | GitHub Release `data-latest` |
-| Weekly list update | A PR with a rebuilt `db.json` (nothing is shipped) | Task Scheduler on the maintainer's PC (every Monday 9:00 JST). weekly-data.yml is a manual backup | A PR (merged automatically only in a safe week; see [Weekly skill](#weekly-skill-genmodelfit-weekly-42) below) |
+| Weekly list update | A PR with a rebuilt `db.json` (nothing is shipped) | A script on the maintainer's PC, once a week. weekly-data.yml is a manual backup | A PR (merged automatically only in a safe week; see [Weekly skill](#weekly-skill-genmodelfit-weekly-42) below) |
 
 - Data releases are not `v*` tags, so they do not go to PyPI.
 - Branch protection on main requires PRs and forbids force pushes and deletion.
@@ -50,60 +50,9 @@ To check the settings, run:
 - `gh secret list -R laxshmate/genmodelfit` (must be empty)
 - `gh secret list --env data-signing -R laxshmate/genmodelfit`
 
-## First release (v0.1.0)
+## Releasing a version
 
-**Publish only after the user approves.**
-
-- On 2026-10-20 the user approved merging v0.1.0 (Claude does the merge) and publishing it.
-- Approving the `pypi` environment (Review deployments) was the user's click for v0.1.0. The approver was removed on 2026-10-21.
-- Checked on 2026-10-20: environment `pypi` (`v*` tags only; approver `KoyoYeager`, removed on 2026-10-21) and `data-signing` (`main` only; secret `GENMODELFIT_SIGNING_KEY` present) are in place.
-- The repository-wide secrets are empty.
-- `genmodelfit` does not exist on PyPI yet (404).
-
-Steps:
-
-1. **Merge the PRs**, in this order. Each was branched from the previous PR's branch:
-   PR #8 → #13 → #14 → #10 → #11 → #12 → #9 → #16 → #20 (Issue #17) → the PR for #18 → the PR for #21.
-   - Stacked PRs have the previous PR's branch as their base. Merged as they are, they land in that branch, not in main.
-     **Before merging, retarget the base to main** (`gh pr edit <number> --base main`). The diff then shows only that PR's changes.
-   - **Do not squash or rebase.** Use a normal merge commit. Squashing breaks the history of the later PRs.
-   - After retargeting, confirm CI is all green before merging (Python 3.10 to 3.13 × Ubuntu / Windows, wheel).
-     That was the rule for v0.1.0. Today ci.yml does not run on branch PRs, so run `tools/ci_local.py --linux` locally and put the result in the PR.
-2. **Ship the list.** If merging #18 changed `src/genmodelfit/data/db.json` on main, the push starts `.github/workflows/data.yml`.
-   If it did not run, start it from Actions → "Data" → "Run workflow" (branch main).
-   When it is green, check that Release `data-latest` has `db.json` and `db.json.sig`:
-
-   ```powershell
-   gh release view data-latest -R laxshmate/genmodelfit
-   ```
-3. **Push the tag.** The source of truth for the version is `src/genmodelfit/_version.py`; it must read `0.1.0`.
-
-   ```powershell
-   git switch main; git pull
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-4. `.github/workflows/release.yml` runs these jobs in order:
-   - test: ruff and pytest (3.12)
-   - build: `uv build` → check that the tag, `_version.py` and the version in the wheel / sdist names agree → `twine check --strict`
-   - publish: publish to PyPI from environment `pypi` (no approver; only admins can create `v*` tags, by ruleset).
-     Uses Trusted Publishing, so no API token.
-   - github-release: create GitHub Release `v0.1.0` with the same dist files attached
-5. **Verify** in a clean venv, with a separate cache location:
-
-   ```powershell
-   uv venv -p 3.12 $env:TEMP\gmf-check
-   uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==0.1.0
-   $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
-   & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit 0.1.0
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data section: List: bundled …
-   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # verifies the signature and imports
-   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release, HEAD checks expiry
-   & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
-   ```
-6. Tell Issue #8 of AI生成キット (laxshmate/local_model_ai_gen_kit) that the release is out.
-
-## Releasing later versions
+**Publish only after the maintainer approves.**
 
 1. Put other users' measurements (data/contrib) into the bundled aggregate (#90).
    - A submission PR changes only data/contrib, so merging it does not reach users. Only a package release does
@@ -124,22 +73,56 @@ Steps:
    - If `--check` lists rows that are not used (their `files_fp` differs from the current list), upstream files have
      changed. Those rows are not used for judging, so they can stay; wait for submissions measured with the new files.
    - If the consistent groups (`consistent`) changed, refit with `python -m genmodelfit.calibrate` and update
-     docs/accuracy.ja.md and docs/accuracy.md (CLAUDE.md).
-2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch).
-   Write the change in `CHANGELOG.md` and merge it to main by PR.
+     docs/accuracy.ja.md and docs/accuracy.md.
+2. Raise `__version__` in `src/genmodelfit/_version.py` (pyproject.toml reads it through hatch), and write the changes
+   in the `## [<version>] - Unreleased` section of `CHANGELOG.md`.
+3. **Before tagging, replace `Unreleased` in that section with the release date** (`## [0.12.0] - 2026-11-02`), and
+   update the link definitions at the end of `CHANGELOG.md`. The section becomes the body of the GitHub Release, and
+   release.yml stops before publishing if the section of the tag's version is missing, has no date or is empty
+   (`python tools/changelog_notes.py <version>` shows the body, or the reason, locally).
+4. Merge it to main by PR, with a normal merge commit (never squash or rebase).
    ci.yml does not run on the PR, so put the result of `tools/ci_local.py --linux` in the PR description.
-3. After approval and the merge, check that ci.yml, which runs on main after the merge, is green.
-   Then tag the head of main as `v<version>` and push it (same as steps 3 to 5 above).
+5. After the merge, check that ci.yml, which runs on main after the merge, is green.
+   If the merge changed `src/genmodelfit/data/db.json`, data.yml ships the list too ([Data releases](#data-releases)).
+6. **Push the tag** on the head of main. It must match `_version.py`:
+
+   ```powershell
+   git switch main; git pull
+   git tag v<version>
+   git push origin v<version>
+   ```
+7. `.github/workflows/release.yml` runs these jobs in order:
+   - test: ruff and pytest (3.12)
+   - build: `uv build` → check that the tag, `_version.py` and the version in the wheel / sdist names agree → take the
+     tag's section out of `CHANGELOG.md` (`tools/changelog_notes.py`; fails without a date) → `twine check --strict`
+   - publish: publish to PyPI from environment `pypi` (no approver; only admins can create `v*` tags, by ruleset).
+     Uses Trusted Publishing, so no API token.
+   - github-release: create GitHub Release `v<version>` with the same dist files attached and the `CHANGELOG.md`
+     section as its body
+8. **Verify** in a clean venv, with a separate cache location:
+
+   ```powershell
+   uv venv -p 3.12 $env:TEMP\gmf-check
+   uv pip install --python $env:TEMP\gmf-check\Scripts\python.exe genmodelfit==<version>
+   $env:GENMODELFIT_CACHE_DIR = "$env:TEMP\gmf-check-cache"
+   & $env:TEMP\gmf-check\Scripts\genmodelfit --version          # genmodelfit <version>
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # Data section: List: bundled …
+   & $env:TEMP\gmf-check\Scripts\genmodelfit update --from-release   # verifies the signature and imports
+   & $env:TEMP\gmf-check\Scripts\genmodelfit system             # List: release, HEAD checks expiry
+   & $env:TEMP\gmf-check\Scripts\genmodelfit recommend --vram 8 --ram 32 -n 2
+   ```
+9. Tell AI生成キット (laxshmate/local_model_ai_gen_kit) that the release is out.
+
+The first release (v0.1.0, 2026-10-20) followed the same steps, after merging the stacked PRs of the first version in
+order (each retargeted to main before its merge).
 
 About manual runs and PyPI:
 
 - A manual run (workflow_dispatch) stops after the build and publishes nothing.
   Even when you pick a tag, publish and github-release are skipped by the condition `github.event_name == 'push'`.
-  It is a dry run before tagging.
-- The PyPI side is ready. On account `laxshmate` (two-factor on), a Trusted Publisher is pre-registered for
+  It is a dry run before tagging (the `CHANGELOG.md` date check runs only when the run is on a tag).
+- On PyPI, account `laxshmate` (two-factor on) has a Trusted Publisher for
   `genmodelfit` / `laxshmate/genmodelfit` / `release.yml` / environment `pypi`.
-- Pre-registration does not reserve the name. The name is fixed by the first publish.
-- **Because of PEP 541 (handling of abandoned names), do not claim the name with an empty placeholder version. Publish a working v0.1.**
 - A published version cannot be deleted (only yanked). Version numbers cannot be reused, so to fix a release, ship the next version.
 
 ## Receiving measurement issues (#113)
@@ -156,7 +139,8 @@ twice). It has two jobs:
    (full git history). The result files go to an artifact ([schema.md, "contrib"](schema.md#contrib)).
 2. `publish` (contents, pull-requests and issues write; installs nothing, only `git` and `gh`):
    - Accepted and new: pushes `data/contrib/<GPU>/<date>-<sha8>.json` to the branch `measurement/issue-<N>` (commit
-     with `Submitted-by: github:<account>`), opens a PR (body: the issue author, the earlier submissions of that
+     with `Submitted-by: github:<account>` and `Submitted-by-id: <the account's numeric ID>`, which does not change
+     when the account is renamed), opens a PR (body: the issue author, the earlier submissions of that
      account, notices for the maintainer, `Closes #N`) and comments the link on the issue.
    - Same content as this issue's open PR: does nothing (no push, no comment).
    - Same content as another issue's open PR: comments the link to that PR and opens nothing.
@@ -177,7 +161,7 @@ run for a PR made with `GITHUB_TOKEN`), and the line about how many submissions 
 that GPU and model (one account counts as one source however many it sends, but another account, an organization the
 person owns, or a pull request after a rename counts as someone else; check the author of the pull request or
 issue). Merge with **"Create a merge commit" only, never squash or rebase**, for the bot's pull requests and for
-measurement pull requests opened by people alike (the same rule as "Releasing later versions"): sources are
+measurement pull requests opened by people alike (the same rule as "Releasing a version"): sources are
 counted from the merge commit (`Merge pull request #N from laxshmate/measurement/issue-M` is what makes the
 `Submitted-by:` line trusted).
 
@@ -186,9 +170,9 @@ One-time setup (the repository's Settings):
    requests" → Save.
 2. Issues → Labels → New label → name `measurement` → Create label.
 3. Settings → General → "Pull Requests": keep "Allow merge commits" ticked and untick "Allow squash merging" and
-   "Allow rebase merging" (sources are counted from GitHub's merge commits). The weekly script on the owner's PC
-   (`genmodelfit-weekly.ps1`) merges its PR with `gh pr merge --merge`, which still works; nothing in this repository
-   uses `--squash` or `--rebase`.
+   "Allow rebase merging" (sources are counted from GitHub's merge commits). The maintainer's weekly script (outside this
+   repository) merges its PR with `gh pr merge --merge`, which still works; nothing in this repository uses
+   `--squash` or `--rebase`.
    On the same page, under "Allow merge commits", set "Default commit message" to "Default message": the first
    line of the merge commit must stay `Merge pull request #N from <owner>/<branch>`, because the source account is
    read from it ("Pull request title" or "title and description" would replace that line).
@@ -379,21 +363,14 @@ Maintainer's decision of 2026-10-21:
 - Only the judgment on entries awaiting review is delegated to the Claude Code skill `genmodelfit-weekly`.
 - **The scheduled run (schedule) of weekly-data.yml was dropped.** It remains only as a manual backup (workflow_dispatch).
 
-How it runs (on the maintainer's PC; the startup script and settings live outside the repository):
+How it runs:
 
-- Startup script: `%USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1` (needs PowerShell 7: `#Requires -Version 7`).
-- Claude settings: `%USERPROFILE%\.claude\scripts\genmodelfit-review.settings.json`.
-  - Read is allowed only inside the dedicated clone.
-  - WebFetch is allowed only for huggingface.co, github.com and raw.githubusercontent.com.
-- Claude is called with `--restricted --tools Read Grep Glob WebFetch --strict-mcp-config`. Execution tools, the user's settings and MCP are unavailable.
-- approve is re-checked by a different model (opus) under the same restrictions.
-- Dedicated clone: `C:\workspace\genmodelfit-weekly`. Keep it separate from the development working folder. Each run syncs it to main and recreates the venv.
-- Register the task (every Monday 9:00, run while logged on):
-  `schtasks /Create /TN genmodelfit-weekly /SC WEEKLY /D MON /ST 09:00 /TR "pwsh.exe -NoProfile -File %USERPROFILE%\.claude\scripts\genmodelfit-weekly.ps1"`
-- Logs: `%LOCALAPPDATA%\genmodelfit-weekly\logs` (the latest 26 runs).
-  On failure an Issue "毎週の更新が失敗しました" ("The weekly update failed") is opened, and it is closed at the next success.
-- To try it: `pwsh -File …\genmodelfit-weekly.ps1 -NoPush` (publishes nothing to GitHub).
-  To try the contents of another version: `-Ref origin/<branch> -NoPush`.
+- The script and its settings live outside this repository, on the maintainer's PC. It runs the same commands as
+  weekly-data.yml (rebuild, checks, tests) in a clone used only for this, synced to main on each run.
+- Only the judgment on entries awaiting review goes to the Claude Code skill, read-only: it may read files and fetch
+  pages from huggingface.co, github.com and raw.githubusercontent.com, and cannot run commands, use MCP or change files.
+- approve is re-checked by a different model under the same restrictions.
+- On failure an Issue "毎週の更新が失敗しました" ("The weekly update failed") is opened, and it is closed at the next success.
 
 Roles are split.
 
@@ -492,8 +469,8 @@ Exit codes: 0 = passed, 1 = a check failed (`problems` in `result.json`), 2 = us
 
 - Public keys: `src/genmodelfit/data/signing_keys/*.pub` (bundled in the package). The importing side accepts a signature that matches any one of them. Today there is one, `2026-10.pub`.
 - Private key: the secret `GENMODELFIT_SIGNING_KEY` of environment `data-signing` (laxshmate/genmodelfit).
-- Private key backup: `%USERPROFILE%\.config\genmodelfit\signing_key.pem`. One place only; the ACL is the maintainer alone.
-  Do not commit it. Do not paste it on screen or in an Issue.
+- Private key backup: the maintainer keeps one copy offline, encrypted, in a single place readable only by the
+  maintainer (the place is not written here). Do not commit it. Do not paste it on screen or in an Issue.
 
 ### Rotating keys (regularly, or as a precaution)
 
@@ -519,14 +496,16 @@ from cryptography.hazmat.primitives import serialization as s
 k = Ed25519PrivateKey.generate()
 open(sys.argv[1], 'wb').write(k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption()))
 open(sys.argv[2], 'wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo))
-" "$env:USERPROFILE\.config\genmodelfit\signing_key.new.pem" src\genmodelfit\data\signing_keys\2027-04.pub
-icacls "$env:USERPROFILE\.config\genmodelfit" /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F"
+" "<path-to-key>\signing_key.new.pem" src\genmodelfit\data\signing_keys\2027-04.pub
 ```
+
+Keep the folder `<path-to-key>` readable only by the maintainer (on Windows, remove inherited permissions with
+`icacls`).
 
 To replace the secret in step 2 (pass the value on standard input, never on screen):
 
 ```powershell
-cmd /c "gh secret set GENMODELFIT_SIGNING_KEY --env data-signing -R laxshmate/genmodelfit < ""%USERPROFILE%\.config\genmodelfit\signing_key.new.pem"""
+cmd /c "gh secret set GENMODELFIT_SIGNING_KEY --env data-signing -R laxshmate/genmodelfit < ""<path-to-key>\signing_key.new.pem"""
 ```
 
 ### If a key leaks

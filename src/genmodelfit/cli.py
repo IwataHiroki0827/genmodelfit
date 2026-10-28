@@ -5165,8 +5165,8 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (also --list, even when the plan is blocked: see "blocked")
-  1  Error: no such model / several matches, refused (see above), declined, network,
-     sha256 mismatch (with --json the error is in "error")
+  1  Error: no such model / several matches, refused (see above), no consent, declined,
+     network, sha256 mismatch (with --json the error is in "error")
   2  Usage error
   130  Interrupted (Ctrl-C); run again to resume
 
@@ -5322,8 +5322,8 @@ EXIT CODES:
 
 AGENT USAGE:
   genmodelfit share --json
-  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
-  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+  genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
+  genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --json
 
   JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
   report, share, opened, copied, marked_shared }
@@ -5333,7 +5333,8 @@ TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_t
 in [ ] on the first line of info). Model names and parts of ids are not accepted, and hf: models
 have no template (pass an API-format workflow with --workflow instead).
 Your saved results are used when this PC is judged.
-genmodelfit measure does the same without the template id (it suggests models and finds ComfyUI).
+bench is for maintainers: genmodelfit measure does the same without the template id (it suggests
+models and finds ComfyUI).
 --share prepares a submission and opens GitHub's measurement form in your browser: sign in to
 GitHub (an account is needed) and press "Create" (like genmodelfit share).
 
@@ -5788,8 +5789,8 @@ GitHub のアカウントが要る。
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit share --json
-  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
-  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+  genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --print-url
+  genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --json
 
   JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
   report, share, opened, copied, marked_shared }
@@ -5799,7 +5800,8 @@ TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのも�
 1 行目の [ ] の中)。モデルの名前や ID の一部は受けない。hf: のモデルにはテンプレートが無い
 (代わりに --workflow で API 形式のワークフローを渡す)。
 保存した結果はこの PC の判定に使う。
-genmodelfit measure は、テンプレートの ID を知らなくても同じことをする(モデルを提案し、ComfyUI を探す)。
+bench は保守する人向け。genmodelfit measure は、テンプレートの ID を知らなくても同じことをする(モデルを
+提案し、ComfyUI を探す)。
 --share は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが
 要る)、「Create」を押す(genmodelfit share と同じ)。
 
@@ -7242,7 +7244,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--json", action="store_true", help=json_help)
     r.set_defaults(func=cmd_review_reject)
 
-    sp = sub_parser("bench", tr("動いている ComfyUI で実測する", "measure on a running ComfyUI"), [common])
+    sp = sub_parser(
+        "bench",
+        tr(
+            "保守する人向け: 動いている ComfyUI で実測する(ふつうは measure)",
+            "for maintainers: measure on a running ComfyUI (usually: measure)",
+        ),
+        [common],
+    )
     sp.add_argument(
         "template",
         help=tr(
@@ -7362,9 +7371,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--submission",
         metavar="PATH",
         help=tr(
-            "提出用の JSON(contrib_schema 1)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
+            "提出用の JSON(contrib_schema 2)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
             "(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない(CONTRIBUTING.md)",
-            "also write a submission JSON (contrib_schema 1). For a folder: <folder>/<GPU>/<date>-<sha8>.json"
+            "also write a submission JSON (contrib_schema 2). For a folder: <folder>/<GPU>/<date>-<sha8>.json"
             " (pass your fork's data/contrib to open a PR as is). Nothing is sent (CONTRIBUTING.md)",
         ),
     )
@@ -7685,7 +7694,7 @@ def _review_help() -> str:
 
 
 CONTRIB_DIR_DEFAULT = "data/contrib"
-_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる
+_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 2)を作る・送る前に見る・検査する・まとめる
 (保守する人向け。実測を送るのは genmodelfit measure と genmodelfit share)。
 genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で
 Pull Request を出すときだけ。CONTRIBUTING.md)。
@@ -7720,13 +7729,13 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
-  genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
-  genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
+  genmodelfit contrib show data/contrib/<GPU>/<日付>-<sha8>.json
+  genmodelfit contrib share data/contrib/<GPU>/<日付>-<sha8>.json --json
   genmodelfit contrib validate data/contrib --json
   genmodelfit contrib aggregate --report --json --fail-on-breach
 詳しくは docs/schema.md「contrib」"""
 
-_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1; for
+_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 2; for
 maintainers. To send a measurement use genmodelfit measure and genmodelfit share).
 genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a
 Pull Request yourself; CONTRIBUTING.md).
@@ -7762,8 +7771,8 @@ EXIT CODES:
 
 AGENT USAGE:
   genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
-  genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
-  genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
+  genmodelfit contrib show data/contrib/<GPU>/<date>-<sha8>.json
+  genmodelfit contrib share data/contrib/<GPU>/<date>-<sha8>.json --json
   genmodelfit contrib validate data/contrib --json
   genmodelfit contrib aggregate --report --json --fail-on-breach
 Details: docs/schema.md ("contrib")"""

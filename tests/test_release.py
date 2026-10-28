@@ -546,6 +546,83 @@ def test_release_workflow_shape() -> None:
         cond = doc["jobs"][job]["if"]
         assert "github.event_name == 'push'" in cond and "refs/tags/v" in cond
     assert doc["permissions"] == {"contents": "read"}
+    # GitHub Release の本文は CHANGELOG のその版の節。日付が無ければ build で止まる(PyPI にも出さない)
+    build_runs = [st.get("run", "") for st in doc["jobs"]["build"]["steps"]]
+    assert any("tools/changelog_notes.py" in r and "--out release-notes/notes.md" in r for r in build_runs)
+    rel_runs = "\n".join(st.get("run", "") for st in doc["jobs"]["github-release"]["steps"])
+    assert "--notes-file release-notes/notes.md" in rel_runs
+    assert "--generate-notes" not in rel_runs
+    assert doc["jobs"]["publish"]["needs"] == "build"
+
+
+def _changelog_notes():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("changelog_notes", ROOT / "tools" / "changelog_notes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_CHANGELOG = """# Changelog
+
+## [1.1.0] - Unreleased
+
+### Added
+
+- new thing
+
+## [1.0.0] - 2026-01-02
+
+### Fixed
+
+- a fix
+
+## [0.9.0] - 2025-12-01
+
+## [0.8.0] - 2025-11-01
+
+- old
+
+[1.0.0]: https://example.invalid/v1.0.0
+"""
+
+
+def test_changelog_notes_section() -> None:
+    cn = _changelog_notes()
+    assert cn.release_notes(_CHANGELOG, "1.0.0") == "### Fixed\n\n- a fix\n"
+    assert cn.release_notes(_CHANGELOG, "0.8.0") == "- old\n"  # 末尾のリンクの定義は入れない
+    with pytest.raises(cn.NotesError, match="日付"):
+        cn.release_notes(_CHANGELOG, "1.1.0")  # Unreleased のままではタグを打てない
+    with pytest.raises(cn.NotesError, match="空"):
+        cn.release_notes(_CHANGELOG, "0.9.0")
+    with pytest.raises(cn.NotesError, match="節"):
+        cn.release_notes(_CHANGELOG, "2.0.0")
+
+
+def test_changelog_notes_cli(tmp_path: Path, capsys) -> None:
+    cn = _changelog_notes()
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text(_CHANGELOG, encoding="utf-8")
+    out = tmp_path / "notes" / "notes.md"
+    assert cn.main(["v1.0.0", "--changelog", str(log), "--out", str(out)]) == 0  # タグの名前(v つき)も受ける
+    assert out.read_text(encoding="utf-8") == "### Fixed\n\n- a fix\n"
+    assert cn.main(["v1.1.0", "--changelog", str(log)]) == 1
+    assert "::error::" in capsys.readouterr().err
+
+
+def test_changelog_has_the_current_version_and_dated_older_ones() -> None:
+    # 今の版の節はある(Unreleased でもよい。日付はタグを打つ前に入れ、release.yml が確かめる)。
+    # それより前の版の節は、どれも日付があって release.yml の本文を取り出せる
+    from genmodelfit import __version__
+
+    cn = _changelog_notes()
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    cn.section(text, __version__)
+    versions = re.findall(r"^## \[([^\]]+)\]", text, flags=re.M)
+    assert versions[0] == __version__
+    for v in versions[1:]:
+        assert cn.release_notes(text, v).strip(), v
 
 
 def test_data_workflow_shape() -> None:

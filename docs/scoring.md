@@ -61,7 +61,7 @@ An item goes into the verdict, the score or the order only if it passes all four
 **In one sentence**: parts that the official template does not load with its default values (parts only on muted or bypassed
 nodes, on nodes that reach no output node, or on the unselected branch of a switch with a fixed value) are not counted in VRAM
 or main memory, and one sentence in the reasons says so only when turning on the switched-off parts would change the level
-(0.11.0, #81).
+(0.12.0, #81).
 
 - There are two classes (how they are found: [sources.md](sources.md) "Optional parts"; how they are counted:
   [accuracy.md](accuracy.md) "How files are counted"):

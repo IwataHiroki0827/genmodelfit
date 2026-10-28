@@ -121,6 +121,32 @@ def test_links_point_to_existing_files_and_headings(path):
     assert problems == []
 
 
+# 公開の文書に書かない、メンテナの PC・アカウントの印(2026-10-28 の監査で消したもの。戻さない)。
+# 鍵の置き場所・毎週の更新の台本の場所・タスクの登録・開発用の PC の構成は書かない(docs/release.md「鍵」)
+PRIVATE_MARKERS = [
+    "KoyoYeager",
+    "C:\\workspace\\genmodelfit-weekly",
+    "%USERPROFILE%\\.claude",
+    "$env:USERPROFILE\\.config\\genmodelfit",
+    "%USERPROFILE%\\.config\\genmodelfit",
+    "schtasks",
+    "i7-13700KF",
+]
+
+
+@pytest.mark.parametrize("path", PAGES, ids=lambda p: p.name)
+def test_no_private_markers(path):
+    text = path.read_text(encoding="utf-8")
+    assert [m for m in PRIVATE_MARKERS if m in text] == []
+
+
+def test_private_markers_cover_release_hardware_schema():
+    # 監査で見つかった 3 つのページ(英日)が、上の試験の対象に入っていること
+    names = {p.name for p in PAGES}
+    for page in ("release", "hardware", "schema"):
+        assert {f"{page}.md", f"{page}.ja.md"} <= names
+
+
 def _cited_sections():
     """`docs/X.md「名前」`・`docs/X.md の「名前」` の形の参照(コード・試験・ワークフロー・CLAUDE.md)。"""
     files = [p for p in (ROOT / "CLAUDE.md",) if p.exists()]  # sdist には CLAUDE.md・.github が無い

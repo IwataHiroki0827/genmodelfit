@@ -5,7 +5,7 @@
 This page explains how genmodelfit's VRAM and memory estimates are built, which measurements they are fitted to, and how far they can be trusted.
 It is for people who read the estimates, change the numbers, or submit measurements.
 
-As of 2026-10-20 (how other users' measurements are handled: 2026-10-22; the working-memory formula became per-stage on 2026-10-27: #100).
+As of 2026-10-28, 0.12.0 (how other users' measurements are handled: 2026-10-22; the working-memory formula became per-stage on 2026-10-27: #100).
 The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them with `python -m genmodelfit.calibrate`
 (`--dry-run` prints the tables without writing). The tables in "Results (leave-one-out)" come from that command's output.
 **All units are GiB (2^30 bytes).** "GB" in the tables and the CLI also means GiB.
@@ -33,7 +33,7 @@ The coefficients are in `src/genmodelfit/data/calibration.json`; rebuild them wi
 
 - **Since #100 (2026-10-27) the working memory is ComfyUI's authors' own estimate (the formulas in the code), per stage** ("Formulas" below).
   The only coefficient still fitted to measurements is the one for 3D among the models without a per-stage formula (`act_3d_gb`).
-- Against the 4 unpinned RTX 5080 measurements of the author (peaks on a GPU with room), the differences are Z-Image int8 +5.1%, SDXL +12.5%,
+- Against the 4 unpinned RTX 5080 measurements of the maintainer (peaks on a GPU with room), the differences are Z-Image int8 +5.1%, SDXL +12.5%,
   Wan 2.1 1.3B −14.7%, ACE-Step 1.5 +9.2% ("Results" below). The formula is not fitted to them, so this is a cross-check, not a fit.
   - 4 measurements, one kind of GPU and dynamic-VRAM peaks, so it does not show that the target is met.
   - For Wan 2.1 1.3B the measurement is 1.96 GB above the formula (VAE at its tile value). It is a peak on a GPU with room, where dynamic VRAM
@@ -249,9 +249,9 @@ Mapping more families is future work ("Known limits" below).
   - above that: Too tight
 - Caps by mode:
   - All on GPU: no cap.
-  - Swapped in turn (GPU~) and offload (GPU+RAM): up to Good (offload was up to Marginal until 0.11.0).
+  - Swapped in turn (GPU~) and offload (GPU+RAM): up to Good (offload was up to Marginal until 0.10).
   - CPU: generation up to Marginal, speech built for real-time CPU use and one-pass tools up to Good (0.11.0, #108).
-  - No cap by GPU vendor (until 0.11.0, non-NVIDIA GPUs and DGX Spark were capped at Good).
+  - No cap by GPU vendor (until 0.10, non-NVIDIA GPUs and DGX Spark were capped at Good).
   - The full rules are in [scoring.md](scoring.md) "Level caps".
 - The mode with the best level is taken (no offloading on a tie). The main-memory check ("Main memory (RAM)" below) comes after that.
 - If the size is unknown, no level is given (`unknown`, shown as `?`; "Models of unknown size" below).
@@ -259,8 +259,9 @@ Mapping more families is future work ("Known limits" below).
 - Effect on the bundled list (all 341 entries of the list at the time the levels changed, before the HF lower bound was raised; the bundled list of 0.9.1 (2026-10-21) has 329):
   - 8 GB / 32 GB: Perfect 44 → 23, Good 22 → 32, Marginal 87 → 97, Too tight 188 → 189.
   - 16 GB / 32 GB: Perfect 95 → 66, Good 67 → 76, Marginal 107 → 124, Too tight 72 → 75.
-- At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 uses 94% swapped in turn, so it is Marginal (it runs on the GPU).
-  Wan 2.1 1.3B is also Marginal swapped in turn (97% used). tests/test_estimate.py.
+- At the VRAM that AI生成キット recommends (8 GB), Z-Image Turbo int8 would use 94% swapped in turn, so since 0.11.0 (#108)
+  part of the weights is offloaded and it is Good (GPU+RAM, slow; Marginal swapped in turn before).
+  Wan 2.1 1.3B is the same (97% swapped in turn → Good offloaded). tests/test_estimate.py.
 - If offload still does not fit on the GPU, the result is compared with the no-GPU judgment (Marginal for small types that run on CPU), and the better one is taken.
   - Before, adding a small GPU could turn a CPU-capable model into "does not run", so adding VRAM lowered the level (#17).
 
@@ -330,7 +331,7 @@ the estimator also counts by these rules (`estimate.select_files`):
      - If a file is all-in-one but not in the breakdown table, the result comes out larger (the safe side).
    - **The request said "count only the single file", but that would miss the encoder (about 9 GiB of T5 for FLUX) when the single file holds only the main model, so it was done this way.**
 5. If files were dropped, the reason is shown in `reasons`. `disk_gb` is the sum of the counted files.
-6. **Optional parts** (#81, 0.11.0: parts that the official template does not load with its default values; how they are
+6. **Optional parts** (#81, 0.12.0: parts that the official template does not load with its default values; how they are
    found is in [sources.md](sources.md) "Optional parts"):
    - `inactive` (parts only on muted or bypassed nodes, or on nodes that reach no output node) are counted in none of
      VRAM, main memory, `disk_gb` and `download`.
@@ -360,11 +361,11 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
      Which one applies depends on the measurement, so it is monotonic in the VRAM of the PC being judged.
    - v3's "the same shift for all three" (`max(a + d, b + d) = max(a, b) + d`) holds only when the shift is an error of the fixed part.
      Gaps with other causes (dynamic VRAM using free space, no tiling) differ by stage, hence the rules above.
-   - A measurement (the author's or other users') below the floor is raised to the floor (it ran with part of the weights in main memory).
+   - A measurement (the maintainer's or other users') below the floor is raised to the floor (it ran with part of the weights in main memory).
      Within 0.1 GB it is rounding or measurement noise: `basis: "measured"` stays, the value is the floor, and the reasons say so
      (ACE-Step 1.5: 10.80 GB against a floor of 10.82 GB, 0.02 GB; `estimate.MEASURED_FLOOR_TOLERANCE`).
    - On a small GPU, even if all-on-GPU does not fit, the result **falls to swapped in turn or offload**.
-     Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.5 GB swapped in turn. Use is 94%, so the level is Marginal.
+     Example: on 8 GB, Z-Image int8 needs 13.2 GB all on GPU, but runs at 7.5 GB swapped in turn. Use is 94% (Marginal), so since 0.11.0 part of the weights is offloaded instead and the level is Good (GPU+RAM).
    - A measured value larger than the GPU does not by itself make a model Too tight.
 2. If the measurement is 90% or more of the GPU's capacity (or offload is lowvram or similar), it counts as "pinned at the limit".
    - **It is used only as a lower bound** (all on GPU = max(formula, measurement)).
@@ -418,8 +419,8 @@ The RTX 5080 measurements were taken with ComfyUI's dynamic VRAM, which **uses m
 - The minimum / recommended VRAM of the AI生成キット catalog is used neither in the formula nor in the coefficients.
 - But **the offload share 0.4 is a hyperparameter chosen with the guidelines in view.**
   - It cannot be set from measurements, so it was chosen from the range that agrees with both "SDXL runs on 4GB" and "bf16 Z-Image does not run on 4GB".
-  - That range was the author's view with the formula before #100 and has not been measured again with the per-stage formula.
-- "bf16 Z-Image does not run on 4GB" is not in the catalog; it is the author's judgment.
+  - That range was the maintainer's view with the formula before #100 and has not been measured again with the per-stage formula.
+- "bf16 Z-Image does not run on 4GB" is not in the catalog; it is the maintainer's judgment.
 - `tests/test_estimate.py` compares against the guidelines. Those results are not fed back into the fit.
 
 Fitted result (2026-10-27, n = 9, of which 3 pinned; only the 2 3D measurements are fitted):
@@ -456,8 +457,8 @@ Cross-check (measured differently, so not used for fitting; predicted with the c
 
 | Model | GPU | Source | Settings | Compared | Measured GiB | Estimated GiB | Error |
 |---|---|---|---|---|---:|---:|---:|
-| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 1.25 | 0.24 | -81% |
-| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | author | - | working memory (measurement without weights) | 0.72 | 0.78 | +9% |
+| utility_birefnet_remove_background | NVIDIA GeForce RTX 3070 | maintainer | - | working memory (measurement without weights) | 1.25 | 0.24 | -81% |
+| 3d_moge_perspective_to_mesh | NVIDIA GeForce RTX 3070 | maintainer | - | working memory (measurement without weights) | 0.72 | 0.78 | +9% |
 
 How to read it:
 
@@ -489,7 +490,7 @@ How to read it:
 - **Known misses** (against the human guidelines, recorded as strict xfail in `tests/test_estimate.py`):
   - No misses now: all 8 models are not Too tight at the guideline's minimum VRAM and run on the GPU at the recommended VRAM.
   - The Wan2.2 5B miss (Too tight on 8GB before #100) is fixed by the per-stage formula (ComfyUI's Wan 2.2 VAE estimate).
-  - At the app's settings (512px, 49 frames), Wan 2.1 1.3B is Marginal offloaded on 6GB and Marginal swapped in turn on 8GB (97% used).
+  - At the app's settings (512px, 49 frames), Wan 2.1 1.3B is Good offloaded on 6GB and on 8GB (swapped in turn it would use 97% on 8GB; Marginal before 0.11.0).
 - **Future work** (#100):
   1. Text-stage working memory ComfyUI does not estimate: image tokens of Qwen2.5-VL, Flux2's Mistral, the YuE2 score stage (8192 tokens),
      the KV of the ACE-Step 1.5 LM, and so on
@@ -508,7 +509,7 @@ How to read it:
 
 Users add the submission JSON made by `genmodelfit bench --submission` through a Pull Request to `data/contrib/<GPU>/<date>-<sha8>.json`
 (steps: [CONTRIBUTING.md](../CONTRIBUTING.md); format: "contrib" in [schema.md](schema.md)).
-**As of 2026-10-22, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
+**As of 2026-10-28, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
 The rules below describe how submissions will be handled once they arrive.
 
 **Files measured (#90)**: other users' submissions (contrib_schema 2) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
@@ -525,7 +526,7 @@ The rules below describe how submissions will be handled once they arrive.
   - For correcting other models, it clamps the median of measurement ÷ estimate to [0.05, 3.0].
 - The rules of 2026-10-21 were dropped.
   - Content: use only to raise the need, at most +15%, only with 2 or more submissions within 15% spread, only submissions a person checked per sha8.
-  - Reason: they were hard for the maintainer to follow, and even with measurements they could not lift the "up to Good" cap for non-NVIDIA GPUs.
+  - Reason: they were hard for the maintainer to follow, and even with measurements they could not lift the then "up to Good" cap for non-NVIDIA GPUs (dropped by #108 in 0.11.0).
 
 **How they are grouped** (`genmodelfit contrib aggregate`):
 
@@ -606,7 +607,7 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
 - A `torch_reserved` value gets 0.5 GiB added for the context before the band is decided, and it can also be a basis for Perfect (0.9.0).
 - Measurements only raise the level and never lower it (non-NVIDIA GPUs too since 0.11.0; #108 dropped their "up to Good" cap).
 
-**Basis levels** (`Estimate.basis_detail`) and the number of sources (`Estimate.sample_count`; the number of submissions until 0.11.0):
+**Basis levels** (`Estimate.basis_detail`) and the number of sources (`Estimate.sample_count`; the number of submissions until 0.10):
 
 - `basis` stays two-valued (measured / estimated) for backward compatibility.
 - `sample_count` was only added to the JSON.
@@ -719,7 +720,7 @@ With Apple's MPS, ComfyUI's GPU name is `mps`.
 
 ## Cross-check (measurements and public figures used neither for fitting nor for levels)
 
-### The author's RTX 3070 8GB measurements (bench, 2026-10-19 UTC)
+### The maintainer's RTX 3070 8GB measurements (bench, 2026-10-19 UTC)
 
 The 2 bundled rows (BiRefNet, MoGe) are torch reservations measured by bench with dynamic VRAM (`vram_metric: torch_reserved`,
 `offload: dynamic`): working memory only, without the weights (#100; "How measurements are used" 7 above).

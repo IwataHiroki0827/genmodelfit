@@ -182,7 +182,7 @@ The parameter count (params_b) is guessed from notation such as `14B` or `1.3B` 
 
 ### Optional parts
 
-Added in 0.11.0 (#81). Files of parts that the template does not load with its default values get `optional` (and
+Added in 0.12.0 (#81). Files of parts that the template does not load with its default values get `optional` (and
 `optional_replaces`) (`optional.optional_files`; rebuilt every time by update and by re-reading the templates; the shape is in
 [schema.md](schema.md), section "Models", and the effect on the estimate in [accuracy.md](accuracy.md), "How files are counted").
 ComfyUI's code is not imported; the behavior of v0.43.0 (426f5ee) is imitated on the template JSON.
@@ -568,7 +568,7 @@ Materials, in priority order:
      (The card of https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B lists 17 languages, and "Performance varies by language" is about singing.
      The prompt of the instrumental `audio_ace_step_1_t2a_instrumentals` had also been given 17 languages.) The singing language is written in the hand table.
 3. **Only when there is no card (no language written), the text-reader component table**: if the table matches, `["en"]`.
-   Parts the template does not load with its default values (["Optional parts"](#optional-parts); 0.11.0, #81) are not used as
+   Parts the template does not load with its default values (["Optional parts"](#optional-parts); 0.12.0, #81) are not used as
    material (the card is also read only for main models loaded by default).
    Even for multilingual components, the table alone does not add `ja`.
    (The languages a component can read differ from the languages of the descriptions the model was trained on.
@@ -627,7 +627,7 @@ One more is the singing language (0.6.0, #41):
 - The prompt is `en` by the music rule.
 - It is not set for `audio_ace_step_1_t2a_instrumentals` (no singing).
 
-The other 4 rows are Qwen-Image 2.1 (0.11.0, #81):
+The other 4 rows are Qwen-Image 2.1 (0.12.0, #81):
 
 - With the prompt enhancer part (`qwen3.5_9b_…_pe_*`) made an optional part and left out of the language material, the only
   text-reading component is `qwen3vl_8b`, which is not in the table, so the language would be undecided.

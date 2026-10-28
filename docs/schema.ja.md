@@ -21,6 +21,8 @@
 - [info](#info)
   - [ModelEntry](#modelentry) · [Measurement / 実測](#measurement--実測)
 - [bench](#bench)
+- [measure](#measure)
+- [share](#share)
 - [contrib](#contrib)
 - [download](#download)
 - [config](#config)
@@ -42,9 +44,9 @@ CLI の表示の「GB」も GiB。
 | キー | 型 | 意味 |
 |---|---|---|
 | `genmodelfit` | str | ツールの版 |
-| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
-| `system` | System | 判定した PC(`--vram` / `--ram` で置き換えたあと)。`types` / `gate` / `update` / `bench` / `diff` / `review` / `contrib` には無い |
-| `database` | object | `origin`(`bundled` / `cache` / `path`)、`generated_at`、`models`、`measurements`(件数)。`system` では `status`(DataStatus。下)も入る。`bench` / `diff` / `contrib` / `review approve` / `review reject` / `update --from-release` には無い |
+| `command` | str | `system` / `recommend` / `fit` / `search` / `types` / `info` / `update` / `bench` / `measure` / `share` / `gate` / `download` / `diff` / `review` / `contrib` / `config` |
+| `system` | System | 判定した PC(`--vram` / `--ram` で置き換えたあと)。`types` / `gate` / `update` / `bench` / `share` / `diff` / `review` / `contrib` / `config` には無い |
+| `database` | object | `origin`(`bundled` / `cache` / `path`)、`generated_at`、`models`、`measurements`(件数)。`system` では `status`(DataStatus。下)も入る。`bench` / `share` / `diff` / `contrib` / `config` / `review approve` / `review reject` / `update --from-release` には無い |
 | `error` | str | 失敗したときだけ(終了コード 1) |
 | `candidates` | object[] | `info` が複数のモデルに当たったときだけ(info を参照) |
 
@@ -124,7 +126,7 @@ Gpu:
 Adapter(`other_gpus`): `name`、`vendor`(`nvidia` / `amd` / `intel` / `apple` / `unknown`)、
 `vram_gb`(Windows: レジストリの `HardwareInformation.qwMemorySize`、無ければ 4 GiB 未満の WMI `AdapterRAM`。Linux の AMD: sysfs。Linux の Intel Arc: 名前から小さいほうのモデルの VRAM。不明なら null)、
 `vram_source`(`registry` / `wmi` / `sysfs` / `name` / null)、
-`source`(`wmi` / `lspci` / `system_profiler`。0.11.0 で `sysfs`(lspci が無い Linux)と `wsl`(WSL2 から読んだ Windows 側の部品)、`app`(`gmf.system_from` に渡したもの。`vram_source` も `app`。#96)を足した)。
+`source`(`wmi` / `lspci` / `system_profiler`。0.11.0 で `sysfs`(lspci が無い Linux)と `wsl`(WSL2 から読んだ Windows 側の部品)を、0.12.0 で `app`(`gmf.system_from` に渡したもの。`vram_source` も `app`。#96)を足した)。
 
 0.7.0(#22)で追加:
 - `integrated`(bool | null)
@@ -441,7 +443,7 @@ Python の `Fit.to_dict()` は、まさにこの dict を返す(`gmf.recommend()
 | `fit_label` | str | `Perfect` / `Good` / `Marginal` / `Too tight` / `?` |
 | `run_mode` | str | `gpu` / `offload` / `cpu` / `none`(動かない)/ `unknown`(大きさが不明で判定していない。0.2.0。0.1.1 まではこれらは `none` だった)(= `estimate.run_mode`) |
 | `run_mode_label` | str | `GPU`(全部 GPU)/ `GPU~`(部品を順に載せ替え)/ `GPU+RAM`(逃がす)/ `CPU` / `-`(動かない)/ `?`(大きさが不明) |
-| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `good`。0.11.0 まで `marginal`)、`cpu`(生成は最大 `marginal`、CPU で実時間に動く設計の読み上げ・1 回の計算の道具は最大 `good`。0.11.0、#108)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
+| `level_cap` | str \| null | 動かし方が段階に上限をかけている(0.1.1): `sequential`(`GPU~`。最大 `good`)、`offload`(`GPU+RAM`。最大 `good`。0.10 まで `marginal`)、`cpu`(生成は最大 `marginal`、CPU で実時間に動く設計の読み上げ・1 回の計算の道具は最大 `good`。0.11.0、#108)。全部 GPU に載る、または動かないときは null。だから「Good、54 %、GPU~」は矛盾ではない |
 | `score` | float | 0–100。メモリの余裕(下の「Score」) |
 | `score_components` | object | `{"memory_fit": …}`(0.11.0。`score` と同じ値。0.10 までの `fit`・`headroom`・`readiness`・`basis`・`popularity` は無くした) |
 | `popularity` | float | (0.11.0)人気の順位 0–100。同じ種類・同じ出どころ(テンプレートの使用数 / Hugging Face の全期間のダウンロード数)の中の百分位で、モデルの値。並びの鍵にだけ使い、`score` には入れない([scoring.ja.md](scoring.ja.md)「人気」) |
@@ -528,9 +530,9 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 | `settings` | object \| null | 実際に判定した設定(未指定の項目は、実測の有無によらず種類ごとの既定で埋める。0.11.0。それまでは実測があれば実測の設定) |
 | `limits` | Limits \| null | この PC の GPU で、逃がさずに `good` に届く最大の設定(0.11.0。GPU の無い PC では null)。`info` が入れる。`fit` / `recommend` は `--limits` を付けたとき |
 | `vram_free_short` | bool | GPU で動くと判定したが、今の空き VRAM(`nvidia-smi` の `memory.free`)が選んだ動かし方に要る量を下回る: ほかのアプリを閉じること。段階は全体の VRAM のまま。空き VRAM が不明(`--vram`)のときは常に false |
-| `optional_parts` | object[] | (0.11.0、#81)テンプレートの既定の値で読み込まれない部品(上の量には入れていない)。1 つずつ `name`、`size_gb`(null は不明)、`optional`(`inactive` / `switch_off`。`ModelFile.optional`)、`kind`(`replace` = 使うと既定の部品の代わりに読み込む / `add` = 足すだけ)、`replaces`(代わりに読み込まなくなる既定の部品の名前)。無ければ `[]`。[scoring.ja.md](scoring.ja.md)「既定で切ってある部品」 |
-| `vram_gb_all_options` | float \| null | (0.11.0、#81)スイッチで切ってある部品(`switch_off`)を全部入れたときの、判定に使う VRAM(上限。`gpu_memory_required_gb` と同じ選び方)。`switch_off` が無い・GPU が無い・大きさ不明なら null |
-| `fit_all_options` | str \| null | (0.11.0、#81)そのときの段階。`switch_off` が無ければ null。`fit` と違うときだけ `reasons` に 1 文 |
+| `optional_parts` | object[] | (0.12.0、#81)テンプレートの既定の値で読み込まれない部品(上の量には入れていない)。1 つずつ `name`、`size_gb`(null は不明)、`optional`(`inactive` / `switch_off`。`ModelFile.optional`)、`kind`(`replace` = 使うと既定の部品の代わりに読み込む / `add` = 足すだけ)、`replaces`(代わりに読み込まなくなる既定の部品の名前)。無ければ `[]`。[scoring.ja.md](scoring.ja.md)「既定で切ってある部品」 |
+| `vram_gb_all_options` | float \| null | (0.12.0、#81)スイッチで切ってある部品(`switch_off`)を全部入れたときの、判定に使う VRAM(上限。`gpu_memory_required_gb` と同じ選び方)。`switch_off` が無い・GPU が無い・大きさ不明なら null |
+| `fit_all_options` | str \| null | (0.12.0、#81)そのときの段階。`switch_off` が無ければ null。`fit` と違うときだけ `reasons` に 1 文 |
 | `unknown_size` | bool | 重みの大きさが不明で、何も判定していない。`fit` は `unknown`(`?` と表示。「Too tight」にはしない)、`run_mode` は `unknown`(0.2.0。以前は `none`)、VRAM / RAM の値は JSON で `null`(`Estimate.to_dict`。Python の属性は 0.0 のまま)、`limits` は null、最初の理由は「大きさが分からないため判定できません」。`recommend` はこれを落とし、`fit` / `search` は最後に並べる |
 
 `basis_detail`(#34)。実測に近い順に並べる(`models.BASIS_DETAILS`):
@@ -548,7 +550,7 @@ VRAM を増やすと、代表がより重い精度・動かし方に替わって
 
 ほかの利用者の実測は、同じ GPU でだけ使う。
 - `estimate.same_gpu`: 両方に PCI 型番 ID があればそれ、無ければ正規化した名前。
-- 0.9.1 から、VRAM の比が 0.95 以上でもある(0.11.0 までは 0.97)。
+- 0.9.1 から、VRAM の比が 0.95 以上でもある(0.10 までは 0.97)。
 - 別の GPU の PC は、それが無いものとして判定する。
 
 そのほかの決まり:
@@ -601,9 +603,9 @@ Limits / 限界(値はすべて、逃がさずに GPU で `perfect` か `good` �
 
 動かし方ごとの上限(0.11.0、#108。[scoring.ja.md](scoring.ja.md)「段階の上限」):
 - 全部 GPU(`GPU`)は上限なし。
-- 部品を順に載せ替える(`GPU~`)と RAM に逃がす(`GPU+RAM`)は最大 `good`(逃がすのは 0.11.0 まで `marginal`)。
+- 部品を順に載せ替える(`GPU~`)と RAM に逃がす(`GPU+RAM`)は最大 `good`(逃がすのは 0.10 まで `marginal`)。
 - CPU は、画像・動画・音楽・効果音・3D の生成と、CPU で実時間に動くと作者が書いていない読み上げが最大 `marginal`、作者が CPU で実時間に動くと書いている読み上げ(`estimate.CPU_REALTIME_TTS`)と 1 回の計算の道具(用途がすべて `tool` / `estimate` / `matting` / `interp` / `segment` / `separate`)が最大 `good`。CPU の使用率はメインメモリ。
-- GPU の会社による上限は無い(0.11.0 まで、NVIDIA 以外と DGX Spark は `good` まで)。
+- GPU の会社による上限は無い(0.10 まで、NVIDIA 以外と DGX Spark は `good` まで)。
 
 最も良い段階になる動かし方を使う(同じなら 全部載せ → 載せ替え → 逃がす)。だから逃がすのは、全部載せ・載せ替えより段階が上がるときだけ(全部載せ・載せ替えが `good` 以上なら逃がさない)。逃がす動かし方の使用率は、逃がしたときの VRAM の使用率と、要るメモリ ÷ メインメモリのきついほう。
 実測で段階を決めた行は、使用率が 98% を超えても `good` になる(例外)。`perfect` は余裕があるという意味で、速さの保証ではない。
@@ -856,7 +858,7 @@ id の重複したモデルは、どこでも断る(0.6.0、#42)。
 
 ```json
 {
-  "genmodelfit": "0.6.0",
+  "genmodelfit": "0.12.0",
   "command": "review",
   "database": {"origin": "path", "generated_at": "2026-10-28T03:12:00Z", "models": 331, "measurements": 21},
   "pending": 1,
@@ -928,7 +930,7 @@ ModelFile: `name`、`url`、`sha256`、`size_bytes`、`directory`(ComfyUI のフ
 この 2 つは、Hugging Face の主な重みのファイルだけについて `update` / `update --inspect-only` が読む(`headers.py`。最初の 8 バイトと JSON の見出し、GGUF では最初の 1〜数 MiB の範囲指定 GET。重みは決して取らない)。null は未読。
 主なファイルとは、`main` の役割のものと、`groups.main_files` が主なファイルとして扱うもの(どのファイルにも `main` の役割が無いときの、エンコーダ / VAE 以外で最大のファイル。例: BiRefNet。0.2.0)。
 `repo_precision` / `repo_precision_source`(str \| null、任意、0.2.0): 置いてあるリポジトリから読んだ精度(`hf_api` か `config`。「Models」を参照)。見出しも名前も何も教えない最大の主なファイルにだけ設定する。
-`optional`(str \| null、任意、0.11.0、#81): 公式テンプレートの既定の値で読み込まれない部品。`inactive`(無効・素通しのノードや、どの出力のノードにも届かないノードにしかない。VRAM・メモリ・`disk_gb`・`download` に数えない)か `switch_off`(値の決まったスイッチの選ばれない枝にしかない。VRAM・メモリに数えず、`disk_gb`・`download` には数える)。null は既定で読み込む(または分からない。HF・手のモデル)。知らない値は null と同じ(数える)。`optional_replaces`(str[] \| null、任意): `switch_off` の部品のスイッチを切り替えると読み込まなくなる既定の部品のファイル名(空・null は足すだけ)。決め方は [sources.ja.md](sources.ja.md)「任意の部品」。古い読み手はこの 2 つを捨て、今までどおり全部を数える。
+`optional`(str \| null、任意、0.12.0、#81): 公式テンプレートの既定の値で読み込まれない部品。`inactive`(無効・素通しのノードや、どの出力のノードにも届かないノードにしかない。VRAM・メモリ・`disk_gb`・`download` に数えない)か `switch_off`(値の決まったスイッチの選ばれない枝にしかない。VRAM・メモリに数えず、`disk_gb`・`download` には数える)。null は既定で読み込む(または分からない。HF・手のモデル)。知らない値は null と同じ(数える)。`optional_replaces`(str[] \| null、任意): `switch_off` の部品のスイッチを切り替えると読み込まなくなる既定の部品のファイル名(空・null は足すだけ)。決め方は [sources.ja.md](sources.ja.md)「任意の部品」。古い読み手はこの 2 つを捨て、今までどおり全部を数える。
 推定器は、ファイルがどの部品かを、まず `directory`、次に `role`、次に Hugging Face のフォルダ / 既知のファイル名で決め、部品ごとに 1 つの版を数える([accuracy.md](accuracy.ja.md)「ファイルの数え方」)。
 
 Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`、`requires_custom_nodes`、`usage`、`date`、`size_bytes`、`username`(作った人。`ComfyUI` 以外は community のテンプレート)。
@@ -1000,7 +1002,8 @@ bench が Measurement を埋める方法(測り方):
 - MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by}`(`found_by` は `--url` なら `option`、127.0.0.1 の
   8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null)と `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis, settings, args}]。`settings`(0.12.0、#116)はテンプレートのままなら null、設定を変えた測定なら
+  seconds_basis, settings, args}]。ここの `installed` は状態の文字列だけ(`yes` / `no` / `unknown`。下の「入っているか」)。
+  MODEL を付けたときはオブジェクト。`settings`(0.12.0、#116)はテンプレートのままなら null、設定を変えた測定なら
   変えた設定(`{width, height}`・`{frames}`・`{seconds}`)。`args` は同じものを `measure`・`bench` の引数にしたもの
   (`["--resolution", "1536x1536"]`。テンプレートのままなら空)。測らない。
 - MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`settings`(0.12.0。`--resolution`・`--frames`・
@@ -1101,9 +1104,9 @@ genmodelfit は、これを**決して送らない**。利用者が `share` の�
 
 ```json
 {
- "contrib_schema": 1,
+ "contrib_schema": 2,
  "kind": "genmodelfit-measurement",
- "tool": {"name": "genmodelfit", "version": "0.3.0"},
+ "tool": {"name": "genmodelfit", "version": "0.12.0"},
  "date": "2026-10-20",
  "system": {
   "os_family": "windows",
@@ -1140,7 +1143,7 @@ genmodelfit は、これを**決して送らない**。利用者が `share` の�
 
 その他の決まり:
 - これらが無い古いファイルも有効のまま。
-- `contrib_schema` は 1 と 2 を受け付ける(#90)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.10.1 の次の版から書く。1 に `files_fp` があれば誤り。
+- `contrib_schema` は 1 と 2 を受け付ける(#90)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.11.0 から書く。1 に `files_fp` があれば誤り。
 - (0.12.0、#116、任意)`measurement.settings_override`: テンプレートの設定を変えて測ったときだけ `true` を書く(true / false 以外は誤り)。0.9.0 の GPU の任意の項目と同じく、`contrib_schema` は上げない。`contrib aggregate` は、この印の付いた提出を別の行にまとめ、行にも印を付ける。
 - 名前には `(R)`、`(TM)`、`™`、`®` を含んでよい。`vendor` と別のベンダーの名前はエラー。`apple` はチップ名(`Apple M2 Pro`)か `mps` だけ。
 - 256 GiB を超える `vram_gb`、`ram_total_gb` × 1.05 + 1 GiB を超える `peak_ram_gb`、NaN / 無限大 / 負の数はエラー(ファイルの NaN は読むときに断る)。
@@ -1149,7 +1152,9 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 
 **限界(正直に)**: 確認はパターンで、理解ではない。
 **検出しないもの**:
-- 平文の個人名や、ほかの身元が分かる言葉(例: `山田太郎のPCで測った`、`on Taro's desktop`、`github KoyoYeager`)
+- 平文の個人名や、ほかの身元が分かる言葉(例: `山田太郎のPCで測った`、`on Taro's desktop`、`github some-user`)
+- 住所(`東京都港区…`)
+- base64 らしい続きと URL エンコード以外の符号化
 - 区切りのない、言葉で書いたパス
 
 だから `contrib show` は、利用者に note を読むよう求め、人が Pull Request を 1 件ずつ確かめる。
@@ -1282,7 +1287,7 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 - `fit_change`: この提出だけで、提出された GPU の PC の段階が変わる。
   - 「提出された GPU の PC」= 名前・PCI 型番 ID・ベンダーが同じで、VRAM が提出の `vram_gb` と同じ。同じ名前の、ほかの公称 VRAM が分かっていればそれも含める(Intel Arc: `hardware._INTEL_XPU`。NVIDIA: `estimate.NVIDIA_VRAM_VARIANTS`、0.9.1: RTX 2060 / 3050 / 3060 / 3080 / 4060 Ti / 5060 Ti)。
   - これに RAM 16 / 32 / 64 GB を掛け、既定の設定と提出の設定で調べる。
-  - 段階が上がる場合、AMD / Intel / Apple の Good の上限が外れる場合を含む。
+  - 段階が上がる場合を含む。
   - ほかの GPU には、0.9.0 から影響しない。
   - 0.8.0 までは これらは「要レビュー」で、sha8 ごとの承認(`--allow-review`、`data/contrib/REVIEWED`)が要った。どちらも廃止した。
 
@@ -1310,7 +1315,7 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - `ok` の提出は出どころ(`contrib.submission_sources`: そのファイルを足したコミット。git の履歴が無い・浅い clone では提出ごと)ごとに中央値をとり、その出どころの値のうち |x − 中央値| / (1.4826 × MAD) > 3.5 のものは外れ値(出どころが 3 つ以上のときだけ。MAD は中央値の 2% を下限にする)。
 - 残りの出どころの値の中央値が値になる。`n_used`(使った提出の数)・`n_sources`(使った出どころの数)・`n_oom`・`n_error`・`runs_evidence`(OOM の出どころが ok の出どころより少ないか)・`gpu_known`・`files_fp` を付ける(OOM の実行だけのグループは、`outcome: oom` の 1 行になり、決して使われない)。
 - グループが `consistent`(較正に入る)になるのは、使った出どころが 2 つ以上で、その幅が中央値の 15% 以内で、グループに OOM が無いとき。
-- `--json` と出力の 1 行目の下に、出どころの数え方(`sources_from`: `git` / `files`)を出す。同梱のまとめは、履歴のある clone で版を出すときに作る(docs/release.ja.md「次からの版を出す手順」)。
+- `--json` と出力の 1 行目の下に、出どころの数え方(`sources_from`: `git` / `files`)を出す。同梱のまとめは、履歴のある clone で版を出すときに作る(docs/release.ja.md「版を出す手順」)。
 - 出力の行は、`origin: "community"` の Measurement の記録(Measurement を参照)で、順は固定。だから同じ入力は常に同じファイルになる。
 
 `--output` は `{unit, source: "community", contrib_schema, date (最新の提出の日付), method, submissions, measurements}` を書く(空の結果は `--allow-empty` が無いと書かない。同梱のファイルを誤って空にしないため)。
@@ -1319,7 +1324,7 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 - 古い版は知らないキーとして読み飛ばす(読むのは `measurements` だけ)。
 
 同梱の写しは `src/genmodelfit/data/measurements_community.json` で、ほかの実測と一緒に読み込まれる。
-- 作り直すのは版を出すとき(docs/release.ja.md「次からの版を出す手順」)。提出の PR は data/contrib だけを変えるので、マージしてもまだ入らない。
+- 作り直すのは版を出すとき(docs/release.ja.md「版を出す手順」)。提出の PR は data/contrib だけを変えるので、マージしてもまだ入らない。
 - 試験は、`submissions` の提出がすべて data/contrib にあり、それだけをまとめ直すと同梱のファイルと同じになることを確かめる。まだ入っていない提出が data/contrib にあってもよい。
 
 `--report` は、同梱の保守者の行 + 新しい community の行(ローカルのキャッシュは決して使わない)で較正(`calibrate.calibrate`)をやり直し、`report` を返す: `{threshold_pct, n_fit, coefficients, summary, by_modality, loo, check, breaches, breach, fit_changes}`。
@@ -1389,7 +1394,7 @@ DownloadPlan:
 | `alternatives` | object[] | 検討したほかのワークフロー: `id`、`precision`、`use`、`fit_level`、`memory_required_gb`、`size_bytes`、`auto`、`ok`(任意。#75 から。gated・取得できない・同じ名前の別のファイルが無ければ true。無検閲・ライセンス不明・空き・上限は数えない) |
 | `license_url` | str \| null | モデルのライセンスのページ |
 | `ok` | bool | `blocked` が空 |
-| `skipped_optional` | str[] | (0.11.0、#81)落とさない任意の部品(`ModelFile.optional` が `inactive`)のファイル名。`with_optional=True`(CLI は `--with-optional`)なら空 |
+| `skipped_optional` | str[] | (0.12.0、#81)落とさない任意の部品(`ModelFile.optional` が `inactive`)のファイル名。`with_optional=True`(CLI は `--with-optional`)なら空 |
 
 PlannedFile:
 
@@ -1468,14 +1473,14 @@ row["fit_level"], row["run_mode"], row["memory_required_gb"], row["estimate_conf
 
 | 関数 | 返すもの | 備考 |
 |---|---|---|
-| `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None, windows_build=None, cpu=None)` | `SystemInfo` | `gpus`: dict `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (既定 nvidia), "pci_id"?}` または `Gpu`。判定するのは、使える NVIDIA の GPU のうち最大のもの。(0.11.0、#96)`vendor` が `amd` / `intel` / `apple` の GPU は、検出と同じ対応表(`hardware.ja.md`「NVIDIA 以外の GPU」)で判定し、使える NVIDIA が無いときだけ判定に使う(これらは `vram_gb` を省ける: Intel の単体 GPU は名前の公称、内蔵 GPU は `ram_gb` の共有の分。`1002:744c` のような `pci_id` で汎用の名前の世代を引く)。部品ごとに `other_gpus` に入り、`usable`・`reason`(使う根拠か使えない理由)・`integrated`・`needs` が分かる(上の Adapter。`source: app`)。0.11.0 より前は NVIDIA 以外を常に CPU として扱った。`windows_build`: Windows のビルド番号(22000 以上が Windows 11。AMD・Intel は Windows 11 が要る。既定はこの PC が Windows ならその番号、ほかは分からない(分からなければ AMD・Intel は使わない)。OS が Windows でないときは `ValueError`)。`cpu`: CPU の名前(名前が `AMD Radeon(TM) Graphics` だけの AMD の内蔵 GPU の世代を決める。`SystemInfo.cpu` にも入る。既定はこの PC のもの)。対応表の OS は `windows=True` が Windows、`False` が Linux(Mac では macOS)、`None` がこの PC の OS。`ram_gb` は 合計 = 空き とし、この PC のページファイルは無視する(`--ram` と同じ)。`gpu_usable`: `None` = 今のどの PyTorch CUDA ビルドも対応しない GPU、またはドライバが古すぎる GPU は CPU として扱う(理由は `notes`、[hardware.md](hardware.ja.md))。`True` = 呼び出し側が確かめた(世代と精度はここで決める)。`False` = CPU(どの会社の GPU も。`None` / `True` が効くのは NVIDIA だけ)。`windows`(既定: この PC): Windows のドライバの表と、Windows の ComfyUI の精度(Pascal は fp16)。OS、CPU、ディスクの空きはこの PC のもの。不正な GPU の dict は `ValueError` |
-| `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, gpu_vendor=None, windows_build=None, cpu=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | (0.11.0、#96)`gpu_vendor`(`amd` / `intel` / `apple`。既定 nvidia)・`windows_build`・`cpu` は `system_from` に渡す(NVIDIA 以外は `vram_gb=0` で VRAM が分からないことを示す)。 `model`: id の完全一致は内容によらず使う。そうでなければ `download` の名前の探索(`content` で絞る。1 つのモデルのワークフローが複数あれば、`recommend` の行の代表。ほかは `fit.workflows`)。見つからない / 複数のモデルに合う → `gmf.ModelNotFound`(`.candidates`)。PC は、`system_info`、無ければ `gpu_name` + `vram_gb`(両方必要。そうでなければ `ValueError`)、無ければ `cpu_only=True`(GPU 無し)、無ければこの PC(`gmf.system()`)。`system_info` を GPU の引数と一緒に渡すと `ValueError` |
-| `gmf.gpu_family(name, vendor, cpu="")` | `dict \| None` | (0.11.0、#96)AMD・Intel の GPU 名を genmodelfit の名前の表(対応表の判定と同じ表)で引く。入れる PyTorch の種類を決めるのに使える: `{"vendor": "amd"\|"intel", "backend": "rocm"\|"xpu", "arch": "gfx1101"(AMD の gfx。Intel は null), "family": "RDNA 3" / "Arc B-Series (Battlemage)"(表に無い gfx は "?"), "integrated": bool, "vram_floor_gb": float \| null(Intel の単体 GPU の名前から推す公称の VRAM。量の違う版があれば少ないほう)}`。名前が表に無い(Intel の UHD / Iris、表より新しい GPU など)ときは `None`。`cpu` は名前が `AMD Radeon(TM) Graphics` だけの AMD の内蔵 GPU を決める。表にあることは、その OS で動くことではない(RDNA 1 も表にある)。動くかは `system_from` が決める。ほかの会社は `ValueError`。通信しない |
-| `gmf.load_db(path=None, *, use_cache=True, user_measurements=True, source=None)` | `Database` | `path`: 一覧のファイル。無ければキャッシュの一覧(`use_cache`)か同梱の一覧。(0.11.0、#96)`user_measurements=False` は同梱の実測(作者の `measurements.json` とほかの利用者の実測のまとめ)だけを使い、キャッシュにあるこの PC の `bench` の実測を使わない(どの PC でも同じ判定になる)。`source`: `path` の出どころ(`Database.origin`。`gmf.data_status()` の `source`)。`"path"`(既定)か、アプリが `update_from_release` で取り込んだファイルなら `"release"`。ほかの値や、`path` 無しの `source` は `ValueError`。通信しない |
-| `Database.generated_time` / `DataStatus.generated_time` | `datetime \| None` | (0.11.0、#96)`generated_at` を UTC の aware な `datetime` にしたもの(配布の取り込みと同じ読み方。末尾の `Z` も、小数の秒の桁数によらず読む)。無い・形が違う・タイムゾーンが無いときは `None`。2 つの一覧の新しさを比べるのに使う。`to_dict()` には入らない |
-| `ModelEntry.license_unknown` / `ModelEntry.is_tool` | `bool` | (0.11.0、#96)`recommend` / `fit_list` / `search` の既定の絞り込み(`include_unknown_license=False`・`include_tools=False`)と同じ判定を 1 件ずつ: ライセンスの分からないファイルがある(ファイルが無ければ一式)、補助ツール(前処理・音の分離など)。`reviewed` と同じプロパティで、`to_dict()` には入らない |
-| `gmf.self_check()` | `dict` | (0.11.0、#96)同梱物がそろっているか(exe に固めたアプリのスモーク試験など): `{"ok": bool, "version": str, "checks": {"db" \| "measurements" \| "calibration" \| "cryptography" \| "public_keys": {"ok": bool, "detail": str}}}`(`detail` は件数・版、または誤り)。例外を出さず、通信せず、何も表示しない |
-| `gmf.parse_safetensors_header(header)` | `HeaderInfo` | (0.11.0、#96)`.safetensors` の見出しの JSON(先頭の 8 バイトのリトルエンディアンの長さの後ろ)→ `HeaderInfo(precision, params, dtypes)`(`precision` はバイト数が最大の dtype で `ModelFile.header_precision` と同じ値、`params` は要素の数、`dtypes` は dtype → バイト数。`to_dict()`)。形のおかしい見出しは `gmf.HeaderError`(`ValueError`)。通信しない |
+| `gmf.system_from(gpus=(), *, ram_gb=None, gpu_usable=None, windows=None, windows_build=None, cpu=None)` | `SystemInfo` | `gpus`: dict `{"name", "vram_gb", "driver"?, "compute_capability"?, "vendor"? (既定 nvidia), "pci_id"?}` または `Gpu`。判定するのは、使える NVIDIA の GPU のうち最大のもの。(0.12.0、#96)`vendor` が `amd` / `intel` / `apple` の GPU は、検出と同じ対応表(`hardware.ja.md`「NVIDIA 以外の GPU」)で判定し、使える NVIDIA が無いときだけ判定に使う(これらは `vram_gb` を省ける: Intel の単体 GPU は名前の公称、内蔵 GPU は `ram_gb` の共有の分。`1002:744c` のような `pci_id` で汎用の名前の世代を引く)。部品ごとに `other_gpus` に入り、`usable`・`reason`(使う根拠か使えない理由)・`integrated`・`needs` が分かる(上の Adapter。`source: app`)。0.12.0 より前は NVIDIA 以外を常に CPU として扱った。`windows_build`: Windows のビルド番号(22000 以上が Windows 11。AMD・Intel は Windows 11 が要る。既定はこの PC が Windows ならその番号、ほかは分からない(分からなければ AMD・Intel は使わない)。OS が Windows でないときは `ValueError`)。`cpu`: CPU の名前(名前が `AMD Radeon(TM) Graphics` だけの AMD の内蔵 GPU の世代を決める。`SystemInfo.cpu` にも入る。既定はこの PC のもの)。対応表の OS は `windows=True` が Windows、`False` が Linux(Mac では macOS)、`None` がこの PC の OS。`ram_gb` は 合計 = 空き とし、この PC のページファイルは無視する(`--ram` と同じ)。`gpu_usable`: `None` = 今のどの PyTorch CUDA ビルドも対応しない GPU、またはドライバが古すぎる GPU は CPU として扱う(理由は `notes`、[hardware.md](hardware.ja.md))。`True` = 呼び出し側が確かめた(世代と精度はここで決める)。`False` = CPU(どの会社の GPU も。`None` / `True` が効くのは NVIDIA だけ)。`windows`(既定: この PC): Windows のドライバの表と、Windows の ComfyUI の精度(Pascal は fp16)。OS、CPU、ディスクの空きはこの PC のもの。不正な GPU の dict は `ValueError` |
+| `gmf.judge_model(model, *, gpu_name=None, vram_gb=None, driver=None, compute_capability=None, ram_gb=None, cpu_only=False, gpu_usable=None, windows=None, gpu_vendor=None, windows_build=None, cpu=None, settings=None, content="sfw", system_info=None, db=None, comfyui_version=None)` | `Fit` | (0.12.0、#96)`gpu_vendor`(`amd` / `intel` / `apple`。既定 nvidia)・`windows_build`・`cpu` は `system_from` に渡す(NVIDIA 以外は `vram_gb=0` で VRAM が分からないことを示す)。 `model`: id の完全一致は内容によらず使う。そうでなければ `download` の名前の探索(`content` で絞る。1 つのモデルのワークフローが複数あれば、`recommend` の行の代表。ほかは `fit.workflows`)。見つからない / 複数のモデルに合う → `gmf.ModelNotFound`(`.candidates`)。PC は、`system_info`、無ければ `gpu_name` + `vram_gb`(両方必要。そうでなければ `ValueError`)、無ければ `cpu_only=True`(GPU 無し)、無ければこの PC(`gmf.system()`)。`system_info` を GPU の引数と一緒に渡すと `ValueError` |
+| `gmf.gpu_family(name, vendor, cpu="")` | `dict \| None` | (0.12.0、#96)AMD・Intel の GPU 名を genmodelfit の名前の表(対応表の判定と同じ表)で引く。入れる PyTorch の種類を決めるのに使える: `{"vendor": "amd"\|"intel", "backend": "rocm"\|"xpu", "arch": "gfx1101"(AMD の gfx。Intel は null), "family": "RDNA 3" / "Arc B-Series (Battlemage)"(表に無い gfx は "?"), "integrated": bool, "vram_floor_gb": float \| null(Intel の単体 GPU の名前から推す公称の VRAM。量の違う版があれば少ないほう)}`。名前が表に無い(Intel の UHD / Iris、表より新しい GPU など)ときは `None`。`cpu` は名前が `AMD Radeon(TM) Graphics` だけの AMD の内蔵 GPU を決める。表にあることは、その OS で動くことではない(RDNA 1 も表にある)。動くかは `system_from` が決める。ほかの会社は `ValueError`。通信しない |
+| `gmf.load_db(path=None, *, use_cache=True, user_measurements=True, source=None)` | `Database` | `path`: 一覧のファイル。無ければキャッシュの一覧(`use_cache`)か同梱の一覧。(0.12.0、#96)`user_measurements=False` は同梱の実測(作者の `measurements.json` とほかの利用者の実測のまとめ)だけを使い、キャッシュにあるこの PC の `bench` の実測を使わない(どの PC でも同じ判定になる)。`source`: `path` の出どころ(`Database.origin`。`gmf.data_status()` の `source`)。`"path"`(既定)か、アプリが `update_from_release` で取り込んだファイルなら `"release"`。ほかの値や、`path` 無しの `source` は `ValueError`。通信しない |
+| `Database.generated_time` / `DataStatus.generated_time` | `datetime \| None` | (0.12.0、#96)`generated_at` を UTC の aware な `datetime` にしたもの(配布の取り込みと同じ読み方。末尾の `Z` も、小数の秒の桁数によらず読む)。無い・形が違う・タイムゾーンが無いときは `None`。2 つの一覧の新しさを比べるのに使う。`to_dict()` には入らない |
+| `ModelEntry.license_unknown` / `ModelEntry.is_tool` | `bool` | (0.12.0、#96)`recommend` / `fit_list` / `search` の既定の絞り込み(`include_unknown_license=False`・`include_tools=False`)と同じ判定を 1 件ずつ: ライセンスの分からないファイルがある(ファイルが無ければ一式)、補助ツール(前処理・音の分離など)。`reviewed` と同じプロパティで、`to_dict()` には入らない |
+| `gmf.self_check()` | `dict` | (0.12.0、#96)同梱物がそろっているか(exe に固めたアプリのスモーク試験など): `{"ok": bool, "version": str, "checks": {"db" \| "measurements" \| "calibration" \| "cryptography" \| "public_keys": {"ok": bool, "detail": str}}}`(`detail` は件数・版、または誤り)。例外を出さず、通信せず、何も表示しない |
+| `gmf.parse_safetensors_header(header)` | `HeaderInfo` | (0.12.0、#96)`.safetensors` の見出しの JSON(先頭の 8 バイトのリトルエンディアンの長さの後ろ)→ `HeaderInfo(precision, params, dtypes)`(`precision` はバイト数が最大の dtype で `ModelFile.header_precision` と同じ値、`params` は要素の数、`dtypes` は dtype → バイト数。`to_dict()`)。形のおかしい見出しは `gmf.HeaderError`(`ValueError`)。通信しない |
 | `gmf.platform_verification(system, measurements=None)` | `dict` | (0.11.0、#108)`system` の GPU の種類が確認済みか: `{"verified": bool, "kind": "nvidia/dedicated" など \| None, "models": [動いた機種の名前]}`(2 機種以上で確認済み)。`measurements` を省くと同梱の実測(この PC の bench は入れない)。CLI の JSON の `system.platform_verified` と同じ。通信しない |
 | `gmf.set_language(lang)` / `gmf.get_language()` | `None` / `str` | genmodelfit が返す文(`estimate.reasons`・`notes`・gate の `detail`・エラーの文など)の表示の言語。`"en"` か `"ja"`。`None` で取り消す。**既定は英語**で、OS の言語は見ない。決め方(上が優先): CLI の `--lang`、環境変数 `GENMODELFIT_LANG`、`set_language()`、`en`。CLI の `--lang` はその呼び出しの間だけ効き(`contextvars.ContextVar`)、ほかのスレッドのライブラリの呼び出しの言語は変えない。文は、それを持つ値を作ったときの言語で決まる(`ja` で作った `Fit` の `notes` は、後で `set_language("en")` にしても日本語のまま)。変わるのは文の言語だけで、キー・ID・コード・点数・判定は変わらない。一覧に保存された自由記述(`review.note`・`license_evidence`・実測の `source` / `note`)は訳さない。ほかの値は `ValueError`(#73) |
 
@@ -1528,7 +1533,7 @@ db = gmf.update_from_release(
 - (#3)`ModelFile.head_status` / `head_checked_at`
 - (#30)`ModelEntry.workflow_precision` / `precision_source` と `ModelFile.repo_precision` / `repo_precision_source`
 - (#36、0.5.0)`ModelEntry.languages` / `runtime` / `description` / `card_languages` と `source: "manual"`
-- (#81、0.11.0)`ModelFile.optional` / `optional_replaces`
+- (#81、0.12.0)`ModelFile.optional` / `optional_replaces`
 
 task の `tool` は、既知のタグが無い Image Tools / Video Tools のテンプレートのために足した。
 
@@ -1554,7 +1559,7 @@ task の `tool` は、既知のタグが無い Image Tools / Video Tools のテ�
 | `counts` | `models`、`modality`、`content`、`source`、`license`(null は不明)、`license_tier`、`files_complete_false` |
 | `head_check` | `checked_at`、`urls`(HEAD を送った重複しない HF の URL)、`status`(ステータスコードごとの数)、`unchecked`(答えなし)、`not_sent`(ほかのホストのファイル。ホストごと) |
 | `file_headers` | `files`、`urls`(HF の主な重みのファイル)、`from_cache`、`fetched`、`failed`、`skipped_offline`、`errors`(最初の 20)、`checked_at`、`precision_unknown`(精度がまだ null のエントリ) |
-| `sampler_stages` | `update --inspect-only` の後だけ: `templates`、`failed`、`multi_stage`(サンプラーの組が 2 つ以上のエントリ)、`workflow_precision`(ローダのノードから精度を推したエントリ)、`optional_parts`(任意の部品のあるエントリ。0.11.0、#81)、`checked_at` |
+| `sampler_stages` | `update --inspect-only` の後だけ: `templates`、`failed`、`multi_stage`(サンプラーの組が 2 つ以上のエントリ)、`workflow_precision`(ローダのノードから精度を推したエントリ)、`optional_parts`(任意の部品のあるエントリ。0.12.0、#81)、`checked_at` |
 | `repo_precision` | `files`(見出しも名前も精度を教えない、HF の最大の主なファイル)、`repos`、`from_cache`、`fetched`(リクエスト)、`hf_api`、`config`、`unknown`(それぞれで決まったファイル / どちらでも決まらなかったファイル)、`skipped_offline`、`unauthorized`(API が 401 を返したリポジトリ)、`size_mismatch`(大きさが合わず API の dtype を使わなかったリポジトリ)、`errors`(最初の 20)、`checked_at`、`precision_unknown`(精度がまだ null のエントリ。最終)、`precision_source`(出どころごとのエントリ数。`unknown` = null) |
 | `manual` | `models`(`src/genmodelfit/data/manual.json` から手で足したモデルの数)、`ids`(0.5.0) |
 | `app_fields` | `languages_prompt`、`languages_speech`(空でないリストを持つエントリ)、`runtime`、`description`、`from_card`(保存した Hugging Face のカードの言語 `card_languages` を持つエントリ)(0.5.0)、`card_languages_carried`(カードの言語を前の一覧から引き継いだエントリ。完全な `update` だけ) |
