@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
+## [0.12.1] - Unreleased
+
+### Fixed
+
+- `measure` without a model no longer asks for a number when no running ComfyUI was found; it shows the list, then
+  how to start ComfyUI, and exits with 1 (#123). Before, it stopped only after a model was chosen.
+
 ## [0.12.0] - 2026-10-28
 
 ### Added

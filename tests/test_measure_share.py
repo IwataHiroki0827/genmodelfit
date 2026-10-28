@@ -272,8 +272,19 @@ def test_measure_choice_q_does_nothing(capsys, monkeypatch, this_pc):
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     answers(monkeypatch, "q")
     monkeypatch.setattr(bench, "run", lambda *a, **k: pytest.fail("測らない"))
-    assert cli.main(["--lang", "ja", "measure"]) == 0
+    assert cli.main(["--lang", "ja", "measure", "--url", "http://127.0.0.1:9"]) == 0
     assert "測りませんでした" in capsys.readouterr().err
+
+
+def test_measure_list_without_comfyui_does_not_ask(capsys, monkeypatch, this_pc):
+    # 一覧は見せるが、ComfyUI が起動していなければ番号を尋ねずに起動の仕方を出す(#123)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("起動していなければ尋ねない"))
+    assert cli.main(["--lang", "ja", "measure", "-n", "3"]) == 1
+    cap = capsys.readouterr()
+    assert len([x for x in cap.out.splitlines() if re.match(r"\s+\d+\. ", x)]) == 3
+    assert "エラー: ComfyUI を探していません" in cap.err  # 試験では探すのを止めてある(conftest)
+    assert "ComfyUI を起動してから" in cap.err and "--url" in cap.err and "Traceback" not in cap.err
 
 
 def test_measure_without_comfyui_explains_how_to_start(capsys, monkeypatch, this_pc):
