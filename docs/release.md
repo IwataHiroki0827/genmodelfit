@@ -10,6 +10,7 @@ This page is for the maintainer. App developers who only consume the list can sk
 - [GitHub environments (set up 2026-10-20)](#github-environments-set-up-2026-10-20)
 - [First release (v0.1.0)](#first-release-v010)
 - [Releasing later versions](#releasing-later-versions)
+- [Receiving measurement issues (#113)](#receiving-measurement-issues-113)
 - [Data releases](#data-releases)
 - [Weekly list update (#19)](#weekly-list-update-19)
   - [What to check in the PR](#what-to-check-in-the-pr)
@@ -140,6 +141,28 @@ About manual runs and PyPI:
 - Pre-registration does not reserve the name. The name is fixed by the first publish.
 - **Because of PEP 541 (handling of abandoned names), do not claim the name with an empty placeholder version. Publish a working v0.1.**
 - A published version cannot be deleted (only yanked). Version numbers cannot be reused, so to fix a release, ship the next version.
+
+## Receiving measurement issues (#113)
+
+`genmodelfit share` opens the issue form `.github/ISSUE_TEMPLATE/measurement.yml` with a measurement filled in. The
+workflow `.github/workflows/measurement-intake.yml` handles issues with the `measurement` label (opened, edited, or the
+label added) while they are open:
+
+1. `genmodelfit contrib intake` reads the issue body from the event file as data (never through `${{ }}` in a script),
+   runs the same checks as `contrib validate` plus the privacy checks of `share`, and refuses a submission whose content
+   is already in `data/contrib` ([schema.md, "contrib"](schema.md#contrib)).
+2. Accepted: it pushes `data/contrib/<GPU>/<date>-<sha8>.json` to the branch `measurement/issue-<N>`, opens a PR (body:
+   the issue author, notices for the maintainer, `Closes #N`) and comments the link on the issue. An edit of the issue
+   updates the same branch. Merging the PR closes the issue.
+3. Refused: it comments the reasons (English and Japanese) on the issue; editing the body runs it again.
+
+What to check before merging: the notices in the PR body (the same as the `Contrib` job summary; contrib.yml does not
+run for a PR made with `GITHUB_TOKEN`), and that one person did not send the same measurement in several issues (each
+issue is one source, like a PR).
+
+One-time setup: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" on, and the
+label `measurement` created (Issues → Labels). The workflow uses only `GITHUB_TOKEN` (contents, pull-requests and
+issues write, for this job only).
 
 ## Data releases
 

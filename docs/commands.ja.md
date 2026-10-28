@@ -21,7 +21,7 @@
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
 | 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
-| モデルを実測して送る | `genmodelfit bench <ID> --url http://127.0.0.1:8188 --share` | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
+| モデルを実測して送る | `genmodelfit measure`(ComfyUI を起動しておく)、次に `genmodelfit share` で GitHub の「Create」を押す | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
 
@@ -79,8 +79,8 @@
 | `--json` |  |  | JSON で出す | すべてのコマンド |
 | `--vram` | `GB` | この PC から調べる | GPU の VRAM を GB(GiB)で決める(例: 8。0 なら GPU なしとして判定)。別の PC として判定するときに | `system`・`recommend`・`fit`・`search`・`info`・`download` |
 | `--ram` | `GB` | この PC から調べる | メインメモリを GB(GiB)で決める(例: 32)。別の PC として判定するときに | `system`・`recommend`・`fit`・`search`・`info`・`download` |
-| `--db` | `PATH` | update で取った一覧、無ければ同梱の一覧 | この一覧のファイル(db.json)を使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`gate`・`bench` |
-| `--no-cache` |  |  | update で取った一覧を使わず、同梱のデータを使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`gate`・`review list`・`bench` |
+| `--db` | `PATH` | update で取った一覧、無ければ同梱の一覧 | この一覧のファイル(db.json)を使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`measure`・`gate`・`bench` |
+| `--no-cache` |  |  | update で取った一覧を使わず、同梱のデータを使う | `system`・`recommend`・`fit`・`search`・`types`・`info`・`download`・`measure`・`gate`・`review list`・`bench` |
 | `--license-allowlist` | `LIST\|FILE` | [gate.ja.md](gate.ja.md) の許可リスト | 自動のおすすめに許すライセンス(「mit,apache-2.0」か、1 行に 1 つ書いたファイル)。既定は [gate.ja.md](gate.ja.md)。空の文字("")は指定なしと同じ | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
 | `--comfyui-version` | `VER` | 一覧が記録した最新のリリース | 使う ComfyUI の版。アプリは自分の版を必ず渡す(既定は update が記録した最新のリリース) | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
 | `--max-head-age-days` | `DAYS` | `30` | HEAD の確認をこの日数まで信じる(既定 30。none で期限なし) | `system`・`recommend`・`fit`・`search`・`info`・`update`・`download`・`gate` |
@@ -114,9 +114,9 @@
 |---|---|---|
 | `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download`・`measure` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
 | `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
-| `GENMODELFIT_CACHE_DIR` | `update`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
+| `GENMODELFIT_CACHE_DIR` | `update`・`measure`・`share`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
 
 通信は、プロキシと証明書の環境変数(`HTTPS_PROXY`・`REQUESTS_CA_BUNDLE` など)にも従います。`~/.netrc` の資格情報は送りません。
@@ -143,8 +143,9 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 
 この PC の設定ファイルの場所は `genmodelfit config path` で分かります。`GENMODELFIT_CONFIG_DIR`・`GENMODELFIT_CACHE_DIR`
 でフォルダを変えられます。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
-`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`)が入ります。
-キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した `bench` の結果も消えます)。
+`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`。`share` が一覧に出すもの)、
+`share` で送った印(`submissions_shared.json`)が入ります。
+キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した結果も消えます)。
 
 ## 終了コード
 
@@ -154,7 +155,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench` は送った仕事を取り消してから 1 で終わります。 |
+| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消してから 1 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 
@@ -168,6 +169,8 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 - [`genmodelfit info`](#genmodelfit-info) — 1 つのモデルの詳細
 - [`genmodelfit update`](#genmodelfit-update) — 新しい一覧を取る(利用者は `--from-release`。オプションなしは上流から作り直す)
 - [`genmodelfit download`](#genmodelfit-download) — モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)
+- [`genmodelfit measure`](#genmodelfit-measure) — 測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)
+- [`genmodelfit share`](#genmodelfit-share) — 送っていない実測を選び、中身を見せて GitHub の提出のフォームをブラウザで開く(送るのは「Create」を押したとき)
 - [`genmodelfit config`](#genmodelfit-config) — 設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える
   - [`genmodelfit config show`](#genmodelfit-config-show) — 今の設定と出どころ(サブコマンドを省いたときはこれ)
   - [`genmodelfit config set`](#genmodelfit-config-set) — 値を保存する
@@ -180,11 +183,12 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
   - [`genmodelfit review approve`](#genmodelfit-review-approve) — 根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)
   - [`genmodelfit review reject`](#genmodelfit-review-reject) — 一覧から外し、update でも入れないように記録する
 - [`genmodelfit bench`](#genmodelfit-bench) — 動いている ComfyUI で実測する
-- [`genmodelfit contrib`](#genmodelfit-contrib) — 実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)
+- [`genmodelfit contrib`](#genmodelfit-contrib) — 保守する人向け: 実測の提出を作る・検査する・まとめる(送るのは measure と share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — bench が保存した結果から提出用の JSON を作る
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — 送る中身と個人の情報の点検を見せる
-  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — 中身と点検を見せ、GitHub で送るページの URL を出す(端末ならブラウザで開くかを尋ねる。何も送らない)
+  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — `genmodelfit share` と同じ(前からのスクリプトのため)
   - [`genmodelfit contrib validate`](#genmodelfit-contrib-validate) — 形・値・個人の情報・重複を検査する(CI でも使う)
+  - [`genmodelfit contrib intake`](#genmodelfit-contrib-intake) — GitHub の実測の Issue を検査し、PR に入れるファイルを作る(measurement-intake.yml が使う)
   - [`genmodelfit contrib aggregate`](#genmodelfit-contrib-aggregate) — 同じモデル・設定・GPU ごとにまとめ、精度を点検する
 
 ## `genmodelfit system`
@@ -742,6 +746,143 @@ genmodelfit download "Z-Image-Turbo" --comfyui-dir C:/ComfyUI  # 2. ComfyUI の�
 genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落とす(無検閲・ライセンス不明も。条件は自分で確かめる)
 ```
 
+## `genmodelfit measure`
+
+測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)
+
+**使い方**
+
+```text
+genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
+                    [--comfyui-dir DIR] [--yes] [--limit N] [--timeout SEC] [model]
+```
+
+- 起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
+- MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU の実測がまだ無いもの。
+- 並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
+- 番号で選ぶ(q でやめる)。
+- MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI のテンプレートのあるワークフローだけ)。
+- 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま)、どの ComfyUI か・どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(`--yes` で尋ねない)。
+- 時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。
+- 入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。
+- 終わると結果と保存した場所を出し、最後に `genmodelfit share`(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `model` |  |  | 測るモデルの名前(表の Model)・ワークフローの ID・その一部(省くと、測ると役に立つモデルを出して選ぶ) |
+| `--url` | `URL` | この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す | 測りに使う ComfyUI の URL(例 http://127.0.0.1:8188) |
+| `--comfyui-dir` | `DIR` | download と同じ決め方 | ComfyUI のフォルダ(モデルが入っているかを見る・入っていないとき落とす場所) |
+| `--yes`, `-y` |  |  | 測る前に尋ねない(入っていないモデルは download `--yes` と同じ決まりで落とす) |
+| `--limit`, `-n` | `N` |  | 引数なしで出す提案の数(既定 10) |
+| `--timeout` | `SEC` | `1800` | 待つ時間の上限(0 より大きい秒数。既定 1800) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
+
+**前提**
+
+- この PC の GPU と、そこで動く ComfyUI: `--url` か、この PC で起動中のもの(127.0.0.1 の 8188 か 8000)。
+- 起動していなければ、起動のしかたを出して 1 で終わる。
+- GPU が空いていること: ほかのプログラムが使っていれば測らない(`--force` の無い bench と同じ)。
+
+**副作用**
+
+- 通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(`--url` が無いとき)、測る ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、落とすときはモデルのファイル。
+- この PC のことはほかへ送らない。
+- 結果を `<cache>/measurements/`(この PC の判定に使う)に、送るための下書きを `<cache>/submissions/`(`genmodelfit share` が一覧に出すもの)に書く。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(選ばなかった・出す提案が無いときも) |
+| 1 | 失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、落とさなかった、実行の失敗(メモリ不足など)、同意が無い |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit measure --json
+genmodelfit measure image_z_image_turbo_int8 --yes --json
+genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+```
+
+JSON の出力(`--json`): [schema.ja.md「measure」](schema.ja.md#measure)
+
+**例**
+
+```sh
+genmodelfit measure                              # 測ると役に立つモデルを選んで測る(何も送らない。送るのは genmodelfit share)
+genmodelfit measure "Z-Image-Turbo"              # モデルを名前で決めて測る
+genmodelfit measure --url http://127.0.0.1:8000  # この ComfyUI で測る(探さない)
+```
+
+## `genmodelfit share`
+
+送っていない実測を選び、中身を見せて GitHub の提出のフォームをブラウザで開く(送るのは「Create」を押したとき)
+
+**使い方**
+
+```text
+genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PATH] [file]
+```
+
+- 実測を送る: 送る中身をそのまま見せ、GitHub の提出のフォームを開く。
+- FILE を省くと、measure(と bench `--share`)が保存した実測のうち送った印の無いものを新しい順に出し、番号で選ぶ。
+- 中身のすべて(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC やユーザの名前は入らない)と個人の情報の点検を見せてから、中身を入れた GitHub の実測の Issue のフォームをブラウザで開く: ログインして「Create」を押す。
+- ボットが contrib validate と同じ検査をして、それを足す Pull Request を作り、メンテナがマージする。
+- 中身が URL に入りきらないときはクリップボード(clip・pbcopy・wl-copy・xclip・xsel)に写して中身の無いフォームを開くので、そこに貼り付ける。
+- ページを開いた(または URL を出した)ら、この PC で送った印を付け、次から一覧に出さない(`--all` で出す)。
+- GitHub のアカウントが要る。
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `file` |  |  | 送る提出の JSON(省くと、送っていない実測を出して選ぶ) |
+| `--print-url` |  |  | ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け) |
+| `--all` |  |  | 送った印のある実測も一覧に出す |
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+**前提**
+
+- `genmodelfit measure` が保存した実測か、提出の JSON。
+
+**副作用**
+
+- 通信しない: ブラウザを開くだけ(端末で、`--json`・`--print-url` が無いとき)。
+- 送られるのは GitHub で「Create」を押したときだけ。
+- 送った印を `<cache>/submissions_shared.json` に書く。
+- 中身をクリップボードに写すことがある。
+
+**終了コード**
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功(選ばなかった・送るものが無いときも) |
+| 1 | 失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある |
+| 2 | 使い方の誤り |
+
+**使い方の例(スクリプト・アプリ向け)**
+
+```sh
+genmodelfit share --json
+genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
+genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+```
+
+JSON の出力(`--json`): [schema.ja.md「share」](schema.ja.md#share)
+
+**例**
+
+```sh
+genmodelfit share        # 送っていない実測を選んで送る
+genmodelfit share --all  # 送った印のあるものも出す
+```
+
 ## `genmodelfit config`
 
 設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える
@@ -1128,7 +1269,8 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - モデルの名前や ID の一部は受けない。
 - hf: のモデルにはテンプレートが無い(代わりに `--workflow` で API 形式のワークフローを渡す)。
 - 保存した結果はこの PC の判定に使う。
-- `--share` は提出の用意をし、y と答えるとブラウザで GitHub の「新しいファイル」のページを開く: GitHub にログインし(アカウントが要る)、「Propose changes」、次に「Create pull request」を押す([CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない))。
+- `genmodelfit measure` は、テンプレートの ID を知らなくても同じことをする(モデルを提案し、ComfyUI を探す)。
+- `--share` は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが要る)、「Create」を押す(`genmodelfit share` と同じ)。
 
 **オプションと引数**
 
@@ -1153,7 +1295,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--source` | `SOURCE` |  | 誰がどこで測ったか(結果の source に入る) |
 | `--note` | `NOTE` |  | 結果の note に足す文 |
 | `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 1)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
-| `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+| `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub の実測のフォームを開く(`genmodelfit share` と同じ。端末でなければ URL を出す)。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
 
@@ -1169,7 +1311,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - 通信: `--url` の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。
 - その ComfyUI にテンプレートが無ければ、GitHub から公式のテンプレートのファイルを読む。
 - この PC のことはほかへ送らない。
-- `--share` は URL を出し、y と答えたときだけブラウザを開く。
+- `--share` はブラウザでフォームを開く(か URL を出す)だけ。
 - 結果の JSON を `<cache>/measurements/`(か `--output`)に書く。
 - 失敗した結果と標準でない条件の結果は、`--save-failed`・`--save-nonstandard`・`--output` が無ければ表示だけ。
 - `--submission`・`--share` は提出用の JSON も書く。
@@ -1197,21 +1339,22 @@ JSON の出力(`--json`): [schema.ja.md「bench」](schema.ja.md#bench)
 
 ## `genmodelfit contrib`
 
-実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)
+保守する人向け: 実測の提出を作る・検査する・まとめる(送るのは measure と share)
 
 **使い方**
 
 ```text
-genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,aggregate} ...
+genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる。genmodelfit は何も送らない(共有は、利用者が自分の GitHub で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
+実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる(保守する人向け。実測を送るのは `genmodelfit measure` と `genmodelfit share`)。genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
 
 ```text
 make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
 show      <file>                 送る中身と個人の情報の点検(同意のため)
-share     <file>                 show と同じ点検のあと、GitHub で送るページの URL を出す
-                                 (端末ならブラウザで開くかを尋ねる。開くだけで、送るのはブラウザで押したとき)
+share     [file]                 genmodelfit share と同じ(前からのスクリプトのため)
+intake    <event.json> --out DIR GitHub の実測の Issue を検査し、PR に入れるファイルを作る
+                                 (measurement-intake.yml が使う)
 validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
 aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
           同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
@@ -1224,7 +1367,8 @@ aggregate [dir] --check
 - 通信しない。
 - make は提出のファイルを書く。
 - aggregate は `--output` のときだけ書く。
-- share は端末で y と答えたときだけブラウザを開く(`--json`・端末でないときは URL を出すだけ)。
+- intake は `--out` に書く。
+- share は `genmodelfit share` と同じ(端末ならブラウザを開く。`--json`・`--print-url`・端末でないときは URL を出すだけ。送った印を書く)。
 
 **終了コード**
 
@@ -1250,7 +1394,7 @@ genmodelfit contrib validate data/contrib --json
 genmodelfit contrib aggregate --report --json --fail-on-breach
 ```
 
-**サブコマンド**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib aggregate`
+**サブコマンド**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib intake`, `genmodelfit contrib aggregate`
 
 ### `genmodelfit contrib make`
 
@@ -1295,12 +1439,12 @@ genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
 
 ### `genmodelfit contrib share`
 
-中身と点検を見せ、GitHub で送るページの URL を出す(端末ならブラウザで開くかを尋ねる。何も送らない)
+`genmodelfit share` と同じ(前からのスクリプトのため)
 
 **使い方**
 
 ```text
-genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
+genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all] [file]
 ```
 
 **オプションと引数**
@@ -1308,7 +1452,9 @@ genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] file
 | オプション / 引数 | 値 | 既定 | 説明 |
 |---|---|---|---|
 | `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
-| `file` |  |  | 提出用の JSON |
+| `file` |  |  | 送る提出の JSON(省くと、送っていない実測を出して選ぶ) |
+| `--print-url` |  |  | ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け) |
+| `--all` |  |  | 送った印のある実測も一覧に出す |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`
 
@@ -1332,6 +1478,28 @@ genmodelfit contrib validate [-h] [--lang {en,ja}] [--json] [--db PATH] [--stric
 | `--strict` |  |  | 注意(warnings)も失敗にする |
 | `--no-filename-check` |  |  | ファイル名(`<GPU>/<日付>-<sha8>.json`)を確かめない |
 | `--markdown` |  |  | Markdown の表で出す(CI のまとめ用) |
+
+- [共通のオプション](#共通のオプション)も使えます: `--json`
+
+### `genmodelfit contrib intake`
+
+GitHub の実測の Issue を検査し、PR に入れるファイルを作る(measurement-intake.yml が使う)
+
+**使い方**
+
+```text
+genmodelfit contrib intake [-h] [--lang {en,ja}] [--json] [--db PATH] [--existing DIR] --out DIR
+                           EVENT_JSON
+```
+
+**オプションと引数**
+
+| オプション / 引数 | 値 | 既定 | 説明 |
+|---|---|---|---|
+| `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
+| `EVENT_JSON` |  |  | issues のイベントのファイル |
+| `--existing` | `DIR` | `data/contrib` | 同じ内容の提出を探すフォルダ(既定 data/contrib) |
+| `--out` | `DIR` |  | 結果のファイルを書くフォルダ |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`
 

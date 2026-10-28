@@ -1770,8 +1770,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
                 print()
                 return max(code, _share(sub_path, args, as_json=False)[0])
             print(
-                "           check it with genmodelfit contrib"
-                f" show {sub_path}; in the PR it goes to {sub_repo}"
+                f"           send it with genmodelfit share {sub_path}"
+                f" (in the repository it becomes {sub_repo})"
             )
         return code
     parts = [f"{s.width}x{s.height}" if s.width else None, f"{s.frames} フレーム" if s.frames else None]
@@ -1795,7 +1795,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
         if args.share:
             print()
             return max(code, _share(sub_path, args, as_json=False)[0])
-        print(f"          中身は genmodelfit contrib show {sub_path} で確かめ、PR では {sub_repo} に置きます")
+        print(f"          送るときは genmodelfit share {sub_path}(リポジトリでは {sub_repo})")
     return code
 
 
@@ -1861,7 +1861,7 @@ def format_submission(data: dict[str, Any]) -> list[str]:
     peak = mm.get("peak_vram_gb")
     return [
         "=== 提出する中身 ===",
-        f"置き場所:   {suggested_path(data)}(PR でこの名前で足す)",
+        f"置き場所:   {suggested_path(data)}(受け付けたときのリポジトリの中の名前)",
         f"形式:       contrib_schema {data.get('contrib_schema')}"
         f"({tool.get('name')} {tool.get('version')}、{data.get('kind')})",
         f"日付:       {data.get('date')}(UTC の日付だけ。時刻は入れない)",
@@ -1879,7 +1879,7 @@ def format_submission(data: dict[str, Any]) -> list[str]:
         f"メモ:       {mm.get('note') or '(なし)'}",
         "",
         "これがファイルの中身のすべてです。genmodelfit はこのファイルをどこにも送りません。",
-        "共有するのは、あなたが自分の GitHub で Pull Request を出したときだけです(CONTRIBUTING.md)。",
+        "共有するのは、あなたが GitHub のフォームで「Create」を押したときだけです(CONTRIBUTING.md)。",
     ]
 
 
@@ -1907,7 +1907,7 @@ def _format_submission_en(data: dict[str, Any]) -> list[str]:
     peak = mm.get("peak_vram_gb")
     return [
         "=== What will be shared ===",
-        f"Path:       {suggested_path(data)} (add it under this name in the PR)",
+        f"Path:       {suggested_path(data)} (its name in the repository once accepted)",
         f"Format:     contrib_schema {data.get('contrib_schema')}"
         f" ({tool.get('name')} {tool.get('version')}, {data.get('kind')})",
         f"Date:       {data.get('date')} (UTC date only, no time)",
@@ -1926,7 +1926,7 @@ def _format_submission_en(data: dict[str, Any]) -> list[str]:
         f"Note:       {mm.get('note') or '(none)'}",
         "",
         "This is everything in the file. genmodelfit does not send this file anywhere.",
-        "It is shared only when you open a Pull Request from your own GitHub account (CONTRIBUTING.md).",
+        'It is shared only when you press "Create" in the GitHub form (CONTRIBUTING.md).',
     ]
 
 
@@ -2041,11 +2041,63 @@ def cmd_contrib_show(args: argparse.Namespace) -> int:
     return 0 if good else 1
 
 
-def _share(path: str | Path, args: argparse.Namespace, *, as_json: bool) -> tuple[int, dict[str, Any]]:
-    """contrib share・bench --share: 点検して、GitHub で送るページの URL を出す(#90)。
-    通信しない。ブラウザは端末で y と答えたときだけ開く(--json・端末でないときは URL を出すだけ)。
-    (終了コード, JSON に入れる中身)。"""
+def _copy_to_clipboard(text: str) -> bool:
+    """文字をクリップボードに写す(#113)。OS の道具だけを使う(新しい依存を足さない): Windows は clip.exe
+    (UTF-16 で渡す)、macOS は pbcopy、Linux は wl-copy・xclip・xsel(あるもの)。シェルを通さず、引数に
+    中身を入れない(標準入力で渡す)。写せたか。試験では差し替える(本物のクリップボードに触らない)。"""
+    import shutil
+    import subprocess
+
+    if sys.platform == "win32":
+        cands = [(["clip"], ("﻿" + text).encode("utf-16-le"), None)]
+    elif sys.platform == "darwin":
+        cands = [(["pbcopy"], text.encode("utf-8"), {**os.environ, "LANG": "en_US.UTF-8"})]
+    else:
+        data = text.encode("utf-8")
+        cands = [
+            *([(["wl-copy"], data, None)] if os.environ.get("WAYLAND_DISPLAY") else []),
+            (["xclip", "-selection", "clipboard"], data, None),
+            (["xsel", "--clipboard", "--input"], data, None),
+        ]
+    for argv, data, env in cands:
+        exe = shutil.which(argv[0])
+        if not exe:
+            continue
+        try:
+            r = subprocess.run(
+                [exe, *argv[1:]],
+                input=data,
+                capture_output=True,
+                timeout=10,
+                check=False,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0:
+            return True
+    return False
+
+
+def _open_browser(url: str) -> bool:
+    import webbrowser
+
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:  # ブラウザが無い・開けない環境(URL は出してある)
+        return False
+
+
+def _share(
+    path: str | Path, args: argparse.Namespace, *, as_json: bool, print_url: bool = False
+) -> tuple[int, dict[str, Any]]:
+    """share・contrib share・bench --share: 点検して、GitHub の実測の Issue のフォーム(中身を入れたもの)を
+    ブラウザで開く(#113)。通信しない(開くだけ。送るのは利用者がフォームで「Create」を押したとき)。
+    中身が URL に入りきらなければ、クリップボードに写して中身の無いフォームを開く。
+    ブラウザを開くのは端末のときだけ(--json・--print-url・端末でないときは URL を出すだけ)。
+    URL を渡せたら(開いた・出した)手元で送った印を付ける。(終了コード, JSON に入れる中身)。"""
     from .contrib import share_check, share_urls
+    from .measure import mark_shared
 
     data, raw, checks, report, _good = _contrib_inspect(path, args)
     if isinstance(data, dict):
@@ -2061,120 +2113,207 @@ def _share(path: str | Path, args: argparse.Namespace, *, as_json: bool) -> tupl
         "report": report.to_dict(),
         "share": urls,
         "opened": False,
+        "copied": False,
+        "marked_shared": False,
     }
-    if as_json:
-        return (0 if not why else 1), info
-    _print_inspection(data, checks, report, not why)
-    print()
     if why:
-        print(
-            tr(
-                "送れません。次を直してから、もう一度 genmodelfit contrib share で確かめてください:",
-                "Cannot share it. Fix the following, then check again with genmodelfit contrib share:",
-            ),
-            file=sys.stderr,
-        )
-        for w in why:
-            print(f"  - {w}", file=sys.stderr)
+        if not as_json:
+            _print_inspection(data, checks, report, False)
+            print()
+            print(
+                tr(
+                    "送れません。次を直してから、もう一度 genmodelfit share で確かめてください:",
+                    "Cannot share it. Fix the following, then check again with genmodelfit share:",
+                ),
+                file=sys.stderr,
+            )
+            for w in why:
+                print(f"  - {w}", file=sys.stderr)
         return 1, info
-    assert urls is not None
-    local = Path(path).resolve()
-    print(tr("=== GitHub で送る ===", "=== Share on GitHub ==="))
-    if urls["new_file_url"]:
-        print(
-            tr(
-                "1. 次のページをブラウザで開き、GitHub にログインします(ファイルの名前と中身は入力済み):",
-                "1. Open this page in a browser and sign in to GitHub"
-                " (the file name and content are filled in):",
-            )
-        )
-        print(f"   {urls['new_file_url']}")
-        print(
-            tr(
-                "2. ページの下の「Propose changes」を押します"
-                "(書き込みの権限が無ければ、GitHub が自動であなたのフォークを作ります)",
-                '2. Press "Propose changes" at the bottom'
-                " (if you cannot write to the repository, GitHub makes a fork for you)",
-            )
-        )
-        print(
-            tr(
-                "3. 次のページで「Create pull request」を押します",
-                '3. Press "Create pull request" on the next page',
-            )
-        )
-        print(
-            tr(
-                "ページに中身が出ないときは、下の「貼り付けて送る」を使ってください。",
-                'If the page does not show the content, use "Paste and share" below.',
-            )
-        )
-    else:
-        print(
-            tr(
-                f"中身が長いので(URL が {urls['new_file_url_length']} 字。上限 {urls['url_limit']} 字)、"
-                "下の「貼り付けて送る」を使ってください。",
-                f"The content is long (the URL would be {urls['new_file_url_length']} characters; limit"
-                f' {urls["url_limit"]}), so use "Paste and share" below.',
-            )
-        )
+    assert urls is not None and isinstance(data, dict)
+    text = raw.replace("\r\n", "\n")
+    browse = not as_json and not print_url and _interactive()
+    if as_json:
+        info["marked_shared"] = bool(mark_shared(data))
+        return 0, info
+    if print_url:
+        print(urls["issue_url"] or urls["form_url"])
+        info["marked_shared"] = bool(mark_shared(data))
+        return 0, info
+    _print_inspection(data, checks, report, True)
     print()
-    # 写す範囲(--- の行の間)にはファイルの中身だけを置く(パスにはユーザ名が入るので、範囲の外に出す)
-    print(
-        tr(
-            "貼り付けて送る: 下の 2 つの --- の行の間(ファイルの中身)をそのまま写す",
-            "Paste and share: copy everything between the two --- lines below (the file content)",
-        )
-    )
-    print(tr(f"ファイル: {local}", f"File: {local}"))
-    print("---")
-    print(raw.replace("\r\n", "\n"), end="" if raw.endswith("\n") else "\n")
-    print("---")
-    print(
-        tr(
-            "   1. 次のページを開く(ファイルの名前は入力済み):",
-            "   1. Open this page (the file name is filled in):",
-        )
-    )
-    print(f"      {urls['paste_url']}")
-    print(
-        tr(
-            "   2. 上の中身を写して、ページの大きな欄に貼り付ける",
-            "   2. Copy the content above and paste it into the large box",
-        )
-    )
-    print(
-        tr(
-            "   3. 「Propose changes」を押し、次のページで「Create pull request」を押す",
-            '   3. Press "Propose changes", then "Create pull request" on the next page',
-        )
-    )
-    print(
-        tr(
-            "genmodelfit は何も送りません。送られるのは、あなたがブラウザで押したときだけです。",
-            "genmodelfit sends nothing. The file is sent only when you press the buttons in the browser.",
-        )
-    )
-    url = urls["new_file_url"] or urls["paste_url"]
-    if _interactive() and _ask(
-        [
+    print(tr("=== GitHub で送る ===", "=== Share on GitHub ==="))
+    if urls["issue_url"]:
+        url = urls["issue_url"]
+        if browse:
+            info["opened"] = _open_browser(url)
+        print(
             tr(
-                "note(メモ)も読み、送ってよい中身でしたか? ブラウザでこのページを開きますか?",
-                "Did you read the note too, and may this content be shared? Open the page in a browser?",
+                "ブラウザで開いたページ(実測の提出のフォーム。中身は入力済み)で GitHub にログインし、"
+                "「Create」を押すと送られます。"
+                if info["opened"]
+                else "次のページ(実測の提出のフォーム。中身は入力済み)をブラウザで開き、GitHub にログインして"
+                "「Create」を押すと送られます:",
+                "In the page opened in your browser (the measurement form, already filled in), sign in"
+                ' to GitHub and press "Create" to send it.'
+                if info["opened"]
+                else "Open this page (the measurement form, already filled in) in a browser, sign in"
+                ' to GitHub and press "Create" to send it:',
             )
-        ]
-    ):
-        import webbrowser
-
-        info["opened"] = bool(webbrowser.open(url))
+        )
+        print(f"  {url}")
+    else:
+        url = urls["form_url"]
+        if browse:
+            info["copied"] = _copy_to_clipboard(text)
+            info["opened"] = _open_browser(url)
+        print(
+            tr(
+                f"中身が長いので(URL が {urls['issue_url_length']} 字。上限 {urls['url_limit']} 字)、"
+                "フォームに貼り付けて送ります。",
+                f"The content is long (the URL would be {urls['issue_url_length']} characters; limit"
+                f" {urls['url_limit']}), so paste it into the form.",
+            )
+        )
+        print(
+            tr(
+                "中身はクリップボードに写しました。"
+                if info["copied"]
+                else "下の 2 つの --- の行の間をそのまま写してください。",
+                "The content is on your clipboard."
+                if info["copied"]
+                else "Copy everything between the two --- lines below.",
+            )
+        )
+        print(
+            tr(
+                "1. ブラウザで開いたフォームで GitHub にログインする"
+                if info["opened"]
+                else f"1. 次のフォームをブラウザで開き、GitHub にログインする: {url}",
+                "1. Sign in to GitHub in the form opened in your browser"
+                if info["opened"]
+                else f"1. Open this form in a browser and sign in to GitHub: {url}",
+            )
+        )
+        print(
+            tr(
+                "2. 「Measurement (JSON)」の欄に貼り付ける",
+                '2. Paste it into the "Measurement (JSON)" box',
+            )
+        )
+        print(tr("3. 「Create」を押す", '3. Press "Create"'))
+        if not info["copied"]:
+            # 写す範囲(--- の行の間)にはファイルの中身だけを置く(パスにはユーザ名が入るので範囲の外に出す)
+            print("---")
+            print(text, end="" if text.endswith("\n") else "\n")
+            print("---")
+    print(
+        tr(
+            "genmodelfit は何も送りません。送られるのは、あなたがフォームで「Create」を押したときだけです。",
+            'genmodelfit sends nothing. It is sent only when you press "Create" in the form.',
+        )
+    )
+    if not browse or info["opened"]:
+        info["marked_shared"] = bool(mark_shared(data))
     return 0, info
 
 
-def cmd_contrib_share(args: argparse.Namespace) -> int:
-    code, info = _share(args.file, args, as_json=args.json)
+def _saved_line(i: int, s) -> str:
+    d = s.to_dict()
+    secs = d["seconds"]
+    peak = d["peak_vram_gb"]
+    bits = [
+        str(d["date"]),
+        str(d["model_id"]),
+        str(d["gpu"]),
+        str(d["outcome"]),
+        f"{peak:g} GiB" if isinstance(peak, (int, float)) else "-",
+        tr(f"{secs:g} 秒", f"{secs:g} s") if isinstance(secs, (int, float)) else "-",
+    ]
+    return f"  {i:>2}. " + "  ".join(bits) + (tr("(送った印あり)", " (marked as sent)") if s.shared else "")
+
+
+def _choose_number(count: int) -> int | None:
+    """1〜count の番号を尋ねる(q・空・EOF でやめる → None)。"""
+    while True:
+        try:
+            ans = input(tr(f"番号(1〜{count}。q でやめる): ", f"Number (1-{count}; q to quit): "))
+        except EOFError:
+            return None
+        ans = ans.strip().lower()
+        if ans in ("", "q", "quit"):
+            return None
+        if ans.isdigit() and 1 <= int(ans) <= count:
+            return int(ans) - 1
+        print(tr("番号で選んでください", "Choose by number"), file=sys.stderr)
+
+
+def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
+    """share(#113): 送っていない実測を選ぶ(または share <file>)→ 中身を見せて Issue のフォームを開く。"""
+    from .measure import saved_submissions, submissions_dir
+
+    print_url = getattr(args, "print_url", False)
+    extra = {"action": "share"} if command == "contrib" else {}
+    path = getattr(args, "file", None)
+    if not path:
+        saved = saved_submissions(include_shared=getattr(args, "all", False))
+        if args.json or print_url or not _interactive():
+            if args.json:
+                _out(
+                    _envelope(
+                        command,
+                        None,
+                        None,
+                        **extra,
+                        listed=True,
+                        folder=str(submissions_dir()),
+                        submissions=[s.to_dict() for s in saved],
+                    )
+                )
+                return 0
+            for i, s in enumerate(saved, 1):
+                print(f"{_saved_line(i, s)}\n      {s.path}")
+            print(
+                tr(
+                    "送るファイルを genmodelfit share <ファイル> で指定してください。"
+                    if saved
+                    else "送っていない実測はありません(genmodelfit measure で測れます)。",
+                    "Give the file to send: genmodelfit share <file>."
+                    if saved
+                    else "No unsent measurements (measure one with genmodelfit measure).",
+                ),
+                file=sys.stderr,
+            )
+            return 0
+        if not saved:
+            print(
+                tr(
+                    "送っていない実測はありません。genmodelfit measure で測ると、ここに出ます。",
+                    "No unsent measurements. Measure one with genmodelfit measure and it shows up here.",
+                )
+            )
+            return 0
+        print(tr("=== 送っていない実測 ===", "=== Unsent measurements ==="))
+        for i, s in enumerate(saved, 1):
+            print(_saved_line(i, s))
+        try:
+            k = _choose_number(len(saved))
+        except KeyboardInterrupt:
+            print(file=sys.stderr)
+            return 130
+        if k is None:
+            print(tr("送りませんでした", "Nothing shared"), file=sys.stderr)
+            return 0
+        path = saved[k].path
+        print()
+    code, info = _share(path, args, as_json=args.json, print_url=print_url)
     if args.json:
-        _out(_envelope("contrib", None, None, action="share", **info))
+        _out(_envelope(command, None, None, **extra, listed=False, **info))
     return code
+
+
+def cmd_contrib_share(args: argparse.Namespace) -> int:
+    return cmd_share(args, command="contrib")
 
 
 def _result_word(r) -> str:
@@ -2232,6 +2371,67 @@ def _validate_markdown(reports: list) -> list[str]:
             f" {md_cell(r.gpu_name or '-')} | {text} |"
         )
     return lines
+
+
+INTAKE_EVENT_MAX_BYTES = (
+    1024 * 1024
+)  # GitHub の Issue の本文は 65536 字まで。イベントのファイルはそれより大きい
+
+
+def cmd_contrib_intake(args: argparse.Namespace) -> int:
+    """contrib intake(#113。measurement-intake.yml が使う): GitHub の issues のイベントのファイルから Issue の
+    本文・番号・書いた人を読み、intake_issue で検査して、結果を --out のフォルダのファイルに書く
+    (result.json・comment.md、通れば submission.json・pr_body.md・commit_msg.txt・title.txt・path.txt)。
+    本文は標準出力に出さない(ワークフローのログにワークフローのコマンドを書かせないため)。通信しない。
+    受け付けた・断ったはどちらも 0(結果は result.json の ok)。イベントを読めないときだけ 1。"""
+    from .contrib import intake_issue
+
+    try:
+        p = Path(args.event)
+        if p.stat().st_size > INTAKE_EVENT_MAX_BYTES:
+            raise ValueError("too large")
+        event = json.loads(p.read_text(encoding="utf-8"))
+        issue = event["issue"]
+        body = issue.get("body") or ""
+        number = int(issue["number"])
+        author = str((issue.get("user") or {}).get("login") or "")
+        if not isinstance(body, str):
+            raise ValueError("body")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise CliError(
+            tr(
+                f"issues のイベントを読めません: {type(e).__name__}",
+                f"cannot read the issues event: {type(e).__name__}",
+            )
+        ) from e
+    db = _contrib_db(args)
+    # コメントと PR の本文は英語と日本語の両方(Issue を書く人もメンテナもどちらかを読めるように)
+    with i18n.forced("en"):
+        res = intake_issue(body, author, number, db=db, existing=args.existing)
+    with i18n.forced("ja"):
+        ja = intake_issue(body, author, number, db=db, existing=args.existing)
+    res.comment = f"{res.comment}\n---\n\n{ja.comment}"
+    if res.ok:
+        res.pr_body = f"{ja.pr_body.replace(f'Closes #{number}', '').rstrip()}\n\n---\n\n{res.pr_body}"
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    def write(name: str, text: str) -> None:
+        (out / name).write_text(text, encoding="utf-8", newline="\n")
+
+    write("result.json", json.dumps(res.to_dict(), ensure_ascii=False, indent=1) + "\n")
+    write("comment.md", res.comment)
+    if res.ok and res.content and res.path_in_repo:
+        write("submission.json", res.content)
+        write("pr_body.md", res.pr_body)
+        write("commit_msg.txt", res.commit_message)
+        write("title.txt", res.title + "\n")
+        write("path.txt", res.path_in_repo + "\n")
+    if args.json:
+        _out(_envelope("contrib", None, None, action="intake", ok=res.ok, reasons=len(res.reasons)))
+    else:
+        print("accepted" if res.ok else f"refused ({len(res.reasons)} reasons)")
+    return 0
 
 
 def cmd_contrib_validate(args: argparse.Namespace) -> int:
@@ -3852,6 +4052,462 @@ def cmd_download(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- measure(#113。docs/commands.md「genmodelfit measure」) -------------------------------------------
+
+MEASURE_LIMIT = 10  # 引数なしの measure が出す提案の数(--limit で変える)
+_MODALITY_JA = {
+    "image": "画像",
+    "video": "動画",
+    "music": "音楽",
+    "sfx": "効果音",
+    "tts": "読み上げ",
+    "3d": "3D",
+}
+
+
+def _measure_comfyui(args: argparse.Namespace) -> tuple[str | None, str | None, Any]:
+    """測りに使う ComfyUI: (URL, 見つけ方 option / running, 起動中の候補)。--url が無ければ、この PC の
+    127.0.0.1 の 8188・8000 で起動中の ComfyUI を探す(download と同じ comfyfind。
+    GENMODELFIT_COMFYUI_SEARCH=0 で探さない)。見つからなければ (None, None, None)。"""
+    if args.url:
+        return args.url, "option", None
+    from . import comfyfind
+
+    if comfyfind.search_disabled():
+        return None, None, None
+    running = comfyfind.running_candidates()
+    if not running:
+        return None, None, None
+    c = running[0]
+    return f"http://{c.detail}", "running", c
+
+
+def _measure_roots(args: argparse.Namespace, running: Any) -> list[Path]:
+    """モデルのファイルが入っているかを見るフォルダ(ComfyUI の models・extra_model_paths の既定の節・
+    起動中の ComfyUI が読む models)。download と同じ決め方で、通信しない(起動中の候補は先に見つけたもの)。"""
+    from .downloader import DownloadError, comfyui_models_dir
+
+    roots: list[Path] = []
+    dest = None
+    try:
+        if running is not None and not args.comfyui_dir:
+            dest = _from_candidate(running, [running])
+        else:
+            dest = _resolve_destination(args, probe=False)
+    except (CliError, DownloadError, OSError):
+        dest = None
+    if dest is not None and dest.source is not None:
+        if dest.output_dir is not None:
+            roots.append(dest.output_dir)
+        if dest.comfyui_dir is not None:
+            with contextlib.suppress(DownloadError, OSError):
+                roots.append(comfyui_models_dir(dest.comfyui_dir))
+    if running is not None and running.models_dir is not None:
+        roots.append(running.models_dir)
+    return list(dict.fromkeys(roots))
+
+
+def _seconds_text(secs: int, basis: str) -> str:
+    why = {
+        "measured": (
+            "同じモデルのほかの GPU の実測から",
+            "from measurements of the same model on other GPUs",
+        ),
+        "typical": ("種類ごとのおおよその値", "a rough value for the type"),
+    }[basis]
+    return tr(f"約 {secs} 秒(目安。{why[0]})", f"about {secs} s (rough guide; {why[1]})")
+
+
+def _installed_text(inst) -> str:
+    if inst.state == "yes":
+        return tr("入っている", "installed")
+    if inst.state == "no":
+        return tr(
+            f"入っていない(落とす量 {inst.missing_bytes / GIB:.1f} GB)",
+            f"not installed ({inst.missing_bytes / GIB:.1f} GB to download)",
+        )
+    return tr(
+        "分からない(ComfyUI のフォルダが見つかりません)",
+        "unknown (the ComfyUI folder was not found)",
+    )
+
+
+def _comfyui_text(url: str | None, found_by: str | None) -> str:
+    if url is None:
+        return tr("見つかりません(起動していない)", "not found (not running)")
+    if found_by == "option":
+        return tr(f"{url}(--url で指定)", f"{url} (given with --url)")
+    return tr(f"{url}(この PC で起動中の ComfyUI を見つけた)", f"{url} (a ComfyUI running on this PC)")
+
+
+def _not_running_lines(model_id: str, inst) -> list[str]:
+    from .comfyfind import PROBE_PORTS, search_disabled
+
+    ports = "・".join(str(p) for p in PROBE_PORTS)
+    ports_en = " and ".join(str(p) for p in PROBE_PORTS)
+    head = (
+        tr(
+            "ComfyUI を探していません(環境変数 GENMODELFIT_COMFYUI_SEARCH が 0)。",
+            "Not looking for ComfyUI (the environment variable GENMODELFIT_COMFYUI_SEARCH is 0).",
+        )
+        if search_disabled()
+        else tr(
+            f"起動中の ComfyUI が見つかりません(この PC の 127.0.0.1 のポート {ports} を見ました)。",
+            f"No running ComfyUI was found (looked at ports {ports_en} on 127.0.0.1 of this PC).",
+        )
+    )
+    lines = [
+        head,
+        tr(
+            "ComfyUI を起動してから、同じコマンドをもう一度実行してください:",
+            "Start ComfyUI, then run the same command again:",
+        ),
+        tr("  - ComfyUI デスクトップ版: アプリを開く", "  - ComfyUI Desktop: open the app"),
+        tr(
+            "  - ポータブル版: フォルダの run_nvidia_gpu.bat などを実行する",
+            "  - Portable: run run_nvidia_gpu.bat (or the one for your GPU) in its folder",
+        ),
+        tr(
+            "  - 手で入れた ComfyUI: そのフォルダで python main.py",
+            "  - A manual install: python main.py in its folder",
+        ),
+        tr(
+            "  - 別の PC・別のポートの ComfyUI: --url http://<ホスト>:<ポート> で指定する",
+            "  - On another PC or port: give it with --url http://<host>:<port>",
+        ),
+    ]
+    if inst.state == "no":
+        lines.append(
+            tr(
+                f"モデルのファイルも入っていません。先に genmodelfit download {model_id} で落とせます。",
+                f"The model files are not installed either; download them first with"
+                f" genmodelfit download {model_id}.",
+            )
+        )
+    return lines
+
+
+def _suggestion_lines(sugg: list) -> list[str]:
+    out = [
+        tr(
+            "=== 測ると役に立つモデル(この GPU の実測がまだ無いもの) ===",
+            "=== Models worth measuring (no measurement on this GPU yet) ===",
+        )
+    ]
+    for i, x in enumerate(sugg, 1):
+        kind = tr(_MODALITY_JA.get(x.modality, x.modality), x.modality)
+        prec = f"、{x.precision}" if x.precision else ""
+        prec_en = f", {x.precision}" if x.precision else ""
+        out.append(
+            tr(
+                f"  {i:>2}. {x.model_name} [{x.model_id}]({kind}{prec})  {_installed_text(x.installed)}"
+                f"  約 {x.seconds} 秒",
+                f"  {i:>2}. {x.model_name} [{x.model_id}] ({kind}{prec_en})  {_installed_text(x.installed)}"
+                f"  about {x.seconds} s",
+            )
+        )
+    out.append(
+        tr(
+            "時間は目安(同じモデルのほかの GPU の実測、無ければ種類ごとのおおよその値。"
+            "落とす時間は入れない)。"
+            "入っていないものは、選ぶと download と同じ確かめをしてから落とします。",
+            "Times are rough guides (from measurements of the same model on other GPUs, else a rough value"
+            " for the type; downloading is not included). Choosing one that is not installed downloads it"
+            " first, with the same questions as download.",
+        )
+    )
+    return out
+
+
+def _measure_screen(fit, url: str | None, found_by: str | None, inst, secs: int, basis: str) -> list[str]:
+    m = fit.model
+    kind = tr(_MODALITY_JA.get(m.modality, m.modality), m.modality)
+    prec = m.precision or tr("不明", "unknown")
+    return [
+        tr("=== 測る前に ===", "=== Before measuring ==="),
+        tr(
+            f"モデル:     {fit.model_name or m.name} [{m.id}]({kind}、精度 {prec})",
+            f"Model:      {fit.model_name or m.name} [{m.id}] ({kind}, precision {prec})",
+        ),
+        tr(
+            "設定:       公式のテンプレートのまま(解像度・コマ数・長さ・ステップ数)",
+            "Settings:   as in the official template (resolution, frames, length, steps)",
+        ),
+        tr(f"ComfyUI:    {_comfyui_text(url, found_by)}", f"ComfyUI:    {_comfyui_text(url, found_by)}"),
+        tr(f"ファイル:   {_installed_text(inst)}", f"Files:      {_installed_text(inst)}"),
+        tr(
+            f"時間:       {_seconds_text(secs, basis)}。初めはモデルの読み込みで長くなります",
+            f"Time:       {_seconds_text(secs, basis)}; the first run takes longer to load the model",
+        ),
+        tr(
+            "送るもの:   何も送りません。結果はこの PC に保存するだけです"
+            "(送るのは genmodelfit share で選んだときだけ)",
+            "Sending:    nothing. The result is only saved on this PC (it is sent only if you choose it in"
+            " genmodelfit share)",
+        ),
+    ]
+
+
+def _measure_next_step(msg: str, model_id: str) -> str:
+    """measure が測れなかったときの「次にすること」。
+    bench の文の --force などは measure に無いので、ここで言い換える。"""
+    if "--force" in msg:
+        return tr(
+            "次にすること: ほかの生成・ゲーム・動画の書き出しなどを閉じて GPU を空け、"
+            "同じコマンドをもう一度実行してください。GPU の空きを確かめられない PC では、"
+            f"genmodelfit bench {model_id} --url <URL> --force で確かめずに測れます。",
+            "Next: close other generation jobs, games or video exports to free the GPU, and run the same"
+            " command again. On a PC where the GPU cannot be checked, genmodelfit bench"
+            f" {model_id} --url <URL> --force measures without checking.",
+        )
+    if "ファイルがサーバーにありません" in msg or "missing required files" in msg:
+        return tr(
+            f"次にすること: genmodelfit download {model_id} でファイルを落とし"
+            "(ComfyUI が別のフォルダを読んでいるときは --comfyui-dir でそのフォルダを指定)、"
+            "ComfyUI を起動し直してから、もう一度実行してください。",
+            f"Next: download the files with genmodelfit download {model_id} (use --comfyui-dir for the"
+            " folder your ComfyUI reads), restart ComfyUI, then run it again.",
+        )
+    if "キュー" in msg or "queue" in msg.lower():
+        return tr(
+            "次にすること: ComfyUI のキューの仕事が終わるのを待ってから、もう一度実行してください。",
+            "Next: wait until the jobs in ComfyUI's queue are done, then run it again.",
+        )
+    return tr(
+        "次にすること: ComfyUI が起動していて、ブラウザで開けることを確かめてから、もう一度実行してください"
+        "(ほかの PC・ポートなら --url)。直らなければ、この文を添えて GitHub の Issue で知らせてください。",
+        "Next: check that ComfyUI is running and opens in your browser, then run it again (another PC or"
+        " port: --url). If it still fails, tell us in a GitHub issue with this message.",
+    )
+
+
+def _measure_download(args: argparse.Namespace, model_id: str) -> int:
+    """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。"""
+    argv = ["--lang", i18n.get_language(), "download", model_id]
+    if args.comfyui_dir:
+        argv += ["--comfyui-dir", args.comfyui_dir]
+    if args.yes:
+        argv.append("--yes")
+    if args.db:
+        argv += ["--db", args.db]
+    if args.no_cache:
+        argv.append("--no-cache")
+    ns = build_parser().parse_args(argv)
+    return cmd_download(ns)
+
+
+def cmd_measure(args: argparse.Namespace) -> int:
+    from .bench import BenchError, BenchOptions, is_local, run, save, save_decision
+    from .contrib import build_submission, suggested_path, write_submission
+    from .downloader import DownloadError, directory_refs
+    from .estimate import files_fingerprint
+    from .measure import installed_state, resolve, submissions_dir, suggestions, time_hint
+    from .workflow import WorkflowError
+
+    if args.json and args.model and not args.yes:
+        raise CliError(
+            tr(
+                "--json で測るときは --yes が要ります(測る前に尋ねられないため)",
+                "--json needs --yes to measure (the question before measuring cannot be asked)",
+            )
+        )
+    if args.timeout is not None and args.timeout <= 0:
+        raise CliError(tr("--timeout は 0 より大きい秒数にしてください", "--timeout must be above 0 seconds"))
+    s, db = _system(args), _db(args)
+    url, found_by, running = _measure_comfyui(args)
+    roots = _measure_roots(args, running)
+    comfy = {"url": url, "found_by": found_by}
+    if s.best_gpu is None:
+        msg = tr(
+            "この PC に測りに使える GPU が見つかりません(measure は GPU で測ります)。"
+            "genmodelfit system で、見つかった GPU と使えない理由を確かめてください",
+            "No GPU that can be measured was found on this PC (measure measures on a GPU)."
+            " Run genmodelfit system to see which GPU was found and why it cannot be used",
+        )
+        if args.json:
+            _out(_envelope("measure", s, db, action="suggest" if not args.model else "measure", error=msg))
+            return 1
+        raise CliError(msg)
+    if not args.model:
+        sugg = suggestions(db, s, roots=roots, policy=_policy(args))[: args.limit or MEASURE_LIMIT]
+        if args.json:
+            _out(
+                _envelope(
+                    "measure", s, db, action="suggest", comfyui=comfy, suggestions=[x.to_dict() for x in sugg]
+                )
+            )
+            return 0
+        if not sugg:
+            print(
+                tr(
+                    "測ると役に立つモデルはありません(この PC の GPU に載るものは、もう実測があります)。"
+                    "ほかのモデルを測るなら genmodelfit measure <名前>",
+                    "No model to suggest (the ones that fit this PC's GPU are already measured)."
+                    " To measure another model: genmodelfit measure <name>",
+                )
+            )
+            return 0
+        _emit(_suggestion_lines(sugg))
+        if not _interactive():
+            print(
+                tr(
+                    "測るときは genmodelfit measure <ID>(例: [ ] の中の ID)",
+                    "To measure one: genmodelfit measure <id> (the id in [ ])",
+                ),
+                file=sys.stderr,
+            )
+            return 0
+        try:
+            k = _choose_number(len(sugg))
+        except KeyboardInterrupt:
+            print(file=sys.stderr)
+            return 130
+        if k is None:
+            print(tr("測りませんでした", "Nothing measured"), file=sys.stderr)
+            return 0
+        fit = sugg[k].fit
+        print()
+    else:
+        try:
+            fit = resolve(db, s, args.model, policy=_policy(args))
+        except DownloadError as e:
+            err = CliError(str(e).replace('content="all"', "--uncensored"))
+            err.candidates = getattr(e, "candidates", None) or None  # type: ignore[attr-defined]
+            raise err from e
+    entry = fit.model
+    inst = installed_state(entry, roots, directory_refs(db))
+    secs, basis = time_hint(entry, db.measurements)
+    plan = {
+        "model_id": entry.id,
+        "comfyui": comfy,
+        "installed": inst.to_dict(),
+        "time_hint": {"seconds": secs, "basis": basis},
+    }
+
+    def fail(msg: str, lines: list[str] | None = None) -> int:
+        if args.json:
+            _out(_envelope("measure", s, db, action="measure", **plan, error=msg))
+        else:
+            print(tr(f"エラー: {msg}", f"error: {msg}"), file=sys.stderr)
+            for line in lines or []:
+                print(line, file=sys.stderr)
+        return 1
+
+    if not args.json:
+        _emit(_measure_screen(fit, url, found_by, inst, secs, basis))
+    if url is None:
+        lines = _not_running_lines(entry.id, inst)
+        return fail(lines[0], lines[1:])
+    if inst.state == "no" and args.json:
+        return fail(
+            tr(
+                f"モデルのファイルが入っていません。"
+                f"先に genmodelfit download {entry.id} --yes で落としてください",
+                f"The model files are not installed. Download them first with"
+                f" genmodelfit download {entry.id} --yes",
+            )
+        )
+    if not args.yes:
+        if not _interactive():
+            return fail(
+                tr(
+                    "端末でないときは --yes が要ります(測る前に尋ねられないため)",
+                    "Without a terminal, --yes is needed (the question cannot be asked)",
+                )
+            )
+        if inst.state == "no":
+            print(
+                tr(
+                    "モデルのファイルが入っていないので、先に落とします"
+                    "(このあと download と同じ確かめをします)。",
+                    "The model files are not installed, so they are downloaded first (with the same questions"
+                    " as download).",
+                )
+            )
+        try:
+            ans = input(tr("測りますか? [Y/n] ", "Measure it? [Y/n] "))
+        except EOFError:
+            ans = "n"
+        except KeyboardInterrupt:
+            print(file=sys.stderr)
+            return 130
+        if ans.strip().lower() not in ("", "y", "yes"):
+            print(tr("測りませんでした", "Nothing measured"), file=sys.stderr)
+            return 1
+    if inst.state == "no":
+        code = _measure_download(args, entry.id)
+        if code != 0:
+            return code
+        print()
+    opts = BenchOptions(
+        model_id=entry.id,
+        url=url,
+        timeout=args.timeout or 1800.0,
+        precision=entry.precision,
+        files_fp=files_fingerprint(entry),
+    )
+    try:
+        result = run(opts, log=_progress(args))
+    except (BenchError, WorkflowError) as e:
+        return fail(str(e), [_measure_next_step(str(e), entry.id)])
+    m = result.measurement
+    out_path, not_saved = save_decision(m, None, False, False)
+    if out_path is not None:
+        save(m, out_path)
+    sub_path = sub_repo = None
+    if m.standard and m.outcome in ("ok", "oom"):
+        sub = build_submission(m, detect() if is_local(url) else None)
+        sub_path = write_submission(sub, str(submissions_dir()) + os.sep)
+        sub_repo = suggested_path(sub)
+    hint = tr(
+        "genmodelfit share で送ると、同じ GPU を使う人の判定が実測で確かになります",
+        "Send it with genmodelfit share to make the results for people with the same GPU rest on a real"
+        " measurement",
+    )
+    code = 1 if result.failed else 0
+    if args.json:
+        _out(
+            _envelope(
+                "measure",
+                s,
+                db,
+                action="measure",
+                **plan,
+                **result.to_dict(),
+                saved_to=str(out_path) if out_path else None,
+                not_saved=not_saved,
+                submission={"saved_to": str(sub_path), "path_in_repo": sub_repo} if sub_path else None,
+                hint=hint if sub_path else None,
+            )
+        )
+        return code
+    for w in result.warnings:
+        print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
+    print()
+    print(tr(f"=== 結果: {m.model_id} ===", f"=== Result: {m.model_id} ==="))
+    print(
+        tr(
+            f"GPU:       {m.gpu_name}({m.gpu_vram_gb:g} GiB)",
+            f"GPU:       {m.gpu_name} ({m.gpu_vram_gb:g} GiB)",
+        )
+    )
+    print(tr(f"結果:      {m.outcome}", f"Result:    {m.outcome}"))
+    print(tr(f"最大 VRAM: {m.peak_vram_gb:.2f} GB", f"Peak VRAM: {m.peak_vram_gb:.2f} GB"))
+    if m.seconds is not None:
+        print(tr(f"時間:      {m.seconds:g} 秒", f"Time:      {m.seconds:g} s"))
+    if result.failed:
+        print(tr(f"失敗:      {result.failed}", f"Failed:    {result.failed}"))
+    print(
+        tr(f"保存先:    {out_path}", f"Saved to:  {out_path}")
+        if out_path
+        else tr(f"保存:      {not_saved}", f"Not saved: {not_saved}")
+    )
+    if sub_path is not None:
+        print(tr(f"送る用:    {sub_path}", f"To send:   {sub_path}"))
+        print(hint)
+    return code
+
+
 # --- genmodelfit config(#111。docs/download.ja.md「genmodelfit config」) --------------------------------
 
 
@@ -4380,14 +5036,86 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   Details: docs/schema.md""",
+    "measure": """Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
+Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on
+the GPU) with no measurement on this GPU yet, those already installed first, then the shorter
+time, then the smaller download; choose one by number (q quits). MODEL is a model name, a
+workflow id or a part of either, chosen like download (only workflows with a ComfyUI template).
+Before measuring one screen shows the model and precision, the settings (as in the template),
+which ComfyUI and how it was found, whether the files are installed, a rough time and that
+nothing is sent, then asks [Y/n] (--yes skips it). The time is a rough guide: the median of
+measurements of the same model on other GPUs, else a rough value per type.
+A model that is not installed is downloaded first, with the same questions and consent rules as
+download. Afterwards it shows the result and where it saved it, and one line pointing to
+genmodelfit share, which sends it (it never asks whether to send).
+
+PRECONDITIONS:
+  A GPU on this PC and a ComfyUI on it: --url, or one running on this PC (127.0.0.1 port 8188
+  or 8000). When none is running, it says how to start ComfyUI and exits 1. The GPU must be
+  free: when another program uses it, nothing is measured (like bench without --force).
+
+SIDE EFFECTS:
+  Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without --url), the ComfyUI
+  it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and
+  the model files when it downloads them. Nothing about this PC is sent anywhere else.
+  Writes the result to <cache>/measurements/ (used when this PC is judged) and a submission draft
+  to <cache>/submissions/ (what genmodelfit share lists).
+
+EXIT CODES:
+  0  Success (also: nothing chosen, nothing to suggest)
+  1  Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not
+     downloaded, the run failed (out of memory or another error), no consent
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit measure --json
+  genmodelfit measure image_z_image_turbo_int8 --yes --json
+  genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+
+  JSON (--json): { genmodelfit, command, system, database, action: suggest | measure,
+  comfyui: { url, found_by }, suggestions? | model_id, installed, time_hint, measurement,
+  saved_to, submission, hint, error? }
+  Details: docs/schema.md""",
+    "share": """Send a measurement: show exactly what will be sent and open the GitHub form for it.
+Without FILE it lists the measurements saved by measure (and bench --share) that are not marked
+as sent, newest first; choose one by number. It shows the whole content (GPU name, VRAM, OS
+family, model, settings and values; no PC or user names) with the privacy checks, then opens
+the measurement issue form on GitHub in your browser with the content filled in: sign in and
+press "Create". A bot checks it like contrib validate and opens a pull request that adds it;
+the maintainer merges it. When the content does not fit in a URL it is copied to the clipboard
+(clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened; paste it there.
+Once the page is opened (or the URL is printed) the measurement is marked as sent on this PC
+and is not listed again (--all lists it). You need a GitHub account.
+
+PRECONDITIONS:
+  A measurement saved by genmodelfit measure, or a submission JSON.
+
+SIDE EFFECTS:
+  No network access: it only opens your browser (in a terminal, without --json and
+  --print-url). The content is sent only when you press "Create" on GitHub.
+  Writes the sent marks to <cache>/submissions_shared.json; may put the content on the clipboard.
+
+EXIT CODES:
+  0  Success (also: nothing chosen, nothing to send)
+  1  Error: the file cannot be read, a privacy check is NG or the checks have errors
+  2  Usage error
+
+AGENT USAGE:
+  genmodelfit share --json
+  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
+  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+
+  JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
+  report, share, opened, copied, marked_shared }
+  Details: docs/schema.md""",
     "bench": """Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
 TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id
 in [ ] on the first line of info). Model names and parts of ids are not accepted, and hf: models
 have no template (pass an API-format workflow with --workflow instead).
 Your saved results are used when this PC is judged.
---share prepares a submission and opens GitHub's "new file" page in your browser if you answer y:
-sign in to GitHub (an account is needed), press "Propose changes", then "Create pull request"
-(CONTRIBUTING.md "The easy way").
+genmodelfit measure does the same without the template id (it suggests models and finds ComfyUI).
+--share prepares a submission and opens GitHub's measurement form in your browser: sign in to
+GitHub (an account is needed) and press "Create" (like genmodelfit share).
 
 PRECONDITIONS:
   A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
@@ -4398,7 +5126,7 @@ PRECONDITIONS:
 SIDE EFFECTS:
   Network: only the ComfyUI at --url (it sends one job and reads the results), plus the official
   template file from GitHub when that ComfyUI does not have it. Nothing about this PC is sent
-  elsewhere; --share only prints a URL and opens your browser if you answer y.
+  elsewhere; --share only opens your browser at the form (or prints its URL).
   Writes the result JSON to <cache>/measurements/ (or --output). Failed results and results under
   non-standard conditions are only shown unless --save-failed / --save-nonstandard / --output.
   --submission / --share also write a submission JSON.
@@ -4765,14 +5493,83 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
   JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   詳しくは docs/schema.md""",
+    "measure": """起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
+MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU の
+実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
+番号で選ぶ(q でやめる)。MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ
+選び方で決める(ComfyUI のテンプレートのあるワークフローだけ)。
+測る前に 1 画面で、モデルと精度、設定(テンプレートのまま)、どの ComfyUI か・どう見つけたか、
+ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(--yes で尋ねない)。
+時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。
+入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。終わると結果と保存した
+場所を出し、最後に genmodelfit share(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
+
+前提:
+  この PC の GPU と、そこで動く ComfyUI: --url か、この PC で起動中のもの(127.0.0.1 の 8188 か
+  8000)。起動していなければ、起動のしかたを出して 1 で終わる。GPU が空いていること: ほかの
+  プログラムが使っていれば測らない(--force の無い bench と同じ)。
+
+副作用:
+  通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(--url が無いとき)、測る
+  ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、
+  落とすときはモデルのファイル。この PC のことはほかへ送らない。
+  結果を <cache>/measurements/(この PC の判定に使う)に、送るための下書きを <cache>/submissions/
+  (genmodelfit share が一覧に出すもの)に書く。
+
+終了コード:
+  0  成功(選ばなかった・出す提案が無いときも)
+  1  失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、
+     落とさなかった、実行の失敗(メモリ不足など)、同意が無い
+  2  使い方の誤り
+
+使い方の例(エージェント・アプリ向け):
+  genmodelfit measure --json
+  genmodelfit measure image_z_image_turbo_int8 --yes --json
+  genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+
+  JSON (--json): { genmodelfit, command, system, database, action: suggest | measure,
+  comfyui: { url, found_by }, suggestions? | model_id, installed, time_hint, measurement,
+  saved_to, submission, hint, error? }
+  詳しくは docs/schema.md""",
+    "share": """実測を送る: 送る中身をそのまま見せ、GitHub の提出のフォームを開く。
+FILE を省くと、measure(と bench --share)が保存した実測のうち送った印の無いものを新しい順に
+出し、番号で選ぶ。中身のすべて(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC や
+ユーザの名前は入らない)と個人の情報の点検を見せてから、中身を入れた GitHub の実測の Issue の
+フォームをブラウザで開く: ログインして「Create」を押す。ボットが contrib validate と同じ検査を
+して、それを足す Pull Request を作り、メンテナがマージする。中身が URL に入りきらないときは
+クリップボード(clip・pbcopy・wl-copy・xclip・xsel)に写して中身の無いフォームを開くので、
+そこに貼り付ける。ページを開いた(または URL を出した)ら、この PC で送った印を付け、次から
+一覧に出さない(--all で出す)。GitHub のアカウントが要る。
+
+前提:
+  genmodelfit measure が保存した実測か、提出の JSON。
+
+副作用:
+  通信しない: ブラウザを開くだけ(端末で、--json・--print-url が無いとき)。送られるのは
+  GitHub で「Create」を押したときだけ。
+  送った印を <cache>/submissions_shared.json に書く。中身をクリップボードに写すことがある。
+
+終了コード:
+  0  成功(選ばなかった・送るものが無いときも)
+  1  失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある
+  2  使い方の誤り
+
+使い方の例(エージェント・アプリ向け):
+  genmodelfit share --json
+  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
+  genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+
+  JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
+  report, share, opened, copied, marked_shared }
+  詳しくは docs/schema.md""",
     "bench": """動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
 TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのもの(例 image_z_image_turbo_int8。info の
 1 行目の [ ] の中)。モデルの名前や ID の一部は受けない。hf: のモデルにはテンプレートが無い
 (代わりに --workflow で API 形式のワークフローを渡す)。
 保存した結果はこの PC の判定に使う。
---share は提出の用意をし、y と答えるとブラウザで GitHub の「新しいファイル」のページを開く:
-GitHub にログインし(アカウントが要る)、「Propose changes」、次に「Create pull request」を押す
-(CONTRIBUTING.md「かんたんな送り方」)。
+genmodelfit measure は、テンプレートの ID を知らなくても同じことをする(モデルを提案し、ComfyUI を探す)。
+--share は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが
+要る)、「Create」を押す(genmodelfit share と同じ)。
 
 前提:
   --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
@@ -4782,8 +5579,8 @@ GitHub にログインし(アカウントが要る)、「Propose changes」、�
 
 副作用:
   通信: --url の ComfyUI だけ(仕事を 1 つ送り、結果を読む)。その ComfyUI にテンプレートが無ければ、
-  GitHub から公式のテンプレートのファイルを読む。この PC のことはほかへ送らない。--share は URL を
-  出し、y と答えたときだけブラウザを開く。
+  GitHub から公式のテンプレートのファイルを読む。この PC のことはほかへ送らない。--share は
+  ブラウザでフォームを開く(か URL を出す)だけ。
   結果の JSON を <cache>/measurements/(か --output)に書く。失敗した結果と標準でない条件の結果は、
   --save-failed・--save-nonstandard・--output が無ければ表示だけ。--submission・--share は提出用の
   JSON も書く。
@@ -5008,6 +5805,23 @@ EXAMPLES: dict[str, list[tuple[str, str, str]]] = {
             "尋ねずに落とす(無検閲・ライセンス不明も。条件は自分で確かめる)",
             "download without the question, also uncensored / unknown-license (check the terms yourself)",
         ),
+    ],
+    "measure": [
+        (
+            "genmodelfit measure",
+            "測ると役に立つモデルを選んで測る(何も送らない。送るのは genmodelfit share)",
+            "pick a model worth measuring and measure it (sends nothing; genmodelfit share sends it)",
+        ),
+        ('genmodelfit measure "Z-Image-Turbo"', "モデルを名前で決めて測る", "measure a model given by name"),
+        (
+            "genmodelfit measure --url http://127.0.0.1:8000",
+            "この ComfyUI で測る(探さない)",
+            "measure on this ComfyUI (no search)",
+        ),
+    ],
+    "share": [
+        ("genmodelfit share", "送っていない実測を選んで送る", "pick an unsent measurement and send it"),
+        ("genmodelfit share --all", "送った印のあるものも出す", "also list the ones marked as sent"),
     ],
 }
 
@@ -5807,6 +6621,139 @@ def build_parser() -> argparse.ArgumentParser:
     sp._actions[-1].doc_default = "sfw"  # type: ignore[attr-defined]
     sp.set_defaults(func=cmd_download)
 
+    # genmodelfit measure / share(#113。CONTRIBUTING.md「かんたんな送り方」)
+    sp = sub_parser(
+        "measure",
+        tr(
+            "測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)",
+            "pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)",
+        ),
+        [lang],
+    )
+    sp.add_argument("--json", action="store_true", help=json_help)
+    _doc(
+        sp.add_argument(
+            "--db",
+            metavar="PATH",
+            help=tr("この一覧のファイル(db.json)を使う", "use this model list file (db.json)"),
+        ),
+        "update で取った一覧、無ければ同梱の一覧",
+        "the list fetched by update, else the bundled list",
+    )
+    sp.add_argument(
+        "--no-cache",
+        action="store_true",
+        help=tr(
+            "update で取った一覧を使わず、同梱のデータを使う",
+            "use the bundled list, not the one fetched by update",
+        ),
+    )
+    sp.add_argument(
+        "model",
+        nargs="?",
+        help=tr(
+            "測るモデルの名前(表の Model)・ワークフローの ID・その一部"
+            "(省くと、測ると役に立つモデルを出して選ぶ)",
+            "model name (the Model column), workflow id, or a part of either (omitted: list models worth"
+            " measuring and choose one)",
+        ),
+    )
+    _doc(
+        sp.add_argument(
+            "--url",
+            help=tr(
+                "測りに使う ComfyUI の URL(例 http://127.0.0.1:8188)",
+                "URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188)",
+            ),
+        ),
+        "この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す",
+        "a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000)",
+    )
+    _doc(
+        sp.add_argument(
+            "--comfyui-dir",
+            metavar="DIR",
+            help=tr(
+                "ComfyUI のフォルダ(モデルが入っているかを見る・入っていないとき落とす場所)",
+                "your ComfyUI folder (to see whether the model is installed, and where to download it)",
+            ),
+        ),
+        "download と同じ決め方",
+        "decided like download",
+    )
+    sp.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help=tr(
+            "測る前に尋ねない(入っていないモデルは download --yes と同じ決まりで落とす)",
+            "do not ask before measuring (a model that is not installed is downloaded under the same rules as"
+            " download --yes)",
+        ),
+    )
+    sp.add_argument(
+        "--limit",
+        "-n",
+        type=_positive_int,
+        metavar="N",
+        help=tr(
+            f"引数なしで出す提案の数(既定 {MEASURE_LIMIT})",
+            f"how many suggestions to list without a model (default {MEASURE_LIMIT})",
+        ),
+    )
+    sp.add_argument(
+        "--timeout",
+        type=float,
+        metavar="SEC",
+        help=tr(
+            "待つ時間の上限(0 より大きい秒数。既定 1800)", "the most time to wait (seconds > 0; default 1800)"
+        ),
+    )
+    sp._actions[-1].doc_default = "1800"  # type: ignore[attr-defined]
+    sp.set_defaults(func=cmd_measure, output_dir=None, vram=None, ram=None)  # この PC で測る(置き換えない)
+
+    sp = sub_parser(
+        "share",
+        tr(
+            "送っていない実測を選び、中身を見せて GitHub の提出のフォームをブラウザで開く"
+            "(送るのは「Create」を押したとき)",
+            "pick an unsent measurement, show it, and open the GitHub form to send it in your browser"
+            ' (it is sent when you press "Create")',
+        ),
+        [lang],
+    )
+    sp.add_argument(
+        "file",
+        nargs="?",
+        help=tr(
+            "送る提出の JSON(省くと、送っていない実測を出して選ぶ)",
+            "the submission JSON to send (omitted: list unsent measurements and choose one)",
+        ),
+    )
+    sp.add_argument("--json", action="store_true", help=json_help)
+    sp.add_argument(
+        "--print-url",
+        action="store_true",
+        help=tr(
+            "ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け)",
+            "do not open a browser; print only the URL of the form (for scripts)",
+        ),
+    )
+    sp.add_argument(
+        "--all",
+        action="store_true",
+        help=tr("送った印のある実測も一覧に出す", "also list measurements already marked as sent"),
+    )
+    sp.add_argument(
+        "--db",
+        metavar="PATH",
+        help=tr(
+            "モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない)",
+            "the list used to check model ids (default: the bundled list; the cache is not used)",
+        ),
+    )
+    sp.set_defaults(func=cmd_share)
+
     # genmodelfit config(#111。docs/download.ja.md「genmodelfit config」)
     sp = sub_parser(
         "config",
@@ -6150,12 +7097,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=tr(
             "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
-            "中身と点検を見せて、GitHub で送るページの URL を出す。端末なら、ブラウザで開くかを尋ねる。"
+            "中身と点検を見せて、GitHub の実測のフォームを開く"
+            "(genmodelfit share と同じ。端末でなければ URL を出す)。"
             "送るには GitHub のアカウントが要る。genmodelfit は何も送らない(CONTRIBUTING.md)",
             "write the submission JSON (to the cache's submissions folder without --submission),"
-            " show it with the checks, and print the URL of the GitHub page to share it;"
-            " in a terminal, ask whether to open it in a browser. Sending needs a GitHub account;"
-            " genmodelfit itself sends nothing (CONTRIBUTING.md)",
+            " show it with the checks, and open GitHub's measurement form (like genmodelfit share; without a"
+            " terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing"
+            " (CONTRIBUTING.md)",
         ),
     )
     sp.set_defaults(func=cmd_bench)
@@ -6175,8 +7123,9 @@ def build_parser() -> argparse.ArgumentParser:
         "contrib",
         parents=[lang],
         help=tr(
-            "実測の提出用 JSON を作る・見る・検査する・まとめる(何も送らない)",
-            "make, preview, validate and aggregate measurement submissions (nothing is sent)",
+            "保守する人向け: 実測の提出を作る・検査する・まとめる(送るのは measure と share)",
+            "for maintainers: make, validate and aggregate measurement submissions (to send one: measure"
+            " and share)",
         ),
         description=_contrib_help(),
         formatter_class=_HelpFormatter,
@@ -6226,13 +7175,31 @@ def build_parser() -> argparse.ArgumentParser:
         "share",
         parents=[cj],
         help=tr(
-            "中身と点検を見せ、GitHub で送るページの URL を出す"
-            "(端末ならブラウザで開くかを尋ねる。何も送らない)",
-            "show it with the checks and print the URL of the GitHub page to share it (in a terminal, asks"
-            " whether to open a browser; nothing is sent)",
+            "genmodelfit share と同じ(前からのスクリプトのため)",
+            "the same as genmodelfit share (kept for older scripts)",
         ),
     )
-    c.add_argument("file", help=tr("提出用の JSON", "the submission JSON"))
+    c.add_argument(
+        "file",
+        nargs="?",
+        help=tr(
+            "送る提出の JSON(省くと、送っていない実測を出して選ぶ)",
+            "the submission JSON to send (omitted: list unsent measurements and choose one)",
+        ),
+    )
+    c.add_argument(
+        "--print-url",
+        action="store_true",
+        help=tr(
+            "ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け)",
+            "do not open a browser; print only the URL of the form (for scripts)",
+        ),
+    )
+    c.add_argument(
+        "--all",
+        action="store_true",
+        help=tr("送った印のある実測も一覧に出す", "also list measurements already marked as sent"),
+    )
     c.set_defaults(func=cmd_contrib_share)
     c = csub.add_parser(
         "validate",
@@ -6270,6 +7237,34 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("Markdown の表で出す(CI のまとめ用)", "output a Markdown table (for the CI summary)"),
     )
     c.set_defaults(func=cmd_contrib_validate)
+    c = csub.add_parser(
+        "intake",
+        parents=[cj],
+        help=tr(
+            "GitHub の実測の Issue を検査し、PR に入れるファイルを作る(measurement-intake.yml が使う)",
+            "check a measurement issue on GitHub and write the files for its PR (used by"
+            " measurement-intake.yml)",
+        ),
+    )
+    c.add_argument(
+        "event", metavar="EVENT_JSON", help=tr("issues のイベントのファイル", "the issues event file")
+    )
+    c.add_argument(
+        "--existing",
+        default=CONTRIB_DIR_DEFAULT,
+        metavar="DIR",
+        help=tr(
+            f"同じ内容の提出を探すフォルダ(既定 {CONTRIB_DIR_DEFAULT})",
+            f"the folder searched for the same submission (default {CONTRIB_DIR_DEFAULT})",
+        ),
+    )
+    c.add_argument(
+        "--out",
+        required=True,
+        metavar="DIR",
+        help=tr("結果のファイルを書くフォルダ", "the folder to write the result files to"),
+    )
+    c.set_defaults(func=cmd_contrib_intake)
     c = csub.add_parser(
         "aggregate",
         parents=[cj],
@@ -6409,14 +7404,16 @@ def _review_help() -> str:
 
 
 CONTRIB_DIR_DEFAULT = "data/contrib"
-_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる。
-genmodelfit は何も送らない(共有は、利用者が自分の GitHub で Pull Request を出すときだけ。
-CONTRIBUTING.md)。
+_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる
+(保守する人向け。実測を送るのは genmodelfit measure と genmodelfit share)。
+genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で
+Pull Request を出すときだけ。CONTRIBUTING.md)。
 
   make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
   show      <file>                 送る中身と個人の情報の点検(同意のため)
-  share     <file>                 show と同じ点検のあと、GitHub で送るページの URL を出す
-                                   (端末ならブラウザで開くかを尋ねる。開くだけで、送るのはブラウザで押したとき)
+  share     [file]                 genmodelfit share と同じ(前からのスクリプトのため)
+  intake    <event.json> --out DIR GitHub の実測の Issue を検査し、PR に入れるファイルを作る
+                                   (measurement-intake.yml が使う)
   validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             同じモデル・設定・GPU ごとに中央値と MAD で外れ値を除いてまとめ、校正の誤差を点検
@@ -6424,8 +7421,9 @@ CONTRIBUTING.md)。
             同梱のまとめにまだ入っていない提出を数える(まとめは版を出すときに作る)
 
 副作用:
-  通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。
-  share は端末で y と答えたときだけブラウザを開く(--json・端末でないときは URL を出すだけ)。
+  通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。intake は --out に書く。
+  share は genmodelfit share と同じ(端末ならブラウザを開く。--json・--print-url・端末でないときは
+  URL を出すだけ。送った印を書く)。
 
 終了コード:
   0  成功(validate: すべてのファイルが通った。show: 直すところが無い)
@@ -6447,14 +7445,16 @@ CONTRIBUTING.md)。
   genmodelfit contrib aggregate --report --json --fail-on-breach
 詳しくは docs/schema.md「contrib」"""
 
-_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1).
-genmodelfit sends nothing (data is shared only when you open a Pull Request from your own GitHub
-account; CONTRIBUTING.md).
+_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 1; for
+maintainers. To send a measurement use genmodelfit measure and genmodelfit share).
+genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a
+Pull Request yourself; CONTRIBUTING.md).
 
   make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
   show      <file>                 what will be shared, and the privacy checklist (for consent)
-  share     <file>                 the same checks as show, then the URL of the GitHub page to share it
-                                   (in a terminal, asks whether to open a browser; it only opens the page)
+  share     [file]                 the same as genmodelfit share (kept for older scripts)
+  intake    <event.json> --out DIR check a measurement issue on GitHub and write the files for its PR
+                                   (used by measurement-intake.yml)
   validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
   aggregate [dir] [--output F] [--report] [--threshold 25] [--fail-on-breach]
             group by model, settings and GPU, drop outliers by median and MAD, check the calibration error
@@ -6462,9 +7462,10 @@ account; CONTRIBUTING.md).
             count the submissions not in the bundled aggregate yet (it is rebuilt for each release)
 
 SIDE EFFECTS:
-  No network access. make writes the submission files; aggregate writes only with --output.
-  share opens a browser only when you answer y in a terminal (with --json or without a terminal it only prints
-  the URLs).
+  No network access. make writes the submission files; aggregate writes only with --output; intake writes to
+  --out.
+  share is genmodelfit share (opens a browser in a terminal; with --json, --print-url or without a terminal it
+  only prints the URL; writes the sent marks).
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)

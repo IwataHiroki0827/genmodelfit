@@ -59,8 +59,10 @@ The same as the SIDE EFFECTS of each command's `--help` and [README, "Privacy"](
 | `update --fields-only` | GET of the Hugging Face Hub API for the cards whose `language` decides `languages` (the main files' repos and their `license_from`); for the hand-added models also HEAD, ranged GET of the file header and the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
-| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them); `--share` adds no network access (see `contrib share` below) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON; with `--share` and no `--submission`, `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
-| `contrib` | none (genmodelfit never sends a submission; you open the pull request yourself); `share` prints URLs and opens a browser only when you answer y in a terminal (the browser sends it when you press the buttons) | `make`: the submission JSON; `aggregate --output`: the community file; `show` / `validate` / `share` / `aggregate --check`: none |
+| `measure` | without `--url`, `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (2 s timeout, no redirects, no proxy); then like `bench` on that ComfyUI; when you agree to download a missing model, like `download`. Nothing with only the suggestions list and no ComfyUI running | like `bench`: the result in `<cache>/measurements/`, the submission draft in `<cache>/submissions/<GPU>/<date>-<sha8>.json`; the model files when downloaded |
+| `share` | none (opens the browser at the GitHub form in a terminal; the content is sent only when you press "Create") | `<cache>/submissions_shared.json` (the sent marks); may put the content on the clipboard |
+| `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them); `--share` adds no network access (see `share` below) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON; with `--share` and no `--submission`, `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
+| `contrib` | none (genmodelfit never sends a submission); `share` is `genmodelfit share` | `make`: the submission JSON; `aggregate --output`: the community file; `intake`: the files in `--out`; `share`: the sent marks; `show` / `validate` / `aggregate --check`: none |
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
 | `python -m genmodelfit.weekly merge-check` | none | none |
 | `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
@@ -1004,7 +1006,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | settings that could not be applied, uploaded inputs, … (in the display language, `en` / `ja`) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
-| `submission` | object | only with `--submission` or `--share`: `{saved_to, path_in_repo}` (the submission JSON, see contrib); with `--share` also `share` (the `file`, `ok`, `refused`, `checklist`, `report`, `share`, `opened` of `contrib share --json`; no browser is opened) |
+| `submission` | object | only with `--submission` or `--share`: `{saved_to, path_in_repo}` (the submission JSON, see contrib); with `--share` also `share` (the `file`, `ok`, `refused`, `checklist`, `report`, `share`, `opened`, `copied`, `marked_shared` of `share --json`; no browser is opened) |
 
 How bench fills Measurement:
 
@@ -1024,11 +1026,76 @@ How bench fills Measurement:
 - `--set` values: only numbers are written to `note`; for other values only the input name is kept.
 - The saved file is `{"measurements": [Measurement]}` and holds no paths, user names or prompts.
 
+## measure
+
+`genmodelfit measure [MODEL] --json` (#113) prints the envelope (with `system` and `database`) plus `action`:
+
+- Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by}` (`found_by` is `option` for `--url`, `running` for
+  a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found) and `suggestions`
+  [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
+  seconds_basis}]. Nothing is measured.
+- With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `comfyui`, `installed`
+  `{state, missing_bytes, total_bytes, missing_files}`, `time_hint` `{seconds, basis}`, then the keys of `bench`
+  (`measurement`, `workflow_source`, `warnings`, `failed?`, `saved_to`, `not_saved`), `submission`
+  `{saved_to, path_in_repo}` (null when no submission was written) and `hint` (the line about `genmodelfit share`, or
+  null). On a failure the same keys up to `time_hint` and `error`.
+
+Rules:
+
+- **Suggestions**: models from an official ComfyUI template (`source: comfyui-template`) whose judgment on this PC is
+  `perfect` or `good` with run mode `gpu`, and that have no measurement on this GPU yet (`measure.has_measurement_here`:
+  same GPU by `estimate.same_gpu`, same files by `files_match`, standard, outcome `ok` or `oom`; a working-memory-only
+  measurement counts too, since measuring it again on the same GPU adds nothing). One per model (`groups` key): the
+  installed workflow, else the one `recommend` would pick. Order: installed first, then `seconds`, then
+  `download_bytes`, then the name. Default 10 (`--limit`).
+- **Installed** (`installed.state`): `yes` when every file of the workflow exists with the listed size under one of the
+  models folders (`--comfyui-dir`, else the folder decided like `download` without asking a ComfyUI, plus the folder a
+  running ComfyUI reported); `no` otherwise (`missing_bytes` is what `download` would fetch); `unknown` when no folder
+  was found or the list has no files for it. sha256 is not computed (download checks it).
+- **Time** (`seconds`, rounded up to 10 s): the median `seconds` of `ok` measurements of the same workflow on any GPU
+  (`basis: measured`), else a rough value per type (`basis: typical`; `measure.TYPICAL_SECONDS`: image 60, video 300,
+  music 90, sfx 60, tts 60, 3d 120). A rough guide only; downloading is not included.
+- **MODEL** is resolved like `download` (`downloader.resolve_candidates`), keeping only workflows with a template; an
+  exact id is used as is, a name picks the workflow `recommend` would pick.
+- The submission draft goes to `<cache>/submissions/<GPU>/<date>-<sha8>.json` (only for standard results with outcome
+  `ok` or `oom`), where `share` lists it. The result goes to `<cache>/measurements/` like `bench`.
+- Exit codes: 0 success, nothing chosen or nothing to suggest / 1 no ComfyUI, no GPU, busy GPU, no template, not
+  installed with `--json`, no consent, a failed run / 2 usage error.
+
+## share
+
+`genmodelfit share [FILE] --json` (#113; `contrib share` is the same with `command: "contrib"` and
+`action: "share"`):
+
+- Without FILE: `listed: true`, `folder` and `submissions` [{file, sha256, shared, date, model_id, gpu, outcome,
+  peak_vram_gb, seconds}] (unsent ones, newest first; with `--all` also those marked as sent). Nothing is opened.
+- With FILE: `listed: false`, `file`, `ok`, `refused` (why it cannot be sent), `checklist`, `report`, `share`
+  (`{path_in_repo, title, issue_url, issue_url_length, url_limit, form_url}`; null when it cannot be sent),
+  `opened`, `copied` (false with `--json`) and `marked_shared`.
+
+Rules:
+
+- The checks are those of `contrib show` (every field, the privacy checklist, the `validate` result; the file name is
+  not checked). An NG in the checklist or a `validate` error refuses it (exit code 1); warnings and notices do not.
+- `issue_url`: `https://github.com/laxshmate/genmodelfit/issues/new?template=measurement.yml&title=<title>&submission=<content>`
+  (the issue form `.github/ISSUE_TEMPLATE/measurement.yml`; `submission` is the id of its JSON box, `contrib.ISSUE_FIELD`),
+  with the file content as is (LF line endings), URL-encoded. The title is `measurement: <model_id> on <GPU name>`.
+- When the URL would be longer than 8000 characters (`contrib.SHARE_URL_LIMIT`), `issue_url` is null; `form_url` (the same
+  form with only the title) is opened, and the content is copied to the clipboard with the OS tool (Windows `clip`,
+  macOS `pbcopy`, Linux `wl-copy` / `xclip` / `xsel`; through stdin, no shell). Without one, the text output prints the
+  content between two `---` lines (the file's location is never inside them).
+- The browser is opened only in a terminal (stdin and stdout are terminals) and without `--json` / `--print-url`; it
+  never asks. `--print-url` prints only the URL.
+- The measurement is marked as sent (`<cache>/submissions_shared.json`, content sha256 → date) when the URL was handed
+  over: opened in the browser, printed (no terminal, `--print-url`) or returned (`--json`). It is not marked when the
+  browser could not be opened.
+- No network access; the content is sent only when the user presses "Create" in the form.
+
 ## contrib
 
-Measurement submissions from users (#34). genmodelfit **never sends** them: users add the file to `data/contrib/` of
-their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). `contrib share` (`bench --share`)
-only prints the URL of the GitHub page that adds the file in a browser (#90). Code: `src/genmodelfit/contrib.py`.
+Measurement submissions from users (#34). genmodelfit **never sends** them: users press "Create" in the measurement issue
+form that `share` opens (a bot turns the issue into a pull request; `contrib intake`, #113), or add the file to
+`data/contrib/` of their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). Code: `src/genmodelfit/contrib.py`.
 
 Submissions measured by bench with dynamic VRAM (`vram_metric: torch_reserved`, `offload: dynamic`) hold only the working memory (#100). They are aggregated and kept, but until the per-stage peaks can be measured they are used only for the cross-check (not for the estimate's shift or the level; see "Measurement" and [accuracy.md](accuracy.md)).
 
@@ -1136,6 +1203,10 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
   only errors makes no row).
 - **Steps**: peak VRAM does not depend on the step count, so neither the aggregation key nor judging's matching uses
   it (a row's `settings.steps` is the most common value, for display).
+- **Issues** (#113): a measurement issue is checked by `contrib intake` with the same checks and becomes one PR
+  (branch `measurement/issue-<N>`, made by GitHub Actions; the issue author is written in the PR and the commit), so
+  it counts as one source like a PR. A PR made with `GITHUB_TOKEN` does not start contrib.yml; the intake already ran
+  the same checks.
 - **Sources**: submissions added by the same PR (the commit that added the file, in main's first-parent history)
   count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
   history or in a shallow clone each submission counts on its own, and the output says so).
@@ -1161,32 +1232,23 @@ host / user name —, `device_ids`, `network`, `date_only`, and `note_reviewed`,
 `--json`: envelope + `action: "show"`, `file`, `ok`, `submission`, `checklist` [{id, label, ok (null = for the user
 to check), detail}], `report` (below). Exit code 1 when something must be fixed.
 
-### `contrib share FILE [--json]`
+### `contrib share [FILE]`
 
-Runs the same checks as `show` (all fields, the privacy checklist and the `validate` result; the file name is not
-checked), then prints the URL of the GitHub page to share it (#90; `bench … --share` does the same for the
-submission it writes).
-- With an NG in the checklist or a `validate` error, it cannot be shared (the reasons are shown; exit code 1).
-  Warnings and notices do not stop it.
-- `new_file_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json&value=<content>`,
-  with the file content as is (LF line endings), URL-encoded. The sha8 in the name is the hash of
-  `contrib.canonical`, so indentation or line endings do not change it.
-- When the URL would be longer than 8000 characters (`contrib.SHARE_URL_LIMIT`), `new_file_url` is null and only
-  `paste_url` is offered (a long URL may be cut).
-- `paste_url`: `https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<gpu-slug>?filename=<date>-<sha8>.json`
-  (the same page with only the name filled in; the fallback when the pre-filled page does not show the content). The
-  text output prints just the file content between two `---` lines before it (the file's location is on a line
-  outside them, since it holds the user name), to copy and paste; then "Propose changes", "Create pull
-  request". GitHub's upload page (`/upload/`) needs write access, so it is not used.
-- In a terminal (stdin and stdout are both terminals) it asks y/N (default No) whether to open the page in a
-  browser, and opens it only on y. With `--json` or without a terminal it only prints the URLs.
-- No network access; the file is sent only when you press the buttons in the browser. The repository name is in one
-  place, `contrib.REPO`.
+The same as `genmodelfit share` (see "share"; kept for older scripts). The JSON has `command: "contrib"` and
+`action: "share"`.
 
-`--json`: envelope + `action: "share"`, `file`, `ok`, `refused` (the reasons it was refused), `checklist`, `report`,
-`share` (`{path_in_repo, file_name, new_file_url, new_file_url_length, url_limit, paste_url}`; null when it cannot
-be shared), `opened` (always false).
-Exit codes: 0 = can be shared / 1 = cannot be shared (or cannot be read) / 2 usage error.
+### `contrib intake EVENT_JSON --out DIR [--existing DIR]`
+
+Used by `.github/workflows/measurement-intake.yml` (#113) for issues with the `measurement` label. Reads the issue body,
+number and author from the issues event file, takes the first fenced block that starts with `{` (the form's
+JSON box, a `json` code block) as data, and runs `contrib.intake_issue`: the `validate` checks (file name not checked), the
+privacy checks of `share`, at most 64 KiB, and no submission with the same content under `--existing`. It writes
+`result.json` (`IntakeResult`: `ok`, `reasons`, `notices`, `path_in_repo`, `sha256`, `title`, …) and `comment.md`
+(English and Japanese; reason texts made harmless with `contrib.md_cell`); when accepted also `submission.json` (the
+content re-serialized by `contrib.dumps`, not the raw body), `path.txt`, `title.txt`, `commit_msg.txt` and
+`pr_body.md` (the issue number and author, notices for the maintainer, `Closes #N`). Nothing from the body is printed
+(only `accepted` / `refused (N reasons)`). Exit 0 whether accepted or refused; 1 when the event cannot be read. No
+network access.
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`
 

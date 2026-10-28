@@ -16,7 +16,7 @@
 | すべてのコマンド・オプション・環境変数・終了コードを調べる | [commands.ja.md](commands.ja.md) |
 | モデルのファイルを安全にダウンロードする | [download.ja.md](download.ja.md) |
 | アプリから使う(`--json` か Python) | [schema.ja.md](schema.ja.md)、続けて [gate.ja.md](gate.ja.md) と [download.ja.md](download.ja.md) |
-| 実測を送る | [CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md) |
+| 実測を送る(`genmodelfit measure` のあと `genmodelfit share`) | [CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md) |
 | モデルの一覧がどこから来るかを知る | [sources.ja.md](sources.ja.md) |
 | 版を出す・一覧を更新する(メンテナ) | [release.ja.md](release.ja.md) |
 
@@ -35,5 +35,5 @@
 | [sources.ja.md](sources.ja.md) | `genmodelfit update` が一覧を作るときのデータ源と規則(テンプレート・ライセンス・言語・無検閲・除外)。 |
 | [release.ja.md](release.ja.md) | メンテナ向け: パッケージのリリース、署名つきのデータ配布、毎週の一覧の更新、署名の鍵。 |
 | [license_requests.ja.md](license_requests.ja.md) | 重みのライセンスが分からないモデルの本家に、記載をお願いするための下書き(Issue #30)。 |
-| [CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md) | `genmodelfit bench` で測り、中身を確かめ、Pull Request で送る手順。 |
+| [CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md) | 実測の送り方: `genmodelfit measure`、`genmodelfit share`、GitHub で「Create」(git は要らない)。慣れた人向けの git・Pull Request の送り方も。 |
 | [CHANGELOG.md](../CHANGELOG.md) | 版ごとの変更点(英語のみ)。 |

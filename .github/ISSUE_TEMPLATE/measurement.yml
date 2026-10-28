@@ -1,0 +1,40 @@
+# 実測の提出(#113)。genmodelfit share がこのフォームを、中身(submission の欄)を入れて開く。
+# 受け取るのは .github/workflows/measurement-intake.yml(measurement の印の Issue だけ)。欄の id(submission)・
+# 印(measurement)を変えたら src/genmodelfit/contrib.py の ISSUE_FIELD・ISSUE_LABEL も直す。
+# 「Create」を 1 回押すだけで送れるように、必須のチェックボックスなどは置かない(tests/test_contrib.py)
+name: "Send a measurement / 実測を送る"
+description: >-
+  Send a measurement made with genmodelfit measure. genmodelfit share fills this in for you.
+  genmodelfit measure で測った結果を送ります。genmodelfit share が中身を入れてくれます。
+title: "measurement: "
+labels: ["measurement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Thank you! Just press "Create" at the bottom.
+
+        - **Already filled in.** `genmodelfit share` put your measurement in the box below. You do not need to change anything.
+        - **What is in it:** the GPU name and its memory (VRAM), the driver version, the kind of OS (Windows / Linux / macOS), the amount of RAM (rounded), the ComfyUI version, the model, the settings, and the measured numbers (peak memory, time).
+        - **What is not in it:** your PC name, user name, folder paths, serial numbers, IP address or prompts. `genmodelfit share` checked this before opening this page.
+        - **What happens next:** a bot checks it within a few minutes and replies here. If it is fine, the bot adds it to the project and a maintainer merges it; if something is wrong, the bot says what to fix (edit this issue to send it again).
+        - The box is empty? Paste the content that `genmodelfit share` copied to your clipboard (Ctrl+V / Cmd+V).
+
+        ---
+
+        ### ありがとうございます。下の「Create」を押すだけです。
+
+        - **入力済みです。** `genmodelfit share` が下の欄に実測を入れました。変える必要はありません。
+        - **入っているもの:** GPU の名前とメモリ(VRAM)、ドライバの版、OS の種類(Windows / Linux / macOS)、メモリの量(丸めたもの)、ComfyUI の版、モデル、設定、測った値(メモリの最大・時間)。
+        - **入っていないもの:** PC の名前、ユーザ名、フォルダの場所、シリアル番号、IP アドレス、プロンプト。このページを開く前に `genmodelfit share` が確かめています。
+        - **このあと:** 数分でボットが確かめて、ここに返事を書きます。問題が無ければボットがプロジェクトに足し、メンテナがマージします。直すところがあれば、ボットが何を直すかを書きます(この Issue を編集すると、もう一度送れます)。
+        - 欄が空のときは、`genmodelfit share` がクリップボードに写した中身を貼り付けてください(Ctrl+V / Cmd+V)。
+  - type: textarea
+    id: submission
+    attributes:
+      label: "Measurement (JSON)"
+      description: >-
+        Filled in by genmodelfit share — no need to edit. / genmodelfit share が入れた中身です(直す必要はありません)。
+      render: json
+    validations:
+      required: true

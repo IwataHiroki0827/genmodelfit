@@ -1,0 +1,8 @@
+# Issue を作る画面の案内(#113)。実測は genmodelfit share がフォームを中身つきで開くので、手で書かずに済むよう案内する
+blank_issues_enabled: true
+contact_links:
+  - name: "How to send a measurement / 実測の送り方"
+    url: https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md#the-easy-way-no-git-needed
+    about: >-
+      Run genmodelfit measure, then genmodelfit share: it opens the measurement form already filled in.
+      genmodelfit measure のあと genmodelfit share を実行すると、中身を入れたフォームが開きます(日本語: CONTRIBUTING.ja.md)。

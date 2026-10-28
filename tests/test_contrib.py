@@ -2029,7 +2029,14 @@ def browser(monkeypatch):
     return opened
 
 
-def test_share_urls_prefill_the_exact_file(tmp_path):
+@pytest.fixture
+def clipboard(monkeypatch):
+    copied: list[str] = []
+    monkeypatch.setattr(cli, "_copy_to_clipboard", lambda text: copied.append(text) or True)
+    return copied
+
+
+def test_share_urls_prefill_the_issue_form(tmp_path):
     from urllib.parse import parse_qs, urlparse
 
     path = _pr92(tmp_path)
@@ -2037,25 +2044,36 @@ def test_share_urls_prefill_the_exact_file(tmp_path):
     data = json.loads(text)
     u = contrib.share_urls(data, text)
     assert u["path_in_repo"] == contrib.suggested_path(data) and u["path_in_repo"].endswith(path.name)
-    url = urlparse(u["new_file_url"])
-    assert f"{url.scheme}://{url.netloc}{url.path}" == (
-        "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070"
-    )
+    url = urlparse(u["issue_url"])
+    assert f"{url.scheme}://{url.netloc}{url.path}" == "https://github.com/laxshmate/genmodelfit/issues/new"
     q = parse_qs(url.query)
-    assert q["filename"] == [path.name] and q["value"] == [text]
-    # 代わりのページは名前だけを入れた同じページ(/upload/ は書き込みの権限が要るので使わない)
-    assert u["paste_url"] == (
-        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}"
-    )
-    assert "upload" not in json.dumps(u)
-    assert u["new_file_url_length"] == len(u["new_file_url"]) <= contrib.SHARE_URL_LIMIT
-    # 改行は LF にそろえる。名前の sha8 は内容(canonical)の hash なので字下げでは変わらない
+    assert q["template"] == ["measurement.yml"] and q["submission"] == [text]
+    assert q["title"] == ["measurement: utility_moge_depth_estimation on NVIDIA GeForce RTX 3070"]
+    # 中身の無いフォームは題だけを入れた同じページ
+    assert u["form_url"] == u["issue_url"].split("&submission=")[0]
+    assert "submission=" not in u["form_url"]
+    assert u["issue_url_length"] == len(u["issue_url"]) <= contrib.SHARE_URL_LIMIT
+    # 改行は LF にそろえる
     crlf = contrib.share_urls(data, text.replace("\n", "\r\n"))
-    assert crlf["new_file_url"] == u["new_file_url"]
-    assert contrib.share_urls(json.loads(json.dumps(data)), json.dumps(data))["file_name"] == path.name
-    # 長すぎる中身は URL に入れず、アップロードのページだけ
+    assert crlf["issue_url"] == u["issue_url"]
+    # 長すぎる中身は URL に入れず、中身の無いフォームだけ
     long = contrib.share_urls(data, text + " " * contrib.SHARE_URL_LIMIT)
-    assert long["new_file_url"] is None and long["paste_url"] == u["paste_url"]
+    assert long["issue_url"] is None and long["form_url"] == u["form_url"]
+    assert "new/main" not in json.dumps(u)  # 前の「新しいファイル」のページ(PR)は使わない
+
+
+def test_issue_template_matches_the_share_url():
+    """share が入れる欄の id・フォームの名前・印が、.github/ISSUE_TEMPLATE/measurement.yml と合う。"""
+    import yaml
+
+    root = Path(__file__).parent.parent
+    form = yaml.safe_load((root / ".github" / "ISSUE_TEMPLATE" / contrib.ISSUE_TEMPLATE).read_text("utf-8"))
+    assert form["labels"] == [contrib.ISSUE_LABEL]
+    fields = {b.get("id"): b for b in form["body"] if b.get("id")}
+    box = fields[contrib.ISSUE_FIELD]
+    assert box["type"] == "textarea" and box["attributes"]["render"] == "json"
+    # 「Create」を 1 回押すだけ: 必須のチェックボックスなど、押す手間を増やす欄を置かない
+    assert not [b for b in form["body"] if b["type"] in ("checkboxes", "dropdown", "input")]
 
 
 def test_share_check_refuses_ng_and_errors_only(db):
@@ -2072,62 +2090,75 @@ def test_share_check_refuses_ng_and_errors_only(db):
     assert r.notices and contrib.share_check(contrib.privacy_checklist(d), r) == []
 
 
-def test_cli_share_prints_urls_without_a_terminal(tmp_path, capsys, monkeypatch, no_network, browser):
+def test_cli_share_prints_the_url_without_a_terminal(
+    tmp_path, capsys, monkeypatch, no_network, browser, clipboard
+):
     path = _pr92(tmp_path)
     monkeypatch.setattr(cli, "_interactive", lambda: False)
     assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
     out = capsys.readouterr().out
     assert "これがファイルの中身のすべてです" in out and "=== 個人の情報の点検 ===" in out
-    assert "https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename=" in out
-    assert (
-        f"https://github.com/laxshmate/genmodelfit/new/main/data/contrib/rtx-3070?filename={path.name}\n"
-        in out
-    )
-    assert path.read_text(encoding="utf-8") in out  # 貼り付ける中身をそのまま出す
-    # 写す範囲(2 つの --- の行の間)は中身だけ。ファイルの場所(ユーザ名が入る)はその外の行
+    text = path.read_text(encoding="utf-8")
+    assert contrib.share_urls(json.loads(text), text)["issue_url"] in out
+    assert "「Create」を押す" in out and "genmodelfit は何も送りません" in out and "[y/N]" not in out
+    assert browser == [] and clipboard == []  # 端末でなければ開かない・写さない
+
+
+def test_cli_share_opens_the_form_in_a_terminal(
+    tmp_path, capsys, monkeypatch, no_network, browser, clipboard
+):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("share は送るかを尋ねない"))
+    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    text = path.read_text(encoding="utf-8")
+    assert browser == [contrib.share_urls(json.loads(text), text)["issue_url"]] and clipboard == []
+    assert "ブラウザで開いたページ" in out
+
+
+def test_cli_share_long_content_goes_to_the_clipboard(
+    tmp_path, capsys, monkeypatch, no_network, browser, clipboard
+):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(contrib, "SHARE_URL_LIMIT", 100)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    text = path.read_text(encoding="utf-8")
+    assert clipboard == [text]
+    assert browser == [contrib.share_urls(json.loads(text), text)["form_url"]]
+    assert "クリップボードに写しました" in out and "「Measurement (JSON)」の欄に貼り付ける" in out
+    assert "---" not in out.splitlines()  # 写せたときは中身を画面に重ねて出さない
+
+
+def test_cli_share_long_content_without_clipboard_prints_it(
+    tmp_path, capsys, monkeypatch, no_network, browser
+):
+    path = _pr92(tmp_path)
+    monkeypatch.setattr(contrib, "SHARE_URL_LIMIT", 100)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(cli, "_copy_to_clipboard", lambda text: False)
+    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    out = capsys.readouterr().out
+    # 写す範囲(2 つの --- の行の間)は中身だけ。ファイルの場所(ユーザ名が入る)は出さない
     lines = out.splitlines()
     a = lines.index("---")
     b = lines.index("---", a + 1)
     between = "\n".join(lines[a + 1 : b])
     assert between + "\n" == path.read_text(encoding="utf-8") and str(path.resolve()) not in between
-    assert any(str(path.resolve()) in x for x in lines[:a])
-    assert "Propose changes" in out and "Create pull request" in out and str(path.resolve()) in out
-    assert "genmodelfit は何も送りません" in out and "[y/N]" not in out
-    assert browser == []  # 端末でなければ開かない
 
 
-@pytest.mark.parametrize(("answer", "opens"), [("y", True), ("", False), ("n", False), (None, False)])
-def test_cli_share_asks_before_opening_the_browser(
-    answer, opens, tmp_path, capsys, monkeypatch, no_network, browser
-):
+def test_cli_share_json_never_opens_a_browser(tmp_path, capsys, monkeypatch, no_network, browser, clipboard):
     path = _pr92(tmp_path)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-
-    def ask(prompt=""):
-        if answer is None:
-            raise EOFError
-        return answer
-
-    monkeypatch.setattr("builtins.input", ask)
-    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 0
-    out = capsys.readouterr().out
-    assert "ブラウザでこのページを開きますか" in out
-    if opens:
-        text = path.read_text(encoding="utf-8")
-        assert browser == [contrib.share_urls(json.loads(text), text)["new_file_url"]]
-    else:
-        assert browser == []
-
-
-def test_cli_share_json_never_opens_a_browser(tmp_path, capsys, monkeypatch, no_network, browser):
-    path = _pr92(tmp_path)
-    monkeypatch.setattr(cli, "_interactive", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
     assert cli.main(["contrib", "share", str(path), "--json"]) == 0
     d = json.loads(capsys.readouterr().out)
-    assert d["action"] == "share" and d["ok"] is True and d["opened"] is False and browser == []
-    assert d["refused"] == [] and d["share"]["file_name"] == path.name
-    assert d["share"]["new_file_url"].startswith("https://github.com/laxshmate/genmodelfit/new/main/")
+    assert d["command"] == "contrib" and d["action"] == "share" and d["ok"] is True
+    assert d["opened"] is False and browser == [] and clipboard == []
+    assert d["refused"] == [] and d["share"]["path_in_repo"].endswith(path.name)
+    assert d["share"]["issue_url"].startswith("https://github.com/laxshmate/genmodelfit/issues/new?template=")
+    assert d["marked_shared"] is True
 
 
 def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, no_network, browser):
@@ -2136,16 +2167,15 @@ def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, n
     path = tmp_path / "leaky.json"
     path.write_text(contrib.dumps(d), encoding="utf-8")
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
-    assert cli.main(["--lang", "ja", "contrib", "share", str(path)]) == 1
+    assert cli.main(["--lang", "ja", "share", str(path)]) == 1
     cap = capsys.readouterr()
     assert "送れません" in cap.err and "github.com/laxshmate" not in cap.out and browser == []
-    assert cli.main(["contrib", "share", str(path), "--json"]) == 1
+    assert cli.main(["share", str(path), "--json"]) == 1
     j = json.loads(capsys.readouterr().out)
-    assert j["ok"] is False and j["share"] is None and j["refused"]
+    assert j["ok"] is False and j["share"] is None and j["refused"] and j["marked_shared"] is False
 
 
-def test_bench_share_writes_to_the_cache_and_shows_the_urls(tmp_path, capsys, monkeypatch, browser):
+def test_bench_share_writes_to_the_cache_and_shows_the_url(tmp_path, capsys, monkeypatch, browser):
     from test_bench import GPU0, FakeComfy
 
     from genmodelfit import bench
@@ -2170,7 +2200,7 @@ def test_bench_share_writes_to_the_cache_and_shows_the_urls(tmp_path, capsys, mo
     out = capsys.readouterr().out
     subs = list((cache_dir() / "submissions" / "rtx-3070").glob("*.json"))
     assert len(subs) == 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json", subs[0].name)
-    assert "=== GitHub で送る ===" in out and f"filename={subs[0].name}" in out and browser == []
+    assert "=== GitHub で送る ===" in out and "issues/new?template=measurement.yml" in out and browser == []
     with FakeComfy() as fake:
         args = ["bench", "image_sdxl_simple", "--url", fake.url, "--share", "--json"]
         args += ["--submission", str(tmp_path / "mine") + "/"]

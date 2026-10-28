@@ -4,15 +4,19 @@
 
 """利用者が出す実測(提出用の JSON)の作成・検査・まとめ(#34)。
 
-流れ(genmodelfit 自体は何も送らない。利用者が自分の GitHub で Pull Request を出す):
+流れ(genmodelfit 自体は何も送らない。利用者が GitHub の Issue のフォームで「Create」を押すか、
+自分で Pull Request を出す):
 
-1. `genmodelfit bench ... --submission <path>`(または `contrib make --from <bench の結果>`)で
-   提出用の JSON(`contrib_schema` 1)を作る。入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・
-   ComfyUI の版・OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
+1. `genmodelfit measure`(#113)・`genmodelfit bench ... --submission <path>`
+   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 1)を作る。
+   入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・ComfyUI の版・
+   OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
    モデル ID・設定・結果・最大 VRAM / メモリ・時間・測り方・日付(UTC の日付だけ)。
    PC 名・ユーザ名・パス・GPU の UUID・PCI の位置・シリアル・IP・時刻は入れない(note の中も消す)
 2. `contrib show` で、送る中身をそのまま見せる(同意のため)。個人の情報の点検の結果も出す
-3. `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` として PR にする
+3. `genmodelfit share` が中身を入れた実測の Issue のフォームを開き、利用者が「Create」を押す。
+   .github/workflows/measurement-intake.yml が `contrib intake`(intake_issue)で検査して
+   `data/contrib/<GPU>/<日付>-<内容の sha256 の先頭 8 桁>.json` を足す PR を作る(git で自分で PR にしてもよい)
 4. CI(.github/workflows/contrib.yml)が `contrib validate` で形・値・個人の情報・重複を機械的に検査する
    (llmfit の validate_community_benchmarks.py と同じ考え方。2026-10-22)。式から大きく外れる・段階を変える
    などは失敗にせず、注意(notices)としてジョブのまとめに出す。マージするメンテナが見て決める
@@ -745,14 +749,17 @@ def write_submission(data: dict[str, Any], target: str | os.PathLike[str]) -> Pa
     return t
 
 
-# --- ブラウザで送る(share。#90) ------------------------------------------------------------------
-# genmodelfit は何も送らない。GitHub の「新しいファイル」のページ(中身を入れたもの)の URL を作るだけで、
-# 開くのは CLI(利用者が y と答えたとき)、送るのはブラウザで利用者が押したとき
+# --- ブラウザで送る(share。#90・#113) -------------------------------------------------------------
+# genmodelfit は何も送らない。GitHub の Issue のフォーム(実測の提出用。中身を入れたもの)の URL を作るだけで、
+# 開くのは CLI、送るのはブラウザで利用者が「Create」を押したとき。受け取った Issue は
+# .github/workflows/measurement-intake.yml が intake_issue で検査し、通れば data/contrib に足す PR を作る
 
 REPO = "laxshmate/genmodelfit"  # 提出を送るリポジトリ(share の URL はすべてここから作る)
-SHARE_BRANCH = "main"
+ISSUE_TEMPLATE = "measurement.yml"  # .github/ISSUE_TEMPLATE/ のフォーム
+ISSUE_FIELD = "submission"  # フォームの JSON の欄の id(URL の ?submission= で中身を入れる)
+ISSUE_LABEL = "measurement"  # フォームが付ける印(受け取る仕組みはこの印の Issue だけを見る)
 # 中身を入れた URL の長さの上限(文字)。ブラウザ・GitHub が受け付ける長さには公の上限が無く、
-# 長い URL は途中で切られることがあるので控えめにした。超えたら中身を入れないページ(貼り付ける)だけを案内する
+# 長い URL は途中で切られることがあるので控えめにした。超えたら中身を入れないフォーム(貼り付ける)を開く
 SHARE_URL_LIMIT = 8000
 
 
@@ -768,31 +775,220 @@ def share_check(checklist: list[dict[str, Any]], report: Report) -> list[str]:
     return why
 
 
-def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
-    """GitHub で提出を送るページの URL(通信しない)。
+def issue_title(data: dict[str, Any]) -> str:
+    """Issue の題(モデル ID と GPU 名。どちらも検査を通った形の文字)。"""
+    mm = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    gpu = ((data.get("system") or {}).get("gpu") or {}).get("name")
+    return f"measurement: {mm.get('model_id')} on {gpu}"
 
-    - new_file_url: 「新しいファイル」のページ。data/contrib/<GPU> に <日付>-<sha8>.json の名前で、中身(text。
-      改行は LF にそろえる)を入れたもの。SHARE_URL_LIMIT を超えたら None(paste_url を使う)
-    - paste_url: 同じページで、名前だけを入れたもの(中身は利用者が貼り付ける)。中身を入れたページに中身が
-      出ないとき・URL が長すぎるときの代わり。GitHub のアップロードのページ(/upload/)は書き込みの権限が
-      要るので使わない(権限の無い人は「新しいファイル」のページなら自動でフォークを作れる)
-    名前の sha8 は contrib.canonical の hash なので、字下げ・改行の違いでは変わらない。"""
+
+def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
+    """GitHub で提出を送る Issue のフォームの URL(通信しない。#113)。
+
+    - issue_url: 実測の提出用のフォーム(ISSUE_TEMPLATE)に、題と中身(text。改行は LF にそろえる)を入れたもの。
+      SHARE_URL_LIMIT を超えたら None(form_url を開き、中身は貼り付ける)
+    - form_url: 同じフォームで、題だけを入れたもの
+    path_in_repo は受け付けたときのリポジトリの中の置き場所(PR は受け取る仕組みが作る)。"""
     from urllib.parse import quote
 
-    path = suggested_path(data)
-    folder, name = path.rsplit("/", 1)
     body = text.replace("\r\n", "\n")
-    base = f"https://github.com/{REPO}"
-    paste = f"{base}/new/{SHARE_BRANCH}/{folder}?filename={quote(name, safe='')}"
-    new = f"{paste}&value={quote(body, safe='')}"
+    title = issue_title(data)
+    form = f"https://github.com/{REPO}/issues/new?template={ISSUE_TEMPLATE}&title={quote(title, safe='')}"
+    full = f"{form}&{ISSUE_FIELD}={quote(body, safe='')}"
     return {
-        "path_in_repo": path,
-        "file_name": name,
-        "new_file_url": new if len(new) <= SHARE_URL_LIMIT else None,
-        "new_file_url_length": len(new),
+        "path_in_repo": suggested_path(data),
+        "title": title,
+        "issue_url": full if len(full) <= SHARE_URL_LIMIT else None,
+        "issue_url_length": len(full),
         "url_limit": SHARE_URL_LIMIT,
-        "paste_url": paste,
+        "form_url": form,
     }
+
+
+# --- Issue で受け取る(measurement-intake.yml。#113) ---------------------------------------------
+
+_FENCE = re.compile(r"^(?P<fence>`{3,}|~{3,})[^\n`]*\n(?P<body>.*?)^(?P=fence)[ \t]*$", re.M | re.S)
+_LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
+_REPO_PATH = re.compile(r"data/contrib/[a-z0-9-]+/\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json")
+
+
+def extract_issue_json(body: str | None) -> str | None:
+    """Issue の本文から提出の JSON の文字を取り出す(データとしてだけ扱う。何も実行しない)。
+    フォームの JSON の欄は ```json の囲みになる。{ で始まる最初の囲みの中身。囲みが無ければ、本文全体が
+    { で始まり } で終わるときだけその文字。見つからなければ None。"""
+    text = (body or "").replace("\r\n", "\n")
+    for m in _FENCE.finditer(text):
+        inner = m.group("body").strip()
+        if inner.startswith("{"):
+            return inner
+    t = text.strip()
+    return t if t.startswith("{") and t.endswith("}") else None
+
+
+@dataclass
+class IntakeResult:
+    """Issue 1 件の受け付けの結果。ok なら path_in_repo に content を足す PR を作る。"""
+
+    ok: bool
+    reasons: list[str] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)
+    path_in_repo: str | None = None
+    content: str | None = None
+    sha256: str | None = None
+    title: str = ""
+    commit_message: str = ""
+    pr_body: str = ""
+    comment: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _md(lines: list[str]) -> str:
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _parse_issue_json(text: str, res: IntakeResult) -> Any:
+    if len(text.encode("utf-8")) > MAX_FILE_BYTES:
+        res.reasons.append(
+            tr(f"大きすぎます({MAX_FILE_BYTES} バイトまで)", f"Too large (up to {MAX_FILE_BYTES} bytes)")
+        )
+        return None
+    try:
+        return loads_strict(text)
+    except RecursionError:
+        res.reasons.append(tr("入れ子が深すぎます", "Nested too deeply"))
+    except DuplicateKeyError as e:
+        res.reasons.append(str(e))
+    except ValueError as e:
+        res.reasons.append(tr(f"JSON ではありません({type(e).__name__})", f"Not JSON ({type(e).__name__})"))
+    return None
+
+
+def intake_issue(
+    body: str | None,
+    author: str,
+    number: int,
+    *,
+    db: Database | None = None,
+    existing: str | os.PathLike[str] | None = None,
+    today: _date | None = None,
+) -> IntakeResult:
+    """実測の Issue(#113)を検査し、PR に入れる中身と、Issue へのコメントを作る(通信しない・何も書かない)。
+
+    本文はデータとしてだけ扱う(extract_issue_json)。検査は contrib validate と同じ(validate_submission。
+    ファイル名はここで決めるので見ない)と、個人の情報の点検(share_check)。大きさは MAX_FILE_BYTES まで。
+    existing(リポジトリの data/contrib)に同じ内容の提出があれば断る。PR に入れる中身は、取り出した文字を
+    そのまま使わず dumps で書き直したもの(名前の sha8 は canonical の hash なので変わらない)。
+    出どころは Issue ごとに作る PR のマージのコミット(PR で出した提出と同じ数え方。submission_sources)。
+    PR の本文とコミットに Issue の番号と書いた人のアカウントを書く。コメントに入れる理由の文は md_cell で
+    無害にする(提出から来る文字でリンク・@ の呼び出し・HTML を作らない)。"""
+    if not _LOGIN.fullmatch(author or ""):
+        author = "unknown"
+    res = IntakeResult(ok=False)
+    text = extract_issue_json(body)
+    data: Any = None
+    if text is None:
+        res.reasons.append(
+            tr(
+                "本文に提出の JSON(```json の囲み)が見つかりません",
+                "No submission JSON (a ```json block) was found in the body",
+            )
+        )
+    else:
+        data = _parse_issue_json(text, res)
+    if text is not None and data is not None:
+        report = validate_submission(data, db, raw=text, today=today, check_filename=False)
+        if isinstance(data, dict):
+            res.reasons += share_check(privacy_checklist(data, text), report)
+        else:
+            res.reasons += [f"{e['code']}: {e['message']}" for e in report.errors]
+        res.notices = [f"{v['code']}: {v['message']}" for v in [*report.warnings, *report.notices]]
+        if not res.reasons and isinstance(data, dict):
+            sha, path = content_hash(data), suggested_path(data)
+            if not _REPO_PATH.fullmatch(path):
+                res.reasons.append(tr("置き場所の名前を作れません", "Cannot make the file name"))
+            elif existing is not None and _already_there(existing, sha):
+                res.reasons.append(
+                    tr("同じ内容の提出が既にあります", "The same submission is already in the repository")
+                )
+            else:
+                res.ok, res.sha256, res.path_in_repo = True, sha, path
+                res.content = dumps(data)
+                res.title = issue_title(data)
+    if not res.ok:
+        res.comment = _md(
+            [
+                tr("**実測の提出を受け付けられませんでした**", "**The measurement could not be accepted**"),
+                "",
+                *(f"- {md_cell(r)}" for r in res.reasons),
+                "",
+                tr(
+                    "直した中身で Issue の本文を編集すると、もう一度確かめます"
+                    "(中身は genmodelfit share で作り直せます)。",
+                    "Edit the issue body with the fixed content and it is checked again"
+                    " (genmodelfit share makes the content again).",
+                ),
+                tr(
+                    "どう直せばよいか分からないときは、このまま返信してください。メンテナが手伝います。",
+                    "Not sure how to fix it? Just reply here and a maintainer will help.",
+                ),
+            ]
+        )
+        return res
+    res.commit_message = (
+        f"data(contrib): {res.title}\n\nFrom issue #{number} by {author} (measurement-intake).\n"
+    )
+    res.pr_body = _md(
+        [
+            tr(
+                f"Issue #{number} で @{author} さんが送った実測です"
+                "(measurement-intake が検査して作りました)。",
+                f"A measurement sent by @{author} in issue #{number}"
+                " (checked and opened by measurement-intake).",
+            ),
+            "",
+            f"- `{res.path_in_repo}`",
+            "- "
+            + tr(
+                "検査: contrib validate と個人の情報の点検を通過",
+                "Checks: passed contrib validate and the privacy checks",
+            ),
+            *(
+                [
+                    "",
+                    tr("**マージする人への確認**", "**For the maintainer who merges**"),
+                    *(f"- {md_cell(n)}" for n in res.notices),
+                ]
+                if res.notices
+                else []
+            ),
+            "",
+            f"Closes #{number}",
+        ]
+    )
+    res.comment = _md(
+        [
+            tr("**受け付けました。ありがとうございます**", "**Accepted — thank you!**"),
+            "",
+            tr(
+                "検査を通ったので、data/contrib に足す PR を作りました(リンクは下)。"
+                "メンテナがマージすると、この Issue は閉じます。",
+                "It passed the checks, so a PR that adds it to data/contrib was opened (link below)."
+                " The issue closes when a maintainer merges it.",
+            ),
+        ]
+    )
+    return res
+
+
+def _already_there(root: str | os.PathLike[str], sha: str) -> bool:
+    for p in find_files(root):
+        with contextlib.suppress(OSError, ValueError):
+            data, _raw = read_submission(p)
+            if isinstance(data, dict) and content_hash(data) == sha:
+                return True
+    return False
 
 
 def measurements_from_file(path: str | os.PathLike[str]) -> list[Measurement]:

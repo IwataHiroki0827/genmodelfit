@@ -3,46 +3,70 @@
 **English** · [日本語](CONTRIBUTING.ja.md)
 
 genmodelfit prefers a value measured on a real PC (a measurement) over its estimate. The more GPUs are measured, the more accurate the estimates get.
-This page is for anyone who wants to send the result of `genmodelfit bench` as a pull request. It also lists the rules for other changes.
+This page is for anyone who wants to send a measurement (with `genmodelfit measure` and `genmodelfit share`, or as a pull request). It also lists the rules for other changes.
 For terms, see [README.md](README.md).
 
 ## Contents
 
 - [The easy way (no git needed)](#the-easy-way-no-git-needed)
-- [1. Measure](#1-measure)
-- [2. Create the submission JSON](#2-create-the-submission-json)
-- [3. Check the contents](#3-check-the-contents)
-- [4. Send a pull request](#4-send-a-pull-request)
+- [Advanced: bench and pull requests](#advanced-bench-and-pull-requests)
+  - [1. Measure](#1-measure)
+  - [2. Create the submission JSON](#2-create-the-submission-json)
+  - [3. Check the contents](#3-check-the-contents)
+  - [4. Send a pull request](#4-send-a-pull-request)
 - [Other changes](#other-changes)
 - [License](#license)
 
-In short: the easiest way is to measure with `genmodelfit bench … --share`, read what it shows, and press two buttons on a GitHub page in your browser ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no clone of a fork needed).
+In short: the easiest way is **two commands and one button**: `genmodelfit measure` measures, `genmodelfit share` opens a GitHub form with the result filled in, and you press "Create" ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no fork needed).
 If you know git, you can also run `genmodelfit bench … --submission data/contrib/` in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file (from "[2. Create the submission JSON](#2-create-the-submission-json)").
-**genmodelfit itself never sends anything**; sharing happens only through the pull request you open.
+**genmodelfit itself never sends anything**; sharing happens only when you press "Create" in the form, or through the pull request you open.
 Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](docs/accuracy.md#how-measurements-are-used)).
 
 ## The easy way (no git needed)
 
-`--share` is available from the version after 0.10.1. With [uv](https://docs.astral.sh/uv/) you can run it without installing (otherwise `pip install -U genmodelfit`, then `genmodelfit bench …`).
+`measure` and `share` are available from 0.11.0. With [uv](https://docs.astral.sh/uv/) you can run them without installing (`uvx genmodelfit measure`; otherwise `pip install -U genmodelfit`).
 
 ```powershell
-uvx genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --share
+genmodelfit measure
+genmodelfit share
 ```
 
-1. bench measures and writes the submission JSON (`<cache>/submissions/<GPU>/<date>-<sha8>.json`). For preparation and cautions before measuring, see "[1. Measure](#1-measure)".
-2. It shows everything that will be shared and the privacy checklist. **Read it yourself, including the note.**
-3. If the content may be shared, answer `y` to "Open the page in a browser?". GitHub's "new file" page opens with the file name and content filled in.
-4. Sign in to GitHub (you need an account).
-5. Press "Propose changes" at the bottom of the page. If you cannot write to the repository, GitHub makes a fork for you.
-6. Press "Create pull request" on the next page. The rest is the same as step 3 of "[4. Send a pull request](#4-send-a-pull-request)" (the CI checks and the merge).
+**What you need:** a GitHub account (free), ComfyUI running on this PC with an NVIDIA, AMD, Intel or Apple GPU,
+and about 1–5 minutes per model (plus the download when the model is not in your ComfyUI yet). No git, no fork and
+no programming.
 
-- With an `[NG]` in the checklist or an error in the checks, it stops without a URL. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
-- **If the pre-filled page does not show the content** (a browser or GitHub may cut a long URL), or the content was too long for a pre-filled URL, use "Paste and share" in the output: open the same page with only the name filled in (`https://github.com/laxshmate/genmodelfit/new/main/data/contrib/<GPU>?filename=<name>`), copy the file content printed just above it between the two `---` lines, paste it into the large box, then press "Propose changes" and "Create pull request". The file's location is shown too (GitHub's upload page needs write access, so it is not used).
-- A submission file you made earlier can be sent the same way with `genmodelfit contrib share <file>`.
-- Without a terminal, or with `--json`, it does not open a browser and only prints the URLs.
-- genmodelfit makes no network access. It only opens the page in your browser; the file is sent only when you press the buttons on the GitHub page.
+1. **`genmodelfit measure`**: choose a model from the list by its number and press Enter to measure it.
+2. **`genmodelfit share`**: choose the measurement; the GitHub form opens in your browser, already filled in.
+3. **Press "Create".** A bot checks it within a few minutes and replies on the page.
 
-## 1. Measure
+Step by step, in detail:
+
+1. Start ComfyUI (the one you normally use is fine) and close other generation jobs. For the cautions before measuring, see "[1. Measure](#1-measure)".
+2. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have no measurement on this GPU yet. Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
+   - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`).
+   - It finds a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000); for another one, add `--url http://<host>:<port>`. When none runs, it says how to start ComfyUI.
+3. Before measuring, one screen shows the model and precision, the settings (as in the official template), which ComfyUI and how it was found, whether the model files are installed, a rough time and that nothing is sent. Answer `Y` (Enter) to measure.
+   - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type. Downloading is not included.
+   - A model that is not installed is downloaded first, with the same questions and consent rules as `genmodelfit download`.
+   - When another program uses the GPU, it does not measure (the same as `bench`).
+4. It shows the result and where it saved it (`<cache>/submissions/<GPU>/<date>-<sha8>.json`), and one line pointing to `genmodelfit share`. It never asks whether to send.
+5. `genmodelfit share` lists the measurements you have not sent; choose one by number. It shows everything that will be sent and the privacy checklist (GPU name, VRAM, OS family, model, settings and values; no PC or user names). **Read it yourself, including the note.**
+6. The measurement form on GitHub opens in your browser with the content filled in. Sign in to GitHub (you need an account) and press **"Create"**.
+7. A bot checks the issue with the same checks as `genmodelfit contrib validate` and the privacy checks. If it passes, the bot opens a pull request that adds the file to `data/contrib/` and links it in the issue; a maintainer merges it (the issue closes then). If it fails, the bot comments the reason; edit the issue body with the fixed content to have it checked again.
+
+- With an `[NG]` in the checklist or an error in the checks, `share` stops without opening anything. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
+- When the content is too long for a URL, `share` copies it to the clipboard (with the OS tool: clip, pbcopy, wl-copy, xclip or xsel) and opens the empty form; paste it into the "Measurement (JSON)" box and press "Create". Without a clipboard tool it prints the content between two `---` lines to copy.
+- After the page is opened, the measurement is marked as sent on this PC and is not listed again (`genmodelfit share --all` lists it too). `genmodelfit share <file>` sends a given submission file (also one made by `bench --share` or `contrib make`).
+- Without a terminal, or with `--json` or `--print-url`, `share` does not open a browser and only prints the URL.
+- genmodelfit makes no network access for sending. It only opens the page in your browser; the content is sent only when you press "Create".
+- The issue author's account is written in the pull request and the commit; one issue is one pull request, so it counts as one source like a pull request you open yourself ("[After it is accepted](#after-it-is-accepted)").
+
+## Advanced: bench and pull requests
+
+This part is for people who use git, or who want every option of `genmodelfit bench` (your own workflow, other
+settings, `--force`). It also explains in detail what is measured and checked, which applies to the easy way too.
+
+### 1. Measure
 
 1. Start ComfyUI (the one you normally use is fine). Measure **when no other generation is running**.
    - bench does not measure while the queue has jobs (it checks twice: before starting and just before sending).
@@ -94,7 +118,7 @@ Timeout and files:
 - Output of save nodes goes to `genmodelfit_bench/` in ComfyUI's output folder. Delete it if you do not need it.
 - With ComfyUI's dynamic VRAM (the default), ComfyUI can stop responding at settings that barely fit the VRAM (the log stalls after aimdo reports `budget_deficit`; seen in #102 on an RTX 5080 16GB with Wan at 81 frames). bench's timeout cannot cancel it then, so stop only the ComfyUI you started, restart it with `--disable-dynamic-vram` and measure again.
 
-### What is measured
+#### What is measured
 
 | Field | How it is measured |
 |---|---|
@@ -114,7 +138,7 @@ Out-of-memory (OOM) data is welcome too: it is important data saying "this GPU c
 - "Non-standard" results are the same: save them with `--save-nonstandard` or `--output`.
 - Estimates use only measurements with `outcome` `ok` and `standard` `true`.
 
-## 2. Create the submission JSON
+### 2. Create the submission JSON
 
 From here on is the way with git and a clone of your fork (if you used "[the easy way](#the-easy-way-no-git-needed)", you can skip it; the table of what goes in is the same).
 
@@ -133,7 +157,7 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 102
 - If ComfyUI was on another PC, add `--no-pc-info` to leave out this PC's OS, memory and GPU generation.
 - Submit failed (OOM) results as they are. Results under non-standard conditions are accepted as records but not used in aggregation.
 
-### What goes in and what does not
+#### What goes in and what does not
 
 | Goes in | Example |
 |---|---|
@@ -157,7 +181,7 @@ However, the automatic check reads patterns, not meaning. It misses things like 
 
 On the other hand, ComfyUI node names (such as `HunyuanVideo15ImageToVideo`), 40-digit git commits, 64-digit sha256 and public domains (huggingface.co, hf.co, github.com, comfy.org, pytorch.org, nvidia.com, python.org) are not treated as personal information.
 
-## 3. Check the contents
+### 3. Check the contents
 
 Always do this before sending.
 
@@ -175,7 +199,7 @@ This prints everything in the file in readable form, and prints the result of a 
 - A GPU name is refused only when it is a placeholder (empty, n/a, none, null, unknown, -) or a generic name (NVIDIA Graphics Device etc.) (0.11.0; new GPUs not in the table are accepted).
 - Notices are shown above the job summary, and the person who merges the PR reads them. If there is a reason, write it in the PR description (you may be asked to measure again).
 
-## 4. Send a pull request
+### 4. Send a pull request
 
 1. Add only `data/contrib/<GPU>/<date>-<sha8>.json`.
    - Do not change other files (put code changes in a separate PR).
@@ -200,9 +224,9 @@ This prints everything in the file in readable form, and prints the result of a 
    - The check runs with genmodelfit from the PR's target (main).
    - The merge is the maintainer's review (there is no separate mechanism where a person approves each submission).
 
-**genmodelfit does not send measurements.** The only thing shared is the content of the pull request you open on your own GitHub (there is no feature that creates a PR automatically). Once merged, the submission is published under MPL-2.0 (see [License](#license) below).
+**genmodelfit does not send measurements.** The only thing shared is what you send yourself: the measurement issue you create with "Create" (a bot turns it into a pull request) or the pull request you open on your own GitHub. Once merged, the submission is published under MPL-2.0 (see [License](#license) below).
 
-### After it is accepted
+#### After it is accepted
 
 - After the merge, your file is in data/contrib, but it **reaches users with the next version** of genmodelfit (#90). When making a release, the maintainer groups submissions with the same model, settings and GPU using `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` (outliers are removed with the median and MAD; [docs/release.md](docs/release.md)). `genmodelfit contrib aggregate --check` shows the submissions not in it yet.
 - Only **PCs with the same GPU as the measured one** use the result. Judgments for PCs with other GPUs do not change (0.9.1; the same approach as llmfit). "Same GPU" means:
@@ -210,10 +234,10 @@ This prints everything in the file in readable form, and prints the result of a 
   - the ratio of total VRAM is 0.95 or more (the same card reports a slightly different total on Linux and Windows). An 8 GB and a 16 GB RTX 4060 Ti are treated as different GPUs.
 - On such a PC, **from 1 submission** the basis of the estimate for that configuration becomes `measured` (a measurement, treated like the maintainer's; the table's VRAM gets an `m`), and the number of sources (`sample_count`) is shown.
 - The value is used in both directions, lowering or raising the required amount. A value for everything on the GPU is never lowered below weights + fixed part, and never raised above the GPU's total.
-- Measurements of the same GPU and the same settings also become grounds for deciding the level once **two or more independent sources** agree (a maintainer row, or submissions sent in another pull request; however many files one person sends in one pull request, they are one source). A source is one PR; several PRs from the same person count separately, so the maintainer checks for that when merging. Measurements only raise the level and never lower it. See [docs/scoring.md](docs/scoring.md) for details.
+- Measurements of the same GPU and the same settings also become grounds for deciding the level once **two or more independent sources** agree (a maintainer row, or submissions sent in another pull request; however many files one person sends in one pull request, they are one source). A source is one PR (a measurement issue becomes one PR); several PRs from the same person count separately, so the maintainer checks for that when merging (the bot writes the issue author in the PR). Measurements only raise the level and never lower it. See [docs/scoring.md](docs/scoring.md) for details.
 - For a submission PR, the `Contrib` workflow shows the result of `contrib aggregate --report` in the summary. The calibration table (calibration.json, [docs/accuracy.md](docs/accuracy.md)) is rebuilt by a maintainer with `python -m genmodelfit.calibrate` when importing measurements for a release.
 
-### Maintainer measurements (measurements.json)
+#### Maintainer measurements (measurements.json)
 
 The bundled `src/genmodelfit/data/measurements.json` holds the measurements the maintainer made. Its fields are in the [Measurement](docs/schema.md#measurement) section of docs/schema.md, and the submission format is in the [contrib](docs/schema.md#contrib) section. Send users' measurements to data/contrib (do not edit measurements.json directly).
 
@@ -232,6 +256,6 @@ Code changes are welcome too.
 The code of genmodelfit and the bundled data (db.json, measurements, coefficients) are under [MPL-2.0](https://github.com/laxshmate/genmodelfit/blob/main/LICENSE).
 
 - Fixes, measurements and other data you send are accepted **as released under MPL-2.0**, like the rest of the project (inbound = outbound).
-- By opening a pull request you agree to this.
+- By opening a pull request or a measurement issue you agree to this.
 - There is no CLA (a document assigning copyright or granting extra permission).
 - Only submit work you wrote yourself or are allowed to release under MPL-2.0.

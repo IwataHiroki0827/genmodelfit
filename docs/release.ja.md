@@ -10,6 +10,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 - [GitHub の environment(2026-10-20 に設定)](#github-の-environment2026-10-20-に設定)
 - [最初の公開(v0.1.0)の手順](#最初の公開v010の手順)
 - [次からの版を出す手順](#次からの版を出す手順)
+- [実測の Issue を受け取る(#113)](#実測の-issue-を受け取る113)
 - [データの配布](#データの配布)
 - [毎週の一覧の更新(#19)](#毎週の一覧の更新19)
   - [PR で確かめること](#pr-で確かめること)
@@ -131,6 +132,27 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 - 事前登録では名前は確保されず、最初の公開で確定する。
 - **PEP 541(放棄された名前の扱い)があるので、中身の無い仮の版で名前だけ押さえない。動く v0.1 を公開する。**
 - 公開した版は消せない(取り下げ=yank だけ)。版の番号は使い回せないので、直すなら次の版を出す。
+
+## 実測の Issue を受け取る(#113)
+
+`genmodelfit share` は、実測を入れた Issue のフォーム `.github/ISSUE_TEMPLATE/measurement.yml` を開きます。
+ワークフロー `.github/workflows/measurement-intake.yml` が、`measurement` の印の Issue を、開いている間(作られた・
+編集された・印が付いたとき)に受け取ります:
+
+1. `genmodelfit contrib intake` が、イベントのファイルから Issue の本文をデータとして読み(台本に `${{ }}` で埋め込まない)、
+   `contrib validate` と同じ検査と `share` の個人の情報の点検をして、同じ中身が既に `data/contrib` にあれば断ります
+   ([schema.ja.md「contrib」](schema.ja.md#contrib))。
+2. 受け付けたら、`data/contrib/<GPU>/<日付>-<sha8>.json` をブランチ `measurement/issue-<N>` に push し、PR を作り(本文は
+   Issue を書いた人・メンテナへの確認・`Closes #N`)、Issue にリンクをコメントします。Issue を編集すると同じブランチを
+   作り直します。PR をマージすると Issue は閉じます。
+3. 断ったら、理由(英語と日本語)を Issue にコメントします。本文を編集すると、もう一度確かめます。
+
+マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
+動きません)と、同じ人が同じ実測を複数の Issue で送っていないか(Issue は PR と同じく 1 つが 1 つの出どころ)。
+
+一度だけの設定: Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」を有効にし、
+印 `measurement` を作っておく(Issues → Labels)。ワークフローが使うのは `GITHUB_TOKEN` だけです(contents・pull-requests・
+issues の書き込み。このジョブだけ)。
 
 ## データの配布
 

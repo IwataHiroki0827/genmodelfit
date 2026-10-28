@@ -22,6 +22,8 @@ SUBCOMMANDS = [
     "gate",
     "bench",
     "download",
+    "measure",
+    "share",
     "diff",
     "contrib",
     "review",
