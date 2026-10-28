@@ -172,6 +172,16 @@ ok = [e for e in gmf.load_db().models if e.reviewed]
 fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
 print(fit.to_dict()["fit_level"])  # only names in gmf.__all__ are stable API
 
+# AMD / Intel GPUs go through the same support tables as detection; refusals say why (other_gpus[].reason)
+pc = gmf.system_from(
+    [{"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "vram_gb": 16}],
+    windows=True,
+    windows_build=22631,
+    cpu="AMD Ryzen 7 7700X",
+)
+gmf.gpu_family("Intel(R) Arc(TM) B580 Graphics", "intel")  # {"backend": "xpu", ...} from the name table
+db = gmf.load_db(use_cache=False, user_measurements=False)  # bundled list + bundled measurements only
+
 # fetch the signed list with your own session, e.g. the app's CA bundle (network: only this and gmf.download)
 db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```

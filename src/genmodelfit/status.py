@@ -63,6 +63,14 @@ class DataStatus:
     auto_count_if_fresh: int
     checked_at: str
 
+    @property
+    def generated_time(self) -> datetime | None:
+        """generated_at を UTC の datetime にしたもの(#96。`Database.generated_time` と同じ読み方)。
+        無い・読めないときは None。to_dict() には入らない。"""
+        from .db import parse_generated_at
+
+        return parse_generated_at(self.generated_at)
+
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 

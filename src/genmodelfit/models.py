@@ -217,6 +217,23 @@ class ModelEntry:
         return self.review is None or self.review.status == "ok"
 
     @property
+    def license_unknown(self) -> bool:
+        """ライセンスの分からないファイルがあるか(ファイルが無ければ一式のライセンス)。
+        `recommend` / `fit_list` などは既定でこれを出さない(include_unknown_license=True で出す。#28)。
+        同じ判定を 1 件ずつ使う(#96)。"""
+        from .recommend import license_unknown
+
+        return license_unknown(self)
+
+    @property
+    def is_tool(self) -> bool:
+        """補助ツール(前処理・音の分離など。tasks がすべて補助の作業か、題がそれのもの)か。`recommend` /
+        `fit_list` は既定でこれを出さない(include_tools=True で出す)。同じ判定を 1 件ずつ使う(#96)。"""
+        from .tasks import is_tool
+
+        return is_tool(self)
+
+    @property
     def total_size_bytes(self) -> int | None:
         sizes = [f.size_bytes for f in self.files if f.size_bytes]
         if sizes:

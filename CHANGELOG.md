@@ -5,7 +5,32 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [0.11.0] - Unreleased
+## [0.12.0] - Unreleased
+
+### Added
+
+- **Public API for embedding apps** (#96; docs/schema.md "Python API (stable)"), so that an app no longer calls
+  internal functions:
+  - `gmf.system_from(..., windows_build=None, cpu=None)`: GPUs with `vendor` `amd` / `intel` / `apple` go through the
+    same support tables as detection (`hardware.classify_adapter`); the reason for each is in `other_gpus[].reason`
+    (`usable`, `integrated`, `needs`). `vram_gb` may be omitted for them; an optional `pci_id` resolves generic names.
+    `gmf.judge_model` takes `gpu_vendor`, `windows_build` and `cpu` and passes them on.
+  - `gmf.gpu_family(name, vendor, cpu="")`: the AMD gfx / Intel XPU name tables (`backend`, `arch`, `family`,
+    `integrated`, `vram_floor_gb`), or `None` when the name is not in them.
+  - `gmf.load_db(..., user_measurements=True, source=None)`: `user_measurements=False` reads only the bundled
+    measurements (not this PC's `bench` results); `source="release"` marks a list file the app imported itself.
+  - `ModelEntry.license_unknown` / `ModelEntry.is_tool`: the per-entry checks of the default filters.
+  - `Database.generated_time` / `DataStatus.generated_time` (`generated_at` as a UTC `datetime`), and
+    `gmf.self_check()` (bundled list, measurements, coefficients, `cryptography` and public keys present; never raises).
+  - `gmf.parse_safetensors_header`, `gmf.HeaderError`, `gmf.HeaderInfo`.
+
+### Changed
+
+- **`gmf.system_from` judges AMD / Intel / Apple GPUs** (#96): before, a GPU dict with a non-NVIDIA `vendor` was always
+  treated as CPU; now it is classified like a detected adapter and used when no NVIDIA GPU is usable (pass
+  `gpu_usable=False` for the old CPU-only result). `vendor` is compared without case (`"NVIDIA"` is NVIDIA).
+
+## [0.11.0] - 2026-10-28
 
 ### Added
 
@@ -81,7 +106,6 @@ All notable changes to this project are documented here. The format is based on
   PR body and `gpu_watch.json`: candidates "not in tables" / "differs" and the sources that could not be read. It never
   rewrites the tables, never raises, and does not affect `ok` or the safe automatic merge. `--no-gpu-watch` skips it;
   `python -m genmodelfit.gpuwatch` runs it by hand.
-
 ### Changed
 
 - **One GitHub account is one source, one pull request at most one** (#113): other users' submissions are counted as
