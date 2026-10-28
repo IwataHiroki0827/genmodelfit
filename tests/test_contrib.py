@@ -2110,7 +2110,7 @@ def test_cli_share_opens_the_form_in_a_terminal(
     path = _pr92(tmp_path)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("share は送るかを尋ねない"))
-    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue", str(path)]) == 0
     out = capsys.readouterr().out
     text = path.read_text(encoding="utf-8")
     assert browser == [contrib.share_urls(json.loads(text), text)["issue_url"]] and clipboard == []
@@ -2123,7 +2123,7 @@ def test_cli_share_long_content_goes_to_the_clipboard(
     path = _pr92(tmp_path)
     monkeypatch.setattr(contrib, "SHARE_URL_LIMIT", 100)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue", str(path)]) == 0
     out = capsys.readouterr().out
     text = path.read_text(encoding="utf-8")
     assert clipboard == [text]
@@ -2139,7 +2139,7 @@ def test_cli_share_long_content_without_clipboard_prints_it(
     monkeypatch.setattr(contrib, "SHARE_URL_LIMIT", 100)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     monkeypatch.setattr(cli, "_copy_to_clipboard", lambda text: False)
-    assert cli.main(["--lang", "ja", "share", str(path)]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue", str(path)]) == 0
     out = capsys.readouterr().out
     # 写す範囲(2 つの --- の行の間)は中身だけ。ファイルの場所(ユーザ名が入る)は出さない
     lines = out.splitlines()
@@ -2169,10 +2169,10 @@ def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, n
     path = tmp_path / "leaky.json"
     path.write_text(contrib.dumps(d), encoding="utf-8")
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["--lang", "ja", "share", str(path)]) == 1
+    assert cli.main(["--lang", "ja", "share", "--issue", str(path)]) == 1
     cap = capsys.readouterr()
     assert "送れません" in cap.err and "github.com/laxshmate" not in cap.out and browser == []
-    assert cli.main(["share", str(path), "--json"]) == 1
+    assert cli.main(["share", "--issue", str(path), "--json"]) == 1
     j = json.loads(capsys.readouterr().out)
     assert j["ok"] is False and j["share"] is None and j["refused"] and j["marked_shared"] is False
 

@@ -66,6 +66,14 @@ def _no_real_comfyui(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_github_login(monkeypatch):
+    """share の GitHub のログイン(#124)を、この PC・CI の資格情報に左右されないようにする。
+    環境変数のトークン・client id を外す(キャッシュは試験ごとの GENMODELFIT_CONFIG_DIR の下)。"""
+    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GENMODELFIT_GH_CLIENT_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _pin_language(monkeypatch):
     """表示の言語を ja に固定する(機械の言語に左右されないように。#73)。
     子プロセスで CLI を動かす試験にも効くよう環境変数で渡し、set_language・--lang の状態も毎回戻す。"""

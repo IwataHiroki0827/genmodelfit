@@ -54,7 +54,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
-| Measure a model and send the result | `genmodelfit measure` (with ComfyUI running), then `genmodelfit share` and "Create" on GitHub | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
+| Measure models and send the results | `genmodelfit share` (with ComfyUI running; it measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
 
@@ -93,7 +93,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
     `--uncensored` is the same as `--content all`; together with `--content sfw` or `--content uncensored` it is a
     usage error (exit code 2).
   - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`;
-    measurements already sent too in `share` / `contrib share`.
+    measurements already sent too in `share` (sent again) / `contrib share` (listed).
   - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`; suggestions listed in
     `measure`.
   - `--output` means different things in `update`, `bench` and `contrib`, and `--force` in `update` and `bench`
@@ -127,10 +127,12 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 |---|---|---|
 | `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure`, `share` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
 | `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_CACHE_DIR` | `update`, `measure`, `share`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
+| `GITHUB_TOKEN`, `GH_TOKEN` | `share` | A GitHub token used as it is to send the pull request (it needs the `public_repo` scope). Beats the saved sign-in and the device login. |
+| `GENMODELFIT_GH_CLIENT_ID` | `share` | The client id of the GitHub OAuth app used for the device login. Empty turns the device login off (only `GITHUB_TOKEN` / `GH_TOKEN`). |
 
 Network access also follows the usual proxy and certificate variables (`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, ...);
 `~/.netrc` credentials are never sent.
@@ -156,9 +158,10 @@ Where several places give the same setting, the first of these wins:
 | Cache folder | `%LOCALAPPDATA%\\genmodelfit\\Cache` | `~/Library/Caches/genmodelfit` | `~/.cache/genmodelfit` (or `$XDG_CACHE_HOME/genmodelfit`) |
 
 `genmodelfit config path` prints the config file on your PC. `GENMODELFIT_CONFIG_DIR` and `GENMODELFIT_CACHE_DIR`
-move the folders. The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
+move the folders. The config folder also holds the GitHub sign-in of `share` (`github_token`, readable only by you;
+`genmodelfit share --logout` removes it). The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
 your `measure` and `bench` results (`measurements/`, also used when this PC is judged), submission drafts
-(`submissions/`, what `share` lists) and the marks of what `share` has sent (`submissions_shared.json`).
+(`submissions/`, what `share` sends) and the marks of what `share` has sent (`submissions_shared.json`).
 Deleting the cache folder is safe: the bundled list is used again (your saved results go with it).
 
 ## Exit codes
@@ -186,7 +189,8 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
 
 The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
-(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`) and `signing.py` (`GENMODELFIT_SIGNING_KEY`).
+(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`), `signing.py` (`GENMODELFIT_SIGNING_KEY`) and `github.py`
+(`GITHUB_TOKEN`, `GH_TOKEN`, `GENMODELFIT_GH_CLIENT_ID`).
 """,
     "ja": """# コマンド一覧
 
@@ -212,7 +216,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
 | 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
-| モデルを実測して送る | `genmodelfit measure`(ComfyUI を起動しておく)、次に `genmodelfit share` で GitHub の「Create」を押す | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
+| モデルを実測して送る | `genmodelfit share`(ComfyUI を起動しておく。数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
 
@@ -249,7 +253,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
     無検閲のモデルを落とす同意にもなる。`--uncensored` は `--content all` と同じで、`--content sfw` か
     `--content uncensored` と一緒に使うと使い方の誤り(終了コード 2)。
   - `--all`: `fit` / `search` では全部を出す。`diff` では保守用の内容を足す。`review list` では確認済みも出す。
-    `share` / `contrib share` では送ったことにした実測も出す。
+    `share` では送ったことにした実測も送り直す、`contrib share` では一覧に出す。
   - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数、`measure` では出す提案の数。
   - `--output` は `update`・`bench`・`contrib` で、`--force` は `update`・`bench` で、それぞれ意味が違う(各コマンドを見る)。
 - `--json` を付けると、どのコマンドもプログラム向けの JSON を出します。形は [schema.ja.md](schema.ja.md) にあります。
@@ -281,10 +285,12 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 |---|---|---|
 | `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download`・`measure` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download`・`measure`・`share` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
 | `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_CACHE_DIR` | `update`・`measure`・`share`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
+| `GITHUB_TOKEN`・`GH_TOKEN` | `share` | PR を送るのにそのまま使う GitHub のトークン(scope `public_repo` が要る)。保存したログインとデバイス認証に勝つ。 |
+| `GENMODELFIT_GH_CLIENT_ID` | `share` | デバイス認証に使う GitHub の OAuth アプリの client id。空にするとデバイス認証を使わない(`GITHUB_TOKEN`・`GH_TOKEN` だけ)。 |
 
 通信は、プロキシと証明書の環境変数(`HTTPS_PROXY`・`REQUESTS_CA_BUNDLE` など)にも従います。`~/.netrc` の資格情報は送りません。
 
@@ -309,8 +315,9 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | キャッシュのフォルダ | `%LOCALAPPDATA%\\genmodelfit\\Cache` | `~/Library/Caches/genmodelfit` | `~/.cache/genmodelfit`(か `$XDG_CACHE_HOME/genmodelfit`) |
 
 この PC の設定ファイルの場所は `genmodelfit config path` で分かります。`GENMODELFIT_CONFIG_DIR`・`GENMODELFIT_CACHE_DIR`
-でフォルダを変えられます。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
-`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`。`share` が一覧に出すもの)、
+でフォルダを変えられます。設定のフォルダには `share` の GitHub のログイン(`github_token`。本人だけが読める。
+`genmodelfit share --logout` で消す)も入ります。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
+`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`。`share` が送るもの)、
 `share` で送った印(`submissions_shared.json`)が入ります。
 キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した結果も消えます)。
 
@@ -340,7 +347,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 
 環境変数を読むのは `src/genmodelfit/` の `i18n.py`(`GENMODELFIT_LANG`)・`cli.py`(`GENMODELFIT_COMFYUI_DIR`)・
 `comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
-`signing.py`(`GENMODELFIT_SIGNING_KEY`)です。
+`signing.py`(`GENMODELFIT_SIGNING_KEY`)・`github.py`(`GITHUB_TOKEN`・`GH_TOKEN`・`GENMODELFIT_GH_CLIENT_ID`)です。
 """,
 }
 

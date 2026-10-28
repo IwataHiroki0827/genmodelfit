@@ -22,7 +22,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
-| Measure a model and send the result | `genmodelfit measure` (with ComfyUI running), then `genmodelfit share` and "Create" on GitHub | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
+| Measure models and send the results | `genmodelfit share` (with ComfyUI running; it measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
 
@@ -61,7 +61,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
     `--uncensored` is the same as `--content all`; together with `--content sfw` or `--content uncensored` it is a
     usage error (exit code 2).
   - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`;
-    measurements already sent too in `share` / `contrib share`.
+    measurements already sent too in `share` (sent again) / `contrib share` (listed).
   - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`; suggestions listed in
     `measure`.
   - `--output` means different things in `update`, `bench` and `contrib`, and `--force` in `update` and `bench`
@@ -86,7 +86,7 @@ link here.
 | `--vram` | `GB` | detected on this PC | judge with this much GPU VRAM in GB (GiB), e.g. 8 (0: no GPU); to judge another PC | `system`, `recommend`, `fit`, `search`, `info`, `download` |
 | `--ram` | `GB` | detected on this PC | judge with this much system RAM in GB (GiB), e.g. 32; to judge another PC | `system`, `recommend`, `fit`, `search`, `info`, `download` |
 | `--db` | `PATH` | the list fetched by update, else the bundled list | use this model list file (db.json) | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `measure`, `gate`, `bench` |
-| `--no-cache` |  |  | use the bundled list, not the one fetched by update | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `measure`, `gate`, `review list`, `bench` |
+| `--no-cache` |  |  | use the bundled list, not the one fetched by update | `system`, `recommend`, `fit`, `search`, `types`, `info`, `download`, `measure`, `share`, `gate`, `review list`, `bench` |
 | `--license-allowlist` | `LIST\|FILE` | the allowlist in [gate.md](gate.md) | licenses allowed for auto-recommendation ("mit,apache-2.0", or a file with one per line). Default: [gate.md](gate.md). An empty string ("") is the same as not giving it | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--comfyui-version` | `VER` | the latest release recorded in the list | the ComfyUI version in use; apps should always pass theirs (default: the latest release recorded by update) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
 | `--max-head-age-days` | `DAYS` | `30` | trust HEAD checks for this many days (default 30; none for no limit) | `system`, `recommend`, `fit`, `search`, `info`, `update`, `download`, `gate` |
@@ -120,10 +120,12 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 |---|---|---|
 | `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
-| `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure`, `share` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
 | `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_CACHE_DIR` | `update`, `measure`, `share`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
+| `GITHUB_TOKEN`, `GH_TOKEN` | `share` | A GitHub token used as it is to send the pull request (it needs the `public_repo` scope). Beats the saved sign-in and the device login. |
+| `GENMODELFIT_GH_CLIENT_ID` | `share` | The client id of the GitHub OAuth app used for the device login. Empty turns the device login off (only `GITHUB_TOKEN` / `GH_TOKEN`). |
 
 Network access also follows the usual proxy and certificate variables (`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, ...);
 `~/.netrc` credentials are never sent.
@@ -149,9 +151,10 @@ Where several places give the same setting, the first of these wins:
 | Cache folder | `%LOCALAPPDATA%\genmodelfit\Cache` | `~/Library/Caches/genmodelfit` | `~/.cache/genmodelfit` (or `$XDG_CACHE_HOME/genmodelfit`) |
 
 `genmodelfit config path` prints the config file on your PC. `GENMODELFIT_CONFIG_DIR` and `GENMODELFIT_CACHE_DIR`
-move the folders. The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
+move the folders. The config folder also holds the GitHub sign-in of `share` (`github_token`, readable only by you;
+`genmodelfit share --logout` removes it). The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
 your `measure` and `bench` results (`measurements/`, also used when this PC is judged), submission drafts
-(`submissions/`, what `share` lists) and the marks of what `share` has sent (`submissions_shared.json`).
+(`submissions/`, what `share` sends) and the marks of what `share` has sent (`submissions_shared.json`).
 Deleting the cache folder is safe: the bundled list is used again (your saved results go with it).
 
 ## Exit codes
@@ -177,7 +180,7 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
 - [`genmodelfit update`](#genmodelfit-update) — get a newer model list (users: `--from-release`; without options it rebuilds from upstream)
 - [`genmodelfit download`](#genmodelfit-download) — download the files of a model (consent, sha256, resume, ComfyUI folders)
 - [`genmodelfit measure`](#genmodelfit-measure) — pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)
-- [`genmodelfit share`](#genmodelfit-share) — pick an unsent measurement, show it, and open the GitHub form to send it in your browser (it is sent when you press "Create")
+- [`genmodelfit share`](#genmodelfit-share) — measure installed models for a few minutes and send them, with your unsent measurements, as a GitHub pull request (`--issue`: send with the issue form)
 - [`genmodelfit config`](#genmodelfit-config) — show or change settings (download's ComfyUI folder, display language)
   - [`genmodelfit config show`](#genmodelfit-config-show) — current settings and where they come from (the default when no subcommand is given)
   - [`genmodelfit config set`](#genmodelfit-config-set) — save a value
@@ -834,69 +837,91 @@ genmodelfit measure --url http://127.0.0.1:8000  # measure on this ComfyUI (no s
 
 ## `genmodelfit share`
 
-pick an unsent measurement, show it, and open the GitHub form to send it in your browser (it is sent when you press "Create")
+measure installed models for a few minutes and send them, with your unsent measurements, as a GitHub pull request (`--issue`: send with the issue form)
 
 **Usage**
 
 ```text
-genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-sent] [--db PATH]
-                  [file]
+genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-license] [--no-measure]
+                  [--budget SEC] [--dry-run] [--issue] [--print-url] [--logout] [--all]
+                  [--mark-sent] [--url URL] [--comfyui-dir DIR] [--timeout SEC] [--db PATH]
+                  [--no-cache] [file]
 ```
 
-- Send a measurement: show exactly what will be sent and open the GitHub form for it.
-- Without FILE it lists the measurements saved by measure (and bench `--share`) that are not marked as sent, newest first; choose one by number.
-- It shows the whole content (GPU name, VRAM, OS family, model, settings and values; no PC or user names) with the privacy checks, then opens the measurement issue form on GitHub in your browser with the content filled in: sign in and press "Create".
-- A bot checks it within a few minutes and replies on the page; if it is fine, it goes into the project once a maintainer accepts it.
-- When the content does not fit in a URL it is copied to the clipboard (clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened; paste it there.
-- Once the page is opened, or the URL is printed with `--print-url`, the measurement is marked as sent on this PC and is not listed again (`--all` lists it); `--json` marks it only with `--mark-sent`.
-- `--print-url` without FILE uses the only unsent measurement (with several, give FILE).
-- You need a GitHub account.
+- Measure for a few minutes and send the measurements as a GitHub pull request.
+- Without FILE it finds ComfyUI like measure (`--url`, else one running on this PC), picks the suggestions of measure whose files are installed until their rough times add up to `--budget` (300 s), shows the plan with the unsent measurements and asks once [Y/n], then measures them one by one (a failure does not stop the rest; Ctrl+C goes on to sending what was measured).
+- If time is left and some suggestions are not installed, it asks once whether to download and measure them [y/N] (default no; `--download` skips the question; downloading uses the same questions and consent rules as download, and `--yes` alone never downloads).
+- Then it shows every file to send (the whole content and the privacy checks) and asks [Y/n].
+- It signs in to GitHub before measuring: GITHUB_TOKEN or GH_TOKEN, else the saved sign-in, else the GitHub device login in your browser (scope public_repo; saved for next time; `--logout` removes it).
+- It forks the repository if needed, makes a branch from the upstream main, adds the files under `data/contrib/<GPU>/` and opens a pull request (titled "measurements: `<GPU>` (`<count>`)"), or adds them to your open share pull request; files already there are skipped.
+- Sent files are marked on this PC and not sent again (`--all` includes them).
+- Without ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking or signing in.
+- `--no-measure` sends the unsent measurements only; FILE sends that file only.
+- `--issue` is the older way without signing in: it opens the measurement issue form in your browser.
 
 **Options and arguments**
 
 | Option / argument | Value | Default | Description |
 |---|---|---|---|
-| `file` |  |  | the submission JSON to send (omitted: list unsent measurements and choose one) |
-| `--print-url` |  |  | do not open a browser; print only the URL of the form (for scripts) |
-| `--all` |  |  | also list measurements already marked as sent |
-| `--mark-sent` |  |  | with `--json`, also mark it as sent (for apps that open the form themselves; by default `--json` only previews) |
-| `--db` | `PATH` |  | the list used to check model ids (default: the bundled list; the cache is not used) |
+| `file` |  |  | the submission JSON to send (omitted: measure, then send all unsent measurements) |
+| `--yes`, `-y` |  |  | do not ask before measuring and sending (does not agree to downloading models) |
+| `--download` |  |  | if time is left, also download and measure suggestions that are not installed (same rules as download; no question) |
+| `--any-license` |  |  | with `--download` or without a terminal, also download models whose license is unknown (as in download; cannot be abbreviated) |
+| `--no-measure` |  |  | do not measure; send only the unsent measurements |
+| `--budget` | `SEC` | `300` | the most time to spend measuring (sum of the rough time guides; seconds) |
+| `--dry-run` |  |  | only show the plan and what would be sent (no measuring, no sign-in, no network) |
+| `--issue` |  |  | send with the GitHub issue form in your browser instead, without signing in (the older way) |
+| `--print-url` |  |  | with `--issue`: do not open a browser; print only the URL of the form (for scripts) |
+| `--logout` |  |  | remove the saved GitHub sign-in (token) |
+| `--all` |  |  | also include measurements already marked as sent |
+| `--mark-sent` |  |  | with `--issue` `--json`, also mark it as sent (for apps that open the form themselves; by default `--json` only previews) |
+| `--url` | `URL` | a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000) | URL of the ComfyUI to measure on (like measure) |
+| `--comfyui-dir` | `DIR` | decided like download | your ComfyUI folder (to see whether models are installed, and where to download; like measure) |
+| `--timeout` | `SEC` | `1800` | the most time to wait for one run (seconds; default 1800) |
+| `--db` | `PATH` | choosing: the list fetched by update, else the bundled list; checks: the bundled list | use this model list file (db.json) (to choose what to measure and to check before sending) |
 
-- Also takes the [shared options](#options-shared-by-commands): `--json`
+- Also takes the [shared options](#options-shared-by-commands): `--json`, `--no-cache`
 
 **Preconditions**
 
-- A measurement saved by `genmodelfit measure`, or a submission JSON.
+- A GitHub account.
+- To measure: a GPU and ComfyUI (as for measure).
 
 **Side effects**
 
-- No network access: it only opens your browser (in a terminal, without `--json` and `--print-url`).
-- The content is sent only when you press "Create" on GitHub.
-- Writes the sent marks to `<cache>/submissions_shared.json`; may put the content on the clipboard.
+- Network: like measure while measuring and downloading; after you agree, github.com and api.github.com (sign-in, fork, branch, files, pull request).
+- `--dry-run` and `--issue` use no network.
+- Writes measurements like measure, the sent marks to `<cache>/submissions_shared.json` and the sign-in token to `<config>/github_token` (readable only by you).
 
 **Exit codes**
 
 | Code | Meaning |
 |---|---|
-| 0 | Success (also: nothing chosen, nothing to send) |
-| 1 | Error: the file cannot be read, a privacy check is NG or the checks have errors, or `--print-url` without FILE when several measurements are unsent |
+| 0 | Success (also: answered n, nothing to measure or send) |
+| 1 | Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was refused (privacy check NG or check errors), GitHub refused the upload, `--json` or no terminal without `--yes` |
 | 2 | Usage error |
 
 **Examples for scripts and apps**
 
 ```sh
-genmodelfit share --json
-genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
-genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --json
+genmodelfit share --dry-run --json
+genmodelfit share --no-measure --yes --json
+genmodelfit share --issue <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
 ```
 
+`GITHUB_TOKEN=<token>` `genmodelfit share --yes --json`
+
 JSON output (`--json`): [schema.md, "share"](schema.md#share)
+
+`--issue`: { listed, submissions? | file, ok, refused, checklist, report, share, opened, copied, marked_shared }
 
 **Examples**
 
 ```sh
-genmodelfit share        # pick an unsent measurement and send it
-genmodelfit share --all  # also list the ones marked as sent
+genmodelfit share               # measure for a few minutes and send a pull request
+genmodelfit share --dry-run     # only show the plan and what would be sent
+genmodelfit share --no-measure  # send only the unsent measurements
+genmodelfit share --issue       # send with the issue form, no sign-in
 ```
 
 ## `genmodelfit config`
@@ -1554,4 +1579,5 @@ match the program. Do not edit them by hand; change the help texts in `src/genmo
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
 
 The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
-(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`) and `signing.py` (`GENMODELFIT_SIGNING_KEY`).
+(`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`), `signing.py` (`GENMODELFIT_SIGNING_KEY`) and `github.py`
+(`GITHUB_TOKEN`, `GH_TOKEN`, `GENMODELFIT_GH_CLIENT_ID`).

@@ -399,6 +399,26 @@ def suggestions(
     return out
 
 
+# share(#124)が 1 回で測る時間の合計の上限(秒。時間の目安 time_hint の合計)。オーナーの決定(2026-10-29)
+SHARE_BUDGET_SECONDS = 300
+
+
+def share_plan(sugg: list[Suggestion], budget: float, *, state: str = "yes") -> tuple[list[Suggestion], int]:
+    """share が測るもの(#124): 提案(suggestions の並び)のうち、入っているか(installed.state が state)の
+    ものを、時間の目安の合計が budget 以内になるように並びの順に取る(入りきらないものは飛ばして次を見る)。
+    (取ったもの, 目安の合計)。state="no" で、落として測るものの計画になる。"""
+    picked: list[Suggestion] = []
+    total = 0
+    for s in sugg:
+        if s.installed is None or s.installed.state != state:
+            continue
+        if total + s.seconds > budget:
+            continue
+        picked.append(s)
+        total += s.seconds
+    return picked, total
+
+
 def resolve(db: Database, system: SystemInfo, query: str, *, content: str = "sfw", policy: Any = None):
     """measure <名前か ID> → 測るワークフローの Fit。download と同じ探し方(downloader.resolve_candidates)で、
     テンプレートのある仲間だけから、ID がそのまま合えばそれ、名前なら recommend と同じ選び方の一番良いもの。
