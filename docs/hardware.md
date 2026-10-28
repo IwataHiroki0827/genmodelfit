@@ -60,7 +60,9 @@ What is read is used locally and never sent anywhere.
   - Ambiguous names (for example the laptop GTX 960M, where one model name mixes generations) are not inferred.
   - The table follows NVIDIA's lists (https://developer.nvidia.com/cuda-gpus, https://developer.nvidia.com/cuda-legacy-gpus).
   - Examples: "NVIDIA TITAN X" is Pascal (6.1), "GeForce GTX TITAN X" is Maxwell (5.2), Quadro K620 / K1200 / K2200 are Maxwell (5.0), the laptop RTX 2050 is Ampere (8.6).
+  - Workstation Ada cards: besides "RTX 4000 Ada Generation", the spellings "RTX 4000 SFF Ada Generation" and "RTX 2000E Ada Generation" are also Ada (8.9) (NVIDIA product page https://www.nvidia.com/en-us/design-visualization/rtx-4000-sff/ ; for the 2000E, the page of NVIDIA's board partner PNY https://www.pny.com/en-tw/rtx-2000e-ada-generation ; 2026-10-27).
   - A value inferred from the name is marked `compute_capability_source: "name"`.
+- NVIDIA GPUs are not identified by PCI device ID (`pci_id` of a GPU from nvidia-smi is empty). Whether two GPUs are the same is decided by the normalized name and the VRAM ratio (`estimate.same_gpu`; the ID is compared only when both sides have one). The display adapters (`other_gpus`) show the WMI / lspci device ID, but it is not used to judge NVIDIA GPUs (`tests/test_nvidia_identity.py`).
 - Even if the exit code is not 0, readable lines are used (for example when one GPU cannot be read: "Unable to determine the device handle ... Unknown Error"). The number of GPUs that could not be read is written to notes (the error text contains the PCI slot, so it is not copied).
 - Multiple GPUs: ComfyUI runs on one GPU, so the one with the most VRAM among the usable ones (backend `cuda`) is used.
   - ComfyUI uses CUDA device 0 by default (`get_torch_device` -> `torch.cuda.current_device()`).

@@ -256,7 +256,8 @@ _NAME_CC: tuple[tuple[str, tuple[int, int]], ...] = (
     # Hopper
     (r"\bg?h(100|200|800|20)\b", (9, 0)),
     # Ada Lovelace
-    (r"\brtx\s*40[5-9]0\b|\brtx\s*\d{4}\s*ada\b|\bl40s?\b|\bl4\b|\bl20\b", (8, 9)),
+    # 業務用は「RTX 4000 Ada Generation」「RTX 4000 SFF Ada Generation」「RTX 2000E Ada Generation」
+    (r"\brtx\s*40[5-9]0\b|\brtx\s*\d{4}e?\s*(?:sff\s*)?ada\b|\bl40s?\b|\bl4\b|\bl20\b", (8, 9)),
     # Ampere(RTX 2050 のノート用は GA107 で Ampere)
     (r"\ba100\b|\ba800\b|\ba30\b", (8, 0)),
     (
