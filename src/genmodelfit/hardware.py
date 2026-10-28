@@ -2641,13 +2641,15 @@ def detect(
     other_gpus: bool | None = None,
     memory: Memory | None = None,
     host: Host | None = None,
+    adapters: list[Adapter] | None = None,
 ) -> SystemInfo:
     """PC を調べる。vram_gb / ram_gb を渡すと、その値で上書きする(別の PC を想定した判定用)。
 
     gpus を渡すと nvidia-smi を使わない(試験・組み込み用)。other_gpus は NVIDIA 以外の GPU を調べるか:
     None(既定)は nvidia-smi で NVIDIA の GPU が見つからず、VRAM を上書きしていないときだけ調べる。
     判定に使える NVIDIA の GPU が無く VRAM を上書きしていなければ、見つけた AMD・Intel・Apple の GPU を対応表
-    (classify_adapter)で判定に使う。memory を渡すとメモリを、host を渡すと OS・CPU を調べない(試験用)。"""
+    (classify_adapter)で判定に使う。memory を渡すとメモリを、host を渡すと OS・CPU を調べない(試験用)。
+    adapters を渡すと画面の部品を調べず、それを見つけたものとして同じ判定をする(`gmf.system_from`。#96)。"""
     notes: list[str] = []
     if gpus is None:
         found, gpu_notes = detect_gpus()
@@ -2722,17 +2724,24 @@ def detect(
     if ram_gb is not None:
         ram_total = ram_gb
 
-    adapters: list[Adapter] = []
     # NVIDIA の GPU が使えない(見つからない・Kepler・古いドライバ)ときは既定で調べる
     # (AMD・Intel を判定に使うため)
     usable_nvidia = any(g.backend == "cuda" for g in found)
-    want_other = (
-        other_gpus if other_gpus is not None else (gpus is None and not usable_nvidia and vram_gb is None)
-    )
+    given = adapters is not None
+    if given:
+        want_other = True
+    elif other_gpus is not None:
+        want_other = other_gpus
+    else:
+        want_other = gpus is None and not usable_nvidia and vram_gb is None
+    adapters = list(adapters) if given else []
     if want_other:
-        # 使える NVIDIA の GPU があれば、WSL2 で Windows 側(powershell.exe・rocminfo・clinfo)は読まない
-        adapters, other_notes = detect_other_gpus(wsl_windows=False) if usable_nvidia else detect_other_gpus()
-        notes += other_notes
+        if not given:
+            # 使える NVIDIA の GPU があれば、WSL2 で Windows 側(powershell.exe・rocminfo・clinfo)は読まない
+            adapters, other_notes = (
+                detect_other_gpus(wsl_windows=False) if usable_nvidia else detect_other_gpus()
+            )
+            notes += other_notes
         judged = any(g.backend == "cuda" for g in found)
         if (
             not judged and vram_gb is None

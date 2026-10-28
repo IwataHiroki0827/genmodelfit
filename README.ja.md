@@ -170,6 +170,16 @@ ok = [e for e in gmf.load_db().models if e.reviewed]
 fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
 print(fit.to_dict()["fit_level"])  # 互換を守るのは gmf.__all__ の名前だけ
 
+# AMD・Intel の GPU も検出と同じ対応表で判定する。使えない理由は other_gpus[].reason
+pc = gmf.system_from(
+    [{"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "vram_gb": 16}],
+    windows=True,
+    windows_build=22631,
+    cpu="AMD Ryzen 7 7700X",
+)
+gmf.gpu_family("Intel(R) Arc(TM) B580 Graphics", "intel")  # 名前の表から {"backend": "xpu", ...}
+db = gmf.load_db(use_cache=False, user_measurements=False)  # 同梱の一覧と同梱の実測だけ
+
 # 署名つきの一覧を取り込む(通信するのはこれと gmf.download だけ)。自分のセッション(アプリの CA バンドルなど)とデータフォルダで
 db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
 ```

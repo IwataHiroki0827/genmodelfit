@@ -139,9 +139,12 @@ def test_system_from_unusable_gpu_is_cpu_unless_the_caller_checked():
     assert checked.vram_gb == 6 and checked.best_gpu.arch == "pascal"
     assert gmf.system_from([old], ram_gb=16, gpu_usable=False).vram_gb == 0
     assert gmf.system_from([], ram_gb=16).gpus == []
-    # NVIDIA 以外は判定に使わない
-    amd = gmf.system_from([{"name": "AMD Radeon RX 7900 XTX", "vram_gb": 24, "vendor": "amd"}], ram_gb=16)
-    assert amd.vram_gb == 0
+    # NVIDIA 以外は 0.11.0 から検出と同じ対応表で判定する(#96。tests/test_issue_96.py)。
+    # gpu_usable=False ならどの会社の GPU も使わない
+    amd = {"name": "AMD Radeon RX 7900 XTX", "vram_gb": 24, "vendor": "amd"}
+    assert gmf.system_from([amd], ram_gb=16, gpu_usable=False).vram_gb == 0
+    assert gmf.system_from([amd], ram_gb=16, windows=True, windows_build=19045).vram_gb == 0  # Windows 10
+    assert gmf.system_from([amd], ram_gb=16, windows=True, windows_build=22000).vram_gb == 24
 
 
 def test_system_from_takes_the_largest_usable_gpu():
@@ -220,6 +223,12 @@ def test_public_api_names_are_stable():
         "recommend",
         "fit_list",
         "system",
+        # 0.11.0(#96)
+        "gpu_family",
+        "self_check",
+        "parse_safetensors_header",
+        "HeaderError",
+        "HeaderInfo",
     ):
         assert name in gmf.__all__, name
         assert hasattr(gmf, name), name

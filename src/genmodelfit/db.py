@@ -15,6 +15,7 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -42,13 +43,30 @@ def bundled_text(name: str) -> str:
     return resources.files("genmodelfit.data").joinpath(name).read_text(encoding="utf-8")
 
 
+def parse_generated_at(value: Any) -> datetime | None:
+    """一覧の generated_at → UTC の aware な datetime(配布の取り込みと同じ読み方: remote.parse_time)。
+    読めなければ None。"""
+    from .remote import parse_time
+
+    try:
+        return parse_time(value)
+    except ValueError:
+        return None
+
+
 @dataclass
 class Database:
     models: list[ModelEntry] = field(default_factory=list)
     measurements: list[Measurement] = field(default_factory=list)
     generated_at: str | None = None
     sources: dict[str, Any] = field(default_factory=dict)
-    origin: str = "bundled"  # bundled / cache / path
+    origin: str = "bundled"  # bundled / cache / path / release(load の source="release")
+
+    @property
+    def generated_time(self) -> datetime | None:
+        """generated_at を UTC の datetime にしたもの(#96。2 つの一覧のどちらが新しいかを比べる)。
+        無い・形が違う・タイムゾーンが無いときは None。"""
+        return parse_generated_at(self.generated_at)
 
     def get(self, model_id: str) -> ModelEntry | None:
         for m in self.models:
@@ -401,7 +419,38 @@ def load_measurements(
     return out
 
 
-def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) -> Database:
+PATH_SOURCES = ("path", "release")
+
+
+def load(
+    path: str | os.PathLike[str] | None = None,
+    *,
+    use_cache: bool = True,
+    user_measurements: bool = True,
+    source: str | None = None,
+) -> Database:
+    """一覧を読む(`gmf.load_db`)。ネットに触らない。
+
+    path: 一覧のファイル。None は、利用者のキャッシュ(`genmodelfit update` が書いた db.json。use_cache=False
+        なら読まない)、無ければ同梱の一覧。
+    user_measurements: この PC の bench の実測(キャッシュの measurements)も合わせるか。False は同梱の実測
+        (作者の実測とほかの利用者の実測のまとめ)だけ。どの PC でも同じ判定にしたいアプリ用(#96)。
+    source: path で渡したファイルの出どころ(Database.origin。`gmf.data_status()` の source になる)。
+        "path"(既定)か、`update_from_release` の取り込みを自分で置いたファイルなら "release"。
+        path を渡さないときに渡す・ほかの値は ValueError。
+    """
+    if source is not None:
+        if not path:
+            raise ValueError(
+                tr("source は path と一緒に渡してください", "source can be given only together with path")
+            )
+        if source not in PATH_SOURCES:
+            raise ValueError(
+                tr(
+                    f"source は {' / '.join(PATH_SOURCES)} のどれかです: {source!r}",
+                    f"source must be one of {' / '.join(PATH_SOURCES)}: {source!r}",
+                )
+            )
     if path:
         p = Path(path)
         try:
@@ -410,7 +459,7 @@ def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) 
             raise DatabaseError(
                 tr(f"一覧のファイルを読めません: {p}: {e}", f"cannot read the list file: {p}: {e}")
             ) from e
-        db = parse_db(data, "path")
+        db = parse_db(data, source or "path")
     else:
         db = None
         cp = cached_db_path()
@@ -421,5 +470,5 @@ def load(path: str | os.PathLike[str] | None = None, *, use_cache: bool = True) 
                 db = None  # 壊れたキャッシュは使わず、同梱のデータへ戻る
         if db is None:
             db = parse_db(json.loads(bundled_text("db.json")), "bundled")
-    db.measurements = load_measurements()
+    db.measurements = load_measurements(include_cache=user_measurements)
     return db

@@ -23,6 +23,12 @@ Python から:
     fit.to_dict()["fit_level"], fit.to_dict()["memory_required_gb"]
     gmf.system_from([{"name": "NVIDIA GeForce RTX 3060", "vram_gb": 12}], ram_gb=32)  # SystemInfo
     gmf.platform_verification(gmf.system())["verified"]  # この GPU の種類は実測で確かめてあるか(#108)
+    # AMD・Intel の GPU も同じ対応表で判定する(#96)。部品ごとの理由は other_gpus の reason
+    gmf.system_from([{"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "vram_gb": 16}],
+                    windows=True, windows_build=22631, cpu="AMD Ryzen 7 7700X")
+    gmf.gpu_family("Intel(R) Arc(TM) B580 Graphics", "intel")  # {"backend": "xpu", ...}(名前の表)
+    gmf.load_db(use_cache=False, user_measurements=False)  # 同梱の一覧と同梱の実測だけ(どの PC でも同じ)
+    gmf.self_check()["ok"]  # 同梱物(一覧・実測・係数・公開鍵・cryptography)がそろっているか
 
 互換の対象は __all__ に入る名前だけ(docs/schema.md「Python API (stable)」)。サブモジュールの関数は内部のもの。
 注意: `genmodelfit.recommend` は関数で、同じ名前のモジュール(genmodelfit/recommend.py)を隠す
@@ -37,7 +43,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from ._version import __version__
-from .appapi import judge_model, system_from
+from .appapi import gpu_family, judge_model, self_check, system_from
 from .db import Database
 from .db import load as load_db
 from .diff import diff_db
@@ -52,6 +58,7 @@ from .downloader import (
 )
 from .estimate import estimate, platform_verification
 from .hardware import detect
+from .headers import HeaderError, HeaderInfo, parse_safetensors_header
 from .i18n import get_language, set_language
 from .models import (
     CONTENT_LEVELS,
@@ -321,6 +328,8 @@ __all__ = [
     "DownloadResult",
     "Estimate",
     "Fit",
+    "HeaderError",
+    "HeaderInfo",
     "Measurement",
     "ModelEntry",
     "ModelFile",
@@ -337,9 +346,11 @@ __all__ = [
     "evaluate",
     "fit_list",
     "get_language",
+    "gpu_family",
     "info",
     "judge_model",
     "load_db",
+    "parse_safetensors_header",
     "plan_download",
     "platform_verification",
     "recommend",
@@ -347,6 +358,7 @@ __all__ = [
     "review_list",
     "review_reject",
     "search",
+    "self_check",
     "set_language",
     "system",
     "system_from",
