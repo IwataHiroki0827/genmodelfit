@@ -601,6 +601,22 @@ def set_workflow_precision(e: ModelEntry, wf: Any) -> None:
     set_precision(e)
 
 
+def set_optional_files(e: ModelEntry, wf: Any) -> None:
+    """テンプレートの既定の値で読み込まれないファイルに optional(inactive / switch_off)と、スイッチで
+    入れ替わる既定の部品(optional_replaces)を付ける(optional.optional_files。#81)。当てるたびに作り直す
+    (前の値は引き継がない)。つながりから分けられないときは付けない(全部を数える)。"""
+    from .optional import SWITCH_OFF, base_name, optional_files
+
+    found = optional_files(wf) if isinstance(wf, dict) else {}
+    names = {base_name(f.name): f.name for f in e.files}
+    for f in e.files:
+        o = found.get(base_name(f.name))
+        f.optional = o.kind if o else None
+        f.optional_replaces = (
+            [names[r] for r in o.replaces if r in names] if o and o.kind == SWITCH_OFF else None
+        )
+
+
 def _stages_of(wf: Any) -> list[list[str]] | None:
     from .workflow import WorkflowError, sampler_stages
 
@@ -1170,6 +1186,7 @@ def build_database(
         e = template_entry(item[0], item[1], item[2], models)
         set_sampler_stages(e, stages)
         set_workflow_precision(e, wf)
+        set_optional_files(e, wf)
         entries.append(e)
         tmpl_by_id[e.id] = item[1]
     if chosen and len(failed) / len(chosen) > MAX_FAIL_RATIO:
@@ -1511,7 +1528,8 @@ def refresh_templates(
     entries: list[ModelEntry], fetch: Fetcher, progress: Callable[[str], None] | None = None
 ) -> dict[str, Any]:
     """公式テンプレートの JSON を読み直し、サンプラーごとの本体の組(sampler_stages)と、
-    本体の読み込みノードから推す精度(workflow_precision)だけを決め直す。"""
+    本体の読み込みノードから推す精度(workflow_precision)と、任意の部品(ModelFile.optional。#81)だけを
+    決め直す。"""
     say = progress or _silent
     tmpl = [e for e in entries if e.source == "comfyui-template"]
     say(
@@ -1529,6 +1547,7 @@ def refresh_templates(
             continue
         set_sampler_stages(e, _stages_of(wf))
         set_workflow_precision(e, wf)
+        set_optional_files(e, wf)
     multi = sum(1 for e in tmpl if e.sampler_stages)
     from_wf = sum(1 for e in tmpl if e.workflow_precision)
     return {
@@ -1536,6 +1555,7 @@ def refresh_templates(
         "failed": failed,
         "multi_stage": multi,
         "workflow_precision": from_wf,
+        "optional_parts": sum(1 for e in tmpl if any(f.optional for f in e.files)),
         "checked_at": _now(),
     }
 

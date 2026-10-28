@@ -26,6 +26,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Parts a template does not load by default are not counted in VRAM / RAM** (#81, #112): `update` follows each official
+  template's links the way ComfyUI v0.43.0 runs it (from the output nodes, every subgraph level; If/Else Switch with a
+  fixed value only on the selected branch, Soft Switch falls back when that side is unconnected; muted / bypassed nodes
+  and the contents of a muted / bypassed top-level subgraph left out) and marks files only reached otherwise:
+  `ModelFile.optional` = `inactive` (muted, bypassed or reaching no output: counted nowhere and not downloaded unless
+  `download --with-optional` / `with_optional=True`) or `switch_off` (unselected branch: not in VRAM / RAM, but in
+  `disk_gb` and downloaded, because ComfyUI validates it), plus `optional_replaces`. New optional keys, so
+  `schema_version` stays 1. `Estimate` gains `optional_parts`, `vram_gb_all_options` and `fit_all_options` (the old
+  all-in value), with one sentence in the reasons only when turning the switches on would change the level; `info`
+  marks optional files; `DownloadPlan` gains `skipped_optional`. Qwen-Image 2.1 (4 entries) on 8 GB: offload 8.48 GB
+  too_tight → 4.96 GB (t2i) / 5.14 GB (edit) Good. Wan 2.2 5B on 8 GB was already Good (6.08 GB) from #100 and is now
+  kept by a test. Across the bundled list × NVIDIA 6–24 GB × RAM 32 / 64 GB, 90 cells of 34 models change, all upwards.
+  The bundled list was re-marked offline from the template JSON (Comfy-Org/workflow_templates 0cc0fba): 66 templates have
+  optional parts. Language material now uses only parts loaded by default; Qwen-Image 2.1 gets `prompt: en` from the
+  hand table, and `image_qwen_image_2_1_image_edit` also `ja` (confirmed on a real machine). Docs: scoring "Parts
+  switched off by default", accuracy "How files are counted", sources "Optional parts".
 - **`gmf.system_from` judges AMD / Intel / Apple GPUs** (#96): before, a GPU dict with a non-NVIDIA `vendor` was always
   treated as CPU; now it is classified like a detected adapter and used when no NVIDIA GPU is usable (pass
   `gpu_usable=False` for the old CPU-only result). `vendor` is compared without case (`"NVIDIA"` is NVIDIA).

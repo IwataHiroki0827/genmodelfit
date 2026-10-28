@@ -109,12 +109,15 @@ def uses_prompt(e: ModelEntry) -> bool:
 
 def prompt_kind(e: ModelEntry) -> str | None:
     """文字を読む部品の表の結果。多言語の部品が 1 つでもあれば "multi"、すべて英語の部品なら "en"、
-    表に無い部品が混じれば None。部品が無ければ系統の表。指示の文を取らないモデルは None。"""
+    表に無い部品が混じれば None。部品が無ければ系統の表。指示の文を取らないモデルは None。
+    テンプレートの既定の値で読み込まない部品(ModelFile.optional。#81)は見ない。"""
     if not uses_prompt(e):
         return None
     kinds: list[str | None] = []
     for f in e.files:
         if f.role != "text_encoder" and f.directory != "text_encoders":
+            continue
+        if f.optional:  # 既定で読み込まない部品(指示の書き直しなど。#81)は材料にしない
             continue
         name = f.name.rsplit("/", 1)[-1].lower()
         hit = next((k for pat, k, _ in TEXT_ENCODERS if re.search(pat, name)), None)
@@ -228,8 +231,10 @@ def _derived_languages(e: ModelEntry) -> dict[str, list[str]]:
 
 
 def card_repos(e: ModelEntry) -> list[str]:
-    """言語を読むカードの置き場所: 本体のファイルの置き場所とその元(license_from)。HF 由来は自分自身が先。"""
-    mains = [f for f in e.files if f.role == "main"] or e.files[:1]
+    """言語を読むカードの置き場所: 本体のファイルの置き場所とその元(license_from)。HF 由来は自分自身が先。
+    既定で読み込まない本体(ModelFile.optional。#81)は見ない。"""
+    used = [f for f in e.files if not f.optional] or e.files
+    mains = [f for f in used if f.role == "main"] or used[:1]
     repos: list[str] = []
     for f in mains:
         for r in (f.repo_id, f.license_from):

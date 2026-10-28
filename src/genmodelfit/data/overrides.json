@@ -143,6 +143,39 @@
      "en"
     ]
    }
+  },
+  "image_qwen_image_2_1_t2i": {
+   "_note": "公式テンプレート(Comfy-Org/workflow_templates の templates/image_qwen_image_2_1_t2i.json、一次資料)の既定の指示が英語(既定で切ってある指示の書き直しの部品を数えない #81 で、部品の表から en が付かなくなったため手の表で書く。文字を読む部品 qwen3vl_8b はカードに言語の記述が無い。zh は Qwen-Image 2.1 のカードに記述が無いので付けない)",
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   }
+  },
+  "image_qwen_image_2_1_turbo_t2i": {
+   "_note": "公式テンプレート(Comfy-Org/workflow_templates の templates/image_qwen_image_2_1_turbo_t2i.json、一次資料)の既定の指示が英語(既定で切ってある指示の書き直しの部品を数えない #81 で、部品の表から en が付かなくなったため手の表で書く。文字を読む部品 qwen3vl_8b はカードに言語の記述が無い。zh は Qwen-Image 2.1 のカードに記述が無いので付けない)",
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   }
+  },
+  "image_qwen_image_2_1_turbo_image_edit": {
+   "_note": "公式テンプレート(Comfy-Org/workflow_templates の templates/image_qwen_image_2_1_turbo_image_edit.json、一次資料)の既定の指示が英語(既定で切ってある指示の書き直しの部品を数えない #81 で、部品の表から en が付かなくなったため手の表で書く。文字を読む部品 qwen3vl_8b はカードに言語の記述が無い。zh は Qwen-Image 2.1 のカードに記述が無いので付けない)",
+   "languages": {
+    "prompt": [
+     "en"
+    ]
+   }
+  },
+  "image_qwen_image_2_1_image_edit": {
+   "_note": "公式テンプレート(Comfy-Org/workflow_templates の templates/image_qwen_image_2_1_image_edit.json、一次資料)の既定の指示が英語(既定で切ってある指示の書き直しの部品を数えない #81 で、部品の表から en が付かなくなったため手の表で書く。文字を読む部品 qwen3vl_8b はカードに言語の記述が無い。zh は Qwen-Image 2.1 のカードに記述が無いので付けない)。ja はオーナーが実機(RTX 3070 8GB、公式の qwen_image_2.1_int8_convrot、このテンプレートと同じノード構成)で、日本語の指示を翻訳せずに渡して正しく編集できたことを確かめた(Issue #81 の 2026-10-26 の追記)。Turbo の編集・文章から画像は日本語で試していないので付けない",
+   "languages": {
+    "prompt": [
+     "en",
+     "ja"
+    ]
+   }
   }
  }
 }

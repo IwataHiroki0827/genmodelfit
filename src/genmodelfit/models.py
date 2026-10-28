@@ -87,6 +87,17 @@ class ModelFile:
     # 9 割以上のときだけ)か config(config.json の torch_dtype / dtype)。None は読んでいない・読めない
     repo_precision: str | None = None
     repo_precision_source: str | None = None
+    # 任意の部品(#81。0.11.0 で足した任意の項目で schema_version は上げない。古い版は知らないキーを捨てて
+    # 今までどおり全部を数える)。公式テンプレートの既定の値で読み込まれないファイル(optional.py):
+    #   inactive    無効・素通しのノードや出力につながらないノードにしかない(VRAM・メモリ・ディスク・
+    #               download に数えない)
+    #   switch_off  値の決まったスイッチの選ばれない枝にしかない(VRAM・メモリに数えない。検証で要るので
+    #               ディスク・download には数える)
+    # None は既定で読み込む(または分からない)。update がテンプレートのつながりから決める
+    optional: str | None = None
+    # optional が switch_off のとき、そのスイッチを切り替えると読み込まなくなる既定の部品(ファイル名)。
+    # 空・None は足すだけ
+    optional_replaces: list[str] | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ModelFile:
@@ -518,6 +529,13 @@ class Estimate:
     # 全部を載せたまま仕上げまで動かすときに ComfyUI が空けようとする量(#102。VAE はタイルにしない V)。
     # 98% を超えると全部載せを選ばない(順に載せ替え、good まで)。vram_gb 以上。古い Estimate は None
     vram_resident_gb: float | None = None
+    # 任意の部品(#81。テンプレートの既定の値で読み込まれない部品。上の量には入れていない)。1 つずつ
+    # {"name", "size_gb", "optional": inactive / switch_off, "kind": add / replace, "replaces": [...]}
+    optional_parts: list[dict[str, Any]] = field(default_factory=list)
+    # スイッチで切ってある部品(switch_off)を全部入れたときの、判定に使う VRAM(上限。recommend.gpu_need と
+    # 同じ選び方)と段階。switch_off が無ければ None。GPU が無い・大きさ不明なら VRAM は None
+    vram_gb_all_options: float | None = None
+    fit_all_options: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON の形。大きさが分からず判定していないとき、VRAM・RAM の値は分からない(null)にする

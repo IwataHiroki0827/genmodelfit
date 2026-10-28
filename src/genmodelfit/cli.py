@@ -788,7 +788,9 @@ def cmd_info(args: argparse.Namespace) -> int:
     out.append(f"  size:     {counted}, {len(m.files)} file(s) listed (GB = GiB)")
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
-        out.append(f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'})")
+        out.append(
+            f"    - {f.name} ({fs}, {f.directory or '-'}, license {f.license or '?'}){_optional_mark(f)}"
+        )
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None:
         basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count。0.11.0 で件数から変えた)
@@ -828,6 +830,24 @@ def cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _optional_mark(f) -> str:
+    """info のファイルの行の、任意の部品の印(#81。VRAM・メモリに数えていないもの)。"""
+    from .estimate import optional_kind
+
+    kind = optional_kind(f)
+    if kind == "switch_off":
+        return tr(
+            "  [任意: 既定でスイッチが切ってある。VRAM に数えない]",
+            "  [optional: switched off by default; not in VRAM]",
+        )
+    if kind == "inactive":
+        return tr(
+            "  [任意: 無効・素通しのノードなど。数えない・落とさない]",
+            "  [optional: muted / bypassed node etc.; not counted or downloaded]",
+        )
+    return ""
+
+
 def _ja_label(name: str, width: int = 12) -> str:
     """info・download の日本語の見出し(「  モデル:     」)。値の頭を全角の幅でそろえる(#76)。"""
     from rich.cells import cell_len
@@ -863,7 +883,9 @@ def _info_lines_ja(
     out.append(f"{L('大きさ')}{counted}、一覧のファイル {len(m.files)} 件(GB = GiB)")
     for f in m.files:
         fs = f"{f.size_bytes / GIB:.2f} GB" if f.size_bytes and f.size_bytes > 0 else "?"
-        out.append(f"    - {f.name}({fs}、{f.directory or '-'}、ライセンス {f.license or '?'})")
+        out.append(
+            f"    - {f.name}({fs}、{f.directory or '-'}、ライセンス {f.license or '?'}){_optional_mark(f)}"
+        )
     basis = e.basis if e.basis_detail == e.basis else f"{e.basis}: {e.basis_detail}"
     if e.sample_count is not None:
         basis += f" n={e.sample_count}"  # 別々の出どころの数(sample_count)
@@ -3593,6 +3615,8 @@ def _download_command(args: argparse.Namespace, model_id: str, add: list[str]) -
     parts = ["download", model_id]
     if args.budget is not None:
         parts += ["--budget", _num(args.budget)]
+    if getattr(args, "with_optional", False):
+        parts.append("--with-optional")
     dest = getattr(args, "_dest", None)
     if args.comfyui_dir:
         parts += ["--comfyui-dir", args.comfyui_dir]
@@ -3918,6 +3942,7 @@ def cmd_download(args: argparse.Namespace) -> int:
                 system_info=s,
                 db=db,
                 policy=_policy(args),
+                with_optional=args.with_optional,
                 **where,
             )
         except ModelNotFound as e:
@@ -3943,6 +3968,7 @@ def cmd_download(args: argparse.Namespace) -> int:
                     system_info=s,
                     db=db,
                     policy=_policy(args),
+                    with_optional=args.with_optional,
                     **where,
                 )
             except DownloadError as e:  # 1 回目と同じ条件なので起きないはず
@@ -6611,6 +6637,15 @@ def build_parser() -> argparse.ArgumentParser:
             "収まるものが無ければ断る",
             "the most to download in GB (files already there are not counted); the best workflow within it"
             " is chosen, and when none fits the download is refused",
+        ),
+    )
+    sp.add_argument(
+        "--with-optional",
+        action="store_true",
+        help=tr(
+            "テンプレートが既定で使わない部品(無効・素通しのノードなどにしかないもの)も落とす(#81)",
+            "also download parts the template does not use by default"
+            " (only on muted or bypassed nodes, etc.; #81)",
         ),
     )
     sp.add_argument(

@@ -180,6 +180,45 @@ In the list built on 2026-10-20 (the bundled one at that time), items with unkno
 
 The parameter count (params_b) is guessed from notation such as `14B` or `1.3B` in the file name or title (null if absent).
 
+### Optional parts
+
+Added in 0.11.0 (#81). Files of parts that the template does not load with its default values get `optional` (and
+`optional_replaces`) (`optional.optional_files`; rebuilt every time by update and by re-reading the templates; the shape is in
+[schema.md](schema.md), section "Models", and the effect on the estimate in [accuracy.md](accuracy.md), "How files are counted").
+ComfyUI's code is not imported; the behavior of v0.43.0 (426f5ee) is imitated on the template JSON.
+
+1. **Starting points**: ComfyUI's output nodes (`OUTPUT_NODE`; the type table `optional.OUTPUT_NODE_TYPES` was read from
+   nodes.py, comfy_extras and comfy_api_nodes of v0.43.0; ComfyUI runs every output node even when its outputs are connected:
+   execution.py:1183-1185) and nodes whose outputs are connected to nothing (a stand-in for output nodes of extensions that are
+   not in the table; nodes that read files, notes and Primitive nodes are left out). They are looked for inside every subgraph.
+2. **Walking back**: input links are followed backwards from the starting points. A subgraph instance is entered from its exit
+   (-20), and the inner entrance (-10) leads out to the instance's input. A broken subgraph whose exit cannot be found counts as
+   fully used (the safe side).
+3. **Muted and bypassed**: mode 2 (muted) nodes are not followed. A mode 4 (bypassed) node's own files are not counted, but its
+   inputs are followed (the same as the frontend leaving them out of the API prompt). For subgraph instances, only the mode of
+   an instance at the top level applies to everything inside (the mode of a nested instance does not apply to its contents;
+   this matches the frontend).
+4. **Switches**: for an If/Else Switch (`ComfySwitchNode`), the unselected side is not followed only when the value of `switch`
+   is fixed (the node's widget, the subgraph instance's widget, or a Primitive node) (lazy inputs:
+   comfy_execution/graph.py:153-175, comfy_extras/nodes_logic.py:146-150). For a Soft Switch (`ComfySoftSwitchNode`), if the
+   selected side is not connected (or is connected to a node that is not in the prompt), the other side is followed
+   (nodes_logic.py:178-188). If the value is not fixed, both sides are followed.
+5. **Classes**: files not reached by the validation, which also follows lazy branches (execution.py:946-969; a file not in the
+   list gives "Value not in list": execution.py:1061-1085), are `inactive`; files reached by the validation but not by
+   execution are `switch_off`. If several nodes read the same file, it is not optional when any one of them is used.
+6. **Replacement**: each switch is flipped one at a time, and default parts that would no longer be loaded go into
+   `optional_replaces` (for example, in Pixal3D / Trellis2 the Trellis2 model replaces the Pixal3D model). A part on a muted node
+   counts as replacing the default main model if it has the main role (`kind: replace`), otherwise as an addition
+   (`kind: add`).
+7. Templates with extension nodes that pass values without link lines (`SetNode` / `GetNode`, `Anything Everywhere`) and
+   templates with no starting point are not split (everything is counted).
+
+In the bundled list (278 templates; the classes were built from the JSON at Comfy-Org/workflow_templates 0cc0fba, and the file
+sets match the bundled list for every template), 66 have optional parts (22 with `inactive` parts, 44 with `switch_off` parts).
+Most are speed-up LoRAs that are off by default; others are Qwen-Image 2.1's prompt enhancer (`qwen3.5_9b_…_pe_*`, 8.8 GB),
+LTX-2's distilled model, Wan VACE 14B's 1.3B branch, HunyuanVideo 1.5 720p's 1080p refinement, and FLUX.2 Klein's bypassed
+model.
+
 ## Licenses
 
 The list is used for automatic recommendations in a closed-source commercial app (AI生成キット).
@@ -529,6 +568,8 @@ Materials, in priority order:
      (The card of https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B lists 17 languages, and "Performance varies by language" is about singing.
      The prompt of the instrumental `audio_ace_step_1_t2a_instrumentals` had also been given 17 languages.) The singing language is written in the hand table.
 3. **Only when there is no card (no language written), the text-reader component table**: if the table matches, `["en"]`.
+   Parts the template does not load with its default values (["Optional parts"](#optional-parts); 0.11.0, #81) are not used as
+   material (the card is also read only for main models loaded by default).
    Even for multilingual components, the table alone does not add `ja`.
    (The languages a component can read differ from the languages of the descriptions the model was trained on.
    Wan, Qwen-Image and HunyuanVideo 1.5 use multilingual components, but their cards say `en` `zh`.
@@ -560,7 +601,7 @@ When there are several components:
 - If all are English-only components, the result is English only.
 - If a component not in the table is mixed in (Gemma, Mistral, Llama, Qwen3-VL, gpt-oss and so on; the card has no language description, or it was not checked), it is left undecided (the card is used as is, if there is one).
 
-The hand table `src/genmodelfit/data/overrides.json` has 12 rows.
+The hand table `src/genmodelfit/data/overrides.json` has 16 rows.
 
 9 were checked by the app on a real machine (matched to `notes` of AI生成キット's catalog.json and the real-machine checks):
 
@@ -585,6 +626,19 @@ One more is the singing language (0.6.0, #41):
   "Supports 19 languages with top 10 well-performing languages including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean".
 - The prompt is `en` by the music rule.
 - It is not set for `audio_ace_step_1_t2a_instrumentals` (no singing).
+
+The other 4 rows are Qwen-Image 2.1 (0.11.0, #81):
+
+- With the prompt enhancer part (`qwen3.5_9b_…_pe_*`) made an optional part and left out of the language material, the only
+  text-reading component is `qwen3vl_8b`, which is not in the table, so the language would be undecided.
+- All 4 have `prompt` `en` written. Basis: the official template's default prompt is English (the template is a primary
+  source).
+- Only `image_qwen_image_2_1_image_edit` also gets `ja`: the owner confirmed on a real machine (RTX 3070 8GB, the official
+  `qwen_image_2.1_int8_convrot`, the same node layout as this template) that a Japanese instruction passed without translation
+  edited the image correctly (the 2026-10-26 addition to Issue #81). The Turbo edit and the text-to-image templates were not
+  tried in Japanese, so they do not get it.
+- `zh` is not added: the Qwen-Image 2.1 card (https://huggingface.co/Qwen/Qwen-Image-2.1 , checked on 2026-10-28) has no
+  language description.
 
 The manual models `src/genmodelfit/data/manual.json` (3 rows):
 

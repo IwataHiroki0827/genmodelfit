@@ -125,6 +125,9 @@ ESTIMATE = {
     "measured_level_vram_gb",  # #95: 段階に使った量
     "sample_count",  # 2026-10-22: 見積もりに使った実測の件数
     "vram_resident_gb",  # #102: 全部を載せたまま仕上げまで動かすときの量
+    "optional_parts",  # #81: テンプレートの既定の値で読み込まれない部品
+    "vram_gb_all_options",
+    "fit_all_options",
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる
 GATE = {"auto", "held_by", "comfyui_version", "checks"}
@@ -246,6 +249,8 @@ MODEL_FILE = {
     "header_params",
     "repo_precision",
     "repo_precision_source",
+    "optional",  # #81: 任意の部品(inactive / switch_off)
+    "optional_replaces",
 }
 TEMPLATE = {
     "name",

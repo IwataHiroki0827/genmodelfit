@@ -37,6 +37,9 @@
   --uncensored / --any-license。
   ライブラリは content / include_unknown_license を渡したときだけ)、
   の約束は tests/test_download.py が検査する(約束を変えたら README「Download」と docs/schema.md「download」も直す)
+  テンプレートの既定で読み込まれない部品(無効のノード・出力に届かないノードだけにあるもの。#81、`optional.py`)は既定で落とさず、
+  `--with-optional`(`with_optional=True`)のときだけ落とす。スイッチで切ってある枝の部品は ComfyUI の起動前の確かめが見るので落とす
+  (どちらも VRAM・メモリには数えない。docs/scoring.md「既定で切ってある部品」)
 - REST の serve は(未定)(作るならポートは ~/.claude/PORTS.md で選んで登録する)
 - 実装は Claude、レビューはユーザ。Issue ごとに 1 本の PR。依存する PR は前の PR のブランチから作り、PR の説明に書く
 - **全試験は手元で通してから push する**(2026-10-22 オーナー決定、2026-10-28 に回数を見直し)。

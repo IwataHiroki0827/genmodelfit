@@ -330,6 +330,18 @@ the estimator also counts by these rules (`estimate.select_files`):
      - If a file is all-in-one but not in the breakdown table, the result comes out larger (the safe side).
    - **The request said "count only the single file", but that would miss the encoder (about 9 GiB of T5 for FLUX) when the single file holds only the main model, so it was done this way.**
 5. If files were dropped, the reason is shown in `reasons`. `disk_gb` is the sum of the counted files.
+6. **Optional parts** (#81, 0.11.0: parts that the official template does not load with its default values; how they are
+   found is in [sources.md](sources.md) "Optional parts"):
+   - `inactive` (parts only on muted or bypassed nodes, or on nodes that reach no output node) are counted in none of
+     VRAM, main memory, `disk_gb` and `download`.
+   - `switch_off` (parts only on the unselected branch of a switch with a fixed value: a prompt enhancer, a speed-up LoRA,
+     …) are not counted in VRAM or main memory. ComfyUI's validation also checks the files on the unselected branch, so
+     they are counted in `disk_gb` and `download`.
+   - The upper bound with every switch turned on (`vram_gb_all_options`, `fit_all_options`) is also given, and one
+     sentence goes into the reasons only when the level would change ([scoring.md](scoring.md) "Parts switched off by
+     default").
+   - Measurements were taken with the default values, so the shift ("How measurements are used" below) is decided with the
+     parts loaded by default.
 
 ## How measurements are used
 

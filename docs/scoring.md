@@ -11,6 +11,7 @@ The model is [llmfit](https://github.com/AlexsJones/llmfit) (2f35825: `llmfit-co
 - [Four checks](#four-checks)
 - [Overall flow](#overall-flow)
 - [Settings used for judging](#settings-used-for-judging)
+- [Parts switched off by default](#parts-switched-off-by-default)
 - [Level caps](#level-caps)
 - [Verified GPU kinds](#verified-gpu-kinds)
 - [When measurements set the level](#when-measurements-set-the-level)
@@ -54,6 +55,43 @@ An item goes into the verdict, the score or the order only if it passes all four
 - An app (such as AI生成キット) that wants its own settings passes them per model: `judge_model(..., settings=...)` or `--width` and so on. No API for a per-type settings table is added (the app's settings differ per model, which a table cannot express).
 - Evidence: llmfit also compares every model under the same assumption (context length).
 - Test: `tests/test_scoring.py::test_a_settings_do_not_depend_on_measurements`.
+
+## Parts switched off by default
+
+**In one sentence**: parts that the official template does not load with its default values (parts only on muted or bypassed
+nodes, on nodes that reach no output node, or on the unselected branch of a switch with a fixed value) are not counted in VRAM
+or main memory, and one sentence in the reasons says so only when turning on the switched-off parts would change the level
+(0.11.0, #81).
+
+- There are two classes (how they are found: [sources.md](sources.md) "Optional parts"; how they are counted:
+  [accuracy.md](accuracy.md) "How files are counted"):
+  - `inactive` (muted, bypassed, or reaching no output): not in the prompt and not validated, so counted in none of VRAM, main
+    memory, disk and `download`.
+  - `switch_off` (the unselected branch of a switch: a prompt enhancer, a speed-up LoRA, …): not executed, so not counted in
+    VRAM or main memory. ComfyUI's validation also checks the files on the unselected branch
+    (execution.py:946-969, 1061-1085@426f5ee), so they are counted in disk and `download`.
+- The upper bound with every switch turned on is also given (`estimate.vram_gb_all_options` and `fit_all_options` in JSON;
+  the same as the old value). Only when the level would change does it go into the reasons. Example (RTX 3070 8 GB): "Parts
+  switched off by default: qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors (8.8 GB). With all of them on, about
+  8.5 GB; on this PC: too_tight". For a switch that swaps parts (Pixal3D / Trellis2) it says "switching loads another part
+  (trellis_2_int8_convrot.safetensors, … GB) instead of pixal3d_int8_convrot.safetensors" (it is not an amount added). The list
+  of parts is `estimate.optional_parts`.
+- #81: Qwen-Image 2.1 (4 entries) added the prompt enhancer part that is off by default (8.8 GB) to the text stage, so even
+  with offloading it needed 8.48 GB (106%) on 8 GB: too_tight. Without it, offloading needs 4.96 GB (text to image) /
+  5.14 GB (edit): Good. This matches the user's real machine (RTX 3070 8 GB, finished with peaks of 7.1–7.6 GB). The share of
+  weights kept on the GPU when offloading (0.4) is unchanged.
+- #112 (Wan 2.2 5B too_tight on 8 GB) was already fixed in 0.11.0 by the per-stage working memory (#100) (6.08 GB with
+  offloading, Good). It is not changed here; a test keeps it.
+- Four checks: the explanation is the sentence above. Basis: ComfyUI's lazy execution
+  (comfy_execution/graph.py:153-175, comfy_extras/nodes_logic.py:146-150, 178-188@426f5ee) and the default values of the
+  templates the authors published. Fair: decided by the upstream JSON only, independent of the author's PC, measurements, app
+  needs or the date of the run (if upstream changes a default, the weekly rebuild follows). Tests: the table below.
+- Impact (the bundled list, 329 entries × NVIDIA 6 / 8 / 12 / 16 / 24 GB × main memory 32 / 64 GB, default settings, bundled
+  measurements): the level changes in 90 cells of 34 models, and only upwards (0 cells go down, 0 cases where more VRAM lowers
+  the level, 0 cells where `basis_detail` changes). Per cell (in parentheses, how many rose from too_tight): 6/32 7(6),
+  6/64 7(6), 8/32 5(5), 8/64 5(5), 12/32 12(8), 12/64 12(8), 16/32 11(5), 16/64 11(6), 24/32 12(8), 24/64 8(4). On
+  8 GB / 32 GB the ones that rise are the 4 Qwen-Image 2.1 entries and FLUX.2 Klein text to image (all too_tight → Good). The
+  upper-bound sentence appears in 53 cells.
 
 ## Level caps
 
@@ -323,6 +361,7 @@ For #108 (offloaded rows up to Good) the representative changes were counted (bu
 | GPU kind | same levels, confidence as a mark | same levels, ✓ for verified kinds | "Verified GPU kinds" |
 | Measurements and levels | never change the level | set the level when two or more independent sources agree on the same GPU and settings | "When measurements set the level" |
 | Same hardware | CPU name + GPU name | GPU device ID or name + VRAM ratio | The CPU is not used for judging |
+| Weights not loaded for inference | speculative-decoding draft heads (EAGLE, …) are not counted in the main size and are kept out of the ranking (`SanitizationReason::SpecDecodeDraft` in `llmfit-core/src/models.rs`); no note on the amount if they were used | parts the template does not load with its default values are not counted in VRAM or memory, and one sentence says so only when turning the switch on would change the level | "Parts switched off by default". In generation templates one switch adds a part, so the amount with it on is needed too |
 
 ## Tests
 
@@ -346,6 +385,7 @@ For #108 (offloaded rows up to Good) the representative changes were counted (bu
 | A fake 1.0 GB Flux is not Perfect; one person's four files do not set the level; the author + one submission do; two author rows are one source | `test_fake_small_submission_does_not_make_flux_perfect`, `test_one_source_with_many_files_does_not_set_the_level`, `test_author_one_and_community_one_agree`, `test_author_rows_are_one_source` |
 | Offloading up to Good, only when it raises the level; GPU Perfect / Good rows never switch; system RAM counts; limits use GPU rows only (#108) | `tests/test_levels.py` (`test_offload_is_capped_at_good_and_chosen_only_when_it_raises_the_level` and others) |
 | CPU caps (speech and tools Good, generation Marginal); the RAM band | `tests/test_levels.py::test_cpu_only_caps`, `test_cpu_top_table`, `test_cpu_level_uses_the_ram_band` |
+| Parts switched off by default: counted when reached from an output node in the type table (inside a subgraph, on a lazy branch); a Soft Switch whose selected side is unconnected uses the other side; the contents of a nested bypassed instance are used; parts on nodes that reach no output are not downloaded either; a bypassed node's own files are not counted; the #81 values (4.96 / 5.14 GB, Good on 8 GB); FLUX.2 Klein; #112 (Wan 2.2 5B Good on 8 GB); the upper-bound sentence; no level goes down | `tests/test_optional.py` |
 | Verified kinds (true for NVIDIA dedicated VRAM, false for AMD, Apple, GB10; one model with many measurements is not verified, two models are, whatever the origin); ✓ only when verified; the gate ignores the kind; AMD and NVIDIA distributions are close; more VRAM or RAM never lowers the level | `tests/test_levels.py` |
 
 `SCHEMA_VERSION` (the shape version of the bundled and released db.json) is unchanged. The meaning of the output changed, so the package is 0.11.0 ([CHANGELOG.md](../CHANGELOG.md)).
@@ -357,3 +397,6 @@ For #108 (offloaded rows up to Good) the representative changes were counted (bu
 3. Quality measurements: differences per precision with the same seed (LPIPS etc.) with bench. A precision penalty comes after that.
 4. Measurements of offloading speed (compare times with `--disable-dynamic-vram` + lowvram in the #102 measurements), to check the Good cap for offloaded rows.
 5. The popularity bias check for music, 3D and speech (once there are more models).
+6. Record in bench and contrib measurements which optional parts were loaded (a switch turned on, a muted node
+   enabled). For now measurements are treated as taken with the template's default values, and the shift is decided
+   with the parts loaded by default. A measurement taken with a switch on would make the working memory look larger.

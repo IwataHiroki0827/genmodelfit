@@ -508,6 +508,9 @@ can fall (for example `--vram 17` on an RTX 5080 PC). Intended: it is a judgemen
 | `settings` | object \| null | settings actually judged (unset items filled with the per-modality defaults whether or not there are measurements; 0.11.0, before that from the measurement when there was one) |
 | `limits` | Limits \| null | largest settings that still reach `good` on this PC's GPU without offloading (0.11.0; null on PCs without a GPU). Set by `info`, and by `fit` / `recommend` with `--limits` |
 | `vram_free_short` | bool | judged to run on the GPU, but the VRAM free right now (`nvidia-smi` `memory.free`) is below what the chosen run mode needs: close other apps. The level stays based on total VRAM. Always false when the free VRAM is unknown (`--vram`) |
+| `optional_parts` | object[] | (0.11.0, #81) parts the official template does not load with its default values (not in the amounts above), each `name`, `size_gb` (null = unknown), `optional` (`inactive` / `switch_off`, as `ModelFile.optional`), `kind` (`replace` = used instead of a default part / `add` = only added) and `replaces` (names of the default parts no longer loaded). `[]` if none. [scoring.md](scoring.md), "Parts switched off by default" |
+| `vram_gb_all_options` | float \| null | (0.11.0, #81) the VRAM used for the level with every switched-off part (`switch_off`) turned on (an upper bound; chosen like `gpu_memory_required_gb`). null with no `switch_off` part, no GPU, or an unknown size |
+| `fit_all_options` | str \| null | (0.11.0, #81) the level in that case. null with no `switch_off` part. Only when it differs from `fit` does one sentence go into `reasons` |
 | `unknown_size` | bool | the weight size is unknown, so nothing was judged: `fit` is `unknown` (shown as `?`, never "Too tight"), `run_mode` `unknown` (0.2.0; was `none`), the VRAM / RAM values are `null` in JSON (`Estimate.to_dict`; the Python attributes stay 0.0), `limits` null, first reason 「大きさが分からないため判定できません」 ("size unknown, cannot judge"). `recommend` drops these; `fit` / `search` list them last |
 
 `basis_detail` (#34), from most to least measured (`models.BASIS_DETAILS`):
@@ -956,6 +959,13 @@ and the JSON header, or of the first MiB(s) of a GGUF, never the weights), null 
 file has the `main` role, e.g. BiRefNet; 0.2.0).
 `repo_precision` / `repo_precision_source` (str \| null, optional, 0.2.0): precision read from the hosting repo
 (`hf_api` or `config`, see "Models"), set only for the largest main file when its header and name tell nothing.
+`optional` (str \| null, optional, 0.11.0, #81): a part the official template does not load with its default values:
+`inactive` (only on muted or bypassed nodes, or on nodes that reach no output node; counted in none of VRAM, memory,
+`disk_gb` and `download`) or `switch_off` (only on the unselected branch of a switch with a fixed value; not counted in
+VRAM or memory, counted in `disk_gb` and `download`). null = loaded by default (or not known: HF and manual models). An
+unknown value is treated like null (counted). `optional_replaces` (str[] \| null, optional): for a `switch_off` part, the
+file names of the default parts no longer loaded when its switch is flipped (empty or null = only added). How they are
+found: [sources.md](sources.md), "Optional parts". Older readers drop both and count everything as before.
 The estimator decides a file's part from `directory` first, then `role`, then the Hugging Face folder / known file
 names, and counts one variant per part ([accuracy.md](accuracy.md), "How files are counted").
 
@@ -1475,6 +1485,7 @@ DownloadPlan:
 | `alternatives` | object[] | the other workflows considered: `id`, `precision`, `use`, `fit_level`, `memory_required_gb`, `size_bytes`, `auto`, `ok` (optional, since #75: true when it has no gated, unavailable or conflicting file; uncensored, unknown license, disk and budget are not counted) |
 | `license_url` | str \| null | the model's license page |
 | `ok` | bool | `blocked` is empty |
+| `skipped_optional` | str[] | (0.11.0, #81) file names of optional parts not downloaded (`ModelFile.optional` is `inactive`). Empty with `with_optional=True` (CLI: `--with-optional`) |
 
 PlannedFile:
 
@@ -1617,7 +1628,8 @@ really needed, `importlib.import_module("genmodelfit.recommend")` (internal, not
 `license_evidence` / `files_complete` / `size_floor_bytes` and `ModelFile.license_url` / `license_path` /
 `license_evidence`, and (#3) `ModelFile.head_status` / `head_checked_at`, and (#30) `ModelEntry.workflow_precision` /
 `precision_source` and `ModelFile.repo_precision` / `repo_precision_source`, and (#36, 0.5.0) `ModelEntry.languages` /
-`runtime` / `description` / `card_languages` and `source: "manual"` were added without changing `schema_version` (optional fields; older
+`runtime` / `description` / `card_languages` and `source: "manual"`, and (#81, 0.11.0) `ModelFile.optional` /
+`optional_replaces` were added without changing `schema_version` (optional fields; older
 readers ignore unknown keys: `from_dict` drops them, `check_entry` only checks the keys it knows, and `source` is a free
 string there. `tests/test_appinfo.py` reads the bundled list with a copy of the old reader).
 Task `tool` was added for Image Tools / Video Tools templates without a known tag.
@@ -1643,7 +1655,7 @@ fails this is skipped and the bundled list is used (also as `update`'s previous 
 | `counts` | `models`, `modality`, `content`, `source`, `license` (null = unknown), `license_tier`, `files_complete_false` |
 | `head_check` | `checked_at`, `urls` (unique HF URLs sent a HEAD), `status` (count per status code), `unchecked` (no answer), `not_sent` (files on other hosts, per host) |
 | `file_headers` | `files`, `urls` (main weight files on HF), `from_cache`, `fetched`, `failed`, `skipped_offline`, `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null) |
-| `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `checked_at` |
+| `sampler_stages` | only after `update --inspect-only`: `templates`, `failed`, `multi_stage` (entries with two or more sampler sets), `workflow_precision` (entries with a precision inferred from the loader node), `optional_parts` (entries with optional parts; 0.11.0, #81), `checked_at` |
 | `repo_precision` | `files` (largest main files on HF whose header and name tell no precision), `repos`, `from_cache`, `fetched` (requests), `hf_api`, `config`, `unknown` (files decided by each / by none), `skipped_offline`, `unauthorized` (repos whose API answered 401), `size_mismatch` (repos whose API dtype was not used because the size did not match), `errors` (first 20), `checked_at`, `precision_unknown` (entries whose precision is still null, final), `precision_source` (entries per source, `unknown` = null) |
 | `manual` | `models` (number of hand-added models from `src/genmodelfit/data/manual.json`), `ids` (0.5.0) |
 | `app_fields` | `languages_prompt`, `languages_speech` (entries with a non-empty list), `runtime`, `description`, `from_card` (entries with a saved Hugging Face card language, `card_languages`) (0.5.0), `card_languages_carried` (entries whose card languages were carried over from the previous list; full `update` only) |

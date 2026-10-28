@@ -11,6 +11,7 @@
 - [4 つの確認](#4-つの確認)
 - [全体の流れ](#全体の流れ)
 - [判定に使う設定](#判定に使う設定)
+- [既定で切ってある部品](#既定で切ってある部品)
 - [段階の上限](#段階の上限)
 - [確認済みの GPU の種類](#確認済みの-gpu-の種類)
 - [実測で段階を決める条件](#実測で段階を決める条件)
@@ -54,6 +55,38 @@
 - アプリ(AI生成キットなど)が自分の設定で判定するには、モデルごとに `judge_model(..., settings=...)` か `--width` などを渡す。種類ごとの設定の表を足す API は作らない(アプリの設定はモデルごとに違い、表では再現できない)。
 - 根拠: llmfit も全モデルを同じ前提(文脈長)で比べる。
 - 試験: `tests/test_scoring.py::test_a_settings_do_not_depend_on_measurements`。
+
+## 既定で切ってある部品
+
+**1 文で**: 公式テンプレートの既定の値で読み込まれない部品(無効・素通しのノード、どの出力のノードにも届かないノード、
+値の決まったスイッチの選ばれない枝にしかない部品)は VRAM とメインメモリに数えず、スイッチで切ってある部品を入れると
+段階が変わるときだけ、そのことを理由に 1 文で出す(0.11.0、#81)。
+
+- 分け方は 2 つ(決め方は [sources.ja.md](sources.ja.md)「任意の部品」、数え方は [accuracy.ja.md](accuracy.ja.md)「ファイルの数え方」):
+  - `inactive`(無効・素通し・出力に届かない): prompt に入らず検証もされないので、VRAM・メインメモリ・ディスク・`download` の
+    どれにも数えない。
+  - `switch_off`(スイッチの選ばれない枝。指示の書き直し・高速化の LoRA など): 実行されないので VRAM・メインメモリには
+    数えない。ComfyUI の検証は選ばれない枝のファイルも確かめる(execution.py:946-969・1061-1085@426f5ee)ので、
+    ディスクと `download` には数える。
+- スイッチを全部入れた上限も出す(JSON の `estimate.vram_gb_all_options`・`fit_all_options`。今までの値と同じ)。
+  段階が変わるときだけ理由に出す。例(RTX 3070 8 GB): 「既定で切ってある部品:
+  qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors(8.8 GB)。全部入れると目安 8.5 GB で、この PC では too_tight」。
+  入れ替えのスイッチ(Pixal3D / Trellis2)は「切り替えると別の部品(trellis_2_int8_convrot.safetensors、… GB)を
+  pixal3d_int8_convrot.safetensors の代わりに読み込みます」と書く(足す量ではないので)。部品の一覧は `estimate.optional_parts`。
+- #81: Qwen-Image 2.1(4 件)は、既定で切ってある指示の書き直しの部品(8.8 GB)を文章の段に足していたので、8 GB で
+  逃がしても 8.48 GB(106%)の too_tight だった。数えないと逃がして 4.96 GB(文章から画像)/ 5.14 GB(編集)で Good。
+  利用者の実機(RTX 3070 8 GB、ピーク 7.1〜7.6 GB で完走)と合う。逃がすときに GPU に残す割合(0.4)は変えていない。
+- #112(Wan 2.2 5B が 8 GB で too_tight)は 0.11.0 の段ごとの作業用メモリ(#100)で既に直っている(逃がして 6.08 GB、Good)。
+  ここでは変えず、試験で守る。
+- 4 つの確認: 説明は上の 1 文。根拠は ComfyUI の lazy の実行(comfy_execution/graph.py:153-175・
+  comfy_extras/nodes_logic.py:146-150・178-188@426f5ee)と、作者が公開したテンプレートの既定の値。フェア: 上流の JSON だけで
+  決まり、作者の PC・実測・アプリの都合・実行した日によらない(毎週の作り直しで上流が既定を変えれば一緒に変わる)。
+  試験は下の表。
+- 影響(同梱の一覧 329 件 × NVIDIA 6 / 8 / 12 / 16 / 24 GB × メインメモリ 32 / 64 GB、既定の設定・同梱の実測): 段階が変わるのは
+  34 モデル・90 のセルで、どれも上がるだけ(下がるセル 0、VRAM を増やして段階が下がる例 0、根拠 `basis_detail` の変わるセル 0)。
+  セルごとの数(括弧は too_tight から上がった数): 6/32 7(6)・6/64 7(6)・8/32 5(5)・8/64 5(5)・12/32 12(8)・12/64 12(8)・
+  16/32 11(5)・16/64 11(6)・24/32 12(8)・24/64 8(4)。8 GB / 32 GB で上がるのは Qwen-Image 2.1 の 4 件と FLUX.2 Klein の
+  文章から画像(どれも too_tight → Good)。上限の 1 文が出るのは 53 セル。
 
 ## 段階の上限
 
@@ -324,6 +357,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 | GPU の種類 | 段階は同じ、確からしさは印 | 段階は同じ、確認済みの種類に ✓ | 「確認済みの GPU の種類」 |
 | 実測と段階 | 変えない | 同じ GPU・同じ設定で、別々の 2 つ以上の出どころがそろえば段階に使う | 「実測で段階を決める条件」 |
 | 同じハードの決め方 | CPU 名 + GPU 名 | GPU の型番 ID か名前 + VRAM の比 | CPU は判定に使わない |
+| 推論に読み込まない重み | 投機的デコードの draft head(EAGLE など)は本体の大きさに入れず、順位にも出さない(`llmfit-core/src/models.rs` の `SanitizationReason::SpecDecodeDraft`)。入れたときの量の注意は無い | テンプレートの既定の値で読み込まない部品を VRAM・メモリに数えず、スイッチを入れると段階が変わるときだけ 1 文で知らせる | 「既定で切ってある部品」。生成のテンプレートはスイッチ 1 つで部品が足されるので、入れたときの量も要る |
 
 ## 試験
 
@@ -347,6 +381,7 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 | 作り物の 1.0 GB の Flux で Perfect にならない・1 人の 4 件では決めない・作者 1 + 提出 1 で決まる・作者の 2 行は 1 つ | `test_fake_small_submission_does_not_make_flux_perfect`、`test_one_source_with_many_files_does_not_set_the_level`、`test_author_one_and_community_one_agree`、`test_author_rows_are_one_source` |
 | 逃がすのは Good まで・段階が上がるときだけ・GPU の Perfect / Good は替わらない・メインメモリも見る・限界は GPU の行だけ(#108) | `tests/test_levels.py`(`test_offload_is_capped_at_good_and_chosen_only_when_it_raises_the_level` ほか) |
 | CPU の上限(読み上げ・道具は Good、生成は Marginal)・メインメモリの帯 | `tests/test_levels.py::test_cpu_only_caps`、`test_cpu_top_table`、`test_cpu_level_uses_the_ram_band` |
+| 既定で切ってある部品: 型の表の出力のノード(サブグラフの中・lazy の枝)から届けば数える・Soft Switch は選んだ側がつながっていなければもう一方・入れ子の素通しの実体の中身は使う・出力に届かないノードの部品は download にも数えない・素通しのノード自身のファイルは数えない・#81 の値(8 GB で 4.96 / 5.14 GB の Good)・FLUX.2 Klein・#112(Wan 2.2 5B が 8 GB で Good)・上限の 1 文・段階が下がらない | `tests/test_optional.py` |
 | 確認済みの種類(NVIDIA の専用 VRAM は true、AMD・Apple・GB10 は false。1 機種は何件でも未確認、2 機種で確認済み、出どころを分けない)・✓ は確認済みだけ・gate は種類によらない・AMD と NVIDIA の分布が近い・VRAM とメモリを増やして段階が下がらない | `tests/test_levels.py` |
 
 `SCHEMA_VERSION`(同梱・配布の db.json の形の版)は変えていません。出力の意味が変わったので、パッケージは 0.11.0 です([CHANGELOG.md](../CHANGELOG.md))。
@@ -358,3 +393,6 @@ r(動かし方ごと。表の Mem% と JSON の `utilization_pct` はこの r):
 3. 品質の実測: 同じ seed で精度ごとの差(LPIPS など)を bench で測る。精度の減点はその後。
 4. 逃がしたときの速さの実測(#102 の測定で `--disable-dynamic-vram` + lowvram の時間を比べる)。逃がす行を Good までにしている根拠の確かめ。
 5. 音楽・3D・読み上げの人気のかたよりの確認(件数が増えたら)。
+6. bench・contrib の実測に、読み込んだ任意の部品(スイッチを入れた・無効のノードを有効にした)を記録する。今は実測を
+   テンプレートの既定の値で測ったものとして扱い、ずらしを既定で読み込む部品で決めている。スイッチを入れて測った実測が
+   混じると、作業用メモリが大きく見える。

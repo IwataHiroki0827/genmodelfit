@@ -660,8 +660,8 @@ download the files of a model (consent, sha256, resume, ComfyUI folders)
 genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db PATH] [--no-cache]
                      [--license-allowlist LIST|FILE] [--comfyui-version VER]
                      [--max-head-age-days DAYS] [--allow-uncensored-auto] [--precision PREC]
-                     [--budget GB] [--list] [--output-dir DIR | --comfyui-dir DIR] [--yes]
-                     [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
+                     [--budget GB] [--with-optional] [--list] [--output-dir DIR | --comfyui-dir DIR]
+                     [--yes] [--uncensored] [--any-license] [--content {all,sfw,uncensored}] model
 ```
 
 Download the files of a model for this PC (all files of one workflow), checking sha256.
@@ -694,6 +694,7 @@ Download the files of a model for this PC (all files of one workflow), checking 
 | `model` |  |  | model name (the Model column), workflow id, or a part of either |
 | `--precision` | `PREC` | chosen like recommend (see above) | download the workflow of the same model that has this precision (e.g. fp8 / bf16 / int8 / gguf-q8_0; the Prec column and info show which exist, and an unknown one is an error that lists them). Not the same as `--precision` of recommend etc. (which converts the estimate) |
 | `--budget` | `GB` |  | the most to download in GB (files already there are not counted); the best workflow within it is chosen, and when none fits the download is refused |
+| `--with-optional` |  |  | also download parts the template does not use by default (only on muted or bypassed nodes, etc.; #81) |
 | `--list` |  |  | only list the files and the total (no download, no network) |
 | `--output-dir` | `DIR` | none (decided as for `--comfyui-dir`) | a destination outside ComfyUI; files go to `<DIR>/<folder>/<file>` (folder: diffusion_models, vae, ...; the same layout as ComfyUI's models folder, so passing that models folder itself also works) |
 | `--comfyui-dir` | `DIR` | GENMODELFIT_COMFYUI_DIR, then config, then found automatically | the ComfyUI folder; files go to `<DIR>/models/<folder>/<file>` (default: $GENMODELFIT_COMFYUI_DIR, then comfyui-dir in `genmodelfit config`, then found automatically) |

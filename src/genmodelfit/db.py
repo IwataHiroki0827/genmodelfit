@@ -181,6 +181,9 @@ _FILE_TYPES = {
     "header_params": (int, type(None)),
     "repo_precision": _OPT_STR,
     "repo_precision_source": _OPT_STR,
+    # 任意の部品(#81)。知らない値は今までどおり数える(estimate.optional_kind)
+    "optional": _OPT_STR,
+    "optional_replaces": (list, type(None)),
 }
 _TEMPLATE_TYPES = {
     "name": _STR,
@@ -288,7 +291,7 @@ def check_entry(d: Any, i: int) -> None:
                 )
     for j, f in enumerate(d.get("files", [])):
         _check_types(f, _FILE_TYPES, f"{where}.files[{j}]")
-        for key in ("license_path", "license_evidence"):
+        for key in ("license_path", "license_evidence", "optional_replaces"):
             _check_str_list(f, key, f"{where}.files[{j}]")
 
 
