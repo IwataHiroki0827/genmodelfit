@@ -1296,19 +1296,24 @@ def _timeout_error() -> str:
     return tr("--timeout は 0 より大きい秒数にしてください", "--timeout must be a number of seconds above 0")
 
 
+def parse_resolution(res: str) -> tuple[int, int]:
+    """--resolution の 幅x高さ(bench と measure)。形が違えば BenchError。"""
+    mres = re.fullmatch(r"\s*(\d+)\s*[xX*×]\s*(\d+)\s*", res)
+    if not mres or not int(mres.group(1)) or not int(mres.group(2)):
+        raise BenchError(
+            tr(
+                f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}",
+                f"Write --resolution as WIDTHxHEIGHT (e.g. 768x768): {res}",
+            )
+        )
+    return int(mres.group(1)), int(mres.group(2))
+
+
 def options_from_args(args: argparse.Namespace) -> BenchOptions:
     width, height = getattr(args, "width", None), getattr(args, "height", None)
     res = getattr(args, "resolution", None)
     if res:
-        mres = re.fullmatch(r"\s*(\d+)\s*[xX*×]\s*(\d+)\s*", res)
-        if not mres:
-            raise BenchError(
-                tr(
-                    f"--resolution は 幅x高さ の形で書いてください(例 768x768): {res}",
-                    f"Write --resolution as WIDTHxHEIGHT (e.g. 768x768): {res}",
-                )
-            )
-        width, height = int(mres.group(1)), int(mres.group(2))
+        width, height = parse_resolution(res)
     timeout = getattr(args, "timeout", None)
     timeout = 1800.0 if timeout is None else timeout
     if timeout <= 0:

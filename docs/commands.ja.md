@@ -755,16 +755,22 @@ genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--yes] [--limit N] [--timeout SEC] [model]
+                    [--comfyui-dir DIR] [--yes] [--resolution WxH] [--frames N] [--length SEC]
+                    [--limit N] [--timeout SEC] [model]
 ```
 
 - 起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
 - MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU の実測がまだ無いもの。
 - 並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
 - 番号で選ぶ(q でやめる)。
+- 一覧には、予測式の確かめに役立つ「設定を変えた測定」も混ぜる(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、動画のコマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ 10・30・60・120 秒(文章から音声)。
+- その設定で GPU に載り(good 以上)、この GPU にその設定の実測が無いものだけで、1 つのモデルに 2 件まで。
+- 1 回は生成 1 回(数分)で、もう一度 measure を実行すると次のものを選べる。
 - MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI のテンプレートのあるワークフローだけ)。
-- 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま)、どの ComfyUI か・どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(`--yes` で尋ねない)。
+- `--resolution`・`--frames`・`--length` で bench と同じく設定を変える。
+- 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま、または変えた設定)、どの ComfyUI か・どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(`--yes` で尋ねない)。
 - 時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。
+- 設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。
 - 入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。
 - 終わると結果と保存した場所を出し、最後に `genmodelfit share`(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
 
@@ -776,6 +782,9 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `--url` | `URL` | この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す | 測りに使う ComfyUI の URL(例 http://127.0.0.1:8188) |
 | `--comfyui-dir` | `DIR` | download と同じ決め方 | ComfyUI のフォルダ(モデルが入っているかを見る・入っていないとき落とす場所) |
 | `--yes`, `-y` |  |  | 測る前に尋ねない(入っていないモデルは download `--yes` と同じ決まりで落とす) |
+| `--resolution` | `WxH` |  | 幅と高さ(例: 1536x1536)を変えて測る(bench と同じ。省くとテンプレートのまま) |
+| `--frames` | `N` |  | 動画のコマ数を変えて測る(bench と同じ。省くとテンプレートのまま) |
+| `--length` | `SEC` |  | 音声の長さ(秒)を変えて測る(bench と同じ。省くとテンプレートのまま) |
 | `--limit`, `-n` | `N` |  | 引数なしで出す提案の数(既定 10) |
 | `--timeout` | `SEC` | `1800` | 待つ時間の上限(0 より大きい秒数。既定 1800) |
 
@@ -807,6 +816,7 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 genmodelfit measure --json
 genmodelfit measure image_z_image_turbo_int8 --yes --json
 genmodelfit measure "Z-Image-Turbo" --url http://127.0.0.1:8188
+genmodelfit measure image_sdxl_simple --resolution 1536x1536 --yes --json
 ```
 
 JSON の出力(`--json`): [schema.ja.md「measure」](schema.ja.md#measure)

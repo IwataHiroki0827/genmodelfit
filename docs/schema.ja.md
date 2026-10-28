@@ -999,8 +999,11 @@ bench が Measurement を埋める方法(測り方):
 - MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by}`(`found_by` は `--url` なら `option`、127.0.0.1 の
   8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null)と `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis}]。測らない。
-- MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`comfyui`・`installed`
+  seconds_basis, settings, args}]。`settings`(0.12.0、#116)はテンプレートのままなら null、設定を変えた測定なら
+  変えた設定(`{width, height}`・`{frames}`・`{seconds}`)。`args` は同じものを `measure`・`bench` の引数にしたもの
+  (`["--resolution", "1536x1536"]`。テンプレートのままなら空)。測らない。
+- MODEL を付けると(`--yes` が要る)`action: "measure"`: `model_id`・`settings`(0.12.0。`--resolution`・`--frames`・
+  `--length` で指定したか一覧で選んだ設定。テンプレートのままなら null)・`comfyui`・`installed`
   `{state, missing_bytes, total_bytes, missing_files}`・`time_hint` `{seconds, basis}`、続けて `bench` の鍵
   (`measurement`・`workflow_source`・`warnings`・`failed?`・`saved_to`・`not_saved`)、`submission`
   `{saved_to, path_in_repo}`(提出を書かなかったときは null)、`hint`(`genmodelfit share` を案内する 1 行。無ければ null)。
@@ -1013,13 +1016,24 @@ bench が Measurement を埋める方法(測り方):
   `files_match` で同じファイル、標準の条件、結果が `ok` か `oom`。作業用メモリだけの実測も数える。同じ GPU で
   測り直しても材料が増えないため)。同じモデル(`groups` の鍵)は 1 件: 入っているワークフロー、無ければ `recommend` が
   選ぶもの。並びは 入っているもの → `seconds` → `download_bytes` → 名前。既定 10 件(`--limit`)。
+- **設定を変えた測定**(0.12.0、#116。`measure.variants`): 予測式の段ごとの作業用メモリを確かめるため、同じ一覧・
+  同じ並びに混ぜる。文章から画像(`t2i`。`estimate.NO_SIZE_INPUT` に無いもの)は 512・768・1024・1536 px の正方形
+  (`VARIANT_PIXELS`)、文章・画像から動画(`t2v`・`i2v`)は 17・33・49・81 コマ(`VARIANT_FRAMES`。大きさはテンプレート
+  のまま)、文章から音楽・効果音(`t2a`)は 10・30・60・120 秒(`VARIANT_SECONDS`)。#102 の台本にならった。その設定の
+  見積もりが `gpu` で `perfect` か `good` で、この GPU にその設定の実測が無いもの(`has_measurement_here` の
+  `settings`: 指定した項目が同じなら同じ設定とみなし、ほかの項目は比べない)だけを出す。同じモデル・同じ設定は 1 件
+  (選び方は上と同じ)で、並べたあと 1 つのモデルに `measure.VARIANTS_PER_MODEL`(2)件まで。1 つ測ると次が出る。
+  テンプレートのままの行は、今までどおり、この GPU にそのワークフローの実測が 1 つでもあれば出さない。
 - **入っているか**(`installed.state`): ワークフローのファイルがすべて、一覧の大きさで models のフォルダのどれか
   (`--comfyui-dir`、無ければ `download` と同じ決め方で ComfyUI に尋ねずに決めたフォルダ、と起動中の ComfyUI が
   答えたフォルダ)にあれば `yes`、無ければ `no`(`missing_bytes` は `download` が落とす量)、フォルダが見つからない・一覧にファイルが無ければ
   `unknown`。sha256 は計らない(download が確かめる)。
 - **時間**(`seconds`。10 秒単位に切り上げ): 同じワークフローのどの GPU でもよい `ok` の実測の `seconds` の中央値
   (`basis: measured`)、無ければ種類ごとのおおよその値(`basis: typical`。`measure.TYPICAL_SECONDS`: image 60・
-  video 300・music 90・sfx 60・tts 60・3d 120)。目安だけで、落とす時間は入れない。
+  video 300・music 90・sfx 60・tts 60・3d 120)。目安だけで、落とす時間は入れない。設定を変えたときは、それぞれの
+  実測の時間を、変えた項目の比(画素数・コマ数・長さ。`measure.work_ratio`。値の無い項目は種類ごとの既定)で
+  伸び縮みさせてから中央値を取り、おおよその値は種類ごとの既定の設定から伸び縮みさせる。ステップ数は変えないので
+  比に入れない。読み込みの時間も同じ比で動くので、小さい設定では短めに出る。
 - **MODEL** は `download` と同じ探し方(`downloader.resolve_candidates`)で、テンプレートのあるワークフローだけに
   絞る。ID がそのまま合えばそれ、名前なら `recommend` が選ぶワークフロー。
 - 送るための下書きは `<cache>/submissions/<GPU>/<date>-<sha8>.json` に書く(標準の条件で結果が `ok` か `oom` の

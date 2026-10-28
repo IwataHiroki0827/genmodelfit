@@ -1043,8 +1043,11 @@ How bench fills Measurement:
 - Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by}` (`found_by` is `option` for `--url`, `running` for
   a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found) and `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
-  seconds_basis}]. Nothing is measured.
-- With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `comfyui`, `installed`
+  seconds_basis, settings, args}]. `settings` (0.12.0, #116) is null for a run as in the template, else the changed
+  settings (`{width, height}`, `{frames}` or `{seconds}`); `args` is the same as `measure` / `bench` arguments
+  (`["--resolution", "1536x1536"]`, empty for the template's settings). Nothing is measured.
+- With MODEL (needs `--yes`), `action: "measure"`: `model_id`, `settings` (0.12.0; the settings given with
+  `--resolution` / `--frames` / `--length` or chosen from the list, null when as in the template), `comfyui`, `installed`
   `{state, missing_bytes, total_bytes, missing_files}`, `time_hint` `{seconds, basis}`, then the keys of `bench`
   (`measurement`, `workflow_source`, `warnings`, `failed?`, `saved_to`, `not_saved`), `submission`
   `{saved_to, path_in_repo}` (null when no submission was written) and `hint` (the line about `genmodelfit share`, or
@@ -1058,13 +1061,25 @@ Rules:
   measurement counts too, since measuring it again on the same GPU adds nothing). One per model (`groups` key): the
   installed workflow, else the one `recommend` would pick. Order: installed first, then `seconds`, then
   `download_bytes`, then the name. Default 10 (`--limit`).
+- **Runs at other settings** (0.12.0, #116; `measure.variants`), mixed into the same list and order, to check the
+  formula's per-stage working memory: text-to-image workflows (`t2i`, not in `estimate.NO_SIZE_INPUT`) at 512 / 768 /
+  1024 / 1536 px square (`VARIANT_PIXELS`), text / image-to-video (`t2v`, `i2v`) at 17 / 33 / 49 / 81 frames
+  (`VARIANT_FRAMES`; size as in the template), text-to-audio music and sfx (`t2a`) at 10 / 30 / 60 / 120 s
+  (`VARIANT_SECONDS`), after the #102 plan. One is listed when its estimate at that setting is `perfect` / `good` on
+  `gpu` and this GPU has no measurement at that setting (`has_measurement_here` with `settings`: the given items must
+  match, other items are not compared). One per model and setting (chosen like above), at most
+  `measure.VARIANTS_PER_MODEL` (2) per model after ordering, so measuring one shows the next. The run as in the
+  template disappears once this GPU has any measurement of the workflow (as before).
 - **Installed** (`installed.state`): `yes` when every file of the workflow exists with the listed size under one of the
   models folders (`--comfyui-dir`, else the folder decided like `download` without asking a ComfyUI, plus the folder a
   running ComfyUI reported); `no` otherwise (`missing_bytes` is what `download` would fetch); `unknown` when no folder
   was found or the list has no files for it. sha256 is not computed (download checks it).
 - **Time** (`seconds`, rounded up to 10 s): the median `seconds` of `ok` measurements of the same workflow on any GPU
   (`basis: measured`), else a rough value per type (`basis: typical`; `measure.TYPICAL_SECONDS`: image 60, video 300,
-  music 90, sfx 60, tts 60, 3d 120). A rough guide only; downloading is not included.
+  music 90, sfx 60, tts 60, 3d 120). A rough guide only; downloading is not included. With changed settings each
+  measurement's time is scaled by the ratio of the changed items (pixels, frames or length; `measure.work_ratio`,
+  missing values taken as the per-type defaults) before the median, and the typical value is scaled from the per-type
+  default settings. Steps are not changed, so not scaled; loading is scaled too, so small settings come out short.
 - **MODEL** is resolved like `download` (`downloader.resolve_candidates`), keeping only workflows with a template; an
   exact id is used as is, a name picks the workflow `recommend` would pick.
 - The submission draft goes to `<cache>/submissions/<GPU>/<date>-<sha8>.json` (only for standard results with outcome

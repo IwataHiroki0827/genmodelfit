@@ -190,11 +190,12 @@ def test_suggestions_rules(db):
     for x in sugg:
         m = by_id[x.model_id]
         assert m.source == "comfyui-template" and not x.model_id.startswith("hf:")
-        f = judge(m, s, db)
+        f = judge(m, s, db, settings=x.settings)  # 設定を変えた測定は、その設定で載るもの(#116)
         assert f.estimate.fit in ("perfect", "good") and f.estimate.run_mode == "gpu"
-        assert not measure.has_measurement_here(m, db.measurements, s.best_gpu)
-        assert x.group_key not in keys  # 同じモデルは 1 件
-        keys.add(x.group_key)
+        assert not measure.has_measurement_here(m, db.measurements, s.best_gpu, x.settings)
+        key = (x.group_key, tuple(x.args))
+        assert key not in keys  # 同じモデル・同じ設定は 1 件
+        keys.add(key)
         assert x.installed.state == "unknown" and x.seconds % 10 == 0
     order = [(x.seconds, x.installed.missing_bytes) for x in sugg]
     assert order == sorted(order)
@@ -221,7 +222,9 @@ def test_suggestions_put_installed_first_and_drop_measured(db, tmp_path):
     # この GPU で測ったら出さない
     db2 = load_db(use_cache=False)
     db2.measurements.append(meas(model_id=first[0].model_id))
-    assert first[0].model_id not in [x.model_id for x in measure.suggestions(db2, s)]
+    # テンプレートのままの行は出さない(設定を変えた測定は、その設定の実測が無いので残る。#116)
+    rows = [x for x in measure.suggestions(db2, s) if x.model_id == first[0].model_id]
+    assert all(x.settings is not None for x in rows)
 
 
 def test_resolve_keeps_template_workflows(db):
@@ -820,3 +823,205 @@ def test_intake_writes_the_numeric_account_id(db, tmp_path):
         == 0
     )
     assert "Submitted-by-id: 77" in (tmp_path / "o" / "commit_msg.txt").read_text(encoding="utf-8")
+
+
+# --- 設定を変えた測定(#116) ------------------------------------------------------------------------
+
+
+def test_variants_per_modality():
+    img = measure.variants(entry(tasks=["t2i"]))
+    assert [(v.width, v.height) for v in img] == [(512, 512), (768, 768), (1024, 1024), (1536, 1536)]
+    assert all(v.frames is None and v.seconds is None for v in img)
+    vid = measure.variants(entry(id="video_x", modality="video", tasks=["i2v"]))
+    # 動画の大きさはテンプレートのまま
+    assert [v.frames for v in vid] == [17, 33, 49, 81] and all(v.width is None for v in vid)
+    mus = measure.variants(entry(id="audio_x", modality="music", tasks=["t2a"]))
+    assert [v.seconds for v in mus] == [10, 30, 60, 120]
+    sfx = measure.variants(entry(id="sfx_x", modality="sfx", tasks=["t2a"]))
+    assert [v.seconds for v in sfx] == [10, 30, 60, 120]
+    # 設定を入力で決めない用途・種類には出さない
+    assert measure.variants(entry(tasks=["i2i"])) == []
+    assert measure.variants(entry(tasks=["upscale"])) == []
+    assert measure.variants(entry(id="3d_x", modality="3d", tasks=["i23d"])) == []
+    assert measure.variants(entry(id="tts_x", modality="tts", tasks=["tts"])) == []
+    assert measure.variants(entry(id="video_x", modality="video", tasks=["v2v"])) == []
+    # 大きさの入力の無いテンプレート(estimate.NO_SIZE_INPUT)
+    assert measure.variants(entry(id="utility_birefnet_remove_background", tasks=["t2i"])) == []
+
+
+def test_variant_args_and_settings_dict():
+    from genmodelfit.models import Settings
+
+    assert measure.bench_args(None) == [] and measure.settings_dict(None) is None
+    assert measure.settings_dict(Settings()) is None
+    assert measure.bench_args(Settings(width=1536, height=1536)) == ["--resolution", "1536x1536"]
+    assert measure.bench_args(Settings(frames=81)) == ["--frames", "81"]
+    assert measure.bench_args(Settings(seconds=120.0)) == ["--length", "120"]
+    assert measure.settings_dict(Settings(seconds=30.0, steps=8)) == {"seconds": 30.0}  # ステップ数は変えない
+
+
+def test_has_measurement_here_with_settings():
+    from genmodelfit.models import Settings
+
+    e = entry(tasks=["t2i"])
+    g = pc().best_gpu
+    at512 = meas(settings=Settings(width=512, height=512, steps=20))
+    want512, want1024 = Settings(width=512, height=512), Settings(width=1024, height=1024)
+    assert measure.has_measurement_here(e, [at512], g)  # 設定を問わなければある
+    assert measure.has_measurement_here(e, [at512], g, want512)
+    assert not measure.has_measurement_here(e, [at512], g, want1024)
+    assert not measure.has_measurement_here(e, [meas()], g, want512)  # 設定の無い実測は別の設定
+    # 同じ設定でも、ほかの GPU・標準でない・失敗は数えない
+    other_gpu = meas(settings=want512, gpu_name="NVIDIA GeForce RTX 4090", gpu_vram_gb=24)
+    assert not measure.has_measurement_here(e, [other_gpu], g, want512)
+    assert not measure.has_measurement_here(e, [meas(settings=want512, standard=False)], g, want512)
+    assert not measure.has_measurement_here(e, [meas(settings=want512, outcome="error")], g, want512)
+    assert measure.has_measurement_here(e, [meas(settings=want512, outcome="oom")], g, want512)
+    # 動画はコマ数だけ比べる(大きさはテンプレートのまま)
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    m49 = meas("video_x", settings=Settings(width=832, height=480, frames=49))
+    assert measure.has_measurement_here(v, [m49], g, Settings(frames=49))
+    assert not measure.has_measurement_here(v, [m49], g, Settings(frames=81))
+
+
+def test_time_hint_scales_with_settings():
+    from genmodelfit.models import Settings
+
+    e = entry(tasks=["t2i"])
+    # 種類ごとの値(画像 60 秒)は既定の 1024x1024 での値として伸び縮みさせる
+    assert measure.time_hint(e, [], Settings(width=512, height=512)) == (20, "typical")  # 60 × 1/4 = 15
+    assert measure.time_hint(e, [], Settings(width=1536, height=1536)) == (140, "typical")  # 60 × 2.25 = 135
+    # 実測はそれぞれの設定から伸び縮みさせてから中央値(512 の 20 秒 → 80 秒、既定の 40 秒 → 40 秒)
+    ms = [meas(seconds=20.0, settings=Settings(width=512, height=512)), meas(seconds=40.0)]
+    assert measure.time_hint(e, ms, Settings(width=1024, height=1024)) == (60, "measured")
+    v = entry(id="video_x", modality="video", tasks=["t2v"])
+    assert measure.time_hint(v, [], Settings(frames=17)) == (70, "typical")  # 300 × 17/81 = 63
+    mv = [meas("video_x", seconds=100.0, settings=Settings(width=512, height=512, frames=49))]
+    # 大きさは変えないので、比はコマ数だけ
+    assert measure.time_hint(v, mv, Settings(frames=98)) == (200, "measured")
+    a = entry(id="audio_x", modality="music", tasks=["t2a"])
+    ma = [meas("audio_x", seconds=20.0, settings=Settings(seconds=20.0))]
+    assert measure.time_hint(a, ma, Settings(seconds=120.0)) == (120, "measured")
+    assert measure.time_hint(a, ma) == (20, "measured")  # 設定を渡さなければ今までどおり
+
+
+def test_suggestions_mix_variants_and_cap_per_model(db):
+    s = pc()
+    sugg = measure.suggestions(db, s)
+    var = [x for x in sugg if x.settings is not None]
+    assert var, "RTX 3070 で設定を変えて測れるものがある"
+    assert any(x.settings is None for x in sugg)  # テンプレートのままの行も同じ一覧に
+    per_model: dict[str, int] = {}
+    for x in var:
+        per_model[x.group_key] = per_model.get(x.group_key, 0) + 1
+        assert x.args and x.to_dict()["settings"] == measure.settings_dict(x.settings)
+        assert x.to_dict()["args"] == x.args
+    assert max(per_model.values()) <= measure.VARIANTS_PER_MODEL
+    # 上限を外すと、同じモデルの設定がもっと出る(上限は並べたあとで切る: 残るのは先に並ぶもの)
+    every = measure.suggestions(db, s, variants_per_model=None)
+    assert len(every) > len(sugg)
+    for key in per_model:
+        all_of = [x for x in every if x.group_key == key and x.settings is not None]
+        kept = [x for x in var if x.group_key == key]
+        assert [x.args for x in kept] == [x.args for x in all_of[: len(kept)]]
+    # 並びは入っているもの → 時間 → 落とす量(テンプレートのままと設定を変えたものを混ぜて)
+    order = [(x.installed.state != "yes", x.seconds, x.installed.missing_bytes) for x in sugg]
+    assert order == sorted(order)
+
+
+def test_suggestions_drop_variants_measured_here_or_too_big(db):
+    from genmodelfit.estimate import estimate
+    from genmodelfit.models import Settings
+
+    s = pc()
+    sdxl = [
+        x for x in measure.suggestions(db, s, variants_per_model=None) if x.model_id == "image_sdxl_simple"
+    ]
+    assert 512 in {x.settings.width for x in sdxl if x.settings is not None}
+    db2 = load_db(use_cache=False)
+    db2.measurements.append(meas("image_sdxl_simple", settings=Settings(width=512, height=512)))
+    # 同じワークフローの、その設定だけ消える(実測はワークフローごと。has_measurement_here)
+    again = [
+        x for x in measure.suggestions(db2, s, variants_per_model=None) if x.model_id == "image_sdxl_simple"
+    ]
+    widths = {x.settings.width for x in again if x.settings is not None}
+    assert 512 not in widths and 768 in widths
+    # その設定で載らないものは出さない(どの行もその設定で GPU に good 以上)
+    small = pc(vram=4.0, name="NVIDIA GeForce GTX 1650")
+    big = measure.suggestions(db, pc(vram=24.0, name="NVIDIA GeForce RTX 4090"), variants_per_model=None)
+    few = measure.suggestions(db, small, variants_per_model=None)
+    assert len([x for x in few if x.settings]) < len([x for x in big if x.settings])
+    for x in few:
+        if x.settings is not None:
+            e = estimate(db.get(x.model_id), small, x.settings, db.measurements)
+            assert e.fit in ("perfect", "good") and e.run_mode == "gpu"
+
+
+def test_measure_lists_variants_with_their_arguments(capsys, monkeypatch, this_pc):
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "en", "measure", "-n", "40"]) == 0
+    out = capsys.readouterr().out
+    assert re.search(r"\[\S+ --(resolution \d+x\d+|frames \d+|length \d+)\]", out)
+    assert cli.main(["measure", "--json", "-n", "40"]) == 0
+    rows = json.loads(capsys.readouterr().out)["suggestions"]
+    assert any(r["settings"] is None and r["args"] == [] for r in rows)
+    v = next(r for r in rows if r["settings"])
+    assert v["args"][0] in ("--resolution", "--frames", "--length")
+
+
+def test_measure_settings_need_a_model_and_a_good_resolution(capsys, this_pc):
+    assert cli.main(["--lang", "ja", "measure", "--resolution", "512x512"]) == 1
+    assert "測るモデルといっしょに" in capsys.readouterr().err
+    assert cli.main(["--lang", "en", "measure", "image_sdxl_simple", "--resolution", "512"]) == 1
+    assert "WIDTHxHEIGHT" in capsys.readouterr().err
+
+
+def test_measure_passes_settings_to_bench(capsys, monkeypatch, this_pc, fake_gpu):
+    from test_bench import FakeComfy
+
+    seen = []
+    real_run = bench.run
+    monkeypatch.setattr(bench, "run", lambda opts, *a, **k: seen.append(opts) or real_run(opts, *a, **k))
+    with FakeComfy() as fake:
+        argv = ["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url]
+        assert cli.main([*argv, "--resolution", "1536x1536"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert (seen[0].width, seen[0].height, seen[0].frames, seen[0].seconds) == (1536, 1536, None, None)
+    assert d["settings"] == {"width": 1536, "height": 1536}
+    big = d["time_hint"]["seconds"]
+    seen.clear()
+    with FakeComfy() as fake:
+        assert cli.main(["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["settings"] is None and seen[0].width is None and seen[0].frames is None
+    assert big > d["time_hint"]["seconds"]  # 時間の目安も設定に合わせて伸びる
+
+
+def test_measure_screen_shows_the_settings(capsys, monkeypatch, this_pc):
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("起動していなければ尋ねない"))
+    argv = ["--lang", "ja", "measure", "audio_ace_step_1_5_checkpoint", "--length", "120"]
+    assert cli.main(argv) == 1
+    out = capsys.readouterr().out
+    assert "設定:       長さ 120 秒(ほかは公式のテンプレートのまま)" in out
+    assert "比で伸び" in out
+
+
+def test_measure_choosing_a_variant_measures_it(capsys, monkeypatch, this_pc, fake_gpu):
+    from test_bench import FakeComfy
+
+    sugg = measure.suggestions(load_db(use_cache=False), pc())[: cli.MEASURE_LIMIT]
+    k = next(i for i, x in enumerate(sugg) if x.settings is not None)
+    want = sugg[k].settings
+    seen = []
+    real_run = bench.run
+    monkeypatch.setattr(bench, "run", lambda opts, *a, **kw: seen.append(opts) or real_run(opts, *a, **kw))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(cli, "_choose_number", lambda n: k)
+    answers(monkeypatch, "")
+    with FakeComfy() as fake:
+        cli.main(["--lang", "ja", "measure", "--url", fake.url])
+    out = capsys.readouterr().out
+    got = (seen[0].width, seen[0].height, seen[0].frames, seen[0].seconds)
+    assert got == (want.width, want.height, want.frames, want.seconds)
+    assert "ほかは公式のテンプレートのまま" in out

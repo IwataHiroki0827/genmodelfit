@@ -23,6 +23,17 @@ All notable changes to this project are documented here. The format is based on
   - `Database.generated_time` / `DataStatus.generated_time` (`generated_at` as a UTC `datetime`), and
     `gmf.self_check()` (bundled list, measurements, coefficients, `cryptography` and public keys present; never raises).
   - `gmf.parse_safetensors_header`, `gmf.HeaderError`, `gmf.HeaderInfo`.
+- **`measure` also suggests runs at other settings** (#116), to check the formula's per-stage working memory without
+  a long batch (the #102 plan is now `measure` → `share` → "Create"): text-to-image at 512 / 768 / 1024 / 1536 px,
+  text / image-to-video at 17 / 33 / 49 / 81 frames (size as in the template), text-to-audio music / sfx at 10 / 30 /
+  60 / 120 s. A run is listed only when its estimate at that setting is good or better on the GPU and this GPU has no
+  measurement at that setting (same GPU, same files, same settings); it is mixed into the same list and order
+  (installed → time → download), at most 2 per model (`measure.VARIANTS_PER_MODEL`), shown with the arguments
+  (`[image_sdxl_simple --resolution 1536x1536]`). The rough time is scaled by the ratio of pixels, frames or length.
+  `measure <name>` takes `--resolution WxH`, `--frames N` and `--length S` like `bench`; the screen before measuring
+  and the JSON show the settings (`suggestions[].settings` / `args`, `settings`). Each run is still one generation;
+  `share` sends the settings as before. New: `measure.variants`, `bench_args`, `settings_dict`, `same_variant`,
+  `work_ratio`, `bench.parse_resolution`; `has_measurement_here` and `time_hint` take optional `settings`.
 
 ### Changed
 
