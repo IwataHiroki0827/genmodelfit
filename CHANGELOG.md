@@ -46,7 +46,7 @@ All notable changes to this project are documented here. The format is based on
   `measurement` label: the body is read from the event file as data only, checked like `contrib validate` plus the
   privacy checks, and on success the bot pushes `data/contrib/<GPU>/<date>-<sha8>.json` to `measurement/issue-<N>`,
   opens a PR (with the issue author and `Closes #N`) and links it; on failure it comments the reasons (English and
-  Japanese). One issue is one PR, so it counts as one source like a PR. Library: `contrib.intake_issue`,
+  Japanese). It counts as the issue author's submission. Library: `contrib.intake_issue`,
   `contrib.extract_issue_json`.
 - **Sharing a measurement without git: `bench … --share` and `contrib share <file>`** (#90; the page changed in
   #113). They run the same checks as `contrib show` and `contrib validate` (all fields, the privacy checklist, the
@@ -84,6 +84,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **One person is one source** (#113): other users' submissions are counted by the person who sent them, not by the
+  commit / pull request that added them. The person is the `Submitted-by: github:<account>` of the intake bot's
+  commit (trusted only on the bot's commits), else the e-mail address of the commit that added the file (in a merge,
+  the commit on the PR side, so the maintainer who merged it is not counted). Several pull requests or issues from one
+  person are one source, like the author's rows; `source_ids` hold the first 12 hex digits of the sha256 of that key,
+  so no address or account is published. New: `contrib.submission_submitters`, `contrib.submitter_count`.
+- **`share --json` only previews** (#113): it marks the measurement as sent only with `--mark-sent`; the text output
+  without a terminal does not mark it either (opening the browser and `--print-url` do). `share --print-url` without a
+  file uses the only unsent measurement. `measure` answered with n exits 0, and a failed measurement ends with a plain
+  "Next:" line. The line after measuring says honestly what the measurement is used for (working-memory-only NVIDIA
+  results are for cross-checking).
+- **Measurement intake is idempotent and follows edits** (#113): it runs on issues opened and on body edits only (not
+  on labels or title edits), does nothing when the PR already has the same content, refuses content that another
+  issue's PR already has, updates the PR and comments on both pages when the issue is edited to different valid
+  content, and closes the PR when the issue is edited to invalid content (reopened when fixed). It is split into a
+  read-only job that installs genmodelfit and a write job that only uses git and gh. The privacy check no longer
+  treats the runner's host / user name as the sender's.
 - **`contrib` is for maintainers** (#113): the README command table and `--help` list `measure` and `share` for
   users; `review`, `bench` and `contrib` are described as maintenance commands. The commands stay as they were
   (`contrib share` is the same as `share`).

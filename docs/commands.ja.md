@@ -796,8 +796,8 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 
 | コード | 意味 |
 |---|---|
-| 0 | 成功(選ばなかった・出す提案が無いときも) |
-| 1 | 失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、落とさなかった、実行の失敗(メモリ不足など)、同意が無い |
+| 0 | 成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも) |
+| 1 | 失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、落とさなかった、実行の失敗(メモリ不足など)、端末でなく `--yes` も無い |
 | 2 | 使い方の誤り |
 
 **使い方の例(スクリプト・アプリ向け)**
@@ -825,15 +825,18 @@ genmodelfit measure --url http://127.0.0.1:8000  # この ComfyUI で測る(探�
 **使い方**
 
 ```text
-genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PATH] [file]
+genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-sent] [--db PATH]
+                  [file]
 ```
 
 - 実測を送る: 送る中身をそのまま見せ、GitHub の提出のフォームを開く。
 - FILE を省くと、measure(と bench `--share`)が保存した実測のうち送った印の無いものを新しい順に出し、番号で選ぶ。
 - 中身のすべて(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC やユーザの名前は入らない)と個人の情報の点検を見せてから、中身を入れた GitHub の実測の Issue のフォームをブラウザで開く: ログインして「Create」を押す。
-- ボットが contrib validate と同じ検査をして、それを足す Pull Request を作り、メンテナがマージする。
+- 数分でボットが確かめてそのページに返事を書き、問題が無ければ、メンテナが受け入れるとプロジェクトに入る。
 - 中身が URL に入りきらないときはクリップボード(clip・pbcopy・wl-copy・xclip・xsel)に写して中身の無いフォームを開くので、そこに貼り付ける。
-- ページを開いた(または URL を出した)ら、この PC で送った印を付け、次から一覧に出さない(`--all` で出す)。
+- ページを開いたか、`--print-url` で URL を出したら、この PC で送った印を付け、次から一覧に出さない(`--all` で出す)。
+- `--json` は `--mark-sent` のときだけ印を付ける。
+- FILE の無い `--print-url` は、送っていない実測が 1 つだけならそれを使う(2 つ以上なら FILE を指定する)。
 - GitHub のアカウントが要る。
 
 **オプションと引数**
@@ -843,6 +846,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PAT
 | `file` |  |  | 送る提出の JSON(省くと、送っていない実測を出して選ぶ) |
 | `--print-url` |  |  | ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け) |
 | `--all` |  |  | 送った印のある実測も一覧に出す |
+| `--mark-sent` |  |  | `--json` でも送った印を付ける(アプリがフォームを開くとき。既定の `--json` は見るだけで印を付けない) |
 | `--db` | `PATH` |  | モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない) |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`
@@ -863,7 +867,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PAT
 | コード | 意味 |
 |---|---|
 | 0 | 成功(選ばなかった・送るものが無いときも) |
-| 1 | 失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある |
+| 1 | 失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある、送っていない実測が 2 つ以上あるのに FILE の無い `--print-url` |
 | 2 | 使い方の誤り |
 
 **使い方の例(スクリプト・アプリ向け)**
@@ -1444,7 +1448,8 @@ genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
 **使い方**
 
 ```text
-genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all] [file]
+genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all]
+                          [--mark-sent] [file]
 ```
 
 **オプションと引数**
@@ -1455,6 +1460,7 @@ genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-ur
 | `file` |  |  | 送る提出の JSON(省くと、送っていない実測を出して選ぶ) |
 | `--print-url` |  |  | ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け) |
 | `--all` |  |  | 送った印のある実測も一覧に出す |
+| `--mark-sent` |  |  | `--json` でも送った印を付ける |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`
 

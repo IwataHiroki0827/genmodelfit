@@ -37,7 +37,7 @@ python -m genmodelfit recommend   # the same, if "genmodelfit" is not found
 ```
 
 **Help by measuring (optional, no git needed).** With ComfyUI running, two commands and one button send a measurement of
-your GPU, which makes the results for everyone with the same GPU more accurate
+your GPU, which helps check and improve the estimates for everyone with the same GPU
 ([how](https://github.com/laxshmate/genmodelfit#help-by-measuring)):
 
 ```
@@ -68,8 +68,9 @@ genmodelfit share                 # show what will be sent and open the GitHub f
   SD-family image models and Stable Audio count as running on CPU (slow). On Linux, `system` suggests
   `update-pciids` when lspci does not know the GPU's name
   ([docs/hardware.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.md)).
-  Non-NVIDIA GPUs have no measurements yet, so they get no ✓. `genmodelfit bench` works on these GPUs
-  too; your results verify them and tighten the estimates ([CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md)).
+  Non-NVIDIA GPUs have no measurements yet, so they get no ✓. `genmodelfit measure` works on these GPUs too;
+  sending the result with `genmodelfit share` verifies them and tightens the estimates
+  ([Help by measuring](https://github.com/laxshmate/genmodelfit#help-by-measuring)).
 
 ### Install
 
@@ -417,14 +418,26 @@ Intel or Apple GPU):
    (or `--url`). A model that is not installed is downloaded first with the same questions as `download`.
 2. `genmodelfit share` lists the measurements you have not sent, shows exactly what will be sent, and opens the
    measurement form on GitHub in your browser with it filled in.
-3. Sign in and press "Create". A bot runs the same checks as `contrib validate` and opens a pull request that adds the
-   file to `data/contrib/`; a maintainer merges it.
+3. Sign in and press "Create". A bot checks it within a few minutes and replies on the page; if it is fine, it goes
+   into the project once a maintainer accepts it.
 
-What is sent: the GPU name, VRAM, driver, vendor / backend, for AMD / Intel GPUs the PCI model ID (such as `1002:744c`),
-ComfyUI version, OS family, RAM rounded to GiB, the model, settings and results. What is not: host or user names, paths,
-GPU UUID, PCI address, IP, CPU name, exact time, prompts. If you know git, `bench --submission data/contrib/` in a clone
-of your fork still works. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
-Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
+What is sent (all of it is shown before you send): the GPU name, VRAM, generation and compute capability (NVIDIA),
+driver version, vendor and backend, for AMD / Intel GPUs the PCI model ID (a model number such as `1002:744c`, the
+same on every card of that model), the OS family, RAM rounded to GiB, the ComfyUI and genmodelfit versions, the date
+(no time), the model, settings, result, peak VRAM / RAM, time, how the model was loaded (`offload`), how it was
+measured, a fingerprint of the model files, and bench's note about how it measured. What is not: host or user names,
+paths, GPU UUID, PCI slot, serial numbers, IP, CPU name, exact time, prompts.
+
+How it is used: a measurement is used for people with the same GPU. On NVIDIA with ComfyUI's dynamic VRAM (the
+default today) only the working memory can be measured, so it is used to cross-check the estimates and does not set
+levels yet (#100; [accuracy.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.md#how-measurements-are-used)).
+Other measurements adjust the estimate for that GPU, and when two different people's measurements agree they also
+set the level. One person counts once, however many measurements they send. Out-of-memory results are kept as
+records that the GPU was not enough.
+
+If you edit the issue after the bot made its pull request, the new content is checked again: the pull request is
+updated (or closed, if the new content does not pass) and both pages say so. For git users, `bench --submission
+data/contrib/` in a clone of your fork still works. Steps: [CONTRIBUTING.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md).
 
 ### Privacy
 

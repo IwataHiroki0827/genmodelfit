@@ -312,7 +312,7 @@ def test_measure_runs_and_points_to_share(capsys, monkeypatch, this_pc, fake_gpu
     assert "(--url で指定)" in out
     subs = list((cache_dir() / "submissions" / "rtx-3070").glob("*.json"))
     assert len(subs) == 1 and f"送る用:    {subs[0]}" in out
-    assert out.rstrip().endswith("genmodelfit share で送ると、同じ GPU を使う人の判定が実測で確かになります")
+    assert out.rstrip().splitlines()[-1].startswith("genmodelfit share で送ると、")
     assert list((cache_dir() / "measurements").glob("*.json"))
 
 
@@ -320,7 +320,8 @@ def test_measure_no_means_no(capsys, monkeypatch, this_pc, fake_gpu):
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     answers(monkeypatch, "n")
     monkeypatch.setattr(bench, "run", lambda *a, **k: pytest.fail("測らない"))
-    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--url", "http://127.0.0.1:9"]) == 1
+    # やめただけなので誤りではない(share の q と同じ)
+    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--url", "http://127.0.0.1:9"]) == 0
     assert "測りませんでした" in capsys.readouterr().err
 
 
@@ -629,30 +630,137 @@ def test_cli_intake_writes_files_and_prints_nothing_from_the_body(tmp_path, caps
 # --- ワークフロー --------------------------------------------------------------------------------
 
 
-def test_intake_workflow_treats_the_body_as_data():
+def _wf() -> tuple[dict, str]:
     yaml = pytest.importorskip("yaml")
     path = ROOT / ".github" / "workflows" / "measurement-intake.yml"
-    wf = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return yaml.safe_load(path.read_text(encoding="utf-8")), path.read_text(encoding="utf-8")
+
+
+def test_intake_workflow_treats_the_body_as_data():
+    wf, text = _wf()
     on = wf.get("on", wf.get(True))
-    assert set(on) == {"issues"} and set(on["issues"]["types"]) == {"opened", "edited", "labeled"}
+    # 印を付けたとき(labeled)は動かない: フォームの Issue は作ったときに印が付いていて、2 回動くため
+    assert set(on) == {"issues"} and set(on["issues"]["types"]) == {"opened", "edited"}
     assert wf["permissions"] == {"contents": "read"}
-    job = wf["jobs"]["intake"]
-    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
-    assert "'measurement'" in job["if"] and "github.event.issue.state == 'open'" in job["if"]
+    check, publish = wf["jobs"]["check"], wf["jobs"]["publish"]
+    assert check["permissions"] == {"contents": "read"}  # パッケージを入れるジョブは読むだけ
+    assert publish["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
+    assert publish["needs"] == "check"
+    assert "'measurement'" in check["if"] and "github.event.issue.state == 'open'" in check["if"]
+    assert "github.event.changes.body != null" in check["if"]  # 題だけの編集では動かない
     sha = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
-    for st in job["steps"]:
-        if "uses" in st:
-            assert sha.match(st["uses"]), st["uses"]
-            if st["uses"].startswith("actions/checkout@"):
-                assert st["with"]["persist-credentials"] is False
-        run = st.get("run", "")
-        assert "${{" not in run  # 式は run に埋め込まない(env だけ)
-        for value in st.get("env", {}).values():
-            assert not re.search(r"issue\.(body|title|user)|comment\.body", str(value))
-    text = path.read_text(encoding="utf-8")
+    for job in (check, publish):
+        for st in job["steps"]:
+            if "uses" in st:
+                assert sha.match(st["uses"]), st["uses"]
+                if st["uses"].startswith("actions/checkout@"):
+                    assert st["with"]["persist-credentials"] is False
+            assert "${{" not in st.get("run", "")  # 式は run に埋め込まない(env だけ)
+            for value in st.get("env", {}).values():
+                assert not re.search(r"issue\.(body|title|user)|comment\.body", str(value))
+    # 書くジョブはほかの人のパッケージを入れない(git と gh だけ)
+    pub_runs = "\n".join(st.get("run", "") for st in publish["steps"])
+    pub_uses = [st["uses"].split("@")[0] for st in publish["steps"] if "uses" in st]
+    assert set(pub_uses) == {"actions/checkout", "actions/download-artifact"}
+    assert "pip install" not in pub_runs and "uv " not in pub_runs and "genmodelfit" not in pub_runs
     code = "\n".join(x for x in text.splitlines() if not x.lstrip().startswith("#"))
     assert "secrets." not in code and "pull_request_target" not in code
-    runs = "\n".join(st.get("run", "") for st in job["steps"])
-    assert 'contrib intake "$GITHUB_EVENT_PATH"' in runs and "::stop-commands::" in runs
-    assert r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$" in runs
-    assert "--body-file" in runs and "gh pr merge" not in runs
+    chk_runs = "\n".join(st.get("run", "") for st in check["steps"])
+    assert 'contrib intake "$GITHUB_EVENT_PATH"' in chk_runs and "::stop-commands::" in chk_runs
+    assert (
+        next(st for st in check["steps"] if st.get("uses", "").startswith("actions/checkout"))["with"][
+            "fetch-depth"
+        ]
+        == 0
+    )  # 同じ人の前の提出を数えるため
+    assert r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$" in pub_runs
+    assert "--body-file" in pub_runs and "gh pr merge" not in pub_runs
+
+
+def test_intake_workflow_is_idempotent_and_follows_edits():
+    wf, _ = _wf()
+    run = "\n".join(st.get("run", "") for st in wf["jobs"]["publish"]["steps"])
+    # 同じ中身の PR があれば push もコメントもしない
+    i_same = run.index('[ "$have" = "$want" ]')
+    assert "exit 0" in run[i_same : i_same + 80] and run.index("git push") > i_same
+    # 別の Issue の PR に同じ中身があれば知らせて止める
+    assert "measurement/issue-[0-9]+$" in run and "dup.md" in run
+    # 通らない中身なら PR を閉じ、通る中身なら PR を直して知らせる。閉じた PR は push の前に開き直す
+    assert 'gh pr close "$pr"' in run and "comment_pr_closed.md" in run
+    assert "gh pr edit" in run and "comment_updated.md" in run
+    assert run.index("gh pr reopen") < run.index("git push")
+
+
+def test_intake_comments_for_edits(db):
+    text = GOOD[0].read_text(encoding="utf-8")
+    ok = contrib.intake_issue(_body(text), "alice", 5, db=db, prior=2)
+    assert ok.ok and "Submitted-by: github:alice" in ok.commit_message
+    assert "already sent for this GPU and model: 2" in ok.pr_body or "既に送った提出: 2 件" in ok.pr_body
+    assert "#5" in ok.comment_updated and ok.path_in_repo in ok.comment_updated
+    bad = contrib.intake_issue("nothing", "alice", 5, db=db)
+    assert not bad.ok and "#5" in bad.comment_pr_closed
+    unknown = contrib.intake_issue(_body(text), "bad name", 5, db=db)
+    assert "Submitted-by" not in unknown.commit_message  # アカウント名が分からなければ書かない
+
+
+def test_intake_ignores_the_runner_identity(db, monkeypatch):
+    """intake は GitHub の実行機の名前・ユーザ名(runner など)を「この PC の名前」として断らない。"""
+    d = json.loads(GOOD[0].read_text(encoding="utf-8"))
+    d["measurement"]["note"] = "runner measured with bench"
+    text = json.dumps(d)
+    monkeypatch.setattr(contrib, "_identity_words", lambda: ["runner"])
+    checks = contrib.privacy_checklist(d, text)
+    assert any(c["id"] == "host_user" and c["ok"] is False for c in checks)  # share では断る(手元の PC)
+    assert contrib.intake_issue(_body(text), "alice", 1, db=db).ok
+
+
+def test_share_print_url_without_a_file(capsys, monkeypatch, browser):
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    assert cli.main(["share", "--print-url"]) == 1  # 送るものが無い
+    assert "genmodelfit measure" in capsys.readouterr().err
+    p = _saved(1)[0]
+    assert cli.main(["share", "--print-url"]) == 0  # 1 つだけならそれ
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and out[0].startswith("https://github.com/") and browser == []
+    assert measure.load_shared()  # URL を出したので印を付けた
+    _saved(3)
+    assert cli.main(["--lang", "ja", "share", "--print-url"]) == 1  # 2 つ以上なら選ぶように言う
+    err = capsys.readouterr().err
+    assert "送るファイルを指定してください" in err and str(p) not in err  # 送ったものは出さない
+
+
+def test_share_json_preview_does_not_mark(capsys):
+    p = _saved(1)[0]
+    assert cli.main(["share", str(p), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["marked_shared"] is False and measure.load_shared() == {}
+    assert cli.main(["share", str(p), "--json", "--mark-sent"]) == 0
+    assert json.loads(capsys.readouterr().out)["marked_shared"] is True and measure.load_shared()
+
+
+def test_share_without_a_terminal_does_not_mark(capsys, monkeypatch, browser):
+    p = _saved(1)[0]
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["share", str(p)]) == 0
+    assert "issues/new" in capsys.readouterr().out and browser == [] and measure.load_shared() == {}
+
+
+@pytest.mark.parametrize(
+    ("outcome", "metric", "offload", "word"),
+    [
+        ("ok", "torch_reserved", "dynamic", "照合"),
+        ("ok", "torch_reserved", "none", "段階も実測で決まります"),
+        ("oom", "torch_reserved", "oom", "足りないという記録"),
+    ],
+)
+def test_share_hint_matches_how_it_is_used(outcome, metric, offload, word):
+    m = meas(outcome=outcome, vram_metric=metric, offload=offload)
+    assert word in cli._share_hint(m)
+
+
+def test_measure_next_step_never_only_says_force():
+    busy = "GPU の使用率が 90% です。空いてから測るか、--force を付けてください"
+    assert "ほかの生成" in cli._measure_next_step(busy, "image_x")
+    assert "genmodelfit download image_x" in cli._measure_next_step(
+        "必要なファイルがサーバーにありません", "image_x"
+    )
+    assert "ComfyUI" in cli._measure_next_step("connection refused", "image_x")

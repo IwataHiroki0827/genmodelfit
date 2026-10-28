@@ -15,9 +15,9 @@ body:
         ### Thank you! Just press "Create" at the bottom.
 
         - **Already filled in.** `genmodelfit share` put your measurement in the box below. You do not need to change anything.
-        - **What is in it:** the GPU name and its memory (VRAM), the driver version, the kind of OS (Windows / Linux / macOS), the amount of RAM (rounded), the ComfyUI version, the model, the settings, and the measured numbers (peak memory, time).
-        - **What is not in it:** your PC name, user name, folder paths, serial numbers, IP address or prompts. `genmodelfit share` checked this before opening this page.
-        - **What happens next:** a bot checks it within a few minutes and replies here. If it is fine, the bot adds it to the project and a maintainer merges it; if something is wrong, the bot says what to fix (edit this issue to send it again).
+        - **What is in it:** the GPU name, its memory (VRAM), generation and compute capability (NVIDIA), driver version, vendor and backend, the PCI model ID for AMD / Intel (a model number, the same on every card of that model), the kind of OS (Windows / Linux / macOS), the amount of RAM (rounded), the ComfyUI and genmodelfit versions, the date (no time), the model, the settings, the result, the measured numbers (peak memory, time), how the model was loaded, a fingerprint of the model files, and a short note about how it was measured.
+        - **What is not in it:** your PC name, user name, folder paths, serial numbers, the GPU's unique ID or slot, IP address or prompts. `genmodelfit share` checked this before opening this page.
+        - **What happens next:** a bot checks it within a few minutes and replies here. If it is fine, the bot adds it to the project and a maintainer merges it; if something is wrong, the bot says what to fix (edit this issue to send it again). Changes after the bot made its pull request: just edit this issue; the bot checks the new content and updates (or closes) the pull request.
         - The box is empty? Paste the content that `genmodelfit share` copied to your clipboard (Ctrl+V / Cmd+V).
 
         ---
@@ -25,9 +25,9 @@ body:
         ### ありがとうございます。下の「Create」を押すだけです。
 
         - **入力済みです。** `genmodelfit share` が下の欄に実測を入れました。変える必要はありません。
-        - **入っているもの:** GPU の名前とメモリ(VRAM)、ドライバの版、OS の種類(Windows / Linux / macOS)、メモリの量(丸めたもの)、ComfyUI の版、モデル、設定、測った値(メモリの最大・時間)。
-        - **入っていないもの:** PC の名前、ユーザ名、フォルダの場所、シリアル番号、IP アドレス、プロンプト。このページを開く前に `genmodelfit share` が確かめています。
-        - **このあと:** 数分でボットが確かめて、ここに返事を書きます。問題が無ければボットがプロジェクトに足し、メンテナがマージします。直すところがあれば、ボットが何を直すかを書きます(この Issue を編集すると、もう一度送れます)。
+        - **入っているもの:** GPU の名前・メモリ(VRAM)・世代と compute capability(NVIDIA)・ドライバの版・会社と backend、AMD・Intel では PCI の型番 ID(機種の番号。同じ機種ならどのカードでも同じ)、OS の種類(Windows / Linux / macOS)、メモリの量(丸めたもの)、ComfyUI と genmodelfit の版、日付(時刻は入れない)、モデル、設定、結果、測った値(メモリの最大・時間)、モデルの載せ方、モデルのファイルの指紋、測り方の短いメモ。
+        - **入っていないもの:** PC の名前、ユーザ名、フォルダの場所、シリアル番号、GPU の固有の ID や差し場所、IP アドレス、プロンプト。このページを開く前に `genmodelfit share` が確かめています。
+        - **このあと:** 数分でボットが確かめて、ここに返事を書きます。問題が無ければボットがプロジェクトに足し、メンテナがマージします。直すところがあれば、ボットが何を直すかを書きます(この Issue を編集すると、もう一度送れます)。PR ができたあとの変更も、この Issue を編集するだけです。ボットが新しい中身で確かめて、PR を直します(通らなければ閉じます)。
         - 欄が空のときは、`genmodelfit share` がクリップボードに写した中身を貼り付けてください(Ctrl+V / Cmd+V)。
   - type: textarea
     id: submission

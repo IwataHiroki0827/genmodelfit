@@ -2158,7 +2158,9 @@ def test_cli_share_json_never_opens_a_browser(tmp_path, capsys, monkeypatch, no_
     assert d["opened"] is False and browser == [] and clipboard == []
     assert d["refused"] == [] and d["share"]["path_in_repo"].endswith(path.name)
     assert d["share"]["issue_url"].startswith("https://github.com/laxshmate/genmodelfit/issues/new?template=")
-    assert d["marked_shared"] is True
+    assert d["marked_shared"] is False  # --json は見るだけ(--mark-sent のときだけ印を付ける)
+    assert cli.main(["contrib", "share", str(path), "--json", "--mark-sent"]) == 0
+    assert json.loads(capsys.readouterr().out)["marked_shared"] is True
 
 
 def test_cli_share_refuses_personal_information(tmp_path, capsys, monkeypatch, no_network, browser):

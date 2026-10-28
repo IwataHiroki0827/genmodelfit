@@ -2037,7 +2037,7 @@ CONSISTENT_REL = 0.15
 
 def measurement_sources(m: Measurement) -> int:
     """実測 1 行が表す、別々の出どころの数(#95)。作者・この PC の実測の行は 1(ただし何行あっても合わせて
-    1 つ。count_sources)。ほかの利用者のまとめの行は n_sources(提出を足したコミット = PR の数。#90)。
+    1 つ。count_sources)。ほかの利用者のまとめの行は n_sources(提出を送った人の数。#113)。
     n_sources の無い古いまとめは 1 つとして数える。"""
     if not is_community(m):
         return 1
@@ -2050,7 +2050,7 @@ def count_sources(rows: Iterable[Measurement]) -> int:
     (measurements.json と bench の保存。origin が community でないもの)は、何行あっても合わせて 1 つ
     (作者だけでは段階を決めない)。ほかの利用者のまとめの行は、出どころの ID(source_ids)の和集合の大きさ
     (1 つの PR の提出が、GPU の型番 ID の有無・測り方の違いで別の行に分かれても 1 つ)。ID の無い古い行は
-    足さずに、その n_sources の一番大きいものとだけ比べる(足すと同じ PR を 2 回数えうる)。"""
+    足さずに、その n_sources の一番大きいものとだけ比べる(足すと同じ人を 2 回数えうる)。"""
     rows = list(rows)
     own = 1 if any(not is_community(m) for m in rows) else 0
     ids: set[str] = set()
@@ -2195,7 +2195,7 @@ def measured_level(
     - 使う実測: このモデルの、この PC と同じ GPU(same_gpu。作者の実測もほかの利用者と同じ規則)・同じ会社・
       同じ設定と精度の、標準の実測(今の一覧のファイルで測ったもの、名前の表にある GPU のもの)
     - 別々の出どころが MIN_LEVEL_SOURCES 以上で、そろっているときだけ決める。出どころは measurement_sources
-      (作者・この PC の実測は何行あっても合わせて 1 つ、ほかの利用者は提出を足した PR ごとに 1 つ。
+      (作者・この PC の実測は何行あっても合わせて 1 つ、ほかの利用者は送った人ごとに 1 つ。
       count_sources)。そろう = OOM の記録が無く
       (同じ構成の OOM の行・n_oom のあるまとめ・runs_evidence が false のまとめが無い)、まとめの行の中も
       そろっていて(出どころ 2 つ以上なら consistent)、行どうしの値の幅(最大 − 最小)が中央値の

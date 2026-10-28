@@ -3,26 +3,36 @@ name: Measurement intake
 # 実測の Issue(.github/ISSUE_TEMPLATE/measurement.yml。genmodelfit share が開く。#113)を受け取る。
 # 検査を通れば data/contrib/<GPU>/<日付>-<sha8>.json を足す PR を作り(マージはメンテナ)、通らなければ理由を
 # Issue にコメントする。検査の中身は contrib validate と同じ(genmodelfit contrib intake → contrib.intake_issue)。
+# 手順と設定: docs/release.md「実測の Issue を受け取る(#113)」
+#
+# 2 つのジョブに分ける:
+# - check: 読むだけの権限。genmodelfit を入れて Issue の本文を検査し、結果のファイルを artifact にする
+#   (git の履歴をすべて取り、同じ人が同じ GPU・モデルで前に送った数も数える)
+# - publish: 書く権限(contents・pull-requests・issues)。ほかの人のパッケージは入れない(git と gh だけ)。
+#   artifact のファイルで branch・PR・コメントを作る
 #
 # 安全のため:
 # - Issue の本文は**データとしてだけ**扱う。${{ }} で run: に埋め込まない(本文・題・アカウント名は一度も
 #   ワークフローの式に入れない)。genmodelfit contrib intake がイベントのファイル(GITHUB_EVENT_PATH)から読み、
 #   JSON として検査して、書き直した中身をファイルに書く。シェルに渡すのは検査を通った決まった形の値だけ
-#   (置き場所 data/contrib/<GPU>/<日付>-<sha8>.json はここでも形を確かめる)
+#   (置き場所 data/contrib/<GPU>/<日付>-<sha8>.json は publish でも形を確かめる)
 # - 検査の道具は既定のブランチ(issues のイベントはいつも既定のブランチのワークフローとコードで動く)
 # - 提出から来る文字はログに出さない(contrib intake は件数だけを出す。その間はワークフローのコマンドを止める)。
 #   コメント・PR の本文の理由の文は contrib.md_cell で無害にしてある
-# - 書く権限はこのジョブだけ(contents・pull-requests・issues)。シークレットは使わない(GITHUB_TOKEN だけ)
-# - actions はコミットの SHA で固定する。checkout は資格情報を残さない(push は GITHUB_TOKEN を明示して 1 回)
-# - GITHUB_TOKEN で作った PR では contrib.yml は動かない(GitHub の決まり)。同じ検査をここでしている
-# - 出どころの数え方は PR で出した提出と同じ(Issue ごとに 1 つの PR = 1 つのマージのコミット)。
-#   PR の本文とコミットに Issue の番号と書いた人のアカウントを書く
-# - 使うには、リポジトリの設定で「Allow GitHub Actions to create and approve pull requests」を有効にし、
-#   measurement の印(label)を作っておく(docs/release.md「実測の Issue を受け取る(#113)」)
+# - シークレットは使わない(GITHUB_TOKEN だけ)。actions はコミットの SHA で固定する。checkout は資格情報を残さない
+# - GITHUB_TOKEN で作った PR では contrib.yml は動かない(GitHub の決まり)。同じ検査を check でしている
+#
+# 何度動いても同じになるように:
+# - 動くのは Issue を作ったときと、本文を変えたとき(題だけの編集では動かない)。印を付けたときは動かない
+#   (フォームの Issue は作ったときに印が付いているので、同じ Issue で 2 回動かないように)
+# - この Issue の PR が同じ中身を持っていれば、push もコメントもしない
+# - 同じ中身が別の Issue の PR にあれば、PR を作らずにその PR を知らせる
+# - PR ができたあとに本文が変わったら: 通る中身なら PR を直し、PR と Issue に知らせる。通らない中身なら
+#   PR と Issue に理由を書いて PR を閉じる(直すと開き直す)
 
 on:
   issues:
-    types: [opened, edited, labeled]
+    types: [opened, edited]
 
 permissions:
   contents: read
@@ -32,22 +42,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  intake:
+  check:
     if: >-
       github.event.issue.state == 'open' &&
       contains(github.event.issue.labels.*.name, 'measurement') &&
-      (github.event.action != 'labeled' || github.event.label.name == 'measurement')
+      (github.event.action != 'edited' || github.event.changes.body != null)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           python-version: "3.12"
@@ -63,7 +72,30 @@ jobs:
           echo "::stop-commands::${token}"
           uv run --no-sync genmodelfit --lang en contrib intake "$GITHUB_EVENT_PATH" --existing data/contrib --out "$OUT"
           echo "::${token}::"
-      - name: PR を作る・Issue にコメントする
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: intake
+          path: ${{ runner.temp }}/intake
+          retention-days: 1
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: intake
+          path: ${{ runner.temp }}/intake
+      - name: PR を作る・直す・閉じる、Issue にコメントする
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
@@ -71,27 +103,71 @@ jobs:
           OUT: ${{ runner.temp }}/intake
         run: |
           set -euo pipefail
-          if [ -f "$OUT/path.txt" ]; then
-            path="$(head -n 1 "$OUT/path.txt")"
-            if ! printf '%s\n' "$path" | grep -Eq '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$'; then
-              echo "unexpected path" >&2
-              exit 1
+          branch="measurement/issue-${ISSUE}"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          pr="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // ""')"
+          if [ ! -f "$OUT/path.txt" ]; then
+            # 通らない中身: Issue に理由を書く。PR があれば PR にも書いて閉じる(Issue を直すと開き直す)
+            gh issue comment "$ISSUE" --body-file "$OUT/comment.md"
+            if [ -n "$pr" ]; then
+              gh pr close "$pr" --comment "$(cat "$OUT/comment_pr_closed.md")"
             fi
-            branch="measurement/issue-${ISSUE}"
-            git switch -c "$branch"
-            mkdir -p "$(dirname "$path")"
-            cp "$OUT/submission.json" "$path"
-            git add -- "$path"
-            git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -q -F "$OUT/commit_msg.txt"
-            git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-              "HEAD:refs/heads/${branch}"
-            pr="$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // ""')"
-            if [ -z "$pr" ]; then
-              pr="$(gh pr create --head "$branch" --base "$BASE" --title "$(head -n 1 "$OUT/title.txt")" \
-                --body-file "$OUT/pr_body.md")"
-            fi
-            printf '\nPR: %s\n' "$pr" >> "$OUT/comment.md"
+            exit 0
           fi
+          path="$(head -n 1 "$OUT/path.txt")"
+          if ! printf '%s\n' "$path" | grep -Eq '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$'; then
+            echo "unexpected path" >&2
+            exit 1
+          fi
+          want="$(sha256sum < "$OUT/submission.json" | cut -d' ' -f1)"
+          # この Issue の PR が同じ中身を持っていれば何もしない(作ったときと同じ中身・題だけの編集など)
+          if [ -n "$pr" ] && git fetch -q --depth 1 "$remote" "refs/heads/${branch}" 2>/dev/null \
+              && have="$(git show "FETCH_HEAD:${path}" 2>/dev/null | sha256sum | cut -d' ' -f1)" \
+              && [ "$have" = "$want" ]; then
+            echo "unchanged"
+            exit 0
+          fi
+          # 同じ中身(置き場所の名前は中身の hash)が、別の Issue の PR にあれば知らせて止める
+          others="$(gh pr list --state open --limit 200 --json headRefName,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository | not) | .headRefName' \
+            | grep -E '^measurement/issue-[0-9]+$' || true)"
+          for b in $others; do
+            [ "$b" = "$branch" ] && continue
+            if git fetch -q --depth 1 "$remote" "refs/heads/${b}" 2>/dev/null \
+                && git cat-file -e "FETCH_HEAD:${path}" 2>/dev/null; then
+              url="$(gh pr list --head "$b" --state open --json url --jq '.[0].url // ""')"
+              printf 'The same measurement was already sent: %s\n\n---\n\n同じ実測は既に送られています: %s\n' \
+                "$url" "$url" > "$OUT/dup.md"
+              gh issue comment "$ISSUE" --body-file "$OUT/dup.md"
+              exit 0
+            fi
+          done
+          if [ -z "$pr" ]; then
+            closed="$(gh pr list --head "$branch" --state closed --json url,mergedAt \
+              --jq '[.[] | select(.mergedAt == null)][0].url // ""')"
+            if [ -n "$closed" ]; then
+              # 通らない中身で閉じた PR を、直った中身で開き直す(GitHub は push のあとでは開き直せないので先に)
+              gh pr reopen "$closed"
+              pr="$closed"
+            fi
+          fi
+          git switch -c "$branch"
+          mkdir -p "$(dirname "$path")"
+          cp "$OUT/submission.json" "$path"
+          git add -- "$path"
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -F "$OUT/commit_msg.txt"
+          git push -q --force "$remote" "HEAD:refs/heads/${branch}"
+          title="$(head -n 1 "$OUT/title.txt")"
+          if [ -n "$pr" ]; then
+            # PR ができたあとに中身が変わった: PR を直し、PR と Issue に知らせる
+            gh pr edit "$pr" --title "$title" --body-file "$OUT/pr_body.md"
+            gh pr comment "$pr" --body-file "$OUT/comment_updated.md"
+            printf '\nPR: %s\n' "$pr" >> "$OUT/comment_updated.md"
+            gh issue comment "$ISSUE" --body-file "$OUT/comment_updated.md"
+            exit 0
+          fi
+          pr="$(gh pr create --head "$branch" --base "$BASE" --title "$title" --body-file "$OUT/pr_body.md")"
+          printf '\nPR: %s\n' "$pr" >> "$OUT/comment.md"
           gh issue comment "$ISSUE" --body-file "$OUT/comment.md"

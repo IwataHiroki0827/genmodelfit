@@ -2134,7 +2134,9 @@ def _share(
     text = raw.replace("\r\n", "\n")
     browse = not as_json and not print_url and _interactive()
     if as_json:
-        info["marked_shared"] = bool(mark_shared(data))
+        # --json は見るだけのことがあるので、--mark-sent のときだけ印を付ける
+        if getattr(args, "mark_sent", False):
+            info["marked_shared"] = bool(mark_shared(data))
         return 0, info
     if print_url:
         print(urls["issue_url"] or urls["form_url"])
@@ -2213,7 +2215,7 @@ def _share(
             'genmodelfit sends nothing. It is sent only when you press "Create" in the form.',
         )
     )
-    if not browse or info["opened"]:
+    if info["opened"]:  # 端末でなく URL を出しただけ(見るだけのこともある)なら印を付けない
         info["marked_shared"] = bool(mark_shared(data))
     return 0, info
 
@@ -2255,6 +2257,27 @@ def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
     print_url = getattr(args, "print_url", False)
     extra = {"action": "share"} if command == "contrib" else {}
     path = getattr(args, "file", None)
+    if not path and print_url and not args.json:
+        # --print-url は URL を 1 行だけ出す: 送っていない実測が 1 つだけならそれ、2 つ以上なら選ぶように言う
+        saved = saved_submissions(include_shared=getattr(args, "all", False))
+        if len(saved) == 1:
+            path = saved[0].path
+        else:
+            for s in saved:
+                print(f"  {s.path}", file=sys.stderr)
+            raise CliError(
+                tr(
+                    f"送っていない実測が {len(saved)} 件あります。送るファイルを指定してください:"
+                    " genmodelfit share <ファイル> --print-url",
+                    f"{len(saved)} unsent measurements. Choose the file to send:"
+                    " genmodelfit share <file> --print-url",
+                )
+                if saved
+                else tr(
+                    "送っていない実測はありません(genmodelfit measure で測れます)",
+                    "No unsent measurements (measure one with genmodelfit measure)",
+                )
+            )
     if not path:
         saved = saved_submissions(include_shared=getattr(args, "all", False))
         if args.json or print_url or not _interactive():
@@ -2381,10 +2404,11 @@ INTAKE_EVENT_MAX_BYTES = (
 def cmd_contrib_intake(args: argparse.Namespace) -> int:
     """contrib intake(#113。measurement-intake.yml が使う): GitHub の issues のイベントのファイルから Issue の
     本文・番号・書いた人を読み、intake_issue で検査して、結果を --out のフォルダのファイルに書く
-    (result.json・comment.md、通れば submission.json・pr_body.md・commit_msg.txt・title.txt・path.txt)。
+    (result.json・comment.md、通れば submission.json・pr_body.md・commit_msg.txt・title.txt・path.txt・
+    comment_updated.md、通らなければ comment_pr_closed.md)。
     本文は標準出力に出さない(ワークフローのログにワークフローのコマンドを書かせないため)。通信しない。
     受け付けた・断ったはどちらも 0(結果は result.json の ok)。イベントを読めないときだけ 1。"""
-    from .contrib import intake_issue
+    from .contrib import intake_issue, submitter_count
 
     try:
         p = Path(args.event)
@@ -2408,11 +2432,25 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
     # コメントと PR の本文は英語と日本語の両方(Issue を書く人もメンテナもどちらかを読めるように)
     with i18n.forced("en"):
         res = intake_issue(body, author, number, db=db, existing=args.existing)
+    prior = None
+    if res.ok and res.content:
+        data = json.loads(res.content)
+        prior = submitter_count(
+            args.existing,
+            author,
+            model_id=(data.get("measurement") or {}).get("model_id"),
+            gpu_name=((data.get("system") or {}).get("gpu") or {}).get("name"),
+        )
+        with i18n.forced("en"):
+            res = intake_issue(body, author, number, db=db, existing=args.existing, prior=prior)
     with i18n.forced("ja"):
-        ja = intake_issue(body, author, number, db=db, existing=args.existing)
-    res.comment = f"{res.comment}\n---\n\n{ja.comment}"
+        ja = intake_issue(body, author, number, db=db, existing=args.existing, prior=prior)
+    sep = "\n---\n\n"
+    res.comment = f"{res.comment}{sep}{ja.comment}"
+    res.comment_updated = f"{res.comment_updated}{sep}{ja.comment_updated}"
+    res.comment_pr_closed = f"{res.comment_pr_closed}{sep}{ja.comment_pr_closed}"
     if res.ok:
-        res.pr_body = f"{ja.pr_body.replace(f'Closes #{number}', '').rstrip()}\n\n---\n\n{res.pr_body}"
+        res.pr_body = f"{ja.pr_body.replace(f'Closes #{number}', '').rstrip()}\n{sep}{res.pr_body}"
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -2422,11 +2460,14 @@ def cmd_contrib_intake(args: argparse.Namespace) -> int:
     write("result.json", json.dumps(res.to_dict(), ensure_ascii=False, indent=1) + "\n")
     write("comment.md", res.comment)
     if res.ok and res.content and res.path_in_repo:
+        write("comment_updated.md", res.comment_updated)
         write("submission.json", res.content)
         write("pr_body.md", res.pr_body)
         write("commit_msg.txt", res.commit_message)
         write("title.txt", res.title + "\n")
         write("path.txt", res.path_in_repo + "\n")
+    else:
+        write("comment_pr_closed.md", res.comment_pr_closed)
     if args.json:
         _out(_envelope("contrib", None, None, action="intake", ok=res.ok, reasons=len(res.reasons)))
     else:
@@ -2759,9 +2800,9 @@ def cmd_contrib_aggregate(args: argparse.Namespace) -> int:
     if not via_git:
         print(
             tr(
-                "git の履歴(浅くない clone)が無いので、出どころは提出ごとに数えた(同じ PR の提出も別々)",
+                "git の履歴(浅くない clone)が無いので、出どころは提出ごとに数えた(同じ人の提出も別々)",
                 "No git history (a non-shallow clone), so each submission was counted as its own source"
-                " (even submissions from the same PR)",
+                " (even submissions from the same person)",
             )
         )
     for r in rows:
@@ -4281,6 +4322,33 @@ def _measure_next_step(msg: str, model_id: str) -> str:
     )
 
 
+def _share_hint(m) -> str:
+    """測り終えたときの 1 行(#113)。送った実測が何に使われるかを、測り方に合わせて正直に書く
+    (docs/accuracy.md「実測の使い方」)。作業用メモリだけの実測(今の NVIDIA の動的 VRAM)は照合だけに使う。"""
+    from .estimate import working_only
+
+    if m.outcome == "oom":
+        return tr(
+            "genmodelfit share で送ると、この GPU では足りないという記録として、"
+            "同じ GPU を使う人の判定の確かめに使われます",
+            "Send it with genmodelfit share: it is kept as a record that this GPU ran out of memory and is"
+            " used to check the results for people with the same GPU",
+        )
+    if working_only(m):
+        return tr(
+            "genmodelfit share で送ると、見積もりの確かめ(照合)に使われ、精度の向上に役立ちます"
+            "(この測り方の値は、まだ段階を決めるのには使いません)",
+            "Send it with genmodelfit share: it is used to cross-check the estimates and helps improve their"
+            " accuracy (values measured this way do not set levels yet)",
+        )
+    return tr(
+        "genmodelfit share で送ると、同じ GPU を使う人の見積もりに使われます"
+        "(別の人の実測とそろうと、段階も実測で決まります)",
+        "Send it with genmodelfit share: it is used in the estimates for people with the same GPU (once"
+        " another person's measurement agrees, it also sets the level)",
+    )
+
+
 def _measure_download(args: argparse.Namespace, model_id: str) -> int:
     """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。"""
     argv = ["--lang", i18n.get_language(), "download", model_id]
@@ -4349,6 +4417,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
             return 0
         _emit(_suggestion_lines(sugg))
         if not _interactive():
+            sys.stdout.flush()
             print(
                 tr(
                     "測るときは genmodelfit measure <ID>(例: [ ] の中の ID)",
@@ -4388,6 +4457,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
         if args.json:
             _out(_envelope("measure", s, db, action="measure", **plan, error=msg))
         else:
+            sys.stdout.flush()  # 見せた画面のあとに誤りを出す(パイプ・ログで順が入れ替わらないように)
             print(tr(f"エラー: {msg}", f"error: {msg}"), file=sys.stderr)
             for line in lines or []:
                 print(line, file=sys.stderr)
@@ -4433,7 +4503,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
             return 130
         if ans.strip().lower() not in ("", "y", "yes"):
             print(tr("測りませんでした", "Nothing measured"), file=sys.stderr)
-            return 1
+            return 0  # やめただけで、誤りではない(share の q と同じ)
     if inst.state == "no":
         code = _measure_download(args, entry.id)
         if code != 0:
@@ -4459,11 +4529,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
         sub = build_submission(m, detect() if is_local(url) else None)
         sub_path = write_submission(sub, str(submissions_dir()) + os.sep)
         sub_repo = suggested_path(sub)
-    hint = tr(
-        "genmodelfit share で送ると、同じ GPU を使う人の判定が実測で確かになります",
-        "Send it with genmodelfit share to make the results for people with the same GPU rest on a real"
-        " measurement",
-    )
+    hint = _share_hint(m)
     code = 1 if result.failed else 0
     if args.json:
         _out(
@@ -5062,9 +5128,9 @@ SIDE EFFECTS:
   to <cache>/submissions/ (what genmodelfit share lists).
 
 EXIT CODES:
-  0  Success (also: nothing chosen, nothing to suggest)
+  0  Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?")
   1  Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not
-     downloaded, the run failed (out of memory or another error), no consent
+     downloaded, the run failed (out of memory or another error), no terminal and no --yes
   2  Usage error
 
 AGENT USAGE:
@@ -5081,11 +5147,13 @@ Without FILE it lists the measurements saved by measure (and bench --share) that
 as sent, newest first; choose one by number. It shows the whole content (GPU name, VRAM, OS
 family, model, settings and values; no PC or user names) with the privacy checks, then opens
 the measurement issue form on GitHub in your browser with the content filled in: sign in and
-press "Create". A bot checks it like contrib validate and opens a pull request that adds it;
-the maintainer merges it. When the content does not fit in a URL it is copied to the clipboard
-(clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened; paste it there.
-Once the page is opened (or the URL is printed) the measurement is marked as sent on this PC
-and is not listed again (--all lists it). You need a GitHub account.
+press "Create". A bot checks it within a few minutes and replies on the page; if it is fine,
+it goes into the project once a maintainer accepts it. When the content does not fit in a URL it
+is copied to the clipboard (clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened;
+paste it there. Once the page is opened, or the URL is printed with --print-url, the measurement
+is marked as sent on this PC and is not listed again (--all lists it); --json marks it only with
+--mark-sent. --print-url without FILE uses the only unsent measurement (with several, give FILE).
+You need a GitHub account.
 
 PRECONDITIONS:
   A measurement saved by genmodelfit measure, or a submission JSON.
@@ -5097,7 +5165,8 @@ SIDE EFFECTS:
 
 EXIT CODES:
   0  Success (also: nothing chosen, nothing to send)
-  1  Error: the file cannot be read, a privacy check is NG or the checks have errors
+  1  Error: the file cannot be read, a privacy check is NG or the checks have errors, or
+     --print-url without FILE when several measurements are unsent
   2  Usage error
 
 AGENT USAGE:
@@ -5517,9 +5586,9 @@ MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU 
   (genmodelfit share が一覧に出すもの)に書く。
 
 終了コード:
-  0  成功(選ばなかった・出す提案が無いときも)
+  0  成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも)
   1  失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、
-     落とさなかった、実行の失敗(メモリ不足など)、同意が無い
+     落とさなかった、実行の失敗(メモリ不足など)、端末でなく --yes も無い
   2  使い方の誤り
 
 使い方の例(エージェント・アプリ向け):
@@ -5535,11 +5604,13 @@ MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU 
 FILE を省くと、measure(と bench --share)が保存した実測のうち送った印の無いものを新しい順に
 出し、番号で選ぶ。中身のすべて(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC や
 ユーザの名前は入らない)と個人の情報の点検を見せてから、中身を入れた GitHub の実測の Issue の
-フォームをブラウザで開く: ログインして「Create」を押す。ボットが contrib validate と同じ検査を
-して、それを足す Pull Request を作り、メンテナがマージする。中身が URL に入りきらないときは
+フォームをブラウザで開く: ログインして「Create」を押す。数分でボットが確かめてそのページに返事を
+書き、問題が無ければ、メンテナが受け入れるとプロジェクトに入る。中身が URL に入りきらないときは
 クリップボード(clip・pbcopy・wl-copy・xclip・xsel)に写して中身の無いフォームを開くので、
-そこに貼り付ける。ページを開いた(または URL を出した)ら、この PC で送った印を付け、次から
-一覧に出さない(--all で出す)。GitHub のアカウントが要る。
+そこに貼り付ける。ページを開いたか、--print-url で URL を出したら、この PC で送った印を付け、
+次から一覧に出さない(--all で出す)。--json は --mark-sent のときだけ印を付ける。FILE の無い
+--print-url は、送っていない実測が 1 つだけならそれを使う(2 つ以上なら FILE を指定する)。
+GitHub のアカウントが要る。
 
 前提:
   genmodelfit measure が保存した実測か、提出の JSON。
@@ -5551,7 +5622,8 @@ FILE を省くと、measure(と bench --share)が保存した実測のうち送�
 
 終了コード:
   0  成功(選ばなかった・送るものが無いときも)
-  1  失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある
+  1  失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある、送っていない実測が
+     2 つ以上あるのに FILE の無い --print-url
   2  使い方の誤り
 
 使い方の例(エージェント・アプリ向け):
@@ -6745,6 +6817,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr("送った印のある実測も一覧に出す", "also list measurements already marked as sent"),
     )
     sp.add_argument(
+        "--mark-sent",
+        action="store_true",
+        help=tr(
+            "--json でも送った印を付ける(アプリがフォームを開くとき。既定の --json は見るだけで印を付けない)",
+            "with --json, also mark it as sent (for apps that open the form themselves; by default --json"
+            " only previews)",
+        ),
+    )
+    sp.add_argument(
         "--db",
         metavar="PATH",
         help=tr(
@@ -7199,6 +7280,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--all",
         action="store_true",
         help=tr("送った印のある実測も一覧に出す", "also list measurements already marked as sent"),
+    )
+    c.add_argument(
+        "--mark-sent",
+        action="store_true",
+        help=tr("--json でも送った印を付ける", "with --json, also mark it as sent"),
     )
     c.set_defaults(func=cmd_contrib_share)
     c = csub.add_parser(

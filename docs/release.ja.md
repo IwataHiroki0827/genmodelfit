@@ -111,7 +111,7 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
    - `genmodelfit contrib aggregate --check` で、まだ入っていない提出を数える(あれば終了コード 1)。最初の提出をマージするまでは data/contrib が無いので、`--check` は終了コード 1(フォルダが無い)になる。それで正しい。
    - あれば `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json` で作り直す
      (使った提出の sha256 が `submissions` に入る。試験はそれだけをまとめ直して一致を確かめる)。
-   - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ PR で足した提出は 1 つ)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。0.11.0 から、出どころをファイルごとに数える(`file:…`)ときは `--output` が書き出さない(終了コード 1)。1 人の何件ものファイルが何人分にも数えられ、段階を決められてしまうため(#95)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない。`--check` は `file_sources` を出す(同梱のまとめは 0 でなければならない。試験が確かめる)。
+   - まとめは git の履歴のある(浅くない)clone で作る。出どころ(同じ人が送った提出は 1 つ。#113)を git の履歴で数えるため(#90。浅い clone・git の外では提出ごとに数え、そう出力する)。0.11.0 から、出どころをファイルごとに数える(`file:…`)ときは `--output` が書き出さない(終了コード 1)。1 人の何件ものファイルが何人分にも数えられ、段階を決められてしまうため(#95)。`--allow-file-sources` で書き出せるが、試験・手元の確かめだけで、版を出すときは使わない。`--check` は `file_sources` を出す(同梱のまとめは 0 でなければならない。試験が確かめる)。
    - 直した提出を出し直した人がいれば、古いファイルをメンテナの PR で外す(PR の説明に理由を書く。提出の PR は足すだけで、消せない)。この PR では `Contrib` のワークフローの「足すだけ」の検査が失敗するが、それでよい(提出の PR だけを通す検査。メンテナが確かめてマージする)。
    - `--check` が「使われない行」(`files_fp` が今の一覧と違う行)を出したら、上流のファイルが変わったということ。行は判定に使われないので、そのままでもよい。新しいファイルで測り直した提出が来るのを待つ。
    - そろった組(`consistent`)が変わったら `python -m genmodelfit.calibrate` で合わせ直し、
@@ -136,23 +136,37 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 ## 実測の Issue を受け取る(#113)
 
 `genmodelfit share` は、実測を入れた Issue のフォーム `.github/ISSUE_TEMPLATE/measurement.yml` を開きます。
-ワークフロー `.github/workflows/measurement-intake.yml` が、`measurement` の印の Issue を、開いている間(作られた・
-編集された・印が付いたとき)に受け取ります:
+ワークフロー `.github/workflows/measurement-intake.yml` が、`measurement` の印の開いている Issue を、作られたときと
+本文が編集されたときに受け取ります(題だけの編集・印を付けただけでは動かないので、1 つの Issue を 2 回扱いません)。
+ジョブは 2 つです:
 
-1. `genmodelfit contrib intake` が、イベントのファイルから Issue の本文をデータとして読み(台本に `${{ }}` で埋め込まない)、
-   `contrib validate` と同じ検査と `share` の個人の情報の点検をして、同じ中身が既に `data/contrib` にあれば断ります
+1. `check`(読むだけのトークン): genmodelfit を入れ、`genmodelfit contrib intake` がイベントのファイルから Issue の本文を
+   データとして読み(台本に `${{ }}` で埋め込まない)、`contrib validate` と同じ検査と `share` の個人の情報の点検(実行機
+   自身のホスト名・ユーザ名の確かめは除く)をし、同じ中身が既に `data/contrib` にあれば断り、同じアカウントがその GPU・
+   モデルで既に送った数を数えます(git の履歴をすべて取る)。結果のファイルは artifact にします
    ([schema.ja.md「contrib」](schema.ja.md#contrib))。
-2. 受け付けたら、`data/contrib/<GPU>/<日付>-<sha8>.json` をブランチ `measurement/issue-<N>` に push し、PR を作り(本文は
-   Issue を書いた人・メンテナへの確認・`Closes #N`)、Issue にリンクをコメントします。Issue を編集すると同じブランチを
-   作り直します。PR をマージすると Issue は閉じます。
-3. 断ったら、理由(英語と日本語)を Issue にコメントします。本文を編集すると、もう一度確かめます。
+2. `publish`(contents・pull-requests・issues の書き込み。何も入れず、`git` と `gh` だけ):
+   - 通って新しいとき: `data/contrib/<GPU>/<日付>-<sha8>.json` をブランチ `measurement/issue-<N>` に push し(コミットに
+     `Submitted-by: github:<アカウント>`)、PR を作り(本文は Issue を書いた人・そのアカウントの前の提出の数・メンテナへの
+     確認・`Closes #N`)、Issue にリンクをコメントします。
+   - この Issue の開いている PR と同じ中身: 何もしません(push もコメントもしない)。
+   - 別の Issue の開いている PR と同じ中身: その PR のリンクをコメントし、何も作りません。
+   - PR ができたあとに、通る別の中身に編集された: PR(題・本文・ファイル)を直し、PR と Issue の両方にコメントします。
+     前に通らない中身で閉じた PR は、先に開き直します。
+   - 断ったとき: 理由(英語と日本語)を Issue にコメントします。Issue に開いている PR があれば、PR にも理由を書いて
+     **閉じます**(Issue を直すと開き直します)。
+   PR をマージすると Issue は閉じます。
 
 マージの前に確かめること: PR の本文の確認(`Contrib` のジョブのまとめと同じ。`GITHUB_TOKEN` で作った PR では contrib.yml は
-動きません)と、同じ人が同じ実測を複数の Issue で送っていないか(Issue は PR と同じく 1 つが 1 つの出どころ)。
+動きません)と、同じアカウントがその GPU・モデルで既に送った数の行(1 人は何件送っても 1 つの出どころだが、複数のアカウントを
+使う人は何回も数えられる)。squash でマージするときは `Submitted-by:` の行を残してください(マージのコミット・rebase なら
+そのまま残ります)。
 
-一度だけの設定: Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」を有効にし、
-印 `measurement` を作っておく(Issues → Labels)。ワークフローが使うのは `GITHUB_TOKEN` だけです(contents・pull-requests・
-issues の書き込み。このジョブだけ)。
+一度だけの設定(リポジトリの Settings):
+1. Settings → Actions → General → 「Workflow permissions」→「Allow GitHub Actions to create and approve pull requests」に
+   チェック → Save。
+2. Issues → Labels → New label → 名前 `measurement` → Create label。
+ワークフローが使うのは `GITHUB_TOKEN` だけです(シークレットは使わない)。
 
 ## データの配布
 

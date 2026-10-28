@@ -983,8 +983,8 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
 | `files_fp` | str \| null | (#90) fingerprint of the model's files in the list when measured (`estimate.files_fingerprint`; see "Rules of the submission pipeline" below). If it differs from the current list's fingerprint, the measurement is not used. null = not recorded (the maintainer's measurements.json, older rows; used as before) |
 | `gpu_known` | bool \| null | (#90, #101) community rows: false = the GPU name is a generic name or a placeholder (kept as a record, never used for judging) |
-| `n_sources` | int \| null | (#90) community rows: number of independent sources (the commit that added the file to the repository) behind the value |
-| `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the commit, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
+| `n_sources` | int \| null | (#90) community rows: number of independent sources (the people who sent the submissions; #113) behind the value |
+| `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the sha256 of the sender key, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
 | `n_error` | int \| null | (#90) community rows: submissions of the same group that ended in `error` (not used for the value) |
 | `runs_evidence` | bool \| null | (#90) community rows: false = OOM sources are at least as many as ok sources (not evidence that it runs; how it is used is the level rule of PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0) PCI model ID `vendor:device` of the measured GPU (`1002:744c`; a model number, never the bus address or a serial). bench writes it for AMD / Intel when ComfyUI runs on this PC (`hardware.local_pci_id`: Windows WMI `PNPDeviceID` VEN/DEV, Linux `lspci -nn`). Community rows are grouped by it when present. `estimate.same_gpu` compares IDs when both sides have one, else the normalized name (`estimate.gpu_key`; generic names such as `AMD Radeon(TM) Graphics` never match); since 0.9.1 the VRAM ratio must also be 0.95 or more (`estimate.same_vram`, `MEASURED_VRAM_TOLERANCE`; 0.97 until 0.11.0; not for shared / unified memory) |
@@ -1059,8 +1059,9 @@ Rules:
   exact id is used as is, a name picks the workflow `recommend` would pick.
 - The submission draft goes to `<cache>/submissions/<GPU>/<date>-<sha8>.json` (only for standard results with outcome
   `ok` or `oom`), where `share` lists it. The result goes to `<cache>/measurements/` like `bench`.
-- Exit codes: 0 success, nothing chosen or nothing to suggest / 1 no ComfyUI, no GPU, busy GPU, no template, not
-  installed with `--json`, no consent, a failed run / 2 usage error.
+- Exit codes: 0 success, nothing chosen, nothing to suggest or answered n to "Measure it?" / 1 no ComfyUI, no GPU,
+  busy GPU, no template, not installed with `--json`, no terminal without `--yes`, the download was declined, a failed
+  run / 2 usage error. A failure in text output ends with a "Next:" line saying what to do.
 
 ## share
 
@@ -1086,9 +1087,12 @@ Rules:
   content between two `---` lines (the file's location is never inside them).
 - The browser is opened only in a terminal (stdin and stdout are terminals) and without `--json` / `--print-url`; it
   never asks. `--print-url` prints only the URL.
-- The measurement is marked as sent (`<cache>/submissions_shared.json`, content sha256 → date) when the URL was handed
-  over: opened in the browser, printed (no terminal, `--print-url`) or returned (`--json`). It is not marked when the
-  browser could not be opened.
+- The measurement is marked as sent (`<cache>/submissions_shared.json`, content sha256 → date) only when the form
+  was opened in the browser or its URL was printed with `--print-url`. `--json` only previews and marks nothing
+  unless `--mark-sent` is given (for apps that open the form themselves); the text output without a terminal and a
+  browser that could not be opened mark nothing either.
+- `--print-url` without FILE uses the only unsent measurement; with none or several it exits 1 and asks for FILE
+  (the files are listed on stderr).
 - No network access; the content is sent only when the user presses "Create" in the form.
 
 ## contrib
@@ -1204,11 +1208,13 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
 - **Steps**: peak VRAM does not depend on the step count, so neither the aggregation key nor judging's matching uses
   it (a row's `settings.steps` is the most common value, for display).
 - **Issues** (#113): a measurement issue is checked by `contrib intake` with the same checks and becomes one PR
-  (branch `measurement/issue-<N>`, made by GitHub Actions; the issue author is written in the PR and the commit), so
-  it counts as one source like a PR. A PR made with `GITHUB_TOKEN` does not start contrib.yml; the intake already ran
+  (branch `measurement/issue-<N>`, made by GitHub Actions; the issue author is written in the PR and, as
+  `Submitted-by: github:<account>`, in the commit), counted as that account's submission. A PR made with `GITHUB_TOKEN` does not start contrib.yml; the intake already ran
   the same checks.
-- **Sources**: submissions added by the same PR (the commit that added the file, in main's first-parent history)
-  count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
+- **Sources** (#113): submissions sent by the same person count as one source: the `Submitted-by` account of the
+  intake bot's commit, else the e-mail address of the commit that added the file (in a merge, the commit on the PR
+  side; found through main's first-parent history and renames). The value is the sha256 of that key, so no address
+  is published. They count as one source whose median is one value, and outliers are judged between sources (`n_sources`; without git
   history or in a shallow clone each submission counts on its own, and the output says so).
 - **OOM-heavy groups**: a row whose OOM sources are at least as many as its ok sources has `runs_evidence: false` (not
   evidence that it runs; how it is used is PR #95).
@@ -1242,11 +1248,17 @@ The same as `genmodelfit share` (see "share"; kept for older scripts). The JSON 
 Used by `.github/workflows/measurement-intake.yml` (#113) for issues with the `measurement` label. Reads the issue body,
 number and author from the issues event file, takes the first fenced block that starts with `{` (the form's
 JSON box, a `json` code block) as data, and runs `contrib.intake_issue`: the `validate` checks (file name not checked), the
-privacy checks of `share`, at most 64 KiB, and no submission with the same content under `--existing`. It writes
+privacy checks of `share` without the check for this machine's own host / user name (on GitHub that is the
+runner's, not the sender's), at most 64 KiB, and no submission with the same content under `--existing`. It also
+counts how many submissions the same account already sent for that GPU and model under `--existing`
+(`contrib.submitter_count`; needs git history). It writes
 `result.json` (`IntakeResult`: `ok`, `reasons`, `notices`, `path_in_repo`, `sha256`, `title`, …) and `comment.md`
 (English and Japanese; reason texts made harmless with `contrib.md_cell`); when accepted also `submission.json` (the
 content re-serialized by `contrib.dumps`, not the raw body), `path.txt`, `title.txt`, `commit_msg.txt` and
-`pr_body.md` (the issue number and author, notices for the maintainer, `Closes #N`). Nothing from the body is printed
+`pr_body.md` (the issue number and author, that count, notices for the maintainer, `Closes #N`) and
+`comment_updated.md` (for an edit after the PR exists); when refused also `comment_pr_closed.md` (for the PR that is
+closed). `commit_msg.txt` ends with `Submitted-by: github:<account>`, which `submission_sources` uses to count one
+person as one source. Nothing from the body is printed
 (only `accepted` / `refused (N reasons)`). Exit 0 whether accepted or refused; 1 when the event cannot be read. No
 network access.
 

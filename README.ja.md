@@ -36,7 +36,7 @@ python -m genmodelfit recommend   # 「genmodelfit が見つからない」と�
 ```
 
 **実測で協力する(任意。git は要りません)。** ComfyUI を起動しておけば、コマンド 2 つとボタン 1 回で、あなたの GPU の
-実測を送れます。同じ GPU を使う人みんなの判定が確かになります([やり方](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)):
+実測を送れます。同じ GPU を使う人みんなの見積もりの確かめと改善に役立ちます([やり方](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)):
 
 ```
 genmodelfit measure               # 測ると役に立つモデルを選んで測る(何も送らない)
@@ -65,8 +65,9 @@ genmodelfit share                 # 送る中身を見せて GitHub のフォー
   Radeon 610M / 820M、RDNA 1 以前)と GPU の無い PC は CPU だけとして判定します。SD 系の画像モデルと Stable Audio は CPU でも動く(遅い)と
   判定します。Linux で lspci が GPU の名前を知らないときは、`system` が `update-pciids` を案内します
   ([docs/hardware.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/hardware.ja.md))。
-  NVIDIA 以外の GPU は実測が無いので、✓ が付きません。`genmodelfit bench` はこれらの GPU でも測れます。実測を
-  Pull Request で出してもらえると、確認済みになり見積もりも詰められます(genmodelfit は実測を送りません。[CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md))。
+  NVIDIA 以外の GPU は実測が無いので、✓ が付きません。`genmodelfit measure` はこれらの GPU でも測れます。
+  `genmodelfit share` で送ってもらえると、確認済みになり見積もりも詰められます
+  ([実測で協力する](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する))。
 
 ### 入れ方
 
@@ -407,15 +408,23 @@ HEAD の失敗、`sources` の数は件数だけで、`--all` で全部を出し
    `download` と同じ確かめをして先に落とします。
 2. `genmodelfit share` が、まだ送っていない実測を出し、送る中身をそのまま見せて、中身を入れた GitHub の実測の
    フォームをブラウザで開きます。
-3. ログインして「Create」を押します。ボットが `contrib validate` と同じ検査をして、`data/contrib/` にファイルを足す
-   Pull Request を作り、メンテナがマージします。
+3. ログインして「Create」を押します。数分でボットが確かめてそのページに返事を書き、問題が無ければ、メンテナが
+   受け入れるとプロジェクトに入ります。
 
-送るもの: GPU 名・VRAM・ドライバ・vendor / backend・AMD・Intel の GPU では PCI の型番 ID(例 `1002:744c`)・ComfyUI の版・
-OS の種類・GiB に丸めたメモリ・モデル・設定・結果。送らないもの: ホスト名・ユーザー名・パス・GPU の UUID・PCI のアドレス・
-IP・CPU 名・正確な時刻・プロンプト。git に慣れていれば、フォークの clone で `bench --submission data/contrib/` を使う
-方法も残っています。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
+送るもの(送る前にすべて見せます): GPU の名前・VRAM・世代と compute capability(NVIDIA)・ドライバの版・会社と backend・
+AMD・Intel の GPU では PCI の型番 ID(`1002:744c` のような機種の番号。同じ機種ならどのカードでも同じ)・OS の種類・
+GiB に丸めたメモリ・ComfyUI と genmodelfit の版・日付(時刻は入れない)・モデル・設定・結果・最大 VRAM / メモリ・時間・
+モデルの載せ方(`offload`)・測り方・モデルのファイルの指紋・bench が書く測り方のメモ。送らないもの: ホスト名・
+ユーザー名・パス・GPU の UUID・PCI の差し場所・シリアル番号・IP・CPU 名・正確な時刻・プロンプト。
 
-今の NVIDIA の bench の提出(ComfyUI の動的 VRAM、`vram_metric: torch_reserved`)は作業用メモリだけを持つので、段ごとの山を測れるようになるまでは照合だけに使い、見積もりにも段階にも使いません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
+何に使われるか: 実測は同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリ
+しか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
+ほかの実測は、その GPU の見積もりを直し、別々の 2 人の実測がそろうと段階も決めます。1 人が何件送っても 1 人として
+数えます。メモリが足りなかった結果も、その GPU では足りないという記録として残します。
+
+ボットが Pull Request を作ったあとに Issue を編集すると、新しい中身でもう一度確かめます: Pull Request を直し(通らない
+中身なら閉じ)、両方のページにそう書きます。git に慣れていれば、フォークの clone で `bench --submission data/contrib/`
+を使う方法も残っています。手順: [CONTRIBUTING.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md)。
 
 ### 送るもの・送らないもの
 

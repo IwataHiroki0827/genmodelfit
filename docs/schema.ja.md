@@ -949,8 +949,8 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
 | `gpu_known` | bool \| null | (#90、#101)community の行: false は GPU 名が汎用の名前・名前の代わりの値(記録として残し、判定には使わない) |
-| `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(リポジトリに足したコミット)の数 |
-| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(コミットの先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
+| `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(提出を送った人。#113)の数 |
+| `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(送った人の鍵の sha256 の先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
 | `n_error` | int \| null | (#90)community の行: 同じ組で error で終わった提出の数(値には使わない) |
 | `runs_evidence` | bool \| null | (#90)community の行: false は OOM の出どころが ok の出どころ以上(「動く」根拠にしない。使い方は段階の決まり PR #95) |
 | `gpu_pci_id` | str \| null | (0.9.0)実測した GPU の PCI 型番 ID `vendor:device`(`1002:744c`。型番で、バスアドレスやシリアルではない)。bench は、ComfyUI がこの PC で動いているとき AMD / Intel について書く(`hardware.local_pci_id`: Windows の WMI `PNPDeviceID` の VEN/DEV、Linux の `lspci -nn`)。community の行は、あればこれでグループにする。`estimate.same_gpu` は、両側に ID があれば ID を、無ければ正規化した名前(`estimate.gpu_key`。`AMD Radeon(TM) Graphics` のような汎用の名前は決して合わない)を比べる。0.9.1 からは VRAM の比も 0.95 以上でなければならない(`estimate.same_vram`、`MEASURED_VRAM_TOLERANCE`。0.11.0 で 0.97 から 0.95。共有 / 統合メモリには適用しない) |
@@ -1020,8 +1020,9 @@ bench が Measurement を埋める方法(測り方):
   絞る。ID がそのまま合えばそれ、名前なら `recommend` が選ぶワークフロー。
 - 送るための下書きは `<cache>/submissions/<GPU>/<date>-<sha8>.json` に書く(標準の条件で結果が `ok` か `oom` の
   ときだけ)。`share` がこれを一覧に出す。結果は `bench` と同じく `<cache>/measurements/` に書く。
-- 終了コード: 0 成功・選ばなかった・出す提案が無い / 1 ComfyUI が無い・GPU が無い・GPU が使われている・テンプレートが
-  無い・`--json` で入っていない・同意が無い・実行の失敗 / 2 使い方の誤り。
+- 終了コード: 0 成功・選ばなかった・出す提案が無い・「測りますか?」に n と答えた / 1 ComfyUI が無い・GPU が無い・
+  GPU が使われている・テンプレートが無い・`--json` で入っていない・端末でなく `--yes` も無い・落とすのを断った・実行の
+  失敗 / 2 使い方の誤り。テキストの出力の失敗は、最後に「次にすること:」の行で何をすればよいかを出す。
 
 ## share
 
@@ -1046,8 +1047,11 @@ bench が Measurement を埋める方法(測り方):
   `---` の行の間に出す(ファイルの場所はその中に入れない)。
 - ブラウザを開くのは端末(標準入力と標準出力がどちらも端末)で、`--json`・`--print-url` が無いときだけ。尋ねない。
   `--print-url` は URL だけを出す。
-- URL を渡せたら(ブラウザで開いた・出した(端末でない・`--print-url`)・返した(`--json`))、送った印を付ける
-  (`<cache>/submissions_shared.json`。中身の sha256 → 日付)。ブラウザを開けなかったときは付けない。
+- 送った印(`<cache>/submissions_shared.json`。中身の sha256 → 日付)を付けるのは、ブラウザでフォームを開いたときと、
+  `--print-url` で URL を出したときだけ。`--json` は見るだけで、`--mark-sent` があるときだけ印を付ける(フォームを自分で
+  開くアプリ向け)。端末でないときのテキストの出力・ブラウザを開けなかったときも付けない。
+- FILE の無い `--print-url` は、送っていない実測が 1 つだけならそれを使う。無い・2 つ以上なら終了コード 1 で FILE を
+  求める(ファイルは標準エラーに並べる)。
 - 通信しない。中身が送られるのは、利用者がフォームで「Create」を押したときだけ。
 
 ## contrib
@@ -1144,8 +1148,8 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - **GPU の量**: 名前で VRAM が決まる NVIDIA の GPU(`estimate.NVIDIA_NOMINAL_VRAM`。デスクトップの GeForce RTX 20〜50 系だけ。ほかの系列(ノート用・業務用・データセンター)は量を見ない)で、`vram_gb` がどの版の量の 0.95〜1.03 倍にも入らなければ確認 `gpu_vram_nominal`(0.11.0 で誤りから下げた。改造品があるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る。Linux の CUDA は 6 GB の版を 5.80 GiB と報告するので、下を広くした)。
 - **error の提出**: `outcome: error` の提出は行の値に使わず、数(`n_error`)だけを残す(error だけの組は行にしない)。
 - **ステップ数**: 最大 VRAM はステップ数で変わらないので、まとめる鍵にも判定の照合にもステップ数を入れない(行の `settings.steps` はいちばん多い値で、表示用)。
-- **Issue**(#113): 実測の Issue は `contrib intake` が同じ検査をして 1 つの PR になる(ブランチ `measurement/issue-<N>`。GitHub Actions が作り、Issue を書いた人を PR とコミットに書く)ので、PR と同じく 1 つの出どころとして数える。`GITHUB_TOKEN` で作った PR では contrib.yml は動かない(intake が同じ検査を済ませている)。
-- **出どころ**: 同じ PR(main の first-parent の履歴でファイルを足したコミット)で足した提出は 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
+- **Issue**(#113): 実測の Issue は `contrib intake` が同じ検査をして 1 つの PR になる(ブランチ `measurement/issue-<N>`。GitHub Actions が作り、Issue を書いた人を PR に、`Submitted-by: github:<アカウント>` としてコミットに書く)。そのアカウントの提出として数える。`GITHUB_TOKEN` で作った PR では contrib.yml は動かない(intake が同じ検査を済ませている)。
+- **出どころ**(#113): 同じ人が送った提出は 1 つの出どころ。人は、受け取るボットのコミットの `Submitted-by` のアカウント、無ければファイルを足したコミット(マージなら PR の側のコミット。main の first-parent の履歴と名前の変更をたどって探す)のメールアドレス。値はその鍵の sha256 で、アドレスは出さない。それを 1 つの出どころとして、その中央値を 1 つの値にし、外れ値も出どころの値で見る(`n_sources`。git の履歴が無い・浅い clone では提出ごとに数え、出力にそう書く)。
 - **OOM の多い組**: OOM の出どころが ok の出どころ以上の行は `runs_evidence: false`(「動く」根拠にしない。使い方は PR #95)。
 - **版**: 検査する genmodelfit より新しい版で作った提出(`tool_newer`)、テンプレートが求めるより古い ComfyUI(`comfyui_old`)、一覧が知る最新より 6 つ以上新しい ComfyUI の版(`comfyui_newer`)は確認だけにする。
 - **大きさの入力の無いテンプレート**で `batch` が 1 でない提出は確認 `batch_sizeless`(0.10.1 の bench の記録の誤り)。
@@ -1171,11 +1175,14 @@ bench の結果を読めないときは終了コード 1。
 
 `.github/workflows/measurement-intake.yml`(#113)が、`measurement` の印の Issue で使う。issues のイベントのファイルから
 Issue の本文・番号・書いた人を読み、`{` で始まる最初の囲み(フォームの JSON の欄。`json` のコードの囲み)をデータとして取り出して
-`contrib.intake_issue` を通す: `validate` の検査(ファイル名は見ない)、`share` の個人の情報の点検、64 KiB まで、
-`--existing` に同じ内容の提出が無いこと。`result.json`(`IntakeResult`: `ok`・`reasons`・`notices`・`path_in_repo`・
+`contrib.intake_issue` を通す: `validate` の検査(ファイル名は見ない)、`share` の個人の情報の点検(この機械自身のホスト名・ユーザ名の
+確かめは除く。GitHub では実行機のもので、送った人のものではないため)、64 KiB まで、`--existing` に同じ内容の提出が無いこと。
+同じアカウントがその GPU・モデルで `--existing` に既に送った数も数える(`contrib.submitter_count`。git の履歴が要る)。`result.json`(`IntakeResult`: `ok`・`reasons`・`notices`・`path_in_repo`・
 `sha256`・`title` など)と `comment.md`(英語と日本語。理由の文は `contrib.md_cell` で無害にする)を書き、受け付けたときは
 `submission.json`(本文の文字そのままでなく `contrib.dumps` で書き直した中身)・`path.txt`・`title.txt`・`commit_msg.txt`・
-`pr_body.md`(Issue の番号と書いた人、メンテナへの確認、`Closes #N`)も書く。本文の文字は出力しない
+`pr_body.md`(Issue の番号と書いた人・その数・メンテナへの確認・`Closes #N`)・`comment_updated.md`(PR ができた
+あとの編集のとき)も書き、断ったときは `comment_pr_closed.md`(閉じる PR に書く)も書く。`commit_msg.txt` の最後は
+`Submitted-by: github:<アカウント>` で、`submission_sources` が 1 人を 1 つの出どころとして数えるのに使う。本文の文字は出力しない
 (`accepted` / `refused (N reasons)` だけ)。受け付けても断っても終了コード 0。イベントを読めないときだけ 1。通信しない。
 
 ### `contrib validate FILE|DIR… [--json] [--strict] [--no-filename-check] [--markdown]`

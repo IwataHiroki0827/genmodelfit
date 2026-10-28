@@ -567,7 +567,9 @@ CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
 )
 
 
-def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]:
+def privacy_checklist(
+    data: Any, raw: str | None = None, *, self_identity: bool = True
+) -> list[dict[str, Any]]:
     """送る前の点検の一覧 [{id, label, ok, detail}]。
     最後の note の項目は人が読んで確かめるもの(ok は None)。"""
     found = privacy_findings(data, raw)
@@ -594,7 +596,8 @@ def privacy_checklist(data: Any, raw: str | None = None) -> list[dict[str, Any]]
     for cid, label, kinds in CHECKLIST:
         hits = [f"{f['where']}({f['what']})" for f in found if f["kind"] in kinds]
         if cid == "host_user":
-            own = [w for w in _identity_words() if w.lower() in text.lower()]
+            # self_identity が偽(intake。GitHub の実行機の名前・ユーザ名は送った人の情報ではない)なら見ない
+            own = [w for w in _identity_words() if w.lower() in text.lower()] if self_identity else []
             hits += [
                 tr("この PC の名前・ユーザ名・ホーム", "this PC's name, user name or home") for _ in own[:1]
             ]
@@ -839,6 +842,8 @@ class IntakeResult:
     commit_message: str = ""
     pr_body: str = ""
     comment: str = ""
+    comment_updated: str = ""  # PR ができたあとに Issue の中身が変わったとき(PR と Issue に書く)
+    comment_pr_closed: str = ""  # PR ができたあとに通らない中身に変わったとき(PR に書いて閉じる)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -873,6 +878,7 @@ def intake_issue(
     db: Database | None = None,
     existing: str | os.PathLike[str] | None = None,
     today: _date | None = None,
+    prior: int | None = None,
 ) -> IntakeResult:
     """実測の Issue(#113)を検査し、PR に入れる中身と、Issue へのコメントを作る(通信しない・何も書かない)。
 
@@ -880,8 +886,9 @@ def intake_issue(
     ファイル名はここで決めるので見ない)と、個人の情報の点検(share_check)。大きさは MAX_FILE_BYTES まで。
     existing(リポジトリの data/contrib)に同じ内容の提出があれば断る。PR に入れる中身は、取り出した文字を
     そのまま使わず dumps で書き直したもの(名前の sha8 は canonical の hash なので変わらない)。
-    出どころは Issue ごとに作る PR のマージのコミット(PR で出した提出と同じ数え方。submission_sources)。
-    PR の本文とコミットに Issue の番号と書いた人のアカウントを書く。コメントに入れる理由の文は md_cell で
+    出どころは送った人(submission_sources)。コミットに `Submitted-by: github:<login>` を書き(ボットのコミット
+    だけ信じる)、PR の本文に Issue の番号と書いた人、prior(この人が同じ GPU・モデルで既に送った数。
+    submitter_count)を書く。コメントに入れる理由の文は md_cell で
     無害にする(提出から来る文字でリンク・@ の呼び出し・HTML を作らない)。"""
     if not _LOGIN.fullmatch(author or ""):
         author = "unknown"
@@ -900,7 +907,7 @@ def intake_issue(
     if text is not None and data is not None:
         report = validate_submission(data, db, raw=text, today=today, check_filename=False)
         if isinstance(data, dict):
-            res.reasons += share_check(privacy_checklist(data, text), report)
+            res.reasons += share_check(privacy_checklist(data, text, self_identity=False), report)
         else:
             res.reasons += [f"{e['code']}: {e['message']}" for e in report.errors]
         res.notices = [f"{v['code']}: {v['message']}" for v in [*report.warnings, *report.notices]]
@@ -935,10 +942,40 @@ def intake_issue(
                 ),
             ]
         )
+        res.comment_pr_closed = _md(
+            [
+                tr(
+                    f"Issue #{number} の中身が、検査に通らない内容に変わったので、この PR を閉じます。"
+                    "Issue を直すと、もう一度開きます。",
+                    f"The content of issue #{number} changed and no longer passes the checks, so this PR is"
+                    " closed. Fixing the issue reopens it.",
+                ),
+                "",
+                *(f"- {md_cell(r)}" for r in res.reasons),
+            ]
+        )
         return res
     res.commit_message = (
-        f"data(contrib): {res.title}\n\nFrom issue #{number} by {author} (measurement-intake).\n"
+        f"data(contrib): {res.title}\n\nFrom issue #{number} by {author} (measurement-intake).\n\n"
+        + (f"Submitted-by: github:{author}\n" if author != "unknown" else "")
     )
+    if prior:
+        prior_line = tr(
+            f"- @{author} さんが同じ GPU・モデルで既に送った提出: {prior} 件"
+            "(同じ人の提出は合わせて 1 つの出どころ)",
+            f"- Submissions @{author} already sent for this GPU and model: {prior} (one person counts as one"
+            " source)",
+        )
+    elif prior is None:
+        prior_line = tr(
+            "- 同じ人の前の提出の数: git の履歴が無いので数えていない",
+            "- Earlier submissions by the same person: not counted (no git history)",
+        )
+    else:
+        prior_line = tr(
+            f"- @{author} さんの、この GPU・モデルの最初の提出",
+            f"- The first submission by @{author} for this GPU and model",
+        )
     res.pr_body = _md(
         [
             tr(
@@ -954,6 +991,7 @@ def intake_issue(
                 "検査: contrib validate と個人の情報の点検を通過",
                 "Checks: passed contrib validate and the privacy checks",
             ),
+            prior_line,
             *(
                 [
                     "",
@@ -972,11 +1010,27 @@ def intake_issue(
             tr("**受け付けました。ありがとうございます**", "**Accepted — thank you!**"),
             "",
             tr(
-                "検査を通ったので、data/contrib に足す PR を作りました(リンクは下)。"
-                "メンテナがマージすると、この Issue は閉じます。",
-                "It passed the checks, so a PR that adds it to data/contrib was opened (link below)."
-                " The issue closes when a maintainer merges it.",
+                "確かめて問題が無かったので、プロジェクトに入れる準備(Pull Request)を作りました(リンクは下)。"
+                "メンテナが入れると、この Issue は閉じます。",
+                "It passed the checks, so the bot prepared it to be added to the project (a pull request,"
+                " link below). This issue closes when a maintainer adds it.",
             ),
+            tr(
+                "このあと Issue の本文を編集すると、その中身でもう一度確かめ、Pull Request も直します。",
+                "If you edit the issue body later, the new content is checked again and the pull request is"
+                " updated.",
+            ),
+        ]
+    )
+    res.comment_updated = _md(
+        [
+            tr(
+                f"Issue #{number} の中身が変わったので、新しい中身で確かめて Pull Request を直しました。",
+                f"The content of issue #{number} changed; the new content passed the checks and the pull"
+                " request was updated.",
+            ),
+            "",
+            f"- `{res.path_in_repo}`",
         ]
     )
     return res
@@ -2329,16 +2383,16 @@ def load_dir(
     return subs, sorted([*reports, *(layout_report(b) for b in bad)], key=lambda r: r.path)
 
 
-def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
-    """提出ごとの出どころ(#90)。出どころは、そのファイルをリポジトリに足したコミット(main の first-parent の
-    履歴で。PR のマージ・squash のコミットが 1 つの出どころ)。同じ PR で足した提出は 1 つの出どころになる。
-    メンテナがファイルを動かした(名前を変えた)ときは、名前の変更をさかのぼって最初に足したコミットを使う。
-    (内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone(CI の depth 1 は
-    全部が 1 つのコミットに見える)・git が無いときは、使えなかったとして空を返す(aggregate はファイルごとに
-    数える)。通信しない(手元の git の履歴を読むだけ)。"""
-    import subprocess
+BOT_EMAIL = (
+    "41898282+github-actions[bot]@users.noreply.github.com"  # GitHub Actions のボット(intake のコミット)
+)
+SUBMITTED_BY = re.compile(
+    r"^Submitted-by:[ \t]*github:([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))[ \t]*$", re.M | re.I
+)
 
-    base = Path(root).resolve()
+
+def _git_runner(base: Path):
+    import subprocess
 
     def git(*args: str) -> str | None:
         try:
@@ -2354,6 +2408,23 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
             return None
         return r.stdout if r.returncode == 0 else None
 
+    return git
+
+
+def submission_submitters(
+    root: str | os.PathLike[str], subs: list[Submission]
+) -> tuple[dict[str, str], bool]:
+    """提出ごとの送った人(#113。内容の sha256 → 送った人の鍵, git の履歴を使えたか)。
+
+    そのファイルを main に足したコミット(first-parent の履歴で。名前の変更はさかのぼる)を探し、マージの
+    コミットなら PR の側でファイルを足したコミットを見る。そのコミットが GitHub Actions のボット(BOT_EMAIL)の
+    もので、本文に `Submitted-by: github:<login>`(measurement-intake が Issue を書いた人を書く)があれば
+    `github:<login>`、ほかは書いた人のメールアドレス `email:<小文字>`(PR を出した人のコミット)。
+    鍵はメールアドレスを含むので、外に書かない(submission_sources は hash にして使う)。
+    git の作業ツリーでない・浅い clone・git が無いときは ({}, False)。まだコミットしていない提出は入れない。
+    通信しない(手元の git の履歴を読むだけ)。"""
+    base = Path(root).resolve()
+    git = _git_runner(base)
     top = git("rev-parse", "--show-toplevel")
     if not top or (git("rev-parse", "--is-shallow-repository") or "").strip() != "false":
         return {}, False
@@ -2375,7 +2446,7 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
     for s in subs:
         with contextlib.suppress(ValueError):
             alias[Path(s.path).resolve().relative_to(top_dir).as_posix()] = s
-    out: dict[str, str] = {}
+    added: dict[str, tuple[str, str]] = {}
     commit = None
     for line in log.splitlines():
         if line.startswith("commit "):
@@ -2388,14 +2459,74 @@ def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> 
             alias[parts[1]] = alias.pop(parts[2])
         elif parts[0] == "A" and parts[1] in alias:
             s = alias.pop(parts[1])
-            out.setdefault(s.sha256, commit)
+            added.setdefault(s.sha256, (commit, parts[1]))
+    cache: dict[tuple[str, str], str] = {}
+
+    def who(commit: str, path: str) -> str:
+        if (commit, path) in cache:
+            return cache[(commit, path)]
+        target = commit
+        parents = (git("rev-list", "--parents", "-n", "1", commit) or "").split()
+        if len(parents) > 2:  # マージのコミット: PR の側でファイルを足したコミット(いちばん古いもの)
+            inner = (
+                git("log", "--diff-filter=A", "--format=%H", f"{commit}^1..{commit}^2", "--", f":(top){path}")
+                or ""
+            ).split()
+            if inner:
+                target = inner[-1]
+        info = git("log", "-1", "--format=%ae%x00%B", target) or ""
+        email, _, body = info.partition("\x00")
+        m = SUBMITTED_BY.search(body)
+        key = (
+            f"github:{m.group(1).lower()}"
+            if m and email.strip().lower() == BOT_EMAIL
+            else f"email:{email.strip().lower()}"
+        )
+        cache[(commit, path)] = key
+        return key
+
+    return {sha: who(c, p) for sha, (c, p) in added.items()}, True
+
+
+def submission_sources(root: str | os.PathLike[str], subs: list[Submission]) -> tuple[dict[str, str], bool]:
+    """提出ごとの出どころ(#90・#113)。出どころは**送った人**(submission_submitters: 実測の Issue を書いた人、
+    自分で PR を出した人のコミットのメールアドレス)。同じ人の提出は、別々の PR・Issue でも 1 つの出どころ
+    (1 人が何件送っても 1 つ。作者の実測は何行あっても 1 つ、と同じ考え方。#95)。値は鍵の sha256(16 進。
+    メールアドレス・アカウント名を同梱のまとめに書かない)。まだコミットしていないファイルは 1 件で 1 つ
+    (file:<sha256>)。(内容の sha256 → 出どころ, git の履歴を使えたか)。git の作業ツリーでない・浅い clone・
+    git が無いときは ({}, False)(aggregate はファイルごとに数える)。通信しない。"""
+    who, via_git = submission_submitters(root, subs)
+    if not via_git:
+        return {}, False
+    out = {sha: hashlib.sha256(f"submitter:{key}".encode()).hexdigest() for sha, key in who.items()}
     for s in subs:
         out.setdefault(s.sha256, f"file:{s.sha256}")  # まだコミットしていないファイルは 1 件で 1 つ
     return out, True
 
 
+def submitter_count(
+    root: str | os.PathLike[str], login: str, *, model_id: str | None, gpu_name: str | None
+) -> int | None:
+    """root(リポジトリの data/contrib)にある、GitHub のアカウント login が実測の Issue で送った、同じモデル・
+    同じ GPU(gpu_key)の提出の数(intake の PR の本文に書く。#113)。git の履歴が無ければ None。"""
+    if not Path(root).is_dir():
+        return 0
+    subs, _ = load_dir(root)
+    same = [
+        s
+        for s in subs
+        if (s.data.get("measurement") or {}).get("model_id") == model_id
+        and gpu_key(str(((s.data.get("system") or {}).get("gpu") or {}).get("name") or ""))
+        == gpu_key(gpu_name or "")
+    ]
+    who, via_git = submission_submitters(root, same)
+    if not via_git:
+        return None
+    return sum(1 for k in who.values() if k == f"github:{login.lower()}")
+
+
 def source_id(source: str) -> str:
-    """出どころ(コミットの hash か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
+    """出どころ(送った人の鍵の sha256 か file:<sha256>)の短い ID(まとめの行の source_ids)。"""
     if source.startswith("file:"):
         return "file:" + source[5:17]
     return source[:12]
@@ -2553,7 +2684,7 @@ def community_document(
         "method": (
             "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・"
             "測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。"
-            "最後まで動いた(ok)ものの最大 VRAM を出どころ(リポジトリに足したコミット。git の履歴が無ければ"
+            "最後まで動いた(ok)ものの最大 VRAM を出どころ(送った人。git の履歴から読む。無ければ"
             "提出ごと)ごとの中央値にし、"
             f"|x - 中央値| / ({MAD_SCALE} × MAD) > {OUTLIER_Z} を外れ値として除き"
             "(出どころが 3 つ以上のとき。MAD は中央値の "
@@ -2767,8 +2898,10 @@ __all__ = [
     "bundled_status",
     "community_document",
     "content_hash",
+    "extract_issue_json",
     "gpu_known",
     "gpu_slug",
+    "intake_issue",
     "load_dir",
     "measurements_from_file",
     "privacy_findings",
@@ -2778,6 +2911,8 @@ __all__ = [
     "share_check",
     "share_urls",
     "submission_sources",
+    "submission_submitters",
+    "submitter_count",
     "suggested_path",
     "validate_dirs",
     "validate_files",

@@ -112,8 +112,8 @@ Steps:
      submission is merged there is no data/contrib, so `--check` exits 1 (no such folder); that is expected.
    - If there are any, rebuild it with `genmodelfit contrib aggregate --output src/genmodelfit/data/measurements_community.json`
      (the sha256 of each submission used goes into `submissions`; the test re-aggregates exactly those and compares).
-   - Make the aggregate in a clone with git history (not shallow): sources (submissions added by the same PR count as
-     one) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
+   - Make the aggregate in a clone with git history (not shallow): sources (submissions sent by the same person count as
+     one; #113) are counted from the git history (#90; in a shallow clone or outside git each submission counts on its own,
      and the output says so). Since 0.11.0 `--output` refuses (exit code 1) when any source would be counted per file
      (`file:…`), because one person's many files would then count as many sources and could set a level (#95).
      `--allow-file-sources` overrides this for tests and local experiments only; never use it for a release.
@@ -145,24 +145,37 @@ About manual runs and PyPI:
 ## Receiving measurement issues (#113)
 
 `genmodelfit share` opens the issue form `.github/ISSUE_TEMPLATE/measurement.yml` with a measurement filled in. The
-workflow `.github/workflows/measurement-intake.yml` handles issues with the `measurement` label (opened, edited, or the
-label added) while they are open:
+workflow `.github/workflows/measurement-intake.yml` handles open issues with the `measurement` label when they are
+opened and when their body is edited (title-only edits and adding a label do nothing, so one issue is not processed
+twice). It has two jobs:
 
-1. `genmodelfit contrib intake` reads the issue body from the event file as data (never through `${{ }}` in a script),
-   runs the same checks as `contrib validate` plus the privacy checks of `share`, and refuses a submission whose content
-   is already in `data/contrib` ([schema.md, "contrib"](schema.md#contrib)).
-2. Accepted: it pushes `data/contrib/<GPU>/<date>-<sha8>.json` to the branch `measurement/issue-<N>`, opens a PR (body:
-   the issue author, notices for the maintainer, `Closes #N`) and comments the link on the issue. An edit of the issue
-   updates the same branch. Merging the PR closes the issue.
-3. Refused: it comments the reasons (English and Japanese) on the issue; editing the body runs it again.
+1. `check` (read-only token): installs genmodelfit, and `genmodelfit contrib intake` reads the issue body from the
+   event file as data (never through `${{ }}` in a script), runs the same checks as `contrib validate` plus the
+   privacy checks of `share` (without the runner's own host / user name check), refuses a submission whose content is
+   already in `data/contrib`, and counts how many submissions the same account already sent for that GPU and model
+   (full git history). The result files go to an artifact ([schema.md, "contrib"](schema.md#contrib)).
+2. `publish` (contents, pull-requests and issues write; installs nothing, only `git` and `gh`):
+   - Accepted and new: pushes `data/contrib/<GPU>/<date>-<sha8>.json` to the branch `measurement/issue-<N>` (commit
+     with `Submitted-by: github:<account>`), opens a PR (body: the issue author, the earlier submissions of that
+     account, notices for the maintainer, `Closes #N`) and comments the link on the issue.
+   - Same content as this issue's open PR: does nothing (no push, no comment).
+   - Same content as another issue's open PR: comments the link to that PR and opens nothing.
+   - Edited to different valid content after the PR exists: updates the PR (title, body, file) and comments on both the
+     PR and the issue. A PR closed earlier because of invalid content is reopened first.
+   - Refused: comments the reasons (English and Japanese) on the issue; if the issue already has an open PR, the PR
+     gets the reasons and is **closed** (fixing the issue reopens it).
+   Merging the PR closes the issue.
 
 What to check before merging: the notices in the PR body (the same as the `Contrib` job summary; contrib.yml does not
-run for a PR made with `GITHUB_TOKEN`), and that one person did not send the same measurement in several issues (each
-issue is one source, like a PR).
+run for a PR made with `GITHUB_TOKEN`), and the line about how many submissions the same account already sent for
+that GPU and model (one person counts as one source however many they send, but someone using several accounts would
+count several times). Keep the `Submitted-by:` line when squash-merging (a merge commit or rebase keeps it anyway).
 
-One-time setup: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" on, and the
-label `measurement` created (Issues → Labels). The workflow uses only `GITHUB_TOKEN` (contents, pull-requests and
-issues write, for this job only).
+One-time setup (the repository's Settings):
+1. Settings → Actions → General → "Workflow permissions" → tick "Allow GitHub Actions to create and approve pull
+   requests" → Save.
+2. Issues → Labels → New label → name `measurement` → Create label.
+The workflow uses only `GITHUB_TOKEN`; no secrets.
 
 ## Data releases
 

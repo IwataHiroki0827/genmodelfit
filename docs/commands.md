@@ -796,8 +796,8 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 
 | Code | Meaning |
 |---|---|
-| 0 | Success (also: nothing chosen, nothing to suggest) |
-| 1 | Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not downloaded, the run failed (out of memory or another error), no consent |
+| 0 | Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?") |
+| 1 | Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not downloaded, the run failed (out of memory or another error), no terminal and no `--yes` |
 | 2 | Usage error |
 
 **Examples for scripts and apps**
@@ -825,15 +825,17 @@ pick an unsent measurement, show it, and open the GitHub form to send it in your
 **Usage**
 
 ```text
-genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PATH] [file]
+genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-sent] [--db PATH]
+                  [file]
 ```
 
 - Send a measurement: show exactly what will be sent and open the GitHub form for it.
 - Without FILE it lists the measurements saved by measure (and bench `--share`) that are not marked as sent, newest first; choose one by number.
 - It shows the whole content (GPU name, VRAM, OS family, model, settings and values; no PC or user names) with the privacy checks, then opens the measurement issue form on GitHub in your browser with the content filled in: sign in and press "Create".
-- A bot checks it like contrib validate and opens a pull request that adds it; the maintainer merges it.
+- A bot checks it within a few minutes and replies on the page; if it is fine, it goes into the project once a maintainer accepts it.
 - When the content does not fit in a URL it is copied to the clipboard (clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened; paste it there.
-- Once the page is opened (or the URL is printed) the measurement is marked as sent on this PC and is not listed again (`--all` lists it).
+- Once the page is opened, or the URL is printed with `--print-url`, the measurement is marked as sent on this PC and is not listed again (`--all` lists it); `--json` marks it only with `--mark-sent`.
+- `--print-url` without FILE uses the only unsent measurement (with several, give FILE).
 - You need a GitHub account.
 
 **Options and arguments**
@@ -843,6 +845,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PAT
 | `file` |  |  | the submission JSON to send (omitted: list unsent measurements and choose one) |
 | `--print-url` |  |  | do not open a browser; print only the URL of the form (for scripts) |
 | `--all` |  |  | also list measurements already marked as sent |
+| `--mark-sent` |  |  | with `--json`, also mark it as sent (for apps that open the form themselves; by default `--json` only previews) |
 | `--db` | `PATH` |  | the list used to check model ids (default: the bundled list; the cache is not used) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`
@@ -862,7 +865,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--db PAT
 | Code | Meaning |
 |---|---|
 | 0 | Success (also: nothing chosen, nothing to send) |
-| 1 | Error: the file cannot be read, a privacy check is NG or the checks have errors |
+| 1 | Error: the file cannot be read, a privacy check is NG or the checks have errors, or `--print-url` without FILE when several measurements are unsent |
 | 2 | Usage error |
 
 **Examples for scripts and apps**
@@ -1441,7 +1444,8 @@ the same as `genmodelfit share` (kept for older scripts)
 **Usage**
 
 ```text
-genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all] [file]
+genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-url] [--all]
+                          [--mark-sent] [file]
 ```
 
 **Options and arguments**
@@ -1452,6 +1456,7 @@ genmodelfit contrib share [-h] [--lang {en,ja}] [--json] [--db PATH] [--print-ur
 | `file` |  |  | the submission JSON to send (omitted: list unsent measurements and choose one) |
 | `--print-url` |  |  | do not open a browser; print only the URL of the form (for scripts) |
 | `--all` |  |  | also list measurements already marked as sent |
+| `--mark-sent` |  |  | with `--json`, also mark it as sent |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`
 
