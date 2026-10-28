@@ -57,6 +57,7 @@ three quantities are computed (`estimate.py`, `working.py`).
 | quantity | formula | meaning |
 |---|---|---|
 | `vram_gb` (all on GPU) | fixed + weights of all parts + max(S, V_eff, T) | all weights stay loaded, plus the working memory of the heaviest stage |
+| `vram_resident_gb` (kept loaded) | fixed + weights of all parts + max(S, V, T) (V untiled) | used only to decide whether all-on-GPU can be chosen (it is not chosen above 98%; "Tiles" below, #102) |
 | `vram_sequential_gb` (swapped in turn) | fixed + max(text-stage weights + T, denoise-stage weights + S, decode-stage weights + V_eff, other) | parts are unloaded between stages. A bit slower but usable |
 | `vram_offload_gb` (offload) | fixed + max(weights of each stage × 0.4 + working memory of that stage) | runs with part of the weights left in main memory (lowvram / dynamic VRAM). Slow |
 | `ram_gb` (running on the GPU) | 3.0 + weights of the largest stage | for all on GPU and swapped in turn (see "Main memory (RAM)" below) |
@@ -154,8 +155,18 @@ ComfyUI's code (GPL-3.0) is neither imported nor copied. Only the numbers and th
 
 ### Tiles
 
-The V used for the level is **V_eff = min(V, V_tile)**. When V does not fit (when an OOM occurs), ComfyUI splits the VAE into tiles
+The V put into the amounts used (all on GPU, swapped in turn, offload) is **V_eff = min(V, V_tile)**. Before decoding, ComfyUI tries
+to free V (sd.py:1278-1280@426f5ee); if it does not fit, other models are unloaded, and if an OOM still occurs the VAE is split into tiles
 (sd.py:1269-1357, 1422-1474). V_tile is the value of the **smallest tile, independent of VRAM** (adding VRAM never lowers the level).
+
+Whether the all-on-GPU mode can be chosen is decided with the **untiled V** (#102, 2026-10-28): if the kept-loaded amount
+`vram_resident_gb` = fixed + weights of all parts + max(S, V, T) exceeds 98%, ComfyUI unloads the model before decoding, so all-on-GPU
+is not chosen and the row becomes swapped in turn (up to Good) or offload. On 21 runs on an RTX 5080 16GB this predicted whether ComfyUI
+unloaded part of the models in 20 (12 with V_eff; "Cross-check" below). The amounts used do not take V because the working memory
+actually used is 0.5 to 1.0 times V, which would worsen the peak prediction (V is ComfyUI's estimate for deciding how to load). A
+measurement shift d is added only when negative (a measurement with a positive shift already contains the VAE peak). Rows whose level
+was decided by measurements do not use it. A VAE whose estimate is reliable (`comfy_decode_estimate_is_reliable`, e.g. SeedVR) is
+tiled from the start without waiting for an OOM (sd.py:1286-1291@426f5ee); the others behave as above.
 
 | shape | decode tile | encode tile |
 |---|---|---|
@@ -166,12 +177,14 @@ The V used for the level is **V_eff = min(V, V_tile)**. When V does not fit (whe
 
 - ComfyUI's 3D budget `min(V, total × 0.8)` depends on VRAM, so the smallest tile is used for the level.
 - When V does not fit the GPU (fixed + decode-stage weights + V > VRAM), the reasons say "ComfyUI splits the VAE into tiles (slower)"
-  (the level is not changed). On Windows, NVIDIA may spill into shared memory (sysmem fallback) and only slow down instead of failing with OOM.
-- **V rarely changes the level**: judging the bundled list (329 entries) on 6, 8, 12, 16 and 24 GB NVIDIA GPUs with V and V_tile set to 0
-  changes the level in 8 of the 1,645 cases (3 audio, 2 Qwen Image 2.1, 2 SDXL workflows, VOID).
+  (the V_eff level is not changed). On Windows, NVIDIA may spill into shared memory (sysmem fallback) and only slow down instead of failing with OOM.
+- **V rarely changes the level**: judging the bundled list on 6, 8, 12, 16 and 24 GB NVIDIA GPUs with V and V_tile set to 0
+  changes the level in 13 of the 1,625 cases (0.11.0; 4 MOSS Image, 3 audio, 2 Qwen Image 2.1, 2 SDXL workflows, 2 VOID).
+  The kept-loaded amount (#102) changes 16 of the 1,625 cases at 8 to 32 GB, and lowers the level in 2 (the two Kandinsky 5 entries at
+  32 GB, Perfect → Good). The others stay Good and only switch from GPU to GPU~.
 - So SDXL's all-on-GPU value is the same from 512 px to about 2000 px (the heaviest stage is the tiled VAE, 1.06 GB; the denoise stage
   is 0.26 GB even at 1024 px). Above that the denoise stage takes over and it grows.
-  For most models the weights or the denoise stage dominate. V matters mainly through the "split into tiles (slower)" note when V exceeds VRAM.
+  For most models the weights or the denoise stage dominate. V matters mainly for whether all-on-GPU can be chosen (the kept-loaded amount) and through the "split into tiles (slower)" note when V exceeds VRAM.
 
 ### How families are mapped
 
@@ -721,6 +734,60 @@ SDXL at 1024 px started at 60% prior utilization (against the shared-machine rul
 | audio_ace_step_1_5_checkpoint | 10 s | 1.00 | 0.95 | 0.95 |
 | audio_ace_step_1_5_checkpoint | 30 s | 2.72 | 0.98 | 2.86 |
 | audio_ace_step_1_5_checkpoint | 60 s | 4.94 | 0.98 | 5.72 |
+
+### RTX 5080 16GB measurements by another user (#102, 2026-10-27, **used neither for fitting nor for levels**)
+
+Measured by another user with the Issue #102 script (ComfyUI 0.43.0, Windows 11). The same models were run at several
+settings, with the default dynamic VRAM (phase 1) and with `--disable-dynamic-vram` (phase 2). Before each run the GPU
+already used 1.8 to 1.9 GB (ComfyUI idling and the Windows desktop). They did not come through the contribution
+(contrib) path, so they are not in the measurement list.
+
+**Phase 1: working memory** (torch_reserved; with dynamic VRAM the weights are not included)
+
+| Model | Settings | Measured GiB | max(S, V_eff, T) | Untiled V |
+|---|---|---:|---:|---:|
+| image_sdxl_simple | 512 / 768 / 1024 / 1536px | 0.22 / 1.41 / 2.75 / 6.09 | 1.06 / 1.06 / 1.06 / 1.06 | 1.06 / 2.39 / 4.25 / 9.57 |
+| text_to_video_wan | 832×480, 17 / 33 / 49 frames | 3.88 / 4.50 / 4.28 | 0.42 / 0.76 / 1.10 | 5.21 |
+| text_to_video_wan | 512px, 49 frames | 2.78 | 0.72 | 3.42 |
+| video_wan2_2_5B_ti2v | 832×480, 49 / 81 frames | 5.81 / 5.25 | 0.98 / 0.98 | 5.95 |
+| audio_ace_step_1_5_checkpoint | 10 / 30 / 60 / 120 s | 0.44 / 2.81 / 5.16 / 9.78 | 0.95 / 0.98 / 0.98 / 0.98 | 0.95 / 2.86 / 5.72 / 11.44 |
+| image_z_image_turbo_int8 | 768 / 1024 / 1536px | 0.84 / 1.28 / 5.00 | 1.06 / 1.06 / 2.02 | 2.39 / 4.25 / 9.57 |
+
+- The decode (VAE) working memory is 0.5 to 1.0 times the untiled V (in runs where V exceeds 1 GB). ComfyUI's log shows
+  no run where the VAE was split into tiles (phase 1 or 2). Tiling is the fallback after an OOM in the regular decode
+  (sd.py:1314@426f5ee) and is not used while the VRAM suffices. The RTX 3070 sweep (above) points the same way.
+
+**Phase 2: could ComfyUI keep everything loaded?** ("loaded partially" in the log = part was unloaded)
+
+| Run | Part unloaded | Usable GiB | All on GPU (V_eff) | Everything kept loaded (V) |
+|---|---|---:|---:|---:|
+| image_sdxl_simple 512 / 768 / 1024px | no | 13.96 | 9.00 / 9.00 / 9.00 | 9.00 / 10.33 / 12.19 |
+| image_sdxl_simple 1536px | **yes** | 14.03 | 9.00 | 17.50 |
+| audio_ace_step_1_5_checkpoint 10 / 30 s | no | 13.93 / 13.99 | 11.77 / 11.79 | 11.77 / 13.68 |
+| audio_ace_step_1_5_checkpoint 60 / 120 s | **yes** | 13.93 | 11.79 / 11.79 | 16.54 / 22.26 |
+| text_to_video_wan 512px, 49 frames | no | 13.98 | 11.34 | 14.04 |
+| text_to_video_wan 832×480, 17 / 33 / 49 / 81 frames | **yes** | 13.88 to 14.04 | 11.05 to 12.39 | 15.83 |
+| image_z_image_turbo_int8 768 / 1024 / 1536px | **yes** | 13.90 to 13.98 | 13.87 / 13.87 / 14.82 | 15.20 / 17.06 / 22.38 |
+| video_wan2_2_5B_ti2v, 3 runs | **yes** | 13.91 | 19.35 to 20.37 | 24.32 to 31.80 |
+| utility_moge_depth_estimation, 3d_hunyuan3d_image_to_model | no | 14.24 / 14.03 | 2.33 / 6.85 | (no per-stage formula) |
+
+- Whether "everything kept loaded (V)" exceeds the usable amount predicts "part unloaded" in 20 of 21 runs (the miss is
+  text_to_video_wan 512px, 49 frames, by 0.06 GB). "All on GPU (V_eff)" predicts only 12. So the all-on-GPU mode is now
+  chosen only when "everything kept loaded" fits (#102; "Tiles" above).
+- The usage prediction (the "Results" table above) keeps V_eff. The working memory actually used is smaller than V, and
+  using V would worsen the largest LOO error from 12.5% to 34.3% (V is ComfyUI's estimate for deciding how to load, not
+  the amount used).
+- The judgement compares with 98% of the total (15.6 GB) instead of the usable amount. Counted at 98% it still predicts 20 of
+  21 runs (the miss is image_z_image_turbo_int8 768px: kept loaded 15.20 GB fits in 98%, yet part was unloaded).
+- bench had marked the 8 runs without "part unloaded" as `offload: lowvram`. The script starts ComfyUI with `--verbose DEBUG`, and
+  bench matched "lowvram: loaded module regularly" (model_patcher.py:1102@426f5ee), which is logged when a model loads fully (so
+  a full-load measurement was taken for one pinned at the limit). bench now marks `lowvram` only when ComfyUI was started with
+  `--lowvram` / `--novram` (#102).
+- In phase 1, two runs (text_to_video_wan 832×480 81 frames, video_wan2_2_5B_ti2v 1280×704 81 frames) could not be
+  measured because ComfyUI stopped responding (it stalls after aimdo logs `budget_deficit`; the same run stalled twice in a
+  row). Phase 2 measured them without stalling (13.41 / 12.78 GiB). This is ComfyUI's dynamic VRAM behaviour and
+  genmodelfit cannot fix it. If bench stalls, restart ComfyUI with `--disable-dynamic-vram` and measure again
+  ([CONTRIBUTING.md "1. Measure"](../CONTRIBUTING.md#1-measure)).
 
 ### Public figures (not used for fitting)
 

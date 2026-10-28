@@ -50,6 +50,15 @@ All notable changes to this project are documented here. The format is based on
 The meaning of the output changed (#95), so this is 0.11.0. `SCHEMA_VERSION` (the shape of db.json) is unchanged.
 The rules, their one-sentence explanations, evidence and tests are in the new docs/scoring.md (English and Japanese).
 
+- **All-on-GPU is chosen only when everything can stay loaded through the VAE decode** (#102). A new
+  `vram_resident_gb` = fixed + weights of all parts + max(S, V, T) with the untiled VAE working memory V (ComfyUI frees V before
+  decoding and unloads other models if it does not fit; sd.py:1278-1280@426f5ee). Above 98% the row becomes GPU~ (up to Good) or
+  offload. On 21 runs on an RTX 5080 16GB measured by another user this predicted whether ComfyUI unloaded part of the models in 20
+  (12 before). The amounts used (`vram_gb` and the bands) and calibration are unchanged. Bundled list × NVIDIA 8–32 GB: 16 of 1,625
+  rows switch from GPU to GPU~, 2 of them drop Perfect → Good (Kandinsky 5 at 32 GB).
+- docs/accuracy: the #102 measurements (RTX 5080 16GB, both ComfyUI modes) in "Cross-check"; CONTRIBUTING: what to do when
+  ComfyUI stops responding with dynamic VRAM.
+
 - **Level caps reviewed** (#108; docs/scoring.md "Level caps", "Verified GPU kinds"):
   - **Offloading (GPU+RAM) goes up to Good** (was Marginal; as in llmfit). Offloading is chosen only when it raises the
     level (ties stay on the GPU), so a GPU Perfect or Good row never switches to offloading; GPU / GPU~ rows at 85–98%
@@ -252,6 +261,10 @@ The rules, their one-sentence explanations, evidence and tests are in the new do
   cite line numbers of 426f5ee instead of b1a247c; differences from 0.40.0 are noted.
 
 ### Fixed
+
+- **bench no longer marks full loads as `offload: lowvram`** (#102). With ComfyUI started with `--verbose DEBUG`, the debug line
+  "lowvram: loaded module regularly" (logged when a model loads fully) matched, so normal measurements were treated as pinned
+  at the limit. `lowvram` now means ComfyUI was started with `--lowvram` / `--novram` ("Set vram state to: LOW_VRAM / NO_VRAM").
 
 - **GPUs missing from the tables are now judged** (#103; sources on each row of docs/gpu-inventory.md): Radeon 8065S
   (gfx1151), RX 7500 / 7400 / 7300, PRO W7400 and the Steam Machine GPU (Navi 33, gfx1102), Radeon Pro W6900X,

@@ -137,18 +137,21 @@ def test_usage_ratio_per_run_mode(kw, label, want):
 
 def test_score_can_drop_with_more_vram(db):
     """約束は段階だけ: VRAM が増えて代表がより重い動かし方に替わると、使用率が上がり Score は
-    下がることがある(Z-Image Turbo int8: 14 GB は GPU~ で 100、16 GB は全部載せで 82.3。llmfit も同じ。
-    docs/scoring.md「Score」。#100 の段ごとの式で、16 GB の代表は bf16 から int8 に替わった)。
-    段階は下がらない。"""
+    下がることがある(Z-Image Turbo: 25 GB は GPU~ で 100、26 GB は全部載せで 78.7。llmfit も同じ。
+    docs/scoring.md「Score」。#102 で全部載せは載せたままの量(タイルにしない VAE)が 98% に収まるときだけ
+    選ぶようになり、例を 14 → 16 GB の int8 から替えた)。段階は下がらない。"""
     from genmodelfit.models import fit_rank
+    from genmodelfit.recommend import mode_label
 
     rows = {}
-    for v in (14, 16):
+    for v in (25, 26):
         sel = select(db, plain(v, 32), modality="image")
         rows[v] = next(f for f in sel.fits if f.group_key == "image:sfw:image turbo z")
-    assert rows[14].model.id == "image_z_image_turbo_int8" and rows[14].score == 100.0
-    assert rows[16].model.id == "image_z_image_turbo_int8" and rows[16].score == pytest.approx(82.3, abs=0.1)
-    assert fit_rank(rows[16].estimate.fit) <= fit_rank(rows[14].estimate.fit)
+    assert rows[25].model.id == "image_z_image_turbo" and rows[25].score == 100.0
+    assert mode_label(rows[25].estimate, plain(25, 32)) == "GPU~"
+    assert rows[26].model.id == "image_z_image_turbo" and rows[26].score == pytest.approx(78.7, abs=0.1)
+    assert mode_label(rows[26].estimate, plain(26, 32)) == "GPU"
+    assert fit_rank(rows[26].estimate.fit) <= fit_rank(rows[25].estimate.fit)
 
 
 # --- §4.3 人気 -------------------------------------------------------------------------------------

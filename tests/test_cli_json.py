@@ -124,6 +124,7 @@ ESTIMATE = {
     "measured_peak_vram_gb",
     "measured_level_vram_gb",  # #95: 段階に使った量
     "sample_count",  # 2026-10-22: 見積もりに使った実測の件数
+    "vram_resident_gb",  # #102: 全部を載せたまま仕上げまで動かすときの量
 }
 LIMITS = {"level", "at_cap"}  # max_side_px / max_frames / max_seconds は種類で変わる
 GATE = {"auto", "held_by", "comfyui_version", "checks"}
