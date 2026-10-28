@@ -13,7 +13,8 @@ llmfit の公式のプロジェクトでも派生(フォーク)でもありま�
 ![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.ja.png)
 
 `genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
-`--vram` が変えるのは VRAM の量だけで、GPU の世代は撮った PC の RTX 3070 のままです。
+`--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のままです。画像では GPU を架空の Ada 世代
+(bf16・fp8 とも使える)に差し替えていて、撮った PC のものではありません。
 RTX 30 系以降(30・40・50 系)なら世代で見積もりは変わらないので、GPU を買う前に試すのにも使えます(メインメモリは `--ram`)。
 画像は [tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py) で作っています。
 

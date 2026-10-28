@@ -10,7 +10,9 @@
 
 出力に色を付けて受け取り、HTML にして Edge か Chrome の headless で撮り、余白を切る。
 全角の字は 2 桁の枠に置くので、字体によらず表の列がそろう。
---vram / --ram は量だけを変える。GPU の世代(使える精度)は撮る PC のもの(docs/hardware.md)。
+--vram / --ram は量だけを変えるので、GPU の世代(使える精度)は撮る PC のものになってしまう(docs/hardware.md)。
+そこで画像では GPU の検出を決まった架空の GPU(Ada 世代: bf16・fp8 とも使える)に差し替え、撮る PC の GPU が
+写らないようにする(SIM_GPU)。「この PC そのもの」の画像(--all の *-this-pc)だけ本物を使う。
 Pillow は撮るときだけ使う(genmodelfit の依存には入れない)。
 """
 
@@ -79,9 +81,16 @@ font-family:"Cascadia Mono",Consolas,"BIZ UDGothic","MS Gothic",monospace;white-
 font-family:"BIZ UDGothic","MS Gothic","Yu Gothic",monospace}}
 .cmd{{color:#9cdcfe}}"""
 # Windows でパイプに出すと rich が古い端末とみなして色を外すので、その判定だけ切って CLI を動かす
+# 撮る PC の GPU を写さないための架空の GPU(世代だけ決めた汎用の名前。ComfyUI が Ada で選ぶ bf16 の計算)
+SIM_GPU = (
+    "import genmodelfit.hardware as h; from genmodelfit.models import Gpu; "
+    "h.detect_gpus = lambda *a, **k: ([Gpu(name='Simulated GPU (Ada)', vendor='nvidia', vram_total_gb=8.0, "
+    "backend='cuda', compute_capability='8.9', compute_capability_source='name', arch='ada', "
+    "compute_dtype='bf16', bf16=True, fp8=True)], []); "
+)
 BOOT = (
     "import sys, runpy, rich.console as c; c.detect_legacy_windows = lambda: False; "
-    "sys.argv = ['genmodelfit', *sys.argv[1:]]; runpy.run_module('genmodelfit', run_name='__main__')"
+    "{sim}sys.argv = ['genmodelfit', *sys.argv[1:]]; runpy.run_module('genmodelfit', run_name='__main__')"
 )
 
 
@@ -101,12 +110,12 @@ def browser() -> str:
     sys.exit("Edge か Chrome が見つかりません")
 
 
-def run(args: list[str], lang: str) -> str:
+def run(args: list[str], lang: str, simulate: bool = True) -> str:
     env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "GENMODELFIT_COMFYUI_DIR")}
     env.update(FORCE_COLOR="1", COLUMNS=str(COLS), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
     env["GENMODELFIT_LANG"] = lang
     p = subprocess.run(
-        [sys.executable, "-c", BOOT, *args],
+        [sys.executable, "-c", BOOT.replace("{sim}", SIM_GPU if simulate else ""), *args],
         capture_output=True,
         env=env,
         encoding="utf-8",
@@ -191,7 +200,7 @@ def main() -> int:
             for lang, suffix in (("en", ""), ("ja", ".ja")):
                 png = out / f"{name}{suffix}.png"
                 try:
-                    text = run(args, lang)
+                    text = run(args, lang, simulate=not name.endswith("-this-pc"))
                     plain = Text.from_ansi(text).plain.lower()
                     hit = sorted(w for w in secrets if w.lower() in plain)
                     if hit:

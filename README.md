@@ -13,7 +13,8 @@ It is **not** an official llmfit project or fork. Status: alpha
 ![genmodelfit recommend on a PC with 8 GiB VRAM and 32 GiB RAM](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.png)
 
 The top of `genmodelfit recommend --vram 8 --ram 32 -n 2` (model list as of 2026-10-21). The list is updated weekly, so the models and counts change.
-`--vram` changes only the amount of VRAM; the GPU generation stays that of the PC that took the picture (an RTX 3070).
+`--vram` changes only the amount of VRAM, and the GPU generation stays that of the PC it runs on. In the picture the GPU is
+a simulated Ada-generation one (bf16 and fp8 usable), not the PC that took it.
 From the RTX 30 series on (30, 40, 50), the generation does not change the estimate, so this is also how to check a GPU before
 you buy it (add `--ram` for its system RAM).
 The picture is made by [tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py).
