@@ -2,8 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""ci.yml と同じ検査を手元で流す(push の前に必ず通す。2026-10-22 オーナー決定)。
+"""ci.yml と同じ検査を手元で流す(2026-10-22 オーナー決定。2026-10-28 に毎回は --quick に)。
 
+    python tools/ci_local.py --quick         # push の前に毎回: 3.10 と 3.13、ruff、配布物(約 15 分)
     python tools/ci_local.py                 # この PC の OS で Python 3.10〜3.13 と配布物
     python tools/ci_local.py --linux         # 続けて WSL の中でも同じものを流す(Windows から)
     python tools/ci_local.py --linux-only    # WSL の中だけ
@@ -38,6 +39,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERSIONS = ["3.10", "3.11", "3.12", "3.13"]
 LINT_VERSION = "3.12"  # ci.yml と同じ。ruff はこの版だけ
+# --quick: いちばん古い版と新しい版だけ(新しい版だけで落ちる不具合を毎回見つける。全部はマージの前に 1 回)
+QUICK_VERSIONS = ["3.10", "3.13"]
 WHEEL_VERSIONS = ["3.10", "3.12", "3.13"]
 SMOKE = [
     ["system", "--json", "--vram", "8", "--ram", "32"],
@@ -113,14 +116,15 @@ def venv_bin(env_dir: Path, name: str) -> str:
     return str(env_dir / ("Scripts" if IS_WIN else "bin") / (name + (".exe" if IS_WIN else "")))
 
 
-def run_tests(r: Runner, ver: str, env_root: Path, cache: Path) -> None:
+def run_tests(r: Runner, ver: str, env_root: Path, cache: Path, *, lint: bool | None = None) -> None:
     env_dir = env_root / f"{OS_TAG}-py{ver}"
     py = venv_python(env_dir)
     if not py.exists() and not r.step(f"py{ver} venv", ["uv", "venv", "-q", "--python", ver, str(env_dir)]):
         return
     if not r.step(f"py{ver} install", ["uv", "pip", "install", "-q", "--python", str(py), "-e", ".[dev]"]):
         return
-    if ver == LINT_VERSION:
+    lint = ver == LINT_VERSION if lint is None else lint
+    if lint:
         r.step("ruff check", [str(py), "-m", "ruff", "check", "."])
         r.step("ruff format --check", [str(py), "-m", "ruff", "format", "--check", "."])
     r.step(f"py{ver} pytest", [str(py), "-m", "pytest", "-q", "-p", "no:cacheprovider"])
@@ -128,7 +132,7 @@ def run_tests(r: Runner, ver: str, env_root: Path, cache: Path) -> None:
     smoke_env = child_env(GENMODELFIT_CACHE_DIR=str(cache))
     for args in SMOKE:
         r.step(f"py{ver} CLI {args[0]}", [exe, *args], env=smoke_env, quiet=True)
-    if ver == LINT_VERSION:
+    if lint:
         # 知らせるだけ(失敗にしない。ci.yml には無い): 同梱のまとめにまだ入っていない data/contrib の提出。
         # 入れるのは版を出すとき(docs/release.md「次からの版を出す手順」。#90)
         print(f"\n=== [{OS_TAG}] (情報) contrib aggregate --check", flush=True)
@@ -208,8 +212,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-tests", action="store_true", help="試験と ruff を飛ばす(配布物だけ流し直す)")
     ap.add_argument("--linux", action="store_true", help="続けて WSL の中でも流す")
     ap.add_argument("--linux-only", action="store_true", help="WSL の中だけで流す")
+    ap.add_argument(
+        "--quick",
+        action="store_true",
+        help="push の前の毎回の分: 3.10 と 3.13 だけ(ruff は 3.10 で)と配布物。全部はマージの前に 1 回",
+    )
     ap.add_argument("--env-dir", default=str(ROOT / ".ci"), help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+    if args.quick:
+        if args.linux or args.linux_only:
+            ap.error("--quick は --linux / --linux-only と一緒に使えない(全部を流すときは --quick を外す)")
+        args.python = QUICK_VERSIONS
     if shutil.which("uv") is None:
         print("uv が見つかりません(https://docs.astral.sh/uv/)", file=sys.stderr)
         return 2
@@ -221,8 +234,9 @@ def main(argv: list[str] | None = None) -> int:
         r = Runner()
         with tempfile.TemporaryDirectory(prefix="gmf-ci-") as t:
             tmp = Path(t)
-            for ver in [] if args.no_tests else args.python:
-                run_tests(r, ver, env_root, tmp / "smoke-cache")
+            for i, ver in enumerate([] if args.no_tests else args.python):
+                # --quick では 3.12 を流さないので、ruff は最初の版で流す
+                run_tests(r, ver, env_root, tmp / "smoke-cache", lint=(i == 0) if args.quick else None)
             if not args.no_wheel:
                 run_wheel(r, [v for v in args.python if v in WHEEL_VERSIONS], tmp)
         r.summary()
