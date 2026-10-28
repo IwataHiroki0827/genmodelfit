@@ -17,6 +17,7 @@
 | 1 つのモデルを調べる(ファイル・ライセンス・見積もり) | `genmodelfit info "Z-Image-Turbo"` | [`info`](#genmodelfit-info) |
 | モデルを ComfyUI に入れる(初めて) | `genmodelfit download "Z-Image-Turbo" --list` で確かめ、`--list` を外して実行 | [download.ja.md](download.ja.md) |
 | 落とす場所を変える | `genmodelfit config set comfyui-dir D:/ComfyUI`(1 回だけなら `--comfyui-dir D:/ComfyUI`) | [download.ja.md「genmodelfit config」](download.ja.md#genmodelfit-config) |
+| ComfyUI が見つからない(`download`・`measure`) | `--comfyui-dir D:/ComfyUI` を付ける(か `genmodelfit config set comfyui-dir D:/ComfyUI` で一度決める) | [download.ja.md「置き場所の決め方」](download.ja.md#置き場所の決め方) |
 | 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
@@ -58,8 +59,9 @@
     無検閲のモデルを落とす同意にもなる。`--uncensored` は `--content all` と同じで、`--content sfw` か
     `--content uncensored` と一緒に使うと使い方の誤り(終了コード 2)。
   - `--all`: `fit` / `search` では全部を出す。`diff` では保守用の内容を足す。`review list` では確認済みも出す。
-  - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数。
-  - `--output` と `--force` は、`update`・`bench`・`contrib` でそれぞれ意味が違う(各コマンドを見る)。
+    `share` / `contrib share` では送ったことにした実測も出す。
+  - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数、`measure` では出す提案の数。
+  - `--output` は `update`・`bench`・`contrib` で、`--force` は `update`・`bench` で、それぞれ意味が違う(各コマンドを見る)。
 - `--json` を付けると、どのコマンドもプログラム向けの JSON を出します。形は [schema.ja.md](schema.ja.md) にあります。
 
 ## 全体のオプション
@@ -182,7 +184,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
   - [`genmodelfit review list`](#genmodelfit-review-list) — 確認待ちの項目と理由
   - [`genmodelfit review approve`](#genmodelfit-review-approve) — 根拠(一次資料の URL)を付けて確認済みにする(一覧のファイルを書き換える)
   - [`genmodelfit review reject`](#genmodelfit-review-reject) — 一覧から外し、update でも入れないように記録する
-- [`genmodelfit bench`](#genmodelfit-bench) — 動いている ComfyUI で実測する
+- [`genmodelfit bench`](#genmodelfit-bench) — 保守する人向け: 動いている ComfyUI で実測する(ふつうは measure)
 - [`genmodelfit contrib`](#genmodelfit-contrib) — 保守する人向け: 実測の提出を作る・検査する・まとめる(送るのは measure と share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — bench が保存した結果から提出用の JSON を作る
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — 送る中身と個人の情報の点検を見せる
@@ -887,8 +889,8 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--print-url] [--all] [--mark-s
 
 ```sh
 genmodelfit share --json
-genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --print-url
-genmodelfit share <cache>/submissions/rtx-3070/2026-10-28-1a2b3c4d.json --json
+genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --print-url
+genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --json
 ```
 
 JSON の出力(`--json`): [schema.ja.md「share」](schema.ja.md#share)
@@ -1200,6 +1202,8 @@ genmodelfit review approve hf:org/model --db src/genmodelfit/data/db.json \
 genmodelfit review reject hf:org/model --db src/genmodelfit/data/db.json --note "商用には使えない"
 ```
 
+詳しくは [schema.ja.md「review」](schema.ja.md#review)、[release.ja.md「毎週のスキル」](release.ja.md#毎週のスキルgenmodelfit-weekly42)
+
 **サブコマンド**: `genmodelfit review list`, `genmodelfit review approve`, `genmodelfit review reject`
 
 ### `genmodelfit review list`
@@ -1269,7 +1273,7 @@ genmodelfit review reject [-h] [--lang {en,ja}] --note NOTE --db PATH [--rejecte
 
 ## `genmodelfit bench`
 
-動いている ComfyUI で実測する
+保守する人向け: 動いている ComfyUI で実測する(ふつうは measure)
 
 **使い方**
 
@@ -1286,6 +1290,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - モデルの名前や ID の一部は受けない。
 - hf: のモデルにはテンプレートが無い(代わりに `--workflow` で API 形式のワークフローを渡す)。
 - 保存した結果はこの PC の判定に使う。
+- bench は保守する人向け。
 - `genmodelfit measure` は、テンプレートの ID を知らなくても同じことをする(モデルを提案し、ComfyUI を探す)。
 - `--share` は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが要る)、「Create」を押す(`genmodelfit share` と同じ)。
 
@@ -1311,7 +1316,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--force` |  |  | GPU が使われている・GPU の空きを確かめられないときも測る |
 | `--source` | `SOURCE` |  | 誰がどこで測ったか(結果の source に入る) |
 | `--note` | `NOTE` |  | 結果の note に足す文 |
-| `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 1)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+| `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 2)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 | `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub の実測のフォームを開く(`genmodelfit share` と同じ。端末でなければ URL を出す)。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
@@ -1364,7 +1369,7 @@ JSON の出力(`--json`): [schema.ja.md「bench」](schema.ja.md#bench)
 genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-実測の提出用 JSON(contrib_schema 1)を作る・送る前に見る・検査する・まとめる(保守する人向け。実測を送るのは `genmodelfit measure` と `genmodelfit share`)。genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
+実測の提出用 JSON(contrib_schema 2)を作る・送る前に見る・検査する・まとめる(保守する人向け。実測を送るのは `genmodelfit measure` と `genmodelfit share`)。genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
 
 ```text
 make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
@@ -1405,11 +1410,13 @@ aggregate [dir] --check
 
 ```sh
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --submission data/contrib/
-genmodelfit contrib show data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json
-genmodelfit contrib share data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json --json
+genmodelfit contrib show data/contrib/<GPU>/<日付>-<sha8>.json
+genmodelfit contrib share data/contrib/<GPU>/<日付>-<sha8>.json --json
 genmodelfit contrib validate data/contrib --json
 genmodelfit contrib aggregate --report --json --fail-on-breach
 ```
+
+詳しくは [schema.ja.md「contrib」](schema.ja.md#contrib)
 
 **サブコマンド**: `genmodelfit contrib make`, `genmodelfit contrib show`, `genmodelfit contrib share`, `genmodelfit contrib validate`, `genmodelfit contrib intake`, `genmodelfit contrib aggregate`
 

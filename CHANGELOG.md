@@ -67,6 +67,13 @@ All notable changes to this project are documented here. The format is based on
 - **`gmf.system_from` judges AMD / Intel / Apple GPUs** (#96): before, a GPU dict with a non-NVIDIA `vendor` was always
   treated as CPU; now it is classified like a detected adapter and used when no NVIDIA GPU is usable (pass
   `gpu_usable=False` for the old CPU-only result). `vendor` is compared without case (`"NVIDIA"` is NVIDIA).
+- **Release notes come from this file**: release.yml takes the tag's section of `CHANGELOG.md` as the GitHub Release
+  body (`tools/changelog_notes.py`, instead of `--generate-notes`) and stops before publishing when that section is
+  missing, empty or still `Unreleased`. docs/release.md "Releasing a version" replaces the first-release steps.
+- Documentation audit: private setup details (paths, key backup location, the maintainer's PC) removed from the docs
+  (a test keeps them out), stale levels and versions corrected (8 GB Z-Image Turbo int8 and Wan 2.1 1.3B are Good
+  offloaded since 0.11.0), `measure` / `share` added to the JSON envelope, the Japanese "Details" lines of `review` /
+  `contrib` restored in docs/commands, a Japanese contact link on the issue page, and `Operating System :: MacOS`.
 
 ## [0.11.0] - 2026-10-28
 
@@ -144,6 +151,7 @@ All notable changes to this project are documented here. The format is based on
   PR body and `gpu_watch.json`: candidates "not in tables" / "differs" and the sources that could not be read. It never
   rewrites the tables, never raises, and does not affect `ok` or the safe automatic merge. `--no-gpu-watch` skips it;
   `python -m genmodelfit.gpuwatch` runs it by hand.
+
 ### Changed
 
 - **One GitHub account is one source, one pull request at most one** (#113): other users' submissions are counted as
@@ -1260,7 +1268,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[0.11.0]: https://github.com/laxshmate/genmodelfit/compare/v0.10.1...HEAD
+[0.12.0]: https://github.com/laxshmate/genmodelfit/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.11.0
 [0.10.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.1
 [0.10.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.0
 [0.9.2]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.9.2

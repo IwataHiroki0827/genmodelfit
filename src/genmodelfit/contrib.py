@@ -8,7 +8,7 @@
 自分で Pull Request を出す):
 
 1. `genmodelfit measure`(#113)・`genmodelfit bench ... --submission <path>`
-   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 1)を作る。
+   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 2)を作る。
    入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・ComfyUI の版・
    OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
    モデル ID・設定・結果・最大 VRAM / メモリ・時間・測り方・日付(UTC の日付だけ)。
@@ -667,7 +667,7 @@ def _clean_settings(s: Settings | dict[str, Any]) -> dict[str, Any]:
 def build_submission(
     m: Measurement, system: SystemInfo | None = None, *, extra_secrets: list[str] | None = None
 ) -> dict[str, Any]:
-    """bench の実測 1 件 → 提出用の JSON(contrib_schema 1)。
+    """bench の実測 1 件 → 提出用の JSON(contrib_schema 2)。
 
     system は測った PC(ComfyUI が同じ PC のときだけ渡す)。OS の種類・メインメモリ・GPU の世代を取る。
     GPU の世代は、測った GPU と同じ名前の GPU が system にあればその値、無ければ GPU 名の表から推す。
@@ -2080,8 +2080,7 @@ def community_effect(
     """ほかの利用者の実測を足したときの (全部載せの VRAM が変わる割合(符号つき。絶対値の最大のもの),
     段階が変わる PC の一覧)。ほかの利用者の実測は同じ GPU の PC にだけ使われる(0.9.0)ので、PC は実測と同じ
     GPU(名前・型番 ID・会社、VRAM は実測の GPU の総量)× メインメモリ CHECK_RAM_GB。既定の設定
-    (と settings を渡せばその設定)で比べる。同じ GPU で段階が上がる・NVIDIA 以外の good の上限が
-    外れるのも出る。"""
+    (と settings を渡せばその設定)で比べる。同じ GPU で段階が上がるのも出る。"""
     from .estimate import estimate, measurement_vendor, nvidia_vram_variants
 
     rise = 0.0

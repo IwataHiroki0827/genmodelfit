@@ -89,7 +89,7 @@ settings, `--force`). It also explains in detail what is measured and checked, w
 3. Measure:
 
 ```powershell
-pip install -U "genmodelfit>=0.9.1"
+pip install -U "genmodelfit>=0.11.0"
 genmodelfit bench image_z_image_turbo_int8 --url http://127.0.0.1:8188 --resolution 1024x1024 --steps 6
 genmodelfit bench text_to_video_wan --url http://127.0.0.1:8188 --resolution 832x480 --frames 81 --steps 20
 genmodelfit bench audio_ace_step_1_5_checkpoint --url http://127.0.0.1:8188 --length 30 --steps 8
@@ -159,7 +159,7 @@ pip install -e .
 genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 1024x1024 --submission data/contrib/
 ```
 
-- The file is a submission file (`contrib_schema` 1). If you pass a folder to `--submission`, the file is written as `data/contrib/<GPU>/<date>-<sha8>.json`. Example: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`, where `sha8` is the first 8 hex digits of the content's sha256. If you pass a file name, it is written under that name.
+- The file is a submission file (`contrib_schema` 2). If you pass a folder to `--submission`, the file is written as `data/contrib/<GPU>/<date>-<sha8>.json`. Example: `data/contrib/rtx-3070/2026-10-21-1a2b3c4d.json`, where `sha8` is the first 8 hex digits of the content's sha256. If you pass a file name, it is written under that name.
 - Pass the folder with a trailing `/` (`data/contrib/`). On a first submission the folder does not exist yet, and without the `/` a file named `data/contrib` is created.
 - You can also create it from a result you measured and saved earlier (`<cache>/measurements/....json` or a file from `--output`): `genmodelfit contrib make --from <bench result> --output data/contrib/`
 - If ComfyUI was on another PC, add `--no-pc-info` to leave out this PC's OS, memory and GPU generation.
@@ -213,7 +213,7 @@ This prints everything in the file in readable form, and prints the result of a 
    - Do not change other files (put code changes in a separate PR).
    - The `Contrib` workflow fails a PR that changes files outside data/contrib.
    - A submission PR **only adds files**. A PR that deletes, modifies or renames an existing file in data/contrib, adds a file whose name or place is not `<GPU>/<date>-<sha8>.json` (lowercase `.json`), or adds no submission at all also fails (#90).
-   - To fix a submission you sent before, send the fixed one as a new file and write the old file's name and the reason in the PR description. The maintainer removes the old file (docs/release.md "Releasing later versions").
+   - To fix a submission you sent before, send the fixed one as a new file and write the old file's name and the reason in the PR description. The maintainer removes the old file (docs/release.md "Releasing a version").
 2. Create a branch, commit, and push to your fork:
 
    ```powershell

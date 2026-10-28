@@ -160,7 +160,7 @@ Hub API の safetensors の集計は .safetensors だけ)、csm-1b(Hub API は F
 
 ### 任意の部品
 
-0.11.0 で足した(#81)。テンプレートの既定の値で読み込まれない部品のファイルに `optional`(と `optional_replaces`)を付ける
+0.12.0 で足した(#81)。テンプレートの既定の値で読み込まれない部品のファイルに `optional`(と `optional_replaces`)を付ける
 (`optional.optional_files`。update とテンプレートの読み直しが毎回作り直す。形は [schema.ja.md](schema.ja.md)「Models」、
 見積もりへの効き方は [accuracy.ja.md](accuracy.ja.md)「ファイルの数え方」)。ComfyUI のコードは import せず、v0.43.0(426f5ee)の
 動きをテンプレートの JSON の上でまねる。
@@ -495,7 +495,7 @@ auto(HEAD の期限を見ないとき)は 83 → 99。新しく auto になる 1
    (https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B のカードは 17 言語で、「Performance varies by language」は歌の話。
    歌の入らない `audio_ace_step_1_t2a_instrumentals` の指示にも 17 言語が付いていた)。歌の言語は手の表で書く
 3. **カードが無い(言語が書いていない)ときだけ、文字を読む部品の表**: 表に当たれば `["en"]`。
-   テンプレートの既定の値で読み込まない部品([「任意の部品」](#任意の部品)。0.11.0、#81)は材料にしない
+   テンプレートの既定の値で読み込まない部品([「任意の部品」](#任意の部品)。0.12.0、#81)は材料にしない
    (カードを読む本体も、既定で読み込む本体だけ)。
    多言語の部品でも、表だけでは `ja` を付けない(部品が読める言語と、モデルが学習した説明文の言語は違う。
    Wan・Qwen-Image・HunyuanVideo 1.5 は多言語の部品を使うが、カードは `en` `zh`。Kandinsky 5・Anima のように
@@ -537,7 +537,7 @@ https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B のカードに合わせて `en` `
 カードが案内する https://github.com/ace-step/ACE-Step の README「Supports 19 languages with top 10 well-performing languages
 including: English, Chinese, Russian, Spanish, Japanese, German, French, Portuguese, Italian, Korean」)。指示は音楽の規則で
 `en`。歌の入らない `audio_ace_step_1_t2a_instrumentals` には付けない。
-残りの 4 件は Qwen-Image 2.1(0.11.0、#81): 指示の書き直しの部品(`qwen3.5_9b_…_pe_*`)を任意の部品にして言語の材料から外すと、
+残りの 4 件は Qwen-Image 2.1(0.12.0、#81): 指示の書き直しの部品(`qwen3.5_9b_…_pe_*`)を任意の部品にして言語の材料から外すと、
 文字を読む部品が表に無い `qwen3vl_8b` だけになり、言語が決まらなくなる。そこで 4 件とも `prompt` に `en` を書いた(根拠は
 公式テンプレートの既定の指示が英語であること。テンプレートは一次資料)。`image_qwen_image_2_1_image_edit` だけ `ja` も足した:
 オーナーが実機(RTX 3070 8GB、公式の `qwen_image_2.1_int8_convrot`、このテンプレートと同じノード構成)で日本語の指示を翻訳せずに

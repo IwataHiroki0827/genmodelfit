@@ -56,7 +56,7 @@ llmfit の `llmfit-core/src/hardware.rs`(コミット bffd1b6、MIT)は考え方
   - 空きが分からず総量と使用量があれば 総量 − 使用量。
   - 単位付き(`8192 MiB`)・カンマの小数点(`8,6`)も読む。
 - VRAM の総量が返らない GPU(メモリを CPU と共有するもの)は判定に使わない(backend `none`、理由付き)。ただし DGX Spark(GB10)は統合メモリの GPU として使う(0.11.0。下の「DGX Spark(GB10)」)。
-- `compute_cap` を知らない古い nvidia-smi は「Field "compute_cap" is not a valid field to query.」で終了コード 2 になる(この PC で存在しない項目を聞いて確かめた。どのドライバの版で入ったかは一次資料で確かめられなかった)。
+- `compute_cap` を知らない古い nvidia-smi は「Field "compute_cap" is not a valid field to query.」で終了コード 2 になる(開発用の PC で存在しない項目を聞いて確かめた。どのドライバの版で入ったかは一次資料で確かめられなかった)。
   - そのときは `compute_cap` を除いて聞き直し、GPU 名の表(`hardware._NAME_CC`)から推す。
   - 迷う名前(ノート用の GTX 960M など、同じ型番で世代が混ざるもの)は推さない。
   - 表は NVIDIA の一覧(https://developer.nvidia.com/cuda-gpus 、https://developer.nvidia.com/cuda-legacy-gpus)に合わせた。
@@ -139,7 +139,7 @@ WSL の nvidia-smi は Windows のドライバの版を返すので、Windows �
 | Ada | 8.9 | cu126〜cu132(8.6 の機械語) | 同上 | GPU |
 | Hopper | 9.0 | cu126〜cu132 | 同上 | GPU |
 | Blackwell | 10.x, 12.x | cu128〜cu132 | 570(世代の最低)/ 580(cu13x) | GPU |
-| それより新しい | 13.x〜 | なし | — | **GPU**(断らず「表より新しい世代。最新の PyTorch を使う」と注意。0.11.0 まで CPU) |
+| それより新しい | 13.x〜 | なし | — | **GPU**(断らず「表より新しい世代。最新の PyTorch を使う」と注意。0.10 まで CPU) |
 
 - 動くビルドが 1 つも無い世代、またはドライバがどのビルドにも足りないときは、backend `none` にして CPU として判定する。理由は `Gpu.notes` と `SystemInfo.notes` に書く(「ドライバを更新すれば GPU で動く」かどうかも書く)。
 - 世代が分からない(nvidia-smi も名前の表も分からない)・ドライバの版が読めないときは断らない(分からないと書く)。
@@ -424,7 +424,7 @@ GPU の名前から世代を決める表:
   - PNPDeviceID が `PCI\` で始まらないもの(仮想の画面・リモートデスクトップの画面)は捨てる。
   - OS の版はビルド番号(22000 以上が Windows 11)。
   - `AdapterRAM` は uint32(Microsoft の Win32_VideoController の説明: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-videocontroller)なので、4 GiB 以上は 4293918720 前後で頭打ちになる。この値以上は使わない。
-  - VRAM はレジストリ `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx` の `HardwareInformation.qwMemorySize`(REG_QWORD。この PC の RTX 3070 で 8589934592)を使う。
+  - VRAM はレジストリ `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\00xx` の `HardwareInformation.qwMemorySize`(REG_QWORD。8 GB の GPU なら 8589934592)を使う。
     - Microsoft の文書(https://learn.microsoft.com/en-us/windows-hardware/drivers/display/registering-hardware-information)にあるのは `HardwareInformation.MemorySize`(ULONG、MB と書いてあるが実際のドライバはバイトで書く。llmfit の場合分けと同じ)だけ。qwMemorySize はドライバの慣習。
     - 64 MiB 未満は単位の違いとみなして使わない。
   - レジストリの項目の突き合わせ:
@@ -551,7 +551,7 @@ ComfyUI の CPU での動き:
 | psutil がメモリを読めない | Windows は `GlobalMemoryStatusEx`、Linux は `/proc/meminfo`、macOS は `sysctl -n hw.memsize` で読む。どれも読めなければ量は「分からない」(`Memory.total` が None。出力の `ram_total_gb` は 0 = 不明)とし、「--ram で指定する」と notes に書く。見積もりは 0 を「分からない」として扱い、メインメモリでは断らない。内蔵 GPU・APU・Apple は、メインメモリの分が分からないので、取り分けた VRAM・GTT が読めなければ理由を書いて CPU で判定する | psutil の失敗は OS ごとに違う(実装の判断) |
 | MemAvailable の無い古いカーネル | 空き = MemFree + Cached | Linux `Documentation/filesystems/proc.rst`「MemAvailable」 |
 | コンテナ(cgroup v2・v1) | `/proc/self/cgroup` の自分の cgroup(v2 は `0::/path`、v1 は `N:memory:/path`)から根へたどり、上限(`memory.max`・`memory.limit_in_bytes`)の一番小さいものを搭載量に、空きは 上限 − 使用量(`memory.current`・`memory.usage_in_bytes`)。`max` は上限なし。名前空間の中ではパスが `/` なので根だけを読む | https://docs.kernel.org/admin-guide/cgroup-v2.html 「memory.max」「memory.current」、https://docs.kernel.org/admin-guide/cgroup-v1/memory.html 「memory.limit_in_bytes」 |
-| PyTorch の表より新しい compute capability(13.0 など) | 断らない(`cuda` のまま)。「表より新しい世代。最新の PyTorch を使う」と注意。断るのは表より古い世代だけ | CLAUDE.md の決まり「世代が分からないときは断らない」と同じ扱い |
+| PyTorch の表より新しい compute capability(13.0 など) | 断らない(`cuda` のまま)。「表より新しい世代。最新の PyTorch を使う」と注意。断るのは表より古い世代だけ | 「世代が分からないときは断らない」決まりと同じ扱い |
 | Linux の aarch64 / ppc64le / riscv64 など | `_machine()` は知らない種類を x86_64 にしない。表(`TORCH_CUDA_BUILDS` の鍵)に無ければ「この機械向けの PyTorch の CUDA 版は無い」で CPU | 上の「PyTorch の CUDA 版のビルドが対応する compute capability」 |
 | Windows の Arm64 + NVIDIA | 表は (OS, 機械) で引く(`torch_platform`)。Windows の Arm64 向けの CUDA 版は無いので CPU | https://download.pytorch.org/whl/ の各 cu の索引(`win_arm64` の CUDA 版が無い) |
 | 32 ビットの Python | 注意だけ(「PyTorch は 64 ビットの Python にしか無い」) | https://download.pytorch.org/whl/ の各 cu の索引(32 ビットの win32・i686 の wheel が無い) |
@@ -626,12 +626,12 @@ ComfyUI の CPU での動き:
 - 形(大文字小文字を区別しない。語は 10 個まで): `NAME := [NVIDIA] BRAND* CORE SUFFIX*`
   - BRAND: GeForce, Quadro, Tesla, GRID, TITAN, RTX, PRO, GTX, GTS, GT, MX, CMP, NVS, FX, DGX
   - CORE はちょうど 1 つ: `PREFIX? \d{1,4}[A-Z]{0,3}` に `(-(SXM\d?|PCIE|DGXS|FHHL|Ada|\d{1,3}GB|\d{1,3}[ABCQE]|\d{1,3}))*` を許す。PREFIX は NVIDIA の系列の頭だけ(A・B・H・L・T・P・V・K・M・MX・GB・GH・GA・GP・GV・GK・GM、vGPU の RTX6000-24Q の RTX)。「TY1985」「KEN1990」「tom99」は型番にならない。TITAN の直後だけ `V|X|Xp|Z|Black|RTX` も。型番の語の無い初代の「GeForce GTX TITAN」も通す
-  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)`、括弧の世代名(`(Pascal)` など)、A, AC。数字だけの語(「RTX 4090 A 1985」の 1985)と同じ語の繰り返し(「Ti Ti」「8GB 8GB」)は通さない(v2 の「数字だけの語は 1 個まで」から締めた。Checker の指摘)
+  - SUFFIX: Ti, SUPER, D, v2, Ultra, GTX, GTS, GT, GX2, OEM, Laptop, GPU, Max-Q, with, Design, Workstation, Server, Edition, Generation, Ada, Blackwell, Embedded, SFF, Active, PCIe, NVL, `SXM\d?`, `HBM\d+e?`, `\d{1,4}(GB|MB)`、括弧の世代名(`(Pascal)` など)、A, AC。数字だけの語(「RTX 4090 A 1985」の 1985)と同じ語の繰り返し(「Ti Ti」「8GB 8GB」)は通さない(v2 の「数字だけの語は 1 個まで」から締めた。確認の指摘)
 - 形に合わない名前は誤りではなく確認 `gpu_name_form`(メンテナが確かめる。人名などは本人が `contrib show` で見る。今の個人の情報の点検が受け止める)。形に合うが表(`_NAME_CC`)に無い名前は確認 `unknown_gpu`(判定には使う)。新しい系列の語は語の表に 1 語足す(製品ごとではない)。
-- 名前の公称の VRAM(`estimate.NVIDIA_NOMINAL_VRAM`)に合わない量は誤りから確認 `gpu_vram_nominal` に下げた(中国の改造品の 4090 48 GB などがあるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る)。
+- 名前の公称の VRAM(`estimate.NVIDIA_NOMINAL_VRAM`)に合わない量は誤りから確認 `gpu_vram_nominal` に下げた(改造された 4090 48 GB などがあるため。別の VRAM の PC に混ざらないことは VRAM の比 0.95 が守る)。
 - `_NAME_CC`(名前 → compute capability)は古いドライバのときの世代の推定と、提出の compute capability の食い違いの点検だけに使う。
 - 提出の名前の文字に、括弧の世代名(`(Pascal)` など、世代の名前だけ)を許した。
-- 試験: 実在の名前(検証の 35 個と hwaudit の一覧、Checker の約 140 個。Tesla V100-DGXS-32GB・P106-100・RTX6000-Ada-48Q・MX450 など)は通り、作った名前(電話番号・イニシャル + 年・名前 + 数字・「ABC123 XYZ99」)は通らない(`tests/test_contrib_robust.py`)。一覧のうち `NVIDIA Graphics Device`(汎用)・`Orin (nvgpu)`・`NVIDIA Thor`(Jetson の語は BRAND に無い)・人名入りの名前は通らない。
+- 試験: 実在の名前(実在の GPU の一覧から集めたもの。Tesla V100-DGXS-32GB・P106-100・RTX6000-Ada-48Q・MX450 など)は通り、作った名前(電話番号・イニシャル + 年・名前 + 数字・「ABC123 XYZ99」)は通らない(`tests/test_contrib_robust.py`)。一覧のうち `NVIDIA Graphics Device`(汎用)・`Orin (nvgpu)`・`NVIDIA Thor`(Jetson の語は BRAND に無い)・人名入りの名前は通らない。
 
 ### 既知の限界
 
@@ -653,7 +653,7 @@ ComfyUI の CPU での動き:
   - `commit_limit_gb`・`commit_used_gb` に出す。
   - 今のページファイルの大きさは 上限 − 物理メモリ(`swap_total_gb`)。
 - ページファイルの設定: レジストリ `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management` の `PagingFiles`(REG_MULTI_SZ)。
-  - この PC は `?:\pagefile.sys`(すべてのドライブで自動)。
+  - `?:\pagefile.sys` はすべてのドライブで自動。
   - `C:\pagefile.sys 0 0`・大きさの無い行はシステム管理。
   - `C:\pagefile.sys 1024 4096` は最小・最大 MB。
   - 空はページファイル無し。
@@ -673,7 +673,7 @@ ComfyUI の CPU での動き:
 
 ## 画面などが使う VRAM(今の空き)
 
-- nvidia-smi の `memory.used`・`memory.free` を `vram_used_gb`・`vram_free_gb` に出す(この PC は画面・ブラウザなどで約 3.6 GB 使用中)。
+- nvidia-smi の `memory.used`・`memory.free` を `vram_used_gb`・`vram_free_gb` に出す(画面・ブラウザなどのほかのプログラムも VRAM を使う)。
 - **段階は総量で決める**(使う VRAM はほかのアプリを閉じれば空くため)。
   - 判定した動かし方で要る VRAM が今の空きより多いときは、見積もりの `vram_free_short: true` と「今の空き VRAM は … ほかのアプリを閉じれば動く」の理由で知らせる。
 - 目安の予約: ComfyUI は Windows で 600 MB(VRAM が 15 GB を超える GPU は 700 MB)、それ以外で 400 MB を、ほかのアプリのために空けておく(`EXTRA_RESERVED_VRAM`)。
@@ -701,7 +701,7 @@ ComfyUI の CPU での動き:
 
 ## 時間
 
-この PC(Windows 11、RTX 3070、i7-13700KF、ほかの作業で負荷あり)で 2026-10-20 に測った中央値:
+開発用の PC(Windows 11、NVIDIA の GPU、ほかの作業で負荷あり)で 2026-10-20 に測った中央値:
 
 | 調べ方 | 時間 |
 |---|---|
@@ -714,10 +714,10 @@ nvidia-smi だけを 15 回ずつ交互に動かすと、項目を増やした�
 ## 試験
 
 - `tests/test_hardware.py`・`tests/test_vendors.py`(AMD・Intel・Apple・APU・CPU で動く系統・#26)・`tests/test_detect_everywhere.py`(すべての環境・GB10・WSL2。#101)と `tests/fixtures/hardware/`。
-- bench が NVIDIA 以外の GPU の使用率・使用中のメモリを読む道具(`gpustat.py`)は、`tests/test_gpustat.py`(公式の文書・ソースの出力例と、この PC の typeperf の実際の出力)と `tests/test_bench_vendors.py`。
+- bench が NVIDIA 以外の GPU の使用率・使用中のメモリを読む道具(`gpustat.py`)は、`tests/test_gpustat.py`(公式の文書・ソースの出力例と、開発用の PC の typeperf の実際の出力)と `tests/test_bench_vendors.py`。
 - 既定の試験は本物の nvidia-smi・PowerShell・lspci・レジストリを呼ばない(`tests/conftest.py` の `_no_real_hardware` が `hardware._run`・`_reg_display_entries`・`_reg_paging_files`、0.11.0 から sysfs の部品の一覧・amdkfd・WSL2 の状態も塞ぐ)。
 - フィクスチャ:
-  - この PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)。
+  - 開発用の PC の nvidia-smi・WMI・レジストリの実際の出力(個体の ID は 0 に置き換えた)。
   - 複数の GPU、compute_cap の無い古い版、`[N/A]`、壊れた出力、ドライバが動いていない・GPU が無いときの出力。
   - AMD だけ・Intel + NVIDIA・ドライバの無い NVIDIA の WMI、取り外した GPU が残るレジストリ、lspci。
 - 確かめること:

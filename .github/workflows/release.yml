@@ -1,6 +1,6 @@
 name: Release
 
-# v* のタグを push すると、テスト → ビルド → PyPI へ公開 → GitHub Release の順に進む。
+# v* のタグを push すると、テスト → ビルド → PyPI へ公開 → GitHub Release(本文は CHANGELOG のその版の節)の順に進む。
 # 公開は environment pypi(承認者なし。v* のタグからしか使えない)。v* のタグは管理者だけが作れる(ルールセット)。
 # 手動実行(workflow_dispatch)はビルドまでで、タグを選んで手動実行しても公開しない(event_name で弾く)。
 # 手順は docs/release.md。
@@ -57,12 +57,23 @@ jobs:
           test "${GITHUB_REF_NAME}" = "v${ver}" || { echo "::error::タグと _version.py の版が違います"; exit 1; }
           test -f "dist/genmodelfit-${ver}-py3-none-any.whl" || { echo "::error::wheel の版が違います"; exit 1; }
           test -f "dist/genmodelfit-${ver}.tar.gz" || { echo "::error::sdist の版が違います"; exit 1; }
+      - name: CHANGELOG のその版の節に日付があるか確かめ、Release の本文を取り出す
+        # タグを打つ前に CHANGELOG の Unreleased を日付にする(docs/release.md「版を出す手順」)。
+        # 節が無い・日付が無い・中身が空なら失敗し、PyPI にも出さない。本文は dist に入れない(PyPI に上げないため)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 tools/changelog_notes.py "${GITHUB_REF_NAME}" --out release-notes/notes.md
       - name: Check
         run: uvx twine check --strict dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-notes
+          path: release-notes/
           if-no-files-found: error
 
   publish:
@@ -91,9 +102,14 @@ jobs:
         with:
           name: dist
           path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes/
       - name: GitHub Release を作る
+        # 本文は CHANGELOG.md のその版の節(build で tools/changelog_notes.py が取り出したもの)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes
+            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file release-notes/notes.md

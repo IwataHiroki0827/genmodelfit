@@ -416,7 +416,8 @@ def check_table(rows: list[dict]) -> list[str]:
         "|---|---|---|---|---|---:|---:|---:|",
     ]
     for x in rows:
-        who = tr("ほかの利用者", "other users") if x["origin"] == "community" else tr("作者", "author")
+        community = x["origin"] == "community"
+        who = tr("ほかの利用者", "other users") if community else tr("メンテナ", "maintainer")
         if x["origin"] == "community" and x.get("n_submissions"):
             who += tr(f"({x['n_submissions']} 件)", f" ({x['n_submissions']})")
         err = tr("張り付き", "censored") if x["censored"] else f"{x['error_pct']:+.0f}%"

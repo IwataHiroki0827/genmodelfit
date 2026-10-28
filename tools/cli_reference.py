@@ -49,6 +49,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Check one model (files, licenses, estimate) | `genmodelfit info "Z-Image-Turbo"` | [`info`](#genmodelfit-info) |
 | Put a model into ComfyUI (first time) | `genmodelfit download "Z-Image-Turbo" --list`, then the same without `--list` | [download.md](download.md) |
 | Change where downloads go | `genmodelfit config set comfyui-dir D:/ComfyUI` (once only: `--comfyui-dir D:/ComfyUI`) | [download.md, "genmodelfit config"](download.md#genmodelfit-config) |
+| ComfyUI is not found (`download` / `measure`) | add `--comfyui-dir D:/ComfyUI` (or set it once with `genmodelfit config set comfyui-dir D:/ComfyUI`) | [download.md, "Choosing the place"](download.md#choosing-the-place) |
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
@@ -91,9 +92,12 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
     search looks at, and `uncensored` / `all` also count as consent to download uncensored models.
     `--uncensored` is the same as `--content all`; together with `--content sfw` or `--content uncensored` it is a
     usage error (exit code 2).
-  - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`.
-  - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`.
-  - `--output` and `--force` mean different things in `update`, `bench` and `contrib` (see each command).
+  - `--all`: everything in `fit` / `search`; the maintenance view in `diff`; approved entries too in `review list`;
+    measurements already sent too in `share` / `contrib share`.
+  - `--limit` / `-n`: rows in `recommend` / `fit` / `search`; lines per section in `diff`; suggestions listed in
+    `measure`.
+  - `--output` means different things in `update`, `bench` and `contrib`, and `--force` in `update` and `bench`
+    (see each command).
 - With `--json` every command prints JSON for programs; the shapes are in [schema.md](schema.md).
 
 ## Global options
@@ -203,6 +207,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | 1 つのモデルを調べる(ファイル・ライセンス・見積もり) | `genmodelfit info "Z-Image-Turbo"` | [`info`](#genmodelfit-info) |
 | モデルを ComfyUI に入れる(初めて) | `genmodelfit download "Z-Image-Turbo" --list` で確かめ、`--list` を外して実行 | [download.ja.md](download.ja.md) |
 | 落とす場所を変える | `genmodelfit config set comfyui-dir D:/ComfyUI`(1 回だけなら `--comfyui-dir D:/ComfyUI`) | [download.ja.md「genmodelfit config」](download.ja.md#genmodelfit-config) |
+| ComfyUI が見つからない(`download`・`measure`) | `--comfyui-dir D:/ComfyUI` を付ける(か `genmodelfit config set comfyui-dir D:/ComfyUI` で一度決める) | [download.ja.md「置き場所の決め方」](download.ja.md#置き場所の決め方) |
 | 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
@@ -244,8 +249,9 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
     無検閲のモデルを落とす同意にもなる。`--uncensored` は `--content all` と同じで、`--content sfw` か
     `--content uncensored` と一緒に使うと使い方の誤り(終了コード 2)。
   - `--all`: `fit` / `search` では全部を出す。`diff` では保守用の内容を足す。`review list` では確認済みも出す。
-  - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数。
-  - `--output` と `--force` は、`update`・`bench`・`contrib` でそれぞれ意味が違う(各コマンドを見る)。
+    `share` / `contrib share` では送ったことにした実測も出す。
+  - `--limit` / `-n`: `recommend` / `fit` / `search` では行の数、`diff` では節ごとの行の数、`measure` では出す提案の数。
+  - `--output` は `update`・`bench`・`contrib` で、`--force` は `update`・`bench` で、それぞれ意味が違う(各コマンドを見る)。
 - `--json` を付けると、どのコマンドもプログラム向けの JSON を出します。形は [schema.ja.md](schema.ja.md) にあります。
 
 ## 全体のオプション
@@ -764,7 +770,7 @@ def _render_help(text: str, command: str, lang: str, pairs) -> list[str]:
                         json_done = True
                     prose.append([])
                     continue
-                if re.match(r"(Details|詳しくは)[: ]+docs/schema\.md\S*$", s):
+                if re.match(r"(Details|詳しくは)[: ]+docs/schema\.md$", s):
                     if not json_done:
                         link = _schema_link(command, lang)
                         if link:
