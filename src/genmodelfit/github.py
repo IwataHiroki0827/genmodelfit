@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -626,6 +627,21 @@ def branch_exists(session: Any, token: str, fork: str, branch: str) -> bool:
     return status == 200
 
 
+def fork_base(session: Any, token: str, fork: str) -> str:
+    """前からあるフォークで、ブランチを作る元のコミット: 本家の main とフォークの main の共通の祖先。
+    古いフォークには本家の新しいコミットが無く、それを指すブランチは作れない(POST git/refs が 404)。
+    フォークを本家に合わせる(merge-upstream)のは、本家のワークフローが変わっていると workflow の scope が
+    要り、断られる(2026-10-29 の本番で両方とも見つかった)。共通の祖先は両方にあり、PR の差分は足した
+    ファイルだけになる。比べられなければ本家の main の先頭(作ったばかりのフォークと同じ)。"""
+    owner = fork.split("/", 1)[0]
+    status, body = _api(session, token, "GET", f"/repos/{UPSTREAM}/compare/main...{quote(owner)}:main")
+    if status == 200 and isinstance(body, dict):
+        sha = (body.get("merge_base_commit") or {}).get("sha")
+        if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha):
+            return sha
+    return upstream_head(session, token)
+
+
 def create_branch(
     session: Any,
     token: str,
@@ -741,7 +757,8 @@ def submit(
         say(tr(f"開いている PR に足します: {pr_url}", f"adding to your open PR: {pr_url}"))
     else:
         pr_url = None
-        create_branch(session, token, login_name, fork, branch, upstream_head(session, token), sleep=sleep)
+        base = upstream_head(session, token) if fresh else fork_base(session, token, fork)
+        create_branch(session, token, login_name, fork, branch, base, sleep=sleep)
     uploaded: list[str] = []
     skipped: list[str] = []
     for path, text in files:

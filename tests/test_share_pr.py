@@ -43,6 +43,9 @@ class Resp:
         return self._body
 
 
+OLD_BASE = "4" * 40  # 古いフォークの main の先頭(本家との共通の祖先)
+
+
 class FakeGitHub:
     """GitHub の API の偽物。呼ばれた順と中身を calls に残す。"""
 
@@ -56,7 +59,12 @@ class FakeGitHub:
         polls=None,
         on_main=(),
         branches=(),
+        stale=False,
+        diverged=False,
     ):
+        # stale: 前からあるフォークで、本家の新しいコミットが無い(合わせるまで、それを指すブランチは 404)
+        self.stale = stale
+        self.diverged = diverged
         self.on_main = set(on_main)
         self.branches = set(branches)
         self.calls: list[tuple[str, str, dict]] = []
@@ -105,7 +113,11 @@ class FakeGitHub:
             return Resp(200, self.open_prs)
         if method == "GET" and path == f"{UP}/git/ref/heads/main":
             return Resp(200, {"object": {"sha": "abc123"}})
+        if method == "GET" and path == f"{UP}/compare/main...alice:main":
+            return Resp(200, {"status": "behind", "merge_base_commit": {"sha": OLD_BASE}})
         if method == "POST" and path == f"{FORK}/git/refs":
+            if self.stale and kw["json"]["sha"] != OLD_BASE:
+                return Resp(404, {"message": "Not Found"})  # 古いフォークに無いコミット
             name = kw["json"]["ref"][len("refs/heads/") :]
             if name in self.branches:
                 return Resp(422, {"message": "Reference already exists"})
@@ -142,6 +154,8 @@ class FakeGitHub:
                 out.append("list-prs" if method == "GET" else "open-pr")
             elif path.endswith("/git/ref/heads/main"):
                 out.append("head")
+            elif "/compare/" in path:
+                out.append("base")
             elif path.endswith("/git/refs"):
                 out.append("branch")
             elif "/git/ref/heads/" in path:
@@ -1152,3 +1166,38 @@ def test_file_with_measure_flags_is_a_usage_error(capsys):
     p = _write_sub(1)
     assert cli.main(["share", str(p), "--no-measure"]) == 2
     assert cli.main(["share", str(p), "--download"]) == 2
+
+
+def test_old_fork_branches_from_the_common_base(monkeypatch):
+    # 前からあるフォークは本家の新しいコミットを持たず、本家の先頭からのブランチは 404。フォークを合わせるのは
+    # workflow の scope が要るので、共通の祖先から作る(2026-10-29 の本番)
+    fake = FakeGitHub(fork_exists=True, stale=True)
+    creds = github.Credentials(token="t", login="alice", source="env")
+    r = github.submit(
+        fake,
+        creds,
+        [("data/contrib/rtx-3070/a.json", "{}")],
+        title="t",
+        body="b",
+        branch="genmodelfit-share/rtx-3070/aaaa",
+        match_prefix="genmodelfit-share/rtx-3070/",
+        sleep=lambda s: None,
+    )
+    steps = fake.steps()
+    assert steps.index("base") < steps.index("branch") and r.pr_url
+    ref = next(kw for m, u, kw in fake.calls if u.endswith("/git/refs"))["json"]
+    assert ref["sha"] == OLD_BASE
+    assert not any(u.endswith("/merge-upstream") for _m, u, _kw in fake.calls)  # フォークの main は変えない
+    # 作ったばかりのフォークは本家の先頭から
+    fresh = FakeGitHub()
+    github.submit(
+        fresh,
+        creds,
+        [("data/contrib/rtx-3070/a.json", "{}")],
+        title="t",
+        body="b",
+        branch="genmodelfit-share/rtx-3070/aaaa",
+        match_prefix="genmodelfit-share/rtx-3070/",
+        sleep=lambda s: None,
+    )
+    assert "base" not in fresh.steps()
