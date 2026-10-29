@@ -2007,11 +2007,12 @@ def _new_field_lines(data: dict[str, Any]) -> list[str]:
                 f"見積もり:   段階 {level}・動かし方 {mode}・VRAM {gb['vram_gb']}(仕上げまで載せたまま"
                 f" {gb['vram_resident_gb']}・作業用メモリ {gb['work_gb']})・メモリ {gb['ram_required_gb']}・"
                 f"時間 {_num_text(est.get('seconds'), ' 秒')}・根拠 {basis}"
-                "(この実測と、この PC のほかの実測を使わずに作った予測)",
+                "(この実測と、同じ GPU・同じモデルの実測を使わずに作った予測)",
                 f"Estimate:   level {level}, run {mode}, VRAM {gb['vram_gb']} (kept loaded to the end"
                 f" {gb['vram_resident_gb']}, working memory {gb['work_gb']}), RAM {gb['ram_required_gb']},"
                 f" time {_num_text(est.get('seconds'), ' s')}, basis {basis}"
-                " (the prediction made without this measurement or other measurements from this PC)",
+                " (the prediction made without this measurement or other measurements of this model on"
+                " this GPU)",
             )
         )
     t = mm.get("timing")
@@ -3892,6 +3893,8 @@ def _share_collect(args: argparse.Namespace, r: dict[str, Any]) -> None:
     m = r.get("measurement")
     if m is not None and getattr(m, "gpu_name", None) and getattr(m, "gpu_vram_gb", None):
         args._share_gpu = m
+    if r.get("comfyui_version") and not getattr(args, "_share_comfy_version", None):
+        args._share_comfy_version = r["comfyui_version"]
 
 
 def _share_write_failures(
@@ -3939,6 +3942,7 @@ def _share_write_failures(
         version = None
     else:
         return None  # どの GPU の記録か分からない(ComfyUI が別の PC で、何も測れなかった)
+    version = version or getattr(args, "_share_comfy_version", None)
     if not version and checker is not None and hasattr(checker, "comfyui_version"):
         version = checker.comfyui_version()
     data = build_failures(records, system, **gpu, comfyui_version=version, db_info=db_info(_measure_db(args)))
@@ -3948,7 +3952,9 @@ def _share_write_failures(
         return None
     data["failures"] = fresh
     if _submission_refusal(data, args):
-        return None
+        data["failures"] = [f for f in fresh if not _submission_refusal({**data, "failures": [f]}, args)]
+        if not data["failures"] or _submission_refusal(data, args):
+            return None
     args._share_failures_written = True
     try:
         return write_submission(data, str(submissions_dir()) + os.sep)
@@ -3956,17 +3962,17 @@ def _share_write_failures(
         return None
 
 
-def _measure_save_failure(args: argparse.Namespace, s, url: str | None, run_: dict[str, Any]) -> Path | None:
+def _measure_save_failure(
+    args: argparse.Namespace, s, url: str | None, run_: dict[str, Any], checker=None
+) -> Path | None:
     """measure で測れなかったときの失敗の記録を、送っていない提出として保存する(#132。share と同じ形。
     次の share がいっしょに送る。同じ記録は 2 回書かない)。保存した場所(無ければ None)。"""
     rec = run_.get("failure")
     if not rec:
         return None
     args._share_failures = [rec]
-    m = run_.get("measurement")
-    if m is not None and getattr(m, "gpu_name", None) and getattr(m, "gpu_vram_gb", None):
-        args._share_gpu = m
-    return _share_write_failures(args, s, url, None, [])
+    _share_collect(args, {**run_, "failure": None})
+    return _share_write_failures(args, s, url, checker, [])
 
 
 def _failure_key(f: dict[str, Any], version: Any) -> str:
@@ -6978,6 +6984,8 @@ def _measure_run(
     except (BenchError, WorkflowError) as e:
         out["error"] = _without_workflow_hint(str(e))
         out["failure"] = _failure_from_error(e, entry, settings, opts.files_fp)
+        if out["failure"]:
+            out["comfyui_version"] = _comfyui_version_of(url)
         return out
     m = result.measurement
     if settings is not None and not same_variant(m.settings, settings):
@@ -7006,6 +7014,16 @@ def _measure_run(
             )
             # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
             why = _submission_refusal(sub, args)
+            if why and ({"timing", "estimate"} & set(sub["measurement"])):
+                # 見積もり・時間の内訳のおかしな値で実測を送れなくしない(#132): 外してもう一度確かめる
+                bare = {
+                    **sub,
+                    "measurement": {
+                        k: v for k, v in sub["measurement"].items() if k not in ("timing", "estimate")
+                    },
+                }
+                if not _submission_refusal(bare, args):
+                    sub, why = bare, []
             if why:
                 out["unsendable"] = why
                 if m.outcome == "oom":  # 実測としては送れないメモリ不足は、失敗の記録にする(#132)
@@ -7055,6 +7073,16 @@ def _failure_from_error(e: Exception, entry, settings, files_fp: str | None) -> 
     )
 
 
+def _comfyui_version_of(url: str) -> str | None:
+    """ComfyUI の版(/system_stats。失敗の記録に書く。#132)。取れなければ None(通信の誤りでも止めない)。"""
+    try:
+        checker = _node_check(url)
+        get = getattr(checker, "comfyui_version", None)
+        return get() if callable(get) else None
+    except Exception:
+        return None
+
+
 def _failure_from_result(result, entry) -> dict[str, Any] | None:
     """最後まで動かなかった(error・送れない oom)実測の失敗の記録(#132)。中断(interrupted)は送らない。"""
     from .contrib import failure_record
@@ -7080,14 +7108,17 @@ _BUNDLED_MEASUREMENTS: list = []
 
 def _measure_estimate(entry, system, m) -> dict[str, Any] | None:
     """測ったときの見積もり(#132)。同梱の実測(作者の実測とほかの利用者のまとめ)だけを使う: この実測と、
-    この PC のほかの実測(キャッシュの measurements・送る前の提出)は入れない(入れると照合にならない)。"""
+    この PC のほかの実測(キャッシュの measurements・送る前の提出)は入れない(入れると照合にならない)。
+    同梱の実測からも、同じ GPU・同じモデルのものは除く(作者の PC の実測かもしれない)。"""
     from .contrib import measurement_estimate
     from .db import load_measurements
 
     try:
         if not _BUNDLED_MEASUREMENTS:
             _BUNDLED_MEASUREMENTS.extend(load_measurements(include_cache=False))
-        return measurement_estimate(entry, system, m.settings, list(_BUNDLED_MEASUREMENTS))
+        return measurement_estimate(
+            entry, system, m.settings, list(_BUNDLED_MEASUREMENTS), exclude_gpu=m.gpu_name
+        )
     except Exception:  # 見積もりが作れなくても、測った結果は送れるようにする
         return None
 
@@ -7294,8 +7325,16 @@ def cmd_measure(args: argparse.Namespace) -> int:
         # 足りないノードがあれば、落とす・測る前に止める(#124)
         from .workflow import missing_nodes_message
 
-        miss = _node_check(url).missing(entry.id)
+        checker = _node_check(url)
+        miss = checker.missing(entry.id)
         if miss:
+            from .contrib import failure_record
+
+            # 測る前に分かった足りないノードも、失敗の記録として保存する(#132。share と同じ)
+            rec = failure_record(entry.id, "missing_nodes", missing_nodes=list(miss), before_run=True)
+            saved = _measure_save_failure(args, s, url, {"failure": rec}, checker)
+            if saved is not None:
+                plan["failures_file"] = str(saved)
             msg = missing_nodes_message(miss, workflow_hint=False)
             return fail(msg, [_measure_next_step(msg, entry.id)])
     if inst.state == "no" and args.json:
@@ -7355,6 +7394,8 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 return fail(str(e))
             url = started.url
             plan["comfyui"]["started"] = started.to_dict()
+        # 自分で起動した ComfyUI なら初めての読み込み(#132)。起動していた ComfyUI では分からない
+        args._cold_load = True if holder else None
         # 自分で起動した ComfyUI か --free なら、測る前にメモリと前の結果を空ける(#124)
         progress, view = _run_live(args, tr(f"測る: {entry.id}", f"Measure: {entry.id}"), secs)
         try:

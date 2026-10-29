@@ -69,7 +69,9 @@ TIMING = {
 
 def v3(db, **kw) -> dict:
     e = db.get("image_sdxl_simple")
-    est = contrib.measurement_estimate(e, pc(), Settings(width=832, height=832, steps=20), [])
+    est = contrib.measurement_estimate(
+        e, pc(), Settings(width=832, height=832, steps=20), [], exclude_gpu="NVIDIA GeForce RTX 3070"
+    )
     return contrib.build_submission(
         meas(**kw), pc(), estimate=est, timing=TIMING, db_info=contrib.db_info(db)
     )
@@ -100,15 +102,15 @@ def test_v3_submission_carries_estimate_timing_and_db(db):
 
 
 def test_estimate_does_not_use_the_measurement_or_this_pcs_measurements(monkeypatch, tmp_path):
-    """_measure_run の見積もりは同梱の実測だけで作る(この実測・キャッシュの実測・送る前の提出を入れない)。"""
+    """_measure_run の見積もりは同梱の実測だけで作る(キャッシュの実測・送る前の提出を入れない)。
+    同梱の実測からも同じ GPU・同じモデルのもの(作者の PC の実測かもしれない)を除く。"""
     seen = {}
 
-    def spy(entry, system, settings, measurements):
-        seen["ms"] = measurements
+    def spy(entry, system, settings, measurements, *, exclude_gpu=None):
+        seen.update(ms=measurements, gpu=exclude_gpu)
         return None
 
     monkeypatch.setattr(contrib, "measurement_estimate", spy)
-    m = meas(model_id="image_sdxl_simple", note="mine-only-marker")
     cli._BUNDLED_MEASUREMENTS.clear()
     # この PC のキャッシュに同じモデルの実測がある(見積もりには入れない)
     d = cache_dir() / "measurements"
@@ -117,10 +119,22 @@ def test_estimate_does_not_use_the_measurement_or_this_pcs_measurements(monkeypa
     (d / "x.json").write_text(json.dumps({"measurements": [row]}), encoding="utf-8")
     assert any(x.note == "cache-marker" for x in load_measurements(include_cache=True))
     entry = load_db(use_cache=False).get("image_sdxl_simple")
-    cli._measure_estimate(entry, pc(), m)
-    notes = {x.note for x in seen["ms"]}
-    assert "mine-only-marker" not in notes and "cache-marker" not in notes
+    cli._measure_estimate(entry, pc(), meas())
+    assert "cache-marker" not in {x.note for x in seen["ms"]}
     assert len(seen["ms"]) == len(load_measurements(include_cache=False))
+    assert seen["gpu"] == "NVIDIA GeForce RTX 3070"
+
+
+def test_estimate_excludes_bundled_measurements_of_this_gpu_and_model(db):
+    """同じ GPU・同じモデルの実測は見積もりに使わない(その実測があっても無くても同じ見積もり)。"""
+    e = db.get("image_sdxl_simple")
+    s = Settings(width=832, height=832, steps=20)
+    owner = meas(peak_vram_gb=3.0, origin=None)  # 作者の PC の(この PC かもしれない)実測
+    base = contrib.measurement_estimate(e, pc(), s, [], exclude_gpu="NVIDIA GeForce RTX 3070")
+    with_owner = contrib.measurement_estimate(e, pc(), s, [owner], exclude_gpu="NVIDIA GeForce RTX 3070")
+    assert with_owner == base and base["measurements"] == "bundled-excluding-this-gpu"
+    used = contrib.measurement_estimate(e, pc(), s, [owner])  # 除かなければ実測が使われる
+    assert used != base and "measurements" not in used
 
 
 def test_measurement_estimate_needs_this_pc():
@@ -155,17 +169,17 @@ def test_timing_breakdown_from_history_and_logs():
             ]
         }
     }
-    t = bench.timing_breakdown(entry, _logs(t0), t0, 21.5, local=True, cold_load=False)
+    t = bench.timing_breakdown(entry, _logs(t0), t0, 21.5, local=True, cold_load=False, steps=[20, 10])
     assert t["queue_s"] == 0.5 and t["load_s"] == 2.5  # サンプラの始まり(3.0)− 実行の始まり(0.5)
     assert t["sampling_s"] == 15.0 and t["sec_per_step"] == 0.5  # 10 秒 + 5 秒 / 30 ステップ
     assert t["decode_s"] == 2.0 and t["save_s"] is None and t["total_s"] == 21.5
     assert t["cold_load"] is False
     # 別の PC の ComfyUI(時計が違う): 時刻を比べる項目は出さない
-    far = bench.timing_breakdown(entry, _logs(t0), t0, 21.5, local=False)
+    far = bench.timing_breakdown(entry, _logs(t0), t0, 21.5, local=False, steps={20, 10})
     assert far["queue_s"] is None and far["load_s"] is None and far["decode_s"] is None
     assert far["sampling_s"] == 15.0 and far["cold_load"] is None
     # ログが無い・読めない時刻: 取れない項目は null
-    none = bench.timing_breakdown(entry, [{"t": "1", "m": "start"}], t0, 21.5, local=True)
+    none = bench.timing_breakdown(entry, [{"t": "1", "m": "start"}], t0, 21.5, local=True, steps=[20])
     assert none["sampling_s"] is None and none["sec_per_step"] is None and none["queue_s"] == 0.5
 
 
@@ -353,11 +367,14 @@ def test_error_texts_with_paths_never_reach_the_payload(db, monkeypatch):
         body = {
             "error": {"type": "prompt_outputs_failed_validation", "message": text, "details": text},
             "node_errors": {
-                "5": {"class_type": "KSampler", "errors": [{"type": "value_not_in_list", "message": text}]}
+                "5": {
+                    "class_type": "KSampler",
+                    "errors": [{"type": "required_input_missing", "message": text}],
+                }
             },
         }
         f = bench._prompt_error_kind(body, wf)
-        assert f["error_type"] == "value_not_in_list" and f["node_type"] == "KSampler"
+        assert f["error_type"] == "required_input_missing" and f["node_type"] == "KSampler"
         recs.append(contrib.failure_record("image_sdxl_simple", **f))
         # 実行中の失敗: 例外の文にパス、型名・ノード名に名前を入れても残らない
         entry = {
@@ -561,3 +578,146 @@ def test_share_writes_one_failure_file_and_not_twice(monkeypatch):
     args3 = cli.build_parser().parse_args(["share"])
     args3._share_failures = [contrib.failure_record("image_x", "error", error_type="ValueError")]
     assert cli._share_write_failures(args3, s, "http://192.0.2.1:8188", None, []) is None
+
+
+# --- 確かめ(Checker)の指摘への試験(#132) -----------------------------------------------------------
+
+
+def test_only_the_samplers_progress_lines_count():
+    """ほかの処理の進み具合(Hugging Face の取得・ステップ数の違う行)を混ぜない。
+    合わない・長すぎる値は null。"""
+    t0 = 1_800_000_000.0
+    entry = {
+        "status": {
+            "messages": [
+                ["execution_start", {"timestamp": (t0 + 1) * 1000}],
+                ["execution_success", {"timestamp": (t0 + 31) * 1000}],
+            ]
+        }
+    }
+
+    def at(dt):
+        return datetime.fromtimestamp(t0 + dt).isoformat()
+
+    noise = [
+        {"t": at(2), "m": "Fetching 3 files: 100%|###| 3/3 [25:00:00<00:00, 0.01s/it]"},
+        {"t": at(3), "m": "\r100%|####| 600/600 [00:15<00:00, 40.0it/s]"},  # 音の復元など(ACE-Step)
+    ]
+    sampler = [{"t": at(20), "m": "\r100%|####| 50/50 [00:12<00:00,  4.1it/s]"}]
+    t = bench.timing_breakdown(entry, noise + sampler, t0, 32.0, local=True, steps={50})
+    assert t["sampling_s"] == 12.0 and t["sec_per_step"] == 0.24
+    t = bench.timing_breakdown(entry, noise, t0, 32.0, local=True, steps={50})
+    assert t["sampling_s"] is None and t["sec_per_step"] is None  # 600 ステップの行は使わない
+    assert bench.timing_breakdown(entry, noise + sampler, t0, 32.0, local=True)["sampling_s"] is None
+    long = [{"t": at(20), "m": "\r100%|####| 50/50 [01:40<00:00,  0.5it/s]"}]  # 実行(30 秒)より長い
+    assert bench.timing_breakdown(entry, long, t0, 32.0, local=True, steps={50})["sampling_s"] is None
+
+
+def test_sampler_steps_from_the_workflow():
+    wf = {
+        "1": {"class_type": "KSampler", "inputs": {"steps": 25}},
+        "2": {
+            "class_type": "KSamplerAdvanced",
+            "inputs": {"steps": 30, "start_at_step": 10, "end_at_step": 40},
+        },
+        "3": {"class_type": "X", "inputs": {"steps": ["1", 0]}},
+    }
+    assert bench.sampler_steps(wf) == {25, 30, 20}
+
+
+def test_bad_timing_never_blocks_sending_the_measurement(monkeypatch):
+    def run(opts, log=None, progress=None):
+        m = meas(model_id=opts.model_id, settings=Settings())
+        bad = dict(TIMING, sampling_s=90005.0, sec_per_step=3913.0)  # 検査に通らない値
+        return bench.BenchResult(measurement=m, workflow_source="t", warnings=[], timing=bad)
+
+    monkeypatch.setattr(bench, "run", run)
+    monkeypatch.setattr(cli, "detect", lambda *a, **k: pc())
+    e = load_db(use_cache=False).get("image_sdxl_simple")
+    out = cli._measure_run(cli.build_parser().parse_args(["share"]), "http://127.0.0.1:8188", e, None)
+    assert out["submission"] is not None and not out["unsendable"]
+    data = json.loads(Path(out["submission"]).read_text(encoding="utf-8"))
+    assert "timing" not in data["measurement"] and data["measurement"]["peak_vram_gb"] == 6.9
+
+
+def test_node_names_are_kept_safely_and_never_empty(db):
+    rec = contrib.failure_record(
+        "image_x",
+        "missing_nodes",
+        missing_nodes=[
+            "LayerMask: MaskGrow",
+            "画像のリサイズ",
+            r"C:\Users\bob\x",
+            "x" * 150,
+            "CR Prompt List",
+        ],
+    )
+    assert rec["missing_nodes"] == ["CR Prompt List", "LayerMask: MaskGrow", "画像のリサイズ"]
+    assert rec["other_nodes"] == 2  # 形に合わない名前は数だけ
+    only_bad = contrib.failure_record(
+        "image_x", "missing_nodes", missing_nodes=["/home/bob/n", "a.example.com"]
+    )
+    assert only_bad["missing_nodes"] == [] and only_bad["other_nodes"] == 2
+    assert contrib.failure_record("image_x", "missing_nodes", missing_nodes=[]) is None
+    assert errors(_failures(db, [rec, only_bad]), db) == []
+
+
+def test_one_bad_record_drops_only_that_record(monkeypatch):
+    args = cli.build_parser().parse_args(["share"])
+    good = contrib.failure_record("image_sdxl_simple", "timeout", seconds=30.0, timeout_s=30.0)
+    bad = dict(good, model_id="bad id with spaces")  # 一覧の ID の形でない
+    args._share_failures = [bad, good]
+    p = cli._share_write_failures(args, pc(), "http://127.0.0.1:8188", None, [])
+    assert p is not None
+    assert [f["model_id"] for f in json.loads(p.read_text(encoding="utf-8"))["failures"]] == [
+        "image_sdxl_simple"
+    ]
+
+
+def test_failure_files_stay_under_the_size_limit(db):
+    recs = [
+        contrib.failure_record(
+            f"image_m{i:02d}", "missing_nodes", missing_nodes=[f"N{j:02d}" + "a" * 90 for j in range(30)]
+        )
+        for i in range(50)
+    ]
+    data = _failures(db, recs)
+    assert 1 <= len(data["failures"]) < 50
+    assert len(contrib.dumps(data).encode("utf-8")) <= contrib.MAX_FILE_BYTES
+    assert errors(data, db) == []
+
+
+def test_receiving_side_applies_every_detector_to_failure_strings(db):
+    data = _failures(db, [contrib.failure_record("image_sdxl_simple", "timeout", seconds=9, timeout_s=9)])
+    data["failures"].append(
+        {"model_id": "image_z", "outcome": "error", "node_type": "Taro Yamada 090-1234-5678"}
+    )
+    data["failures"].append(
+        {"model_id": "image_z", "outcome": "missing_nodes", "missing_nodes": ["taro.example.com"]}
+    )
+    errs = errors(data, db)
+    assert any("failures[1].node_type" in e for e in errs) and any(
+        "failures[2].missing_nodes" in e for e in errs
+    )
+    odd = _failures(db, [contrib.failure_record("image_sdxl_simple", "timeout", seconds=9, timeout_s=9)])
+    odd["failures"] += [5, "x"]  # 記録でないもの: 断るが、落ちない
+    assert errors(odd, db) and contrib.issue_title(odd).startswith("measurement failures: 3")
+
+
+def test_missing_model_files_are_not_a_failure_record():
+    body = {
+        "node_errors": {
+            "4": {"class_type": "CheckpointLoaderSimple", "errors": [{"type": "value_not_in_list"}]}
+        }
+    }
+    assert (
+        bench._prompt_error_kind(body, {"4": {"class_type": "CheckpointLoaderSimple", "inputs": {}}}) is None
+    )
+
+
+def test_missing_nodes_are_not_sent_twice_by_measure_and_share():
+    a = contrib.failure_record(
+        "image_x", "missing_nodes", missing_nodes=["B", "A"], settings=Settings(width=512, height=512)
+    )
+    b = contrib.failure_record("image_x", "missing_nodes", missing_nodes=["A", "B"], before_run=True)
+    assert measure.failure_key(a, "0.40.0") == measure.failure_key(b, None)

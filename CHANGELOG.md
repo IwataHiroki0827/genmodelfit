@@ -104,7 +104,12 @@ All notable changes to this project are documented here. The format is based on
   them; a record already saved on this PC is not written again. The screen before sending shows the new fields
   (English and Japanese), and the privacy checklist covers them. `contrib validate`, `contrib intake` (issues) and the
   contrib / measurement-intake workflows accept schema 3 and failure files (schema 1 and 2 are still accepted);
-  spilled results and failure records are kept out of `contrib aggregate`, the estimates and `calibrate`.
+  spilled results and failure records are kept out of `contrib aggregate`, the estimates and `calibrate`. The
+  sampler time uses only progress lines whose step count matches the workflow's sampler (others, such as model
+  downloads, are ignored), and a timing or estimate that fails the checks is dropped instead of blocking the
+  measurement; the estimate also leaves out bundled measurements of the same model on the same GPU. Node names that
+  do not fit the safe form are only counted (`other_nodes`), a bad record is left out alone, and
+  `value_not_in_list` (a model file missing on this PC) is not a failure record.
 
 ### Fixed
 

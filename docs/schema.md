@@ -1357,7 +1357,7 @@ location, paths or IP addresses (the privacy checklist covers every new field).
 | key | type | meaning |
 |---|---|---|
 | `db` | object | the list used when measuring: `generated_at` (date only, `YYYY-MM-DD`) and `sha256` (first 12 hex digits of the bundled or cached `db.json`; omitted when unknown). Optional |
-| `measurement.estimate` | object | genmodelfit's estimate for the measured model and settings at that time, made **without** this measurement or other measurements from the same PC (only the bundled measurements: the author's and the aggregated community rows): `fit_level` (`perfect` / `good` / `marginal` / `too_tight`), `run_mode` (`gpu` / `sequential` / `offload` / `cpu` / `none`), `vram_gb` (the VRAM that set the level), `vram_resident_gb`, `work_gb` (the working-memory formula, heaviest stage), `ram_required_gb`, `seconds` (the time guide of `measure`), `basis` (`measured` / `estimated`). Any value may be null; left out when ComfyUI ran on another PC or the size is unknown |
+| `measurement.estimate` | object | genmodelfit's estimate for the measured model and settings at that time, made **without** this measurement or other measurements from the same PC (only the bundled measurements: the author's and the aggregated community rows; those of the same model on the same GPU are left out too, because the author's may come from this very PC — `measurements: bundled-excluding-this-gpu` says so): `fit_level` (`perfect` / `good` / `marginal` / `too_tight`), `run_mode` (`gpu` / `sequential` / `offload` / `cpu` / `none`), `vram_gb` (the VRAM that set the level), `vram_resident_gb`, `work_gb` (the working-memory formula, heaviest stage), `ram_required_gb`, `seconds` (the time guide of `measure`), `basis` (`measured` / `estimated`). Any value may be null; left out when ComfyUI ran on another PC or the size is unknown |
 | `measurement.timing` | object | time breakdown in seconds, null when unknown: `queue_s` (sent → started), `load_s` (start → first sampler step: loading and text encoding), `sampling_s` (sum of the sampler runs), `sec_per_step`, `decode_s` (last sampler step → end: VAE decode and saving), `save_s` (always null for now: HTTP cannot tell it apart), `total_s` (same as `seconds`), `cold_load` (true = first load in a ComfyUI that genmodelfit started, false = the same ComfyUI again after `/free`, null = unknown) |
 | `measurement.spilled` | true | only for `outcome: ok` runs whose peak VRAM is above the GPU total × 1.02 + 0.25 GB (Windows spilled into shared memory). Written only when true |
 | `measurement.spilled_gb` | number | peak VRAM minus the GPU total (GiB), with `spilled` |
@@ -1365,7 +1365,10 @@ location, paths or IP addresses (the privacy checklist covers every new field).
 How the time breakdown is read (HTTP only, no websocket): the times of `execution_start` / `execution_success`
 (or `_error`) in `/history`'s `status.messages`, and the progress lines (tqdm, `20/20 [00:05<00:00, 3.80it/s]`) in
 ComfyUI's log (`/internal/logs/raw`). Values that compare the two clocks (`queue_s`, `load_s`, `decode_s`) are only
-written when ComfyUI runs on the same PC. Progress lines of nodes other than the sampler are counted too.
+written when ComfyUI runs on the same PC. Only progress lines without a description in front (not `Fetching 3 files: …`)
+whose step count equals a sampler's `steps` in the workflow sent are used; `sampling_s` / `sec_per_step` are null when
+none matches or the sum is longer than the run. If the timing or the estimate does not pass the checks, the
+measurement is sent without them.
 
 Rules: `db`, `estimate`, `timing`, `spilled` / `spilled_gb` in a schema 1 or 2 file are errors. `spilled` must be
 true, only with `outcome: ok`, the peak must be above the total line and at most the GPU total plus the RAM (×1.05 +
@@ -1402,17 +1405,22 @@ measurement), `comfyui_version`, `db` (optional), `failures` (1–50 records).
 | `settings` | optional, the same keys and ranges as a measurement |
 | `seconds` | elapsed seconds, null for problems found before running |
 | `timeout_s` | the time limit, only for `timeout` |
-| `missing_nodes` | node names ComfyUI lacked (built-in or custom node names, which are public; `[A-Za-z0-9_][A-Za-z0-9_.+()|' -]{0,63}`), only and required for `missing_nodes` |
+| `missing_nodes` | node names ComfyUI lacked (built-in or custom node names, which are public): letters (any script), digits, spaces and `_ . + ( ) \| ' : , [ ] -`, up to 100 characters, no `/` or `\`; only for `missing_nodes` |
+| `other_nodes` | how many missing node names did not fit that form or looked like personal information (they are not sent). `missing_nodes` may be empty only when this is 1 or more |
 | `before_run` | true when the node check found it before running (nothing ran, so no numbers) |
 | `error_type` | for `error` / `oom`: the exception type name (`torch.OutOfMemoryError`) or ComfyUI's `node_errors` type (`value_not_in_list`); `[A-Za-z_][A-Za-z0-9_.]{0,63}`. The message text is never sent (it can hold paths) |
 | `node_type` | for `error` / `oom`: the node type that failed, only when it is in the workflow genmodelfit sent |
 | `peak_vram_gb`, `files_fp` | optional, as in a measurement |
 
-What becomes a record: a template that needs nodes this ComfyUI lacks (from the node check before measuring, or
-when bench stops on them), a timeout after our job started running (not one spent waiting in the queue, while
-other work ran, or while the PC slept), ComfyUI refusing the workflow, an error during the run, and an OOM that
-could not be sent as a measurement. A record that equals one already saved on this PC (same model, settings,
-failure, nodes, error type and ComfyUI version) is not written again. Failure records are not used by the estimate
+What becomes a record: a template that needs nodes this ComfyUI lacks (from the node check before measuring in
+`share` or `measure`, or when bench stops on them), a timeout after our job started running (not one spent waiting in the queue, while
+other work ran, or while the PC slept), ComfyUI refusing the workflow (not `value_not_in_list`, a model file missing on this PC), an error during the run, and an OOM that
+could not be sent as a measurement. `measure` saves its record as an unsent file too, and the next `share` sends it. A record that equals one
+already saved on this PC (same model, settings, failure, error type and ComfyUI version; for missing nodes only
+the model and the node names) is not written again. A record that does not pass the checks is left out alone, and
+records are dropped from the end to stay under 64 KB. On receiving, every privacy detector (also phone numbers,
+domains and encodings) is applied to all strings in `failures`; free words that fit the name form cannot be told
+from node names, so a person still reviews each pull request. Failure records are not used by the estimate
 formula, the aggregate or `calibrate`; they are material for what to recommend and which ComfyUI version is needed.
 
 ### Rules of the submission pipeline (#90)

@@ -568,6 +568,10 @@ def saved_submissions(root: Path | None = None, *, include_shared: bool = False)
 def failure_key(f: dict[str, Any], comfyui_version: Any) -> str:
     """失敗の記録 1 件の鍵(#132): 同じモデル・設定・失敗・足りないノード・エラーの種類・ComfyUI の版なら同じ。
     経過時間・最大 VRAM は入れない(同じ失敗を毎回送らないため)。"""
+    if f.get("outcome") == "missing_nodes":
+        # 足りないノードは設定・ComfyUI の版によらず同じこと(measure と share で二重に送らない)
+        nodes = sorted(str(n) for n in f.get("missing_nodes") or [])
+        return json.dumps({"m": f.get("model_id"), "n": nodes, "o": f.get("other_nodes")}, ensure_ascii=False)
     keep = ("model_id", "settings", "outcome", "missing_nodes", "error_type", "node_type")
     return json.dumps(
         {"v": comfyui_version, **{k: f.get(k) for k in keep}}, sort_keys=True, ensure_ascii=False

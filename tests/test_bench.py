@@ -558,9 +558,12 @@ class FakeComfy:
                         lines += [
                             {"t": at(0.2), "m": "got prompt"},
                             {"t": at(0.3), "m": "loaded completely; 7000 MB usable"},
-                            {"t": at(0.5), "m": "\r  0%|          | 0/20 [00:00<?, ?it/s]"},
-                            {"t": at(1.0), "m": "\r 50%|#####     | 10/20 [00:00<00:00, 20.0it/s]"},
-                            {"t": at(1.6), "m": "\r100%|##########| 20/20 [00:01<00:00, 19.5it/s]"},
+                            # ほかの処理の進み具合(説明付き・ステップ数が違う)は時間の内訳に使わない
+                            {"t": at(0.4), "m": "Fetching 3 files: 100%|###| 3/3 [25:00:00<00:00, 0.01s/it]"},
+                            {"t": at(0.45), "m": "\r100%|##########| 7/7 [00:09<00:00,  0.8it/s]"},
+                            {"t": at(0.5), "m": "\r  0%|          | 0/25 [00:00<?, ?it/s]"},
+                            {"t": at(1.0), "m": "\r 48%|#####     | 12/25 [00:00<00:00, 24.0it/s]"},
+                            {"t": at(1.6), "m": "\r100%|##########| 25/25 [00:01<00:00, 24.5it/s]"},
                         ]
                     return self._send(200, {"entries": lines})
                 if p.startswith("/tplinput/"):
@@ -1278,7 +1281,7 @@ def test_bench_records_timing_with_fake_comfyui():
     t = res.timing
     assert t["total_s"] is not None and t["cold_load"] is True
     assert t["queue_s"] == pytest.approx(0.1, abs=0.05)
-    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.05
+    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.04  # テンプレートの 25 ステップの行だけ
     assert t["load_s"] == pytest.approx(0.4, abs=0.05) and t["decode_s"] == pytest.approx(1.0, abs=0.05)
 
 
@@ -1297,4 +1300,4 @@ def test_cli_bench_json_has_timing(capsys):
         "total_s",
         "cold_load",
     }
-    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.05
+    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.04

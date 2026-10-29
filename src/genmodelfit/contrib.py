@@ -169,7 +169,11 @@ ESTIMATE_KEYS = {
     "ram_required_gb",  # 要るメインメモリ
     "seconds",  # 時間の目安(measure の目安と同じ)
     "basis",  # measured / estimated
+    # 見積もりに使った実測(#132)。bundled-excluding-this-gpu = 同梱の実測から、同じ GPU・同じモデルのもの
+    # (作者の PC の実測かもしれない)を除いたもの
+    "measurements",
 }
+ESTIMATE_SOURCES = ("bundled-excluding-this-gpu",)
 ESTIMATE_LEVELS = ("perfect", "good", "marginal", "too_tight")
 ESTIMATE_MODES = ("gpu", "sequential", "offload", "cpu", "none")
 ESTIMATE_BASES = ("measured", "estimated")
@@ -194,6 +198,7 @@ FAILURE_KEYS = {
     "seconds",  # 経過時間(測る前に分かったものは null)
     "timeout_s",  # 時間切れの上限(timeout のとき)
     "missing_nodes",  # 足りないノードの名前の並び(missing_nodes のとき)
+    "other_nodes",  # 名前の形に合わない(送らない)足りないノードの数(missing_nodes のとき)
     "error_type",  # 例外の型名(torch.OutOfMemoryError など)か ComfyUI の node_errors の type
     "node_type",  # 失敗したノードの種類(送ったワークフローにあるものだけ)
     "peak_vram_gb",
@@ -204,8 +209,11 @@ FAILURE_KEYS = {
 FAILURE_OUTCOMES = ("missing_nodes", "timeout", "error", "oom")
 MAX_FAILURES = 50  # 1 つのファイルの失敗の記録の数の上限
 MAX_MISSING_NODES = 30
-# ノードの名前(ComfyUI の組み込みとカスタムノードの公開の名前)。パス・URL に使う / \ : は入れない
-NODE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+()|' -]{0,63}")
+# ノードの名前(ComfyUI の組み込みとカスタムノードの公開の名前)。文字(各国の文字も)・数字・空白と
+# _ . + ( ) | ' : , [ ] - だけ、100 字まで。パス・URL に使う / \ は入れない。形に合わない名前は送らず、数だけ
+# (other_nodes)送る。個人の情報らしい文字(電話番号・ドメインなど)は、形に合っても送る側・受け取る側の
+# 両方で断る
+NODE_NAME = re.compile(r"[^\W_][\w .+()|':,\[\]-]{0,99}")
 # 例外の型名(モジュールを含む)か ComfyUI の node_errors の type
 ERROR_TYPE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
 SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
@@ -513,7 +521,7 @@ def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
         if len(text) > MAX_NOTE_CHARS:
             return
         for kind, what in _hits(text):
-            if kind in NOTE_ONLY_KINDS and where != "$.measurement.note":
+            if kind in NOTE_ONLY_KINDS and where != "$.measurement.note" and not _strict_place(where):
                 continue  # 決まった形の項目(モデル ID・GPU 名など)は形の検査で縛っている
             if (where, kind) not in seen:
                 seen.add((where, kind))
@@ -553,6 +561,14 @@ _FAILURE_FP = re.compile(r"\$\.failures\[\d+\]\.files_fp")
 
 def _list_limit(where: str) -> int | None:
     return next((n for pat, n in _LIST_PLACES if pat.fullmatch(where)), None)
+
+
+def _strict_place(where: str) -> bool:
+    """すべての検出(電話番号・ドメイン・符号化など)を当てる場所(#132): 失敗の記録の名前(ノード名・
+    エラーの種類)と、見積もり・時間の内訳の中。モデル ID・ファイルの指紋は形と一覧で縛っているので除く。"""
+    if where.endswith((".model_id", ".files_fp")):
+        return False
+    return where.startswith(("$.failures", "$.measurement.estimate", "$.measurement.timing"))
 
 
 def string_problems(data: Any) -> list[str]:
@@ -954,8 +970,14 @@ def failure_record(
     if outcome == "timeout" and _num(timeout_s) and timeout_s > 0:
         rec["timeout_s"] = round(float(timeout_s), 1)
     if outcome == "missing_nodes":
-        names = sorted({n for n in (clean_node_name(x) for x in missing_nodes or []) if n})
-        rec["missing_nodes"] = names[:MAX_MISSING_NODES]
+        given = [x for x in missing_nodes or [] if x]
+        names = sorted({n for n in (clean_node_name(x) for x in given) if n})[:MAX_MISSING_NODES]
+        other = len({str(x) for x in given}) - len(names)
+        if not names and other <= 0:
+            return None  # 足りないノードが分からない記録は作らない
+        rec["missing_nodes"] = names
+        if other > 0:
+            rec["other_nodes"] = other
     if outcome in ("error", "oom"):
         rec["error_type"] = clean_error_type(error_type)
         rec["node_type"] = clean_node_name(node_type)
@@ -986,7 +1008,7 @@ def build_failures(
     実測の提出と同じ範囲。見積もりの式には使わない(何を勧めるか・要る ComfyUI の版を決める材料)。"""
     items = [r for r in records if r][:MAX_FAILURES]
     cv = comfyui_version if isinstance(comfyui_version, str) and _VERSION.fullmatch(comfyui_version) else None
-    return {
+    doc = {
         "contrib_schema": CONTRIB_SCHEMA,
         "kind": FAILURES_KIND,
         "tool": {"name": "genmodelfit", "version": __version__},
@@ -996,6 +1018,10 @@ def build_failures(
         **({"db": dict(db_info)} if db_info else {}),
         "failures": items,
     }
+    # 大きさの上限(MAX_FILE_BYTES)に収まるまで、後ろの記録から外す(1 件は残す)
+    while len(dumps(doc).encode("utf-8")) > MAX_FILE_BYTES - 1024 and len(doc["failures"]) > 1:
+        doc["failures"].pop()
+    return doc
 
 
 _DB_INFO: dict[tuple, dict[str, Any]] = {}
@@ -1027,19 +1053,38 @@ def db_info(db: Database | None) -> dict[str, Any] | None:
 
 
 def measurement_estimate(
-    entry: Any, system: SystemInfo | None, settings: Settings | None, measurements: list[Measurement]
+    entry: Any,
+    system: SystemInfo | None,
+    settings: Settings | None,
+    measurements: list[Measurement],
+    *,
+    exclude_gpu: str | None = None,
 ) -> dict[str, Any] | None:
     """測ったモデル・設定に対する、その時点の genmodelfit の見積もり(#132。判定の計算は変えない)。
 
     measurements には、その実測と、同じ PC のほかの実測を入れない(入れると照合にならない。呼び出し側は
     同梱の実測だけを渡す: db.load_measurements(include_cache=False))。system が無い(ComfyUI が別の PC)・
-    大きさが分からない・計算できないときは None。"""
-    from .estimate import apply_precision, components, estimate, formula_need, load_coefficients, settings_for
+    大きさが分からない・計算できないときは None。exclude_gpu(測った GPU の名前)を渡すと、同じ GPU・
+    同じモデルの実測も除く(同梱の実測は作者の PC のものなので、同じ PC の実測かもしれない)。"""
+    from .estimate import (
+        apply_precision,
+        components,
+        estimate,
+        formula_need,
+        load_coefficients,
+        same_gpu_name,
+        settings_for,
+    )
     from .measure import time_hint
     from .recommend import _how, vram_need
 
     if system is None or entry is None:
         return None
+    if exclude_gpu:
+        mid = getattr(entry, "id", None)
+        measurements = [
+            x for x in measurements if not (x.model_id == mid and same_gpu_name(x.gpu_name, exclude_gpu))
+        ]
     try:
         c = load_coefficients()
         e = estimate(entry, system, settings, measurements, c)
@@ -1067,6 +1112,7 @@ def measurement_estimate(
         "ram_required_gb": r2(e.ram_gb),
         "seconds": float(secs) if _num(secs) else None,
         "basis": e.basis if e.basis in ESTIMATE_BASES else None,
+        **({"measurements": ESTIMATE_SOURCES[0]} if exclude_gpu else {}),
     }
 
 
@@ -2156,6 +2202,15 @@ def _check_new_fields(r: Report, mm: dict[str, Any], vram: Any, ram: Any) -> Non
                         f"measurement.estimate.{key} must be GiB of 0 or more, or null: {v!r}",
                     ),
                 )
+        src = est.get("measurements")
+        if src is not None and src not in ESTIMATE_SOURCES:
+            r.error(
+                "value",
+                tr(
+                    f"measurement.estimate.measurements は {' / '.join(ESTIMATE_SOURCES)} です: {src!r}",
+                    f"measurement.estimate.measurements must be {' / '.join(ESTIMATE_SOURCES)}: {src!r}",
+                ),
+            )
         v = est.get("seconds")
         if v is not None and not _seconds_ok(v):
             r.error(
@@ -2249,7 +2304,7 @@ def _check_new_fields(r: Report, mm: dict[str, Any], vram: Any, ram: Any) -> Non
 
 def _check_failures(r: Report, items: Any, vram: Any, db: Database | None) -> None:
     """失敗の記録の並び(#132)。中断(interrupted)・ほかのプログラムのせい(interference)は受け付けない。"""
-    if not isinstance(items, list) or not items:
+    if not isinstance(items, list) or not items or len(items) > MAX_FAILURES:
         r.error(
             "schema",
             tr("failures は 1 件以上の記録の並びです", "failures must be a list of one or more records"),
@@ -2308,19 +2363,32 @@ def _check_failure(r: Report, f: dict[str, Any], where: str, vram: Any, db: Data
             ),
         )
     nodes = f.get("missing_nodes")
+    other = f.get("other_nodes")
+    if other is not None and (
+        outcome != "missing_nodes" or not isinstance(other, int) or isinstance(other, bool) or other < 1
+    ):
+        r.error(
+            "value",
+            tr(
+                f"{where}.other_nodes は missing_nodes の記録だけの 1 以上の数です",
+                f"{where}.other_nodes is a count of 1 or more, only for a missing_nodes record",
+            ),
+        )
     if (outcome == "missing_nodes" or nodes is not None) and (
         outcome != "missing_nodes"
         or not isinstance(nodes, list)
-        or not nodes
+        or not (nodes or (isinstance(other, int) and other >= 1))
         or not all(isinstance(n, str) and NODE_NAME.fullmatch(n) for n in nodes)
     ):
         r.error(
             "value",
             tr(
                 f"{where}.missing_nodes は missing_nodes の記録だけの、ノードの名前"
-                "(英数字と _ . + ( ) | ' -、64 字まで)の並びです",
-                f"{where}.missing_nodes is a list of node names (letters, digits and _ . + ( ) | ' -;"
-                " up to 64 characters), only for a missing_nodes record",
+                "(文字・数字・空白と _ . + ( ) | ' : , [ ] -、100 字まで)の並びです"
+                "(空なら other_nodes が要る)",
+                f"{where}.missing_nodes is a list of node names (letters, digits, spaces and"
+                " _ . + ( ) | ' : , [ ] -; up to 100 characters), only for a missing_nodes record"
+                " (other_nodes is needed when it is empty)",
             ),
         )
     for key, pat in (("error_type", ERROR_TYPE), ("node_type", NODE_NAME)):
@@ -2828,8 +2896,10 @@ def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
         r.error(
             "filename",
             tr(
-                f"ファイル名は <日付>-<sha8>.json にしてください(例 {r.suggested_path})",
-                f"The file name must be <date>-<sha8>.json (e.g. {r.suggested_path})",
+                f"ファイル名は <日付>-<sha8>.json(失敗の記録は <日付>-<sha8>-failures.json)にしてください"
+                f"(例 {r.suggested_path})",
+                f"The file name must be <date>-<sha8>.json (<date>-<sha8>-failures.json for failure records)"
+                f" (e.g. {r.suggested_path})",
             ),
         )
         return

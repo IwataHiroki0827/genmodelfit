@@ -76,8 +76,8 @@ Step by step, in detail:
 5. It measures one by one; a failure does not stop the rest, and Ctrl+C goes on to sending what was measured.
 6. It shows every file to send and the privacy checklist (GPU name, VRAM, OS family, model, settings and values; no
    PC or user names). **Read it yourself, including the note.** Files with an `[NG]` or a check error are not sent.
-   Since 0.13.0 (#132) each measurement also carries the estimate genmodelfit made for it (without your own
-   measurements), a time breakdown and the list version, and a result whose peak VRAM went over the GPU total
+   Since 0.13.0 (#132) each measurement also carries the estimate genmodelfit made for it (without your
+   measurements or any of this model on your GPU), a time breakdown and the list version, and a result whose peak VRAM went over the GPU total
    (shared memory) is sent with a mark instead of being dropped. What could not be measured (nodes missing from
    your ComfyUI, timeouts, errors) goes into one failure record file per run, with names and numbers only (no
    error text). Interrupted runs and runs disturbed by other programs are not sent.
@@ -234,7 +234,7 @@ genmodelfit bench image_sdxl_simple --url http://127.0.0.1:8188 --resolution 102
 | ComfyUI version, OS family (no version or build), main memory (rounded to an integer GiB) | `0.40.0`, `windows`, `32` |
 | Model ID, settings, result, peak VRAM / memory, time, how it was loaded, how it was measured | `image_sdxl_simple`, `832x832`, `ok`, `6.9` ... |
 | Date (UTC date only) | `2026-10-21` |
-| (0.13.0) The estimate at that time, made without your measurements: level, how it runs, VRAM, working memory, RAM, time | `good`, `gpu`, `6.1` ... |
+| (0.13.0) The estimate at that time, made without your measurements or any of this model on your GPU: level, how it runs, VRAM, working memory, RAM, time | `good`, `gpu`, `6.1` ... |
 | (0.13.0) Time breakdown in seconds (queue, load, sampling, seconds per step, decode, total; unknown ones are null) and whether it was the first load | `0.1`, `4.2`, `20.0`, `1.0` ... |
 | (0.13.0) A mark when the peak VRAM went over the GPU total into shared memory, and by how much | `spilled: true`, `1.31` |
 | (0.13.0) The list version (date only, start of the db.json sha256) | `2026-10-21`, `0123456789ab` |

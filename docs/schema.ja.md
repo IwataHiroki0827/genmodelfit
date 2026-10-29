@@ -1297,12 +1297,12 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 | キー | 型 | 意味 |
 |---|---|---|
 | `db` | object | 測ったときの一覧: `generated_at`(日付だけ。`YYYY-MM-DD`)と `sha256`(同梱かキャッシュの `db.json` の sha256 の先頭 16 進 12 桁。分からなければ無し)。任意 |
-| `measurement.estimate` | object | 測ったモデル・設定に対する、その時点の genmodelfit の見積もり。その実測と、同じ PC のほかの実測を**使わずに**作る(使うのは同梱の実測だけ: 作者の実測とほかの利用者のまとめ): `fit_level`(`perfect` / `good` / `marginal` / `too_tight`)、`run_mode`(`gpu` / `sequential` / `offload` / `cpu` / `none`)、`vram_gb`(段階を決めた VRAM)、`vram_resident_gb`、`work_gb`(作業用メモリの式の値。いちばん重い段)、`ram_required_gb`、`seconds`(`measure` の時間の目安)、`basis`(`measured` / `estimated`)。どの値も null がありうる。ComfyUI が別の PC のとき・大きさが分からないときは書かない |
+| `measurement.estimate` | object | 測ったモデル・設定に対する、その時点の genmodelfit の見積もり。その実測と、同じ PC のほかの実測を**使わずに**作る(使うのは同梱の実測だけ: 作者の実測とほかの利用者のまとめ。作者の実測はこの PC のものかもしれないので、同じ GPU・同じモデルの実測も除く。`measurements: bundled-excluding-this-gpu` がその印): `fit_level`(`perfect` / `good` / `marginal` / `too_tight`)、`run_mode`(`gpu` / `sequential` / `offload` / `cpu` / `none`)、`vram_gb`(段階を決めた VRAM)、`vram_resident_gb`、`work_gb`(作業用メモリの式の値。いちばん重い段)、`ram_required_gb`、`seconds`(`measure` の時間の目安)、`basis`(`measured` / `estimated`)。どの値も null がありうる。ComfyUI が別の PC のとき・大きさが分からないときは書かない |
 | `measurement.timing` | object | 時間の内訳(秒。分からなければ null): `queue_s`(送ってから始まるまで)、`load_s`(始まりからサンプラの最初のステップまで。読み込みと文の符号化)、`sampling_s`(サンプラの合計)、`sec_per_step`、`decode_s`(サンプラの最後のステップから終わりまで。VAE の復元と保存)、`save_s`(今はいつも null。HTTP では分けられない)、`total_s`(`seconds` と同じ)、`cold_load`(true = genmodelfit が起動した ComfyUI で初めての読み込み、false = 同じ ComfyUI で `/free` のあとの 2 回目、null = 分からない) |
 | `measurement.spilled` | true | 最後まで動いた(`outcome: ok`)のに、ピークの VRAM が GPU の総量 × 1.02 + 0.25 GB を超えた(Windows で共有メモリに逃げた)ときだけ。true のときだけ書く |
 | `measurement.spilled_gb` | number | ピークの VRAM − GPU の総量(GiB)。`spilled` といっしょ |
 
-時間の内訳の取り方(HTTP だけ。websocket は使わない): `/history` の `status.messages` の `execution_start`・`execution_success`(か `_error`)の時刻と、ComfyUI のログ(`/internal/logs/raw`)の進み具合の行(tqdm。`20/20 [00:05<00:00, 3.80it/s]`)。2 つの時計を比べる値(`queue_s`・`load_s`・`decode_s`)は、ComfyUI が同じ PC のときだけ書く。サンプラ以外のノードの進み具合の行も数える。
+時間の内訳の取り方(HTTP だけ。websocket は使わない): `/history` の `status.messages` の `execution_start`・`execution_success`(か `_error`)の時刻と、ComfyUI のログ(`/internal/logs/raw`)の進み具合の行(tqdm。`20/20 [00:05<00:00, 3.80it/s]`)。2 つの時計を比べる値(`queue_s`・`load_s`・`decode_s`)は、ComfyUI が同じ PC のときだけ書く。使う進み具合の行は、前に説明の無い行(`Fetching 3 files: …` などは使わない)で、送ったワークフローのサンプラの `steps` と同じステップ数のものだけ。合う行が無い・実行の時間より長いときは `sampling_s`・`sec_per_step` は null。時間の内訳・見積もりが検査に通らないときは、それを外して実測を送る。
 
 決まり: 1・2 のファイルの `db`・`estimate`・`timing`・`spilled`・`spilled_gb` は誤り。`spilled` は true だけで、`outcome: ok` のときだけ。ピークは総量の線を超え、GPU の総量 + メインメモリ(× 1.05 + 1 GiB。メインメモリが分からなければ GPU の総量)まで。`spilled_gb` はピーク − 総量と 0.1 GiB 以内で合うこと。spilled の提出は受け付けるが、まとめ・見積もり・段階・`calibrate` には**使わない**(「この GPU では共有メモリに逃げる(遅い)」の材料。使い方は別の Issue で決める)。
 
@@ -1334,13 +1334,14 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 | `settings` | 任意。実測と同じキー・範囲 |
 | `seconds` | 経過時間。測る前に分かったものは null |
 | `timeout_s` | 時間切れの上限。`timeout` だけ |
-| `missing_nodes` | ComfyUI に無かったノードの名前(組み込みかカスタムノードの公開の名前。`[A-Za-z0-9_][A-Za-z0-9_.+()|' -]{0,63}`)。`missing_nodes` だけで、そのときは必須 |
+| `missing_nodes` | ComfyUI に無かったノードの名前(組み込みかカスタムノードの公開の名前): 文字(各国の文字も)・数字・空白と `_ . + ( ) \| ' : , [ ] -`、100 字まで。`/`・`\` は入れない。`missing_nodes` だけ |
+| `other_nodes` | 足りないノードのうち、名前の形に合わない・個人の情報らしい名前の数(名前は送らない)。`missing_nodes` が空でよいのは、これが 1 以上のときだけ |
 | `before_run` | ノードの確かめで測る前に分かったとき true(実行していないので数値は無い) |
 | `error_type` | `error`・`oom` だけ: 例外の型名(`torch.OutOfMemoryError`)か ComfyUI の `node_errors` の type(`value_not_in_list`)。`[A-Za-z_][A-Za-z0-9_.]{0,63}`。本文は送らない(パスが入りうる) |
 | `node_type` | `error`・`oom` だけ: 失敗したノードの種類。genmodelfit が送ったワークフローにあるものだけ |
 | `peak_vram_gb`・`files_fp` | 任意。実測と同じ |
 
-記録にするもの: この ComfyUI に無いノードが要るテンプレート(測る前のノードの確かめ、または bench がそれで止めたとき)、自分の仕事が実行中になってからの時間切れ(キューで待っただけ・ほかの仕事が動いた・PC がスリープしたときは入れない)、ComfyUI がワークフローを受け付けなかったとき、実行中のエラー、実測として送れなかった OOM。この PC に保存した記録と同じもの(同じモデル・設定・失敗・ノード・エラーの種類・ComfyUI の版)は、もう書かない。失敗の記録は見積もりの式・まとめ・`calibrate` には使わない。何を勧めるか・要る ComfyUI の版を決める材料にする。
+記録にするもの: この ComfyUI に無いノードが要るテンプレート(`share`・`measure` の測る前のノードの確かめ、または bench がそれで止めたとき)、自分の仕事が実行中になってからの時間切れ(キューで待っただけ・ほかの仕事が動いた・PC がスリープしたときは入れない)、ComfyUI がワークフローを受け付けなかったとき(`value_not_in_list` = この PC にモデルのファイルが無い、は除く)、実行中のエラー、実測として送れなかった OOM。`measure` の記録も送っていないファイルとして保存し、次の `share` が送る。この PC に保存した記録と同じもの(同じモデル・設定・失敗・エラーの種類・ComfyUI の版。足りないノードはモデルとノードの名前だけで比べる)は、もう書かない。検査に通らない記録はその記録だけ外し、64 KB に収まるまで後ろの記録から外す。受け取る側は、`failures` の中のすべての文字にすべての検出(電話番号・ドメイン・符号化も)を当てる。名前の形に合う普通の言葉はノードの名前と見分けられないので、PR は人が確かめる。失敗の記録は見積もりの式・まとめ・`calibrate` には使わない。何を勧めるか・要る ComfyUI の版を決める材料にする。
 
 ### 提出の流れの決まり(#90)
 

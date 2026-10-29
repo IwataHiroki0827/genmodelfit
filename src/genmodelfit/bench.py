@@ -34,6 +34,7 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -261,12 +262,17 @@ def _class_types(workflow: Any) -> set[str]:
     }
 
 
-def _prompt_error_kind(body: Any, workflow: Any) -> dict[str, Any]:
+NOT_A_MODEL_ERROR = frozenset({"value_not_in_list"})  # この PC の事情(ファイルが無いなど)。送らない
+
+
+def _prompt_error_kind(body: Any, workflow: Any) -> dict[str, Any] | None:
     """ComfyUI が受け付けなかったときの失敗の記録の材料(#132): node_errors の type(無ければ error の type)と
     ノードの種類(送ったワークフローにあるものだけ)。文(message・details)は入れない。"""
     body = body if isinstance(body, dict) else {}
     kinds: list[str] = []
     node_type = None
+    # value_not_in_list(選んだファイルが ComfyUI に無い = この PC にモデルのファイルが無い)はモデルの性質で
+    # ないので、失敗の記録にしない(#132)
     for ne in (body.get("node_errors") or {}).values():
         if not isinstance(ne, dict):
             continue
@@ -275,6 +281,8 @@ def _prompt_error_kind(body: Any, workflow: Any) -> dict[str, Any]:
     err = body.get("error")
     if not kinds and isinstance(err, dict) and err.get("type"):
         kinds.append(str(err["type"]))
+    if NOT_A_MODEL_ERROR & set(kinds):
+        return None
     return {
         "outcome": "error",
         "error_type": kinds[0] if kinds else None,
@@ -954,6 +962,11 @@ def _progress_runs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         text = str(e.get("m") or "")
         t = _log_time(e.get("t"))
         for m in _PROGRESS.finditer(text):
+            # サンプラの行は前に説明が無い(" 50%|#####| 10/20 [...]")。説明の付いた行(Hugging Face の
+            # "Fetching 3 files: 100%|…" など、ほかの処理の進み具合)は使わない
+            line = text[: m.start()].replace("\n", "\r").rsplit("\r", 1)[-1]
+            if re.search(r"[^\W\d_]", line):
+                continue
             n, total = int(m.group(1)), int(m.group(2))
             elapsed = int(m.group(3) or 0) * 3600 + int(m.group(4)) * 60 + int(m.group(5))
             if total <= 0 or n > total:
@@ -977,11 +990,15 @@ def timing_breakdown(
     *,
     local: bool,
     cold_load: bool | None = None,
+    steps: Iterable[int] | None = None,
 ) -> dict[str, Any]:
     """時間の内訳(#132。docs/schema.md「contrib」)。HTTP だけで取る: /history の status.messages の時刻
     (execution_start・execution_success など)と、ComfyUI のログ(/internal/logs/raw)の進み具合の行。
     取れない項目は None。送った時刻・ログの時刻と比べる項目(queue_s・load_s・decode_s)は、ComfyUI が
-    同じ PC のときだけ(時計が同じ)。save_s は HTTP では復元と分けられないので、今は None。"""
+    同じ PC のときだけ(時計が同じ)。save_s は HTTP では復元と分けられないので、今は None。
+    サンプラの時間は、送ったワークフローのサンプラのステップ数(steps。sampler_steps)と同じ数の進み具合の
+    行だけから取る(ほかの処理の行を混ぜない)。steps が分からない・合う行が無い・実行の時間より長い
+    ときは None。"""
     ts = _timestamps(entry)
     start = ts.get("execution_start")
     end = ts.get("execution_success") or ts.get("execution_error") or ts.get("execution_interrupted")
@@ -997,7 +1014,8 @@ def timing_breakdown(
     }
     if local and start:
         out["queue_s"] = round(max(0.0, start / 1000 - submit_wall), 2)
-    done = [r for r in _progress_runs(log_entries) if r["n"] == r["total"]]
+    allowed = {int(x) for x in steps or () if isinstance(x, int) and x > 0}
+    done = [r for r in _progress_runs(log_entries) if r["n"] == r["total"] and r["total"] in allowed]
     if not done:
         return out
     steps = sum(r["total"] for r in done)
@@ -1010,8 +1028,10 @@ def timing_breakdown(
         spi = sum(r.get("spi", 0.0) * r["total"] for r in done) / steps
         out["sec_per_step"] = round(spi, 3)
         out["sampling_s"] = round(spi * steps, 2)
-    # ありえない値(時計のずれ)は捨てる: 実行の時間(無ければ全体の時間)より長い内訳は使わない
+    # ありえない値(時計のずれ・ほかの行)は捨てる: 実行の時間(無ければ全体の時間)より長い内訳は使わない
     span = max(wall or 0.0, (end - start) / 1000 if start and end else 0.0) + 1.0
+    if out["sampling_s"] is not None and out["sampling_s"] > span:
+        out["sampling_s"] = out["sec_per_step"] = None
     if local and start and done[0]["first_t"] is not None:
         load = done[0]["first_t"] - done[0]["first_elapsed"] - start / 1000
         if 0 <= load <= span:
@@ -1020,6 +1040,27 @@ def timing_breakdown(
         dec = end / 1000 - done[-1]["last_t"]
         if 0 <= dec <= span:
             out["decode_s"] = round(dec, 2)
+    return out
+
+
+def sampler_steps(workflow: Any) -> set[int]:
+    """送ったワークフロー(API 形式)のサンプラのステップ数(#132。時間の内訳で、進み具合の行を選ぶのに使う)。
+    steps の入力(と、KSamplerAdvanced の start_at_step・end_at_step で切った数)。"""
+    out: set[int] = set()
+    if not isinstance(workflow, dict):
+        return out
+    for n in workflow.values():
+        inputs = n.get("inputs") if isinstance(n, dict) else None
+        if not isinstance(inputs, dict):
+            continue
+        st = inputs.get("steps")
+        if isinstance(st, int) and not isinstance(st, bool) and st > 0:
+            out.add(st)
+            a, b = inputs.get("start_at_step"), inputs.get("end_at_step")
+            if isinstance(a, int) and isinstance(b, int):
+                k = min(b, st) - max(a, 0)
+                if k > 0:
+                    out.add(k)
     return out
 
 
@@ -1727,7 +1768,13 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
         failed=failed,
         nonstandard=list(shown),
         timing=timing_breakdown(
-            entry or {}, log_new, submit_wall, wall, local=local, cold_load=opts.cold_load
+            entry or {},
+            log_new,
+            submit_wall,
+            wall,
+            local=local,
+            cold_load=opts.cold_load,
+            steps=sampler_steps(wf),
         ),
         error_kind=_history_error_kind(entry, wf) if entry else None,
     )

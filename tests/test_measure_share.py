@@ -1266,3 +1266,28 @@ def test_measure_saves_a_failure_record_for_the_next_share(capsys, monkeypatch, 
         cli.main(["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url])
     assert "failures_file" not in json.loads(capsys.readouterr().out)
     assert len(measure.saved_submissions()) == 1
+
+
+def test_measure_saves_missing_nodes_found_before_running(capsys, monkeypatch, this_pc):
+    """#132: measure が足りないノードで測る前に止めたときも、ComfyUI の版つきで失敗の記録を保存する。"""
+    from types import SimpleNamespace
+
+    nodes = SimpleNamespace(missing=lambda mid: ["LoadMoGeModel"], comfyui_version=lambda: "0.40.0")
+    monkeypatch.setattr(cli, "_node_check", lambda url: nodes)
+    monkeypatch.setattr(bench, "run", lambda *a, **k: pytest.fail("測らない"))
+    argv = ["measure", "image_sdxl_simple", "--json", "--yes", "--url", "http://127.0.0.1:9"]
+    assert cli.main(argv) == 1
+    d = json.loads(capsys.readouterr().out)
+    data = json.loads(Path(d["failures_file"]).read_text(encoding="utf-8"))
+    assert data["comfyui_version"] == "0.40.0"
+    assert data["failures"] == [
+        {
+            "model_id": "image_sdxl_simple",
+            "outcome": "missing_nodes",
+            "seconds": None,
+            "missing_nodes": ["LoadMoGeModel"],
+            "before_run": True,
+        }
+    ]
+    assert cli.main(argv) == 1  # もう一度: 同じ記録は書かない
+    assert "failures_file" not in json.loads(capsys.readouterr().out)
