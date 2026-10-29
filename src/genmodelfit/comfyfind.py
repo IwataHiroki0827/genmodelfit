@@ -278,9 +278,53 @@ def from_folder_paths(data: dict, port: int) -> Candidate | None:
         base = models.parent
     if base is None or not looks_like_comfyui(base):
         return None
+    if models is not None and not usable_models_dir(models):
+        models = None  # 書いてよい場所に見えない(L11a): 使わない
     if models is not None and _key(models) == _key(base / "models"):
         models = None
     return Candidate(base, "running", f"127.0.0.1:{port}", models_dir=models)
+
+
+def usable_models_dir(p: Path) -> bool:
+    """起動中のサーバーが答えた models のフォルダを、置き場所に使ってよいか(L11a): あるフォルダで、OS の
+    フォルダ(C:\\Windows・Program Files・/usr・/etc など)やドライブの直下でないこと。"""
+    try:
+        r = p.resolve()
+        if not r.is_dir():
+            return False
+    except OSError:
+        return False
+    if r.parent == r or len(r.parts) <= 1:
+        return False
+    low = [x.lower() for x in r.parts]
+    system = {"windows", "program files", "program files (x86)", "programdata", "system32"}
+    if os.name == "nt" and len(low) > 1 and low[1] in system:
+        return False
+    posix_system = {"usr", "etc", "bin", "sbin", "lib", "proc", "sys", "dev", "boot"}
+    return not (os.name != "nt" and len(low) > 1 and low[1] in posix_system)
+
+
+def comfy_port_answering(ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT) -> int | None:
+    """127.0.0.1 のこのポートで ComfyUI(/system_stats)が答えるか。答えたポート(L3a。フォルダを読めない
+    ComfyUI でも、2 台目を同じフォルダで起動しないように)。GENMODELFIT_COMFYUI_SEARCH=0 なら見ない。"""
+    from .fetch import make_session
+
+    if search_disabled():
+        return None
+    for port in ports:
+        try:
+            with make_session() as s:
+                r = s.get(
+                    f"http://127.0.0.1:{port}/system_stats",
+                    timeout=timeout,
+                    allow_redirects=False,
+                    proxies={"http": None, "https": None, "all": None},  # type: ignore[dict-item]
+                )
+                if r.status_code == 200 and isinstance(r.json(), dict) and "devices" in r.json():
+                    return port
+        except Exception:
+            continue
+    return None
 
 
 def running_candidates(ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT) -> list[Candidate]:

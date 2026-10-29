@@ -274,9 +274,34 @@ def _message(status: int, body: Any) -> str:
     return f"GitHub API {status}" + (f": {msg}" if isinstance(msg, str) and msg else "")
 
 
+ORG_RESTRICTION = "oauth app access restrictions"
+
+
+def _org_restricted(body: Any) -> GitHubError | None:
+    """本家の組織が OAuth アプリの使用を制限している(L7a)。"""
+    msg = str(body.get("message", "")) if isinstance(body, dict) else ""
+    if ORG_RESTRICTION not in msg.lower():
+        return None
+    return GitHubError(
+        tr(
+            "laxshmate の組織が OAuth アプリ(genmodelfit)の使用を制限しているので、PR で送れません。"
+            "genmodelfit share --issue で送ってください"
+            "(メンテナが組織の設定でアプリを許可すると PR でも送れます)",
+            "The laxshmate organization restricts OAuth apps (genmodelfit), so a pull request cannot be sent."
+            " Send it with genmodelfit share --issue (a maintainer can approve the app in the organization's"
+            " settings)",
+        ),
+        kind="org_restricted",
+        status=403,
+    )
+
+
 def _write_denied(status: int, body: Any, login: str) -> GitHubError:
     """書けなかった。403・404 はほとんどトークンの scope が足りない
     (GitHub は書けないリポジトリに 404 を返す)。"""
+    org = _org_restricted(body)
+    if org is not None:
+        return org
     base = _message(status, body)
     if status not in (403, 404):
         return GitHubError(base, status=status)
@@ -716,7 +741,7 @@ def open_pr(session: Any, token: str, fork: str, branch: str, title: str, body: 
     )
     url = resp.get("html_url") if isinstance(resp, dict) else None
     if status not in (200, 201) or not isinstance(url, str):
-        raise GitHubError(_message(status, resp), status=status)
+        raise _org_restricted(resp) or GitHubError(_message(status, resp), status=status)
     return url
 
 

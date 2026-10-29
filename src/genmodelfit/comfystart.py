@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -260,6 +261,8 @@ def launch(
         env.pop(name, None)
     env.setdefault("PYTHONIOENCODING", "utf-8")
     kw["env"] = env
+    if sys.platform.startswith("linux"):
+        kw["preexec_fn"] = _die_with_parent  # 親(genmodelfit)が殺されたら子にも SIGTERM(L1a)
     out = open(log, "ab")  # noqa: SIM115 子のプロセスに渡す(閉じるのは止めるとき)
     try:
         proc = (popen or subprocess.Popen)(plan.argv(port), stdout=out, **kw)
@@ -271,7 +274,92 @@ def launch(
         ) from None
     started = Started(plan, proc, port, log)
     started._log_file = out  # type: ignore[attr-defined]
+    if sys.platform == "win32":
+        # 端末のウィンドウを閉じた・genmodelfit が殺されたときも ComfyUI を残さない(L1a): Job Object に入れ、
+        # genmodelfit が終わってハンドルが閉じると OS が子を止める(KILL_ON_JOB_CLOSE)
+        started._job = kill_on_close_job(proc)  # type: ignore[attr-defined]
     return started
+
+
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+_JOBS: list = []  # ハンドルを持っておく(閉じると子が止まる)
+
+
+def kill_on_close_job(proc: Any):
+    """Windows: proc を KILL_ON_JOB_CLOSE の Job Object に入れる(ctypes。新しい依存は足さない)。
+    できなければ None(起動は続ける。止めるのは stop と、それでも残れば利用者)。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                (n, ctypes.c_ulonglong)
+                for n in (
+                    "ReadOperationCount",
+                    "WriteOperationCount",
+                    "OtherOperationCount",
+                    "ReadTransferCount",
+                    "WriteTransferCount",
+                    "OtherTransferCount",
+                )
+            ]
+
+        class BASIC(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class EXTENDED(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BASIC),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = EXTENDED()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            kernel32.CloseHandle(job)
+            return None
+        handle = getattr(proc, "_handle", None)
+        if handle is None or not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(int(handle))):
+            kernel32.CloseHandle(job)
+            return None
+        _JOBS.append(job)
+        return job
+    except Exception:  # Job Object が使えない環境でも起動は続ける
+        return None
+
+
+def _die_with_parent() -> None:  # pragma: no cover - 子のプロセスの中で動く(Linux だけ)
+    """Linux: 親が死んだら SIGTERM を受ける(prctl PR_SET_PDEATHSIG)。macOS には無い(制限は文書に書く)。"""
+    try:
+        import ctypes
+        import signal
+
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, int(signal.SIGTERM), 0, 0, 0)
+    except Exception:
+        pass
 
 
 def last_log_line(log: Path, nbytes: int = 4096) -> str:
@@ -284,8 +372,18 @@ def last_log_line(log: Path, nbytes: int = 4096) -> str:
             data = f.read().decode("utf-8", errors="replace")
     except OSError:
         return ""
-    lines = [x.strip() for x in data.splitlines() if x.strip()]
+    lines = [clean_line(x) for x in data.splitlines()]
+    lines = [x for x in lines if x]
     return lines[-1] if lines else ""
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?")
+
+
+def clean_line(text: str) -> str:
+    """表示する前に、ANSI のエスケープと制御文字を取り除く(L3j。端末を壊さない)。"""
+    text = _ANSI.sub("", text)
+    return "".join(ch for ch in text if ch == "\t" or (ord(ch) >= 32 and ord(ch) != 127)).strip()
 
 
 def tail(log: Path, n: int = LOG_TAIL_LINES) -> list[str]:

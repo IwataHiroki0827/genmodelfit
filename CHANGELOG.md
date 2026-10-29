@@ -60,6 +60,13 @@ All notable changes to this project are documented here. The format is based on
   - Clearer reasons when there is nothing to do (`--budget` too small, nothing unsent, everything measured), for
     `--no-start`, timeouts and missing nodes; flag mistakes exit 2; declining the download in `measure` exits 0;
     stdout is flushed before every stderr line (pipes keep the order); each file being sent is shown.
+- **More error cases** (#124): a started ComfyUI is stopped also when the terminal is closed or genmodelfit is
+  killed (Windows Job Object; Linux parent-death signal; POSIX hang-up); only one measuring run at a time
+  (`measure.lock`); no second ComfyUI when one already answers; folders reported by a running server are checked
+  before downloading into them; a sign-in-protected ComfyUI, user jobs in its queue, a sleeping PC, a cache that
+  cannot be written, unreachable templates, an organization that restricts OAuth apps (use `--issue`) and odd
+  nvidia-smi output are explained; several GPUs follow `CUDA_VISIBLE_DEVICES`; log lines lose control characters
+  and the live display does not crash on cp932 or 40-column terminals and stays plain with `TERM=dumb`.
 - **Progress you can follow** (#124): `share` numbers its steps ("== 手順 2/6: ComfyUI を起動 =="); in a terminal
   the ComfyUI start, each measurement (elapsed against the guide, queued / running / waiting, peak VRAM so far, a
   note when it takes much longer than the guide) and downloads (one bar per file and one for everything, with size,

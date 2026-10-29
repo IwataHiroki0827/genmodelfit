@@ -1982,3 +1982,30 @@ def test_cli_translates_library_texts(tmp_path, comfy, capsys):
         ["download", "Tiny Te", "--db", str(db), "--comfyui-dir", str(comfy), "--list"], capsys
     )
     assert code == 1 and "--uncensored" in err and 'content="all"' not in err
+
+
+# --- #124 L6: 消えたファイル・書けない置き場所 -------------------------------------------------------------
+
+
+def test_L6a_missing_file_on_the_server_is_a_clear_error(server, comfy):
+    _Handler.files = {"tiny_vae.safetensors": BODY_B}  # 本体は消えた(404)
+    p = plan(make_db(server), comfy)
+    with pytest.raises(DownloadError) as e:
+        gmf.download(p, yes=True)
+    assert "404" in str(e.value)
+
+
+def test_L6d_place_that_cannot_be_written_is_a_clear_error(server, comfy, monkeypatch):
+    p = plan(make_db(server), comfy)
+    real_open = Path.open
+
+    def deny(self, mode="r", *a, **k):
+        if self.name.endswith(".part") and mode != "rb":
+            raise PermissionError(13, "read-only", str(self))  # 読み取り専用・OneDrive の置き場所など
+        return real_open(self, mode, *a, **k)
+
+    monkeypatch.setattr(Path, "open", deny)
+    with pytest.raises(DownloadError) as e:
+        gmf.download(p, yes=True)
+    assert "PermissionError" in str(e.value) or "read-only" in str(e.value) or "書け" in str(e.value)
+    assert not any(comfy.rglob("*.safetensors"))

@@ -1841,7 +1841,7 @@ def test_C3_before_starting_comfyui(capsys, monkeypatch, this_pc, plan, gh, star
 
     from genmodelfit import bench, comfystart
 
-    monkeypatch.setattr(bench, "vram_in_use", lambda: (int(5.8 * 1024**3), 8 * 1024**3))
+    monkeypatch.setattr(bench, "vram_in_use", lambda name=None: (int(5.8 * 1024**3), 8 * 1024**3))
     monkeypatch.setattr(comfystart, "launch", lambda *a, **k: pytest.fail("起動しない"))
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     assert cli.main(["--lang", "ja", "share", "--yes", "--comfyui-dir", str(venv_install(tmp_path))]) == 1
@@ -2167,3 +2167,342 @@ def test_sending_reports_each_file():
         sleep=lambda s: None,
     )
     assert "送っています 1/2: data/contrib/x/2026-10-29-aaaaaaaa.json" in logs and "PR を開いています" in logs
+
+
+# --- L: 追加のエラーの場面(#124。つながる先ごと) ---------------------------------------------------------
+
+
+def test_L1a_windows_job_object_and_posix_parent_death(monkeypatch, tmp_path):
+    from test_comfystart import FakeProc, venv_install
+
+    from genmodelfit import comfystart
+
+    plan_ = comfystart.plan_start(venv_install(tmp_path))
+    jobs = []
+    monkeypatch.setattr(comfystart, "kill_on_close_job", lambda proc: jobs.append(proc) or "job")
+    monkeypatch.setattr(sys, "platform", "win32")
+    st = comfystart.launch(plan_, port=1, log=tmp_path / "a.log", popen=lambda argv, **kw: FakeProc())
+    assert jobs == [st.process] and st._job == "job"  # 端末を閉じても OS が子を止める(KILL_ON_JOB_CLOSE)
+    comfystart.stop(st, run=lambda *a, **k: SimpleNamespace(returncode=0))
+    seen = {}
+    monkeypatch.setattr(sys, "platform", "linux")
+    st = comfystart.launch(
+        plan_, port=1, log=tmp_path / "b.log", popen=lambda argv, **kw: seen.update(kw) or FakeProc()
+    )
+    assert seen["start_new_session"] is True and seen["preexec_fn"] is comfystart._die_with_parent
+    st.stopped = True
+    # Job Object を作れない環境(ハンドルが無い)でも落ちない
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.undo()
+    assert comfystart.kill_on_close_job(SimpleNamespace()) is None
+
+
+def test_L1a_hangup_is_handled_like_ctrl_c(monkeypatch):
+    import signal
+
+    calls = []
+    monkeypatch.setattr(signal, "SIGHUP", 1, raising=False)
+    monkeypatch.setattr(signal, "signal", lambda sig, h: calls.append((sig, h)) or "old")
+    assert cli.main(["share", "--print-url"]) == 2
+    assert calls[0] == (1, cli._hangup) and calls[-1] == (1, "old")  # 入れて、終わったら戻す
+    with pytest.raises(KeyboardInterrupt):
+        cli._hangup(1, None)
+
+
+def test_L1b_sleep_gap_does_not_count_as_waiting(monkeypatch):
+    from test_bench import FakeComfy
+
+    bench = _bench_gpu(monkeypatch)
+    monkeypatch.setattr(bench, "SLEEP_GAP", -1.0)  # 毎回スリープしていたことにする
+    with FakeComfy() as fake:
+        opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, free_before=True)
+        res = bench.run(opts)
+    assert "PC がスリープした" in res.nonstandard and res.measurement.standard is False
+
+
+def test_L1c_only_one_measuring_run_at_a_time(capsys, monkeypatch, this_pc, plan, gh):
+    from genmodelfit.db import cache_dir
+
+    lock = cache_dir() / cli.LOCK_FILE
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(str(os.getppid()), encoding="ascii")  # 生きているほかのプロセス
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    assert "ほかの genmodelfit" in capsys.readouterr().err and plan["ran"] == []
+    lock.write_text("999999999", encoding="ascii")  # もう無いプロセス(古い印)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    assert len(plan["ran"]) == 3 and not lock.exists()  # 終わったら消す
+
+
+def test_L2a_L2b_nvidia_smi_odd_output_and_several_gpus(monkeypatch):
+    from genmodelfit import bench
+
+    monkeypatch.setattr(bench, "_smi_query", lambda args: "garbage\n,,\n")
+    assert bench.vram_in_use() is None and bench.smi_gpus() == []
+    monkeypatch.setattr(bench, "_smi_query", lambda args: None)  # 無い・答えない
+    assert bench.vram_in_use() is None
+    out = "0, NVIDIA GeForce RTX 4090, 1000, 24564\n1, NVIDIA GeForce RTX 3070, 3000, 8192\n"
+    monkeypatch.setattr(bench, "_smi_query", lambda args: out)
+    assert bench.vram_in_use() == (1000 * 1024**2, 24564 * 1024**2)  # いちばん大きいもの
+    assert bench.vram_in_use("NVIDIA GeForce RTX 3070") == (3000 * 1024**2, 8192 * 1024**2)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
+    assert bench.vram_in_use("NVIDIA GeForce RTX 4090")[1] == 8192 * 1024**2  # ComfyUI が使うのは 1 番
+
+
+def test_L3a_no_second_comfyui_on_the_same_folder(monkeypatch, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfyfind, comfystart
+
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(comfyfind, "comfy_port_answering", lambda *a, **k: 8000)
+    args = cli.build_parser().parse_args(["share", "--comfyui-dir", str(venv_install(tmp_path))])
+    plan_, why = cli._comfyui_start_plan(args, None)
+    assert plan_ is None and "--url http://127.0.0.1:8000" in why and "2 台目は起動しません" in why
+
+
+def test_L3d_comfyui_behind_authentication():
+    from genmodelfit import bench
+
+    class S:
+        def request(self, method, url, **kw):
+            return SimpleNamespace(status_code=401, json=lambda: {})
+
+    with pytest.raises(bench.BenchError) as e:
+        bench.ComfyClient("http://x:1", session=S()).system_stats()
+    assert "ログイン(認証)" in str(e.value)
+
+
+def test_L3e_user_jobs_in_the_queue():
+    from test_bench import FakeComfy
+
+    from genmodelfit import bench
+
+    with FakeComfy("busy") as fake:
+        with pytest.raises(bench.BenchError) as e:
+            bench.run(bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, force=True))
+        assert not fake.submitted
+    assert "キュー" in str(e.value) and "キューの仕事が終わるのを待って" in cli._measure_next_step(
+        str(e.value), "x"
+    )
+
+
+def test_L3f_L3g_L3h_node_error_cancel_or_full_disk_is_listed(capsys, monkeypatch, this_pc, plan, gh):
+    def run(args, url, entry, settings, **k):
+        m = SimpleNamespace(outcome="error", peak_vram_gb=1.0, seconds=3.0, standard=True)
+        res = SimpleNamespace(
+            warnings=[], nonstandard=[], failed="SaveImage: [Errno 28] No space left on device"
+        )
+        return {"error": None, "result": res, "measurement": m, "submission": None}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--json", "--url", "http://x:1"]) == 1
+    d = json.loads(capsys.readouterr().out)
+    assert len(d["failed"]) == 3 and "結果が error なので送りません(SaveImage" in d["failed"][0]["error"]
+
+
+def test_L3i_L3j_folder_names_and_log_lines(tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    d = venv_install(tmp_path / "日本語 フォルダ")
+    plan_ = comfystart.plan_start(d)
+    assert str(d / "main.py") in plan_.argv(1)
+    log = tmp_path / "c.log"
+    log.write_bytes("起動中\n".encode() + b"\xff\xfe broken\n" + "\x1b[32mINFO\x1b[0m 準備\x07\r\n".encode())
+    assert comfystart.last_log_line(log) == "INFO 準備"
+    assert comfystart.clean_line("\x1b]0;title\x07ok\x1b[2K") == "ok"
+
+
+def test_L4a_template_unreachable_is_said(capsys, monkeypatch, this_pc, plan, gh):
+    from genmodelfit import bench
+
+    class Down:
+        s = None
+
+        def object_info(self):
+            return {"KSampler": {}}
+
+        def template(self, name):
+            return None
+
+    monkeypatch.setattr(
+        bench, "fetch_template", lambda c, m, s: (_ for _ in ()).throw(bench.BenchError("offline"))
+    )
+    checker = bench.NodeCheck("http://x:1", client=Down())
+    assert checker.missing("a") == [] and checker.unchecked == ["a"]
+    monkeypatch.setattr(cli, "_node_check", lambda url: checker)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    assert "ノードを確かめられなかったもの" in capsys.readouterr().err
+
+
+def test_L4b_missing_files_hint():
+    hint = cli._measure_next_step("必要なファイルがサーバーにありません: x", "image_x")
+    assert "genmodelfit download image_x" in hint and "--comfyui-dir" in hint
+
+
+def test_L5a_cache_not_writable(monkeypatch, this_pc):
+    from genmodelfit import bench
+    from genmodelfit.models import Measurement
+
+    def run(opts, log=None, progress=None):
+        m = Measurement(model_id=opts.model_id, gpu_name="g", gpu_vram_gb=8.0, peak_vram_gb=1.0, outcome="ok")
+        return bench.BenchResult(measurement=m, workflow_source="t", warnings=[])
+
+    def save(m, path):
+        raise PermissionError(13, "denied", str(path))
+
+    monkeypatch.setattr(bench, "run", run)
+    monkeypatch.setattr(bench, "save", save)
+    e = SimpleNamespace(id="image_sdxl_simple", precision="fp16", files=[])
+    out = cli._measure_run(cli.build_parser().parse_args(["share"]), "http://x:1", e, None)
+    assert "保存できません" in out["error"] and "GENMODELFIT_CACHE_DIR" in out["error"]
+
+
+def test_L5b_broken_marks_and_token_files(capsys):
+    measure.shared_path().parent.mkdir(parents=True, exist_ok=True)
+    measure.shared_path().write_text("{not json", encoding="utf-8")
+    assert measure.load_shared() == {}
+    _write_sub(1)
+    assert len(measure.saved_submissions()) == 1
+    github.token_path().parent.mkdir(parents=True, exist_ok=True)
+    github.token_path().write_text("{broken", encoding="utf-8")
+    assert github.read_cached_token() is None and not github.token_path().exists()
+
+
+def test_L7a_organization_restricts_oauth_apps():
+    class Restricted(FakeGitHub):
+        def request(self, method, url, **kw):
+            if method == "PUT":
+                return Resp(
+                    403,
+                    {
+                        "message": "Although you appear to have the correct authorization credentials, the"
+                        " `laxshmate` organization has enabled OAuth App access restrictions"
+                    },
+                )
+            return super().request(method, url, **kw)
+
+    with pytest.raises(github.GitHubError) as e:
+        github.submit(
+            Restricted(fork_exists=True),
+            _creds(),
+            [("data/contrib/x/2026-10-29-aaaaaaaa.json", "{}")],
+            title="t",
+            body="b",
+            branch="genmodelfit-share/x/1",
+            match_prefix="genmodelfit-share/x/",
+            sleep=lambda s: None,
+        )
+    assert e.value.kind == "org_restricted" and "--issue" in str(e.value) and "scope" not in str(e.value)
+
+
+def test_L7b_another_repository_named_genmodelfit():
+    class Other(FakeGitHub):
+        def request(self, method, url, **kw):
+            if method == "GET" and url == FORK:
+                return Resp(200, {"full_name": "alice/genmodelfit", "fork": False})  # フォークでない別のもの
+            if method == "POST" and url.endswith("/forks"):
+                return Resp(202, {"full_name": "alice/genmodelfit-1"})
+            if method == "GET" and url.endswith("/repos/alice/genmodelfit-1"):
+                return Resp(200, {"full_name": "alice/genmodelfit-1"})
+            return super().request(method, url, **kw)
+
+    fork, fresh = github.ensure_fork(Other(), TOKEN, "alice", sleep=lambda s: None)
+    assert fork == "alice/genmodelfit-1" and fresh
+
+
+def test_L9a_cp932_console_does_not_crash():
+    import io
+
+    from rich.console import Console
+
+    from genmodelfit.downloader import DownloadProgress
+
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp932", errors="strict")
+    con = Console(file=cli._SafeStream(stream), force_terminal=True, width=60, color_system=None)
+    v = cli._StartView(45, 300, console=con)
+    v.update(3, "━━ ⠋ … ✓ 起動中")
+    v.done(4)
+    m = cli._MeasureView("測る 1/1: SDXL 768×768", 20, console=con)
+    m.update({"phase": "running", "elapsed": 30, "peak_vram_gb": 1.0})
+    m.done()
+    d = cli._DownloadView(console=con)
+    d(DownloadProgress("download", 1, 1, "m.safetensors", 1, 2, 1, 2))
+    d.close()
+    stream.flush()
+    assert raw.getvalue()  # 書けない文字は ? になって、落ちない
+
+
+def test_L9b_L9c_narrow_and_dumb_terminals(monkeypatch, capsys):
+    import io
+
+    from rich.console import Console
+
+    con = _term(40)
+    v = cli._MeasureView("測る 1/2: とても長い名前のモデル 1536×1536", 20, console=con)
+    v.update({"phase": "queued", "elapsed": 5, "peak_vram_gb": 0.5})
+    v.done()
+    assert all(w <= 40 for _l, w in _rendered_lines(con.file.getvalue()))
+    monkeypatch.setenv("TERM", "dumb")
+    dumb = Console(file=io.StringIO(), force_terminal=True)
+    v = cli._MeasureView("x", 20, console=dumb)
+    assert v.live is False  # 書き換えない(普通の行)
+    v.update({"phase": "running", "elapsed": 1})
+    assert "x:" in capsys.readouterr().err
+
+
+def test_L11a_answers_pointing_at_system_folders_are_not_used(tmp_path):
+    from genmodelfit import comfyfind
+
+    assert not comfyfind.usable_models_dir(tmp_path / "missing")
+    assert comfyfind.usable_models_dir(tmp_path)
+    if os.name == "nt":
+        assert not comfyfind.usable_models_dir(Path("C:/Windows/System32"))
+        assert not comfyfind.usable_models_dir(Path("C:/"))
+    else:
+        assert not comfyfind.usable_models_dir(Path("/usr/lib"))
+        assert not comfyfind.usable_models_dir(Path("/"))
+
+
+def test_L11b_broken_object_info():
+    from genmodelfit import bench
+    from genmodelfit.workflow import missing_nodes
+
+    assert missing_nodes({"nodes": []}, "not a dict") == []
+
+    class Broken:
+        s = None
+
+        def object_info(self):
+            raise bench.BenchError("ComfyUI の /object_info の応答が JSON ではありません")
+
+        def template(self, name):
+            return None
+
+    nc = bench.NodeCheck("http://x:1", client=Broken())
+    assert nc.missing("a") == [] and nc.unchecked == ["a"]
+
+
+def test_L12a_macos_desktop_app_place(tmp_path, monkeypatch):
+    from genmodelfit import comfystart
+
+    base = tmp_path / "Documents" / "ComfyUI"
+    for name in ("models", "input", "user", "output", "custom_nodes"):
+        (base / name).mkdir(parents=True)
+    (base / ".venv" / "bin").mkdir(parents=True)
+    (base / ".venv" / "bin" / "python").write_text("")
+    res = tmp_path / "Applications" / "ComfyUI.app" / "Contents" / "Resources"
+    (res / "ComfyUI").mkdir(parents=True)
+    (res / "ComfyUI" / "main.py").write_text("")
+    monkeypatch.setattr(comfystart, "DESKTOP_RESOURCES_MAC", tmp_path / "nowhere")
+    p = comfystart.plan_start(base, desktop=True, platform="darwin", home=tmp_path)
+    assert (
+        p.kind == "desktop"
+        and p.python == base / ".venv" / "bin" / "python"
+        and p.main == res / "ComfyUI" / "main.py"
+    )

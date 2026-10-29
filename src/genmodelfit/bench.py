@@ -28,6 +28,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -119,6 +120,15 @@ class ComfyClient:
 
     def get_json(self, path: str) -> Any:
         r = self._req("GET", path)
+        if r.status_code in (401, 403):
+            raise BenchError(
+                tr(
+                    f"ComfyUI({self.url})がログイン(認証)を求めています({r.status_code})。genmodelfit は"
+                    "認証の付いた ComfyUI では測れません(認証の無い ComfyUI を --url で指定してください)",
+                    f"ComfyUI ({self.url}) asks for a sign-in ({r.status_code}). genmodelfit cannot measure"
+                    " on a ComfyUI behind authentication (give one without it with --url)",
+                )
+            )
         if r.status_code != 200:
             raise BenchError(
                 tr(
@@ -425,19 +435,32 @@ def others_vram_limit(total_bytes: int) -> float:
     return max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total_bytes)
 
 
-def vram_in_use() -> tuple[int, int] | None:
-    """nvidia-smi の、いちばん大きい GPU の (使用中のバイト, 全体のバイト)。読めなければ None。
-    自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を使っていないかを見るのに使う(#124)。"""
-    out = _smi_query(["--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"])
-    best = None
+def vram_in_use(name: str | None = None) -> tuple[int, int] | None:
+    """nvidia-smi の GPU の (使用中のバイト, 全体のバイト)。読めなければ None(nvidia-smi が無い・答えない・
+    変な出力でも例外にしない。L2a)。自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を使っていないかを
+    見るのに使う(#124)。GPU が 2 枚以上なら(L2b)、CUDA_VISIBLE_DEVICES の最初の番号、
+    無ければ name と同じ名前、無ければいちばん大きいもの(ComfyUI が使う GPU と数える GPU をそろえる)。"""
+    from .estimate import gpu_key
+
+    out = _smi_query(["--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"])
+    rows = []
     for line in (out or "").strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 4:
+            continue
         try:
-            used, total = (float(x) for x in line.split(",")[:2])
+            rows.append((parts[0], parts[1], int(float(parts[2]) * 1024**2), int(float(parts[3]) * 1024**2)))
         except ValueError:
             continue
-        if best is None or total > best[1]:
-            best = (int(used * 1024**2), int(total * 1024**2))
-    return best
+    if not rows:
+        return None
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0].strip()
+    pick = next((r for r in rows if visible and r[0] == visible), None)
+    if pick is None and name:
+        pick = next((r for r in rows if gpu_key(r[1]) == gpu_key(name)), None)
+    if pick is None:
+        pick = max(rows, key=lambda r: r[3])
+    return pick[2], pick[3]
 
 
 def smi_gpus() -> list[dict[str, Any]]:
@@ -561,6 +584,7 @@ OTHER_APPS_VRAM_SHARE = 0.5
 OTHERS_VRAM_MIN = int(1.5 * 1024**3)
 OTHERS_VRAM_SHARE = 0.2
 GPU_APPS_EVERY = 2.0  # 測っているあいだ、GPU を使うプロセスを見る間隔(秒)
+SLEEP_GAP = 30.0  # 待つあいだの 1 回の間がこれより長ければ、PC がスリープしていたとみなす(秒)
 
 
 def device_vendor(dev: dict[str, Any], stats: dict[str, Any]) -> str:
@@ -929,6 +953,7 @@ class NodeCheck:
         self.client = client or ComfyClient(url, session=self.session)
         self._info: dict[str, Any] | None = None
         self._seen: dict[str, list[str]] = {}
+        self.unchecked: list[str] = []  # 確かめられなかったもの(テンプレートを取れない・通信の誤り。L4a)
 
     def missing(self, model_id: str) -> list[str]:
         """そのテンプレートが使い、この ComfyUI に無いノード(無ければ空)。"""
@@ -943,6 +968,7 @@ class NodeCheck:
             out = missing_nodes(ui, self._info)
         except (BenchError, WorkflowError):
             out = []
+            self.unchecked.append(model_id)
         self._seen[model_id] = out
         return out
 
@@ -1219,6 +1245,8 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     # (#124。nvidia-smi の compute apps。Windows でも PID は出る)
     gpu_uuid = str(gpu.get("uuid")) if gpu and gpu.get("uuid") else None
     gpu_apps0 = _gpu_app_pids(gpu_uuid) if gpu_id is not None else None
+    last_tick = time.monotonic()
+    slept = 0.0
     new_apps: set[int] = set()
     next_apps = time.monotonic() + GPU_APPS_EVERY
     try:
@@ -1248,7 +1276,14 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
                             "peak_vram_gb": (torch_now or dev_now) / GIB,
                         }
                     )
-            if time.monotonic() - t0 > opts.timeout:
+            now = time.monotonic()
+            if now - last_tick > SLEEP_GAP:
+                # PC がスリープ・休止していた(L1b): 止まっていた時間は待つ時間に数えず、結果は標準にしない
+                slept += now - last_tick
+                if "PC がスリープした" not in nonstandard:
+                    nonstandard.append("PC がスリープした")
+            last_tick = now
+            if now - t0 - slept > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
                 raise BenchError(
                     tr(

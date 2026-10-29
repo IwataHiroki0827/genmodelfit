@@ -1112,6 +1112,13 @@ Rules:
   default 300 s) and stops only that process tree afterwards (also on a failure or Ctrl+C; Windows `taskkill /T /F`,
   POSIX the process group). The "Measure it?" question covers it. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns
   it off. JSON: `comfyui.start` before, `comfyui.started` `{kind, comfyui_dir, url, log}` once started.
+- **Never left running, never two at once** (0.13.0): on Windows the started ComfyUI is put in a Job Object with
+  `KILL_ON_JOB_CLOSE`, so closing the terminal or killing genmodelfit stops it too; on Linux it also gets
+  `PR_SET_PDEATHSIG`; on POSIX a hang-up (closing the terminal) is handled like Ctrl+C. Limit: on macOS a
+  genmodelfit killed with SIGKILL cannot stop it. Only one `measure` / `share` measures at a time
+  (`<cache>/measure.lock` with the process id; a lock whose process is gone is taken over). When a ComfyUI already
+  answers on 127.0.0.1:8188 / 8000 but its folders cannot be read, no second one is started (`--url` it instead).
+  The folder a running server reports is used for downloads only when it exists and is not a system folder.
 - **Missing nodes** (0.13.0): once a ComfyUI is reachable, `/object_info` is read once and each template is checked
   (`workflow.missing_nodes`, the same check as `bench`; `bench.NodeCheck`). The list hides suggestions whose template
   uses nodes that ComfyUI lacks; a named model stops before downloading or measuring, with "Next:" saying to update

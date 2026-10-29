@@ -393,6 +393,8 @@ def _runs(n: _Node) -> bool:
 def missing_nodes(ui: dict[str, Any], object_info: dict[str, Any]) -> list[str]:
     """画面用のワークフローが使い、ComfyUI(/object_info)に無いノードの種類(並べたもの)。
     bench(ui_to_api)と、share・measure の前の確かめ(#124)が同じこれを使う。"""
+    if not isinstance(object_info, dict):
+        return []  # 壊れた /object_info では確かめない(L11b)
     try:
         flat, _alias = _flat_graph(ui)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError):

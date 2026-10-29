@@ -1064,6 +1064,12 @@ bench が Measurement を埋める方法(測り方):
   終わったら(失敗・Ctrl+C でも)そのプロセスの木だけを止める(Windows は `taskkill /T /F`、POSIX はプロセスグループ)。
   「測りますか?」の質問が同意を兼ねる。`--no-start` か `GENMODELFIT_COMFYUI_START=0` で止める。JSON は、起動の前は
   `comfyui.start`、起動したあとは `comfyui.started` `{kind, comfyui_dir, url, log}`。
+- **残さない・2 つ同時にしない**(0.13.0): Windows では起動した ComfyUI を `KILL_ON_JOB_CLOSE` の Job Object に
+  入れるので、端末を閉じても genmodelfit が殺されても止まる。Linux では `PR_SET_PDEATHSIG` も付ける。POSIX では
+  端末を閉じた(SIGHUP)ときも Ctrl+C と同じく止める。制限: macOS で genmodelfit が SIGKILL で殺されると止められない。
+  測るのは同時に 1 つの `measure`・`share` だけ(`<cache>/measure.lock` にプロセスの番号。そのプロセスが無ければ
+  取り直す)。127.0.0.1 の 8188・8000 で ComfyUI が答えるのにフォルダを読めないときは、2 台目を起動しない(`--url` で
+  使う)。起動中のサーバーが答えたフォルダは、あってシステムのフォルダでないときだけ、落とす場所に使う。
 - **足りないノード**(0.13.0): ComfyUI に届いたら `/object_info` を 1 回読み、テンプレートごとに確かめる
   (`workflow.missing_nodes`。`bench` と同じ確かめ。`bench.NodeCheck`)。一覧からは、その ComfyUI に無いノードを使う
   提案を外す。名前で指定したものは、落とす・測る前に止め、「次にすること:」で ComfyUI の更新(かカスタムノード)を言う。

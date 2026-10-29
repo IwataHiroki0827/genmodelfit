@@ -3228,11 +3228,29 @@ def _share_replan_lines(plan: list, total: int, budget: float, skipped: list) ->
 # 出すのは stderr(stdout は結果・JSON のため)。質問の前には必ず止める(close)。NO_COLOR は rich が守る
 
 
+class _SafeStream:
+    """書けない文字を ? にして書く(cp932 などの古い端末・ファイルで落ちない。L9a)。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def write(self, text):
+        try:
+            return self._inner.write(text)
+        except UnicodeEncodeError:
+            enc = getattr(self._inner, "encoding", None) or "ascii"
+            return self._inner.write(text.encode(enc, errors="replace").decode(enc, errors="replace"))
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 def _err_console():
-    """途中経過を描く rich の Console(stderr)。試験で差し替える。"""
+    """途中経過を描く rich の Console(stderr)。試験で差し替える。書けない文字は ? にする(L9a)。
+    NO_COLOR・TERM=dumb は rich が守る(色を付けない・書き換えない。L9c)。"""
     from rich.console import Console
 
-    return Console(stderr=True, highlight=False)
+    return Console(file=_SafeStream(sys.stderr), highlight=False)
 
 
 def _fit_width(text: str, width: int) -> str:
@@ -3267,7 +3285,12 @@ class _View:
 
         self.enabled = enabled
         self.console = console if console is not None else (_err_console() if enabled else None)
-        self.live = bool(enabled and self.console is not None and self.console.is_terminal)
+        self.live = bool(
+            enabled
+            and self.console is not None
+            and self.console.is_terminal
+            and not getattr(self.console, "is_dumb_terminal", False)
+        )
         self.clock = clock or _time.monotonic
         self._last_line: float | None = None
         self.progress = None
@@ -3753,12 +3776,71 @@ def _share_download_and_measure(args: argparse.Namespace, ctx: dict, dl_plan: li
             break
 
 
-def _vram_busy_before_start() -> str | None:
+LOCK_FILE = "measure.lock"  # 測っているあいだの印(キャッシュの中。中身はプロセスの番号)
+
+
+def _measure_lock():
+    """measure・share が同時に測らないようにする(L1c。同じ ComfyUI・同じキャッシュを取り合わない)。
+    ほかの genmodelfit が測っていれば、はっきり断る。印を作ったプロセスがもう無ければ(古い印)取り直す。"""
+    import psutil
+
+    from .db import cache_dir
+
+    p = cache_dir() / LOCK_FILE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(3):
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+        except FileExistsError:
+            try:
+                pid = int(p.read_text(encoding="ascii").strip() or "0")
+            except (OSError, ValueError):
+                pid = 0
+            if pid and pid != os.getpid() and psutil.pid_exists(pid):
+                raise CliError(
+                    tr(
+                        f"ほかの genmodelfit(measure か share。プロセス {pid})が測っています。"
+                        f"終わってから実行してください(止まっているのに残っているなら {p} を消してください)",
+                        f"Another genmodelfit (measure or share, process {pid}) is measuring. Run it after"
+                        f" that one finishes (if it is gone but this stays, delete {p})",
+                    )
+                ) from None
+            with contextlib.suppress(OSError):  # 古い印(そのプロセスはもう無い)
+                p.unlink()
+            continue
+        with os.fdopen(fd, "w", encoding="ascii") as f:
+            f.write(str(os.getpid()))
+        return p
+    return None
+
+
+def _measure_unlock(p) -> None:
+    if p is not None:
+        with contextlib.suppress(OSError):
+            p.unlink()
+
+
+def _note_unchecked(args: argparse.Namespace, checker) -> None:
+    """ノードを確かめられなかったもの(テンプレートを取れない・回線が無い。L4a)を知らせる(外さずに測る)。"""
+    names = list(getattr(checker, "unchecked", []) or [])
+    if names and not args.json:
+        print(
+            tr(
+                f"注意: ノードを確かめられなかったもの {len(names)} 件(テンプレートを取れない。"
+                f"回線を確かめてください。測るときに分かります): {', '.join(names)}",
+                f"warning: the nodes of {len(names)} could not be checked (the template could not be"
+                f" fetched; check the connection; measuring will tell): {', '.join(names)}",
+            ),
+            file=sys.stderr,
+        )
+
+
+def _vram_busy_before_start(name: str | None = None) -> str | None:
     """自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を多く使っていないか(#124)。
     使っていれば理由。"""
     from .bench import others_vram_limit, vram_in_use
 
-    v = vram_in_use()
+    v = vram_in_use(name)
     if v is None:
         return None
     used, total = v
@@ -3986,6 +4068,7 @@ def cmd_share(args: argparse.Namespace) -> int:
                 # 起動中の ComfyUI があれば、足りないノードの要るものを先に外す(#124)
                 checker = _node_check(url)
             plan, total, dl_plan = _share_replan(sugg, budget, checker, skipped)
+            _note_unchecked(args, checker)
             unknown = sum(1 for x in sugg if x.installed is not None and x.installed.state == "unknown")
             start, start_why = _comfyui_start_plan(args, url)
             if url is None and start is None:
@@ -4097,11 +4180,12 @@ def cmd_share(args: argparse.Namespace) -> int:
             _step(args, "check")
         creds, session = _share_precheck(args)
         holder: list = []
+        lock = _measure_lock()  # 同時に測らない(L1c)
         try:
             if start is not None:
                 _step(args, "start")
                 try:
-                    busy = _vram_busy_before_start()
+                    busy = _vram_busy_before_start(s.best_gpu.name if s and s.best_gpu else None)
                     if busy:
                         raise CliError(busy)
                     started = _comfyui_start(args, start, holder)
@@ -4118,7 +4202,9 @@ def cmd_share(args: argparse.Namespace) -> int:
                     before = [(x.model_id, tuple(x.args)) for x in plan]
                     approved_dl = list(dl_plan)
                     before_dl = [x.model_id for x in dl_plan]
-                    plan, total, dl_plan = _share_replan(sugg, budget, _node_check(url), skipped)
+                    checker = _node_check(url)
+                    plan, total, dl_plan = _share_replan(sugg, budget, checker, skipped)
+                    _note_unchecked(args, checker)
                     # 落とすのは、見せた(同意した)一覧の中だけ。外れたものは理由を言う(足さない)
                     new_ids = {(x.model_id, tuple(x.args)) for x in dl_plan}
                     dl_plan = [x for x in approved_dl if (x.model_id, tuple(x.args)) in new_ids]
@@ -4187,6 +4273,7 @@ def cmd_share(args: argparse.Namespace) -> int:
         finally:
             for st in holder:
                 _comfyui_stop(args, st)
+            _measure_unlock(lock)
     if failed and not args.json:
         print()
         print(tr(f"測れなかったもの: {len(failed)} 件", f"Not measured: {len(failed)}"))
@@ -6034,6 +6121,15 @@ def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any,
 
     if url is not None:
         return None, None
+    port = comfyfind.comfy_port_answering()
+    if port is not None:
+        # フォルダを読めないが、ComfyUI がもう動いている(L3a): 同じフォルダで 2 台目を起動しない
+        return None, tr(
+            f"ComfyUI がもうポート {port} で動いているようです(フォルダを読めませんでした)。"
+            f"2 台目は起動しません。それで測るなら --url http://127.0.0.1:{port} を付けてください",
+            f"A ComfyUI already seems to run on port {port} (its folders could not be read). A second one is"
+            f" not started; to measure on it, add --url http://127.0.0.1:{port}",
+        )
     if getattr(args, "no_start", False):
         return None, tr(
             "--no-start なので ComfyUI を起動しません(外すと、見つけた ComfyUI を起動して測ります)",
@@ -6478,18 +6574,29 @@ def _measure_run(
             )
         )
     out_path, not_saved = save_decision(m, None, False, False)
-    if out_path is not None:
-        save(m, out_path)
     out["unsendable"] = None
-    if m.standard and m.outcome in ("ok", "oom"):
-        sub = build_submission(m, detect() if is_local(url) else None)
-        # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
-        why = _submission_refusal(sub, args)
-        if why:
-            out["unsendable"] = why
-        else:
-            out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
-            out["path_in_repo"] = suggested_path(sub)
+    try:
+        if out_path is not None:
+            save(m, out_path)
+        if m.standard and m.outcome in ("ok", "oom"):
+            sub = build_submission(m, detect() if is_local(url) else None)
+            # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
+            why = _submission_refusal(sub, args)
+            if why:
+                out["unsendable"] = why
+            else:
+                out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
+                out["path_in_repo"] = suggested_path(sub)
+    except OSError as e:
+        # 測ったのに保存できない(キャッシュが書けない・ディスクが満杯。L5a): はっきり言う
+        out["error"] = tr(
+            f"測りましたが、保存できません({type(e).__name__}: {getattr(e, 'filename', '') or ''})。"
+            "キャッシュのフォルダ(GENMODELFIT_CACHE_DIR で変えられる)とディスクの空きを確かめてください",
+            f"Measured, but it cannot be saved ({type(e).__name__}: {getattr(e, 'filename', '') or ''})."
+            " Check the cache folder (GENMODELFIT_CACHE_DIR changes it) and the free disk space",
+        )
+        out.update(result=result, measurement=m)
+        return out
     out.update(result=result, measurement=m, saved_to=out_path, not_saved=not_saved)
     return out
 
@@ -6709,9 +6816,10 @@ def cmd_measure(args: argparse.Namespace) -> int:
             return code
         print()
     holder: list = []
+    lock = _measure_lock()  # 同時に測らない(L1c)
     try:
         if start is not None:
-            busy = _vram_busy_before_start()
+            busy = _vram_busy_before_start(s.best_gpu.name if s.best_gpu else None)
             if busy:
                 return fail(busy)
             try:
@@ -6736,6 +6844,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
     finally:
         for st in holder:
             _comfyui_stop(args, st)
+        _measure_unlock(lock)
     if run_["error"] is not None:
         return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
     m, result = run_["measurement"], run_["result"]
@@ -10103,10 +10212,38 @@ def main(argv: list[str] | None = None) -> int:
     err = sys.stderr
     if not isinstance(err, _OrderedStderr):
         sys.stderr = _OrderedStderr(err)
+    old_hup = _catch_hangup()
     try:
         return _main_outer(argv)
     finally:
         sys.stderr = err
+        _restore_hangup(old_hup)
+
+
+def _hangup(signum, frame):  # pragma: no cover - シグナルで呼ばれる
+    raise KeyboardInterrupt  # 端末を閉じた(SIGHUP): Ctrl+C と同じく、起動した ComfyUI を止めて終える(L1a)
+
+
+def _catch_hangup():
+    """POSIX: 端末を閉じた(SIGHUP)ときも finally を通す(起動した ComfyUI を残さない。L1a)。Windows は
+    Job Object(comfystart.kill_on_close_job)で止める。"""
+    import signal
+    import threading
+
+    if not hasattr(signal, "SIGHUP") or threading.current_thread() is not threading.main_thread():
+        return None
+    try:
+        return signal.signal(signal.SIGHUP, _hangup)
+    except (ValueError, OSError):
+        return None
+
+
+def _restore_hangup(old) -> None:
+    import signal
+
+    if old is not None and hasattr(signal, "SIGHUP"):
+        with contextlib.suppress(ValueError, OSError):
+            signal.signal(signal.SIGHUP, old)
 
 
 class _OrderedStderr:
