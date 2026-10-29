@@ -57,6 +57,7 @@ from .models import Measurement
 from .workflow import (
     FRAME_KEYS,
     SECONDS_KEYS,
+    WorkflowError,
     apply_settings,
     check_inputs,
     effective_settings,
@@ -824,31 +825,68 @@ def load_workflow(
             return data, "file:api", []
         conv = ui_to_api(data, object_info)
         return conv.workflow, "file:ui", conv.warnings
-    import requests
-
-    ui = client.template(opts.model_id)
-    source = "server-template"
-    if ui is None:
-        try:
-            r = session.get(template_url(opts.model_id), timeout=30)
-        except requests.RequestException as e:
-            raise BenchError(tr(f"テンプレートを取れません: {e}", f"Cannot fetch the template: {e}")) from e
-        if r.status_code != 200:
-            raise BenchError(
-                tr(
-                    f"テンプレート {opts.model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
-                    "名前を確かめるか、--workflow で API 形式のワークフローを渡してください",
-                    f"Template {opts.model_id} not found (neither in ComfyUI nor on GitHub). "
-                    "Check the name, or pass an API-format workflow with --workflow",
-                )
-            )
-        try:
-            ui = r.json()
-        except ValueError as e:
-            raise BenchError(tr("テンプレートが JSON ではありません", "The template is not JSON")) from e
-        source = "github-template"
+    ui, source = fetch_template(client, opts.model_id, session)
     conv = ui_to_api(ui, object_info)
     return conv.workflow, source, conv.warnings
+
+
+def fetch_template(
+    client: ComfyClient, model_id: str, session: requests.Session
+) -> tuple[dict[str, Any], str]:
+    """公式テンプレート(画面用の形式)と取った場所。
+    ComfyUI が持つもの(版がサーバーと合う)、無ければ GitHub。"""
+    import requests
+
+    ui = client.template(model_id)
+    if ui is not None:
+        return ui, "server-template"
+    try:
+        r = session.get(template_url(model_id), timeout=30)
+    except requests.RequestException as e:
+        raise BenchError(tr(f"テンプレートを取れません: {e}", f"Cannot fetch the template: {e}")) from e
+    if r.status_code != 200:
+        raise BenchError(
+            tr(
+                f"テンプレート {model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
+                "名前を確かめるか、--workflow で API 形式のワークフローを渡してください",
+                f"Template {model_id} not found (neither in ComfyUI nor on GitHub). "
+                "Check the name, or pass an API-format workflow with --workflow",
+            )
+        )
+    try:
+        ui = r.json()
+    except ValueError as e:
+        raise BenchError(tr("テンプレートが JSON ではありません", "The template is not JSON")) from e
+    return ui, "github-template"
+
+
+class NodeCheck:
+    """ComfyUI に、テンプレートが使うノードがそろっているか(#124。share・measure が測る前に見る)。
+    /object_info は最初に 1 回だけ取り、テンプレートはモデルごとに 1 回だけ取る(覚えておく)。
+    確かめられない(テンプレートを取れない・通信の誤り)ときは「足りないものは無い」として測らせる
+    (測るときに bench が同じ理由で止める)。何も表示しない。"""
+
+    def __init__(self, url: str, *, client: ComfyClient | None = None):
+        self.session = make_session() if client is None else client.s
+        self.client = client or ComfyClient(url, session=self.session)
+        self._info: dict[str, Any] | None = None
+        self._seen: dict[str, list[str]] = {}
+
+    def missing(self, model_id: str) -> list[str]:
+        """そのテンプレートが使い、この ComfyUI に無いノード(無ければ空)。"""
+        from .workflow import missing_nodes
+
+        if model_id in self._seen:
+            return self._seen[model_id]
+        try:
+            if self._info is None:
+                self._info = self.client.object_info()
+            ui, _src = fetch_template(self.client, model_id, self.session)
+            out = missing_nodes(ui, self._info)
+        except (BenchError, WorkflowError):
+            out = []
+        self._seen[model_id] = out
+        return out
 
 
 def _ensure_inputs(

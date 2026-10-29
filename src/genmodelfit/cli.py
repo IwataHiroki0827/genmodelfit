@@ -2619,6 +2619,8 @@ def _share_screen(
     total: int,
     unknown: int,
     start=None,
+    skipped: list | None = None,
+    asks_download: bool = True,
 ) -> list[str]:
     """share の測る前の画面(measure の「測る前に」と同じ部品: ComfyUI・入っているか・時間の目安)。"""
     lines = [
@@ -2652,6 +2654,7 @@ def _share_screen(
                 " --comfyui-dir)",
             )
         )
+    lines += _skipped_lines(skipped or [])
     if dl_plan:
         size = sum(x.installed.missing_bytes for x in dl_plan) / GIB
         lines.append(
@@ -2660,6 +2663,13 @@ def _share_screen(
                 "落としてよいかを尋ねます(--download で尋ねずに落とす)",
                 f"{len(dl_plan)} not installed ({size:.1f} GB to download): after measuring, if time is left,"
                 " you are asked whether to download them (--download skips the question)",
+            )
+            if asks_download
+            else tr(
+                f"入っていないもの {len(dl_plan)} 件(落とす量 {size:.1f} GB)は落としません"
+                "(--download を付けると、落として測ります)",
+                f"{len(dl_plan)} not installed ({size:.1f} GB to download) are not downloaded (--download"
+                " downloads and measures them)",
             )
         )
     lines.append(tr(f"送っていない実測: {len(pending)} 件", f"Unsent measurements: {len(pending)}"))
@@ -2672,6 +2682,67 @@ def _share_screen(
             " sending, the content is shown and you are asked again.",
         )
     )
+    return lines
+
+
+def _node_check(url: str):
+    """ComfyUI のノードの確かめ(bench.NodeCheck。試験で差し替える)。"""
+    from .bench import NodeCheck
+
+    return NodeCheck(url)
+
+
+def _share_asks_download(args: argparse.Namespace) -> bool:
+    """入っていない提案を落とすかを尋ねるか(端末で、--yes・--json・--download が無いとき)。"""
+    return not args.download and not args.yes and not args.json and _interactive()
+
+
+def _share_replan(sugg: list, budget: float, checker, skipped: list[dict[str, Any]]):
+    """測る計画(入っているもの → 時間の残りで入っていないもの)。checker があれば、この ComfyUI に無い
+    ノードの要るものを外し(skipped に足す)、その分ほかの提案で埋める。(計画, 目安の合計, 落とす計画)。"""
+    from .measure import share_plan
+
+    def skip(x) -> bool:
+        if checker is None:
+            return False
+        miss = checker.missing(x.model_id)
+        if miss and all(d["model_id"] != x.model_id for d in skipped):
+            skipped.append({"model_id": x.model_id, "name": x.model_name, "missing_nodes": miss})
+        return bool(miss)
+
+    plan, total = share_plan(sugg, budget, skip=skip)
+    dl_plan, _ = share_plan(sugg, budget - total, state="no", skip=skip)
+    return plan, total, dl_plan
+
+
+def _skipped_lines(skipped: list[dict[str, Any]]) -> list[str]:
+    if not skipped:
+        return []
+    out = [
+        tr(
+            f"測らないもの {len(skipped)} 件(この ComfyUI に無いノードが要る。ComfyUI を更新すると測れます):",
+            f"Not measured: {len(skipped)} (they need nodes this ComfyUI does not have; update ComfyUI to"
+            " measure them):",
+        )
+    ]
+    for d in skipped:
+        out.append(f"  - {d['name']} [{d['model_id']}]: {', '.join(d['missing_nodes'])}")
+    return out
+
+
+def _share_replan_lines(plan: list, total: int, budget: float, skipped: list) -> list[str]:
+    lines = ["", tr("=== 測る計画(ComfyUI を確かめたあと) ===", "=== Plan (after checking ComfyUI) ===")]
+    lines += _skipped_lines(skipped)
+    if plan:
+        lines.append(
+            tr(
+                f"測るもの(目安の合計 約 {total} 秒 / 上限 {budget:g} 秒):",
+                f"To measure (about {total} s in all / limit {budget:g} s):",
+            )
+        )
+        lines += [_suggestion_row(i, x) for i, x in enumerate(plan, 1)]
+    else:
+        lines.append(tr("測るもの: なし", "To measure: none"))
     return lines
 
 
@@ -2724,7 +2795,7 @@ def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: lis
     """時間が残り、入っていない提案があるとき(#124): --download か、[y/N] に y のときだけ、download と同じ流れ
     (_measure_download。同じ同意・ライセンス・無検閲の決まり)で落として測る。落としたか。"""
     want = bool(args.download)
-    if not want and not args.json and _interactive():
+    if not want and _share_asks_download(args):
         size = sum(x.installed.missing_bytes for x in dl_plan) / GIB
         secs = sum(x.seconds for x in dl_plan)
         print()
@@ -2821,7 +2892,7 @@ def cmd_share(args: argparse.Namespace) -> int:
     ComfyUI の見つけ方・入っているかの確かめ・測り方・落とし方は measure と同じ関数を使う。
     --issue は今までの Issue のフォームの形(#113。ログインしない)。share <file> はそのファイルだけを送る。"""
     from . import github
-    from .measure import SHARE_BUDGET_SECONDS, saved_submissions, share_plan, suggestions
+    from .measure import SHARE_BUDGET_SECONDS, saved_submissions, suggestions
 
     _share_checks(args)
     if args.issue:
@@ -2850,6 +2921,9 @@ def cmd_share(args: argparse.Namespace) -> int:
     total = unknown = 0
     stop: list[str] | None = None
     start = None
+    sugg: list = []
+    skipped: list[dict[str, Any]] = []
+    checker = None
     if not args.no_measure:
         s, db = _system(args), _db(args)
         url, found_by, running = _measure_comfyui(args)
@@ -2863,8 +2937,10 @@ def cmd_share(args: argparse.Namespace) -> int:
         else:
             roots = _measure_roots(args, running)
             sugg = suggestions(db, s, roots=roots, policy=_policy(args))
-            plan, total = share_plan(sugg, budget)
-            dl_plan, _ = share_plan(sugg, budget - total, state="no")
+            if url is not None and not args.dry_run:
+                # 起動中の ComfyUI があれば、足りないノードの要るものを先に外す(#124)
+                checker = _node_check(url)
+            plan, total, dl_plan = _share_replan(sugg, budget, checker, skipped)
             unknown = sum(1 for x in sugg if x.installed is not None and x.installed.state == "unknown")
             start, start_why = _comfyui_start_plan(args, url)
             if url is None and start is None:
@@ -2876,9 +2952,13 @@ def cmd_share(args: argparse.Namespace) -> int:
         "budget_seconds": budget,
         "plan": [x.to_dict() for x in plan],
         "download_plan": [x.to_dict() for x in dl_plan],
+        "skipped": skipped,
         "pending": [p.to_dict() for p in pending],
     }
-    screen = _share_screen(plan, dl_plan, pending, url, found_by, budget, total, unknown, start)
+    asks_download = _share_asks_download(args)
+    screen = _share_screen(
+        plan, dl_plan, pending, url, found_by, budget, total, unknown, start, skipped, asks_download
+    )
     if stop is not None and not pending:
         # 測れず、送っていない実測も無い: 計画を見せ、起動の仕方を出して 1(尋ねない・ログインしない。#123)
         if args.json:
@@ -2921,8 +3001,7 @@ def cmd_share(args: argparse.Namespace) -> int:
         return _share_dry_run(args, [p.path for p in pending], report, screen if measuring else None)
     if not args.json and measuring:
         _emit(screen)
-    # ログインは測る前(長く測ったあとで失敗しないように。llmfit と同じ)
-    creds, session = _share_login(args)
+        sys.stdout.flush()  # 計画を先に(このあとの stderr の途中経過と順が入れ替わらないように)
     if plan and not args.yes:
         try:
             go = _ask_yes_no(
@@ -2941,6 +3020,8 @@ def cmd_share(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 0
+    # ログインは測る前(長く測ったあとで失敗しないように。llmfit と同じ)。計画と確認のあと
+    creds, session = _share_login(args)
     measured: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     interrupted = downloaded = False
@@ -2957,6 +3038,17 @@ def cmd_share(args: argparse.Namespace) -> int:
             else:
                 url = started.url
                 report["comfyui"]["started"] = started.to_dict()
+                # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
+                before = [(x.model_id, tuple(x.args)) for x in plan]
+                plan, total, dl_plan = _share_replan(sugg, budget, _node_check(url), skipped)
+                report.update(
+                    plan=[x.to_dict() for x in plan],
+                    download_plan=[x.to_dict() for x in dl_plan],
+                    skipped=skipped,
+                )
+                if not args.json and (skipped or before != [(x.model_id, tuple(x.args)) for x in plan]):
+                    _emit(_share_replan_lines(plan, total, budget, skipped))
+                    sys.stdout.flush()
         for x in plan:
             _share_measure_one(args, url, x, measured, failed)
         if dl_plan:
@@ -2979,6 +3071,19 @@ def cmd_share(args: argparse.Namespace) -> int:
         for f in failed:
             print(f"  - {f['model_id'] or 'ComfyUI'}: {f['error'].splitlines()[0]}")
     report.update(measured=measured, failed=failed, interrupted=interrupted, downloaded=downloaded)
+    if not measured and dl_plan and not downloaded and not interrupted:
+        # 測れたものが無く、入っていない提案はある: --download で落として測れることを知らせる
+        size = sum(x.installed.missing_bytes for x in dl_plan)
+        report["download_hint"] = {"count": len(dl_plan), "bytes": size}
+        if not args.json:
+            print(
+                tr(
+                    f"入っていないモデル {len(dl_plan)} 件(落とす量 {size / GIB:.1f} GB)は、"
+                    "--download を付けると落として測ります(genmodelfit share --download)",
+                    f"{len(dl_plan)} model(s) that are not installed ({size / GIB:.1f} GB) can be downloaded"
+                    " and measured with --download (genmodelfit share --download)",
+                )
+            )
     base_code = 1 if failed else 0
     pending = saved_submissions(include_shared=args.all)
     if not pending:
@@ -5142,6 +5247,13 @@ def _measure_next_step(msg: str, model_id: str) -> str:
             f"Next: download the files with genmodelfit download {model_id} (use --comfyui-dir for the"
             " folder your ComfyUI reads), restart ComfyUI, then run it again.",
         )
+    if "ComfyUI に無いノード" in msg or "nodes that ComfyUI does not have" in msg:
+        return tr(
+            "次にすること: ComfyUI を新しい版に更新してください(カスタムノードが要るものは、"
+            "そのカスタムノードを入れてください)。そのあと、もう一度実行してください。",
+            "Next: update ComfyUI to a newer version (or install the custom nodes it needs), then run it"
+            " again.",
+        )
     if "頼んだ設定" in msg or "requested settings" in msg:
         return tr(
             f"次にすること: このテンプレートでは、その設定を変えられません。設定を付けずに"
@@ -5335,7 +5447,21 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 )
             )
             return 0
-        _emit(_suggestion_lines(sugg))
+        skipped: list[dict[str, Any]] = []
+        if url is not None and _interactive():
+            # 起動中の ComfyUI に無いノードの要るものは、選べないように外す(#124)
+            checker = _node_check(url)
+            keep = []
+            for x in sugg:
+                miss = checker.missing(x.model_id)
+                if miss:
+                    skipped.append({"model_id": x.model_id, "name": x.model_name, "missing_nodes": miss})
+                else:
+                    keep.append(x)
+            sugg = keep
+        _emit(_suggestion_lines(sugg) + _skipped_lines(skipped))
+        if not sugg:
+            return 0
         if not _interactive():
             sys.stdout.flush()
             print(
@@ -5397,6 +5523,14 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if url is None and start is None:
         lines = _not_running_lines(entry.id, inst, start_why)
         return fail(lines[0], lines[1:])
+    if url is not None:
+        # 足りないノードがあれば、落とす・測る前に止める(#124)
+        from .workflow import missing_nodes_message
+
+        miss = _node_check(url).missing(entry.id)
+        if miss:
+            msg = missing_nodes_message(miss)
+            return fail(msg, [_measure_next_step(msg, entry.id)])
     if inst.state == "no" and args.json:
         return fail(
             tr(

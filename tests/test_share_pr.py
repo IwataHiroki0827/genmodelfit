@@ -375,8 +375,9 @@ def test_share_login_happens_before_measuring(capsys, monkeypatch, this_pc, plan
     gh.user_ok = False
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("ログインできなければ尋ねない"))
+    asked = answers(monkeypatch, "")  # 計画を見せて尋ねたあとでログインを確かめ、測る前に止まる
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 1
+    assert asked == ["3 件を測って送りますか? [Y/n] "]
     assert plan["ran"] == [] and "GITHUB_TOKEN のトークンが使えません" in capsys.readouterr().err
 
 
@@ -390,6 +391,7 @@ def test_share_without_any_login_says_how(capsys, monkeypatch, this_pc, plan, gh
     monkeypatch.setenv(github.CLIENT_ID_ENV, "")
     assert github.client_id() is None
     monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "")
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 1
     err = capsys.readouterr().err
     assert "ログインできません。GITHUB_TOKEN を設定するか、--issue で送ってください" in err
@@ -704,3 +706,140 @@ def test_github_module_is_not_imported_by_read_only_commands():
         check=True,
     )
     assert r.stdout.strip().splitlines()[-1] == "False"
+
+
+# --- 実機で見つかったこと(#124): 足りないノード・順・次にすること・--download の案内 ---------------------
+
+
+class FakeNodes:
+    def __init__(self, missing):
+        self.missing_map = missing
+        self.asked = []
+
+    def missing(self, model_id):
+        self.asked.append(model_id)
+        return self.missing_map.get(model_id, [])
+
+
+def test_share_skips_models_needing_missing_nodes_and_backfills(capsys, monkeypatch, this_pc, plan, gh):
+    nodes = FakeNodes({"a_installed_short": ["LoadMoGeModel", "MoGePanoramaInference"]})
+    monkeypatch.setattr(cli, "_node_check", lambda url: nodes)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    out = capsys.readouterr().out
+    # a を外し、時間の残りで c・e を測る(d は 200 秒で収まらない)
+    assert plan["ran"] == ["c_installed", "e_installed"]
+    assert "この ComfyUI に無いノードが要る。ComfyUI を更新すると測れます" in out
+    assert "LoadMoGeModel, MoGePanoramaInference" in out
+    assert "a_installed_short" not in nodes.asked[1:]  # 1 回だけ確かめる
+    out_json = []
+    plan["ran"].clear()
+    assert cli.main(["share", "--yes", "--json", "--url", "http://x:1", "--all"]) == 0
+    out_json = json.loads(capsys.readouterr().out)
+    assert out_json["skipped"] == [
+        {
+            "model_id": "a_installed_short",
+            "name": "a_installed_short",
+            "missing_nodes": ["LoadMoGeModel", "MoGePanoramaInference"],
+        }
+    ]
+
+
+def test_share_asks_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
+    events = []
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    real_login = cli._share_login
+    monkeypatch.setattr(cli, "_share_login", lambda args: events.append("login") or real_login(args))
+    monkeypatch.setattr("builtins.input", lambda p="": events.append("ask:" + p[:6]) or "")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    assert events[:2] == ["ask:3 件を測っ", "login"]  # 計画 → 確認 → ログイン → 測る
+
+
+def test_share_suggests_download_when_nothing_was_measured(capsys, monkeypatch, this_pc, dl_plan, gh):
+    def fail_run(args, url, entry, settings):
+        return {"error": "boom"}
+
+    monkeypatch.setattr(cli, "_measure_run", fail_run)
+    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("--yes だけでは落とさない"))
+    monkeypatch.setattr("builtins.input", lambda p="": pytest.fail("--yes では尋ねない"))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    out = capsys.readouterr().out
+    assert "--download を付けると落として測ります" in out and "2.0 GB" in out
+    assert "落としません(--download を付けると" in out  # 計画の画面も尋ねないことを言う
+    assert cli.main(["share", "--yes", "--json", "--url", "http://x:1"]) == 1
+    assert json.loads(capsys.readouterr().out)["download_hint"] == {"count": 1, "bytes": 2 * 1024**3}
+
+
+def test_measure_stops_early_when_nodes_are_missing(capsys, monkeypatch, this_pc):
+    monkeypatch.setattr(cli, "_node_check", lambda url: FakeNodes({"image_sdxl_simple": ["NewNode"]}))
+    monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: pytest.fail("測らない"))
+    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("落とさない"))
+    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
+    err = capsys.readouterr().err
+    assert "ComfyUI に無いノードを使っています: NewNode" in err
+    assert "次にすること: ComfyUI を新しい版に更新してください" in err and "起動していて" not in err
+
+
+def test_measure_list_hides_models_needing_missing_nodes(capsys, monkeypatch, this_pc):
+    from genmodelfit import measure as m
+
+    sugg_all = m.suggestions(cli._db(cli.build_parser().parse_args(["measure"])), this_pc)[:3]
+    first = sugg_all[0].model_id
+    monkeypatch.setattr(cli, "_node_check", lambda url: FakeNodes({first: ["NewNode"]}))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "q")
+    assert cli.main(["--lang", "ja", "measure", "-n", "3", "--url", "http://x:1"]) == 0
+    out = capsys.readouterr().out
+    rows = [x for x in out.splitlines() if x.lstrip().startswith(("1.", "2.", "3."))]
+    assert len(rows) == 2 and f"[{first}]: NewNode" in out
+
+
+def test_next_step_for_missing_nodes_says_update():
+    from genmodelfit.workflow import missing_nodes_message
+
+    msg = missing_nodes_message(["A", "B"])
+    hint = cli._measure_next_step(msg, "x")
+    assert "更新" in hint and "起動していて" not in hint
+    assert "起動していて" in cli._measure_next_step("ComfyUI(http://x)に接続できません: refused", "x")
+
+
+def test_missing_nodes_and_node_check():
+    from genmodelfit import bench
+    from genmodelfit.workflow import missing_nodes
+
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "KSampler", "mode": 0, "inputs": [], "outputs": [], "widgets_values": []},
+            {"id": 2, "type": "LoadMoGeModel", "mode": 0, "inputs": [], "outputs": [], "widgets_values": []},
+            {"id": 3, "type": "Gone", "mode": 4, "inputs": [], "outputs": [], "widgets_values": []},
+            {"id": 4, "type": "Note", "mode": 0, "inputs": [], "outputs": [], "widgets_values": []},
+        ],
+        "links": [],
+    }
+    assert missing_nodes(ui, {"KSampler": {}}) == ["LoadMoGeModel"]  # 素通し・メモは数えない
+
+    class Client:
+        s = None
+        calls = 0
+
+        def object_info(self):
+            Client.calls += 1
+            return {"KSampler": {}}
+
+        def template(self, name):
+            return ui if name == "t" else None
+
+    nc = bench.NodeCheck("http://127.0.0.1:1", client=Client())
+    assert nc.missing("t") == ["LoadMoGeModel"] and nc.missing("t") == ["LoadMoGeModel"]
+    assert Client.calls == 1
+
+    class Down(Client):
+        def object_info(self):
+            raise bench.BenchError("down")
+
+    assert (
+        bench.NodeCheck("http://127.0.0.1:1", client=Down()).missing("t") == []
+    )  # 確かめられなければ外さない

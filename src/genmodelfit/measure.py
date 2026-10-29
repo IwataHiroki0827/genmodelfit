@@ -403,16 +403,21 @@ def suggestions(
 SHARE_BUDGET_SECONDS = 300
 
 
-def share_plan(sugg: list[Suggestion], budget: float, *, state: str = "yes") -> tuple[list[Suggestion], int]:
+def share_plan(
+    sugg: list[Suggestion], budget: float, *, state: str = "yes", skip: Any = None
+) -> tuple[list[Suggestion], int]:
     """share が測るもの(#124): 提案(suggestions の並び)のうち、入っているか(installed.state が state)の
     ものを、時間の目安の合計が budget 以内になるように並びの順に取る(入りきらないものは飛ばして次を見る)。
-    (取ったもの, 目安の合計)。state="no" で、落として測るものの計画になる。"""
+    (取ったもの, 目安の合計)。state="no" で、落として測るものの計画になる。
+    skip(提案 → 真なら外す)は、時間に収まる候補にだけ、並びの順に呼ぶ(ComfyUI のノードの確かめ。#124)。"""
     picked: list[Suggestion] = []
     total = 0
     for s in sugg:
         if s.installed is None or s.installed.state != state:
             continue
         if total + s.seconds > budget:
+            continue
+        if skip is not None and skip(s):
             continue
         picked.append(s)
         total += s.seconds

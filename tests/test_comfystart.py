@@ -354,3 +354,31 @@ def test_share_dry_run_does_not_start(capsys, monkeypatch, this_pc, starter, tmp
     monkeypatch.setattr(measure, "suggestions", lambda *a, **k: [sugg("a_installed", 60)])
     assert cli.main(["--lang", "ja", "share", "--dry-run", "--comfyui-dir", str(d)]) == 0
     assert "起動します" in capsys.readouterr().out and starter == []
+
+
+def test_share_asks_then_starts_then_drops_missing_nodes(capsys, monkeypatch, this_pc, starter, tmp_path):
+    from test_share_pr import TOKEN, FakeGitHub, sugg
+
+    d = venv_install(tmp_path)
+    monkeypatch.setattr(
+        measure, "suggestions", lambda *a, **k: [sugg("needs_new_nodes", 60), sugg("b_ok", 60)]
+    )
+    _fake_run(monkeypatch, starter)
+    checked = []
+
+    def node_check(url):
+        checked.append(url)
+        return SimpleNamespace(missing=lambda mid: ["NewNode"] if mid == "needs_new_nodes" else [])
+
+    monkeypatch.setattr(cli, "_node_check", node_check)
+    monkeypatch.setattr(cli, "_share_session", lambda: FakeGitHub())
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda p="": starter.append(("ask", p[:5])) or "")
+    assert cli.main(["--lang", "ja", "share", "--comfyui-dir", str(d)]) == 0
+    kinds = [e[0] for e in starter]
+    assert kinds[:3] == ["ask", "launch", "ready"]  # 尋ねてから起動する
+    assert [e for e in starter if e[0] == "run"] == [("run", "http://127.0.0.1:40100")]  # b_ok だけ
+    assert checked == ["http://127.0.0.1:40100"]  # 起動したあとで確かめる
+    out = capsys.readouterr().out
+    assert "=== 測る計画(ComfyUI を確かめたあと) ===" in out and "needs_new_nodes" in out

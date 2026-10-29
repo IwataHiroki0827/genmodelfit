@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,6 +66,15 @@ def _no_real_comfyui(monkeypatch, tmp_path):
         comfyfind, "current_places", lambda: comfyfind.Places(platform=sys.platform, home=home)
     )
     monkeypatch.setattr(comfyfind, "running_candidates", lambda *a, **k: [])
+
+
+@pytest.fixture(autouse=True)
+def _no_node_check(monkeypatch):
+    """share・measure の測る前のノードの確かめ(#124)は、既定では「足りないものは無い」にする
+    (--url の偽の宛先に通信しない)。確かめる試験は cli._node_check を差し替える。"""
+    from genmodelfit import cli
+
+    monkeypatch.setattr(cli, "_node_check", lambda url: SimpleNamespace(missing=lambda model_id: []))
 
 
 @pytest.fixture(autouse=True)

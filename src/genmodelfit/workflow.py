@@ -383,7 +383,39 @@ def ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
         ) from e
 
 
+def _runs(n: _Node) -> bool:
+    """API 形式に入る(実行される)ノードか。画面だけのもの・止めた・素通しのノードは入らない。"""
+    if n.type in UI_ONLY_SKIP or n.type in (PRIMITIVE, REROUTE):
+        return False
+    return n.mode not in (MODE_NEVER, MODE_BYPASS)
+
+
+def missing_nodes(ui: dict[str, Any], object_info: dict[str, Any]) -> list[str]:
+    """画面用のワークフローが使い、ComfyUI(/object_info)に無いノードの種類(並べたもの)。
+    bench(ui_to_api)と、share・measure の前の確かめ(#124)が同じこれを使う。"""
+    try:
+        flat, _alias = _flat_graph(ui)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+        return []
+    return sorted({n.type for n in flat if _runs(n) and n.type not in object_info})
+
+
+def missing_nodes_message(names: list[str]) -> str:
+    joined = ", ".join(names)
+    return tr(
+        f"ComfyUI に無いノードを使っています: {joined}"
+        "(ComfyUI が古いか、カスタムノードが要ります。"
+        "ComfyUI を更新するか --workflow で API 形式を渡してください)",
+        f"uses nodes that ComfyUI does not have: {joined}"
+        " (ComfyUI is old or custom nodes are needed;"
+        " update ComfyUI or pass the API format via --workflow)",
+    )
+
+
 def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
+    missing = missing_nodes(ui, object_info)
+    if missing:
+        raise WorkflowError(missing_nodes_message(missing))
     flat, alias = _flat_graph(ui)
     by_id = {n.id: n for n in flat}
     warnings: list[str] = []
@@ -418,16 +450,10 @@ def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
         return ("node", [node.id, src[1]])
 
     api: dict[str, dict[str, Any]] = {}
-    missing: list[str] = []
     for n in flat:
-        if n.type in UI_ONLY_SKIP or n.type in (PRIMITIVE, REROUTE):
+        if not _runs(n):
             continue
-        if n.mode in (MODE_NEVER, MODE_BYPASS):
-            continue
-        info = object_info.get(n.type)
-        if info is None:
-            missing.append(n.type)
-            continue
+        info = object_info[n.type]
         inputs = map_widgets(info, n.widgets_values)
         inputs.update(n.widget_overrides)
         for i in n.inputs:
@@ -462,18 +488,6 @@ def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
                     )
                 )
         api[n.id] = {"class_type": n.type, "inputs": inputs, "_meta": {"title": n.title or n.type}}
-    if missing:
-        names = ", ".join(sorted(set(missing)))
-        raise WorkflowError(
-            tr(
-                f"ComfyUI に無いノードを使っています: {names}"
-                "(ComfyUI が古いか、カスタムノードが要ります。"
-                "ComfyUI を更新するか --workflow で API 形式を渡してください)",
-                f"uses nodes that ComfyUI does not have: {names}"
-                " (ComfyUI is old or custom nodes are needed;"
-                " update ComfyUI or pass the API format via --workflow)",
-            )
-        )
     if not any(object_info.get(v["class_type"], {}).get("output_node") for v in api.values()):
         raise WorkflowError(
             tr(
