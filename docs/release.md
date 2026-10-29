@@ -127,7 +127,8 @@ About manual runs and PyPI:
 
 ## Receiving measurement issues (#113)
 
-`genmodelfit share` opens the issue form `.github/ISSUE_TEMPLATE/measurement.yml` with a measurement filled in. The
+`genmodelfit share --issue` (and choice 2 "issues" in `genmodelfit share`) opens the issue form
+`.github/ISSUE_TEMPLATE/measurement.yml` with a measurement filled in. The
 workflow `.github/workflows/measurement-intake.yml` handles open issues with the `measurement` label when they are
 opened and when their body is edited (title-only edits and adding a label do nothing, so one issue is not processed
 twice). It has two jobs:

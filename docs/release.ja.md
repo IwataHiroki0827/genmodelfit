@@ -115,7 +115,8 @@ genmodelfit の版のリリースと、モデル一覧の配り方(パッケー�
 
 ## 実測の Issue を受け取る(#113)
 
-`genmodelfit share` は、実測を入れた Issue のフォーム `.github/ISSUE_TEMPLATE/measurement.yml` を開きます。
+`genmodelfit share --issue`(と `genmodelfit share` の送り方の 2「Issue」)は、実測を入れた Issue のフォーム
+`.github/ISSUE_TEMPLATE/measurement.yml` を開きます。
 ワークフロー `.github/workflows/measurement-intake.yml` が、`measurement` の印の開いている Issue を、作られたときと
 本文が編集されたときに受け取ります(題だけの編集・印を付けただけでは動かないので、1 つの Issue を 2 回扱いません)。
 ジョブは 2 つです:

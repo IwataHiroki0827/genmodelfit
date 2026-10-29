@@ -1793,7 +1793,7 @@ def test_B5_partly_failed_sends_the_rest(capsys, monkeypatch, this_pc, plan, gh)
     [
         (["--budget", "5"], None, "時間の上限(5 秒)に収まるものがありません(--budget で広げられます)"),
         (["--no-measure"], None, "送っていない実測はありません。"),
-        ([], "empty", "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)"),
+        ([], "empty", "測ると役に立つモデルはありません(この GPU に載るものは、この PC でもう測って"),
     ],
 )
 def test_B6_B7_B8_nothing_to_do_says_why(capsys, monkeypatch, this_pc, plan, gh, argv, setup, want):
@@ -2106,20 +2106,18 @@ def test_license_unknown_models_are_not_suggested_by_default():
     assert len(with_unknown) >= len(default)
 
 
-def test_non_nvidia_gpu_does_not_measure(capsys, monkeypatch, plan, gh):
+def test_non_nvidia_gpu_measures(capsys, monkeypatch, plan, gh):
+    """AMD・Intel・Apple の GPU でも測る(0.13.1。0.13.0 は誤って「NVIDIA だけ」で止めた)。
+    本物の bench を通す場面は tests/test_measure_vendors.py。"""
     from genmodelfit.models import Gpu, SystemInfo
 
     g = Gpu(name="AMD Radeon RX 7800 XT", vendor="amd", vram_total_gb=16.0, backend="rocm")
     s = SystemInfo(os="Windows 11", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
     monkeypatch.setattr(cli, "_system", lambda args: s)
-    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
-    assert "今は NVIDIA の GPU だけで測ります" in capsys.readouterr().err and plan["ran"] == []
-    _write_sub(1)  # 送っていない実測は送れる
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
-    err = capsys.readouterr().err
-    assert len(gh.put) == 1 and "ComfyUI を起動してから" not in err
-    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
+    assert "NVIDIA" not in capsys.readouterr().err
+    assert plan["ran"] == ["a_installed_short", "c_installed", "e_installed"] and len(gh.put) == 3
 
 
 def test_J3_and_D5_hints(capsys, monkeypatch, this_pc, tmp_path):
@@ -2618,14 +2616,16 @@ def test_r2_no_workflow_hint_in_measure_and_share():
     assert "--workflow" not in cli._without_workflow_hint(m)
 
 
-def test_r2_no_misleading_plan_without_comfyui_or_on_amd(capsys, monkeypatch, plan, gh):
+def test_r2_no_misleading_plan_without_a_usable_gpu(capsys, monkeypatch, plan, gh):
     from genmodelfit.models import Gpu, SystemInfo
 
-    g = Gpu(name="AMD Radeon RX 7800 XT", vendor="amd", vram_total_gb=16.0, backend="rocm")
+    # 使えない GPU(backend none)だけ: 測る計画を見せない(AMD・Intel・Apple の使える GPU は測る。0.13.1)
+    g = Gpu(name="AMD Radeon RX 580", vendor="amd", vram_total_gb=8.0, backend="none")
     s = SystemInfo(os="Windows 11", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
     monkeypatch.setattr(cli, "_system", lambda args: s)
     assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
-    assert "測るもの" not in capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert "測るもの" not in out and "測りに使える GPU が見つかりません" in err
 
 
 def test_r2_token_messages_tell_expired_from_broken(capsys, monkeypatch, this_pc, plan, gh):

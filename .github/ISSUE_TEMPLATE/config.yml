@@ -4,9 +4,9 @@ contact_links:
   - name: "How to send a measurement"
     url: https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.md#the-easy-way-no-git-needed
     about: >-
-      Run genmodelfit measure, then genmodelfit share: it opens the measurement form already filled in.
+      Run genmodelfit share: it measures and opens a pull request from your account (genmodelfit share --issue opens the measurement form already filled in, without signing in).
   # 日本語の案内(アンカーは CONTRIBUTING.ja.md の見出し「かんたんな送り方(git は要らない)」を URL エンコードしたもの)
   - name: "実測の送り方(日本語)"
     url: https://github.com/laxshmate/genmodelfit/blob/main/CONTRIBUTING.ja.md#%E3%81%8B%E3%82%93%E3%81%9F%E3%82%93%E3%81%AA%E9%80%81%E3%82%8A%E6%96%B9git-%E3%81%AF%E8%A6%81%E3%82%89%E3%81%AA%E3%81%84
     about: >-
-      genmodelfit measure のあと genmodelfit share を実行すると、中身を入れたフォームが開きます。
+      genmodelfit share を実行すると、測ってあなたのアカウントから PR を開きます(genmodelfit share --issue なら、ログインせずに中身を入れたフォームが開きます)。

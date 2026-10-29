@@ -54,7 +54,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
-| Measure models and send the results | `genmodelfit share` (with ComfyUI running; it measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
+| Measure models and send the results | `genmodelfit share` (it finds ComfyUI, starts it if needed, measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
 
@@ -162,7 +162,9 @@ Where several places give the same setting, the first of these wins:
 move the folders. The config folder also holds the GitHub sign-in of `share` (`github_token`, readable only by you;
 `genmodelfit share --logout` removes it). The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
 your `measure` and `bench` results (`measurements/`, also used when this PC is judged), submission drafts
-(`submissions/`, what `share` sends) and the marks of what `share` has sent (`submissions_shared.json`).
+and failure records (`submissions/`, what `share` sends), the marks of what `share` has sent
+(`submissions_shared.json`), the output of a ComfyUI that `measure` / `share` started (`comfyui-<date>.log`) and,
+while measuring, `measure.lock` (only one `measure` / `share` measures at a time).
 Deleting the cache folder is safe: the bundled list is used again (your saved results go with it).
 
 ## Exit codes
@@ -173,7 +175,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved re
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job and exit 1; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
+| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -217,7 +219,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
 | 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
-| モデルを実測して送る | `genmodelfit share`(ComfyUI を起動しておく。数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
+| モデルを実測して送る | `genmodelfit share`(ComfyUI を見つけ、無ければ起動し、数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
 
@@ -319,8 +321,9 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 この PC の設定ファイルの場所は `genmodelfit config path` で分かります。`GENMODELFIT_CONFIG_DIR`・`GENMODELFIT_CACHE_DIR`
 でフォルダを変えられます。設定のフォルダには `share` の GitHub のログイン(`github_token`。本人だけが読める。
 `genmodelfit share --logout` で消す)も入ります。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
-`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`。`share` が送るもの)、
-`share` で送った印(`submissions_shared.json`)が入ります。
+`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書きと失敗の記録(`submissions/`。`share` が送るもの)、
+`share` で送った印(`submissions_shared.json`)、`measure`・`share` が起動した ComfyUI の出力(`comfyui-<日付>.log`)、
+測るあいだの `measure.lock`(同時に測るのは 1 つの `measure` か `share` だけ)が入ります。
 キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した結果も消えます)。
 
 ## 終了コード
@@ -331,7 +334,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消してから 1 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
+| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 

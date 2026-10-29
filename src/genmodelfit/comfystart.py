@@ -8,7 +8,11 @@ measure と share が使う(cli.py)。ComfyUI(GPL-3.0)・デスクトップ版�
 (別のプロセスとして python main.py を動かすだけ)。起動の仕方は、それぞれの決まりを読んで同じにした:
 
 - ポータブル版: `<root>/python_embeded/python.exe -s <root>/ComfyUI/main.py`
-  (ComfyUI の run_nvidia_gpu.bat と同じ。--windows-standalone-build はブラウザを開くので付けない)
+  (ComfyUI の run_nvidia_gpu.bat と同じ。--windows-standalone-build はブラウザを開くので付けない)。
+  AMD・Intel のポータブル版も引数は同じで、違うのは同梱の python_embeded の PyTorch だけ
+  (Comfy-Org/ComfyUI .ci/windows_amd_base_files/run_amd_gpu.bat:1・
+  .ci/windows_intel_base_files/run_intel_gpu.bat:1・.ci/windows_nvidia_base_files/run_nvidia_gpu.bat:1@426f5ee)。
+  なので GPU の会社で起動の仕方を変えない(0.13.1)
 - 手で入れた ComfyUI・comfy-cli: ComfyUI のフォルダの `.venv` か `venv` の python で main.py
   (comfy-cli comfy_cli/resolve_python.py:36,60@c272a5e と同じ順)。venv が無ければ起動しない
   (どの python で動くか分からないので、システムの python を当て推量で使わない)

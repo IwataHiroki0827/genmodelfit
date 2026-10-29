@@ -22,7 +22,7 @@
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
 | 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
-| モデルを実測して送る | `genmodelfit share`(ComfyUI を起動しておく。数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
+| モデルを実測して送る | `genmodelfit share`(ComfyUI を見つけ、無ければ起動し、数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
 
@@ -149,8 +149,9 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 この PC の設定ファイルの場所は `genmodelfit config path` で分かります。`GENMODELFIT_CONFIG_DIR`・`GENMODELFIT_CACHE_DIR`
 でフォルダを変えられます。設定のフォルダには `share` の GitHub のログイン(`github_token`。本人だけが読める。
 `genmodelfit share --logout` で消す)も入ります。キャッシュには、`update` で取った一覧(`db.json`)、HEAD とファイルの見出しの確認の結果、
-`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書き(`submissions/`。`share` が送るもの)、
-`share` で送った印(`submissions_shared.json`)が入ります。
+`measure`・`bench` の結果(`measurements/`。この PC の判定にも使う)、提出の下書きと失敗の記録(`submissions/`。`share` が送るもの)、
+`share` で送った印(`submissions_shared.json`)、`measure`・`share` が起動した ComfyUI の出力(`comfyui-<日付>.log`)、
+測るあいだの `measure.lock`(同時に測るのは 1 つの `measure` か `share` だけ)が入ります。
 キャッシュのフォルダは消してもかまいません(同梱の一覧に戻ります。保存した結果も消えます)。
 
 ## 終了コード
@@ -161,7 +162,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消してから 1 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
+| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 
@@ -175,7 +176,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 - [`genmodelfit info`](#genmodelfit-info) — 1 つのモデルの詳細
 - [`genmodelfit update`](#genmodelfit-update) — 新しい一覧を取る(利用者は `--from-release`。オプションなしは上流から作り直す)
 - [`genmodelfit download`](#genmodelfit-download) — モデルのファイルを落とす(同意・sha256・続きから・ComfyUI のフォルダ)
-- [`genmodelfit measure`](#genmodelfit-measure) — 測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)
+- [`genmodelfit measure`](#genmodelfit-measure) — 測ると役に立つモデルを選んで、ComfyUI で実測する(無ければ起動する。何も送らない)
 - [`genmodelfit share`](#genmodelfit-share) — 入っているモデルを数分測り、送っていない実測といっしょに GitHub の PR で送る(`--issue` は Issue のフォームで送る)
 - [`genmodelfit config`](#genmodelfit-config) — 設定(download の ComfyUI のフォルダ・表示の言語)を見る・変える
   - [`genmodelfit config show`](#genmodelfit-config-show) — 今の設定と出どころ(サブコマンドを省いたときはこれ)
@@ -755,7 +756,7 @@ genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落
 
 ## `genmodelfit measure`
 
-測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)
+測ると役に立つモデルを選んで、ComfyUI で実測する(無ければ起動する。何も送らない)
 
 **使い方**
 
@@ -766,22 +767,27 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
                     [model]
 ```
 
-- 起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
-- MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU にテンプレートの設定のままの実測がまだ無いもの。
+- ComfyUI でモデルを実測し、結果をこの PC に保存する(ComfyUI が無ければ起動する。何も送らない)。
+- MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この PC でテンプレートの設定のまま、まだ測っていないもの(同じ GPU のほかの人の実測があっても外さない。2 つの出どころの実測がそろうと、段階を実測で決められるため)。
+- ライセンスの分からないものは出さない。
 - 並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。
 - 番号で選ぶ(q でやめる)。
+- 起動中の ComfyUI に無いノードが要るものは出さない。
 - その実測があるモデルには、予測式の確かめに役立つ「設定を変えた測定」を出す(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、動画のコマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ 10・30・60・120 秒(文章から音声)。
-- その設定で GPU に載り(good 以上)、この GPU にその設定の実測が無いものだけで、1 つのモデルに 2 件まで。
+- その設定で GPU に載り(good 以上)、この PC でその設定をまだ測っていないものだけで、1 つのモデルに 2 件まで。
 - 時間の目安が約 300 秒を超えるものは出さない。
 - 1 回は生成 1 回(数分)で、もう一度 measure を実行すると次のものを選べる。
 - MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI のテンプレートのあるワークフローだけ)。
 - `--resolution`・`--frames`・`--length` で bench と同じく設定を変える。
 - 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま、または変えた設定)、どの ComfyUI か・どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる(`--yes` で尋ねない)。
-- 時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとのおおよその値。
+- 時間は目安: 同じモデルの実測の中央値、無ければ種類ごとのおおよその値。
 - 設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。
-- テンプレートが頼んだ設定を受け付けないときは、生成の前に止める。
+- テンプレートが頼んだ設定を受け付けないとき・ComfyUI に要るノードが無いときは、落とす前・生成の前に止める。
 - 入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。
+- genmodelfit が起動した ComfyUI は、測る前に空ける(/free。モデルを外し、前の結果を消す)。
+- 自分の ComfyUI は `--free` のときだけ。
 - 終わると結果と保存した場所を出し、最後に `genmodelfit share`(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
+- 測れなかったときは、失敗の記録を保存する(share が送る)。
 
 **オプションと引数**
 
@@ -808,22 +814,26 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 - 起動していなくても ComfyUI のフォルダが見つかれば(download と同じ見つけ方)、裏で起動して使い、測り終えたら止める(ポータブル版は python_embeded、手で入れたもの・comfy-cli は .venv・venv、デスクトップ版は .venv とアプリの ComfyUI で、127.0.0.1 の空いているポートに、ブラウザを開かずに)。
 - [Y/n] の質問がその同意を兼ねる(`--no-start` か GENMODELFIT_COMFYUI_START=0 で止める。`--start-timeout` は既定 300 秒)。
 - 見つからなければ、起動のしかたを出して 1 で終わる。
-- GPU が空いていること: ほかのプログラムが使っていれば測らない(`--force` の無い bench と同じ)。
+- GPU が空いていること: ほかのプログラムが GPU のメモリを 1.5 GiB(か 20%)より多く使っていれば測らない(nvidia-smi の無い AMD・Intel・Apple の GPU では、できるところは ComfyUI の /system_stats で確かめ、確かめられなかったことは結果のメモに書く)。
+- 測るのは、同時に 1 つの measure か share だけ。
+- 起動した ComfyUI は、失敗・Ctrl+C・端末を閉じたときも止める。
 
 **副作用**
 
-- 通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(`--url` が無いとき)、測る ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、落とすときはモデルのファイル。
+- 通信: ComfyUI が起動しているか・フォルダの場所を 127.0.0.1 の 8188・8000 に尋ねる(`--url` が無いとき)、測る ComfyUI(ノードの確かめと仕事を 1 つ)、その ComfyUI に無ければ GitHub の公式のテンプレートと入力の画像、落とすときはモデルのファイル。
 - この PC のことはほかへ送らない。
-- 結果を `<cache>/measurements/`(この PC の判定に使う)に、送るための下書きを `<cache>/submissions/`(`genmodelfit share` が送るもの)に書く。
+- 結果を `<cache>/measurements/`(この PC の判定に使う)に、送るための下書き(か失敗の記録)を `<cache>/submissions/`(`genmodelfit share` が送るもの)に書く。
 - 起動した ComfyUI の出力は `<cache>/comfyui-<日付>.log`。
+- 測るあいだは `<cache>/measure.lock`。
 
 **終了コード**
 
 | コード | 意味 |
 |---|---|
-| 0 | 成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも) |
-| 1 | 失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、落とさなかった、実行の失敗(メモリ不足など)、端末でなく `--yes` も無い |
+| 0 | 成功(選ばなかった・出す提案が無い・「測りますか?」や落とす質問に n と答えた・送れないだけの結果のときも) |
+| 1 | 失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、ほかの measure が測っている、テンプレートが無いモデル、ノードが足りない、落とさなかった、実行の失敗(メモリ不足・ほかの誤り・実行中の Ctrl+C)、端末でなく `--yes` も無い |
 | 2 | 使い方の誤り |
+| 130 | 質問の途中の Ctrl+C |
 
 **使い方の例(スクリプト・アプリ向け)**
 
@@ -858,14 +868,17 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 ```
 
 - 数分測って、実測を GitHub の PR で送る。
-- FILE を省くと、measure と同じく ComfyUI を見つけ(`--url`、無ければこの PC で起動中のもの、無ければ見つけたものを起動し、終わったら止める)、measure の提案のうち、ファイルが入っていて、この GPU の結果がまだ無いもの(この PC に保存したものも。送ったかどうかによらない)を、時間の目安の合計が `--budget`(300 秒)に収まるまで選び、送っていない実測と合計の時間(ComfyUI の起動 約 45 秒・測る時間・落とす時間を 100 Mbps の例で)を添えて計画を見せる。
+- FILE を省くと、measure と同じく ComfyUI を見つけ(`--url`、無ければこの PC で起動中のもの、無ければ見つけたものを起動し、終わったら止める)、measure の提案のうち、ファイルが入っていて、この PC でまだ測っていないもの(この PC に保存したものは、送ったかどうかによらず測ったと数える。ほかの人の実測は数えない)で、その ComfyUI にノードがそろうものを、時間の目安の合計が `--budget`(300 秒)に収まるまで選び、送っていない実測と合計の時間(ComfyUI の起動 約 45 秒・測る時間・落とす時間を 100 Mbps の例で)を添えて計画を見せる。
 - 1 回だけ [Y/n] で尋ね、1 つずつ測る(失敗しても残りは続け、Ctrl+C ならそこまでのものを送るかに進む)。
+- 測る前には毎回 ComfyUI を空ける。
 - 入っていないモデルを落とすのは、`--download` か、1 回の [y/N] の質問に y のときだけ(入っていて測れるものが無ければ最初に、ほかは測り終えてから尋ねる)。
 - download と同じ確かめと同意の決まりで、`--yes` だけでは落とさない。
 - そのあと送るファイルのすべて(中身のすべてと個人の情報の点検)を見せて、送り方を尋ねる: 1) PR(GitHub にログイン) 2) Issue(ログインなし。ブラウザでフォームを開く。1 つのファイルに 1 つ) q) 送らない。
 - `--yes`・`--json`・端末でないときは PR、`--issue` `--yes` は Issue(端末でなければ URL を出す)。
 - 測る前は、もうあるトークン(GITHUB_TOKEN か GH_TOKEN、無ければ保存したログイン)を確かめるだけで、使えなければすぐ止める。
 - ブラウザでのデバイス認証(権限 public_repo。次のために保存し、`--logout` で消す)は、PR を選んだときだけ。
+- デバイス認証を待つあいだはキーが使える: r ページを開き直す、n 新しいコード、q 同じファイルを Issue で送る。
+- コードの期限が切れたら、もう一度ログインするかを尋ねる。
 - `--yes` で端末でなく、トークンが無ければ、測る前に止める。
 - PR は、リポジトリのフォークで、本家とフォークの main の共通の祖先からブランチを作り、`data/contrib/<GPU>/` にファイルを置いて開く(題は「measurements: `<GPU>` (`<件数>`)」)。
 - その GPU の share の PR が開いていれば、そこに足す。
@@ -873,6 +886,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 - PR を作れなければ、端末なら同じファイルを Issue で送るかを尋ねる。
 - 結果は送る前に保存し、測り直さない: あとで `genmodelfit share --no-measure`(か `--issue`)で送れる。
 - 送ったものはこの PC で印を付ける(`--all` で含める)。
+- 測れなかったものは、1 回に 1 つの失敗の記録のファイルにまとめる(名前と数だけ。エラーの本文は入れない)。
 - ComfyUI が無ければ送っていない実測だけを送り、それも無ければ尋ねずに ComfyUI の起動の仕方を出して 1 で終える。
 - FILE はそのファイルだけを送る。
 - `--yes` の無い share `--issue` は前からの送り方で、送っていない実測を選んで Issue のフォームを開く。
@@ -910,17 +924,19 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 **副作用**
 
 - 通信: 測る・落とすあいだは measure と同じ。
-- 同意のあとで github.com と api.github.com(ログイン・フォーク・ブランチ・ファイル・PR)。
-- `--dry-run` と `--issue` は通信しない。
-- 実測を measure と同じく書き、送った印を `<cache>/submissions_shared.json` に、ログインのトークンを `<config>/github_token`(本人だけが読める)に書く。
+- GitHub(github.com と api.github.com): 測る前は、もうあるトークンを確かめるだけ(GET /user)。
+- ログイン・フォーク・ブランチ・ファイル・PR は、送ることに同意したあとだけ。
+- `--dry-run` は ComfyUI が起動しているかを 127.0.0.1 に尋ねるだけ、`--issue` は GitHub に通信しない。
+- 実測と失敗の記録を measure と同じく書き、送った印を `<cache>/submissions_shared.json` に、ログインのトークンを `<config>/github_token`(本人だけが読める)に書く。
 
 **終了コード**
 
 | コード | 意味 |
 |---|---|
-| 0 | 成功(n と答えた・測るものも送るものも無いときも) |
+| 0 | 成功(n と答えた・測るものも送るものも無い・送れないだけの結果のときも) |
 | 1 | 失敗: ログインできない、ComfyUI が無く送るものも無い、測れなかったものがある、送れないファイルがある(個人の情報の点検の NG・検査の誤り)、GitHub が受け付けない(結果は保存したまま)、`--json`・端末でないのに `--yes` が無い |
 | 2 | 使い方の誤り |
+| 130 | Ctrl+C(質問の途中。測る途中なら、先にそこまでのものを送るかに進む) |
 
 **使い方の例(スクリプト・アプリ向け)**
 

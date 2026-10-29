@@ -73,7 +73,9 @@ def test_amd_linux_checks_with_rocm_smi_and_records_backend(monkeypatch):
         res = bench.run(_opts(_amd(fake).url), log=_quiet)
     m = res.measurement
     assert m.outcome == "ok" and m.standard and m.gpu_backend == "rocm"
-    assert "rocm-smi" in m.note and "確かめていない" not in m.note
+    assert "rocm-smi" in m.note and "使用率は確かめていない" not in m.note
+    # 測っているあいだのほかのプログラムは nvidia-smi でしか見られない(0.13.1): 見張らず、note に書く
+    assert bench.GPU_APPS_UNCHECKED in m.note
     assert not any("--force" in w for w in res.warnings)
 
 
@@ -414,3 +416,45 @@ def test_lspci_and_wmi_keep_the_pci_model_id_only():
     assert a.pci_id == "1002:744c" and "0000:03" not in json.dumps(vars(a))
     g = hardware.classify_adapter(a, hardware.Host("Linux", None, cpu="AMD Ryzen 7 7700"), 32.0)
     assert g is not None and g.pci_id == "1002:744c"
+
+
+# --- 0.13.1: 空けたあとのほかのプログラムの VRAM・測っているあいだの見張り(NVIDIA 以外) -------------------
+
+
+def test_amd_after_free_checks_other_programs_vram_from_system_stats(monkeypatch):
+    """AMD(ROCm)は nvidia-smi が無くても、/free のあとの /system_stats でほかのプログラムの VRAM を見る。"""
+    idle = json.dumps({"card0": {"GPU use (%)": "3", "VRAM Total Used Memory (B)": str(GIB)}})
+    _os(monkeypatch, "Linux", {"rocm-smi": idle})
+    with FakeComfy() as fake:
+        _amd(fake).other_apps = 3 * GIB  # 半分(4 GB)より少ないが、上限(1.6 GB)より多い
+        with pytest.raises(BenchError, match="ほかのプログラムが VRAM"):
+            bench.run(_opts(fake.url, free_before=True), log=_quiet)
+        fake.other_apps = GIB // 2
+        res = bench.run(_opts(fake.url, free_before=True), log=_quiet)
+    m = res.measurement
+    assert m.outcome == "ok" and m.gpu_backend == "rocm"
+    assert bench.OTHERS_VRAM_UNCHECKED not in m.note and bench.GPU_APPS_UNCHECKED in m.note
+
+
+@pytest.mark.parametrize("device", [INTEL_DEV, APPLE_DEV], ids=["intel", "apple"])
+def test_intel_and_apple_measure_and_note_what_was_not_checked(monkeypatch, device):
+    """Intel(XPU)・Apple(MPS)の /system_stats にはほかのプログラムの VRAM が出ない: 断らずに測り、
+    確かめなかったことを note に書く(ComfyUI 以外が多く使っていても、ここでは止めない)。"""
+    _os(monkeypatch, "Linux", {})
+    with FakeComfy() as fake:
+        fake.device = device
+        fake.other_apps = 3 * GIB
+        res = bench.run(_opts(fake.url, free_before=True), log=_quiet)
+    m = res.measurement
+    assert m.outcome == "ok" and m.gpu_backend == ("xpu" if device is INTEL_DEV else "mps")
+    assert bench.OTHERS_VRAM_UNCHECKED in m.note and bench.GPU_APPS_UNCHECKED in m.note
+    assert m.note.index(bench.GPU_APPS_UNCHECKED) < 500  # 提出の note の上限(500 字)で切られない
+
+
+def test_non_nvidia_never_starts_the_process_watcher(monkeypatch):
+    monkeypatch.setattr(bench, "GpuAppWatch", lambda *a, **k: pytest.fail("NVIDIA 以外で見張りを作った"))
+    monkeypatch.setattr(bench, "_gpu_app_pids", lambda *a, **k: pytest.fail("nvidia-smi のプロセスを見た"))
+    _os(monkeypatch, "Linux", {})
+    with FakeComfy() as fake:
+        res = bench.run(_opts(_amd(fake).url, free_before=True), log=_quiet)
+    assert res.measurement.outcome == "ok"
