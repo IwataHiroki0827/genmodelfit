@@ -42,6 +42,10 @@ git and no programming.
    browser; enter the code there. The sign-in is saved for next time (it expires after about 8 hours;
    `share --logout` removes it). It opens a pull request on your account.
 
+With a pull request, the commits are made by your account, so once it is merged you are listed among the
+repository's Contributors. With issues, the bot makes the commits, so you are not listed (you are recorded in the
+issue and in the commit's `Submitted-by`).
+
 If you have more time, run `genmodelfit share` again later: each time it measures the next models or settings that
 are not yet measured on this PC.
 
