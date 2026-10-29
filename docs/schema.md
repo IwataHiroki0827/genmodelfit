@@ -1192,10 +1192,17 @@ Rules:
   measurement is kept and the run is listed under `failed` with the reason. A saved submission that cannot be sent
   is listed once and renamed `<name>.unsendable` (not offered again; `retired` in the JSON); `share` does not fail
   for it when everything else was sent.
-- **GPUs and VRAM**: only NVIDIA GPUs are measured for now. `measure.suggestions` leaves out models with an unknown
-  license unless `--any-license`. Measuring is refused when other programs use more than 1.5 GiB or 20% of the VRAM
-  (`bench.others_vram_limit`): checked with nvidia-smi before starting ComfyUI and from `/system_stats` after
-  freeing; a new compute-only GPU process during a run (type C in nvidia-smi's process table; C+G / G apps such as browsers are ignored) makes the result non-standard.
+- **GPUs and VRAM**: any GPU that is judged (backend `cuda` / `rocm` / `xpu` / `mps`; `SystemInfo.best_gpu`) is
+  measured; only "no usable GPU" stops (0.13.1; 0.13.0 wrongly measured on NVIDIA only). `measure.suggestions` leaves
+  out models with an unknown license unless `--any-license`. Measuring is refused when other programs use more than
+  1.5 GiB or 20% of the VRAM (`bench.others_vram_limit`): on NVIDIA checked with nvidia-smi before starting ComfyUI
+  and from `/system_stats` after freeing; on AMD (ROCm) only from `/system_stats` after freeing (ComfyUI reports the
+  whole GPU's free memory there). Intel (XPU) and Apple (MPS) do not show other programs in `/system_stats`, so this
+  is not checked and the `note` says so (`bench.OTHERS_VRAM_UNCHECKED`). On NVIDIA a new compute-only GPU process
+  during a run (type C in nvidia-smi's process table; C+G / G apps such as browsers are ignored) makes the result
+  non-standard; other vendors have no such process table, so it is not watched and the `note` says so
+  (`bench.GPU_APPS_UNCHECKED`). The busy check before measuring is bench's per-vendor one
+  ([accuracy.md](accuracy.md), "Bench on non-NVIDIA GPUs").
 - **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
   measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
   measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay

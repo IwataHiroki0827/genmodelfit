@@ -707,6 +707,15 @@ OTHER_APPS_VRAM_SHARE = 0.5
 # (画面の表示・ComfyUI の CUDA の分を含む)。これを超えたら測らない
 OTHERS_VRAM_MIN = int(1.5 * 1024**3)
 OTHERS_VRAM_SHARE = 0.2
+# 空けたあとに /system_stats でほかのプログラムの VRAM を見られる会社(0.13.1)。ComfyUI の
+# comfy/model_management.py:1821-1865@426f5ee の get_free_memory は、NVIDIA・AMD(ROCm も torch.cuda)では
+# torch.cuda.mem_get_info(GPU 全体の空き)を使うので、GPU 全体の使用量から torch の分を引けばほかのプログラムの
+# 分になる。Intel(XPU)は torch の確保量から空きを出す(全体 - reserved)のでほかのプログラムの分が見えず、
+# Apple(MPS)はメインメモリの空きなので見ない。その 2 つは確かめずに測り、note に OTHERS_VRAM_UNCHECKED を残す
+OTHERS_VRAM_VENDORS = frozenset({"nvidia", "amd"})
+OTHERS_VRAM_UNCHECKED = "ほかのプログラムの VRAM は確かめていない(/system_stats に出ない GPU)"
+# NVIDIA 以外では、測っているあいだに GPU を使い始めたほかのプログラムを見ない(プロセスの表が nvidia-smi だけ)
+GPU_APPS_UNCHECKED = "測っているあいだのほかのプログラムは確かめていない(NVIDIA 以外)"
 GPU_APPS_EVERY = 2.0  # 測っているあいだ、GPU を使うプロセスを見る間隔(秒)
 SLEEP_GAP = 30.0  # 待つあいだの 1 回の間がこれより長ければ、PC がスリープしていたとみなす(秒)
 
@@ -1499,9 +1508,13 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     base_stats = (client.system_stats().get("devices") or [dev0])[0]
     base_torch = int(base_stats.get("torch_vram_total") or 0)
     base_dev = int(base_stats.get("vram_total") or 0) - int(base_stats.get("vram_free") or 0)
-    if opts.free_before and gpu_id is not None:
+    vram_unchecked: str | None = None  # 空けたあとのほかのプログラムの VRAM を確かめられなかったことの note
+    if opts.free_before and vendor not in OTHERS_VRAM_VENDORS:
+        vram_unchecked = OTHERS_VRAM_UNCHECKED
+    if opts.free_before and (gpu_id is not None or vendor in OTHERS_VRAM_VENDORS - {"nvidia"}):
         # 空けたあとでも ComfyUI 以外が VRAM を多く使っていれば、測ると数値が狂う(#124)。Windows では
-        # プロセスごとの量が出ないので、GPU 全体の使用量から ComfyUI の torch の分を引いて見積もる
+        # プロセスごとの量が出ないので、GPU 全体の使用量から ComfyUI の torch の分を引いて見積もる。
+        # AMD(ROCm)は nvidia-smi が無くても /system_stats で同じに見る(0.13.1。OTHERS_VRAM_VENDORS)
         others = base_dev - base_torch
         total = int(base_stats.get("vram_total") or 0)
         limit = max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total)
@@ -1727,6 +1740,11 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     if exec_s is not None:
         note_parts.append(f"ComfyUI の実行時間 {exec_s:g} 秒")
     note_parts.append(f"計測 {peaks.samples} 回")
+    # 確かめなかったこと(0.13.1)は失敗の文より前に置く(note は 500 字で切られる。contrib.MAX_NOTE_CHARS)
+    if vram_unchecked:
+        note_parts.append(vram_unchecked)
+    if watch is None and vendor != "nvidia":
+        note_parts.append(GPU_APPS_UNCHECKED)
     if failed:
         label = "メモリ不足で失敗" if outcome == "oom" else "失敗"
         note_parts.append(f"{label}: {(failed_note or failed)[:300]}")

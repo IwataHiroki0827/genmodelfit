@@ -3325,17 +3325,13 @@ def _share_send_issues(
 
 
 def _measure_gpu_stop(s) -> str | None:
-    """測れない GPU の理由(#124)。GPU が無い・NVIDIA でない(今は NVIDIA の GPU だけで測る)。"""
-    g = s.best_gpu
-    if g is None:
+    """測れない GPU の理由(#124)。判定に使える GPU(backend が cuda・rocm・xpu・mps。
+    models.SystemInfo.best_gpu)が無いときだけ。AMD・Intel・Apple でも測る(0.13.1。bench が会社ごとに
+    空きを確かめる: docs/accuracy.md「NVIDIA 以外の GPU の bench」)。"""
+    if s.best_gpu is None:
         return tr(
             "この PC に測りに使える GPU が見つかりません(genmodelfit system で確かめてください)",
             "No GPU that can be measured was found on this PC (check with genmodelfit system)",
-        )
-    if (getattr(g, "vendor", None) or "nvidia") != "nvidia":
-        return tr(
-            f"今は NVIDIA の GPU だけで測ります(この PC の GPU: {g.name})",
-            f"For now only NVIDIA GPUs are measured (this PC's GPU: {g.name})",
         )
     return None
 
@@ -4344,12 +4340,16 @@ def _note_unchecked(args: argparse.Namespace, checker) -> None:
         )
 
 
-def _vram_busy_before_start(name: str | None = None) -> str | None:
+def _vram_busy_before_start(gpu=None) -> str | None:
     """自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を多く使っていないか(#124)。
-    使っていれば理由。"""
+    使っていれば理由。nvidia-smi で読むので NVIDIA の GPU だけ(gpu は判定に使う models.Gpu)。
+    AMD・Intel・Apple は起動して /free で空けたあとに bench が ComfyUI の /system_stats で確かめる
+    (確かめられなければ note に書く)。"""
     from .bench import others_vram_limit, vram_in_use
 
-    v = vram_in_use(name)
+    if gpu is not None and (getattr(gpu, "vendor", None) or "nvidia") != "nvidia":
+        return None
+    v = vram_in_use(getattr(gpu, "name", None))
     if v is None:
         return None
     used, total = v
@@ -4616,7 +4616,7 @@ def cmd_share(args: argparse.Namespace) -> int:
         if args.json:
             _out(_envelope("share", None, None, action="send", **report, error=stop[0]))
             return 1
-        # 測る計画があるときだけ見せる(GPU が無い・NVIDIA でない・ほかのサーバーがいるときは出さない)
+        # 測る計画があるときだけ見せる(GPU が無い・ほかのサーバーがいるときは出さない)
         if comfy_stop and plan and not isinstance(start_why, _HeadReason):
             _emit(screen)
         sys.stdout.flush()
@@ -4701,7 +4701,7 @@ def cmd_share(args: argparse.Namespace) -> int:
             if start is not None:
                 _step(args, "start")
                 try:
-                    busy = _vram_busy_before_start(s.best_gpu.name if s and s.best_gpu else None)
+                    busy = _vram_busy_before_start(s.best_gpu if s else None)
                     if busy:
                         raise CliError(busy)
                     started = _comfyui_start(args, start, holder)
@@ -7400,7 +7400,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
             return 1
         raise CliError(msg)
     gpu_stop = _measure_gpu_stop(s)
-    if gpu_stop:  # 今は NVIDIA の GPU だけで測る(#124)
+    if gpu_stop:  # 判定に使える GPU が無い(#124)
         if args.json:
             _out(
                 _envelope("measure", s, db, action="suggest" if not args.model else "measure", error=gpu_stop)
@@ -7569,7 +7569,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
     lock = _measure_lock()  # 同時に測らない(L1c)
     try:
         if start is not None:
-            busy = _vram_busy_before_start(s.best_gpu.name if s.best_gpu else None)
+            busy = _vram_busy_before_start(s.best_gpu)
             if busy:
                 return fail(busy)
             try:

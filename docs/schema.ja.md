@@ -1137,11 +1137,16 @@ bench が Measurement を埋める方法(測り方):
   (GPU の全体より大きい最大 VRAM など)なら、この PC の実測だけを残し、理由を付けて `failed` に入れる。保存してある
   送れない提出は 1 回だけ出して `<名前>.unsendable` に名前を変える(次から出さない。JSON の `retired`)。ほかを送れた
   なら、それで `share` を失敗にしない。
-- **GPU と VRAM**: 今は NVIDIA の GPU だけで測る。`measure.suggestions` はライセンスの分からないモデルを出さない
-  (`--any-license` で出す)。ほかのプログラムが VRAM を 1.5 GiB か全体の 20% より多く使っていれば測らない
-  (`bench.others_vram_limit`。ComfyUI を起動する前は nvidia-smi、空けたあとは `/system_stats` で見る)。測っている
-  あいだに GPU を使い始めた計算だけのプロセス(nvidia-smi の表の種類 C。ブラウザなど C+G・G のアプリは数えない)が
-  あれば、標準でない結果にする。
+- **GPU と VRAM**: 判定に使う GPU(backend が `cuda` / `rocm` / `xpu` / `mps`。`SystemInfo.best_gpu`)ならどれでも
+  測る。止めるのは使える GPU が無いときだけ(0.13.1。0.13.0 は誤って NVIDIA だけで測っていた)。
+  `measure.suggestions` はライセンスの分からないモデルを出さない(`--any-license` で出す)。ほかのプログラムが VRAM を
+  1.5 GiB か全体の 20% より多く使っていれば測らない(`bench.others_vram_limit`。NVIDIA は ComfyUI を起動する前は
+  nvidia-smi、空けたあとは `/system_stats` で見る。AMD(ROCm)は空けたあとの `/system_stats` だけで見る(ComfyUI が
+  GPU 全体の空きを出す))。Intel(XPU)・Apple(MPS)の `/system_stats` にはほかのプログラムの分が出ないので確かめず、
+  `note` にそう書く(`bench.OTHERS_VRAM_UNCHECKED`)。NVIDIA では、測っているあいだに GPU を使い始めた計算だけの
+  プロセス(nvidia-smi の表の種類 C。ブラウザなど C+G・G のアプリは数えない)があれば、標準でない結果にする。
+  ほかの会社にはその表が無いので見張らず、`note` にそう書く(`bench.GPU_APPS_UNCHECKED`)。測る前に GPU が空いて
+  いるかは bench の会社ごとの確かめ方による([accuracy.ja.md](accuracy.ja.md)「NVIDIA 以外の GPU の bench」)。
 - **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
   数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
   `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に
