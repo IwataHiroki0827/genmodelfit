@@ -2719,6 +2719,7 @@ def _share_send(
 
     if not args.json:
         print()
+        _step(args, "show")
         print(tr(f"=== 送る中身({len(items)} 件) ===", f"=== What will be sent ({len(items)}) ==="))
         _print_share_items(items)
     if not good:
@@ -2744,6 +2745,7 @@ def _share_send(
             print(tr("送りませんでした。", "Nothing sent."), file=sys.stderr)
             print(_unsent_hint(), file=sys.stderr)
             return base_code
+    _step(args, "send")
     if method == "issue":
         return _share_send_issues(args, good, report, items, code)
     try:
@@ -2901,6 +2903,30 @@ def _share_send_issues(
     return worst
 
 
+def _share_steps(args: argparse.Namespace, start, plan: list, dl_plan: list, want_dl) -> _Steps:
+    """この回で使う手順(#124): GitHub の確認(もうあるトークンを確かめるとき)・ComfyUI を起動・ノードを確かめる
+    (起動したとき)・測る・落として測る(落とすと決まっているとき。あとで決まれば足す)・送る中身を見せる・送る。"""
+    from . import github
+
+    items: list[tuple[str, str]] = []
+    if not getattr(args, "issue", False) and (
+        github.env_token() is not None or github.token_path().exists() or args.yes or not _interactive()
+    ):
+        items.append(("check", tr("GitHub の確認", "Check GitHub")))
+    if start is not None and (plan or (dl_plan and want_dl)):
+        items.append(("start", tr("ComfyUI を起動", "Start ComfyUI")))
+        items.append(("nodes", tr("ノードを確かめる", "Check the nodes")))
+    if plan:
+        items.append(("measure", tr(f"測る({len(plan)} 件)", f"Measure ({len(plan)})")))
+    if dl_plan and want_dl:
+        items.append(
+            ("download", tr(f"落として測る({len(dl_plan)} 件)", f"Download and measure ({len(dl_plan)})"))
+        )
+    items.append(("show", tr("送る中身を見せる", "Show what will be sent")))
+    items.append(("send", tr("送る", "Send")))
+    return _Steps(items, enabled=not args.json)
+
+
 def _share_screen(
     plan: list,
     dl_plan: list,
@@ -3054,29 +3080,400 @@ def _share_replan_lines(plan: list, total: int, budget: float, skipped: list) ->
     return lines
 
 
-def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, failed: list) -> None:
-    """share の 1 件を測る(measure と同じ _measure_run)。結果は measured か failed に足す。"""
+# --- 途中経過の表示(#124。ライブラリは表示しない。ここで rich で描く) ---------------------------------------
+# 端末(Console.is_terminal)なら rich.progress で書き直し、端末でない・--json なら決まった時に普通の行を出す。
+# 出すのは stderr(stdout は結果・JSON のため)。質問の前には必ず止める(close)。NO_COLOR は rich が守る
+
+
+def _err_console():
+    """途中経過を描く rich の Console(stderr)。試験で差し替える。"""
+    from rich.console import Console
+
+    return Console(stderr=True, highlight=False)
+
+
+def _fit_width(text: str, width: int) -> str:
+    """表示の幅(全角は 2 桁。rich の数え方)を width に収める(はみ出すぶんは …)。改行は空白にする。"""
+    from rich.cells import cell_len
+
+    text = " ".join(str(text).split())
+    if width <= 1 or cell_len(text) <= width:
+        return text if width > 1 else ""
+    out = ""
+    for ch in text:
+        if cell_len(out + ch) > width - 1:
+            break
+        out += ch
+    return out + "…"
+
+
+def _text_column(field: str, ratio: int | None = None):
+    from rich.progress import TextColumn
+    from rich.table import Column
+
+    return TextColumn(field, table_column=Column(no_wrap=True, overflow="ellipsis", ratio=ratio))
+
+
+class _View:
+    """途中経過の表示のもと。enabled が偽(--json)なら何も出さない。端末でなければ every 秒ごとに 1 行。"""
+
+    every = 10.0
+
+    def __init__(self, enabled: bool = True, console=None, clock=None):
+        import time as _time
+
+        self.enabled = enabled
+        self.console = console if console is not None else (_err_console() if enabled else None)
+        self.live = bool(enabled and self.console is not None and self.console.is_terminal)
+        self.clock = clock or _time.monotonic
+        self._last_line: float | None = None
+        self.progress = None
+
+    def line(self, text: str, *, force: bool = False) -> None:
+        """端末でないときの 1 行(every 秒ごと。force なら必ず)。"""
+        if not self.enabled or self.live:
+            return
+        now = self.clock()
+        if not force and self._last_line is not None and now - self._last_line < self.every:
+            return
+        self._last_line = now
+        print(text, file=sys.stderr, flush=True)
+
+    def close(self) -> None:
+        if self.progress is not None:
+            self.progress.stop()
+            self.progress = None
+
+
+class _StartView(_View):
+    """ComfyUI の起動を待つあいだ:
+    「ComfyUI を起動しています 23 秒 / 目安 約 45 秒(上限 300 秒)| ログの最後の行」。"""
+
+    def __init__(self, est: int, limit: float, **kw):
+        super().__init__(**kw)
+        self.est, self.limit = est, limit
+        if self.live:
+            from rich.progress import Progress, SpinnerColumn
+
+            self.progress = Progress(
+                SpinnerColumn(), _text_column("{task.description}"), console=self.console, transient=False
+            )
+            self.task = self.progress.add_task(self._text(0.0, ""), total=None)
+            self.progress.start()
+
+    def _text(self, waited: float, log_line: str) -> str:
+        slow = waited > SLOW_FACTOR * self.est
+        text = tr(
+            f"ComfyUI を起動しています {waited:.0f} 秒"
+            + ("(目安より長くかかっています)" if slow else "")
+            + f" / 目安 約 {self.est} 秒(上限 {self.limit:g} 秒)",
+            f"Starting ComfyUI {waited:.0f} s"
+            + (" (taking longer than the guide)" if slow else "")
+            + f" / about {self.est} s (limit {self.limit:g} s)",
+        )
+        return text + (f" | {log_line}" if log_line else "")
+
+    def update(self, waited: float, log_line: str = "") -> None:
+        text = self._text(waited, log_line)
+        if self.live:
+            self.progress.update(self.task, description=_fit_width(text, self.console.width - 4))
+            self.progress.refresh()
+        else:
+            self.line(_fit_width(text, 100))
+
+    def done(self, waited: float) -> None:
+        text = tr(f"ComfyUI の準備ができました({waited:.0f} 秒)", f"ComfyUI is ready ({waited:.0f} s)")
+        if self.live:
+            self.progress.update(self.task, description=text, total=1, completed=1)
+        self.close()
+        if self.enabled and not self.live:
+            self.line(text, force=True)
+
+
+SLOW_FACTOR = 3.0  # 目安のこの倍を超えたら「目安より長くかかっています」と添える
+
+
+class _MeasureView(_View):
+    """1 件を測るあいだ: 時間の目安を棒にし(超えたら棒を止めて「目安を超えています」)、
+    段階・最大 VRAM を出す。"""
+
+    def __init__(self, label: str, est: int, **kw):
+        super().__init__(**kw)
+        self.label, self.est = label, max(1, int(est or 0))
+        self.seen_running = False
+        if self.live:
+            from rich.progress import BarColumn, Progress, SpinnerColumn
+
+            self.progress = Progress(
+                SpinnerColumn(),
+                _text_column("{task.description}", ratio=2),
+                BarColumn(bar_width=20),
+                _text_column("{task.fields[info]}", ratio=3),
+                console=self.console,
+                transient=False,
+            )
+            self.task = self.progress.add_task(
+                _fit_width(label, max(10, self.console.width // 3)), total=self.est, info=""
+            )
+            self.progress.start()
+
+    def update(self, info: dict) -> None:
+        el = float(info.get("elapsed") or 0.0)
+        ph = info.get("phase") or "waiting"
+        if ph == "running":
+            self.seen_running = True
+        name = {
+            "queued": tr("キュー待ち", "queued"),
+            "running": tr("実行中", "running"),
+            "waiting": tr("結果を待つ", "waiting for the result")
+            if self.seen_running
+            else tr("送った", "sent"),
+        }.get(ph, str(ph))
+        peak = float(info.get("peak_vram_gb") or 0.0)
+        over = el > self.est
+        text = tr(
+            f"{el:.0f} 秒"
+            + ("(目安を超えています)" if over else "")
+            + f" / 目安 約 {self.est} 秒 | {name} | 最大 VRAM {peak:.2f} GB",
+            f"{el:.0f} s"
+            + (" (over the guide)" if over else "")
+            + f" / about {self.est} s | {name} | peak VRAM {peak:.2f} GB",
+        )
+        if el > SLOW_FACTOR * self.est:
+            text += tr(
+                "。初回はモデルの読み込みで長くなります",
+                "; the first run loads the model, which takes longer",
+            )
+        if self.live:
+            if over:
+                self.progress.update(self.task, total=None, info=text)  # 棒を止めて「動いている」表示に
+            else:
+                self.progress.update(self.task, completed=el, info=text)
+            self.progress.refresh()
+        else:
+            self.line(f"  {self.label}: {text}")
+
+    def done(self) -> None:
+        if self.live and self.progress is not None:
+            self.progress.update(self.task, total=1, completed=1)
+        self.close()
+
+
+def _run_live(args: argparse.Namespace, label: str, est: int):
+    """bench の progress を受ける関数と、その表示(close() で止める)。"""
+    view = _MeasureView(label, est, enabled=not getattr(args, "json", False))
+    return view.update, view
+
+
+class _DownloadView(_View):
+    """download の進み具合(DownloadProgress)。端末なら全体の行とファイルごとの行
+    (名前・棒・量・速さ・残り時間)、
+    sha256 を確かめるあいだは「確かめています」。端末でなければ、ファイルの始めと全体の 10% ごとに 1 行。"""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.tasks: dict[int, Any] = {}
+        self.pct = -1
+        self.cur: tuple[int, str] | None = None
+        if self.live:
+            from rich.progress import (
+                BarColumn,
+                DownloadColumn,
+                Progress,
+                TimeRemainingColumn,
+                TransferSpeedColumn,
+            )
+
+            self.progress = Progress(
+                _text_column("{task.description}", ratio=1),
+                BarColumn(bar_width=None),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                TimeRemainingColumn(),
+                console=self.console,
+                transient=False,
+            )
+            self.overall = None
+            self.progress.start()
+
+    def _name(self, p) -> str:
+        phase = {
+            "check": tr("計っています", "checking"),
+            "verify": tr("確かめています", "verifying"),
+            "restart": tr("最初から", "restarting"),
+            "retry": tr("待っています", "waiting"),
+        }.get(p.phase, "")
+        name = p.name.rsplit("/", 1)[-1]
+        head = f"[{p.file_index}/{p.file_count}] " + (f"{phase} " if phase else "")
+        room = max(10, (self.console.width if self.live else 100) // 3 - len(head))
+        return head + _fit_width(name, room)
+
+    def __call__(self, p) -> None:
+        if not self.enabled:
+            return
+        if self.live:
+            self._live(p)
+        else:
+            self._plain(p)
+
+    def _live(self, p) -> None:
+        pr = self.progress
+        if p.message:
+            pr.console.print(f"  {p.name}: {p.message}")
+        if self.overall is None:
+            self.overall = pr.add_task(tr("全体", "all"), total=p.total_bytes or None)
+        pr.update(self.overall, completed=p.done_bytes)
+        t = self.tasks.get(p.file_index)
+        if t is None:
+            t = self.tasks[p.file_index] = pr.add_task(self._name(p), total=p.file_total or None)
+        if p.phase in ("skip", "done"):
+            total = p.file_total or p.file_bytes or 1
+            pr.update(t, description=self._name(p), total=total, completed=total)
+        else:
+            pr.update(t, description=self._name(p), completed=p.file_bytes, total=p.file_total or None)
+        key = (p.file_index, p.phase)
+        if key != self.cur:  # 段階が変わったら(計る→取る→確かめる)すぐ描く
+            self.cur = key
+            pr.refresh()
+
+    def _plain(self, p) -> None:
+        if p.message:
+            print(f"  {p.name}: {p.message}", file=sys.stderr, flush=True)
+            return
+        if p.phase not in ("download", "check", "verify", "done", "skip"):
+            return
+        pct = int(100 * p.done_bytes / p.total_bytes) if p.total_bytes else 0
+        key = (p.file_index, p.phase)
+        if key != self.cur or pct // 10 != self.pct // 10:
+            self.cur = key
+            word = {
+                "download": tr("取得", "download"),
+                "check": tr("計っています", "checking"),
+                "verify": tr("確かめています", "verifying"),
+                "done": tr("済み", "done"),
+                "skip": tr("もうある", "already there"),
+            }[p.phase]
+            print(
+                f"[{p.file_index}/{p.file_count}] {word} {_fit_width(p.name, 50)}  "
+                f"{p.file_bytes / GIB:.2f}/{(p.file_total or 0) / GIB:.2f} GB  "
+                + tr(f"(全体 {pct}%)", f"(all {pct}%)"),
+                file=sys.stderr,
+                flush=True,
+            )
+        self.pct = pct
+
+
+class _Steps:
+    """share の手順の見出し「== 手順 2/6: ComfyUI を起動 ==」。手順は計画から決め、増えたら言う。"""
+
+    def __init__(self, items: list[tuple[str, str]], *, enabled: bool = True):
+        self.items = list(items)  # (鍵, 見出し)
+        self.enabled = enabled
+        self.done: list[str] = []
+
+    def start(self, key: str, label: str | None = None) -> None:
+        keys = [k for k, _ in self.items]
+        added = key not in keys
+        if added:
+            # 次に来る手順(まだ始めていないもの)の前に入れる
+            pos = next((i for i, (k, _) in enumerate(self.items) if k not in self.done), len(self.items))
+            self.items.insert(pos, (key, label or key))
+        if label is not None:
+            self.items = [(k, label if k == key else lb) for k, lb in self.items]
+        self.done.append(key)
+        if not self.enabled:
+            return
+        i = [k for k, _ in self.items].index(key) + 1
+        name = dict(self.items)[key]
+        sys.stdout.flush()
+        print()
+        print(f"== {tr('手順', 'Step')} {i}/{len(self.items)}: {name} ==", flush=True)
+        if added:
+            print(
+                tr(
+                    f"(手順が 1 つ増えて {len(self.items)} になりました)",
+                    f"(one more step: {len(self.items)} in all)",
+                ),
+                flush=True,
+            )
+
+    def drop(self, key: str) -> None:
+        """使わなくなった手順を外す(まだ始めていないものだけ)。"""
+        if key not in self.done:
+            self.items = [(k, lb) for k, lb in self.items if k != key]
+
+
+def _step(args: argparse.Namespace, key: str, label: str | None = None) -> None:
+    steps = getattr(args, "_steps", None)
+    if steps is not None:
+        steps.start(key, label)
+
+
+def _settings_label(settings) -> str:
+    """設定の短い言い方(768×768・33 コマ・30 秒)。テンプレートのままなら空。"""
+    from .measure import settings_dict
+
+    d = settings_dict(settings) or {}
+    bits = []
+    if d.get("width") and d.get("height"):
+        bits.append(f"{d['width']}×{d['height']}")
+    if d.get("frames"):
+        bits.append(tr(f"{d['frames']} コマ", f"{d['frames']} frames"))
+    if d.get("seconds"):
+        bits.append(tr(f"{d['seconds']:g} 秒", f"{d['seconds']:g} s"))
+    return " ".join(bits)
+
+
+def _share_measure_one(
+    args: argparse.Namespace,
+    url: str,
+    x,
+    measured: list,
+    failed: list,
+    pos: tuple[int, int] = (1, 1),
+    rest: list | None = None,
+) -> None:
+    """share の 1 件を測る(measure と同じ _measure_run)。結果は measured か failed に足す。
+    pos は (何件目, 全部で何件)、rest はこのあとに測るもの(残りの時間の目安に使う)。"""
     from .measure import settings_dict
 
     rec = {"model_id": x.model_id, "settings": settings_dict(x.settings)}
+    label = " ".join(b for b in (x.model_name, _settings_label(x.settings)) if b)
     what = " ".join([x.model_id, *x.args])
     if not args.json:
         print()
         print(
             tr(
-                f"--- 測っています: {x.model_name} [{what}](目安 約 {x.seconds} 秒)",
-                f"--- Measuring: {x.model_name} [{what}] (about {x.seconds} s)",
+                f"測っています {pos[0]}/{pos[1]}: {label}(目安 約 {x.seconds} 秒)[{what}]",
+                f"Measuring {pos[0]}/{pos[1]}: {label} (about {x.seconds} s) [{what}]",
             ),
             flush=True,
         )
     # share は続けて何件も測るので、毎回メモリと前の結果(キャッシュ)を空けてから測る(#124)
-    r = _measure_run(args, url, x.fit.model, x.settings, free=True)
+    progress, view = _run_live(
+        args, tr(f"測る {pos[0]}/{pos[1]}: {label}", f"Measure {pos[0]}/{pos[1]}: {label}"), x.seconds
+    )
+    try:
+        r = _measure_run(args, url, x.fit.model, x.settings, free=True, progress=progress)
+    finally:
+        view.done()
+    rest = rest or []
+    left = (
+        tr(
+            f" — 残り {len(rest)} 件、あと約 {sum(y.seconds for y in rest)} 秒",
+            f" — {len(rest)} left, about {sum(y.seconds for y in rest)} s more",
+        )
+        if rest
+        else ""
+    )
     if r["error"] is not None:
         failed.append({**rec, "error": r["error"]})
         if not args.json:
             sys.stdout.flush()
             print(tr(f"エラー: {r['error']}", f"error: {r['error']}"), file=sys.stderr)
             print(_measure_next_step(r["error"], x.model_id), file=sys.stderr)
+            if left:
+                print(left.lstrip(" —"), flush=True)
         return
     m = r["measurement"]
     if r["submission"] is None:
@@ -3096,7 +3493,7 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
         if not args.json:
             for w in res.warnings:
                 print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
-            print(tr(f"送れません: {why}", f"Not sent: {why}"), flush=True)
+            print(tr(f"送れません: {why}", f"Not sent: {why}") + left, flush=True)
         return
     measured.append(
         {
@@ -3115,7 +3512,8 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
             tr(
                 f"結果: {m.outcome}、最大 VRAM {m.peak_vram_gb:.2f} GB{secs}",
                 f"Result: {m.outcome}, peak VRAM {m.peak_vram_gb:.2f} GB{secs}",
-            ),
+            )
+            + left,
             flush=True,
         )
 
@@ -3149,7 +3547,16 @@ def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
 def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: list, measured, failed) -> None:
     """入っていない提案を、download と同じ流れ(_measure_download。同じ同意・ライセンス・無検閲の決まり)で
     落として測る(#124。同意は呼び出し側が取ってある)。"""
-    for x in dl_plan:
+    for i, x in enumerate(dl_plan, 1):
+        if not args.json:
+            print()
+            print(
+                tr(
+                    f"落とす {i}/{len(dl_plan)}: {x.model_name}",
+                    f"Download {i}/{len(dl_plan)}: {x.model_name}",
+                )
+            )
+            sys.stdout.flush()
         if _measure_download(args, x.model_id) != 0:
             failed.append(
                 {
@@ -3159,7 +3566,7 @@ def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: lis
                 }
             )
             continue
-        _share_measure_one(args, url, x, measured, failed)
+        _share_measure_one(args, url, x, measured, failed, (i, len(dl_plan)), dl_plan[i:])
 
 
 def _share_dry_run(
@@ -3406,13 +3813,17 @@ def cmd_share(args: argparse.Namespace) -> int:
     failed: list[dict[str, Any]] = []
     interrupted = downloaded = False
     creds = session = None
+    args._steps = _share_steps(args, start, plan, dl_plan, want_dl)
     if plan or (dl_plan and want_dl):
         # 測る前は、ある資格情報(環境変数・保存したトークン)を確かめるだけ(使えなければすぐ止める)。
         # ブラウザでのログインは、最後に PR で送ると決めたときだけ(#124)
+        if any(k == "check" for k, _ in args._steps.items):
+            _step(args, "check")
         creds, session = _share_precheck(args)
         holder: list = []
         try:
             if start is not None:
+                _step(args, "start")
                 try:
                     started = _comfyui_start(args, start, holder)
                 except CliError as e:
@@ -3424,6 +3835,7 @@ def cmd_share(args: argparse.Namespace) -> int:
                     url = started.url
                     report["comfyui"]["started"] = started.to_dict()
                     # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
+                    _step(args, "nodes")
                     before = [(x.model_id, tuple(x.args)) for x in plan]
                     approved_dl = list(dl_plan)
                     before_dl = [x.model_id for x in dl_plan]
@@ -3461,12 +3873,21 @@ def cmd_share(args: argparse.Namespace) -> int:
                     if not plan and dl_plan and want_dl is None:
                         # 入っているものがどれも使えなかった: いま尋ねる(ComfyUI は起動したまま)
                         want_dl = _share_ask_download(dl_plan, first=True)
-            for x in plan:
-                _share_measure_one(args, url, x, measured, failed)
+            if plan:
+                _step(args, "measure", tr(f"測る({len(plan)} 件)", f"Measure ({len(plan)})"))
+            else:
+                args._steps.drop("measure")
+            for i, x in enumerate(plan, 1):
+                _share_measure_one(args, url, x, measured, failed, (i, len(plan)), plan[i:])
             if dl_plan and want_dl is None:
                 want_dl = _share_ask_download(dl_plan, first=False)
             if dl_plan and want_dl:
                 downloaded = True
+                _step(
+                    args,
+                    "download",
+                    tr(f"落として測る({len(dl_plan)} 件)", f"Download and measure ({len(dl_plan)})"),
+                )
                 _share_download_and_measure(args, url, dl_plan, measured, failed)
         except KeyboardInterrupt:
             interrupted = True
@@ -4964,55 +5385,6 @@ def _emit_next_steps(plan, args: argparse.Namespace, asks: list[str] | None = No
     _emit(tail)
 
 
-class _ProgressLine:
-    """進み具合を stderr の 1 行に出す(端末なら 0.5 秒に 1 回まで書き換え、
-    端末でなければ 10% ごとに 1 行)。"""
-
-    def __init__(self) -> None:
-        import time
-
-        self._time = time.monotonic
-        self._last = 0.0
-        self._pct = -1
-        self._tty = sys.stderr.isatty()
-
-    def __call__(self, p) -> None:
-        if p.message:
-            self._end()
-            print(f"  {p.name}: {p.message}", file=sys.stderr, flush=True)
-            return
-        if p.phase not in ("download", "check", "verify"):
-            return
-        now = self._time()
-        pct = int(100 * p.done_bytes / p.total_bytes) if p.total_bytes else 0
-        phase = {
-            "download": tr("取得", "download"),
-            "check": tr("確認", "check"),
-            "verify": tr("検証", "verify"),
-        }
-        text = (
-            f"[{p.file_index}/{p.file_count}] {phase[p.phase]} {p.name[-40:]}  "
-            f"{p.file_bytes / GIB:.2f}/{(p.file_total or 0) / GIB:.2f} GB  "
-            + tr(f"(全体 {pct}%)", f"(all {pct}%)")
-        )
-        if self._tty:
-            if now - self._last >= 0.5 or p.phase != "download":
-                sys.stderr.write("\r" + text[:99].ljust(99))
-                sys.stderr.flush()
-                self._last = now
-        elif pct // 10 != self._pct // 10:
-            print(text, file=sys.stderr, flush=True)
-        self._pct = pct
-
-    def _end(self) -> None:
-        if self._tty and self._last:
-            sys.stderr.write("\n")
-            self._last = 0.0
-
-    def close(self) -> None:
-        self._end()
-
-
 def _interactive() -> bool:
     """端末で y/N を尋ねられるか(標準入力と標準出力がどちらも端末)。試験で差し替える(#75)。
 
@@ -5231,7 +5603,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
         break
-    show = None if args.json else _ProgressLine()
+    show = None if args.json else _DownloadView()
     try:
         result = download(plan, progress=show, yes=True)
     except KeyboardInterrupt:
@@ -5412,24 +5784,25 @@ def _comfyui_start(args: argparse.Namespace, plan, holder: list):
             f"Starting ComfyUI ({plan.comfyui_dir}, port {started.port}; log: {started.log})",
         )
     )
-    last = [-1]
+    limit = getattr(args, "start_timeout", None) or comfystart.DEFAULT_START_TIMEOUT
+    view = _StartView(comfystart.TYPICAL_START_SECONDS, limit, enabled=not getattr(args, "json", False))
+    waited_box = [0.0]
 
-    def progress(waited: float) -> None:
-        n = int(waited // 15)
-        if n != last[0]:
-            last[0] = n
-            say(tr(f"  起動を待っています({waited:.0f} 秒)", f"  waiting for it to start ({waited:.0f} s)"))
+    def progress(waited: float, line: str = "") -> None:
+        waited_box[0] = waited
+        view.update(waited, line)
 
     try:
-        comfystart.wait_ready(
-            started,
-            timeout=getattr(args, "start_timeout", None) or comfystart.DEFAULT_START_TIMEOUT,
-            progress=progress,
-        )
+        comfystart.wait_ready(started, timeout=limit, progress=progress)
     except comfystart.StartError as e:
+        view.close()
         lines = [str(e), *(["  " + x for x in e.tail] if e.tail else [])]
         raise CliError("\n".join(lines)) from None
-    say(tr(f"ComfyUI の準備ができました: {started.url}", f"ComfyUI is ready: {started.url}"))
+    except BaseException:
+        view.close()
+        raise
+    view.done(waited_box[0])
+    say(tr(f"ComfyUI: {started.url}", f"ComfyUI: {started.url}"))
     return started
 
 
@@ -5741,7 +6114,9 @@ def _measure_download(args: argparse.Namespace, model_id: str) -> int:
     return cmd_download(ns)
 
 
-def _measure_run(args: argparse.Namespace, url: str, entry, settings, free: bool = False) -> dict[str, Any]:
+def _measure_run(
+    args: argparse.Namespace, url: str, entry, settings, free: bool = False, progress=None
+) -> dict[str, Any]:
     """1 つ測って保存する(measure と share で共有する。#124)。free なら測る前に ComfyUI の /free でモデルと
     前の結果(キャッシュ)を外す(続けて測ると前のモデル・前の結果が混ざるため)。bench.run で測り、結果を
     <キャッシュ>/measurements/ に、標準の条件で最後まで測れた(ok か oom)ものは送る用の提出を
@@ -5775,7 +6150,7 @@ def _measure_run(args: argparse.Namespace, url: str, entry, settings, free: bool
         free_before=free,
     )
     try:
-        result = run(opts, log=_progress(args))
+        result = run(opts, log=_progress(args), progress=progress)
     except (BenchError, WorkflowError) as e:
         out["error"] = str(e)
         return out
@@ -6004,9 +6379,18 @@ def cmd_measure(args: argparse.Namespace) -> int:
             url = started.url
             plan["comfyui"]["started"] = started.to_dict()
         # 自分で起動した ComfyUI か --free なら、測る前にメモリと前の結果を空ける(#124)
-        run_ = _measure_run(
-            args, url, entry, settings, free=bool(holder) or bool(getattr(args, "free", False))
-        )
+        progress, view = _run_live(args, tr(f"測る: {entry.id}", f"Measure: {entry.id}"), secs)
+        try:
+            run_ = _measure_run(
+                args,
+                url,
+                entry,
+                settings,
+                free=bool(holder) or bool(getattr(args, "free", False)),
+                progress=progress,
+            )
+        finally:
+            view.done()
     finally:
         for st in holder:
             _comfyui_stop(args, st)

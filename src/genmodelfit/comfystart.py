@@ -46,7 +46,7 @@ DEFAULT_START_TIMEOUT = 300.0
 # 起動にかかる時間の目安(秒)。share の計画の合計に足す(目安。実機の 0.4x の ComfyUI で 30 秒ほど、
 # 初めて・カスタムノードが多いと長くなる)
 TYPICAL_START_SECONDS = 45
-POLL_SECONDS = 2.0
+POLL_SECONDS = 1.0
 LOG_TAIL_LINES = 20
 # デスクトップ版のアプリの resources(ToDesktop が置く場所。見つからなければ起動しない)
 DESKTOP_RESOURCES_WIN = ("@comfyorgcomfyui-electron", "ComfyUI")
@@ -274,6 +274,20 @@ def launch(
     return started
 
 
+def last_log_line(log: Path, nbytes: int = 4096) -> str:
+    """ログの最後の空でない行(末尾の nbytes だけ読む。無ければ空)。起動を待つあいだの表示に使う。"""
+    try:
+        with open(log, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - nbytes))
+            data = f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    lines = [x.strip() for x in data.splitlines() if x.strip()]
+    return lines[-1] if lines else ""
+
+
 def tail(log: Path, n: int = LOG_TAIL_LINES) -> list[str]:
     try:
         return log.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]
@@ -298,13 +312,13 @@ def wait_ready(
     started: Started,
     *,
     timeout: float = DEFAULT_START_TIMEOUT,
-    progress: Callable[[float], None] | None = None,
+    progress: Callable[[float, str], None] | None = None,
     session: Any = None,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> None:
     """GET /system_stats が 200 を返すまで待つ。プロセスが終わった・時間切れなら止めて StartError。
-    progress には待った秒数を渡す。"""
+    progress には待った秒数と、ログの最後の空でない行を渡す(約 1 秒ごと)。"""
     from .fetch import make_session
 
     s = session or make_session()
@@ -337,7 +351,7 @@ def wait_ready(
                     tail(started.log),
                 )
             if progress is not None:
-                progress(waited)
+                progress(waited, last_log_line(started.log))
             sleep(POLL_SECONDS)
     finally:
         if session is None:

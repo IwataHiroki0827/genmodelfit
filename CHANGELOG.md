@@ -42,6 +42,12 @@ All notable changes to this project are documented here. The format is based on
   and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
   goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
 - `measure` prints its screen before the progress of a started ComfyUI also when the output is redirected.
+- **Progress you can follow** (#124): `share` numbers its steps ("== 手順 2/6: ComfyUI を起動 =="); in a terminal
+  the ComfyUI start, each measurement (elapsed against the guide, queued / running / waiting, peak VRAM so far, a
+  note when it takes much longer than the guide) and downloads (one bar per file and one for everything, with size,
+  speed, time left and a "verifying" phase) are drawn with `rich.progress` on stderr; without a terminal plain lines
+  about every 10 s (downloads: when a file starts and every 10%); nothing with `--json`. `measure` uses the same
+  displays. bench and comfystart report through callbacks; the libraries still print nothing.
 - **Each run starts clean** (#124): `share` frees ComfyUI (`/free`: unloads models and drops cached node results)
   before every run, saying so in the plan when the ComfyUI was already running; `measure` does it for a ComfyUI it
   started, and for yours with the new `--free`. A result measured under non-standard conditions (for example reused

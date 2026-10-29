@@ -960,8 +960,10 @@ def _check_queue_empty(client: ComfyClient, when: str) -> None:
         )
 
 
-def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> BenchResult:
-    """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。"""
+def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, progress=None) -> BenchResult:
+    """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。
+    progress(あれば)には、送ったあと約 0.5 秒ごとに {"phase", "elapsed", "peak_vram_gb"} を渡す(#124。
+    phase は queued(キュー待ち)・running(実行中)・waiting(送った直後・結果を待つ)。表示は呼び出し側)。"""
     log = log or logging.getLogger("genmodelfit").info
     if not opts.timeout or opts.timeout <= 0:
         raise BenchError(_timeout_error())
@@ -1146,9 +1148,24 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
             entry = client.history(prompt_id)
             if entry and ((entry.get("status") or {}).get("completed") or _history_error(entry)):
                 break
+            phase = "waiting"
             with contextlib.suppress(BenchError):
-                running, _ = client.queue_ids()
+                running, pending = client.queue_ids()
                 foreign.update(r for r in running if r != prompt_id)
+                phase = "running" if prompt_id in running else "queued" if prompt_id in pending else "waiting"
+            if progress is not None:
+                with mon._lock:
+                    p = mon.peaks
+                    torch_now = p.torch_vram if p.samples else 0
+                    dev_now = max(0, p.device_used - base_dev)
+                with contextlib.suppress(Exception):  # 表示の失敗で測るのを止めない
+                    progress(
+                        {
+                            "phase": phase,
+                            "elapsed": time.monotonic() - t0,
+                            "peak_vram_gb": (torch_now or dev_now) / GIB,
+                        }
+                    )
             if time.monotonic() - t0 > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
                 raise BenchError(

@@ -259,7 +259,7 @@ def plan(monkeypatch):
         state["roots"] = roots
         return state["sugg"]
 
-    def fake_run(args, url, entry, settings, free=False):
+    def fake_run(args, url, entry, settings, free=False, progress=None):
         state["ran"].append(entry.id)
         state["urls"].append(url)
         state.setdefault("free", []).append(free)
@@ -826,7 +826,7 @@ def test_share_asks_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
 
 
 def test_share_suggests_download_when_nothing_was_measured(capsys, monkeypatch, this_pc, dl_plan, gh):
-    def fail_run(args, url, entry, settings, free=False):
+    def fail_run(args, url, entry, settings, free=False, progress=None):
         return {"error": "boom"}
 
     monkeypatch.setattr(cli, "_measure_run", fail_run)
@@ -1500,7 +1500,7 @@ def test_share_frees_before_every_run_and_says_so(capsys, monkeypatch, this_pc, 
 
 
 def test_nonstandard_result_is_listed_not_dropped(capsys, monkeypatch, this_pc, plan, gh):
-    def run(args, url, entry, settings, free=False):
+    def run(args, url, entry, settings, free=False, progress=None):
         m = SimpleNamespace(outcome="ok", peak_vram_gb=0.7, seconds=7.7, standard=False)
         res = SimpleNamespace(
             warnings=["3 個のノードが前の結果を使い、実行されませんでした"],
@@ -1530,7 +1530,7 @@ def test_measure_frees_a_started_comfyui_or_with_free(capsys, monkeypatch, this_
 
     seen = []
 
-    def run(args, url, entry, settings, free=False):
+    def run(args, url, entry, settings, free=False, progress=None):
         seen.append(free)
         return {"error": "stop"}
 
@@ -1559,7 +1559,7 @@ def test_measure_run_passes_free_to_bench(monkeypatch):
 
     got = []
 
-    def run(opts, log=None):
+    def run(opts, log=None, progress=None):
         got.append(opts.free_before)
         raise bench.BenchError("x")
 
@@ -1588,3 +1588,138 @@ def test_deviation_uses_the_measured_settings(monkeypatch):
     d["measurement"].update(settings={"width": 512, "height": 512, "steps": 25}, settings_override=True)
     contrib.validate_submission(d, load_db(use_cache=False), check_filename=False)
     assert (512, 512) in seen and (1024, 1024) not in seen
+
+
+# --- 途中経過の表示(#124。rich。ライブラリは表示しない) ------------------------------------------------
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def _rendered_lines(text: str) -> list[str]:
+    from rich.cells import cell_len
+
+    out = []
+    for raw in re.split(r"[\r\n]", _ANSI.sub("", text)):
+        if raw.strip():
+            out.append((raw, cell_len(raw)))
+    return out
+
+
+def _term(width: int = 80):
+    import io
+
+    from rich.console import Console
+
+    return Console(force_terminal=True, file=io.StringIO(), width=width, color_system=None)
+
+
+def test_views_render_in_a_terminal_within_the_width():
+    from genmodelfit.downloader import DownloadProgress
+
+    con = _term()
+    v = cli._StartView(45, 300, console=con)
+    v.update(12, "Starting server " + "x" * 200)
+    v.update(200, "まだ読み込んでいます" * 20)  # 目安の 3 倍を超えた
+    v.done(31)
+    m = cli._MeasureView("測る 1/2: SDXL1.0 Base 768×768" + "長い名前" * 30, 20, console=con)
+    m.update({"phase": "running", "elapsed": 5, "peak_vram_gb": 1.2})
+    m.update({"phase": "running", "elapsed": 70, "peak_vram_gb": 1.3})  # 目安を超えた
+    m.done()
+    d = cli._DownloadView(console=con)
+    for phase, n in (("check", 0), ("download", 3 * 1024**3), ("verify", 6 * 1024**3), ("done", 6 * 1024**3)):
+        d(
+            DownloadProgress(
+                phase,
+                1,
+                1,
+                "checkpoints/" + "very_long_model_name_" * 8 + ".safetensors",
+                n,
+                6 * 1024**3,
+                n,
+                6 * 1024**3,
+            )
+        )
+    d.close()
+    text = con.file.getvalue()
+    lines = _rendered_lines(text)
+    assert lines and all(w <= 80 for _l, w in lines)
+    flat = _ANSI.sub("", text)
+    assert "ComfyUI の準備ができました(31 秒)" in flat and "目安より長くかかっています" in flat
+    assert "目安を超えています" in flat and "確かめています" in flat and "全体" in flat
+
+
+def test_views_are_plain_lines_without_a_terminal(capsys):
+    import io
+
+    from rich.console import Console
+
+    from genmodelfit.downloader import DownloadProgress
+
+    plain = Console(file=io.StringIO(), force_terminal=False)
+    t = iter(range(0, 1000, 3))
+    v = cli._StartView(45, 300, console=plain, clock=lambda: next(t))
+    for w in range(0, 30, 3):
+        v.update(w, "log line")
+    v.done(31)
+    err = capsys.readouterr().err.splitlines()
+    # 約 10 秒ごとに 1 行と、終わりの 1 行だけ(書き直しの制御文字は出さない)
+    assert len(err) == 4 and err[-1] == "ComfyUI の準備ができました(31 秒)" and "\r" not in "".join(err)
+    d = cli._DownloadView(console=plain)
+    total = 10 * 1024**3
+    for n in range(0, total + 1, total // 20):
+        d(DownloadProgress("download", 1, 1, "checkpoints/m.safetensors", n, total, n, total))
+    d(DownloadProgress("done", 1, 1, "checkpoints/m.safetensors", total, total, total, total))
+    err = capsys.readouterr().err.splitlines()
+    assert 10 <= len(err) <= 13 and err[0].startswith("[1/1] 取得 checkpoints/m.safetensors")
+    assert err[-1].startswith("[1/1] 済み")
+
+
+def test_json_shows_no_progress(capsys):
+    v = cli._MeasureView("x", 10, enabled=False)
+    v.update({"phase": "running", "elapsed": 1})
+    v.done()
+    assert capsys.readouterr() == ("", "")
+
+
+def test_share_prints_numbered_steps(capsys, monkeypatch, this_pc, plan, gh):
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    out = capsys.readouterr().out
+    heads = re.findall(r"== 手順 (\d+)/(\d+): (.+?) ==", out)
+    assert heads == [
+        ("1", "4", "GitHub の確認"),
+        ("2", "4", "測る(3 件)"),
+        ("3", "4", "送る中身を見せる"),
+        ("4", "4", "送る"),
+    ]
+    assert "測っています 1/3: a_installed_short" in out and "— 残り 2 件、あと約 220 秒" in out
+
+
+def test_steps_grow_when_downloading_is_decided_later(capsys):
+    s = cli._Steps([("measure", "測る(1 件)"), ("show", "送る中身を見せる"), ("send", "送る")])
+    s.start("measure")
+    s.start("download", "落として測る(1 件)")
+    out = capsys.readouterr().out
+    assert "== 手順 2/4: 落として測る(1 件) ==" in out and "手順が 1 つ増えて 4 になりました" in out
+
+
+def test_bench_reports_progress(monkeypatch):
+    from test_bench import FakeComfy
+
+    from genmodelfit import bench
+
+    monkeypatch.setattr(bench, "_nvidia_smi", lambda: None)
+    monkeypatch.setattr(
+        bench,
+        "smi_gpus",
+        lambda: [{"index": 0, "uuid": "GPU-a", "name": "NVIDIA GeForce RTX 3070", "driver": "1"}],
+    )
+    monkeypatch.setattr(bench, "smi_compute_apps", lambda: [])
+    monkeypatch.setattr(bench, "gpu_used_now", lambda gpu_id: (1024.0, 0.0))
+    monkeypatch.setattr(bench, "find_server_process", lambda url: None)
+    seen = []
+    with FakeComfy() as fake:
+        opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60)
+        bench.run(opts, progress=seen.append)
+    assert seen and all({"phase", "elapsed", "peak_vram_gb"} <= set(x) for x in seen)
+    assert {x["phase"] for x in seen} <= {"queued", "running", "waiting"}

@@ -167,10 +167,12 @@ def test_wait_ready_polls_system_stats(tmp_path):
     st = _started(tmp_path, FakeProc())
     s = Session([0, 500, 200])
     waited = []
-    comfystart.wait_ready(st, session=s, sleep=lambda x: None, progress=waited.append)
+    comfystart.wait_ready(
+        st, session=s, sleep=lambda x: None, progress=lambda w, line: waited.append((w, line))
+    )
     assert [u for u, _ in s.urls] == ["http://127.0.0.1:40002/system_stats"] * 3
     assert s.urls[0][1]["proxies"] == {"http": None, "https": None, "all": None}
-    assert len(waited) == 2
+    assert len(waited) == 2 and waited[0][1] == "boom"  # ログの最後の空でない行を渡す
 
 
 def test_wait_ready_reports_an_exit_with_the_log(tmp_path, monkeypatch):
@@ -241,7 +243,7 @@ def starter(monkeypatch):
 
 
 def _fake_run(monkeypatch, events, error=None):
-    def run(args, url, entry, settings, free=False):
+    def run(args, url, entry, settings, free=False, progress=None):
         events.append(("run", url))
         if error:
             return {"error": error}

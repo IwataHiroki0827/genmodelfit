@@ -45,6 +45,12 @@ git and no programming.
 If you have more time, run `genmodelfit share` again later: each time it measures the next models or settings that
 have no measurement on your GPU yet.
 
+While it runs, `share` prints numbered steps ("== Step 2/6: Start ComfyUI =="), and in a terminal a line that is
+redrawn in place: the ComfyUI start (seconds against the guide and the limit, and the last line of its log), each
+measurement ("Measure 1/2": seconds against the guide, queued / running / waiting for the result, and the peak VRAM
+so far; it says when a run takes longer than the guide), and downloads with a bar, speed and time left. After each
+measurement it prints the result and how many are left. Without a terminal it prints plain lines about every 10 s.
+
 Step by step, in detail:
 
 1. Close other generation jobs. ComfyUI does not have to be running: when none runs on this PC (127.0.0.1 ports 8188
