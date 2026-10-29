@@ -22,7 +22,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
 | Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
-| Measure models and send the results | `genmodelfit share` (with ComfyUI running; it measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
+| Measure models and send the results | `genmodelfit share` (it finds ComfyUI, starts it if needed, measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
 
@@ -155,7 +155,9 @@ Where several places give the same setting, the first of these wins:
 move the folders. The config folder also holds the GitHub sign-in of `share` (`github_token`, readable only by you;
 `genmodelfit share --logout` removes it). The cache holds the list from `update` (`db.json`), the results of the HEAD and file-header checks,
 your `measure` and `bench` results (`measurements/`, also used when this PC is judged), submission drafts
-(`submissions/`, what `share` sends) and the marks of what `share` has sent (`submissions_shared.json`).
+and failure records (`submissions/`, what `share` sends), the marks of what `share` has sent
+(`submissions_shared.json`), the output of a ComfyUI that `measure` / `share` started (`comfyui-<date>.log`) and,
+while measuring, `measure.lock` (only one `measure` / `share` measures at a time).
 Deleting the cache folder is safe: the bundled list is used again (your saved results go with it).
 
 ## Exit codes
@@ -166,7 +168,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved re
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job and exit 1; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
+| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -180,7 +182,7 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
 - [`genmodelfit info`](#genmodelfit-info) — details of one model
 - [`genmodelfit update`](#genmodelfit-update) — get a newer model list (users: `--from-release`; without options it rebuilds from upstream)
 - [`genmodelfit download`](#genmodelfit-download) — download the files of a model (consent, sha256, resume, ComfyUI folders)
-- [`genmodelfit measure`](#genmodelfit-measure) — pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)
+- [`genmodelfit measure`](#genmodelfit-measure) — pick a model worth measuring and measure it on ComfyUI (started if needed; nothing is sent)
 - [`genmodelfit share`](#genmodelfit-share) — measure installed models for a few minutes and send them, with your unsent measurements, as a GitHub pull request (`--issue`: send with the issue form)
 - [`genmodelfit config`](#genmodelfit-config) — show or change settings (download's ComfyUI folder, display language)
   - [`genmodelfit config show`](#genmodelfit-config-show) — current settings and where they come from (the default when no subcommand is given)
@@ -760,7 +762,7 @@ genmodelfit download MODEL --uncensored --any-license --yes    # download withou
 
 ## `genmodelfit measure`
 
-pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)
+pick a model worth measuring and measure it on ComfyUI (started if needed; nothing is sent)
 
 **Usage**
 
@@ -771,17 +773,20 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
                     [model]
 ```
 
-- Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
-- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) with no measurement on this GPU at the template's settings yet, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
-- Once a model has that measurement, the list offers runs at other settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better) and this GPU has no measurement at that setting, at most 2 per model.
+- Measure a model on ComfyUI (started if needed) and save the result on this PC (nothing is sent).
+- Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on the GPU) and are not yet measured on this PC at the template's settings (other people's measurements of the same GPU do not remove a model: two agreeing sources let measurements set the level), with a known license, those already installed first, then the shorter time, then the smaller download; choose one by number (q quits).
+- Models that need nodes the running ComfyUI lacks are left out.
+- Once a model has that measurement, the list offers runs at other settings that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better) and this PC has not measured it at that setting, at most 2 per model.
 - Runs over about 300 s are not listed.
 - Each run is one generation (a few minutes); running measure again picks the next one.
 - MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows with a ComfyUI template); `--resolution`, `--frames` and `--length` change the settings like bench.
 - Before measuring one screen shows the model and precision, the settings (as in the template, or the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough time and that nothing is sent, then asks [Y/n] (`--yes` skips it).
-- The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed.
-- When the template cannot take a requested setting, it stops before generating.
+- The time is a rough guide: the median of measurements of the same model, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed.
+- When the template cannot take a requested setting, or the ComfyUI lacks nodes it needs, it stops before downloading or generating.
 - A model that is not installed is downloaded first, with the same questions and consent rules as download.
+- A ComfyUI started by genmodelfit is freed (/free: models unloaded, cached results dropped) before the run; yours only with `--free`.
 - Afterwards it shows the result and where it saved it, and one line pointing to `genmodelfit share`, which sends it (it never asks whether to send).
+- A run that could not be measured is saved as a failure record that share sends.
 
 **Options and arguments**
 
@@ -806,22 +811,25 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 
 - A GPU on this PC and a ComfyUI on it: `--url`, or one running on this PC (127.0.0.1 port 8188 or 8000).
 - When none is running but a ComfyUI folder is found (like download), it is started in the background (portable: its python_embeded; manual or comfy-cli: its .venv/venv; Desktop: its .venv and the app's ComfyUI; on 127.0.0.1 and a free port, no browser), used, and stopped after measuring; the [Y/n] question covers it (`--no-start` or GENMODELFIT_COMFYUI_START=0 turns this off; `--start-timeout`, default 300 s).
-- Otherwise it says how to start ComfyUI and exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench without `--force`).
+- Otherwise it says how to start ComfyUI and exits 1. The GPU must be free: when other programs use more than 1.5 GiB (or 20%) of its memory, nothing is measured (on AMD / Intel / Apple GPUs, where nvidia-smi is missing, this is read from ComfyUI's /system_stats where possible, and the result's note says what could not be checked).
+- Only one measure or share measures at a time.
+- A started ComfyUI is stopped also on a failure, Ctrl+C or when the terminal is closed.
 
 **Side effects**
 
-- Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without `--url`), the ComfyUI it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and the model files when it downloads them.
+- Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs and where its folders are (without `--url`), the ComfyUI it measures on (the node check and one job), the official template and its input images from GitHub when that ComfyUI lacks them, and the model files when it downloads them.
 - Nothing about this PC is sent anywhere else.
-- Writes the result to `<cache>/measurements/` (used when this PC is judged) and a submission draft to `<cache>/submissions/` (what `genmodelfit share` sends).
-- A started ComfyUI writes its output to `<cache>/comfyui-<date>.log`.
+- Writes the result to `<cache>/measurements/` (used when this PC is judged) and a submission draft (or a failure record) to `<cache>/submissions/` (what `genmodelfit share` sends).
+- A started ComfyUI writes its output to `<cache>/comfyui-<date>.log`; `<cache>/measure.lock` while measuring.
 
 **Exit codes**
 
 | Code | Meaning |
 |---|---|
-| 0 | Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?") |
-| 1 | Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not downloaded, the run failed (out of memory or another error), no terminal and no `--yes` |
+| 0 | Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?" or to the download, a result that only cannot be sent) |
+| 1 | Error: no ComfyUI found, no GPU, the GPU is busy, another measure is running, the model has no template, nodes are missing, it was not downloaded, the run failed (out of memory, another error, or Ctrl+C during the run), no terminal and no `--yes` |
 | 2 | Usage error |
+| 130 | Ctrl+C at a question |
 
 **Examples for scripts and apps**
 
@@ -856,17 +864,19 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 ```
 
 - Measure for a few minutes and send the measurements as a GitHub pull request.
-- Without FILE it finds ComfyUI like measure (`--url`, else one running on this PC, else it starts the one it finds and stops it afterwards), picks the suggestions of measure whose files are installed and that have no result on this GPU yet (also none saved on this PC, sent or not) until their rough times add up to `--budget` (300 s), and shows the plan with the unsent measurements and the total time (starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps).
-- It asks once [Y/n], then measures one by one (a failure does not stop the rest; Ctrl+C goes on to sending what was measured).
+- Without FILE it finds ComfyUI like measure (`--url`, else one running on this PC, else it starts the one it finds and stops it afterwards), picks the suggestions of measure whose files are installed and that are not yet measured on this PC (results saved on this PC count, sent or not; other people's measurements do not) and whose nodes the ComfyUI has, until their rough times add up to `--budget` (300 s), and shows the plan with the unsent measurements and the total time (starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps).
+- It asks once [Y/n], then measures one by one, freeing the ComfyUI before each run (a failure does not stop the rest; Ctrl+C goes on to sending what was measured).
 - Models that are not installed are downloaded only with `--download` or y to one [y/N] question (asked first when nothing installed can be measured, else after measuring), with download's questions and consent rules; `--yes` alone never downloads.
 - Then it shows every file to send (the whole content and the privacy checks) and asks how to send it: 1) a pull request (sign in to GitHub) 2) issues (no sign-in; the form opens in your browser, one issue per file) q) not now.
 - `--yes`, `--json` or no terminal send a pull request; `--issue` `--yes` sends issues (the URLs are printed without a terminal).
 - Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN, else the saved sign-in) and stops at once if it does not work; the device login in your browser (scope public_repo; saved for next time; `--logout` removes it) happens only when you choose a pull request.
+- While it waits for the device login, keys work: r opens the page again, n gets a new code, q sends the same files as issues; an expired code asks whether to sign in again.
 - With `--yes` and no terminal, a missing token stops it before measuring.
 - The pull request comes from a fork of the repository: a branch from the merge base of the upstream main and the fork's main with the files under `data/contrib/<GPU>/` (titled "measurements: `<GPU>` (`<count>`)"), or your open share pull request for that GPU; files already there are skipped.
 - If the pull request cannot be made, a terminal offers issues for the same files.
 - Results are saved before sending and are never measured again: `genmodelfit share --no-measure` (or `--issue`) sends them later.
 - Sent files are marked on this PC (`--all` includes them).
+- What could not be measured goes into one failure record file per run (names and numbers only, never error text).
 - Without any ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking.
 - FILE sends that file only.
 - share `--issue` without `--yes` is the older way: choose an unsent measurement and open its issue form.
@@ -903,17 +913,19 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 
 **Side effects**
 
-- Network: like measure while measuring and downloading; after you agree, github.com and api.github.com (sign-in, fork, branch, files, pull request).
-- `--dry-run` and `--issue` use no network.
-- Writes measurements like measure, the sent marks to `<cache>/submissions_shared.json` and the sign-in token to `<config>/github_token` (readable only by you).
+- Network: like measure while measuring and downloading.
+- GitHub (github.com and api.github.com): before measuring only a check of a token you already have (GET /user); the sign-in, fork, branch, files and pull request only after you agree to send.
+- `--dry-run` only asks 127.0.0.1 whether ComfyUI runs; `--issue` makes no network access to GitHub.
+- Writes measurements and failure records like measure, the sent marks to `<cache>/submissions_shared.json` and the sign-in token to `<config>/github_token` (readable only by you).
 
 **Exit codes**
 
 | Code | Meaning |
 |---|---|
-| 0 | Success (also: answered n, nothing to measure or send) |
+| 0 | Success (also: answered n, nothing to measure or send, results that only cannot be sent) |
 | 1 | Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was refused (privacy check NG or check errors), GitHub refused the upload (the results stay saved), `--json` or no terminal without `--yes` |
 | 2 | Usage error |
+| 130 | Ctrl+C (at a question; while measuring it first goes on to sending what was measured) |
 
 **Examples for scripts and apps**
 

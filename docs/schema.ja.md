@@ -61,8 +61,8 @@ CLI の表示の「GB」も GiB。
 | `update --fields-only` | `languages` を決めるカードの `language` を読むための Hugging Face Hub API への GET(主なファイルのリポジトリと、その `license_from`)。手で足したモデルでは、HEAD、ファイルの見出しの範囲指定 GET、上流のカードの API も行う。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
-| `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない。(0.13.0)起動中のものが無く、入っている ComfyUI が見つかれば、127.0.0.1 の空いているポートで別のプロセスとして起動し、準備ができるまで `GET /system_stats`、そのあとノードを確かめるため `GET /object_info` とテンプレート。終わったらそのプロセスを止める | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル。起動した ComfyUI の出力は `<cache>/comfyui-<date>.log` |
-| `share` | (0.13.0)測る・落とすあいだは `measure` と同じ。GitHub(https で github.com と api.github.com だけ): 測る前に、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`・保存したもの)を確かめる `GET /user`。デバイス認証は PR を選んだときだけ。送ることに同意したあとで、フォーク・ブランチ・ファイル(Contents API)・PR。`--dry-run` と `--issue` は GitHub と通信しない(`--issue` は端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `measure` と同じ。`<cache>/submissions_shared.json`(送った印)。`<config>/github_token`(ログインのトークンと期限。本人だけが読める。`--logout` で消す)。`--issue` は中身をクリップボードに写すことがある |
+| `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない。(0.13.0)起動中のものが無く、入っている ComfyUI が見つかれば、127.0.0.1 の空いているポートで別のプロセスとして起動し、準備ができるまで `GET /system_stats`、そのあとノードを確かめるため `GET /object_info` とテンプレート。終わったらそのプロセスを止める | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル。測れなかったときは失敗の記録を `<cache>/submissions/` に(0.13.0)。起動した ComfyUI の出力は `<cache>/comfyui-<date>.log`。測るあいだは `<cache>/measure.lock` |
+| `share` | (0.13.0)測る・落とすあいだは `measure` と同じ。GitHub(https で github.com と api.github.com だけ): 測る前に、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`・保存したもの)を確かめる `GET /user`。デバイス認証は PR を選んだときだけ。送ることに同意したあとで、フォーク・ブランチ・ファイル(Contents API)・PR。`--dry-run`(ComfyUI が起動しているかを 127.0.0.1 に尋ねるだけ)と `--issue` は GitHub と通信しない(`--issue` は端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `measure` と同じ。`<cache>/submissions_shared.json`(送った印)。`<config>/github_token`(ログインのトークンと期限。本人だけが読める。`--logout` で消す)。`--issue` は中身をクリップボードに写すことがある |
 | `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
 | `contrib` | なし(genmodelfit は提出を送らない)。`share` は `genmodelfit share --issue` と同じ | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`intake`: `--out` のファイル。`share`: 送った印。`show` / `validate` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
@@ -954,7 +954,7 @@ Template: `name`、`title`、`category`、`min_comfyui_version`、`open_source`�
 | `consistent` | bool \| null | community の行: 使った提出が 2 件以上で、その幅が中央値の 15% 以内で、グループに OOM が無い。係数の較正(`calibrate`)に入るのは consistent の行だけ。見積もりは、1 件の提出からの `ok` の行すべてを使う(2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0)bench が見た、実測した GPU の PyTorch のバックエンド: `cuda`(NVIDIA)/ `rocm`(AMD。ComfyUI は `type: cuda` と報告するので、`pytorch_version` の `+rocm` か GPU の名前で見分ける)/ `xpu`(Intel)/ `mps`(Apple)。null は記録なし(同梱の行はすべて NVIDIA)。#26 と、ベンダーをまたぐ較正での実測のベンダーを決める(`estimate.measurement_vendor`)。null のときだけ GPU の名前を使う(Apple の MPS は名前を `mps` と報告する)。`contrib aggregate` は community の行にこれを残す |
 | `files_fp` | str \| null | (#90)測ったときの一覧のモデルのファイルの指紋(`estimate.files_fingerprint`。下の「提出の流れの決まり」)。今の一覧の指紋と違えば、その実測は使わない。null は記録が無い(作者の measurements.json・古い行。今までどおり使う) |
-| `settings_override` | bool \| null | (0.12.0、#116。任意)bench・measure がテンプレートの設定を変えて測ったとき(`--width`・`--height`・`--resolution`・`--frames`・`--length`・`--steps`)だけ `true`。null・無しはテンプレートのまま(キーの無い古い行も)。`measure` が、この GPU にテンプレートの設定のままの実測があるかを見分けるのに使う |
+| `settings_override` | bool \| null | (0.12.0、#116。任意)bench・measure がテンプレートの設定を変えて測ったとき(`--width`・`--height`・`--resolution`・`--frames`・`--length`・`--steps`)だけ `true`。null・無しはテンプレートのまま(キーの無い古い行も)。`measure` が、この PC でこの GPU のテンプレートの設定のまま測ったかを見分けるのに使う |
 | `gpu_known` | bool \| null | (#90、#101)community の行: false は GPU 名が汎用の名前・名前の代わりの値(記録として残し、判定には使わない) |
 | `n_sources` | int \| null | (#90)community の行: 値に使った別々の出どころ(提出を送った人。#113)の数 |
 | `source_ids` | str[] \| null | (#95)community の行: 値に使った出どころの短い ID(送った人の鍵の sha256 の先頭 12 桁か `file:<内容の sha256 の先頭 12 桁>`)。段階を実測で決めるとき、行をまたいだ ID の和集合で出どころを数える(`estimate.count_sources`)。null は記録の無い古い行 |
@@ -1018,7 +1018,10 @@ bench が Measurement を埋める方法(測り方):
 決まり:
 
 - **提案**: ComfyUI の公式テンプレートのモデル(`source: comfyui-template`)で、この PC の判定が `perfect` か `good` で
-  動かし方が `gpu`、この GPU にテンプレートの設定のままの実測がまだ無いもの(`measure.has_measurement_here`:
+  動かし方が `gpu`、ライセンスが分かり(`share` の `--any-license` でほかも出す)、この PC でこの GPU のテンプレートの
+  設定のまま、まだ測っていないもの(0.13.0: 数えるのはこの PC の結果だけ。`measure.measured_by_this_pc`: キャッシュの
+  bench の結果と保存した提出。同梱の作者・ほかの利用者のまとめは数えず、時間の目安と見積もりにだけ使う。
+  `measure.has_measurement_here`:
   `estimate.same_gpu` で同じ GPU、`files_match` で同じファイル、標準の条件、結果が `ok` か `oom`、`settings_override`
   が無い(0.12.0。キーの無い行は数える)。作業用メモリだけの実測も数える。同じ GPU で測り直しても材料が増えないため)。同じモデル(`groups` の鍵)は 1 件: 入っているワークフロー、無ければ `recommend` が
   選ぶもの。並びは 入っているもの → `seconds` → `download_bytes` → 名前。既定 10 件(`--limit`)。
@@ -1026,10 +1029,10 @@ bench が Measurement を埋める方法(測り方):
   同じ並びに混ぜる。文章から画像(`t2i`。`estimate.NO_SIZE_INPUT` に無いもの)は 512・768・1024・1536 px の正方形
   (`VARIANT_PIXELS`)、文章・画像から動画(`t2v`・`i2v`)は 17・33・49・81 コマ(`VARIANT_FRAMES`。大きさはテンプレート
   のまま)、文章から音楽・効果音(`t2a`)は 10・30・60・120 秒(`VARIANT_SECONDS`)。#102 の台本にならった。その設定の
-  見積もりが `gpu` で `perfect` か `good` で、この GPU にその設定の実測が無いもの(`has_measurement_here` の
+  見積もりが `gpu` で `perfect` か `good` で、この PC でこの GPU のその設定をまだ測っていないもの(`has_measurement_here` の
   `settings`: 指定した項目が同じなら同じ設定とみなし、ほかの項目は比べない。`settings_override` は問わないので、
-  1024 px のようなテンプレートの値は重ねて出さない)だけを出す。出すのは、この GPU にそのワークフローのテンプレートの
-  設定のままの実測があるものだけ(先にそれを測ってもらう。設定を変えた実測ではテンプレートのままの行は消えない)。
+  1024 px のようなテンプレートの値は重ねて出さない)だけを出す。出すのは、この PC でこの GPU のそのワークフローをテンプレートの
+  設定のまま測ったものだけ(先にそれを測ってもらう。設定を変えた実測ではテンプレートのままの行は消えない)。
   テンプレートにその入力が無い項目も出さない: テンプレートのままの実測(`measure.template_settings`。どの GPU でも)に
   幅・コマ数・長さが記録されていなければ、その項目の測定は出さない(コマ数を `batch_size` で決める AnimateDiff など)。
   動画は、その実測の幅・高さで判定する(`measure.judged_settings`。無ければ種類ごとの既定 832x480)。同じモデル・同じ
@@ -1074,9 +1077,10 @@ bench が Measurement を埋める方法(測り方):
 - **足りないノード**(0.13.0): ComfyUI に届いたら `/object_info` を 1 回読み、テンプレートごとに確かめる
   (`workflow.missing_nodes`。`bench` と同じ確かめ。`bench.NodeCheck`)。一覧からは、その ComfyUI に無いノードを使う
   提案を外す。名前で指定したものは、落とす・測る前に止め、「次にすること:」で ComfyUI の更新(かカスタムノード)を言う。
-- 終了コード: 0 成功・選ばなかった・出す提案が無い・「測りますか?」に n と答えた / 1 ComfyUI が無い・GPU が無い・
-  GPU が使われている・テンプレートが無い・ノードが足りない・`--json` で入っていない・端末でなく `--yes` も無い・
-  落とすのを断った・ComfyUI を起動できない・実行の失敗 / 2 使い方の誤り。テキストの出力の失敗は、最後に
+- 終了コード: 0 成功・選ばなかった・出す提案が無い・「測りますか?」に n と答えた・落とすのを断った・送れないだけの
+  結果 / 1 ComfyUI が無い・GPU が無い・GPU が使われている・ほかの `measure`・`share` が測っている・テンプレートが
+  無い・ノードが足りない・`--json` で入っていない・端末でなく `--yes` も無い・ComfyUI を起動できない・実行の失敗
+  (実行中の Ctrl+C も) / 2 使い方の誤り / 130 質問で Ctrl+C。テキストの出力の失敗は、最後に
   「次にすること:」の行で何をすればよいかを出す。
 
 ## share
@@ -1134,14 +1138,15 @@ bench が Measurement を埋める方法(測り方):
   ものは `--free` のときだけ(0.13.0)。それでも前の結果を使ったなど標準でない条件の結果は、保存も送りもせず、理由を
   付けて `failed` に入れる(黙って落とさない)。
 - **送れないもの**(0.13.0): 提出を書く前に `share` と同じ点検(個人の情報の点検と `validate` の誤り)をする。送れない
-  (GPU の全体より大きい最大 VRAM など)なら、この PC の実測だけを残し、理由を付けて `failed` に入れる。保存してある
+  (点検の範囲を外れる値など。#132 からは、GPU の全体より大きい最大 VRAM は `spilled` を付けて送る)なら、この PC の実測だけを残し、理由を付けて `failed` に入れる。保存してある
   送れない提出は 1 回だけ出して `<名前>.unsendable` に名前を変える(次から出さない。JSON の `retired`)。ほかを送れた
   なら、それで `share` を失敗にしない。
-- **GPU と VRAM**: 今は NVIDIA の GPU だけで測る。`measure.suggestions` はライセンスの分からないモデルを出さない
+- **GPU と VRAM**: NVIDIA の GPU と、検出の対応表にある AMD・Intel・Apple の GPU で測る。`measure.suggestions` はライセンスの分からないモデルを出さない
   (`--any-license` で出す)。ほかのプログラムが VRAM を 1.5 GiB か全体の 20% より多く使っていれば測らない
   (`bench.others_vram_limit`。ComfyUI を起動する前は nvidia-smi、空けたあとは `/system_stats` で見る)。測っている
   あいだに GPU を使い始めた計算だけのプロセス(nvidia-smi の表の種類 C。ブラウザなど C+G・G のアプリは数えない)が
-  あれば、標準でない結果にする。
+  あれば、標準でない結果にする。nvidia-smi の無い GPU(AMD・Intel・Apple)では、できるところは ComfyUI の
+  `/system_stats` で確かめ、確かめられなかったことは結果のメモに書く。
 - **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
   数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
   `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に
@@ -1174,7 +1179,8 @@ bench が Measurement を埋める方法(測り方):
   アプリのため)。FILE と `--no-measure`・`--download` は使い方の誤り(2)。
 - 終了コード: 0 送った・送るものが無い・n と答えた / 1 ログインできない・ComfyUI が無く送るものも無い・測れなかった
   ものがある・送れないファイルがある・GitHub が受け付けない・`--json` か端末でないのに `--yes` が無い / 2 使い方の誤り /
-  130 質問で Ctrl+C。
+  130 質問で Ctrl+C、または測る途中の Ctrl+C(そこまでのものを送るかに進んだあと)。送れないだけの結果では 1 に
+  しない。
 
 ### Issue のフォーム(`share --issue`)
 

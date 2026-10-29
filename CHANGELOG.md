@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
+## [0.13.1] - Unreleased
+
+### Changed
+
+- **Docs: README, CONTRIBUTING, docs and the `--help` texts match the 0.13.0 behaviour** (documentation only; no
+  change in what the commands do). `measure` / `share` now say: "not yet measured on this PC" (other people's
+  measurements of the same GPU do not remove suggestions; two agreeing sources let measurements set the level);
+  ComfyUI is found and started if needed (portable / venv / comfy-cli / Desktop), freed before each run, stopped
+  afterwards (also on Ctrl+C or when the terminal is closed), and checked for missing nodes; only one run measures at
+  a time (`measure.lock`); the device-login keys (`r` / `n` / `q`) and the expiry retry; the progress display; the
+  0.13.0 additions to what is sent (estimate, time breakdown, spill mark, list version, failure records) and what is
+  never sent (error text, interrupted or disturbed runs, missing model files); the network used (an existing token is
+  checked with api.github.com before measuring; `--dry-run` only asks 127.0.0.1). Exit codes of `measure` / `share`
+  (declining a download, results that only cannot be sent, Ctrl+C 130), the cache contents in docs/commands, the
+  issue form texts, docs/README, docs/release and docs/accuracy (sources counted by GitHub account) were corrected.
+
 ## [0.13.0] - 2026-10-29
 
 ### Changed

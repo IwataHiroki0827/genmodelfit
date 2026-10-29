@@ -94,10 +94,11 @@ add that folder to PATH or use one of the above. A terminal opened before PATH c
 
 ### What is sent over the network
 
-Nothing, for judging: the hardware is read locally. Only `update`, `download`, `measure` and `bench` connect, and only to
-public data or the ComfyUI you name (when you give no folder or URL, `download` and `measure` also ask a ComfyUI running on
-this PC, at 127.0.0.1). `share` only checks a GitHub token you already have before measuring and sends nothing
-until you agree (then it signs in and opens a pull request with the files it showed you, or opens the issue form). No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
+Nothing, for judging: the hardware is read locally. Only `update`, `download`, `measure`, `share` and `bench` connect,
+and only to public data or the ComfyUI you name (when you give no folder or URL, `download`, `measure` and `share` also ask
+a ComfyUI running on this PC, at 127.0.0.1; `measure` and `share` may start one there). `share` only checks a GitHub
+token you already have before measuring and sends nothing until you agree (then it signs in and opens a pull request
+with the files it showed you, or opens the issue form). No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
 
 ## 2. Procedure
 
@@ -336,7 +337,7 @@ popularity, Score. (`recommend --json` and `gmf.recommend()` put Verified models
 
 ### Accuracy
 
-As of 0.12.0, the estimates are calibrated on a few runs on one NVIDIA GPU and cross-checked against two runs on
+As of 0.13.0, the estimates are calibrated on a few runs on one NVIDIA GPU and cross-checked against two runs on
 another. The bundled measurements from shared submissions (`measurements_community.json`) hold 4 submissions
 from 1 source (the maintainer; RTX 3070, SDXL at four settings), none consistent yet. Treat values without `m` as
 rough.
@@ -362,7 +363,7 @@ Every page of the documentation, with who each one is for: [docs/README.md](http
 | `gate` | how many models are Verified, and why the rest are held |
 | `diff [OLD] [NEW] [--all]` | what changed between two lists ([below](https://github.com/laxshmate/genmodelfit#what-changed-in-the-list)) |
 | `config [set KEY VALUE \| unset KEY \| path]` | settings: the ComfyUI folder for `download` and the display language ([docs/download.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.md#genmodelfit-config)) |
-| `measure [name or id] [--url URL]` | measure a model on your running ComfyUI; without a name, suggests models worth measuring ([below](https://github.com/laxshmate/genmodelfit#help-by-measuring)) |
+| `measure [name or id] [--url URL]` | measure a model on ComfyUI (the one running, else the one it finds, started and stopped for you); without a name, suggests models worth measuring ([below](https://github.com/laxshmate/genmodelfit#help-by-measuring)) |
 | `share [file]` | measure for a few minutes and send the results as a GitHub pull request (`--issue`: the issue form) ([below](https://github.com/laxshmate/genmodelfit#help-by-measuring)) |
 
 For maintainers: `review` (models waiting for review), `bench` (measure one template with every option) and `contrib`
@@ -438,17 +439,22 @@ genmodelfit share
 1. It finds your ComfyUI like `measure`: one running on this PC (or `--url`), else the installed one it finds
    (portable, manual / comfy-cli with a `.venv`, or ComfyUI Desktop), which it starts in the background and stops
    afterwards (`--no-start` turns that off).
-2. It picks the suggestions of `measure` whose files are installed and that have no result on your GPU yet (also
-   none saved on this PC) until their rough times add up to about 5 minutes (`--budget`), shows the plan, the
+2. It picks the suggestions of `measure` whose files are installed and that are not yet measured on this PC
+   (results saved here count, sent or not; other people's measurements of the same GPU do not, since two agreeing
+   sources let measurements set the level) until their rough times add up to about 5 minutes (`--budget`), shows the plan, the
    measurements you have not sent yet and the total time (starting ComfyUI, measuring, and downloading as an example
    at 100 Mbps), and asks once. Models that need nodes your ComfyUI does not have are left out (update ComfyUI to
    measure them) and the next suggestions fill their place.
-3. It measures them one by one. If none is installed, or time is left, it asks once whether to download the others
-   (`[y/N]`, with the size and time; `--download` skips the question; downloading has the same questions as
-   `download`).
+3. It measures them one by one and frees ComfyUI before each run (models unloaded, cached results dropped). If
+   none is installed, or time is left, it asks once whether to download the others (`[y/N]`, with the size and time;
+   `--download` skips the question; downloading has the same questions as `download`). It shows numbered steps and,
+   in a terminal, live lines for starting ComfyUI, each run (time against the guide, peak VRAM so far) and downloads;
+   without a terminal, plain lines about every 10 s.
 4. It shows every file to send (the whole content and the privacy checks) and asks how to send it:
    **1) pull request** (sign in to GitHub: `GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device
-   login in your browser; enter the code it shows; scope `public_repo`; `share --logout` removes it), **2) issues**
+   login in your browser; enter the code it shows; while it waits, `r` opens the page again, `n` gets a new code and
+   `q` sends the same files as issues; an expired code asks whether to sign in again; scope `public_repo`;
+   `share --logout` removes it), **2) issues**
    (no sign-in: the measurement form opens in your browser, one per file, and you press "Create"; a bot makes the
    pull request), or **q) not now**. A pull request comes from a fork on your account, with the files under
    `data/contrib/<GPU>/` on a branch (or added to your open one). A check runs within minutes; once a maintainer
@@ -459,24 +465,36 @@ genmodelfit share
 
 `share --dry-run` only shows the plan and what would be sent; `share --no-measure` sends only the measurements you
 have not sent. `share --issue` without `--yes` is the older way: choose an unsent measurement and open its form.
+Only one `measure` or `share` measures at a time. A ComfyUI that genmodelfit started is stopped afterwards, also on
+a failure, on Ctrl+C or when the terminal is closed. Before measuring, other programs must not use much of the GPU
+(more than 1.5 GiB or 20% of its memory stops it); on AMD / Intel / Apple GPUs, where nvidia-smi is missing, this is
+read from ComfyUI where possible, and the result's note says what could not be checked.
 
-`genmodelfit measure` measures one model you choose. It lists models that fit your GPU and have no measurement on it yet (installed ones first, then
-   the shorter time, then the smaller download). Choose one; it shows what it will do (model, settings, which ComfyUI,
-   whether the files are installed, a rough time, that nothing is sent) and measures on the ComfyUI running on this PC
-   (or `--url`). A model that is not installed is downloaded first with the same questions as `download`.
-   Once a model has a measurement on your GPU at the template's settings, the list also has runs at other settings
-   that help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px), video frames (17 / 33 /
-   49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s), only when they fit your GPU at
-   that setting and have no measurement at it on this GPU, at most 2 per model and about 5 minutes or less
-   (shown with `--resolution`, `--frames` or `--length`; `genmodelfit measure <id> --resolution 1536x1536` picks
-   one yourself). Each run is one generation of a few minutes; `share` sends what it saved.
+`genmodelfit measure` measures one model you choose. It lists models that fit your GPU and are not yet measured on
+this PC (installed ones first, then the shorter time, then the smaller download; models whose nodes your ComfyUI
+lacks are left out). Choose one; it shows what it will do (model, settings, which ComfyUI, whether the files are
+installed, a rough time, that nothing is sent) and measures on ComfyUI like `share`: the one running on this PC (or
+`--url`), else the installed one it finds, started and stopped for you (`--no-start` turns that off). A ComfyUI it
+started is freed before the run; yours only with `--free`. A model that is not installed is downloaded first with
+the same questions as `download`.
+Once a model is measured on this PC at the template's settings, the list also has runs at other settings that help
+check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px), video frames (17 / 33 / 49 / 81 at the
+template's size) and music / sound length (10 / 30 / 60 / 120 s), only when they fit your GPU at that setting and
+this PC has not measured them yet, at most 2 per model and about 5 minutes or less (shown with `--resolution`,
+`--frames` or `--length`; `genmodelfit measure <id> --resolution 1536x1536` picks one yourself). Each run is one
+generation of a few minutes; `share` sends what it saved. A run that fails is saved as a failure record, which the
+next `share` sends.
 
 What is sent (all of it is shown before you send): the GPU name, VRAM, generation and compute capability (NVIDIA),
 driver version, vendor and backend, for AMD / Intel GPUs the PCI model ID (a model number such as `1002:744c`, the
 same on every card of that model), the OS family, RAM rounded to GiB, the ComfyUI and genmodelfit versions, the date
 (no time), the model, settings, result, peak VRAM / RAM, time, how the model was loaded (`offload`), how it was
-measured, a fingerprint of the model files, and bench's note about how it measured. What is not: host or user names,
-paths, GPU UUID, PCI slot, serial numbers, IP, CPU name, exact time, prompts.
+measured, a fingerprint of the model files, and bench's note about how it measured. Since 0.13.0 also the estimate
+genmodelfit made for it (without this PC's measurements), a time breakdown, a mark when the peak VRAM spilled into
+shared memory, the list version, and one file of failure records per run (model, kind of failure, missing node
+names, the error's type name, the failing node type). What is not: host or user names, paths, GPU UUID, PCI slot,
+serial numbers, IP, CPU name, exact time, prompts, error message text, runs you interrupted or that other programs
+disturbed, and models whose files are missing on this PC.
 
 How it is used: a measurement is used for people with the same GPU. On NVIDIA with ComfyUI's dynamic VRAM (the
 default today) only the working memory can be measured, so it is used to cross-check the estimates and does not set
@@ -495,12 +513,14 @@ data/contrib/` in a clone of your fork still works. Steps: [CONTRIBUTING.md](htt
 - Judging commands and the Python API (except `update_from_release` and `download`, which you call on purpose) make **no network access** (tested with every socket blocked).
 - `update` reads public data only (GitHub, Hugging Face API, HEAD on model URLs); `--from-release` only fetches
   `db.json` and its signature. `download` only fetches model files, and, when no folder is given, asks a ComfyUI
-  running on this PC (127.0.0.1 ports 8188 and 8000) where its folders are. `measure` asks the same ports whether
-  ComfyUI runs (without `--url`) and talks only to that ComfyUI (plus the official template on GitHub and, when you
-  agree, the model files); a ComfyUI it starts listens on 127.0.0.1 only. `bench` talks only to your `--url`.
-- genmodelfit never sends hardware details, measurements or prompts on its own. A measurement is shared only when
-  you agree in `share` (it shows every file first): then it talks to github.com and api.github.com only, to sign in
-  and to open a pull request with those files from your account
+  running on this PC (127.0.0.1 ports 8188 and 8000) where its folders are. `measure` and `share` ask the same ports
+  whether ComfyUI runs (without `--url`) and talk only to that ComfyUI (to check its nodes and to run the job), plus
+  the official templates and their input images on GitHub when that ComfyUI lacks them and, when you agree, the
+  model files; a ComfyUI they start listens on 127.0.0.1 only. `bench` talks only to your `--url`.
+- genmodelfit never sends hardware details, measurements or prompts on its own. Before measuring, `share` only checks
+  a GitHub token you already have (`GITHUB_TOKEN`, `GH_TOKEN` or the saved sign-in) with api.github.com; nothing else
+  goes with it. A measurement is shared only when you agree in `share` (it shows every file first): then it talks to
+  github.com and api.github.com only, to sign in and to open a pull request with those files from your account
   ([Help by measuring](https://github.com/laxshmate/genmodelfit#help-by-measuring)). The sign-in token is saved in
   the config folder, readable only by you, and never printed. `share --issue` (and `bench --share`, `contrib share`)
   only open the GitHub form in your browser (or print its URL, or copy the content to your clipboard); the content

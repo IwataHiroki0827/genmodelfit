@@ -61,8 +61,8 @@ The same as the SIDE EFFECTS of each command's `--help` and [README, "Privacy"](
 | `update --fields-only` | GET of the Hugging Face Hub API for the cards whose `language` decides `languages` (the main files' repos and their `license_from`); for the hand-added models also HEAD, ranged GET of the file header and the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
-| `measure` | without `--url`, `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (2 s timeout, no redirects, no proxy); then like `bench` on that ComfyUI; when you agree to download a missing model, like `download`. Nothing with only the suggestions list and no ComfyUI running. (0.13.0) When none runs and an install is found, it starts ComfyUI as a separate process on 127.0.0.1 and a free port and asks it `GET /system_stats` until ready, then `GET /object_info` and the template to check the nodes; it stops that process afterwards | like `bench`: the result in `<cache>/measurements/`, the submission draft in `<cache>/submissions/<GPU>/<date>-<sha8>.json`; the model files when downloaded; a started ComfyUI's output in `<cache>/comfyui-<date>.log` |
-| `share` | (0.13.0) like `measure` while measuring and downloading. GitHub (https to github.com and api.github.com only): before measuring, `GET /user` with a token you already have (`GITHUB_TOKEN`, `GH_TOKEN` or the saved one) to check it; the device login only when you choose a pull request; after you agree to send, the fork, a branch, the files (Contents API) and the pull request. `--dry-run` and `--issue` make no network access to GitHub (`--issue` opens the browser at the GitHub form in a terminal; the content is sent only when you press "Create") | like `measure`; `<cache>/submissions_shared.json` (the sent marks); `<config>/github_token` (the sign-in token and its expiry; readable only by you; `--logout` removes it); `--issue` may put the content on the clipboard |
+| `measure` | without `--url`, `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (2 s timeout, no redirects, no proxy); then like `bench` on that ComfyUI; when you agree to download a missing model, like `download`. Nothing with only the suggestions list and no ComfyUI running. (0.13.0) When none runs and an install is found, it starts ComfyUI as a separate process on 127.0.0.1 and a free port and asks it `GET /system_stats` until ready, then `GET /object_info` and the template to check the nodes; it stops that process afterwards | like `bench`: the result in `<cache>/measurements/`, the submission draft in `<cache>/submissions/<GPU>/<date>-<sha8>.json`; the model files when downloaded; a failure record in `<cache>/submissions/` when a run fails (0.13.0); a started ComfyUI's output in `<cache>/comfyui-<date>.log`; `<cache>/measure.lock` while measuring |
+| `share` | (0.13.0) like `measure` while measuring and downloading. GitHub (https to github.com and api.github.com only): before measuring, `GET /user` with a token you already have (`GITHUB_TOKEN`, `GH_TOKEN` or the saved one) to check it; the device login only when you choose a pull request; after you agree to send, the fork, a branch, the files (Contents API) and the pull request. `--dry-run` (which only asks 127.0.0.1 whether ComfyUI runs) and `--issue` make no network access to GitHub (`--issue` opens the browser at the GitHub form in a terminal; the content is sent only when you press "Create") | like `measure`; `<cache>/submissions_shared.json` (the sent marks); `<config>/github_token` (the sign-in token and its expiry; readable only by you; `--logout` removes it); `--issue` may put the content on the clipboard |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them); `--share` adds no network access (see `share` below) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON; with `--share` and no `--submission`, `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
 | `contrib` | none (genmodelfit never sends a submission); `share` is `genmodelfit share --issue` | `make`: the submission JSON; `aggregate --output`: the community file; `intake`: the files in `--out`; `share`: the sent marks; `show` / `validate` / `aggregate --check`: none |
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
@@ -994,7 +994,7 @@ Template: `name`, `title`, `category`, `min_comfyui_version`, `open_source`, `re
 | `consistent` | bool \| null | community rows: at least 2 used submissions whose range is within 15% of the median, and no OOM in the group. Only consistent rows enter the calibration of the coefficients (`calibrate`); estimates use every `ok` row from one submission (2026-10-22) |
 | `gpu_backend` | str \| null | (0.9.0) PyTorch backend of the measured GPU as bench saw it: `cuda` (NVIDIA) / `rocm` (AMD; ComfyUI reports `type: cuda`, told apart by `+rocm` in `pytorch_version` or the GPU name) / `xpu` (Intel) / `mps` (Apple). null = not recorded (all bundled rows are NVIDIA). Decides the measurement's vendor for #26 and calibration across vendors (`estimate.measurement_vendor`); the GPU name is used only when it is null (Apple's MPS reports the name `mps`). `contrib aggregate` keeps it on community rows |
 | `files_fp` | str \| null | (#90) fingerprint of the model's files in the list when measured (`estimate.files_fingerprint`; see "Rules of the submission pipeline" below). If it differs from the current list's fingerprint, the measurement is not used. null = not recorded (the maintainer's measurements.json, older rows; used as before) |
-| `settings_override` | bool \| null | (0.12.0, #116; optional) `true` when bench / measure changed the template's settings (`--width`, `--height`, `--resolution`, `--frames`, `--length`, `--steps`). null / absent = as in the template (older rows without the key too). `measure` uses it to tell whether this GPU has a measurement at the template's settings |
+| `settings_override` | bool \| null | (0.12.0, #116; optional) `true` when bench / measure changed the template's settings (`--width`, `--height`, `--resolution`, `--frames`, `--length`, `--steps`). null / absent = as in the template (older rows without the key too). `measure` uses it to tell whether this PC has measured the template's settings on this GPU |
 | `gpu_known` | bool \| null | (#90, #101) community rows: false = the GPU name is a generic name or a placeholder (kept as a record, never used for judging) |
 | `n_sources` | int \| null | (#90) community rows: number of independent sources (the people who sent the submissions; #113) behind the value |
 | `source_ids` | str[] \| null | (#95) community rows: short IDs of the sources behind the value (first 12 characters of the sha256 of the sender key, or `file:<first 12 of the content sha256>`). When measurements set the level, sources are counted as the union of the IDs across rows (`estimate.count_sources`). null for older rows without them |
@@ -1062,8 +1062,10 @@ How bench fills Measurement:
 Rules:
 
 - **Suggestions**: models from an official ComfyUI template (`source: comfyui-template`) whose judgment on this PC is
-  `perfect` or `good` with run mode `gpu`, and that have no measurement on this GPU at the template's settings yet
-  (`measure.has_measurement_here`: same GPU by `estimate.same_gpu`, same files by `files_match`, standard, outcome `ok`
+  `perfect` or `good` with run mode `gpu`, with a known license (`--any-license` in `share` includes the others), and
+  that this PC has not measured on this GPU at the template's settings yet (0.13.0: only this PC's own results count,
+  `measure.measured_by_this_pc`: the cached bench results and the saved submissions, not the bundled author or community
+  rows, which still feed the time hints and the estimates; `measure.has_measurement_here`: same GPU by `estimate.same_gpu`, same files by `files_match`, standard, outcome `ok`
   or `oom`, no `settings_override` (0.12.0; rows without the key count); a working-memory-only measurement counts too,
   since measuring it again on the same GPU adds nothing). One per model (`groups` key): the
   installed workflow, else the one `recommend` would pick. Order: installed first, then `seconds`, then
@@ -1072,12 +1074,12 @@ Rules:
   formula's per-stage working memory: text-to-image workflows (`t2i`, not in `estimate.NO_SIZE_INPUT`) at 512 / 768 /
   1024 / 1536 px square (`VARIANT_PIXELS`), text / image-to-video (`t2v`, `i2v`) at 17 / 33 / 49 / 81 frames
   (`VARIANT_FRAMES`; size as in the template), text-to-audio music and sfx (`t2a`) at 10 / 30 / 60 / 120 s
-  (`VARIANT_SECONDS`), after the #102 plan. They are offered only for a workflow that already has a measurement on
+  (`VARIANT_SECONDS`), after the #102 plan. They are offered only for a workflow that this PC has already measured on
   this GPU at the template's settings (so that run is collected first; measuring a run at other settings does not
   hide the template's row), and not for an item the template has no input for: when a measurement at the template's
   settings (`measure.template_settings`, any GPU) records no width, frames or length, there is no variant for it
   (AnimateDiff, whose frames come from `batch_size`). One is listed when its estimate at that setting is `perfect` /
-  `good` on `gpu` and this GPU has no measurement at that setting (`has_measurement_here` with `settings`: the given
+  `good` on `gpu` and this PC has not measured it at that setting on this GPU (`has_measurement_here` with `settings`: the given
   items must match, other items are not compared, with or without `settings_override`; so the template's own value,
   such as 1024 px, is not offered again). Video runs are judged at the template's width and height from that
   measurement (`measure.judged_settings`), else at the per-type default 832x480. One per model and setting (chosen
@@ -1124,9 +1126,10 @@ Rules:
   (`workflow.missing_nodes`, the same check as `bench`; `bench.NodeCheck`). The list hides suggestions whose template
   uses nodes that ComfyUI lacks; a named model stops before downloading or measuring, with "Next:" saying to update
   ComfyUI (or install the custom nodes).
-- Exit codes: 0 success, nothing chosen, nothing to suggest or answered n to "Measure it?" / 1 no ComfyUI, no GPU,
-  busy GPU, no template, missing nodes, not installed with `--json`, no terminal without `--yes`, the download was
-  declined, ComfyUI could not be started, a failed run / 2 usage error. A failure in text output ends with a "Next:"
+- Exit codes: 0 success, nothing chosen, nothing to suggest, answered n to "Measure it?" or declined the download, a
+  result that only cannot be sent / 1 no ComfyUI, no GPU, busy GPU, another `measure` / `share` measuring, no template,
+  missing nodes, not installed with `--json`, no terminal without `--yes`, ComfyUI could not be started, a failed run
+  (also Ctrl+C during the run) / 2 usage error / 130 Ctrl+C at a question. A failure in text output ends with a "Next:"
   line saying what to do.
 
 ## share
@@ -1188,14 +1191,15 @@ Rules:
   cached results, or any other non-standard condition, is not saved or sent: it is listed under `failed` with the
   reason (nothing is dropped silently).
 - **Not sendable** (0.13.0): before a submission is written, the checks of `share` (privacy checklist and
-  `validate` errors) run; when it cannot be sent (for example peak VRAM above the GPU's total), only this PC's
+  `validate` errors) run; when it cannot be sent (for example a value outside the checked ranges; since #132 a peak VRAM above the GPU
+  total is sent with `spilled`), only this PC's
   measurement is kept and the run is listed under `failed` with the reason. A saved submission that cannot be sent
   is listed once and renamed `<name>.unsendable` (not offered again; `retired` in the JSON); `share` does not fail
   for it when everything else was sent.
-- **GPUs and VRAM**: only NVIDIA GPUs are measured for now. `measure.suggestions` leaves out models with an unknown
-  license unless `--any-license`. Measuring is refused when other programs use more than 1.5 GiB or 20% of the VRAM
+- **GPUs and VRAM**: NVIDIA GPUs, and AMD / Intel / Apple GPUs that the detection tables support, are measured.
+  `measure.suggestions` leaves out models with an unknown license unless `--any-license`. Measuring is refused when other programs use more than 1.5 GiB or 20% of the VRAM
   (`bench.others_vram_limit`): checked with nvidia-smi before starting ComfyUI and from `/system_stats` after
-  freeing; a new compute-only GPU process during a run (type C in nvidia-smi's process table; C+G / G apps such as browsers are ignored) makes the result non-standard.
+  freeing; a new compute-only GPU process during a run (type C in nvidia-smi's process table; C+G / G apps such as browsers are ignored) makes the result non-standard. Without nvidia-smi (AMD / Intel / Apple) these checks use ComfyUI's `/system_stats` where possible, and the result's note says what could not be checked.
 - **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
   measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
   measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay
@@ -1234,7 +1238,8 @@ Rules:
   (for apps that used it). FILE with `--no-measure` or `--download` is a usage error (2).
 - Exit codes: 0 sent, nothing to send, or answered n / 1 cannot sign in, no ComfyUI and nothing to send, a measurement
   failed, a file was refused, GitHub refused, `--json` or no terminal without `--yes` / 2 usage error / 130 Ctrl+C at
-  a question.
+  a question, or while measuring (after it went on to sending what was measured). Results that only cannot be sent
+  do not make it 1.
 
 ### Issue form (`share --issue`)
 

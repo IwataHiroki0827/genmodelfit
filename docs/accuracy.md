@@ -507,14 +507,14 @@ How to read it:
 
 ## Other users' measurements (#34, 2026-10-21; handling aligned with llmfit on 2026-10-22)
 
-Users add the submission JSON made by `genmodelfit bench --submission` through a Pull Request to `data/contrib/<GPU>/<date>-<sha8>.json`
+Users add submission JSON files through a Pull Request to `data/contrib/<GPU>/<date>-<sha8>.json` (since 0.13.0 `genmodelfit share` does this; also `genmodelfit bench --submission`)
 (steps: [CONTRIBUTING.md](../CONTRIBUTING.md); format: "contrib" in [schema.md](schema.md)).
 **As of 2026-10-29, 4 submissions from 1 source (the maintainer) have been accepted** (#126: RTX 3070, SDXL at four
 settings), and the bundled `src/genmodelfit/data/measurements_community.json` has 4 rows, one submission each. None is
 consistent yet (that needs 2 or more sources), so none enters the calibration.
 The rules below describe how submissions are handled.
 
-**Files measured (#90)**: other users' submissions (contrib_schema 2) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
+**Files measured (#90)**: other users' submissions (contrib_schema 2 and 3) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
 
 **Maintainer's decision of 2026-10-22:** follow the same approach as llmfit (main, read on 2026-10-22).
 
@@ -669,9 +669,12 @@ GPU names are compared after normalizing the presence of `NVIDIA` / `GeForce`, c
   - The cross-check error of other users' measurements.
 - The maintainer's cross-check rows (the 2 RTX 3070 rows below) are known misses, so they are shown in the table but not counted in the judgment.
 
-**Inflation:** if the same person submits the same setup many times, the count is inflated.
+**Inflation:** if the same person submits the same setup many times, the count of submissions is inflated.
 
-- It cannot be detected, because submissions carry no information that identifies a person.
+- The submissions themselves carry no information that identifies a person. Since 0.12.0 (#113) the sources are
+  counted by GitHub account (the account a pull request came from, or the author of a measurement issue), so one
+  account counts as one source however many it sends; a different account still counts as someone else
+  ([scoring.md](scoring.md)).
 - The same content (hash) is rejected as a duplicate, but a re-measured different value cannot be rejected.
 - The person reviewing the PR checks whether the same setup appears several times in the same PR.
 

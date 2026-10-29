@@ -3360,10 +3360,10 @@ def _share_nothing_reason(args: argparse.Namespace, sugg: list, skipped: list, b
         )
     if not sugg:
         return tr(
-            "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)。"
+            "測ると役に立つモデルはありません(この GPU に載るものは、この PC でもう測ってあります)。"
             "送っていない実測もありません。",
-            "Nothing worth measuring (the ones that fit this GPU are already measured), and no unsent"
-            " measurements.",
+            "Nothing worth measuring (the ones that fit this GPU are already measured on this PC), and no"
+            " unsent measurements.",
         )
     return tr(
         "測ると役に立つモデルも、送っていない実測もありません。",
@@ -6884,16 +6884,16 @@ def _suggestion_lines(sugg: list) -> list[str]:
     out += [_suggestion_row(i, x) for i, x in enumerate(sugg, 1)]
     out.append(
         tr(
-            "時間は目安(同じモデルのほかの GPU の実測、無ければ種類ごとのおおよその値。"
+            "時間は目安(同じモデルの実測、無ければ種類ごとのおおよその値。"
             "設定を変えた行は画素数・コマ数・長さの比で伸び縮みさせた値。落とす時間は入れない)。"
             "--resolution・--frames・--length の付いた行は、設定を変えて測ります"
-            "(予測式の確かめに使います。この GPU にテンプレートのままの実測があるモデルだけで、"
+            "(予測式の確かめに使います。この PC でテンプレートのまま測ったモデルだけで、"
             f"1 つのモデルに {per_model} 件まで出します)。約 {max_secs} 秒を超えるものは出しません。"
             "入っていないものは、選ぶと download と同じ確かめをしてから落とします。",
-            "Times are rough guides (from measurements of the same model on other GPUs, else a rough value"
+            "Times are rough guides (from measurements of the same model, else a rough value"
             " for the type; rows with other settings are scaled by the ratio of pixels, frames or length;"
             " downloading is not included). Rows with --resolution, --frames or --length measure at those"
-            " settings (used to check the estimate's formula; only for models already measured on this GPU"
+            " settings (used to check the estimate's formula; only for models already measured on this PC"
             f" as in the template, at most {per_model} per model). Runs over about {max_secs} s are not"
             " listed. Choosing one that is not installed downloads it first, with the same questions as"
             " download.",
@@ -7421,9 +7421,11 @@ def cmd_measure(args: argparse.Namespace) -> int:
         if not sugg:
             print(
                 tr(
-                    "測ると役に立つモデルはありません(この PC の GPU に載るものは、もう実測があります)。"
+                    "測ると役に立つモデルはありません"
+                    "(この PC の GPU に載るものは、この PC でもう測ってあります)。"
                     "ほかのモデルを測るなら genmodelfit measure <名前>",
-                    "No model to suggest (the ones that fit this PC's GPU are already measured)."
+                    "No model to suggest (the ones that fit this PC's GPU are already measured on this"
+                    " PC)."
                     " To measure another model: genmodelfit measure <name>",
                 )
             )
@@ -8194,27 +8196,34 @@ AGENT USAGE:
   JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   Details: docs/schema.md""",
-    "measure": """Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
+    "measure": """Measure a model on ComfyUI (started if needed) and save the result on this PC
+(nothing is sent).
 Without MODEL it lists models worth measuring: the ones that fit this PC's GPU (good or better on
-the GPU) with no measurement on this GPU at the template's settings yet, those already
-installed first, then the shorter time, then the smaller download; choose one by number (q
-quits). Once a model has that measurement, the list offers runs at other settings that help
-check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to image), video
-frames 17/33/49/81 at the template's size (text or image to video), music and sound length
-10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or better)
-and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are
-not listed. Each run is one generation (a few minutes); running measure again picks the next one.
+the GPU) and are not yet measured on this PC at the template's settings (other people's
+measurements of the same GPU do not remove a model: two agreeing sources let measurements set the
+level), with a known license, those already installed first, then the shorter time, then the
+smaller download; choose one by number (q quits). Models that need nodes the running ComfyUI
+lacks are left out. Once a model has that measurement, the list offers runs at other settings
+that help check the estimate's formula (#116): image resolution 512/768/1024/1536 px (text to
+image), video frames 17/33/49/81 at the template's size (text or image to video), music and sound
+length 10/30/60/120 s (text to audio); each only when it fits the GPU at that setting (good or
+better) and this PC has not measured it at that setting, at most 2 per model. Runs over about
+300 s are not listed. Each run is one generation (a few minutes); running measure again picks
+the next one.
 MODEL is a model name, a workflow id or a part of either, chosen like download (only workflows
 with a ComfyUI template); --resolution, --frames and --length change the settings like bench.
 Before measuring one screen shows the model and precision, the settings (as in the template, or
 the ones changed), which ComfyUI and how it was found, whether the files are installed, a rough
 time and that nothing is sent, then asks [Y/n] (--yes skips it). The time is a rough guide: the
-median of measurements of the same model on other GPUs, else a rough value per type, scaled by
-the ratio of pixels, frames or length when the settings are changed. When the template cannot
-take a requested setting, it stops before generating.
+median of measurements of the same model, else a rough value per type, scaled by the ratio of
+pixels, frames or length when the settings are changed. When the template cannot take a
+requested setting, or the ComfyUI lacks nodes it needs, it stops before downloading or
+generating.
 A model that is not installed is downloaded first, with the same questions and consent rules as
-download. Afterwards it shows the result and where it saved it, and one line pointing to
-genmodelfit share, which sends it (it never asks whether to send).
+download. A ComfyUI started by genmodelfit is freed (/free: models unloaded, cached results
+dropped) before the run; yours only with --free. Afterwards it shows the result and where it
+saved it, and one line pointing to genmodelfit share, which sends it (it never asks whether to
+send). A run that could not be measured is saved as a failure record that share sends.
 
 PRECONDITIONS:
   A GPU on this PC and a ComfyUI on it: --url, or one running on this PC (127.0.0.1 port 8188
@@ -8223,22 +8232,29 @@ PRECONDITIONS:
   its .venv and the app's ComfyUI; on 127.0.0.1 and a free port, no browser), used, and stopped
   after measuring; the [Y/n] question covers it (--no-start or GENMODELFIT_COMFYUI_START=0
   turns this off; --start-timeout, default 300 s). Otherwise it says how to start ComfyUI and
-  exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench
-  without --force).
+  exits 1. The GPU must be free: when other programs use more than 1.5 GiB (or 20%) of its
+  memory, nothing is measured (on AMD / Intel / Apple GPUs, where nvidia-smi is missing, this is
+  read from ComfyUI's /system_stats where possible, and the result's note says what could not be
+  checked). Only one measure or share measures at a time. A started ComfyUI is stopped also on a
+  failure, Ctrl+C or when the terminal is closed.
 
 SIDE EFFECTS:
-  Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without --url), the ComfyUI
-  it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and
-  the model files when it downloads them. Nothing about this PC is sent anywhere else.
+  Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs and where its folders are
+  (without --url), the ComfyUI it measures on (the node check and one job), the official template
+  and its input images from GitHub when that ComfyUI lacks them, and the model files when it
+  downloads them. Nothing about this PC is sent anywhere else.
   Writes the result to <cache>/measurements/ (used when this PC is judged) and a submission draft
-  to <cache>/submissions/ (what genmodelfit share sends). A started ComfyUI writes its output to
-  <cache>/comfyui-<date>.log.
+  (or a failure record) to <cache>/submissions/ (what genmodelfit share sends). A started ComfyUI
+  writes its output to <cache>/comfyui-<date>.log; <cache>/measure.lock while measuring.
 
 EXIT CODES:
-  0  Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?")
-  1  Error: no ComfyUI found, no GPU, the GPU is busy, the model has no template, it was not
-     downloaded, the run failed (out of memory or another error), no terminal and no --yes
+  0  Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?" or to the
+     download, a result that only cannot be sent)
+  1  Error: no ComfyUI found, no GPU, the GPU is busy, another measure is running, the model has
+     no template, nodes are missing, it was not downloaded, the run failed (out of memory, another
+     error, or Ctrl+C during the run), no terminal and no --yes
   2  Usage error
+  130  Ctrl+C at a question
 
 AGENT USAGE:
   genmodelfit measure --json
@@ -8253,11 +8269,12 @@ AGENT USAGE:
     "share": """Measure for a few minutes and send the measurements as a GitHub pull request.
 Without FILE it finds ComfyUI like measure (--url, else one running on this PC, else it starts
 the one it finds and stops it afterwards), picks the suggestions of measure whose files are
-installed and that have no result on this GPU yet (also none saved on this PC, sent or not)
-until their rough times add up to --budget (300 s), and shows the plan with the unsent
-measurements and the total time (starting ComfyUI about 45 s, measuring, and downloading as an
-example at 100 Mbps). It asks once [Y/n], then measures one by one (a failure does not stop the
-rest; Ctrl+C goes on to sending what was measured). Models that are not installed are
+installed and that are not yet measured on this PC (results saved on this PC count, sent or not;
+other people's measurements do not) and whose nodes the ComfyUI has, until their rough times
+add up to --budget (300 s), and shows the plan with the unsent measurements and the total time
+(starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps). It asks
+once [Y/n], then measures one by one, freeing the ComfyUI before each run (a failure does not
+stop the rest; Ctrl+C goes on to sending what was measured). Models that are not installed are
 downloaded only with --download or y to one [y/N] question (asked first when nothing installed
 can be measured, else after measuring), with download's questions and consent rules; --yes
 alone never downloads. Then it shows every file to send (the whole content and the privacy
@@ -8267,32 +8284,39 @@ send a pull request; --issue --yes sends issues (the URLs are printed without a 
 Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN, else the
 saved sign-in) and stops at once if it does not work; the device login in your browser (scope
 public_repo; saved for next time; --logout removes it) happens only when you choose a pull
-request. With --yes and no terminal, a missing token stops it before measuring. The pull request
+request. While it waits for the device login, keys work: r opens the page again, n gets a new
+code, q sends the same files as issues; an expired code asks whether to sign in again. With
+--yes and no terminal, a missing token stops it before measuring. The pull request
 comes from a fork of the repository: a branch from the merge base of the upstream main and the
 fork's main with the files under
 data/contrib/<GPU>/ (titled "measurements: <GPU> (<count>)"), or your open share pull request
 for that GPU; files already there are skipped. If the pull request cannot be made, a terminal
 offers issues for the same files. Results are saved before sending and are never measured again:
 genmodelfit share --no-measure (or --issue) sends them later. Sent files are marked on this PC
-(--all includes them). Without any ComfyUI it sends only the unsent measurements; with none it
-says how to start ComfyUI and exits 1 without asking. FILE sends that file only. share --issue
-without --yes is the older way: choose an unsent measurement and open its issue form.
+(--all includes them). What could not be measured goes into one failure record file per run
+(names and numbers only, never error text). Without any ComfyUI it sends only the unsent
+measurements; with none it says how to start ComfyUI and exits 1 without asking. FILE sends
+that file only. share --issue without --yes is the older way: choose an unsent measurement and
+open its issue form.
 
 PRECONDITIONS:
   A GitHub account. To measure: a GPU and ComfyUI (as for measure).
 
 SIDE EFFECTS:
-  Network: like measure while measuring and downloading; after you agree, github.com and
-  api.github.com (sign-in, fork, branch, files, pull request). --dry-run and --issue use no
-  network. Writes measurements like measure, the sent marks to <cache>/submissions_shared.json
-  and the sign-in token to <config>/github_token (readable only by you).
+  Network: like measure while measuring and downloading. GitHub (github.com and api.github.com):
+  before measuring only a check of a token you already have (GET /user); the sign-in, fork,
+  branch, files and pull request only after you agree to send. --dry-run only asks 127.0.0.1
+  whether ComfyUI runs; --issue makes no network access to GitHub. Writes measurements and
+  failure records like measure, the sent marks to <cache>/submissions_shared.json and the
+  sign-in token to <config>/github_token (readable only by you).
 
 EXIT CODES:
-  0  Success (also: answered n, nothing to measure or send)
+  0  Success (also: answered n, nothing to measure or send, results that only cannot be sent)
   1  Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was
      refused (privacy check NG or check errors), GitHub refused the upload (the results stay
      saved), --json or no terminal without --yes
   2  Usage error
+  130  Ctrl+C (at a question; while measuring it first goes on to sending what was measured)
 
 AGENT USAGE:
   genmodelfit share --dry-run --json
@@ -8694,24 +8718,29 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
   JSON (--json): { genmodelfit, command, database, policy, filters, summary: { models, auto, held,
   failing, first_failing }, models: [{ id, auto, held_by, checks, ... }] }
   詳しくは docs/schema.md""",
-    "measure": """起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
-MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この GPU に
-テンプレートの設定のままの実測がまだ無いもの。並びは、もう入っているもの → 時間が短いもの →
-落とす量が少ないもの。番号で選ぶ(q でやめる)。その実測があるモデルには、予測式の確かめに役立つ
-「設定を変えた測定」を出す(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、動画の
-コマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ
-10・30・60・120 秒(文章から音声)。その設定で GPU に載り(good 以上)、この GPU にその設定の実測が
-無いものだけで、1 つのモデルに 2 件まで。時間の目安が約 300 秒を超えるものは出さない。
+    "measure": """ComfyUI でモデルを実測し、結果をこの PC に保存する(ComfyUI が無ければ起動する。
+何も送らない)。
+MODEL を省くと、測ると役に立つモデルを出す: この PC の GPU に載り(GPU で good 以上)、この PC で
+テンプレートの設定のまま、まだ測っていないもの(同じ GPU のほかの人の実測があっても外さない。2 つの
+出どころの実測がそろうと、段階を実測で決められるため)。ライセンスの分からないものは出さない。
+並びは、もう入っているもの → 時間が短いもの → 落とす量が少ないもの。番号で選ぶ(q でやめる)。
+起動中の ComfyUI に無いノードが要るものは出さない。その実測があるモデルには、予測式の確かめに
+役立つ「設定を変えた測定」を出す(#116): 画像の解像度 512・768・1024・1536 px(文章から画像)、
+動画のコマ数 17・33・49・81(大きさはテンプレートのまま。文章・画像から動画)、音楽・効果音の長さ
+10・30・60・120 秒(文章から音声)。その設定で GPU に載り(good 以上)、この PC でその設定をまだ
+測っていないものだけで、1 つのモデルに 2 件まで。時間の目安が約 300 秒を超えるものは出さない。
 1 回は生成 1 回(数分)で、もう一度 measure を実行すると次のものを選べる。
 MODEL はモデルの名前・ワークフローの ID・その一部で、download と同じ選び方で決める(ComfyUI の
 テンプレートのあるワークフローだけ)。--resolution・--frames・--length で bench と同じく設定を変える。
 測る前に 1 画面で、モデルと精度、設定(テンプレートのまま、または変えた設定)、どの ComfyUI か・
 どう見つけたか、ファイルが入っているか、時間の目安、何も送らないことを見せ、[Y/n] で尋ねる
-(--yes で尋ねない)。時間は目安: 同じモデルのほかの GPU の実測の中央値、無ければ種類ごとの
-おおよその値。設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。テンプレートが頼んだ
-設定を受け付けないときは、生成の前に止める。
-入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。終わると結果と保存した
-場所を出し、最後に genmodelfit share(送るコマンド)を 1 行だけ案内する(送るかどうかは尋ねない)。
+(--yes で尋ねない)。時間は目安: 同じモデルの実測の中央値、無ければ種類ごとのおおよその値。
+設定を変えたときは画素数・コマ数・長さの比で伸び縮みさせる。テンプレートが頼んだ設定を受け付け
+ないとき・ComfyUI に要るノードが無いときは、落とす前・生成の前に止める。
+入っていないモデルは、download と同じ確かめ・同意の決まりで先に落とす。genmodelfit が起動した
+ComfyUI は、測る前に空ける(/free。モデルを外し、前の結果を消す)。自分の ComfyUI は --free の
+ときだけ。終わると結果と保存した場所を出し、最後に genmodelfit share(送るコマンド)を 1 行だけ
+案内する(送るかどうかは尋ねない)。測れなかったときは、失敗の記録を保存する(share が送る)。
 
 前提:
   この PC の GPU と、そこで動く ComfyUI: --url か、この PC で起動中のもの(127.0.0.1 の 8188 か
@@ -8720,20 +8749,27 @@ MODEL はモデルの名前・ワークフローの ID・その一部で、downl
   デスクトップ版は .venv とアプリの ComfyUI で、127.0.0.1 の空いているポートに、ブラウザを開かずに)。
   [Y/n] の質問がその同意を兼ねる(--no-start か GENMODELFIT_COMFYUI_START=0 で止める。
   --start-timeout は既定 300 秒)。見つからなければ、起動のしかたを出して 1 で終わる。GPU が
-  空いていること: ほかのプログラムが使っていれば測らない(--force の無い bench と同じ)。
+  空いていること: ほかのプログラムが GPU のメモリを 1.5 GiB(か 20%)より多く使っていれば測らない
+  (nvidia-smi の無い AMD・Intel・Apple の GPU では、できるところは ComfyUI の /system_stats で
+  確かめ、確かめられなかったことは結果のメモに書く)。測るのは、同時に 1 つの measure か share
+  だけ。起動した ComfyUI は、失敗・Ctrl+C・端末を閉じたときも止める。
 
 副作用:
-  通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(--url が無いとき)、測る
-  ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、
-  落とすときはモデルのファイル。この PC のことはほかへ送らない。
-  結果を <cache>/measurements/(この PC の判定に使う)に、送るための下書きを <cache>/submissions/
-  (genmodelfit share が送るもの)に書く。起動した ComfyUI の出力は <cache>/comfyui-<日付>.log。
+  通信: ComfyUI が起動しているか・フォルダの場所を 127.0.0.1 の 8188・8000 に尋ねる(--url が
+  無いとき)、測る ComfyUI(ノードの確かめと仕事を 1 つ)、その ComfyUI に無ければ GitHub の公式の
+  テンプレートと入力の画像、落とすときはモデルのファイル。この PC のことはほかへ送らない。
+  結果を <cache>/measurements/(この PC の判定に使う)に、送るための下書き(か失敗の記録)を
+  <cache>/submissions/(genmodelfit share が送るもの)に書く。起動した ComfyUI の出力は
+  <cache>/comfyui-<日付>.log。測るあいだは <cache>/measure.lock。
 
 終了コード:
-  0  成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも)
-  1  失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、テンプレートが無いモデル、
-     落とさなかった、実行の失敗(メモリ不足など)、端末でなく --yes も無い
+  0  成功(選ばなかった・出す提案が無い・「測りますか?」や落とす質問に n と答えた・送れない
+     だけの結果のときも)
+  1  失敗: ComfyUI が見つからない、GPU が無い、GPU が使われている、ほかの measure が測って
+     いる、テンプレートが無いモデル、ノードが足りない、落とさなかった、実行の失敗(メモリ不足・
+     ほかの誤り・実行中の Ctrl+C)、端末でなく --yes も無い
   2  使い方の誤り
+  130  質問の途中の Ctrl+C
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit measure --json
@@ -8747,11 +8783,13 @@ MODEL はモデルの名前・ワークフローの ID・その一部で、downl
   詳しくは docs/schema.md""",
     "share": """数分測って、実測を GitHub の PR で送る。
 FILE を省くと、measure と同じく ComfyUI を見つけ(--url、無ければこの PC で起動中のもの、無ければ
-見つけたものを起動し、終わったら止める)、measure の提案のうち、ファイルが入っていて、この GPU の
-結果がまだ無いもの(この PC に保存したものも。送ったかどうかによらない)を、時間の目安の合計が
---budget(300 秒)に収まるまで選び、送っていない実測と合計の時間(ComfyUI の起動 約 45 秒・測る
+見つけたものを起動し、終わったら止める)、measure の提案のうち、ファイルが入っていて、この PC で
+まだ測っていないもの(この PC に保存したものは、送ったかどうかによらず測ったと数える。ほかの人の
+実測は数えない)で、その ComfyUI にノードがそろうものを、時間の目安の合計が --budget(300 秒)に
+収まるまで選び、送っていない実測と合計の時間(ComfyUI の起動 約 45 秒・測る
 時間・落とす時間を 100 Mbps の例で)を添えて計画を見せる。1 回だけ [Y/n] で尋ね、1 つずつ測る(失敗
-しても残りは続け、Ctrl+C ならそこまでのものを送るかに進む)。入っていないモデルを落とすのは、
+しても残りは続け、Ctrl+C ならそこまでのものを送るかに進む)。測る前には毎回 ComfyUI を空ける。
+入っていないモデルを落とすのは、
 --download か、1 回の [y/N] の質問に y のときだけ(入っていて測れるものが無ければ最初に、ほかは
 測り終えてから尋ねる)。download と同じ確かめと同意の決まりで、--yes だけでは落とさない。そのあと
 送るファイルのすべて(中身のすべてと個人の情報の点検)を見せて、送り方を尋ねる: 1) PR(GitHub に
@@ -8759,12 +8797,15 @@ FILE を省くと、measure と同じく ComfyUI を見つけ(--url、無けれ�
 --yes・--json・端末でないときは PR、--issue --yes は Issue(端末でなければ URL を出す)。測る前は、
 もうあるトークン(GITHUB_TOKEN か GH_TOKEN、無ければ保存したログイン)を確かめるだけで、使えなければ
 すぐ止める。ブラウザでのデバイス認証(権限 public_repo。次のために保存し、--logout で消す)は、PR を
-選んだときだけ。--yes で端末でなく、トークンが無ければ、測る前に止める。PR は、リポジトリの
+選んだときだけ。デバイス認証を待つあいだはキーが使える: r ページを開き直す、n 新しいコード、
+q 同じファイルを Issue で送る。コードの期限が切れたら、もう一度ログインするかを尋ねる。
+--yes で端末でなく、トークンが無ければ、測る前に止める。PR は、リポジトリの
 フォークで、本家とフォークの main の共通の祖先からブランチを作り、data/contrib/<GPU>/ にファイルを
 置いて開く(題は「measurements: <GPU> (<件数>)」)。その GPU の share の PR が開いていれば、そこに足す。もうある
 ファイルは飛ばす。PR を作れなければ、端末なら同じファイルを Issue で送るかを尋ねる。結果は送る前に
 保存し、測り直さない: あとで genmodelfit share --no-measure(か --issue)で送れる。送ったものは
-この PC で印を付ける(--all で含める)。ComfyUI が無ければ送っていない実測だけを送り、それも無ければ
+この PC で印を付ける(--all で含める)。測れなかったものは、1 回に 1 つの失敗の記録のファイルに
+まとめる(名前と数だけ。エラーの本文は入れない)。ComfyUI が無ければ送っていない実測だけを送り、それも無ければ
 尋ねずに ComfyUI の起動の仕方を出して 1 で終える。FILE はそのファイルだけを送る。--yes の無い
 share --issue は前からの送り方で、送っていない実測を選んで Issue のフォームを開く。
 
@@ -8772,17 +8813,20 @@ share --issue は前からの送り方で、送っていない実測を選んで
   GitHub のアカウント。測るには GPU と ComfyUI(measure と同じ)。
 
 副作用:
-  通信: 測る・落とすあいだは measure と同じ。同意のあとで github.com と api.github.com
-  (ログイン・フォーク・ブランチ・ファイル・PR)。--dry-run と --issue は通信しない。
-  実測を measure と同じく書き、送った印を <cache>/submissions_shared.json に、ログインの
-  トークンを <config>/github_token(本人だけが読める)に書く。
+  通信: 測る・落とすあいだは measure と同じ。GitHub(github.com と api.github.com): 測る前は、
+  もうあるトークンを確かめるだけ(GET /user)。ログイン・フォーク・ブランチ・ファイル・PR は、
+  送ることに同意したあとだけ。--dry-run は ComfyUI が起動しているかを 127.0.0.1 に尋ねるだけ、
+  --issue は GitHub に通信しない。実測と失敗の記録を measure と同じく書き、送った印を
+  <cache>/submissions_shared.json に、ログインのトークンを <config>/github_token(本人だけが
+  読める)に書く。
 
 終了コード:
-  0  成功(n と答えた・測るものも送るものも無いときも)
+  0  成功(n と答えた・測るものも送るものも無い・送れないだけの結果のときも)
   1  失敗: ログインできない、ComfyUI が無く送るものも無い、測れなかったものがある、送れない
      ファイルがある(個人の情報の点検の NG・検査の誤り)、GitHub が受け付けない(結果は保存した
      まま)、--json・端末でないのに --yes が無い
   2  使い方の誤り
+  130  Ctrl+C(質問の途中。測る途中なら、先にそこまでのものを送るかに進む)
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit share --dry-run --json
@@ -9882,8 +9926,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub_parser(
         "measure",
         tr(
-            "測ると役に立つモデルを選んで、起動中の ComfyUI で実測する(何も送らない)",
-            "pick a model worth measuring and measure it on your running ComfyUI (nothing is sent)",
+            "測ると役に立つモデルを選んで、ComfyUI で実測する(無ければ起動する。何も送らない)",
+            "pick a model worth measuring and measure it on ComfyUI (started if needed; nothing is sent)",
         ),
         [lang],
     )

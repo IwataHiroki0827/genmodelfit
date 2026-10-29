@@ -1793,7 +1793,7 @@ def test_B5_partly_failed_sends_the_rest(capsys, monkeypatch, this_pc, plan, gh)
     [
         (["--budget", "5"], None, "時間の上限(5 秒)に収まるものがありません(--budget で広げられます)"),
         (["--no-measure"], None, "送っていない実測はありません。"),
-        ([], "empty", "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)"),
+        ([], "empty", "測ると役に立つモデルはありません(この GPU に載るものは、この PC でもう測って"),
     ],
 )
 def test_B6_B7_B8_nothing_to_do_says_why(capsys, monkeypatch, this_pc, plan, gh, argv, setup, want):

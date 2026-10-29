@@ -91,9 +91,9 @@ PATH を変える前に開いた端末には反映されないので、新しい
 
 ### 通信するもの
 
-判定には通信しません。PC の情報は手元で読みます。通信するのは `update`・`download`・`measure`・`bench` だけで、
-相手は公開の情報か、指定した ComfyUI だけです(フォルダや URL を指定しないときは、`download` と `measure` がこの PC
-(127.0.0.1)で起動中の ComfyUI にも尋ねます)。`share` は測る前にもうあるトークンを GitHub で確かめるだけで、
+判定には通信しません。PC の情報は手元で読みます。通信するのは `update`・`download`・`measure`・`share`・`bench` だけで、
+相手は公開の情報か、指定した ComfyUI だけです(フォルダや URL を指定しないときは、`download`・`measure`・`share` が
+この PC(127.0.0.1)で起動中の ComfyUI にも尋ねます。`measure` と `share` は、そこで ComfyUI を起動することもあります)。`share` は測る前にもうあるトークンを GitHub で確かめるだけで、
 同意するまで何も送りません(同意すると、ログインして見せたファイルの PR を開くか、Issue のフォームを開く)。
 利用状況の送信(テレメトリ)もありません。詳しくは[送るもの・送らないもの](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#送るもの送らないもの)。
 
@@ -327,7 +327,7 @@ GPU の会社による上限はありません。その種類の GPU で 2 機�
 
 ### 精度
 
-0.12.0 の時点では、見積もりは 1 種類の NVIDIA の GPU の少数の実測で較正し、別の GPU の 2 件の実測で照合しています。
+0.13.0 の時点では、見積もりは 1 種類の NVIDIA の GPU の少数の実測で較正し、別の GPU の 2 件の実測で照合しています。
 送られた実測のまとめ(`measurements_community.json`)は、1 つの出どころ(メンテナ。RTX 3070 の SDXL の 4 つの設定)の提出 4 件で、そろった(consistent)行はまだありません。`m` の無い値は目安として見てください。
 ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で測ったピークは最低限の必要量ではありません。
 今の件数と詳しい誤差は [docs/accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md)。
@@ -351,7 +351,7 @@ ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で�
 | `gate` | Verified のモデルの数と、ほかが保留の理由 |
 | `diff [OLD] [NEW] [--all]` | 2 つの一覧の違い([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#一覧の変化)) |
 | `config [set KEY VALUE \| unset KEY \| path]` | 設定: `download` の ComfyUI のフォルダと表示の言語([docs/download.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/download.ja.md#genmodelfit-config)) |
-| `measure [名前か ID] [--url URL]` | 起動中の ComfyUI でモデルを実測する。名前を省くと、測ると役に立つモデルを出す([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)) |
+| `measure [名前か ID] [--url URL]` | ComfyUI でモデルを実測する(起動中のもの、無ければ見つけたものを起動して、終わったら止める)。名前を省くと、測ると役に立つモデルを出す([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)) |
 | `share [ファイル]` | 数分測って、結果を GitHub の PR で送る(`--issue` は Issue のフォーム)([下](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する)) |
 
 保守する人向け: `review`(確認待ちのモデル)・`bench`(1 つのテンプレートをすべてのオプションで測る)・`contrib`
@@ -423,15 +423,20 @@ genmodelfit share
 1. `measure` と同じく ComfyUI を見つけます: この PC で起動中のもの(か `--url`)、無ければ見つけた ComfyUI
    (ポータブル版・`.venv` のある手で入れたもの / comfy-cli・ComfyUI デスクトップ版)を裏で起動し、終わったら止めます
    (`--no-start` で起動しない)。
-2. `measure` の提案のうち、ファイルが入っていて、この GPU の結果がまだ無いもの(この PC に保存したものも数える)を、
-   時間の目安の合計が 5 分ほど(`--budget`)になるまで選び、計画・まだ送っていない実測・合計の時間(ComfyUI の起動・
+2. `measure` の提案のうち、ファイルが入っていて、この PC でまだ測っていないもの(この PC に保存したものは、送ったか
+   どうかによらず数える。同じ GPU のほかの人の実測は数えない。2 つの出どころの実測がそろうと、段階を実測で決められる
+   ため)を、時間の目安の合計が 5 分ほど(`--budget`)になるまで選び、計画・まだ送っていない実測・合計の時間(ComfyUI の起動・
    測る時間・落とす時間を 100 Mbps の例で)を見せて 1 回だけ尋ねます。ComfyUI に無いノードが要るものは外し
    (ComfyUI を更新すると測れます)、次の提案で埋めます。
-3. 1 つずつ測ります。入っているものが無いか、時間が残れば、ほかのものを落として測るかを 1 回だけ尋ねます
-   (`[y/N]`。量と時間を見せる。`--download` で尋ねない。落とすときは `download` と同じ確かめ)。
+3. 1 つずつ測り、測る前には毎回 ComfyUI を空けます(モデルを外し、前の結果を消す)。入っているものが無いか、
+   時間が残れば、ほかのものを落として測るかを 1 回だけ尋ねます(`[y/N]`。量と時間を見せる。`--download` で
+   尋ねない。落とすときは `download` と同じ確かめ)。番号の付いた手順を出し、端末では ComfyUI の起動・1 回ごとの
+   測定(目安に対する時間・そこまでの最大 VRAM)・ダウンロードの進み具合をその場で書き換えて見せます。端末で
+   なければ、10 秒ほどごとに 1 行ずつ出します。
 4. 送るファイルのすべて(中身のすべてと個人の情報の点検)を見せて、送り方を尋ねます: **1) PR**(GitHub にログイン:
    `GITHUB_TOKEN`・`GH_TOKEN`、無ければ保存したログイン、無ければブラウザで GitHub のデバイス認証。出たコードを入れる。
-   権限は `public_repo`。`share --logout` で消す)、**2) Issue**(ログインなし: ブラウザで実測のフォームを 1 つの
+   待つあいだは `r` でページを開き直し、`n` で新しいコード、`q` で同じファイルを Issue で送る。コードの期限が切れたら、
+   もう一度ログインするかを尋ねる。権限は `public_repo`。`share --logout` で消す)、**2) Issue**(ログインなし: ブラウザで実測のフォームを 1 つの
    ファイルに 1 つ開き、「Create」を押すとボットが PR を作る)、**q) 送らない**。PR は、あなたのアカウントのフォークの
    ブランチの `data/contrib/<GPU>/` にファイルを置いて開きます(開いている PR があればそこに足す)。数分で検査が動き、
    メンテナがマージすると次の版から使われます。
@@ -441,23 +446,33 @@ genmodelfit share
 
 `share --dry-run` は計画と送る中身を見せるだけ、`share --no-measure` はまだ送っていない実測だけを送ります。
 `--yes` の無い `share --issue` は前からの送り方で、送っていない実測を選んでフォームを開きます。
+測るのは、同時に 1 つの `measure` か `share` だけです。genmodelfit が起動した ComfyUI は、終わったら止めます
+(失敗・Ctrl+C・端末を閉じたときも)。測る前は、ほかのプログラムが GPU をあまり使っていないことを確かめます(GPU の
+メモリを 1.5 GiB か 20% より多く使っていれば測らない)。nvidia-smi の無い AMD・Intel・Apple の GPU では、できる
+ところは ComfyUI で確かめ、確かめられなかったことは結果のメモに書きます。
 
-`genmodelfit measure` は、選んだ 1 つを測ります。この GPU に載り、この GPU の実測がまだ無いモデルを出します(入っているもの → 時間が
-   短いもの → 落とす量が少ないものの順)。選ぶと、何をするか(モデル・設定・どの ComfyUI か・ファイルが入っているか・
-   時間の目安・何も送らないこと)を見せてから、この PC で起動中の ComfyUI(か `--url`)で測ります。入っていないモデルは、
-   `download` と同じ確かめをして先に落とします。
-   この GPU でテンプレートの設定のまま測ったモデルには、予測式の確かめに役立つ「設定を変えた測定」も出ます:
-   画像の解像度(512・768・1024・1536 px)、動画のコマ数(大きさはテンプレートのまま 17・33・49・81)、音楽・効果音の
-   長さ(10・30・60・120 秒)。その設定でこの GPU に載り、この GPU にその設定の実測が無いものだけで、1 つのモデルに
-   2 件まで、時間は 5 分ほどまでです(`--resolution`・`--frames`・
-   `--length` の付いた行。自分で選ぶなら `genmodelfit measure <ID> --resolution 1536x1536`)。1 回は生成 1 回で数分です。
-   保存したものは `share` が送ります。
+`genmodelfit measure` は、選んだ 1 つを測ります。この GPU に載り、この PC でまだ測っていないモデルを出します
+(入っているもの → 時間が短いもの → 落とす量が少ないものの順。ComfyUI に無いノードが要るものは出さない)。選ぶと、
+何をするか(モデル・設定・どの ComfyUI か・ファイルが入っているか・時間の目安・何も送らないこと)を見せてから、
+`share` と同じ ComfyUI で測ります: この PC で起動中のもの(か `--url`)、無ければ見つけた ComfyUI を起動して、
+終わったら止めます(`--no-start` で起動しない)。起動した ComfyUI は測る前に空けます。自分の ComfyUI は `--free`
+のときだけです。入っていないモデルは、`download` と同じ確かめをして先に落とします。
+この PC でテンプレートの設定のまま測ったモデルには、予測式の確かめに役立つ「設定を変えた測定」も出ます:
+画像の解像度(512・768・1024・1536 px)、動画のコマ数(大きさはテンプレートのまま 17・33・49・81)、音楽・効果音の
+長さ(10・30・60・120 秒)。その設定でこの GPU に載り、この PC でその設定をまだ測っていないものだけで、1 つの
+モデルに 2 件まで、時間は 5 分ほどまでです(`--resolution`・`--frames`・`--length` の付いた行。自分で選ぶなら
+`genmodelfit measure <ID> --resolution 1536x1536`)。1 回は生成 1 回で数分です。保存したものは `share` が送ります。
+測れなかったときは失敗の記録を保存し、次の `share` が送ります。
 
 送るもの(送る前にすべて見せます): GPU の名前・VRAM・世代と compute capability(NVIDIA)・ドライバの版・会社と backend・
 AMD・Intel の GPU では PCI の型番 ID(`1002:744c` のような機種の番号。同じ機種ならどのカードでも同じ)・OS の種類・
 GiB に丸めたメモリ・ComfyUI と genmodelfit の版・日付(時刻は入れない)・モデル・設定・結果・最大 VRAM / メモリ・時間・
-モデルの載せ方(`offload`)・測り方・モデルのファイルの指紋・bench が書く測り方のメモ。送らないもの: ホスト名・
-ユーザー名・パス・GPU の UUID・PCI の差し場所・シリアル番号・IP・CPU 名・正確な時刻・プロンプト。
+モデルの載せ方(`offload`)・測り方・モデルのファイルの指紋・bench が書く測り方のメモ。0.13.0 からは、それに対する
+genmodelfit の見積もり(この PC の実測は使わずに作ったもの)・時間の内訳・最大 VRAM が共有メモリに逃げた印・一覧の版と、
+1 回に 1 つの失敗の記録のファイル(モデル・失敗の種類・足りないノードの名前・エラーの種類の名前・失敗したノードの
+種類)も送ります。送らないもの: ホスト名・ユーザー名・パス・GPU の UUID・PCI の差し場所・シリアル番号・IP・CPU 名・
+正確な時刻・プロンプト・エラーの本文・自分で止めた測定やほかのプログラムに乱された測定・この PC にファイルが無い
+モデル。
 
 何に使われるか: 実測は同じ GPU を使う人の判定に使います。NVIDIA で ComfyUI の動的 VRAM(今の既定)のときは作業用メモリ
 しか測れないので、見積もりの確かめ(照合)に使い、まだ段階は決めません(#100。[accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md#実測の使い方))。
@@ -473,10 +488,12 @@ GiB に丸めたメモリ・ComfyUI と genmodelfit の版・日付(時刻は入
 - 判定のコマンドと Python の関数(自分で呼ぶ `update_from_release` と `download` を除く)は**ネットにつなぎません**(すべてのソケットをふさいだ試験で確かめています)。
 - `update` は公開の情報(GitHub・Hugging Face の API・モデルの URL への HEAD)を読むだけ、`--from-release` は `db.json` と署名を取るだけです。
   `download` はモデルのファイルを取るだけ(フォルダを指定しないときは、この PC で起動中の ComfyUI(127.0.0.1 の
-  8188・8000)にフォルダの場所も尋ねる)。`measure` は同じポートに ComfyUI が起動しているかを尋ね(`--url` が無いとき)、
-  その ComfyUI とだけ話します(ほかは GitHub の公式のテンプレートと、同意したときのモデルのファイル)。起動した
-  ComfyUI は 127.0.0.1 でだけ待ちます。`bench` は `--url` で指定した ComfyUI とだけ話します。
-- genmodelfit は PC の情報・実測・プロンプトを勝手には送りません。実測が共有されるのは、`share` で同意したとき
+  8188・8000)にフォルダの場所も尋ねる)。`measure` と `share` は同じポートに ComfyUI が起動しているかを尋ね
+  (`--url` が無いとき)、その ComfyUI とだけ話します(ノードの確かめと測る仕事。ほかは、その ComfyUI に無いときの
+  GitHub の公式のテンプレートと入力の画像と、同意したときのモデルのファイル)。起動した ComfyUI は 127.0.0.1 でだけ
+  待ちます。`bench` は `--url` で指定した ComfyUI とだけ話します。
+- genmodelfit は PC の情報・実測・プロンプトを勝手には送りません。`share` は測る前に、もうある GitHub のトークン
+  (`GITHUB_TOKEN`・`GH_TOKEN`・保存したログイン)を api.github.com で確かめるだけで、ほかには何も付けません。実測が共有されるのは、`share` で同意したとき
   (先にすべてのファイルを見せる)だけで、そのとき話すのは github.com と api.github.com だけです(ログインと、
   あなたのアカウントからそのファイルの PR を開く。[実測で協力する](https://github.com/laxshmate/genmodelfit/blob/main/README.ja.md#実測で協力する))。
   ログインのトークンは設定のフォルダに本人だけが読める形で保存し、表示しません。`share --issue`(と `bench --share`・
