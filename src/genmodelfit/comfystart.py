@@ -43,6 +43,9 @@ from .i18n import tr
 
 START_ENV = "GENMODELFIT_COMFYUI_START"  # 0 / off / no / false で自動で起動しない
 DEFAULT_START_TIMEOUT = 300.0
+# 起動にかかる時間の目安(秒)。share の計画の合計に足す(目安。実機の 0.4x の ComfyUI で 30 秒ほど、
+# 初めて・カスタムノードが多いと長くなる)
+TYPICAL_START_SECONDS = 45
 POLL_SECONDS = 2.0
 LOG_TAIL_LINES = 20
 # デスクトップ版のアプリの resources(ToDesktop が置く場所。見つからなければ起動しない)

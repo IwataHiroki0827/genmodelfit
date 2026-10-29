@@ -1149,6 +1149,8 @@ the issue form (#113). `contrib share` is `share --issue` with `command: "contri
 | `marked_shared` | int | files marked as sent |
 | `sent` | bool | a pull request was made or updated |
 | `github` | object | `{login, source}` (`source`: `env:GITHUB_TOKEN`, `env:GH_TOKEN`, `cache` or `device`); never the token |
+| `method` / `issues` | str / object[] | `issue` and the `share --issue --json` objects per file, when sent as issues |
+| `hint` | str | with a failed pull request: how to send the saved results later (`share --no-measure`) |
 | `dry_run` | bool | only with `--dry-run` |
 | `error` | str | on a failure |
 
@@ -1161,20 +1163,33 @@ Rules:
   (`measure.share_plan`; a row that does not fit is skipped and the next is tried). When a ComfyUI is reachable,
   suggestions whose template uses nodes it lacks are left out (`skipped`) and the next ones fill the budget
   (`download_plan` too). With a ComfyUI to start, this happens after it starts, and the new plan is shown.
-- **Order**: plan → one `[Y/n]` (covers measuring and starting ComfyUI; `--yes` skips it) → sign-in → start ComfyUI →
-  measure one by one (`_measure_run`, the same as `measure`; a failure does not stop the rest; Ctrl+C goes on to
-  sending) → show every file with the privacy checks → `[Y/n]` → pull request.
+- **Order**: plan with the total time → one `[Y/n]` (covers measuring and starting ComfyUI; `--yes` skips it) → check
+  an existing token → start ComfyUI → measure one by one (`_measure_run`, the same as `measure`; a failure does not
+  stop the rest; Ctrl+C goes on to sending) → show every file with the privacy checks → choose how to send
+  (`1) pull request 2) issues q) not now`, default 1; `--yes` / `--json` / no terminal: pull request;
+  `--issue --yes`: issues) → sign in if needed → pull request, or one issue form per file (`_share`, the same as
+  `share --issue`; the URLs are printed without a terminal).
+- **Total time** on the plan: starting ComfyUI when it will be started (`comfystart.TYPICAL_START_SECONDS`, 45 s), the
+  sum of the time hints, and when downloads are planned their measuring time plus the download at 100 Mbps
+  (`cli.DOWNLOAD_EXAMPLE_MBPS`; shown as an example, "depends on your connection"). The download question shows the
+  same.
+- **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
+  measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
+  measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay
+  unsent and `share --no-measure` (or `--issue`) sends them. A failed pull request in a terminal offers issues for the
+  same files.
 - **Downloads**: never with `--yes` or `--json` alone. With `--download`, or `y` to one `[y/N]` question (the models,
   total size and time): asked before signing in and before starting ComfyUI when no installed suggestion can be used,
   after starting when the installed ones all lacked nodes, else after measuring. Downloading is `download` with its
   own questions and consent rules (`--any-license` is passed on; suggestions are never uncensored). Without a
   question, `download_hint` says that `--download` would download them.
-- **Sign-in** before measuring: `GITHUB_TOKEN`, `GH_TOKEN`, the saved token (`<config>/github_token`
-  `{access_token, expires_at}`; expired or answering 401: deleted), then the device login (client id
+- **Sign-in**: before measuring only an existing token is checked (`GITHUB_TOKEN`, `GH_TOKEN`, else the saved one;
+  a token that does not work stops it; without one, `--yes` / `--json` / no terminal stop it before measuring unless
+  `--issue`). The sign-in itself happens when a pull request is chosen: `GITHUB_TOKEN`, `GH_TOKEN`, the saved token
+  (`<config>/github_token` `{access_token, expires_at}`; expired or answering 401: deleted), then the device login (client id
   `github.CLIENT_ID`, `GENMODELFIT_GH_CLIENT_ID` overrides it and empty turns it off; scope `public_repo`; only in a
   terminal without `--json`; `slow_down` adds 5 s to the interval; `expired_token` / `access_denied` stop). The
-  refresh token is never stored. A saved token that would expire before measuring is done (budget + start timeout +
-  10 min) is renewed first in a terminal. Before sending, the token is checked again: if it expired, a terminal signs
+  refresh token is never stored. Before sending, the token is checked again: if it expired, a terminal signs
   in again; otherwise it exits 1 saying the measurements are saved and `share --no-measure` sends them.
 - **Pull request**: fork `laxshmate/genmodelfit` (created and waited for when missing), branch
   `genmodelfit-share/<GPU slug>/<sha8 of the paths>` from the upstream `main`, the files at `data/contrib/<GPU>/<date>-<sha8>.json`

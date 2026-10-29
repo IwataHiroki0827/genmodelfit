@@ -855,16 +855,20 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 ```
 
 - Measure for a few minutes and send the measurements as a GitHub pull request.
-- Without FILE it finds ComfyUI like measure (`--url`, else one running on this PC), picks the suggestions of measure whose files are installed until their rough times add up to `--budget` (300 s), shows the plan with the unsent measurements and asks once [Y/n], then measures them one by one (a failure does not stop the rest; Ctrl+C goes on to sending what was measured).
-- If time is left and some suggestions are not installed, it asks once whether to download and measure them [y/N] (default no; `--download` skips the question; downloading uses the same questions and consent rules as download, and `--yes` alone never downloads).
-- Then it shows every file to send (the whole content and the privacy checks) and asks [Y/n].
-- It signs in to GitHub before measuring: GITHUB_TOKEN or GH_TOKEN, else the saved sign-in, else the GitHub device login in your browser (scope public_repo; saved for next time; `--logout` removes it).
-- It forks the repository if needed, makes a branch from the upstream main, adds the files under `data/contrib/<GPU>/` and opens a pull request (titled "measurements: `<GPU>` (`<count>`)"), or adds them to your open share pull request; files already there are skipped.
-- Sent files are marked on this PC and not sent again (`--all` includes them).
-- When no ComfyUI runs, it starts the one it finds and stops it afterwards, as measure does.
-- Without any ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking or signing in.
-- `--no-measure` sends the unsent measurements only; FILE sends that file only.
-- `--issue` is the older way without signing in: it opens the measurement issue form in your browser.
+- Without FILE it finds ComfyUI like measure (`--url`, else one running on this PC, else it starts the one it finds and stops it afterwards), picks the suggestions of measure whose files are installed and that have no result on this GPU yet (also none saved on this PC, sent or not) until their rough times add up to `--budget` (300 s), and shows the plan with the unsent measurements and the total time (starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps).
+- It asks once [Y/n], then measures one by one (a failure does not stop the rest; Ctrl+C goes on to sending what was measured).
+- Models that are not installed are downloaded only with `--download` or y to one [y/N] question (asked first when nothing installed can be measured, else after measuring), with download's questions and consent rules; `--yes` alone never downloads.
+- Then it shows every file to send (the whole content and the privacy checks) and asks how to send it: 1) a pull request (sign in to GitHub) 2) issues (no sign-in; the form opens in your browser, one issue per file) q) not now.
+- `--yes`, `--json` or no terminal send a pull request; `--issue` `--yes` sends issues (the URLs are printed without a terminal).
+- Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN, else the saved sign-in) and stops at once if it does not work; the device login in your browser (scope public_repo; saved for next time; `--logout` removes it) happens only when you choose a pull request.
+- With `--yes` and no terminal, a missing token stops it before measuring.
+- The pull request comes from a fork of the repository: a branch from the upstream main with the files under `data/contrib/<GPU>/` (titled "measurements: `<GPU>` (`<count>`)"), or your open share pull request for that GPU; files already there are skipped.
+- If the pull request cannot be made, a terminal offers issues for the same files.
+- Results are saved before sending and are never measured again: `genmodelfit share --no-measure` (or `--issue`) sends them later.
+- Sent files are marked on this PC (`--all` includes them).
+- Without any ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking.
+- FILE sends that file only.
+- share `--issue` without `--yes` is the older way: choose an unsent measurement and open its issue form.
 
 **Options and arguments**
 
@@ -877,7 +881,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | `--no-measure` |  |  | do not measure; send only the unsent measurements |
 | `--budget` | `SEC` | `300` | the most time to spend measuring (sum of the rough time guides; seconds) |
 | `--dry-run` |  |  | only show the plan and what would be sent (no measuring, no sign-in, no network) |
-| `--issue` |  |  | send with the GitHub issue form in your browser instead, without signing in (the older way) |
+| `--issue` |  |  | send with the GitHub issue form instead, without signing in (with `--yes` after measuring; without it the older way) |
 | `--print-url` |  |  | with `--issue`: do not open a browser; print only the URL of the form (for scripts) |
 | `--logout` |  |  | remove the saved GitHub sign-in (token) |
 | `--all` |  |  | also include measurements already marked as sent |
@@ -907,7 +911,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | Code | Meaning |
 |---|---|
 | 0 | Success (also: answered n, nothing to measure or send) |
-| 1 | Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was refused (privacy check NG or check errors), GitHub refused the upload, `--json` or no terminal without `--yes` |
+| 1 | Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was refused (privacy check NG or check errors), GitHub refused the upload (the results stay saved), `--json` or no terminal without `--yes` |
 | 2 | Usage error |
 
 **Examples for scripts and apps**
@@ -915,6 +919,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 ```sh
 genmodelfit share --dry-run --json
 genmodelfit share --no-measure --yes --json
+genmodelfit share --issue --yes
 genmodelfit share --issue <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
 ```
 

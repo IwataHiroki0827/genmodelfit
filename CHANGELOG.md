@@ -25,6 +25,12 @@ All notable changes to this project are documented here. The format is based on
   `--comfyui-dir`, `--timeout`, `--no-start`, `--start-timeout`, `--no-cache`. The issue form is kept as
   `share --issue` (no sign-in); `contrib share` and `bench --share` keep using it, and `share --json` without `--yes`
   still lists the unsent measurements (`share FILE --json` still previews) for apps. New module `github.py`.
+  The plan shows the total time (starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps).
+  After showing the files it asks how to send them: 1) pull request, 2) issues (no sign-in; one form per file),
+  q) not now; `--issue --yes` measures and sends issues. Before measuring only an existing token is checked; the device
+  login happens when a pull request is chosen. Results are saved before sending and never measured again: models
+  with a result saved on this PC (sent or not) are not planned, and after q or a failed pull request (a terminal then
+  offers issues) `share --no-measure` sends them.
 
 ### Added
 
@@ -34,6 +40,7 @@ All notable changes to this project are documented here. The format is based on
   and the app's ComfyUI, only when both are found), waited for with `/system_stats` (`--start-timeout`, default 300 s),
   and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
   goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
+- `measure` prints its screen before the progress of a started ComfyUI also when the output is redirected.
 - **Missing nodes are checked before measuring** (#124): once ComfyUI is reachable, `share` leaves out suggestions
   whose template uses nodes that ComfyUI lacks ("update ComfyUI to measure them") and fills the time with the next
   ones; `measure` hides them from its list and stops a named model before downloading or measuring. The "Next:" line

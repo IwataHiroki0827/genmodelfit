@@ -34,11 +34,13 @@ genmodelfit share
 and start it) with an NVIDIA, AMD, Intel or Apple GPU, and about 5 minutes (plus downloads, only if you agree). No
 git and no programming.
 
-1. **`genmodelfit share`** shows the plan: the installed models worth measuring on your GPU (about 5 minutes in all)
-   and your measurements not sent yet. Press Enter to go on.
-2. **Sign in to GitHub** the first time: it shows a code and opens github.com/login/device in your browser; enter
-   the code there. The sign-in is saved for next time (it expires after about 8 hours; `share --logout` removes it).
-3. It measures, shows every file to send, and asks again. Press Enter: it opens a pull request on your account.
+1. **`genmodelfit share`** shows the plan: the installed models worth measuring on your GPU, your measurements not
+   sent yet, and the total time (about 5 minutes, plus starting ComfyUI). Press Enter to go on.
+2. It measures, shows every file to send, and asks how to send it: **1) pull request** (the default) or **2) issues**
+   (no sign-in), or **q) not now**.
+3. For a pull request, **sign in to GitHub** the first time: it shows a code and opens github.com/login/device in your
+   browser; enter the code there. The sign-in is saved for next time (it expires after about 8 hours;
+   `share --logout` removes it). It opens a pull request on your account.
 
 If you have more time, run `genmodelfit share` again later: each time it measures the next models or settings that
 have no measurement on your GPU yet.
@@ -54,18 +56,26 @@ Step by step, in detail:
    uses another ComfyUI. For the cautions before measuring, see "[1. Measure](#1-measure)".
 2. The plan uses the suggestions of `genmodelfit measure` (below) whose files are installed, in its order, until the
    rough times add up to `--budget` (300 s). Models that need nodes your ComfyUI does not have are left out ("update
-   ComfyUI to measure them") and the next suggestions take their place. One question (`[Y/n]`) covers measuring and
-   starting ComfyUI.
+   ComfyUI to measure them") and the next suggestions take their place. Models already measured on this GPU are not
+   planned again, also when the result is only saved on this PC (sent or not). The plan shows the total time:
+   starting ComfyUI (about 45 s, `comfystart.TYPICAL_START_SECONDS`), measuring, and downloading as an example at
+   100 Mbps. One question (`[Y/n]`) covers measuring and starting ComfyUI.
 3. If no installed model can be measured, or time is left after measuring, it asks once whether to download the
    others (`[y/N]`, with the models, the total size and the time; `--download` skips the question). Downloading uses
    the same questions and consent rules as `genmodelfit download`. With `--yes` or without a terminal it never
    downloads and says that `--download` would.
-4. It signs in before measuring (so a long run does not end in a failed sign-in): `GITHUB_TOKEN` or `GH_TOKEN` if set
-   (it needs the `public_repo` scope), else the saved sign-in, else GitHub's device login.
+4. Before measuring it only checks a token it already has (`GITHUB_TOKEN` or `GH_TOKEN`, which needs the
+   `public_repo` scope, else the saved sign-in) and stops at once if it does not work. With `--yes` and no terminal it
+   needs one for a pull request (or use `share --issue --yes`).
 5. It measures one by one; a failure does not stop the rest, and Ctrl+C goes on to sending what was measured.
 6. It shows every file to send and the privacy checklist (GPU name, VRAM, OS family, model, settings and values; no
    PC or user names). **Read it yourself, including the note.** Files with an `[NG]` or a check error are not sent.
-7. After you agree, it forks the project on your account (once), makes a branch from the project's `main`, adds the
+7. It asks how to send: 1) a pull request (signing in with GitHub's device login if there is no token yet),
+   2) issues (no sign-in; one measurement form per file opens in your browser), q) not now. `--yes`, `--json` and no
+   terminal send a pull request; `share --issue --yes` sends issues (it prints the URLs without a terminal). Results
+   are saved before this and never measured again: after q, or a failed pull request (a terminal then offers issues),
+   `genmodelfit share --no-measure` (or `share --issue`) sends them later.
+8. For a pull request, it forks the project on your account (once), makes a branch from the project's `main`, adds the
    files under `data/contrib/<GPU>/` and opens a pull request titled `measurements: <GPU> (<count>)`. If you already
    have an open pull request from `share` for that GPU, it adds the files there; files already there are skipped, so
    running it again never sends a file twice. The `Contrib` workflow checks it within minutes; once a maintainer
@@ -75,7 +85,7 @@ Step by step, in detail:
 `share --no-measure` sends only the measurements you have not sent; `share <file>` sends one submission file.
 Sent files are marked on this PC (`<cache>/submissions_shared.json`) and not sent again (`--all` includes them).
 
-**Without signing in: `share --issue`.** It lists the measurements you have not sent; choose one by number. It shows
+**Without signing in: `share --issue`.** Without `--yes` it lists the measurements you have not sent; choose one by number. It shows
 everything that will be sent and the privacy checklist, then opens the measurement form on GitHub in your browser
 with the content filled in. Sign in to GitHub and press **"Create"**. A bot checks it and replies on the page within
 a few minutes; if it is fine, it opens a pull request that adds the file to `data/contrib/` and a maintainer accepts

@@ -313,6 +313,7 @@ def suggestions(
     content: str = "sfw",
     policy: Any = None,
     variants_per_model: int | None = VARIANTS_PER_MODEL,
+    extra: Any = (),
 ) -> list[Suggestion]:
     """測ると役に立つモデル(#113): テンプレートがあり、この PC の GPU に載り(perfect / good で GPU)、
     この GPU にテンプレートの設定のままの実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
@@ -334,7 +335,9 @@ def suggestions(
     roots = roots or []
     refs = directory_refs(db)
     c = load_coefficients()
-    ms = db.measurements
+    # extra: この PC に保存した、まだ一覧に取り込まれていない実測(送る前の提出など。#124)。
+    # 「この GPU に実測があるか」だけに足す(測り直さない)
+    ms = [*db.measurements, *extra]
     per_key: dict[tuple, list[Suggestion]] = {}
     for f in evaluate(db, system, content=content, policy=policy, coefficients=c):
         m, e = f.model, f.estimate

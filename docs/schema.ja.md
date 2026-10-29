@@ -1100,6 +1100,8 @@ bench が Measurement を埋める方法(測り方):
 | `marked_shared` | int | 送った印を付けた数 |
 | `sent` | bool | PR を作ったか、足した |
 | `github` | object | `{login, source}`(`source` は `env:GITHUB_TOKEN`・`env:GH_TOKEN`・`cache`・`device`)。トークンは入れない |
+| `method` / `issues` | str / object[] | Issue で送ったときの `issue` と、ファイルごとの `share --issue --json` のオブジェクト |
+| `hint` | str | PR で送れなかったとき: 保存した結果をあとで送る方法(`share --no-measure`) |
 | `dry_run` | bool | `--dry-run` のときだけ |
 | `error` | str | 失敗したとき |
 
@@ -1111,18 +1113,28 @@ bench が Measurement を埋める方法(測り方):
   あいだ取る(`measure.share_plan`。収まらない行は飛ばして次を見る)。ComfyUI に届けば、その ComfyUI に無いノードを
   使う提案を外し(`skipped`)、次の提案で埋める(`download_plan` も)。起動する ComfyUI なら起動したあとで行い、新しい
   計画を見せる。
-- **順**: 計画 → 1 回の `[Y/n]`(測ることと ComfyUI の起動を兼ねる。`--yes` で省く)→ ログイン → ComfyUI の起動 →
-  1 つずつ測る(`_measure_run`。`measure` と同じ。失敗しても残りは続け、Ctrl+C なら送るかに進む)→ ファイルのすべてと
-  個人の情報の点検を見せる → `[Y/n]` → PR。
+- **順**: 合計の時間を付けた計画 → 1 回の `[Y/n]`(測ることと ComfyUI の起動を兼ねる。`--yes` で省く)→ もうある
+  トークンを確かめる → ComfyUI の起動 → 1 つずつ測る(`_measure_run`。`measure` と同じ。失敗しても残りは続け、Ctrl+C
+  なら送るかに進む)→ ファイルのすべてと個人の情報の点検を見せる → 送り方を選ぶ(`1) PR 2) Issue q) 送らない`。
+  既定は 1。`--yes`・`--json`・端末でないときは PR、`--issue --yes` は Issue)→ 要ればログイン → PR か、ファイルごとに
+  Issue のフォーム(`_share`。`share --issue` と同じ。端末でなければ URL を出す)。
+- **合計の時間**(計画に出す): 起動するなら ComfyUI の起動(`comfystart.TYPICAL_START_SECONDS`、45 秒)、時間の目安の
+  合計、落とすことになっていれば、それを測る時間と 100 Mbps で落とす時間(`cli.DOWNLOAD_EXAMPLE_MBPS`。例で、
+  「回線しだい」と添える)。落とすかの質問にも同じものを出す。
+- **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
+  数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
+  `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に
+  失敗したら、同じファイルを Issue で送るかを尋ねる。
 - **落とす**: `--yes`・`--json` だけでは落とさない。`--download` か、1 回の `[y/N]` の質問(モデル・量の合計・時間を見せる)
   に y のときだけ。尋ねるのは、使える入っている提案が無ければログインと ComfyUI の起動の前、入っているものがどれも
   ノードが足りなければ起動のあと、ほかは測り終えたあと。落とすのは `download` で、その確かめと同意の決まりのまま
   (`--any-license` は渡す。提案に無検閲のものは出ない)。尋ねないときは `download_hint` で `--download` を案内する。
-- **ログイン**は測る前: `GITHUB_TOKEN`・`GH_TOKEN`、保存したトークン(`<config>/github_token` の
+- **ログイン**: 測る前は、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`、無ければ保存したもの)を確かめるだけ(使えなければ
+  止める。無いときは、`--yes`・`--json`・端末でないなら `--issue` を除いて測る前に止める)。ログインするのは PR を
+  選んだとき: `GITHUB_TOKEN`・`GH_TOKEN`、保存したトークン(`<config>/github_token` の
   `{access_token, expires_at}`。期限切れか 401 なら消す)、デバイス認証(client id は `github.CLIENT_ID`。
   `GENMODELFIT_GH_CLIENT_ID` で替え、空にすると使わない。scope は `public_repo`。端末で `--json` の無いときだけ。
-  `slow_down` で間隔を 5 秒増やし、`expired_token`・`access_denied` で止める)。refresh_token は保存しない。測り終える
-  前(上限 + 起動の待ち + 10 分)に切れる保存したトークンは、端末なら先にログインし直す。送る前にもう一度確かめ、切れて
+  `slow_down` で間隔を 5 秒増やし、`expired_token`・`access_denied` で止める)。refresh_token は保存しない。送る前にもう一度確かめ、切れて
   いれば端末ならログインし直し、そうでなければ、測った結果は保存してあり `share --no-measure` で送れることを言って 1 で終える。
 - **PR**: `laxshmate/genmodelfit` をフォークし(無ければ作り、出来るまで待つ)、本家の `main` からブランチ
   `genmodelfit-share/<GPU の slug>/<パスの sha8>` を作り、ファイルを `data/contrib/<GPU>/<date>-<sha8>.json`(contrib の

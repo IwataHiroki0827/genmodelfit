@@ -439,20 +439,27 @@ genmodelfit share
 1. It finds your ComfyUI like `measure`: one running on this PC (or `--url`), else the installed one it finds
    (portable, manual / comfy-cli with a `.venv`, or ComfyUI Desktop), which it starts in the background and stops
    afterwards (`--no-start` turns that off).
-2. It picks the suggestions of `measure` whose files are installed until their rough times add up to about 5 minutes
-   (`--budget`), shows the plan and the measurements you have not sent yet, and asks once. Models that need nodes your
-   ComfyUI does not have are left out (update ComfyUI to measure them) and the next suggestions fill their place.
-3. It signs in to GitHub before measuring: `GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's
-   device login in your browser (enter the code it shows; scope `public_repo`; `share --logout` removes it).
-4. It measures them one by one. If none is installed, or time is left, it asks once whether to download the others
-   (`[y/N]`, with the size; `--download` skips the question; downloading has the same questions as `download`).
-5. It shows every file to send (the whole content and the privacy checks) and asks again. Then it forks the project
-   on your account, puts the files under `data/contrib/<GPU>/` on a branch and opens a pull request (or adds them to
-   your open one). A check runs within minutes; once a maintainer merges it, the next version uses it.
+2. It picks the suggestions of `measure` whose files are installed and that have no result on your GPU yet (also
+   none saved on this PC) until their rough times add up to about 5 minutes (`--budget`), shows the plan, the
+   measurements you have not sent yet and the total time (starting ComfyUI, measuring, and downloading as an example
+   at 100 Mbps), and asks once. Models that need nodes your ComfyUI does not have are left out (update ComfyUI to
+   measure them) and the next suggestions fill their place.
+3. It measures them one by one. If none is installed, or time is left, it asks once whether to download the others
+   (`[y/N]`, with the size and time; `--download` skips the question; downloading has the same questions as
+   `download`).
+4. It shows every file to send (the whole content and the privacy checks) and asks how to send it:
+   **1) pull request** (sign in to GitHub: `GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device
+   login in your browser; enter the code it shows; scope `public_repo`; `share --logout` removes it), **2) issues**
+   (no sign-in: the measurement form opens in your browser, one per file, and you press "Create"; a bot makes the
+   pull request), or **q) not now**. A pull request comes from a fork on your account, with the files under
+   `data/contrib/<GPU>/` on a branch (or added to your open one). A check runs within minutes; once a maintainer
+   merges it, the next version uses it.
+5. Results are saved before sending and never measured again. If you choose q or the pull request fails (a terminal
+   then offers issues), `share --no-measure` (or `share --issue`) sends them later. Before measuring, only a token you
+   already have is checked; with `--yes` and no terminal it needs one (`GITHUB_TOKEN`), or use `share --issue --yes`.
 
 `share --dry-run` only shows the plan and what would be sent; `share --no-measure` sends only the measurements you
-have not sent. `share --issue` is the older way without signing in: it opens the measurement form on GitHub, where
-you press "Create" and a bot makes the pull request.
+have not sent. `share --issue` without `--yes` is the older way: choose an unsent measurement and open its form.
 
 `genmodelfit measure` measures one model you choose. It lists models that fit your GPU and have no measurement on it yet (installed ones first, then
    the shorter time, then the smaller download). Choose one; it shows what it will do (model, settings, which ComfyUI,
