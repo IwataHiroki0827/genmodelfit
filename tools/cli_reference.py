@@ -42,7 +42,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | What you want | Command | More |
 |---|---|---|
 | Install | `pipx install genmodelfit` (or `uv tool install genmodelfit` / `pip install genmodelfit`); to try without installing, `uvx genmodelfit recommend` | [README, "Install"](../README.md#install) |
-| `genmodelfit` is "not found" after installing | `python -m genmodelfit recommend` (the same program; works without PATH) | [README, "Install"](../README.md#install) |
+| `genmodelfit` is "not found" after installing | pipx / uv tool: run `pipx ensurepath` / `uv tool update-shell` once and open a new terminal; pip: `python -m genmodelfit recommend` with the Python you installed it into | [below](#if-genmodelfit-is-not-found) |
 | See which models run on this PC | `genmodelfit recommend` | [README, "Quick start"](../README.md#quick-start) |
 | Find a model of one type (music here) | `genmodelfit recommend -m music` (or `genmodelfit search <word>`) | [`recommend`](#genmodelfit-recommend), [`types`](#genmodelfit-types) |
 | See everything that runs, in one table | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -53,7 +53,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
-| Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
+| Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [Display language](#display-language) |
 | Measure models and send the results | `genmodelfit share` (it finds ComfyUI, starts it if needed, measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
@@ -70,7 +70,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | the list (`db.json`) | The model list that genmodelfit judges. A copy comes with the package; `update --from-release` stores a newer signed one in the cache, which is then used instead (`--no-cache`: the bundled one; `--db PATH`: a file). |
 | HEAD check | An anonymous HTTP HEAD request to each download URL, recorded in the list. Checks older than {head_days} days (`--max-head-age-days`) count as expired: those models are held until you run `genmodelfit update --from-release`. `system` shows the date. |
 | Verified / auto / held | Verified (`auto` in JSON) means the model passed every check of the gate (licenses on the allowlist, official workflow, fresh HEAD checks, sha256 known, `sfw`, reviewed, ...), so an app may recommend it without asking a person. The others are held (`held_reasons`). [README, "Verified"](../README.md#verified-auto-recommendation), [gate.md](gate.md) |
-| content (`sfw` / `uncensored`) | `uncensored` marks models without a safety filter or meant for adult output. They are hidden unless you pass `--uncensored` (both kinds) or `--content uncensored` (only those). [README, "Content marks"](../README.md#content-marks) |
+| content (`sfw` / `uncensored`) | `uncensored` marks models without a safety filter or meant for adult output. They are hidden unless you pass `--uncensored` (both kinds) or `--content uncensored` (only those). [README, "Unknown-license and uncensored models are hidden by default"](../README.md#unknown-license-and-uncensored-models-are-hidden-by-default) |
 | GB | Always GiB (1024³ bytes), also in `--vram`, `--ram` and `--budget`. |
 
 ## How to read this page
@@ -120,6 +120,66 @@ link here.
 The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 
 {common_pre}
+
+## If `genmodelfit` is not found
+
+- pipx and uv tool put `genmodelfit` on PATH after a one-time `pipx ensurepath` / `uv tool update-shell`; then open a
+  new terminal.
+- After `pip install`, run `python -m genmodelfit …` with the same Python you installed it into (on Windows also
+  `py -m genmodelfit …`). This does not reach pipx or uv tool installs, which have their own environments.
+- pip may print *"WARNING: The script genmodelfit.exe is installed in '…\\Scripts' which is not on PATH"*. This is
+  common with python.org Python installed without "Add python.exe to PATH", Microsoft Store Python, a user install
+  (`--user`), or a venv that is not activated. Add that folder to PATH, or use `python -m genmodelfit`.
+- A terminal opened before PATH changed does not see the change: open a new one.
+
+## Table columns
+
+The columns of `recommend`, `fit` and `search`:
+
+| Column | Meaning |
+|---|---|
+| `Type` | image, video, music, sfx, tts, 3d |
+| `Status` | the fit level ([Terms](#terms)) |
+| `Score` | 0–100: memory headroom. 100 while `Mem%` is at most 70%, lower above; not speed, quality or popularity ([scoring.md](scoring.md#score)) |
+| `Censored` | `Y` censored / `N` uncensored; only with `--uncensored` (or `--content all` / `uncensored`) |
+| `Model` | one row per model (same weights); long names are cut in the middle with `…` |
+| `Use` | `gen`, `edit`, `i2v`, … (`genmodelfit types`); the row's own use (the one matching `--task`) first, then the other uses of the model's workflows, without repeats (`gen,edit`; `gen,…` when they do not fit). The workflows: `info`; one row each: `--all-workflows` |
+| `Prec` | the best precision that fits (fp16, bf16, fp8, int8, …) |
+| `VRAM` | GiB needed in that mode; `m` = measured (by the maintainer, on this PC, or the median of other users' measurements of the same GPU; number of sources: `info`, JSON `sample_count`) |
+| `Mem%` | share of the tightest memory used: VRAM on the GPU, RAM on CPU, the larger of the two for `GPU+RAM`; `RAM` = system RAM is short |
+| `Mode` | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
+| `Disk` | download size (GiB) |
+| `License` | license of the files (`other` = read it yourself) |
+
+`?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
+When the terminal is narrow, columns are dropped in the order given under [Display language](#display-language).
+
+## Display language
+
+Output is in English by default. For Japanese, use one of these:
+
+- `--lang ja` on any command (e.g. `genmodelfit recommend --lang ja`)
+- the environment variable `GENMODELFIT_LANG=ja`
+- `genmodelfit config set lang ja` (saved; command line only)
+- `gmf.set_language("ja")` in Python
+
+The flag wins, then the variable, then the saved setting (command line) or `set_language` (Python). The OS language
+is not used. Only the texts change: reasons, notes, errors, table headings and footers, and `--help`. JSON keys, ids,
+codes and judgments are the same in both languages. English output contains no Japanese, and Japanese output
+contains no English-only sentences (one language per line).
+
+Kept in English in both languages: the table column names (`Type`, `Status`, `Score`, `Model`, `Use`, `Prec`, `VRAM`,
+`Mem%`, `Mode`, `Disk`, `License`, `Censored`), the fit level names (`Perfect`, `Good`, `Marginal`, `Too tight`),
+the run-mode marks (`GPU`, `GPU~`, `GPU+RAM`, `CPU`), units, and machine-readable values such as ids, license ids and
+option names. This keeps the table widths stable and matches what you type for `--fit`, `--sort` and so on; the
+Japanese output explains them in Japanese below the table. Type headings show the Japanese type name followed by
+the name for `-m` (e.g. `(image)`).
+
+Long lines are wrapped counting East Asian wide characters as two columns. File names, URLs, options and numbers with
+units are never split (a single one longer than the width stays whole on its own line), and the basic Japanese
+line-breaking rules apply (no line starts with a closing mark or comma, or ends with an opening bracket). When the
+terminal is narrow, the table drops columns in this order: `Disk`, `Mem%`, `License`, `Prec`, `Use` (see them with
+`info` or `--json`).
 
 ## Environment variables
 
@@ -175,7 +235,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved re
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
+| 130 | Interrupted with Ctrl+C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl+C is pressed at their questions. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -207,7 +267,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | したいこと | コマンド | 詳しく |
 |---|---|---|
 | 入れる | `pipx install genmodelfit`(か `uv tool install genmodelfit` / `pip install genmodelfit`)。入れずに試すなら `uvx genmodelfit recommend` | [README「入れ方」](../README.ja.md#入れ方) |
-| 入れたのに `genmodelfit` が「見つからない」 | `python -m genmodelfit recommend`(中身は同じ。PATH に関係なく動く) | [README「入れ方」](../README.ja.md#入れ方) |
+| 入れたのに `genmodelfit` が「見つからない」 | pipx・uv tool なら `pipx ensurepath`・`uv tool update-shell` を 1 回実行して端末を開き直す。pip なら、入れたのと同じ Python で `python -m genmodelfit recommend` | [下](#genmodelfit-が見つからないとき) |
 | この PC で動くモデルを知る | `genmodelfit recommend` | [README「すぐ試す」](../README.ja.md#すぐ試す) |
 | 1 つの種類のモデルを探す(例は音楽) | `genmodelfit recommend -m music`(か `genmodelfit search <語>`) | [`recommend`](#genmodelfit-recommend)・[`types`](#genmodelfit-types) |
 | 動くものを全部 1 つの表で見る | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -218,7 +278,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
-| 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
+| 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [表示の言語](#表示の言語) |
 | モデルを実測して送る | `genmodelfit share`(ComfyUI を見つけ、無ければ起動し、数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
@@ -235,7 +295,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | 一覧(`db.json`) | genmodelfit が判定するモデルの一覧。パッケージに 1 つ入っていて、`update --from-release` は署名つきの新しい一覧をキャッシュに置き、それからはそちらを使う(`--no-cache` で同梱、`--db PATH` でファイル)。 |
 | HEAD の確認 | ダウンロードの URL のそれぞれに、名乗らずに HTTP の HEAD を送った結果(一覧に記録してある)。{head_days} 日(`--max-head-age-days`)より古い確認は期限切れで、そのモデルは `genmodelfit update --from-release` を実行するまで保留になる。日付は `system` で分かる。 |
 | Verified / auto / 保留 | Verified(JSON では `auto`)は、gate の条件(ライセンスが許可リストにある・公式のワークフロー・HEAD の確認が新しい・sha256 が分かる・`sfw`・確認済み など)をすべて満たしたもので、アプリが人に尋ねずにおすすめに出してよい。満たさないものは保留(`held_reasons`)。[README「Verified」](../README.ja.md#verified自動でおすすめに出す条件)・[gate.ja.md](gate.ja.md) |
-| 内容(`sfw` / `uncensored`) | `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルの印。`--uncensored`(両方)か `--content uncensored`(それだけ)を付けたときだけ出す。[README「内容の印」](../README.ja.md#内容の印) |
+| 内容(`sfw` / `uncensored`) | `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルの印。`--uncensored`(両方)か `--content uncensored`(それだけ)を付けたときだけ出す。[README「ライセンス不明・無検閲のモデルは、既定で出しません」](../README.ja.md#ライセンス不明無検閲のモデルは既定で出しません) |
 | GB | いつも GiB(1024³ バイト)。`--vram`・`--ram`・`--budget` も同じ。 |
 
 ## このページの読み方
@@ -281,6 +341,64 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 `system`・`recommend`・`fit`・`search`・`info` の前提は次のとおりです。
 
 {common_pre}
+
+## `genmodelfit` が見つからないとき
+
+- pipx と uv tool は、1 回だけ `pipx ensurepath`・`uv tool update-shell` を実行すると `genmodelfit` を PATH に
+  通します。そのあと端末を開き直します。
+- `pip install` で入れたなら、入れたのと同じ Python で `python -m genmodelfit …` を実行します(Windows では
+  `py -m genmodelfit …` も可)。pipx と uv tool は専用の環境に入れるので、この方法では動きません。
+- pip が *「WARNING: The script genmodelfit.exe is installed in '…\\Scripts' which is not on PATH」* と出すことが
+  あります。python.org の Python を「Add python.exe to PATH」なしで入れた、Microsoft Store の Python、ユーザー単位で
+  入れた(`--user`)、仮想環境を有効にしていない、のどれかでよく出ます。その場所を PATH に足すか、
+  `python -m genmodelfit` を使います。
+- PATH を変える前に開いた端末には反映されないので、新しい端末を開きます。
+
+## 表の列
+
+`recommend`・`fit`・`search` の表の列:
+
+| 列 | 意味 |
+|---|---|
+| `Type` | image・video・music・sfx・tts・3d |
+| `Status` | 段階([用語](#用語)) |
+| `Score` | 0〜100。メモリの余裕。`Mem%` が 70% 以下なら 100、超えると下がる。速さ・品質・人気は入れない([scoring.ja.md](scoring.ja.md#score)) |
+| `Censored` | `Y` 検閲あり / `N` 無検閲。`--uncensored`(か `--content all` / `uncensored`)のときだけ出る |
+| `Model` | 同じ重みを 1 行にまとめたモデル。長い名前は真ん中を `…` で詰める |
+| `Use` | `gen`・`edit`・`i2v` など(`genmodelfit types`)。行自身の用途(`--task` で合ったもの)を先頭に、そのモデルのほかのワークフローの用途を重複なく並べる(`gen,edit`。収まらなければ `gen,…`)。ワークフローの一覧は `info`、別々の行は `--all-workflows` |
+| `Prec` | 載る中で一番良い精度(fp16・bf16・fp8・int8 など) |
+| `VRAM` | その動かし方で要る GiB。`m` = 実測(メンテナ・この PC の実測、または同じ GPU のほかの利用者の実測の中央値。出どころの数は `info`・JSON の `sample_count`) |
+| `Mem%` | 一番きついメモリの使用率。GPU なら VRAM、CPU ならメモリ、`GPU+RAM` は大きいほう。`RAM` = PC のメモリが足りない |
+| `Mode` | `GPU` 全部 GPU、`GPU~` 部品を順に載せ替え、`GPU+RAM` メモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない(`GPU req` は使える GPU が無いので動かない、`RAM` はメモリ不足) |
+| `Disk` | ダウンロードの大きさ(GiB) |
+| `License` | ファイルのライセンス(`other` = 自分で原文を読む) |
+
+`?` = 分からない(精度・ライセンス・大きさ。判定に使っていない)。`-` = 当てはまらない(動かない・CPU なので VRAM が
+無い など)。端末が狭いときに外す列の順は、[表示の言語](#表示の言語)にあります。
+
+## 表示の言語
+
+出力の既定は英語です。日本語にするには、次のどれかを使います。
+
+- どのコマンドでも `--lang ja` を付ける(例 `genmodelfit recommend --lang ja`)
+- 環境変数 `GENMODELFIT_LANG=ja` を置く
+- `genmodelfit config set lang ja` で保存する(コマンドラインだけ)
+- Python で `gmf.set_language("ja")` を呼ぶ
+
+優先は `--lang`、環境変数、保存した設定(コマンドライン)か `set_language`(Python)の順です。OS の言語は見ません。
+変わるのは文だけです: 理由・注意・エラー・表の見出しと説明・`--help`。JSON のキー・ID・コード・判定は、どちらの
+言語でも同じです。英語の出力には日本語が出ません。日本語の出力には英語だけの文が出ません(1 行に 2 つの言語の文を
+並べない)。
+
+どちらの言語でも英語のまま出すもの: 表の列の名前(`Type`・`Status`・`Score`・`Model`・`Use`・`Prec`・`VRAM`・`Mem%`・
+`Mode`・`Disk`・`License`・`Censored`)、段階の名前(`Perfect`・`Good`・`Marginal`・`Too tight`)、動かし方の印
+(`GPU`・`GPU~`・`GPU+RAM`・`CPU`)、単位、ID・ライセンスの ID・オプションの名前など機械が読む値。表の幅をそろえ、
+`--fit`・`--sort` などに書く名前と同じにするためです。日本語の出力では、表の下の説明がこれらを日本語で説明します。
+種類の見出しは `== 画像 (image): …` のように、`-m` に書く名前も出します。
+
+長い行は、全角を 2 桁で数えて折り返します。ファイル名・URL・オプション・単位つきの数の途中では切りません(1 つで
+幅より長ければ、その行だけはみ出す)。行の頭に「、。)」を、行の終わりに「(「」を置きません。端末が狭いときは、
+表の列を `Disk`・`Mem%`・`License`・`Prec`・`Use` の順に外します(外した列は `info` か `--json` で見る)。
 
 ## 環境変数
 
@@ -334,7 +452,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
+| 130 | Ctrl+C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl+C を押すと 130 です。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 

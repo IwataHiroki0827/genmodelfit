@@ -5,6 +5,36 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
+## [0.13.2] - Unreleased
+
+### Changed
+
+- **README rewritten** (EN and JA, same order): quick start and install, what it does, usage (6 steps), reading the
+  results (example, fit levels, columns, hidden models, accuracy), help by measuring, privacy, apps, reference,
+  license. Details moved to docs: the display language, "If `genmodelfit` is not found" and every table column to
+  docs/commands, the longer Python example to docs/schema "Python API (stable)"; non-NVIDIA GPUs, scoring, download and `share` steps link to docs/hardware,
+  docs/scoring, docs/download and CONTRIBUTING, which already held them. The Japanese text uses shorter sentences and
+  consistent terms; the heading "精度" is now "見積もりの確かさ" (it clashed with the `Prec` column).
+  (README を作り直した。英日とも同じ並びにし、細かい話は docs に移した)
+- README images: the top GIF re-recorded with 0.13.1 (`tools/demo_gif.py`; simulated GPU and memory, 1.6 / 1.8 MB
+  instead of 8.8 MB), and two diagrams, fit levels and the `share` flow (`tools/diagrams.py`; the 60 / 85 / 98% bands
+  and the caps per run mode are taken from the code). PNGs and GIFs in docs/images, EN and JA.
+- One list of what `share` sends and never sends in README "Privacy" (it was in two places that differed): adds the
+  compute capability, the PCI model ID for AMD / Intel (not the slot), the model-file fingerprint and the 0.13.0
+  additions.
+
+### Fixed
+
+- README and `genmodelfit --help`: `python -m genmodelfit` works with the Python that pip installed into; it does not
+  reach pipx or uv tool installs (run `pipx ensurepath` / `uv tool update-shell` and open a new terminal).
+- README: `share` does not by itself make a GPU "verified"; the ✓ needs runs on two or more GPU models of that kind.
+  "Other measurements" now says which: runs without ComfyUI's dynamic VRAM (AMD, Intel, Apple, or NVIDIA with it
+  turned off). The Verified line is quoted as `info` prints it. `config show` is listed; `measure` suggests only models
+  with a known license; narrow terminals drop `Disk`, then `Mem%`; `uvx genmodelfit@latest` explains why (uvx may
+  keep an older version). "Ctrl-C" is written "Ctrl+C" everywhere.
+- `--help`: `contrib` and `bench --submission` write `contrib_schema` 3 (not 2); `share --dry-run` makes no network
+  access to GitHub but asks 127.0.0.1 whether ComfyUI runs (it said "no network").
+
 ## [0.13.1] - 2026-10-29
 
 ### Fixed

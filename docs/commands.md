@@ -10,7 +10,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | What you want | Command | More |
 |---|---|---|
 | Install | `pipx install genmodelfit` (or `uv tool install genmodelfit` / `pip install genmodelfit`); to try without installing, `uvx genmodelfit recommend` | [README, "Install"](../README.md#install) |
-| `genmodelfit` is "not found" after installing | `python -m genmodelfit recommend` (the same program; works without PATH) | [README, "Install"](../README.md#install) |
+| `genmodelfit` is "not found" after installing | pipx / uv tool: run `pipx ensurepath` / `uv tool update-shell` once and open a new terminal; pip: `python -m genmodelfit recommend` with the Python you installed it into | [below](#if-genmodelfit-is-not-found) |
 | See which models run on this PC | `genmodelfit recommend` | [README, "Quick start"](../README.md#quick-start) |
 | Find a model of one type (music here) | `genmodelfit recommend -m music` (or `genmodelfit search <word>`) | [`recommend`](#genmodelfit-recommend), [`types`](#genmodelfit-types) |
 | See everything that runs, in one table | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -21,7 +21,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | Get the latest model list | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | Judge another PC | `genmodelfit recommend --vram 12 --ram 32` | [README, "Judge another PC"](../README.md#judge-another-pc) |
 | Use it from a script or an app | add `--json`; to download also `--yes` and the place (`--comfyui-dir`, or `genmodelfit config` / `GENMODELFIT_COMFYUI_DIR`): without a decided place nothing is downloaded (exit code 1) | [schema.md](schema.md) |
-| Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [README, "Language"](../README.md#language) |
+| Switch the language | `genmodelfit config set lang ja` (once only: `--lang ja`) | [Display language](#display-language) |
 | Measure models and send the results | `genmodelfit share` (it finds ComfyUI, starts it if needed, measures for a few minutes and opens a pull request) | [CONTRIBUTING.md, "The easy way"](../CONTRIBUTING.md#the-easy-way-no-git-needed) |
 
 ## Terms
@@ -38,7 +38,7 @@ writes, and its exit codes. The same text is printed by `genmodelfit <command> -
 | the list (`db.json`) | The model list that genmodelfit judges. A copy comes with the package; `update --from-release` stores a newer signed one in the cache, which is then used instead (`--no-cache`: the bundled one; `--db PATH`: a file). |
 | HEAD check | An anonymous HTTP HEAD request to each download URL, recorded in the list. Checks older than 30 days (`--max-head-age-days`) count as expired: those models are held until you run `genmodelfit update --from-release`. `system` shows the date. |
 | Verified / auto / held | Verified (`auto` in JSON) means the model passed every check of the gate (licenses on the allowlist, official workflow, fresh HEAD checks, sha256 known, `sfw`, reviewed, ...), so an app may recommend it without asking a person. The others are held (`held_reasons`). [README, "Verified"](../README.md#verified-auto-recommendation), [gate.md](gate.md) |
-| content (`sfw` / `uncensored`) | `uncensored` marks models without a safety filter or meant for adult output. They are hidden unless you pass `--uncensored` (both kinds) or `--content uncensored` (only those). [README, "Content marks"](../README.md#content-marks) |
+| content (`sfw` / `uncensored`) | `uncensored` marks models without a safety filter or meant for adult output. They are hidden unless you pass `--uncensored` (both kinds) or `--content uncensored` (only those). [README, "Unknown-license and uncensored models are hidden by default"](../README.md#unknown-license-and-uncensored-models-are-hidden-by-default) |
 | GB | Always GiB (1024³ bytes), also in `--vram`, `--ram` and `--budget`. |
 
 ## How to read this page
@@ -114,6 +114,66 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 - GPU: NVIDIA via nvidia-smi; otherwise AMD / Intel / Apple via WMI (Windows), lspci + sysfs (Linux) or system_profiler (macOS).
 - The bundled model list is used unless `genmodelfit update` stored a newer one (`--no-cache`).
 
+## If `genmodelfit` is not found
+
+- pipx and uv tool put `genmodelfit` on PATH after a one-time `pipx ensurepath` / `uv tool update-shell`; then open a
+  new terminal.
+- After `pip install`, run `python -m genmodelfit …` with the same Python you installed it into (on Windows also
+  `py -m genmodelfit …`). This does not reach pipx or uv tool installs, which have their own environments.
+- pip may print *"WARNING: The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH"*. This is
+  common with python.org Python installed without "Add python.exe to PATH", Microsoft Store Python, a user install
+  (`--user`), or a venv that is not activated. Add that folder to PATH, or use `python -m genmodelfit`.
+- A terminal opened before PATH changed does not see the change: open a new one.
+
+## Table columns
+
+The columns of `recommend`, `fit` and `search`:
+
+| Column | Meaning |
+|---|---|
+| `Type` | image, video, music, sfx, tts, 3d |
+| `Status` | the fit level ([Terms](#terms)) |
+| `Score` | 0–100: memory headroom. 100 while `Mem%` is at most 70%, lower above; not speed, quality or popularity ([scoring.md](scoring.md#score)) |
+| `Censored` | `Y` censored / `N` uncensored; only with `--uncensored` (or `--content all` / `uncensored`) |
+| `Model` | one row per model (same weights); long names are cut in the middle with `…` |
+| `Use` | `gen`, `edit`, `i2v`, … (`genmodelfit types`); the row's own use (the one matching `--task`) first, then the other uses of the model's workflows, without repeats (`gen,edit`; `gen,…` when they do not fit). The workflows: `info`; one row each: `--all-workflows` |
+| `Prec` | the best precision that fits (fp16, bf16, fp8, int8, …) |
+| `VRAM` | GiB needed in that mode; `m` = measured (by the maintainer, on this PC, or the median of other users' measurements of the same GPU; number of sources: `info`, JSON `sample_count`) |
+| `Mem%` | share of the tightest memory used: VRAM on the GPU, RAM on CPU, the larger of the two for `GPU+RAM`; `RAM` = system RAM is short |
+| `Mode` | `GPU` all on GPU, `GPU~` parts swapped in turn, `GPU+RAM` offload (slow), `CPU` (slow), `-` does not run (`GPU req`: needs a GPU, none usable here; `RAM`: not enough system RAM) |
+| `Disk` | download size (GiB) |
+| `License` | license of the files (`other` = read it yourself) |
+
+`?` = unknown (precision, license, size; not judged on it). `-` = not applicable (does not run, no VRAM on CPU, …).
+When the terminal is narrow, columns are dropped in the order given under [Display language](#display-language).
+
+## Display language
+
+Output is in English by default. For Japanese, use one of these:
+
+- `--lang ja` on any command (e.g. `genmodelfit recommend --lang ja`)
+- the environment variable `GENMODELFIT_LANG=ja`
+- `genmodelfit config set lang ja` (saved; command line only)
+- `gmf.set_language("ja")` in Python
+
+The flag wins, then the variable, then the saved setting (command line) or `set_language` (Python). The OS language
+is not used. Only the texts change: reasons, notes, errors, table headings and footers, and `--help`. JSON keys, ids,
+codes and judgments are the same in both languages. English output contains no Japanese, and Japanese output
+contains no English-only sentences (one language per line).
+
+Kept in English in both languages: the table column names (`Type`, `Status`, `Score`, `Model`, `Use`, `Prec`, `VRAM`,
+`Mem%`, `Mode`, `Disk`, `License`, `Censored`), the fit level names (`Perfect`, `Good`, `Marginal`, `Too tight`),
+the run-mode marks (`GPU`, `GPU~`, `GPU+RAM`, `CPU`), units, and machine-readable values such as ids, license ids and
+option names. This keeps the table widths stable and matches what you type for `--fit`, `--sort` and so on; the
+Japanese output explains them in Japanese below the table. Type headings show the Japanese type name followed by
+the name for `-m` (e.g. `(image)`).
+
+Long lines are wrapped counting East Asian wide characters as two columns. File names, URLs, options and numbers with
+units are never split (a single one longer than the width stays whole on its own line), and the basic Japanese
+line-breaking rules apply (no line starts with a closing mark or comma, or ends with an opening bracket). When the
+terminal is narrow, the table drops columns in this order: `Disk`, `Mem%`, `License`, `Prec`, `Use` (see them with
+`info` or `--json`).
+
 ## Environment variables
 
 | Variable | Used by | Meaning |
@@ -168,7 +228,7 @@ Deleting the cache folder is safe: the bundled list is used again (your saved re
 | 1 | Failure: no such model, a refusal, a declined question, a network error, an unreadable file, or a check that failed. Each command section says what counts as a failure. |
 | 2 | Usage error: an unknown option, a wrong value, a missing argument, an abbreviated consent option, or options that cannot be used together. |
 | 3 | Only `contrib aggregate --report --fail-on-breach`: an error exceeded the threshold. |
-| 130 | Interrupted with Ctrl-C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl-C is pressed at their questions. |
+| 130 | Interrupted with Ctrl+C. `download` returns 130 on every OS and keeps the partly downloaded `.part` files; run the same command again to resume. Other commands stop the way Python does: 130 on Linux and macOS, 3221225786 (0xC000013A; PowerShell's `$LASTEXITCODE` shows -1073741510) on Windows. `bench` and `measure` first cancel their job (and stop a ComfyUI that genmodelfit started) and exit 1; `share` stops measuring, goes on to sending what was measured and then exits 130; `measure` and `share` return 130 when Ctrl+C is pressed at their questions. |
 
 With `--json`, a failure still exits 1 and the message is in the `error` field of the JSON.
 
@@ -726,7 +786,7 @@ Download the files of a model for this PC (all files of one workflow), checking 
 
 - Network: GET of the listed URLs only (https; every redirect must stay on Hugging Face / GitHub hosts).
 - Nothing about this PC is sent (User-Agent: `genmodelfit/<version>`; no `~/.netrc` credentials, no tokens).
-- Writes only inside the destination folder: `<file>.part` while downloading (kept on Ctrl-C or failure; the next run resumes it with HTTP Range), renamed to `<file>` after the sha256 matches.
+- Writes only inside the destination folder: `<file>.part` while downloading (kept on Ctrl+C or failure; the next run resumes it with HTTP Range), renamed to `<file>` after the sha256 matches.
 - A sha256 mismatch deletes the file.
 - Existing files whose sha256 matches are skipped; other existing files are never overwritten.
 - When the place is not given (no option, environment variable or config), a ComfyUI running on this PC is asked where its folders are (GET http://127.0.0.1:8188 and :8000 /internal/folder_paths, 2 s timeout).
@@ -740,7 +800,7 @@ Download the files of a model for this PC (all files of one workflow), checking 
 | 0 | Success (also `--list`, even when the plan is blocked: see "blocked") |
 | 1 | Error: no such model / several matches, refused (see above), no consent, declined, network, sha256 mismatch (with `--json` the error is in "error") |
 | 2 | Usage error |
-| 130 | Interrupted (Ctrl-C); run again to resume |
+| 130 | Interrupted (Ctrl+C); run again to resume |
 
 **Examples for scripts and apps**
 
@@ -891,7 +951,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | `--any-license` |  |  | with `--download` or without a terminal, also download models whose license is unknown (as in download; cannot be abbreviated) |
 | `--no-measure` |  |  | do not measure; send only the unsent measurements |
 | `--budget` | `SEC` | `300` | the most time to spend measuring (sum of the rough time guides; seconds) |
-| `--dry-run` |  |  | only show the plan and what would be sent (no measuring, no sign-in, no network) |
+| `--dry-run` |  |  | only show the plan and what would be sent (no measuring, no sign-in, no network access to GitHub; it asks 127.0.0.1 whether ComfyUI runs) |
 | `--issue` |  |  | send with the GitHub issue form instead, without signing in (with `--yes` after measuring; without it the older way) |
 | `--print-url` |  |  | with `--issue`: do not open a browser; print only the URL of the form (for scripts) |
 | `--logout` |  |  | remove the saved GitHub sign-in (token) |
@@ -1363,7 +1423,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--force` |  |  | measure even when the GPU is in use or its free memory cannot be checked |
 | `--source` | `SOURCE` |  | who measured it where (goes into source) |
 | `--note` | `NOTE` |  | text to add to the result's note |
-| `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 2). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
+| `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 3). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 | `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and open GitHub's measurement form (like `genmodelfit share --issue`; without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
@@ -1388,7 +1448,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Error: ComfyUI cannot be reached, the GPU is busy (without `--force`), the template or a file is missing, the run failed (out of memory or another error), timeout, Ctrl-C (our job is cancelled first) |
+| 1 | Error: ComfyUI cannot be reached, the GPU is busy (without `--force`), the template or a file is missing, the run failed (out of memory or another error), timeout, Ctrl+C (our job is cancelled first) |
 | 2 | Usage error |
 
 **Examples for scripts and apps**
@@ -1413,7 +1473,7 @@ for maintainers: make, validate and aggregate measurement submissions (to send o
 genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-Make, preview, validate and aggregate measurement submissions (contrib_schema 2; for maintainers. To send a measurement use `genmodelfit measure` and `genmodelfit share`). genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a Pull Request yourself; [CONTRIBUTING.md](../CONTRIBUTING.md)).
+Make, preview, validate and aggregate measurement submissions (contrib_schema 3; for maintainers. To send a measurement use `genmodelfit measure` and `genmodelfit share`). genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a Pull Request yourself; [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ```text
 make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json

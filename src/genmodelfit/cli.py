@@ -4432,7 +4432,7 @@ def _share_comfy_check(args: argparse.Namespace, ctx: dict, x, failed: list) -> 
 def _share_dry_run(
     args: argparse.Namespace, paths: list, report: dict[str, Any], screen: list[str] | None = None
 ) -> int:
-    """--dry-run: 計画と送る中身を見せるだけ(測らない・ログインしない・通信しない)。"""
+    """--dry-run: 計画と送る中身を見せるだけ(測らない・ログインしない・GitHub に通信しない)。"""
     items = _share_items(paths, args)
     if args.json:
         payload = {"action": "send", **report}
@@ -6428,7 +6428,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             return _undecided_error(args, s, db, dest)
         try:
             chosen = _choose_destination(dest.candidates)
-        except KeyboardInterrupt:  # 選ぶ途中の Ctrl-C: 何も落とさず 130
+        except KeyboardInterrupt:  # 選ぶ途中の Ctrl+C: 何も落とさず 130
             print(file=sys.stderr)
             print(
                 tr("中断しました(何も落としていません)", "Interrupted (nothing downloaded)"), file=sys.stderr
@@ -6501,7 +6501,7 @@ def cmd_download(args: argparse.Namespace) -> int:
                 continue
             if answer == "y":
                 _remember(dest)
-        except KeyboardInterrupt:  # 質問の途中の Ctrl-C: 何も落とさず 130
+        except KeyboardInterrupt:  # 質問の途中の Ctrl+C: 何も落とさず 130
             print(file=sys.stderr)
             print(
                 tr("中断しました(何も落としていません)", "Interrupted (nothing downloaded)"), file=sys.stderr
@@ -8107,7 +8107,7 @@ SIDE EFFECTS:
   Network: GET of the listed URLs only (https; every redirect must stay on Hugging Face /
   GitHub hosts). Nothing about this PC is sent (User-Agent: genmodelfit/<version>; no
   ~/.netrc credentials, no tokens). Writes only inside the destination folder: <file>.part
-  while downloading (kept on Ctrl-C or failure; the next run resumes it with HTTP Range),
+  while downloading (kept on Ctrl+C or failure; the next run resumes it with HTTP Range),
   renamed to <file> after the sha256 matches. A sha256 mismatch deletes the file. Existing
   files whose sha256 matches are skipped; other existing files are never overwritten.
   When the place is not given (no option, environment variable or config), a ComfyUI running
@@ -8121,7 +8121,7 @@ EXIT CODES:
   1  Error: no such model / several matches, refused (see above), no consent, declined,
      network, sha256 mismatch (with --json the error is in "error")
   2  Usage error
-  130  Interrupted (Ctrl-C); run again to resume
+  130  Interrupted (Ctrl+C); run again to resume
 
 AGENT USAGE:
   genmodelfit download "Z-Image-Turbo" --list --json
@@ -8360,7 +8360,7 @@ SIDE EFFECTS:
 EXIT CODES:
   0  Success
   1  Error: ComfyUI cannot be reached, the GPU is busy (without --force), the template or a file is
-     missing, the run failed (out of memory or another error), timeout, Ctrl-C (our job is
+     missing, the run failed (out of memory or another error), timeout, Ctrl+C (our job is
      cancelled first)
   2  Usage error
 
@@ -8633,7 +8633,7 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
 副作用:
   通信: 一覧の URL の GET だけ(https。転送先もすべて Hugging Face / GitHub のホストに限る)。
   この PC のことは何も送らない(User-Agent: genmodelfit/<版>。~/.netrc の資格情報もトークンも
-  使わない)。書くのは置き場所のフォルダの中だけ: 落としている間は <file>.part(Ctrl-C や失敗では
+  使わない)。書くのは置き場所のフォルダの中だけ: 落としている間は <file>.part(Ctrl+C や失敗では
   残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば <file> に名前を変える。落とした
   ファイルの sha256 が合わなければ消す。sha256 の合う既にあるファイルは飛ばし、ほかの既にある
   ファイルは上書きしない。
@@ -8647,7 +8647,7 @@ ID が hf: で始まるモデルには ComfyUI のテンプレートが無いの
   1  失敗: モデルが無い・2 件以上合う、断った(上を見る)、同意が無い、通信、sha256 が合わない
      (--json なら誤りは "error" に入る)
   2  使い方の誤り
-  130  中断(Ctrl-C)。もう一度実行すれば続きから落とす
+  130  中断(Ctrl+C)。もう一度実行すれば続きから落とす
 
 使い方の例(エージェント・アプリ向け):
   genmodelfit download "Z-Image-Turbo" --list --json
@@ -8870,7 +8870,7 @@ bench は保守する人向け。genmodelfit measure は、テンプレートの
 終了コード:
   0  成功
   1  失敗: ComfyUI につながらない、GPU が使われている(--force なし)、テンプレートやファイルが無い、
-     実行の失敗(メモリ不足など)、時間切れ、Ctrl-C(送った自分の仕事を先に取り消す)
+     実行の失敗(メモリ不足など)、時間切れ、Ctrl+C(送った自分の仕事を先に取り消す)
   2  使い方の誤り
 
 使い方の例(エージェント・アプリ向け):
@@ -9395,10 +9395,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     epilog = tr(
-        "genmodelfit コマンドが見つからない(PATH に無い)ときも、`python -m genmodelfit ...` なら動きます"
-        "(README「入れ方」)。",
-        "If the genmodelfit command is not found (not on PATH), "
-        '`python -m genmodelfit ...` always works (README "Install").',
+        "genmodelfit コマンドが見つからない(PATH に無い)とき: pipx・uv tool で入れたなら、pipx ensurepath か"
+        " uv tool update-shell を 1 回実行して端末を開き直す。pip で入れたなら、入れたのと同じ Python の"
+        " `python -m genmodelfit ...` で動きます(README「入れ方」)。",
+        "If the genmodelfit command is not found (not on PATH): after pipx or uv tool, run pipx"
+        " ensurepath or uv tool update-shell once and open a new terminal; after pip,"
+        ' `python -m genmodelfit ...` works with the Python you installed it into (README "Install").',
     )
     from .table import wrap_text
 
@@ -10137,8 +10139,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help=tr(
-            "計画と送る中身を見せるだけ(測らない・ログインしない・通信しない)",
-            "only show the plan and what would be sent (no measuring, no sign-in, no network)",
+            "計画と送る中身を見せるだけ(測らない・ログインしない・GitHub に通信しない。"
+            "ComfyUI が起動しているかは 127.0.0.1 に尋ねる)",
+            "only show the plan and what would be sent (no measuring, no sign-in, no network access to"
+            " GitHub; it asks 127.0.0.1 whether ComfyUI runs)",
         ),
     )
     sp.add_argument(
@@ -10592,9 +10596,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--submission",
         metavar="PATH",
         help=tr(
-            "提出用の JSON(contrib_schema 2)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
+            "提出用の JSON(contrib_schema 3)も書く。フォルダなら <フォルダ>/<GPU>/<日付>-<sha8>.json"
             "(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない(CONTRIBUTING.md)",
-            "also write a submission JSON (contrib_schema 2). For a folder: <folder>/<GPU>/<date>-<sha8>.json"
+            "also write a submission JSON (contrib_schema 3). For a folder: <folder>/<GPU>/<date>-<sha8>.json"
             " (pass your fork's data/contrib to open a PR as is). Nothing is sent (CONTRIBUTING.md)",
         ),
     )
@@ -10915,7 +10919,7 @@ def _review_help() -> str:
 
 
 CONTRIB_DIR_DEFAULT = "data/contrib"
-_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 2)を作る・送る前に見る・検査する・まとめる
+_CONTRIB_HELP_JA = """実測の提出用 JSON(contrib_schema 3)を作る・送る前に見る・検査する・まとめる
 (保守する人向け。実測を送るのは genmodelfit measure と genmodelfit share)。
 genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で
 Pull Request を出すときだけ。CONTRIBUTING.md)。
@@ -10956,7 +10960,7 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
   genmodelfit contrib aggregate --report --json --fail-on-breach
 詳しくは docs/schema.md「contrib」"""
 
-_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 2; for
+_CONTRIB_HELP_EN = """Make, preview, validate and aggregate measurement submissions (contrib_schema 3; for
 maintainers. To send a measurement use genmodelfit measure and genmodelfit share).
 genmodelfit sends nothing (data is shared only when you press "Create" in the GitHub form or open a
 Pull Request yourself; CONTRIBUTING.md).
