@@ -64,8 +64,8 @@ All notable changes to this project are documented here. The format is based on
   answering on 8188 / 8000 (also 401 / 403) counts as a running ComfyUI (no second one); a run whose only problem is
   results that cannot be sent exits 0, and Ctrl+C exits 130; an unusable cache folder is a clear error; bench's
   reasons follow the display language; next steps are specific (template fetch, rejected workflow, save failure,
-  crash) and `--workflow` is not suggested in `measure` / `share`; on shared PCs only a new compute process (or an
-  unexpected growth of the whole GPU's memory) counts as interference; an expired and a broken saved sign-in are
+  crash) and `--workflow` is not suggested in `measure` / `share`; on shared PCs only a new compute-only process (nvidia-smi
+  type C; not browsers or other C+G / G apps) counts as interference; an expired and a broken saved sign-in are
   told apart.
 - **More error cases** (#124): a started ComfyUI is stopped also when the terminal is closed or genmodelfit is
   killed (Windows Job Object; Linux parent-death signal; POSIX hang-up); only one measuring run at a time

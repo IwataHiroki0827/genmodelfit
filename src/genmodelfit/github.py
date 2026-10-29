@@ -167,11 +167,11 @@ def token_status_message(status: str) -> str:
     if status == "broken":
         return tr(
             "保存した GitHub のログインのファイルが壊れていたので消しました",
-            "the saved GitHub sign-in file was broken and was removed",
+            "The saved GitHub sign-in file was broken and was removed",
         )
     return tr(
         "保存した GitHub のログインの期限が切れたので消しました",
-        "the saved GitHub sign-in had expired and was removed",
+        "The saved GitHub sign-in had expired and was removed",
     )
 
 
@@ -520,7 +520,7 @@ def login(
         say(
             tr(
                 "前にログインしたトークンが使えなくなりました。ログインし直します",
-                "the saved login no longer works; signing in again",
+                "The saved login no longer works; signing in again",
             )
         )
     cid = client_id()

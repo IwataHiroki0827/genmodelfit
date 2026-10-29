@@ -3611,6 +3611,7 @@ def _share_measure_one(
     failed: list,
     pos: tuple[int, int] = (1, 1),
     rest: list | None = None,
+    started=None,
 ) -> None:
     """share の 1 件を測る(measure と同じ _measure_run)。結果は measured か failed に足す。
     pos は (何件目, 全部で何件)、rest はこのあとに測るもの(残りの時間の目安に使う)。"""
@@ -3647,7 +3648,10 @@ def _share_measure_one(
     )
     if r["error"] is not None:
         failed.append({**rec, "error": r["error"]})
-        if not args.json:
+        crashed = started is not None and started.process.poll() is not None
+        if (
+            not args.json and not crashed
+        ):  # 起動した ComfyUI が止まったなら、そのことはあとで出す(_share_comfy_check)
             sys.stdout.flush()
             print(tr(f"エラー: {r['error']}", f"error: {r['error']}"), file=sys.stderr)
             print(_measure_next_step(r["error"], x.model_id), file=sys.stderr)
@@ -3784,7 +3788,16 @@ def _share_download_and_measure(args: argparse.Namespace, ctx: dict, dl_plan: li
                 }
             )
             continue
-        _share_measure_one(args, ctx["url"], x, measured, failed, (i, len(dl_plan)), dl_plan[i:])
+        _share_measure_one(
+            args,
+            ctx["url"],
+            x,
+            measured,
+            failed,
+            (i, len(dl_plan)),
+            dl_plan[i:],
+            ctx["holder"][-1] if ctx["holder"] else None,
+        )
         if not _share_comfy_check(args, ctx, x, failed):
             break
 
@@ -4086,6 +4099,7 @@ def cmd_share(args: argparse.Namespace) -> int:
     skipped: list[dict[str, Any]] = []
     checker = None
     comfy_stop = False  # 測れない理由が ComfyUI のこと(起動のしかたを案内する)か
+    start_why = None
     if not args.no_measure:
         s, db = _system(args), _db(args)
         url, found_by, running = _measure_comfyui(args)
@@ -4145,7 +4159,8 @@ def cmd_share(args: argparse.Namespace) -> int:
         if args.json:
             _out(_envelope("share", None, None, action="send", **report, error=stop[0]))
             return 1
-        if comfy_stop and plan:  # 測る計画があるときだけ見せる(GPU が無い・NVIDIA でないときは出さない)
+        # 測る計画があるときだけ見せる(GPU が無い・NVIDIA でない・ほかのサーバーがいるときは出さない)
+        if comfy_stop and plan and not isinstance(start_why, _HeadReason):
             _emit(screen)
         sys.stdout.flush()
         print(tr(f"エラー: {stop[0]}", f"error: {stop[0]}"), file=sys.stderr)
@@ -4283,7 +4298,16 @@ def cmd_share(args: argparse.Namespace) -> int:
                 args._steps.drop("measure")
             ctx = {"url": url, "start": start, "holder": holder, "restarts": 0, "dead": False}
             for i, x in enumerate(plan, 1):
-                _share_measure_one(args, ctx["url"], x, measured, failed, (i, len(plan)), plan[i:])
+                _share_measure_one(
+                    args,
+                    ctx["url"],
+                    x,
+                    measured,
+                    failed,
+                    (i, len(plan)),
+                    plan[i:],
+                    ctx["holder"][-1] if ctx["holder"] else None,
+                )
                 if not _share_comfy_check(args, ctx, x, failed):
                     break
             if ctx["dead"]:
@@ -6162,7 +6186,32 @@ def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any,
 
     if url is not None:
         return None, None
-    port = comfyfind.comfy_port_answering()
+    found = comfyfind.comfy_port_status()
+    port, status = found if found else (None, None)
+    if port is not None and status in (401, 403):
+        return None, _HeadReason(
+            tr(
+                f"ポート {port} のサーバー(ComfyUI か、その前のプロキシ)が認証(ログイン)"
+                f"を求めています({status})。"
+                "2 台目は起動しません。genmodelfit は認証の付いた ComfyUI では測れないので、認証の無い "
+                "ComfyUI を"
+                " --url http://<ホスト>:<ポート> で指定してください",
+                f"The server on port {port} (ComfyUI or a proxy in front of it) asks for authentication "
+                f"({status})."
+                " A second ComfyUI is not started. genmodelfit cannot measure behind authentication; give a"
+                " ComfyUI without it with --url http://<host>:<port>",
+            )
+        )
+    if port is not None and status != 200:
+        return None, _HeadReason(
+            tr(
+                f"ポート {port} で ComfyUI でないものが答えています(HTTP {status})。2 台目は起動しません。"
+                "測る ComfyUI を --url http://<ホスト>:<ポート> で指定してください",
+                f"Something that is not ComfyUI answers on port {port} (HTTP {status}). No ComfyUI is "
+                "started;"
+                " give the ComfyUI to measure on with --url http://<host>:<port>",
+            )
+        )
     if port is not None:
         # フォルダを読めないが、ComfyUI がもう動いている(L3a): 同じフォルダで 2 台目を起動しない
         return None, _HeadReason(

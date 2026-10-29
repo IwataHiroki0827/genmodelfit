@@ -1194,7 +1194,7 @@ Rules:
 - **GPUs and VRAM**: only NVIDIA GPUs are measured for now. `measure.suggestions` leaves out models with an unknown
   license unless `--any-license`. Measuring is refused when other programs use more than 1.5 GiB or 20% of the VRAM
   (`bench.others_vram_limit`): checked with nvidia-smi before starting ComfyUI and from `/system_stats` after
-  freeing; a new GPU process during a run (nvidia-smi compute apps) makes the result non-standard.
+  freeing; a new compute-only GPU process during a run (type C in nvidia-smi's process table; C+G / G apps such as browsers are ignored) makes the result non-standard.
 - **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
   measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
   measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay

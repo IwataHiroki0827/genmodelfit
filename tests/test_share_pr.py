@@ -1910,6 +1910,7 @@ def test_D8_comfyui_dying_is_restarted_once(capsys, monkeypatch, this_pc, plan, 
     assert len(launched) == 2 and urls == ["http://127.0.0.1:40401", "http://127.0.0.1:40402"]
     assert err.count("ComfyUI が止まりました") == 2 and "CUDA error" in err
     assert "ComfyUI を起動し直して続けます" in err and "HTTPConnectionPool" not in err
+    assert "ブラウザで開けることを確かめて" not in err  # 止まったときは「起動を確かめて」の案内を出さない
 
 
 def test_E2_ctrl_c_while_downloading_in_share_stops(capsys, monkeypatch, this_pc, dl_plan, gh):
@@ -2265,7 +2266,7 @@ def test_L3a_no_second_comfyui_on_the_same_folder(monkeypatch, tmp_path):
     from genmodelfit import comfyfind, comfystart
 
     monkeypatch.delenv(comfystart.START_ENV, raising=False)
-    monkeypatch.setattr(comfyfind, "comfy_port_answering", lambda *a, **k: 8000)
+    monkeypatch.setattr(comfyfind, "comfy_port_status", lambda *a, **k: (8000, 200))
     args = cli.build_parser().parse_args(["share", "--comfyui-dir", str(venv_install(tmp_path))])
     plan_, why = cli._comfyui_start_plan(args, None)
     assert plan_ is None and "--url http://127.0.0.1:8000" in why and "2 台目は起動しません" in why
@@ -2723,3 +2724,52 @@ def test_L8a_no_browser_and_no_clipboard(capsys, monkeypatch):
     assert cli.main(["--lang", "ja", "share", "--issue", str(p)]) == 0
     out = capsys.readouterr().out
     assert "次のフォームをブラウザで開き" in out and "---" in out  # 写し方の案内と中身
+
+
+# --- 3 回目の確かめ(#124 の Tester)------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("types", "want"),
+    [({4242: "C+G"}, set()), ({4242: "G"}, set()), ({4242: "C"}, {4242}), ({}, set())],
+)
+def test_r3_only_new_compute_processes_count(monkeypatch, types, want):
+    from genmodelfit import bench
+
+    monkeypatch.setattr(bench, "smi_process_types", lambda: types)
+    peaks = SimpleNamespace(smi_samples=10, gpu_used_mib=7800.0, torch_vram=2 * 1024**3)
+    assert bench._interfering({4242}, (600.0, 0.0), peaks) == want  # GPU 全体が大きく増えても C+G は数えない
+
+
+def test_r3_wording(monkeypatch, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import bench, comfyfind, comfystart, i18n
+
+    with i18n.forced("en"):
+        assert ", " in bench._process_names({999999991, 999999992})
+        assert github.token_status_message("broken").startswith("The ")
+        assert github.token_status_message("expired").startswith("The ")
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    args = cli.build_parser().parse_args(["share", "--comfyui-dir", str(venv_install(tmp_path))])
+    monkeypatch.setattr(comfyfind, "comfy_port_status", lambda *a, **k: (8188, 401))
+    _p, why = cli._comfyui_start_plan(args, None)
+    assert "認証" in why and "フォルダを読めません" not in why
+    monkeypatch.setattr(comfyfind, "comfy_port_status", lambda *a, **k: (8000, 404))
+    _p, why = cli._comfyui_start_plan(args, None)
+    assert "ComfyUI でないもの" in why
+
+
+def test_r3_no_plan_screen_when_another_server_is_on_the_port(
+    capsys, monkeypatch, this_pc, plan, gh, tmp_path
+):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfyfind, comfystart
+
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(comfyfind, "comfy_port_status", lambda *a, **k: (8188, 200))
+    assert cli.main(["--lang", "ja", "share", "--yes", "--comfyui-dir", str(venv_install(tmp_path))]) == 1
+    cap = capsys.readouterr()
+    assert "ComfyUI:" not in cap.out and "合計の目安" not in cap.out
+    assert "--url http://127.0.0.1:8188" in cap.err and "見つかりません" not in cap.err

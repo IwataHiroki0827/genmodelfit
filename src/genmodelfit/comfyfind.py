@@ -305,6 +305,14 @@ def usable_models_dir(p: Path) -> bool:
 
 
 def comfy_port_answering(ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT) -> int | None:
+    """答えたポート(comfy_port_status の 1 つ目)。"""
+    found = comfy_port_status(ports, timeout)
+    return found[0] if found else None
+
+
+def comfy_port_status(
+    ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT
+) -> tuple[int, int] | None:
     """127.0.0.1 のこのポートで ComfyUI(/system_stats)が答えるか。答えたポート(L3a。フォルダを読めない
     ComfyUI でも、2 台目を同じフォルダで起動しないように)。GENMODELFIT_COMFYUI_SEARCH=0 なら見ない。"""
     from .fetch import make_session
@@ -322,7 +330,7 @@ def comfy_port_answering(ports: Iterable[int] = PROBE_PORTS, timeout: float = PR
                 )
                 # 何かが HTTP で答えれば(401・403 なども)、そこにはもう何かがいる(L3d): 2 台目を起動しない
                 if r.status_code:
-                    return port
+                    return port, int(r.status_code)
         except Exception:
             continue
     return None

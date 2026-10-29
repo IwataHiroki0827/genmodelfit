@@ -489,27 +489,14 @@ def smi_process_types() -> dict[int, str]:
     return {int(pid): t for pid, t in _SMI_PROC.findall(out or "")}
 
 
-INTERFERE_MARGIN = (
-    1024**3
-)  # 種類が分からない新しいプロセスで、GPU 全体の増分がこれを超えたら数値が狂ったとみる
-
-
-def _interfering(new_apps: set[int], base_smi, peaks) -> set[int]:
-    """測っているあいだに現れたプロセスのうち、数値を狂わせたとみるもの(#124): 計算のプロセス(種類 C)。
-    種類が C+G・G・分からないものは、GPU 全体の使用量が「開始前 + ComfyUI の torch の最大 + 1 GiB」を
-    超えたときだけ(画面のアプリが開いただけでは断らない)。"""
+def _interfering(new_apps: set[int], base_smi=None, peaks=None) -> set[int]:
+    """測っているあいだに現れたプロセスのうち、数値を狂わせたとみるもの(#124): 計算だけのプロセス(nvidia-smi
+    の表の種類 C。torch で CUDA を使う python など)だけ。C+G・G(ブラウザ・画面のアプリ)と、種類が分からない
+    ものは数えない(動的 VRAM では GPU 全体の増分が torch の量よりずっと大きいので、量では見分けられない)。"""
     if not new_apps:
         return set()
     types = smi_process_types()
-    compute = {p for p in new_apps if types.get(p) == "C"}
-    if compute:
-        return compute
-    if base_smi is None or not peaks.smi_samples:
-        return set()
-    expected = base_smi[0] * 1024**2 + peaks.torch_vram + INTERFERE_MARGIN
-    if peaks.gpu_used_mib * 1024**2 > expected:
-        return set(new_apps)
-    return set()
+    return {p for p in new_apps if types.get(p) == "C"}
 
 
 def _process_tree(proc) -> set[int]:
@@ -529,7 +516,7 @@ def _process_names(pids: set[int]) -> str:
             names.append(f"{psutil.Process(pid).name()} {pid}")
         except Exception:
             names.append(f"PID {pid}")
-    return "、".join(names)
+    return tr("、", ", ").join(names)
 
 
 def smi_compute_apps() -> list[tuple[int, str]]:
