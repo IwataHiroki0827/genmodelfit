@@ -4255,7 +4255,7 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
             "  - On another PC or port: give it with --url http://<host>:<port>",
         ),
     ]
-    if inst.state == "no":
+    if inst is not None and inst.state == "no":
         lines.append(
             tr(
                 f"モデルのファイルも入っていません。先に genmodelfit download {model_id} で落とせます。",
@@ -4552,6 +4552,14 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 0
+        if url is None:
+            # 選ばせてから止めない(#123)。一覧は見せ、起動の仕方を出して終える
+            sys.stdout.flush()
+            lines = _not_running_lines("", None)
+            print(tr(f"エラー: {lines[0]}", f"error: {lines[0]}"), file=sys.stderr)
+            for line in lines[1:]:
+                print(line, file=sys.stderr)
+            return 1
         try:
             k = _choose_number(len(sugg))
         except KeyboardInterrupt:
