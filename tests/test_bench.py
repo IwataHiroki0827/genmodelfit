@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, ClassVar
@@ -546,9 +547,21 @@ class FakeComfy:
                 if p.startswith("/history/"):
                     return self._send(200, fake._history())
                 if p == "/internal/logs/raw":
+                    # ComfyUI の LogInterceptor と同じ形(t はその PC の時刻の ISO の文字、m は書いた文字。
+                    # tqdm の進み具合の行も入る。#132 の時間の内訳の材料)
                     lines = [{"t": "1", "m": "start"}]
                     if fake.submitted:
-                        lines.append({"t": "2", "m": "loaded completely; 7000 MB usable"})
+
+                        def at(dt: float) -> str:
+                            return datetime.fromtimestamp(fake.submit_time + dt).isoformat()
+
+                        lines += [
+                            {"t": at(0.2), "m": "got prompt"},
+                            {"t": at(0.3), "m": "loaded completely; 7000 MB usable"},
+                            {"t": at(0.5), "m": "\r  0%|          | 0/20 [00:00<?, ?it/s]"},
+                            {"t": at(1.0), "m": "\r 50%|#####     | 10/20 [00:00<00:00, 20.0it/s]"},
+                            {"t": at(1.6), "m": "\r100%|##########| 20/20 [00:01<00:00, 19.5it/s]"},
+                        ]
                     return self._send(200, {"entries": lines})
                 if p.startswith("/tplinput/"):
                     return self._send(200, b"\x89PNG fake")
@@ -1256,3 +1269,14 @@ def test_cli_bench_reports_converter_errors_in_japanese(tmp_path, capsys):
     assert code == 1
     assert "API 形式に直せません" in json.loads(capsys.readouterr().out)["error"]
     assert fake.mutations == []
+
+
+def test_bench_records_timing_with_fake_comfyui():
+    """時間の内訳(#132): /history の時刻とログの進み具合の行から。HTTP だけ。"""
+    with FakeComfy() as fake:
+        res = bench.run(_opts(fake.url, free_before=True, cold_load=True), log=_quiet)
+    t = res.timing
+    assert t["total_s"] is not None and t["cold_load"] is True
+    assert t["queue_s"] == pytest.approx(0.1, abs=0.05)
+    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.05
+    assert t["load_s"] == pytest.approx(0.4, abs=0.05) and t["decode_s"] == pytest.approx(1.0, abs=0.05)

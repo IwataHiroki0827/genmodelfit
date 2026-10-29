@@ -1,9 +1,9 @@
 {
  "unit": "GiB",
  "source": "community",
- "contrib_schema": 2,
+ "contrib_schema": 3,
  "date": null,
- "method": "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。最後まで動いた(ok)ものの最大 VRAM を出どころ(送った人。git の履歴から読む。無ければ提出ごと)ごとの中央値にし、|x - 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き(出どころが 3 つ以上のとき。MAD は中央値の 2% を下限)、残りの中央値を値にする。ok の行は 1 件から見積もりに使う(件数は n_used、出どころは n_sources、同じ構成の OOM は n_oom。OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが 2 以上で、幅が中央値の 15% 以内で、OOM が無ければ consistent(係数の合わせ直しに入れる)。GPU 名が汎用の名前・名前の代わりの値の行は gpu_known が false で、判定に使わない",
+ "method": "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。最後まで動いた(ok)ものの最大 VRAM を出どころ(送った人。git の履歴から読む。無ければ提出ごと)ごとの中央値にし、|x - 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き(出どころが 3 つ以上のとき。MAD は中央値の 2% を下限)、残りの中央値を値にする。ok の行は 1 件から見積もりに使う(件数は n_used、出どころは n_sources、同じ構成の OOM は n_oom。OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが 2 以上で、幅が中央値の 15% 以内で、OOM が無ければ consistent(係数の合わせ直しに入れる)。GPU 名が汎用の名前・名前の代わりの値の行は gpu_known が false で、判定に使わない。GPU の総量を超えた(共有メモリへ逃げた。spilled)提出と失敗の記録は使わない",
  "submissions": [],
  "measurements": []
 }

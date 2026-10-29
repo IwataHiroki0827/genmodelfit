@@ -708,7 +708,7 @@ def test_intake_workflow_treats_the_body_as_data():
         ]
         == 0
     )  # 同じ人の前の提出を数えるため
-    assert r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$" in pub_runs
+    assert r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}(-failures)?\.json$" in pub_runs
     assert "--body-file" in pub_runs and "gh pr merge" not in pub_runs
 
 

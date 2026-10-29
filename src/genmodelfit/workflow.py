@@ -44,7 +44,10 @@ MODEL_FILE_EXT = re.compile(r"\.(safetensors|sft|ckpt|pt|pth|bin|gguf|onnx)$", r
 
 
 class WorkflowError(ValueError):
-    """ワークフローを変換・実行できない理由(利用者に見せる文)。"""
+    """ワークフローを変換・実行できない理由(利用者に見せる文)。足りないノードで止めたときは、その名前を
+    missing_nodes に持つ(#132。share の失敗の記録の材料)。"""
+
+    missing_nodes: list[str] | None = None
 
 
 def template_url(name: str) -> str:
@@ -425,7 +428,9 @@ def missing_nodes_message(names: list[str], *, workflow_hint: bool = True) -> st
 def _ui_to_api(ui: dict[str, Any], object_info: dict[str, Any]) -> Conversion:
     missing = missing_nodes(ui, object_info)
     if missing:
-        raise WorkflowError(missing_nodes_message(missing))
+        err = WorkflowError(missing_nodes_message(missing))
+        err.missing_nodes = missing  # 失敗の記録の材料(#132。ノードの名前だけ)
+        raise err
     flat, alias = _flat_graph(ui)
     by_id = {n.id: n for n in flat}
     warnings: list[str] = []

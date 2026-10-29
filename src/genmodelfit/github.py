@@ -856,7 +856,10 @@ def pr_body(subs: list[dict[str, Any]]) -> str:
         "| Model | GPU | Settings | Outcome | Peak VRAM (GiB) | Time (s) |",
         "|---|---|---|---|---|---|",
     ]
+    failures = [d for d in subs if isinstance(d.get("failures"), list)]  # 失敗の記録(#132)
     for d in subs:
+        if d in failures:
+            continue
         mm = d.get("measurement") or {}
         gpu = (d.get("system") or {}).get("gpu") or {}
         settings = ", ".join(f"{k}={v}" for k, v in (mm.get("settings") or {}).items()) or "-"
@@ -869,6 +872,14 @@ def pr_body(subs: list[dict[str, Any]]) -> str:
             mm.get("seconds"),
         ]
         lines.append("| " + " | ".join(md_cell(str(c) if c is not None else "-") for c in cells) + " |")
+    for d in failures:
+        gpu = (d.get("system") or {}).get("gpu") or {}
+        kinds = sorted({str(f.get("outcome")) for f in d["failures"] if isinstance(f, dict)})
+        lines += [
+            "",
+            "Failure records (not used by the estimate formula): "
+            + md_cell(f"{len(d['failures'])} on {gpu.get('name')} ({', '.join(kinds)})"),
+        ]
     lines += [
         "",
         "Each file passed the privacy checklist and `genmodelfit contrib validate` on the sender's PC;"

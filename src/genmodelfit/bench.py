@@ -80,7 +80,13 @@ STANDARD_SET_KEYS = {"width", "height", "steps", "seed", "noise_seed", *FRAME_KE
 
 
 class BenchError(RuntimeError):
-    """測れなかった理由(利用者に見せる文)。"""
+    """測れなかった理由(利用者に見せる文)。failure は送れる失敗の記録の材料(#132。時間切れ・ComfyUI が
+    ワークフローを受け付けなかったときだけ。{outcome, seconds, timeout_s, error_type, node_type})。
+    文(パスが入りうる)は failure に入れない。"""
+
+    def __init__(self, *args: Any, failure: dict[str, Any] | None = None):
+        super().__init__(*args)
+        self.failure = failure
 
 
 # --- ComfyUI との HTTP ------------------------------------------------------------------------
@@ -176,7 +182,8 @@ class ComfyClient:
         if r.status_code != 200 or "prompt_id" not in body:
             raise BenchError(
                 tr("ComfyUI がワークフローを受け付けませんでした: ", "ComfyUI rejected the workflow: ")
-                + _prompt_error_text(body, r)
+                + _prompt_error_text(body, r),
+                failure=_prompt_error_kind(body, workflow),
             )
         return str(body["prompt_id"])
 
@@ -243,6 +250,36 @@ def _prompt_error_text(body: dict[str, Any], r: requests.Response) -> str:
                 ).strip()
             )
     return " / ".join(parts) if parts else f"HTTP {r.status_code}"
+
+
+def _class_types(workflow: Any) -> set[str]:
+    """ワークフロー(API 形式)にあるノードの種類。失敗の記録には、送ったワークフローにある名前だけを入れる。"""
+    if not isinstance(workflow, dict):
+        return set()
+    return {
+        str(n.get("class_type")) for n in workflow.values() if isinstance(n, dict) and n.get("class_type")
+    }
+
+
+def _prompt_error_kind(body: Any, workflow: Any) -> dict[str, Any]:
+    """ComfyUI が受け付けなかったときの失敗の記録の材料(#132): node_errors の type(無ければ error の type)と
+    ノードの種類(送ったワークフローにあるものだけ)。文(message・details)は入れない。"""
+    body = body if isinstance(body, dict) else {}
+    kinds: list[str] = []
+    node_type = None
+    for ne in (body.get("node_errors") or {}).values():
+        if not isinstance(ne, dict):
+            continue
+        node_type = node_type or ne.get("class_type")
+        kinds += [str(e.get("type")) for e in ne.get("errors") or [] if isinstance(e, dict) and e.get("type")]
+    err = body.get("error")
+    if not kinds and isinstance(err, dict) and err.get("type"):
+        kinds.append(str(err["type"]))
+    return {
+        "outcome": "error",
+        "error_type": kinds[0] if kinds else None,
+        "node_type": node_type if node_type in _class_types(workflow) else None,
+    }
 
 
 def cancel_own_prompt(client: ComfyClient, prompt_id: str) -> str:
@@ -840,9 +877,9 @@ def offload_from_logs(lines: list[str]) -> str | None:
     return None
 
 
-def _new_log_lines(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+def _new_log_entries(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen = {(e.get("t"), e.get("m")) for e in before}
-    return [str(e.get("m") or "") for e in after if (e.get("t"), e.get("m")) not in seen]
+    return [e for e in after if isinstance(e, dict) and (e.get("t"), e.get("m")) not in seen]
 
 
 def _history_error(entry: dict[str, Any], *, stored: bool = False) -> tuple[str, bool] | None:
@@ -874,6 +911,116 @@ def _history_error(entry: dict[str, Any], *, stored: bool = False) -> tuple[str,
     return say(
         "実行に失敗しました(理由は ComfyUI のログを見てください)", "The run failed (see the ComfyUI log)"
     ), False
+
+
+def _history_error_kind(entry: dict[str, Any], workflow: Any) -> dict[str, Any] | None:
+    """履歴の失敗の種類(#132): {error_type: 例外の型名, node_type: ノードの種類, interrupted}。
+    文(exception_message)は入れない。ノードの種類は送ったワークフローにあるものだけ。失敗でなければ None。"""
+    status = entry.get("status") or {}
+    if status.get("status_str") != "error":
+        return None
+    for msg in status.get("messages") or []:
+        if isinstance(msg, list) and len(msg) == 2 and msg[0] == "execution_interrupted":
+            return {"error_type": None, "node_type": None, "interrupted": True}
+        if isinstance(msg, list) and len(msg) == 2 and msg[0] == "execution_error":
+            d = msg[1] if isinstance(msg[1], dict) else {}
+            node = d.get("node_type")
+            return {
+                "error_type": str(d.get("exception_type")) if d.get("exception_type") else None,
+                "node_type": node if node in _class_types(workflow) else None,
+                "interrupted": False,
+            }
+    return {"error_type": None, "node_type": None, "interrupted": False}
+
+
+# 進み具合の行(tqdm。ComfyUI のログ /internal/logs/raw に入る): " 20/20 [00:05<00:00,  3.80it/s]"
+_PROGRESS = re.compile(r"(\d+)/(\d+) \[(?:(\d+):)?(\d+):(\d+)<[^\]]*?(?:,\s*([0-9.]+)\s*(it/s|s/it))?\]")
+
+
+def _log_time(t: Any) -> float | None:
+    """ComfyUI のログの時刻(ISO の文字。タイムゾーンが無ければその PC の時刻)→ UNIX 時刻。
+    読めなければ None。"""
+    try:
+        return datetime.fromisoformat(str(t)).timestamp()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _progress_runs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """ログの進み具合の行を、1 回の実行(サンプラなど)ごとにまとめる(順に見て、数が戻ったら次の実行)。"""
+    runs: list[dict[str, Any]] = []
+    cur: dict[str, Any] | None = None
+    for e in entries:
+        text = str(e.get("m") or "")
+        t = _log_time(e.get("t"))
+        for m in _PROGRESS.finditer(text):
+            n, total = int(m.group(1)), int(m.group(2))
+            elapsed = int(m.group(3) or 0) * 3600 + int(m.group(4)) * 60 + int(m.group(5))
+            if total <= 0 or n > total:
+                continue
+            if cur is None or n < cur["n"] or total != cur["total"]:
+                cur = {"first_t": t, "first_elapsed": elapsed, "total": total}
+                runs.append(cur)
+            cur.update(n=n, elapsed=elapsed, last_t=t)
+            if m.group(6):
+                with contextlib.suppress(ValueError, ZeroDivisionError):
+                    rate = float(m.group(6))
+                    cur["spi"] = rate if m.group(7) == "s/it" else 1.0 / rate
+    return runs
+
+
+def timing_breakdown(
+    entry: dict[str, Any],
+    log_entries: list[dict[str, Any]],
+    submit_wall: float,
+    wall: float,
+    *,
+    local: bool,
+    cold_load: bool | None = None,
+) -> dict[str, Any]:
+    """時間の内訳(#132。docs/schema.md「contrib」)。HTTP だけで取る: /history の status.messages の時刻
+    (execution_start・execution_success など)と、ComfyUI のログ(/internal/logs/raw)の進み具合の行。
+    取れない項目は None。送った時刻・ログの時刻と比べる項目(queue_s・load_s・decode_s)は、ComfyUI が
+    同じ PC のときだけ(時計が同じ)。save_s は HTTP では復元と分けられないので、今は None。"""
+    ts = _timestamps(entry)
+    start = ts.get("execution_start")
+    end = ts.get("execution_success") or ts.get("execution_error") or ts.get("execution_interrupted")
+    out: dict[str, Any] = {
+        "queue_s": None,
+        "load_s": None,
+        "sampling_s": None,
+        "sec_per_step": None,
+        "decode_s": None,
+        "save_s": None,
+        "total_s": round(max(0.0, wall), 1) if wall is not None else None,
+        "cold_load": cold_load,
+    }
+    if local and start:
+        out["queue_s"] = round(max(0.0, start / 1000 - submit_wall), 2)
+    done = [r for r in _progress_runs(log_entries) if r["n"] == r["total"]]
+    if not done:
+        return out
+    steps = sum(r["total"] for r in done)
+    secs = sum(r["elapsed"] for r in done)
+    spis = [r["spi"] for r in done if r.get("spi")]
+    if secs > 0:
+        out["sampling_s"] = float(secs)
+        out["sec_per_step"] = round(secs / steps, 3)
+    elif spis:
+        spi = sum(r.get("spi", 0.0) * r["total"] for r in done) / steps
+        out["sec_per_step"] = round(spi, 3)
+        out["sampling_s"] = round(spi * steps, 2)
+    # ありえない値(時計のずれ)は捨てる: 実行の時間(無ければ全体の時間)より長い内訳は使わない
+    span = max(wall or 0.0, (end - start) / 1000 if start and end else 0.0) + 1.0
+    if local and start and done[0]["first_t"] is not None:
+        load = done[0]["first_t"] - done[0]["first_elapsed"] - start / 1000
+        if 0 <= load <= span:
+            out["load_s"] = round(load, 2)
+    if local and end and done[-1].get("last_t") is not None:
+        dec = end / 1000 - done[-1]["last_t"]
+        if 0 <= dec <= span:
+            out["decode_s"] = round(dec, 2)
+    return out
 
 
 def _timestamps(entry: dict[str, Any]) -> dict[str, float]:
@@ -934,6 +1081,8 @@ class BenchOptions:
     files_fp: str | None = None  # 測る時点の一覧のファイルの指紋(estimate.files_fingerprint。#90)
     # 頼んだ設定(幅・高さ・コマ数・長さ)をワークフローに書けなければ、生成の前に止める(measure。#116)
     strict_settings: bool = False
+    # 初めての読み込みか(#132。share が同じ ComfyUI で測ったモデルを覚えて渡す)。None は分からない
+    cold_load: bool | None = None
 
     @property
     def settings_override(self) -> bool:
@@ -948,6 +1097,9 @@ class BenchResult:
     warnings: list[str]
     failed: str | None = None  # 失敗したときの理由(メモリ不足などは測った値を残す)
     nonstandard: list[str] = field(default_factory=list)  # 標準でない条件(あれば standard は偽。#124)
+    # 時間の内訳(#132。timing_breakdown)と、失敗の種類(_history_error_kind。文は入れない)
+    timing: dict[str, Any] | None = None
+    error_kind: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         m = asdict(self.measurement)
@@ -1055,6 +1207,13 @@ class NodeCheck:
             self.unchecked.append(model_id)
         self._seen[model_id] = out
         return out
+
+    def comfyui_version(self) -> str | None:
+        """ComfyUI の版(/system_stats。失敗の記録に書く。#132)。分からなければ None。"""
+        with contextlib.suppress(BenchError, AttributeError, TypeError):
+            v = (self.client.system_stats().get("system") or {}).get("comfyui_version")
+            return str(v) if v else None
+        return None
 
 
 def _ensure_inputs(
@@ -1342,6 +1501,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     )
     last_tick = time.monotonic()
     slept = 0.0
+    ran = False  # 自分の仕事が実行中になったのを見たか(時間切れを失敗の記録にするのはそのときだけ。#132)
     next_apps = time.monotonic() + GPU_APPS_EVERY
     try:
         prompt_id = client.submit(wf, client_id)
@@ -1358,6 +1518,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
                 running, pending = client.queue_ids()
                 foreign.update(r for r in running if r != prompt_id)
                 phase = "running" if prompt_id in running else "queued" if prompt_id in pending else "waiting"
+                ran = ran or phase == "running"
             if progress is not None:
                 with mon._lock:
                     p = mon.peaks
@@ -1379,13 +1540,23 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
             last_tick = now
             if now - t0 - slept > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
+                timeout_failure = {
+                    "outcome": "timeout",
+                    "seconds": round(now - t0 - slept, 1),
+                    "timeout_s": opts.timeout,
+                }
+                # キューで待っただけ・ほかの仕事が動いた・スリープした時間切れは、
+                # モデルの性質でないので送らない
+                if not ran or foreign or slept:
+                    timeout_failure = None
                 raise BenchError(
                     tr(
                         f"{opts.timeout:g} 秒で終わらなかったので中止しました"
                         + ("(自分の仕事を中断した)" if done == "interrupted" else ""),
                         f"Stopped: not finished in {opts.timeout:g} s"
                         + (" (interrupted our own job)" if done == "interrupted" else ""),
-                    )
+                    ),
+                    failure=timeout_failure,
                 )
             time.sleep(0.5)
     except KeyboardInterrupt:
@@ -1469,7 +1640,8 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
             )
         )
 
-    log_lines = _new_log_lines(log_before, client.log_entries())
+    log_new = _new_log_entries(log_before, client.log_entries())
+    log_lines = [str(e.get("m") or "") for e in log_new]
     offload = "oom" if outcome == "oom" else offload_from_logs(log_lines)
     exec_s = _exec_seconds(entry or {})
 
@@ -1546,7 +1718,15 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
         settings_override=True if opts.settings_override else None,
     )
     return BenchResult(
-        measurement=m, workflow_source=source, warnings=warnings, failed=failed, nonstandard=list(shown)
+        measurement=m,
+        workflow_source=source,
+        warnings=warnings,
+        failed=failed,
+        nonstandard=list(shown),
+        timing=timing_breakdown(
+            entry or {}, log_new, submit_wall, wall, local=local, cold_load=opts.cold_load
+        ),
+        error_kind=_history_error_kind(entry, wf) if entry else None,
     )
 
 

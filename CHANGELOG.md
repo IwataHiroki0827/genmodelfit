@@ -89,6 +89,21 @@ All notable changes to this project are documented here. The format is based on
   ones; `measure` hides them from its list and stops a named model before downloading or measuring. The "Next:" line
   for a missing-node error now says to update ComfyUI (or install the custom nodes) instead of checking that ComfyUI
   runs.
+- **`share` sends more of what helps improve the estimates** (#132; `contrib_schema` 3, docs/schema.md "contrib").
+  Each measurement also carries `estimate` (genmodelfit's level, run mode, VRAM, working memory, RAM and time guide
+  for it, made without that measurement or other measurements from the same PC), `timing` (queue, load, sampling,
+  seconds per step, decode, total, first load; read over HTTP from `/history`'s `status.messages` and ComfyUI's log
+  progress lines, null when unknown) and `db` (the list's date and the start of its sha256). A result whose peak VRAM
+  went over the GPU total (Windows shared memory) is no longer refused: it is sent as `outcome: ok` with
+  `spilled: true` and `spilled_gb`. What could not be measured goes into one failure record file per run and GPU
+  (`data/contrib/<GPU>/<date>-<sha8>-failures.json`, kind `genmodelfit-failures`): missing nodes (also those left
+  out by the node check before measuring), timeouts after the job started, errors and unsendable OOMs, with node
+  names, the exception type name or ComfyUI's `node_errors` type and the failing node type only (never the message
+  text; interrupted runs and runs disturbed by other programs are never sent). A run with only failures still sends
+  them; a record already saved on this PC is not written again. The screen before sending shows the new fields
+  (English and Japanese), and the privacy checklist covers them. `contrib validate`, `contrib intake` (issues) and the
+  contrib / measurement-intake workflows accept schema 3 and failure files (schema 1 and 2 are still accepted);
+  spilled results and failure records are kept out of `contrib aggregate`, the estimates and `calibrate`.
 
 ### Fixed
 
