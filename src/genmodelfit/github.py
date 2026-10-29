@@ -139,6 +139,42 @@ def write_cached_token(
     return p
 
 
+def cached_token_status(now: Callable[[], float] = time.time) -> str:
+    """保存したトークンの状態(消さない): none(無い)・broken(壊れている)・expired(期限切れ)・ok。"""
+    import json
+
+    try:
+        text = token_path().read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "none"
+    except (OSError, UnicodeDecodeError):
+        return "broken"
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return "broken"
+    token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token.strip():
+        return "broken"
+    expires = data.get("expires_at")
+    if isinstance(expires, (int, float)) and now() >= float(expires) - EXPIRY_MARGIN:
+        return "expired"
+    return "ok"
+
+
+def token_status_message(status: str) -> str:
+    """保存したトークンを消したときの文(期限切れと壊れたファイルを分ける)。"""
+    if status == "broken":
+        return tr(
+            "保存した GitHub のログインのファイルが壊れていたので消しました",
+            "the saved GitHub sign-in file was broken and was removed",
+        )
+    return tr(
+        "保存した GitHub のログインの期限が切れたので消しました",
+        "the saved GitHub sign-in had expired and was removed",
+    )
+
+
 def clear_cached_token() -> bool:
     """キャッシュしたトークンを消す。消したか(無ければ False)。"""
     try:
@@ -472,15 +508,10 @@ def login(
                 status=401,
             )
         return Credentials(token, user, f"env:{name}")
-    had_cache = token_path().exists()
+    status = cached_token_status()
     cached, expires_at = cached_token_info()
-    if had_cache and cached is None:
-        say(
-            tr(
-                "前にログインしたトークンの期限が切れました。ログインし直します",
-                "the saved login has expired; signing in again",
-            )
-        )
+    if status in ("expired", "broken"):
+        say(token_status_message(status))
     if cached:
         user = whoami(session, cached)
         if user is not None:

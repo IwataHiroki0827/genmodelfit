@@ -479,6 +479,39 @@ def _gpu_app_pids(gpu_uuid: str | None) -> set[int]:
     return {pid for pid, u in smi_compute_apps() if gpu_uuid is None or u == gpu_uuid}
 
 
+_SMI_PROC = re.compile(r"^\|\s+\S+\s+\S+\s+\S+\s+(\d+)\s+(C\+G|C|G)\s", re.M)
+
+
+def smi_process_types() -> dict[int, str]:
+    """nvidia-smi の表(Processes)の PID → 種類(C・G・C+G)。Windows の WDDM では compute apps に画面の
+    アプリも出るので、種類で見分ける(#124)。読めなければ空。"""
+    out = _smi_query([])
+    return {int(pid): t for pid, t in _SMI_PROC.findall(out or "")}
+
+
+INTERFERE_MARGIN = (
+    1024**3
+)  # 種類が分からない新しいプロセスで、GPU 全体の増分がこれを超えたら数値が狂ったとみる
+
+
+def _interfering(new_apps: set[int], base_smi, peaks) -> set[int]:
+    """測っているあいだに現れたプロセスのうち、数値を狂わせたとみるもの(#124): 計算のプロセス(種類 C)。
+    種類が C+G・G・分からないものは、GPU 全体の使用量が「開始前 + ComfyUI の torch の最大 + 1 GiB」を
+    超えたときだけ(画面のアプリが開いただけでは断らない)。"""
+    if not new_apps:
+        return set()
+    types = smi_process_types()
+    compute = {p for p in new_apps if types.get(p) == "C"}
+    if compute:
+        return compute
+    if base_smi is None or not peaks.smi_samples:
+        return set()
+    expected = base_smi[0] * 1024**2 + peaks.torch_vram + INTERFERE_MARGIN
+    if peaks.gpu_used_mib * 1024**2 > expected:
+        return set(new_apps)
+    return set()
+
+
 def _process_tree(proc) -> set[int]:
     """ComfyUI のプロセスとその子の PID(分からなければ空)。"""
     if proc is None:
@@ -925,7 +958,12 @@ def fetch_template(
     try:
         r = session.get(template_url(model_id), timeout=30)
     except requests.RequestException as e:
-        raise BenchError(tr(f"テンプレートを取れません: {e}", f"Cannot fetch the template: {e}")) from e
+        raise BenchError(
+            tr(
+                f"テンプレートを取れません(GitHub に繋がりません: {type(e).__name__})",
+                f"Cannot fetch the template (cannot reach GitHub: {type(e).__name__})",
+            )
+        ) from e
     if r.status_code != 200:
         raise BenchError(
             tr(
@@ -1077,9 +1115,16 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     warnings += notes
     if opts.strict_settings:
         _check_requested_settings(wf, opts, notes)
-    nonstandard: list[str] = []
+    nonstandard: list[str] = []  # 実測の note に残す(表示の言語によらず日本語)
+    shown: list[str] = []  # 表示する(表示の言語。BenchResult.nonstandard)
+
+    def ns(ja: str, en: str) -> None:
+        if ja not in nonstandard:
+            nonstandard.append(ja)
+            shown.append(tr(ja, en))
+
     if opts.workflow_path:
-        nonstandard.append("自分のワークフロー(--workflow)")
+        ns("自分のワークフロー(--workflow)", "your own workflow (--workflow)")
     for key, value in opts.sets.items():
         hit = [n for n in wf.values() if key in n["inputs"] and not isinstance(n["inputs"][key], list)]
         if not hit:
@@ -1089,7 +1134,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
         for n in hit:
             n["inputs"][key] = value
         if hit and key not in STANDARD_SET_KEYS:
-            nonstandard.append(f"--set {key}")
+            ns(f"--set {key}", f"--set {key}")
     set_output_prefix(wf, f"genmodelfit_bench/{re.sub(r'[^A-Za-z0-9_.-]', '_', opts.model_id)}")
     problems = check_inputs(wf, object_info)
     if problems:
@@ -1280,8 +1325,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
             if now - last_tick > SLEEP_GAP:
                 # PC がスリープ・休止していた(L1b): 止まっていた時間は待つ時間に数えず、結果は標準にしない
                 slept += now - last_tick
-                if "PC がスリープした" not in nonstandard:
-                    nonstandard.append("PC がスリープした")
+                ns("PC がスリープした", "the PC went to sleep")
             last_tick = now
             if now - t0 - slept > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
@@ -1327,9 +1371,13 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
                 "Add --free, or change an input such as the seed (--set seed=…)",
             )
         )
-    if new_apps:
-        names = _process_names(new_apps)
-        nonstandard.append(f"測っている間にほかのプログラムが GPU を使い始めた({names})")
+    interfering = _interfering(new_apps, base_smi, peaks)
+    if interfering:
+        names = _process_names(interfering)
+        ns(
+            f"測っている間にほかのプログラムが GPU を使い始めた({names})",
+            f"another program started using the GPU while measuring ({names})",
+        )
         warnings.append(
             tr(
                 f"測っている間にほかのプログラムが GPU を使い始めました({names})。数値が狂うので送りません",
@@ -1337,7 +1385,10 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
             )
         )
     if cached:
-        nonstandard.append(f"前の結果を使ったノードが {len(cached)} 個(一部だけ実行)")
+        ns(
+            f"前の結果を使ったノードが {len(cached)} 個(一部だけ実行)",
+            f"{len(cached)} nodes reused the previous result (only partly run)",
+        )
         warnings.append(
             tr(
                 f"{len(cached)} 個のノードが前の結果を使い、実行されませんでした。"
@@ -1347,7 +1398,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
             )
         )
     if foreign:
-        nonstandard.append("測っている間に他の仕事が動いた")
+        ns("測っている間に他の仕事が動いた", "other work ran during the measurement")
         warnings.append(
             tr(
                 "測っている間に ComfyUI で他の仕事が動いたので、値に混ざっているおそれがあります",
@@ -1357,7 +1408,10 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     start_ts = _timestamps(entry or {}).get("execution_start")
     if local and start_ts and start_ts / 1000 - submit_wall > START_DELAY_S:
         delay = start_ts / 1000 - submit_wall
-        nonstandard.append(f"送ってから実行が始まるまで {delay:.0f} 秒(先に他の仕事が動いた)")
+        ns(
+            f"送ってから実行が始まるまで {delay:.0f} 秒(先に他の仕事が動いた)",
+            f"{delay:.0f} s from sending to the start (other work ran first)",
+        )
         warnings.append(
             tr(
                 f"送ってから実行が始まるまで {delay:.0f} 秒かかりました(先に他の仕事が動いたとみられます)",
@@ -1442,7 +1496,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
         settings_override=True if opts.settings_override else None,
     )
     return BenchResult(
-        measurement=m, workflow_source=source, warnings=warnings, failed=failed, nonstandard=list(nonstandard)
+        measurement=m, workflow_source=source, warnings=warnings, failed=failed, nonstandard=list(shown)
     )
 
 

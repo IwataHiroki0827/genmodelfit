@@ -2009,3 +2009,11 @@ def test_L6d_place_that_cannot_be_written_is_a_clear_error(server, comfy, monkey
         gmf.download(p, yes=True)
     assert "PermissionError" in str(e.value) or "read-only" in str(e.value) or "書け" in str(e.value)
     assert not any(comfy.rglob("*.safetensors"))
+
+
+def test_L6b_no_range(server, comfy):
+    test_server_without_range_restarts(server, comfy)  # Range に応じないサーバーは最初から落とし直す
+
+
+def test_L6c_stale_lock(tmp_path, monkeypatch):
+    test_stale_lock_retire_keeps_fresh_lock(tmp_path, monkeypatch)  # 前に落ちた .lock は古いものとして扱う

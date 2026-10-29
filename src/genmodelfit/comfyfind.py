@@ -320,7 +320,8 @@ def comfy_port_answering(ports: Iterable[int] = PROBE_PORTS, timeout: float = PR
                     allow_redirects=False,
                     proxies={"http": None, "https": None, "all": None},  # type: ignore[dict-item]
                 )
-                if r.status_code == 200 and isinstance(r.json(), dict) and "devices" in r.json():
+                # 何かが HTTP で答えれば(401・403 なども)、そこにはもう何かがいる(L3d): 2 台目を起動しない
+                if r.status_code:
                     return port
         except Exception:
             continue

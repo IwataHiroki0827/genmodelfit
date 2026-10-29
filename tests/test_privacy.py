@@ -114,3 +114,7 @@ def test_proxy_environment_is_still_used(monkeypatch):
         assert s.trust_env is True
         settings = s.merge_environment_settings("https://huggingface.co/api/models", {}, None, None, None)
     assert settings["proxies"].get("https") == "http://proxy.example:3128"
+
+
+def test_L6e_proxy(monkeypatch):
+    test_proxy_environment_is_still_used(monkeypatch)  # プロキシの環境は make_session の決まりどおり使う

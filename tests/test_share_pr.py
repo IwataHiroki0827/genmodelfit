@@ -1815,12 +1815,21 @@ def test_C1_another_program_starting_on_the_gpu_makes_it_nonstandard(monkeypatch
 
     bench = _bench_gpu(monkeypatch, apps)
     monkeypatch.setattr(bench, "GPU_APPS_EVERY", 0.0)
+    # 計算のプロセス(種類 C)が現れた: 数値が狂う
+    monkeypatch.setattr(bench, "smi_process_types", lambda: {1: "C+G", 4242: "C"})
     with FakeComfy() as fake:
         opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, free_before=True)
         res = bench.run(opts)
     assert res.measurement.standard is False
     assert any("ほかのプログラムが GPU を使い始めた" in x and "4242" in x for x in res.nonstandard)
     assert not any("PID 7" in x for x in res.nonstandard)
+    # 画面のアプリ(C+G)が開いただけで、GPU 全体の使用量が増えていない: 断らない(共用の PC)
+    n["calls"] = 0
+    monkeypatch.setattr(bench, "smi_process_types", lambda: {1: "C+G", 4242: "C+G"})
+    with FakeComfy() as fake:
+        opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, free_before=True)
+        res = bench.run(opts)
+    assert res.measurement.standard is True and res.nonstandard == []
 
 
 def test_C3_other_programs_using_vram_stop_the_run(monkeypatch):
@@ -1908,7 +1917,8 @@ def test_E2_ctrl_c_while_downloading_in_share_stops(capsys, monkeypatch, this_pc
     monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: calls.append(mid) or 130)
     dl_plan["sugg"].append(sugg("z_not_installed", 30, "no", 1024**3))
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
-    assert cli.main(["--lang", "ja", "share", "--yes", "--download", "--url", "http://x:1"]) == 0
+    # Ctrl+C で止めたので 130(測った分は送る)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--download", "--url", "http://x:1"]) == 130
     err = capsys.readouterr().err
     assert calls == ["b_not_installed"] and "止めました。そこまでの実測を送るかに進みます" in err
     assert dl_plan["ran"] == ["a_installed_short"] and len(gh.put) == 1  # 測った分は送る
@@ -1983,7 +1993,7 @@ def test_I1_ctrl_c_at_every_stage(capsys, monkeypatch, this_pc, plan, gh, tmp_pa
     assert stopped, "起動した ComfyUI は止める"
     assert "Traceback" not in err
     if stage in ("start", "measure"):
-        assert "止めました。そこまでの実測を送るかに進みます" in err
+        assert "止めました。そこまでの実測を送るかに進みます" in err and code == 130
     if stage in ("method", "send", "login"):
         assert code == 130 and "genmodelfit share --no-measure" in err
     assert len(measure.saved_submissions(include_shared=True)) == len(plan["ran"])  # 測った分は残る
@@ -2506,3 +2516,210 @@ def test_L12a_macos_desktop_app_place(tmp_path, monkeypatch):
         and p.python == base / ".venv" / "bin" / "python"
         and p.main == res / "ComfyUI" / "main.py"
     )
+
+
+# --- 2 回目の確かめ(#124 の Tester)------------------------------------------------------------------------
+
+
+def test_r2_log_tail_is_cleaned(tmp_path):
+    from genmodelfit import comfystart
+
+    log = tmp_path / "c.log"
+    log.write_text("ok\n\x1b[31mTraceback\x1b[0m\x08\n\x1b]0;t\x07CUDA error\x07\n\n", encoding="utf-8")
+    assert comfystart.tail(log, 5) == ["ok", "Traceback", "CUDA error"]
+
+
+def test_r2_anything_answering_on_the_port_counts(monkeypatch):
+    from genmodelfit import comfyfind, fetch
+
+    class S:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, **kw):
+            return SimpleNamespace(status_code=401, json=lambda: {})
+
+    monkeypatch.setattr(comfyfind, "search_disabled", lambda: False)
+    monkeypatch.setattr(fetch, "make_session", lambda: S())
+    assert comfyfind.comfy_port_answering() == 8188
+    why = cli._HeadReason("A ComfyUI already seems to run on port 8188 …")
+    lines = cli._not_running_lines("", None, why)
+    assert lines == [str(why)]  # 「見つかりません」と食い違う行を出さない
+
+
+def test_r2_only_unsendable_results_exit_0(capsys, monkeypatch, this_pc, plan, gh):
+    def run(args, url, entry, settings, **k):
+        m = SimpleNamespace(outcome="ok", peak_vram_gb=9.3, seconds=3.0, standard=True)
+        res = SimpleNamespace(warnings=[], nonstandard=[], failed=None)
+        return {
+            "error": None,
+            "result": res,
+            "measurement": m,
+            "submission": None,
+            "unsendable": ["peak > GPU"],
+        }
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    assert "測れたが、送れません" in capsys.readouterr().out and gh.calls[:0] == []
+
+
+def test_r2_cache_folder_that_cannot_be_made(capsys, monkeypatch, this_pc, plan, gh, tmp_path):
+    f = tmp_path / "a-file"
+    f.write_text("x")
+    monkeypatch.setenv("GENMODELFIT_CACHE_DIR", str(f / "sub"))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    err = capsys.readouterr().err
+    assert "キャッシュのフォルダを作れません" in err and "Traceback" not in err and plan["ran"] == []
+
+
+def test_r2_bench_reasons_follow_the_language(monkeypatch):
+    from test_bench import FakeComfy
+
+    from genmodelfit import i18n
+
+    bench = _bench_gpu(monkeypatch)
+    with i18n.forced("en"), FakeComfy("partial_cached") as fake:
+        res = bench.run(bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60))
+    assert res.nonstandard and all(x.isascii() for x in res.nonstandard)
+    assert "前の結果を使ったノード" in res.measurement.note  # 実測の note は日本語のまま
+
+
+@pytest.mark.parametrize(
+    ("msg", "want"),
+    [
+        ("テンプレートを取れません(GitHub に繋がりません: ProxyError)", "回線(プロキシの設定も)"),
+        ("ComfyUI がワークフローを受け付けませんでした: node 3 (KSampler): bad", "上のノードの理由"),
+        ("測りましたが、保存できません(PermissionError: x)", "GENMODELFIT_CACHE_DIR"),
+        ("ComfyUI が止まりました(ログ: c.log)", "ログを見て"),
+        ("ValueError: boom", "もう一度実行してください"),
+    ],
+)
+def test_r2_next_steps_are_specific(msg, want):
+    hint = cli._measure_next_step(msg, "x")
+    assert want in hint
+    if "接続" not in msg:
+        assert "起動していて" not in hint
+
+
+def test_r2_no_workflow_hint_in_measure_and_share():
+    m = (
+        "テンプレート x が見つかりません(ComfyUI にも GitHub にも無い)。"
+        "名前を確かめるか、--workflow で API 形式のワークフローを渡してください"
+    )
+    assert "--workflow" not in cli._without_workflow_hint(m)
+
+
+def test_r2_no_misleading_plan_without_comfyui_or_on_amd(capsys, monkeypatch, plan, gh):
+    from genmodelfit.models import Gpu, SystemInfo
+
+    g = Gpu(name="AMD Radeon RX 7800 XT", vendor="amd", vram_total_gb=16.0, backend="rocm")
+    s = SystemInfo(os="Windows 11", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
+    monkeypatch.setattr(cli, "_system", lambda args: s)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    assert "測るもの" not in capsys.readouterr().out
+
+
+def test_r2_token_messages_tell_expired_from_broken(capsys, monkeypatch, this_pc, plan, gh):
+    import time
+
+    github.write_cached_token(TOKEN, 28800, now=lambda: time.time() - 30000)
+    assert github.cached_token_status() == "expired"
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "", "q")
+    cli.main(["--lang", "ja", "share", "--url", "http://x:1"])
+    assert "期限が切れたので消しました" in capsys.readouterr().err
+    github.token_path().write_text("{broken", encoding="utf-8")
+    assert github.cached_token_status() == "broken"
+    answers(monkeypatch, "", "q")
+    plan["ran"].clear()
+    cli.main(["--lang", "ja", "share", "--url", "http://x:1", "--all"])
+    err = capsys.readouterr().err
+    assert "ファイルが壊れていたので消しました" in err and "期限" not in err
+
+
+def test_r2_missing_space_in_english(capsys, monkeypatch, this_pc, plan, gh):
+    from genmodelfit import i18n
+
+    def run(args, url, entry, settings, **k):
+        m = SimpleNamespace(outcome="error", peak_vram_gb=1.0, seconds=3.0, standard=True)
+        res = SimpleNamespace(warnings=[], nonstandard=[], failed="Interrupted")
+        return {"error": None, "result": res, "measurement": m, "submission": None}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    with i18n.forced("en"):
+        cli.main(["--lang", "en", "share", "--yes", "--url", "http://x:1"])
+    assert "not sent (Interrupted)" in capsys.readouterr().out
+
+
+def test_L7d_github_outage_keeps_the_results(capsys, monkeypatch, this_pc, plan):
+    class Outage(FakeGitHub):
+        def request(self, method, url, **kw):
+            if "/user" not in url:
+                return Resp(503, {"message": "Service Unavailable"})
+            return super().request(method, url, **kw)
+
+    monkeypatch.setattr(cli, "_share_session", lambda: Outage())
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    assert "genmodelfit share --no-measure" in capsys.readouterr().err
+    assert len(measure.saved_submissions()) == 3 and measure.load_shared() == {}
+
+
+def test_L7e_device_code_expires():
+    fake = FakeGitHub(polls=[{"error": "authorization_pending"}] * 5)
+    t = iter(range(0, 10000, 400))
+    with pytest.raises(github.GitHubError) as e:
+        github.device_flow(fake, "cid", lambda dc: None, sleep=lambda s: None, clock=lambda: next(t))
+    assert e.value.kind == "expired"
+
+
+def test_L7f_token_revoked_while_measuring(capsys, monkeypatch, this_pc, plan, gh):
+    github.write_cached_token(TOKEN, 28800)
+    n = {"user": 0}
+    real = gh.request
+
+    def request(method, url, **kw):
+        if url.endswith("/user"):
+            n["user"] += 1
+            if n["user"] > 1:
+                return Resp(401, {"message": "Bad credentials"})
+        return real(method, url, **kw)
+
+    gh.request = request
+    monkeypatch.setenv(github.CLIENT_ID_ENV, "Iv1.test")
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    shown = []
+    real_login = github.login
+
+    def login(session, **k):
+        shown.append("device")
+        return github.Credentials(TOKEN, "alice", "device")
+
+    monkeypatch.setattr(
+        github,
+        "login",
+        lambda session, **k: login(session, **k) if k.get("interactive") else real_login(session, **k),
+    )
+    answers(monkeypatch, "", "1")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    assert shown == ["device"] and len(gh.put) == 3  # 送るときに 401 → ログインし直して送った
+
+
+def test_L8a_no_browser_and_no_clipboard(capsys, monkeypatch):
+    import webbrowser
+
+    p = _write_sub(1)
+    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: False)
+    monkeypatch.setattr(cli, "_copy_to_clipboard", lambda text: False)
+    monkeypatch.setattr(contrib, "SHARE_URL_LIMIT", 10)  # URL に入りきらない
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    assert cli.main(["--lang", "ja", "share", "--issue", str(p)]) == 0
+    out = capsys.readouterr().out
+    assert "次のフォームをブラウザで開き" in out and "---" in out  # 写し方の案内と中身

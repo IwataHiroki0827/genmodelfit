@@ -2530,11 +2530,20 @@ def _share_precheck(args: argparse.Namespace):
     if getattr(args, "issue", False):
         return None, None
     interactive = _interactive() and not args.json
-    has = github.env_token() is not None or github.read_cached_token() is not None
+    token_status = github.cached_token_status()
+    if github.env_token() is None and token_status in ("expired", "broken"):
+        github.clear_cached_token()
+        if not args.json:
+            print(
+                github.token_status_message(token_status)
+                + tr("(PR を選んだときにログインします)", " (you sign in if you choose a pull request)"),
+                file=sys.stderr,
+            )
+        token_status = "none"
+    has = github.env_token() is not None or token_status == "ok"
     if not has and interactive:
         return None, None
     session = _share_session()
-    had_cache = github.token_path().exists()
     try:
         creds = github.login(session, interactive=False)  # 確かめるだけ(ログインはしない)
     except github.GitHubError as e:
@@ -2561,14 +2570,18 @@ def _share_precheck(args: argparse.Namespace):
                 file=sys.stderr,
             )
             return None, None
-        if had_cache and not github.token_path().exists():
+        if token_status in ("expired", "broken"):
+            msg = github.token_status_message(token_status)
+        elif token_status == "ok" and not github.token_path().exists():
+            msg = tr(
+                "保存した GitHub のログインが使えなくなったので消しました",
+                "The saved GitHub sign-in no longer works and was removed",
+            )
+        else:
+            msg = None
+        if msg:
             print(
-                tr(
-                    "保存した GitHub のログインが使えなくなったので消しました"
-                    "(PR を選んだときにログインします)",
-                    "The saved GitHub sign-in no longer works and was removed (you sign in if you choose"
-                    " a pull request)",
-                ),
+                msg + tr("(PR を選んだときにログインします)", " (you sign in if you choose a pull request)"),
                 file=sys.stderr,
             )
         return None, None
@@ -3661,8 +3674,8 @@ def _share_measure_one(
         else:
             why = tr(
                 f"結果が {m.outcome} なので送りません", f"the result is {m.outcome}, so it is not sent"
-            ) + (f"({res.failed})" if res.failed else "")
-        failed.append({**rec, "error": why})
+            ) + (tr(f"({res.failed})", f" ({res.failed})") if res.failed else "")
+        failed.append({**rec, "error": why, **({"unsendable": True} if r.get("unsendable") else {})})
         if not args.json:
             for w in res.warnings:
                 print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
@@ -3787,11 +3800,27 @@ def _measure_lock():
     from .db import cache_dir
 
     p = cache_dir() / LOCK_FILE
-    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise CliError(
+            tr(
+                f"キャッシュのフォルダを作れません({type(e).__name__}: {p.parent})。"
+                "測っても保存できないので測りません"
+                "(GENMODELFIT_CACHE_DIR で書ける場所に変えられます)",
+                f"Cannot create the cache folder ({type(e).__name__}: {p.parent}). Nothing is measured, "
+                "since it"
+                " could not be saved (GENMODELFIT_CACHE_DIR changes it to a writable place)",
+            )
+        ) from None
     for _ in range(3):
         try:
             fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
         except FileExistsError:
+            if p.is_dir():
+                raise CliError(
+                    tr(f"キャッシュの印を作れません({p})", f"Cannot create the lock in the cache ({p})")
+                ) from None
             try:
                 pid = int(p.read_text(encoding="ascii").strip() or "0")
             except (OSError, ValueError):
@@ -3808,6 +3837,16 @@ def _measure_lock():
             with contextlib.suppress(OSError):  # 古い印(そのプロセスはもう無い)
                 p.unlink()
             continue
+        except OSError as e:
+            raise CliError(
+                tr(
+                    f"キャッシュのフォルダに書けません({type(e).__name__}: {p.parent})。"
+                    "測っても保存できないので"
+                    "測りません(GENMODELFIT_CACHE_DIR で書ける場所に変えられます)",
+                    f"Cannot write to the cache folder ({type(e).__name__}: {p.parent}). Nothing is measured,"
+                    " since it could not be saved (GENMODELFIT_CACHE_DIR changes it to a writable place)",
+                )
+            ) from None
         with os.fdopen(fd, "w", encoding="ascii") as f:
             f.write(str(os.getpid()))
         return p
@@ -4106,7 +4145,7 @@ def cmd_share(args: argparse.Namespace) -> int:
         if args.json:
             _out(_envelope("share", None, None, action="send", **report, error=stop[0]))
             return 1
-        if s is not None and s.best_gpu is not None:
+        if comfy_stop and plan:  # 測る計画があるときだけ見せる(GPU が無い・NVIDIA でないときは出さない)
             _emit(screen)
         sys.stdout.flush()
         print(tr(f"エラー: {stop[0]}", f"error: {stop[0]}"), file=sys.stderr)
@@ -4293,7 +4332,8 @@ def cmd_share(args: argparse.Namespace) -> int:
                     " and measured with --download (genmodelfit share --download)",
                 )
             )
-    base_code = 1 if failed else 0
+    # 測れたが送れないだけのもの(オーナーの決まり)は失敗に数えない。Ctrl+C で止めたら 130
+    base_code = 130 if interrupted else (1 if any(not f.get("unsendable") for f in failed) else 0)
     pending = saved_submissions(include_shared=args.all)
     if not pending:
         if args.json:
@@ -5134,7 +5174,8 @@ def format_plan(plan, *, consent: bool = False, dest=None, asks: list[str] | Non
         if any(not f.license_url for f in plan.files):
             out.append(
                 tr(
-                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、それぞれのライセンス・利用条件に従って"
+                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、"
+                    "それぞれのライセンス・利用条件に従って"
                     "使うこと(ライセンスの原文の URL が無いファイルは、上の確かめる場所で条件を自分で確かめた"
                     "うえで)に同意して、それでも落としますか?",
                     f"This model {_asks_phrase(asks)}. Do you agree to use the files above under their"
@@ -6124,11 +6165,14 @@ def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any,
     port = comfyfind.comfy_port_answering()
     if port is not None:
         # フォルダを読めないが、ComfyUI がもう動いている(L3a): 同じフォルダで 2 台目を起動しない
-        return None, tr(
-            f"ComfyUI がもうポート {port} で動いているようです(フォルダを読めませんでした)。"
-            f"2 台目は起動しません。それで測るなら --url http://127.0.0.1:{port} を付けてください",
-            f"A ComfyUI already seems to run on port {port} (its folders could not be read). A second one is"
-            f" not started; to measure on it, add --url http://127.0.0.1:{port}",
+        return None, _HeadReason(
+            tr(
+                f"ComfyUI がもうポート {port} で動いているようです(フォルダを読めませんでした)。"
+                f"2 台目は起動しません。それで測るなら --url http://127.0.0.1:{port} を付けてください",
+                f"A ComfyUI already seems to run on port {port} (its folders could not be read). A second "
+                "one is"
+                f" not started; to measure on it, add --url http://127.0.0.1:{port}",
+            )
         )
     if getattr(args, "no_start", False):
         return None, tr(
@@ -6188,7 +6232,7 @@ def _comfyui_start(args: argparse.Namespace, plan, holder: list):
         comfystart.wait_ready(started, timeout=limit, progress=progress)
     except comfystart.StartError as e:
         view.close()
-        lines = [str(e), *(["  " + x for x in e.tail] if e.tail else [])]
+        lines = [str(e), *("  " + x for x in (e.tail or []))]
         raise CliError("\n".join(lines)) from None
     except BaseException:
         view.close()
@@ -6239,8 +6283,15 @@ def _comfyui_text(url: str | None, found_by: str | None, start=None) -> str:
     return tr(f"{url}(この PC で起動中の ComfyUI を見つけた)", f"{url} (a ComfyUI running on this PC)")
 
 
+class _HeadReason(str):
+    """それだけで足りる「起動しない理由」(ComfyUI がもう動いている など)。起動のしかたの案内を付けない。"""
+
+
 def _not_running_lines(model_id: str, inst, why: str | None = None) -> list[str]:
     from .comfyfind import PROBE_PORTS, search_disabled
+
+    if isinstance(why, _HeadReason):
+        return [str(why)]
 
     ports = "・".join(str(p) for p in PROBE_PORTS)
     ports_en = " and ".join(str(p) for p in PROBE_PORTS)
@@ -6410,6 +6461,31 @@ def _measure_screen(
 def _measure_next_step(msg: str, model_id: str) -> str:
     """measure が測れなかったときの「次にすること」。
     bench の文の --force などは measure に無いので、ここで言い換える。"""
+    if "テンプレートを取れません" in msg or "Cannot fetch the template" in msg:
+        return tr(
+            "次にすること: 回線(プロキシの設定も)を確かめてから、もう一度実行してください"
+            "(公式のテンプレートを GitHub から取ります)。",
+            "Next: check the connection (and proxy settings), then run it again (the official template is"
+            " fetched from GitHub).",
+        )
+    if "ワークフローを受け付けませんでした" in msg or "rejected the workflow" in msg:
+        return tr(
+            "次にすること: 上のノードの理由を見てください。ComfyUI "
+            "やカスタムノードを更新すると直ることがあります。"
+            "直らなければ、この文を添えて GitHub の Issue で知らせてください。",
+            "Next: read the node's reason above. Updating ComfyUI or the custom nodes may fix it; if not, "
+            "tell"
+            " us in a GitHub issue with this message.",
+        )
+    if "保存できません" in msg or "cannot be saved" in msg:
+        return tr(
+            "次にすること: キャッシュのフォルダ(GENMODELFIT_CACHE_DIR)が書けて、"
+            "ディスクに空きがあるかを確かめてから、"
+            "もう一度実行してください。",
+            "Next: check that the cache folder (GENMODELFIT_CACHE_DIR) is writable and the disk has room, "
+            "then"
+            " run it again.",
+        )
     if "秒で終わらなかった" in msg or "not finished in" in msg:
         return tr(
             "次にすること: 初めは読み込みで長くかかります。"
@@ -6457,6 +6533,12 @@ def _measure_next_step(msg: str, model_id: str) -> str:
         return tr(
             "次にすること: ComfyUI のキューの仕事が終わるのを待ってから、もう一度実行してください。",
             "Next: wait until the jobs in ComfyUI's queue are done, then run it again.",
+        )
+    if not any(w in msg.lower() for w in ("接続", "通信できません", "connect", "cannot talk")):
+        return tr(
+            "次にすること: もう一度実行してください。直らなければ、この文を添えて GitHub の Issue "
+            "で知らせてください。",
+            "Next: run it again. If it still fails, tell us in a GitHub issue with this message.",
         )
     return tr(
         "次にすること: ComfyUI が起動していて、ブラウザで開けることを確かめてから、もう一度実行してください"
@@ -6561,7 +6643,7 @@ def _measure_run(
     try:
         result = run(opts, log=_progress(args), progress=progress)
     except (BenchError, WorkflowError) as e:
-        out["error"] = str(e)
+        out["error"] = _without_workflow_hint(str(e))
         return out
     m = result.measurement
     if settings is not None and not same_variant(m.settings, settings):
@@ -6599,6 +6681,28 @@ def _measure_run(
         return out
     out.update(result=result, measurement=m, saved_to=out_path, not_saved=not_saved)
     return out
+
+
+_WORKFLOW_HINTS = (  # measure・share には --workflow が無いので、bench の文の --workflow の案内を言い換える
+    ("名前を確かめるか、--workflow で API 形式のワークフローを渡してください", "名前を確かめてください"),
+    ("Check the name, or pass an API-format workflow with --workflow", "Check the name"),
+    (
+        "ComfyUI の input フォルダに置くか、--workflow で別の画像を指定してください",
+        "ComfyUI の input フォルダに置いてください",
+    ),
+    (
+        "Put it in ComfyUI's input folder, or give another image with --workflow",
+        "Put it in ComfyUI's input folder",
+    ),
+    ("ComfyUI を更新するか --workflow で API 形式を渡してください", "ComfyUI を更新すると測れます"),
+    ("update ComfyUI or pass the API format via --workflow", "update ComfyUI to measure it"),
+)
+
+
+def _without_workflow_hint(msg: str) -> str:
+    for a, b in _WORKFLOW_HINTS:
+        msg = msg.replace(a, b)
+    return msg
 
 
 def _submission_refusal(sub: dict[str, Any], args: argparse.Namespace) -> list[str]:
@@ -8883,7 +8987,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--inspect-only",
         action="store_true",
         help=tr(
-            "今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
+            "今の一覧はそのままで、本体のファイルの見出し(精度)"
+            "・テンプレートのサンプラーの組と読み込みノードの精度・"
             "リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す"
             "(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る)",
             "keep the current list; re-read only the weight file headers (precision), the templates' sampler"

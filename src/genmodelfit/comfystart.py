@@ -387,10 +387,12 @@ def clean_line(text: str) -> str:
 
 
 def tail(log: Path, n: int = LOG_TAIL_LINES) -> list[str]:
+    """ログの最後の n 行(制御文字・ANSI を取り除き、空の行は飛ばす。L3j)。"""
     try:
-        return log.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
+    return [x for x in (clean_line(y) for y in lines) if x][-n:]
 
 
 def _ready(session: Any, url: str) -> bool:
