@@ -1019,6 +1019,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | settings that could not be applied, uploaded inputs, … (in the display language, `en` / `ja`) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
+| `timing` | object \| null | (0.13.0, #132) the time breakdown, the same keys as `measurement.timing` of a contrib submission (see contrib; unknown values are null) |
 | `submission` | object | only with `--submission` or `--share`: `{saved_to, path_in_repo}` (the submission JSON, see contrib); with `--share` also `share` (the `file`, `ok`, `refused`, `checklist`, `report`, `share`, `opened`, `copied`, `marked_shared` of `share --json`; no browser is opened) |
 
 How bench fills Measurement:
@@ -1275,9 +1276,9 @@ bot turns the issue into a pull request; `contrib intake`, #113), or add the fil
 
 Submissions measured by bench with dynamic VRAM (`vram_metric: torch_reserved`, `offload: dynamic`) hold only the working memory (#100). They are aggregated and kept, but until the per-stage peaks can be measured they are used only for the cross-check (not for the estimate's shift or the level; see "Measurement" and [accuracy.md](accuracy.md)).
 
-### Submission file (`contrib_schema` 1 and 2)
+### Submission file (`contrib_schema` 1, 2 and 3)
 
-Written by `genmodelfit bench … --submission PATH` or `genmodelfit contrib make --from <bench result>`. Stored in the
+Written by `genmodelfit share` / `measure`, `genmodelfit bench … --submission PATH` or `genmodelfit contrib make --from <bench result>`. Stored in the
 repository as `data/contrib/<gpu-slug>/<date>-<sha8>.json`: `gpu-slug` is `estimate.gpu_key` of the GPU name
 (lower case; `NVIDIA`, `GeForce`, `(R)`, `(TM)`, `™`, `®` removed; other symbols → `-`; `rtx-3070`), `sha8` the first 8 hex digits of the sha256 of the canonical JSON (keys sorted,
 no spaces, UTF-8), so the name does not depend on indentation and two identical files collide.
@@ -1325,8 +1326,9 @@ Contents of `system.gpu`:
 Other rules:
 
 - Older files without these stay valid.
-- `contrib_schema` 1 and 2 are accepted (#90). 2 is 1 plus `measurement.files_fp` (optional; 64 lowercase hex
-  digits), written since 0.11.0. `files_fp` in a schema 1 file is an error.
+- `contrib_schema` 1, 2 and 3 are accepted (#90, #132). 2 is 1 plus `measurement.files_fp` (optional; 64 lowercase hex
+  digits), written since 0.11.0. `files_fp` in a schema 1 file is an error. 3 (written since 0.13.0) is described
+  below.
 - (0.12.0, #116, optional) `measurement.settings_override`: `true` when the template's settings were changed
   (written only then; anything but true / false is an error). `contrib_schema` stays as is, like the optional GPU
   keys of 0.9.0. `contrib aggregate` keeps such submissions in their own rows and marks the row with it.
@@ -1343,7 +1345,83 @@ Free-text fields are kept small: `gpu.name` only letters, digits, space, `.`, `-
 size such as `(16GB)` (64 chars), `comfyui_version`
 strictly `x.y.z`, `precision` one of the known precisions, `model_id` up to 200 chars of `[A-Za-z0-9_.:/+-]`, other
 strings 100 chars, `note` 500 chars (lowered from 2000 in #90; bench truncates longer notes); no control characters, newlines or invisible characters anywhere; unknown keys,
-arrays and nesting deeper than 8 are rejected; files over 64 KB and symbolic links are not read.
+arrays (except a failure file's `failures` and `missing_nodes`) and nesting deeper than 8 are rejected; files over 64 KB and symbolic links are not read.
+
+### Data added in `contrib_schema` 3 (#132)
+
+`genmodelfit share` (and `measure`) write `contrib_schema` 3 since 0.13.0. Besides the measurement it sends what helps
+to improve the estimates. Everything below is numbers, fixed words and public names; no message text, no generated
+images or sounds, no input other than the template's prompt, and none of host name, user name, GPU UUID, PCI
+location, paths or IP addresses (the privacy checklist covers every new field).
+
+| key | type | meaning |
+|---|---|---|
+| `db` | object | the list used when measuring: `generated_at` (date only, `YYYY-MM-DD`) and `sha256` (first 12 hex digits of the bundled or cached `db.json`; omitted when unknown). Optional |
+| `measurement.estimate` | object | genmodelfit's estimate for the measured model and settings at that time, made **without** this measurement or other measurements from the same PC (only the bundled measurements: the author's and the aggregated community rows; those of the same model on the same GPU are left out too, because the author's may come from this very PC — `measurements: bundled-excluding-this-gpu` says so): `fit_level` (`perfect` / `good` / `marginal` / `too_tight`), `run_mode` (`gpu` / `sequential` / `offload` / `cpu` / `none`), `vram_gb` (the VRAM that set the level), `vram_resident_gb`, `work_gb` (the working-memory formula, heaviest stage), `ram_required_gb`, `seconds` (the time guide of `measure`), `basis` (`measured` / `estimated`). Any value may be null; left out when ComfyUI ran on another PC or the size is unknown |
+| `measurement.timing` | object | time breakdown in seconds, null when unknown: `queue_s` (sent → started), `load_s` (start → first sampler step: loading and text encoding), `sampling_s` (sum of the sampler runs), `sec_per_step`, `decode_s` (last sampler step → end: VAE decode and saving), `save_s` (always null for now: HTTP cannot tell it apart), `total_s` (same as `seconds`), `cold_load` (true = first load in a ComfyUI that genmodelfit started, false = the same ComfyUI again after `/free`, null = unknown) |
+| `measurement.spilled` | true | only for `outcome: ok` runs whose peak VRAM is above the GPU total × 1.02 + 0.25 GB (Windows spilled into shared memory). Written only when true |
+| `measurement.spilled_gb` | number | peak VRAM minus the GPU total (GiB), with `spilled` |
+
+How the time breakdown is read (HTTP only, no websocket): the times of `execution_start` / `execution_success`
+(or `_error`) in `/history`'s `status.messages`, and the progress lines (tqdm, `20/20 [00:05<00:00, 3.80it/s]`) in
+ComfyUI's log (`/internal/logs/raw`). Values that compare the two clocks (`queue_s`, `load_s`, `decode_s`) are only
+written when ComfyUI runs on the same PC. Only progress lines without a description in front (not `Fetching 3 files: …`)
+whose step count equals a sampler's `steps` in the workflow sent are used; `sampling_s` / `sec_per_step` are null when
+none matches or the sum is longer than the run. If the timing or the estimate does not pass the checks, the
+measurement is sent without them.
+
+Rules: `db`, `estimate`, `timing`, `spilled` / `spilled_gb` in a schema 1 or 2 file are errors. `spilled` must be
+true, only with `outcome: ok`, the peak must be above the total line and at most the GPU total plus the RAM (×1.05 +
+1 GiB; the GPU total again when RAM is unknown), and `spilled_gb` must match peak − total within 0.1 GiB. A spilled
+submission is accepted but **not used** for the aggregate, the estimates, the levels or `calibrate` (it is material
+for "this GPU spills to shared memory (slow)"; how to use it is a later issue).
+
+### Failure records (`kind: genmodelfit-failures`, #132)
+
+One file per `share` run and GPU (and one per failed `measure`, saved as unsent and sent by the next `share`), next to the measurements: `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`.
+`contrib_schema` 3 only. Top keys: `contrib_schema`, `kind`, `tool`, `date`, `system` (the same summary as a
+measurement), `comfyui_version`, `db` (optional), `failures` (1–50 records).
+
+```json
+{
+ "contrib_schema": 3,
+ "kind": "genmodelfit-failures",
+ "tool": {"name": "genmodelfit", "version": "0.13.0"},
+ "date": "2026-10-29",
+ "system": {"os_family": "windows", "ram_total_gb": 32, "gpu": {"name": "NVIDIA GeForce RTX 3070", "vram_gb": 8.0, "arch": "ampere", "compute_capability": "8.6", "driver": "566.03", "vendor": "nvidia", "backend": "cuda"}},
+ "comfyui_version": "0.40.0",
+ "db": {"generated_at": "2026-10-21", "sha256": "0123456789ab"},
+ "failures": [
+  {"model_id": "image_moge", "outcome": "missing_nodes", "seconds": null, "missing_nodes": ["LoadMoGeModel"], "before_run": true},
+  {"model_id": "video_x", "outcome": "timeout", "seconds": 1800.4, "timeout_s": 1800.0},
+  {"model_id": "image_y", "outcome": "error", "seconds": 3.0, "error_type": "ValueError", "node_type": "KSampler"}
+ ]
+}
+```
+
+| key | meaning |
+|---|---|
+| `model_id`, `outcome` | required. `outcome` is `missing_nodes` / `timeout` / `error` / `oom`. Interrupted runs (the user stopped them) and runs disturbed by other programs are **never** sent |
+| `settings` | optional, the same keys and ranges as a measurement |
+| `seconds` | elapsed seconds, null for problems found before running |
+| `timeout_s` | the time limit, only for `timeout` |
+| `missing_nodes` | node names ComfyUI lacked (built-in or custom node names, which are public): letters (any script), digits, spaces and `_ . + ( ) \| ' : , [ ] -`, up to 100 characters, no `/` or `\`; only for `missing_nodes` |
+| `other_nodes` | how many missing node names did not fit that form or looked like personal information (they are not sent). `missing_nodes` may be empty only when this is 1 or more |
+| `before_run` | true when the node check found it before running (nothing ran, so no numbers) |
+| `error_type` | for `error` / `oom`: the exception type name (`torch.OutOfMemoryError`) or ComfyUI's `node_errors` type (`value_not_in_list`); `[A-Za-z_][A-Za-z0-9_.]{0,63}`. The message text is never sent (it can hold paths) |
+| `node_type` | for `error` / `oom`: the node type that failed, only when it is in the workflow genmodelfit sent |
+| `peak_vram_gb`, `files_fp` | optional, as in a measurement |
+
+What becomes a record: a template that needs nodes this ComfyUI lacks (from the node check before measuring in
+`share` or `measure`, or when bench stops on them), a timeout after our job started running (not one spent waiting in the queue, while
+other work ran, or while the PC slept), ComfyUI refusing the workflow (not `value_not_in_list`, a model file missing on this PC), an error during the run, and an OOM that
+could not be sent as a measurement. `measure` saves its record as an unsent file too, and the next `share` sends it. A record that equals one
+already saved on this PC (same model, settings, failure, error type and ComfyUI version; for missing nodes only
+the model and the node names) is not written again. A record that does not pass the checks is left out alone, and
+records are dropped from the end to stay under 64 KB. On receiving, every privacy detector (also phone numbers,
+domains and encodings) is applied to all strings in `failures`; free words that fit the name form cannot be told
+from node names, so a person still reviews each pull request. Failure records are not used by the estimate
+formula, the aggregate or `calibrate`; they are material for what to recommend and which ComfyUI version is needed.
 
 ### Rules of the submission pipeline (#90)
 
@@ -1352,7 +1430,7 @@ Each rule can be explained in one sentence. They are checked with about 60 kinds
 
 - **Add only**: a submission PR only adds new files under `data/contrib`; a PR that deletes, modifies or renames an
   existing file fails in CI (contrib.yml) (removing one is a maintainer PR).
-- **Layout**: only `data/contrib/<GPU>/<date>-<sha8>.json` (lowercase `.json`) can be added; any other file or place
+- **Layout**: only `data/contrib/<GPU>/<date>-<sha8>.json` and failure records `<date>-<sha8>-failures.json` (#132; lowercase `.json`) can be added; any other file or place
   is the error `layout`, both in CI and in `contrib validate <folder>`.
 - **Empty**: a PR or folder without any submission file fails (`contrib validate` exits 1).
 - **Unreadable forms**: a UTF-8 BOM is refused with the reason (not stripped), and JSON with the same key twice in
@@ -1455,14 +1533,14 @@ Like llmfit's `validate_community_benchmarks.py`, **only mechanical checks fail*
 |---|---|
 | `read` | not readable, not JSON, larger than 64 KB, nested too deep, or a symbolic link (symlinked folders are not followed) |
 | `string` | a string with control characters / newlines / invisible or bidi characters, too long a string or key, an array, or nesting deeper than 8 |
-| `schema` | `contrib_schema` not 1 or 2, wrong `kind` / `tool`, missing keys, not objects |
+| `schema` | `contrib_schema` not 1, 2 or 3, schema 3 fields in an older file, wrong `kind` / `tool`, missing keys, not objects |
 | `unknown_field` | a key outside the schema (anywhere, including `settings`) |
 | `privacy` | a value or key (after NFKC normalization, removing zero-width characters and reading `¥` as `\`) contains something listed below |
 | `date` | not `YYYY-MM-DD`, or in the future |
 | `value` | out of range, see below |
 | `settings` | width / height 64–8192, frames 1–2000, seconds 0.1–3600, steps 1–1000, batch 1–64 (integers except seconds) |
 | `gpu_inconsistent` | the GPU name's known compute capability or generation differs from the file's; `vendor` and `backend` do not pair up (or only one is given); `compute_capability` / `arch` on a non-NVIDIA `vendor`; a GPU name of another vendor (AMD / Intel / Apple) than `vendor`; a `pci_id` whose vendor ID differs from `vendor` (`10de` when `vendor` is absent) or whose GPU in `hardware.PCI_DEVICE_NAMES` differs from the name; for `apple`, a name other than a chip name or `mps` |
-| `filename` | name not `<date>-<sha8>.json`, date or sha8 not matching the content, folder not the GPU slug |
+| `filename` | name not `<date>-<sha8>.json` (`<date>-<sha8>-failures.json` for failure records), date or sha8 not matching the content, folder not the GPU slug |
 | `value` (strict forms) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` outside the forms above |
 | `duplicate` | same content hash as an earlier file in the same run |
 | `layout` | (#90) when checking a folder: a file that is not at `<GPU>/<date>-<sha8>.json` (lowercase `.json`) |

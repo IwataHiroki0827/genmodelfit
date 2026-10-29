@@ -15,7 +15,7 @@ name: Measurement intake
 # - Issue の本文は**データとしてだけ**扱う。${{ }} で run: に埋め込まない(本文・題・アカウント名は一度も
 #   ワークフローの式に入れない)。genmodelfit contrib intake がイベントのファイル(GITHUB_EVENT_PATH)から読み、
 #   JSON として検査して、書き直した中身をファイルに書く。シェルに渡すのは検査を通った決まった形の値だけ
-#   (置き場所 data/contrib/<GPU>/<日付>-<sha8>.json は publish でも形を確かめる)
+#   (置き場所 data/contrib/<GPU>/<日付>-<sha8>.json・失敗の記録の …-failures.json は publish でも形を確かめる)
 # - 検査の道具は既定のブランチ(issues のイベントはいつも既定のブランチのワークフローとコードで動く)
 # - 提出から来る文字はログに出さない(contrib intake は件数だけを出す。その間はワークフローのコマンドを止める)。
 #   コメント・PR の本文の理由の文は contrib.md_cell で無害にしてある
@@ -146,7 +146,7 @@ jobs:
             exit 0
           fi
           path="$(head -n 1 "$OUT/path.txt")"
-          if ! printf '%s\n' "$path" | grep -Eq '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$'; then
+          if ! printf '%s\n' "$path" | grep -Eq '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}(-failures)?\.json$'; then
             echo "unexpected path" >&2
             exit 1
           fi

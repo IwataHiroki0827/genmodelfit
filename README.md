@@ -504,6 +504,13 @@ data/contrib/` in a clone of your fork still works. Steps: [CONTRIBUTING.md](htt
   the config folder, readable only by you, and never printed. `share --issue` (and `bench --share`, `contrib share`)
   only open the GitHub form in your browser (or print its URL, or copy the content to your clipboard); the content
   is sent when you press "Create" there. No `~/.netrc` credentials, no telemetry.
+- What `share` sends (0.13.0, #132): each measurement (GPU name, VRAM, generation, driver, backend, RAM rounded to
+  GiB, OS family, ComfyUI and genmodelfit versions, model, settings, peak VRAM / RAM, time) with the estimate
+  genmodelfit made for it (without your measurements or any of this model on your GPU), a time breakdown (queue, load, sampling, decode), a
+  mark when the peak VRAM went over the GPU total into shared memory, and the list version; plus one file of
+  failure records per run (missing node names, timeouts, error type names, never the error text). Never sent:
+  generated images or sounds, your inputs, host or user names, GPU UUID, PCI location, paths, IP addresses.
+  Details: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#contrib) ("contrib").
 - Per-command table: [docs/schema.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.md#side-effects) ("Side effects").
 
 ### License

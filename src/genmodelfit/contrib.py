@@ -8,11 +8,13 @@
 自分で Pull Request を出す):
 
 1. `genmodelfit measure`(#113)・`genmodelfit bench ... --submission <path>`
-   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 2)を作る。
+   (または `contrib make --from <bench の結果>`)で提出用の JSON(`contrib_schema` 3)を作る。
    入れるのは GPU 名・VRAM・世代・compute capability・ドライバ・ComfyUI の版・
    OS の種類(windows / linux。版やビルドは入れない)・メインメモリ(GiB の整数に丸める)・
    モデル ID・設定・結果・最大 VRAM / メモリ・時間・測り方・日付(UTC の日付だけ)。
    PC 名・ユーザ名・パス・GPU の UUID・PCI の位置・シリアル・IP・時刻は入れない(note の中も消す)
+   share は測ったときの見積もり・時間の内訳・一覧の版も付け、測れなかったものを失敗の記録のファイル
+   (`<日付>-<sha8>-failures.json`。文は入れない)にする(#132)
 2. `contrib show` で、送る中身をそのまま見せる(同意のため)。個人の情報の点検の結果も出す
 3. `genmodelfit share` が中身を入れた実測の Issue のフォームを開き、利用者が「Create」を押す。
    .github/workflows/measurement-intake.yml が `contrib intake`(intake_issue)で検査して
@@ -76,11 +78,15 @@ from .i18n import tr
 from .models import MODALITIES, ORIGIN_COMMUNITY, OUTCOMES, Measurement, Settings, SystemInfo
 
 # 提出の形の版。2(#90)= 1 に measurement.files_fp(測ったときの一覧のファイルの指紋)を足した形。
-# 書くのは 2、検査は 1 と 2 を受け付ける(1 には files_fp を入れない)
-CONTRIB_SCHEMA = 2
-CONTRIB_SCHEMAS = (1, 2)
+# 3(#132)= 2 に、測ったときの見積もり(measurement.estimate)・時間の内訳(measurement.timing)・
+# VRAM を超えた印(measurement.spilled・spilled_gb)・一覧の版(db)と、失敗の記録のファイル(kind
+# genmodelfit-failures)を足した形。書くのは 3、検査は 1・2・3 を受け付ける(古い版には新しい項目を入れない)
+CONTRIB_SCHEMA = 3
+CONTRIB_SCHEMAS = (1, 2, 3)
 CONTRIB_DIR = "data/contrib"  # リポジトリの中の置き場所(PR で足す)
 KIND = "genmodelfit-measurement"
+FAILURES_KIND = "genmodelfit-failures"  # 失敗の記録(#132。1 回の share・1 つの GPU で 1 ファイル)
+FAILURES_SUFFIX = "-failures"  # 失敗の記録のファイル名の終わり(<日付>-<sha8>-failures.json)
 
 # 値の健全さの許容
 VRAM_TOLERANCE_GB = PEAK_VRAM_SLACK_GB  # 最大 VRAM は GPU の総量 × 1.02 + これまで(estimate.peak_vram_cap)
@@ -116,7 +122,10 @@ OFFLOADS = ("none", "dynamic", "partial", "lowvram", "oom")
 VRAM_METRICS = ("torch_reserved",)
 
 # 項目(これ以外のキーは誤り。知らない項目に PC の情報が紛れ込まないように)
-TOP_KEYS = {"contrib_schema", "kind", "tool", "date", "system", "comfyui_version", "measurement"}
+# db(一覧の版)は contrib_schema 3 だけ(#132)
+TOP_KEYS = {"contrib_schema", "kind", "tool", "date", "system", "comfyui_version", "measurement", "db"}
+# 失敗の記録のファイル(kind genmodelfit-failures。contrib_schema 3 だけ。#132)
+FAILURES_TOP_KEYS = {"contrib_schema", "kind", "tool", "date", "system", "comfyui_version", "db", "failures"}
 TOOL_KEYS = {"name", "version"}
 SYSTEM_KEYS = {"os_family", "ram_total_gb", "gpu"}
 # vendor・backend は 0.9.0 で足した任意の項目
@@ -143,8 +152,70 @@ MEASUREMENT_KEYS = {
     # テンプレートの設定を変えて測った印(#116。任意で、true のときだけ書く。contrib_schema は上げない:
     # 0.9.0 の GPU の任意の項目と同じ)
     "settings_override",
+    # 以下は contrib_schema 3 だけ(#132)
+    "estimate",  # 測ったときの genmodelfit の見積もり(この実測とこの PC のほかの実測を使わずに作ったもの)
+    "timing",  # 時間の内訳(ComfyUI の /history とログから。分からない項目は null)
+    "spilled",  # ピークの VRAM が GPU の総量を超えた(共有メモリへ逃げた)印。true のときだけ書く
+    "spilled_gb",  # 総量を超えた量(GiB)。spilled のときだけ
 }
 _FILES_FP = re.compile(r"[0-9a-f]{64}")
+# 測ったときの見積もり(#132。docs/schema.md「contrib」)
+ESTIMATE_KEYS = {
+    "fit_level",  # 段階(perfect / good / marginal / too_tight)
+    "run_mode",  # 動かし方(gpu / sequential / offload / cpu / none)
+    "vram_gb",  # 段階を決めた VRAM の量
+    "vram_resident_gb",  # 全部を載せたまま仕上げまで動かすときに空けようとする量
+    "work_gb",  # 作業用メモリの式の値(いちばん重い段)
+    "ram_required_gb",  # 要るメインメモリ
+    "seconds",  # 時間の目安(measure の目安と同じ)
+    "basis",  # measured / estimated
+    # 見積もりに使った実測(#132)。bundled-excluding-this-gpu = 同梱の実測から、同じ GPU・同じモデルのもの
+    # (作者の PC の実測かもしれない)を除いたもの
+    "measurements",
+}
+ESTIMATE_SOURCES = ("bundled-excluding-this-gpu",)
+ESTIMATE_LEVELS = ("perfect", "good", "marginal", "too_tight")
+ESTIMATE_MODES = ("gpu", "sequential", "offload", "cpu", "none")
+ESTIMATE_BASES = ("measured", "estimated")
+# 時間の内訳(#132)。どれも秒で、分からなければ null
+TIMING_KEYS = {
+    "queue_s",  # 送ってから実行が始まるまで
+    "load_s",  # 実行の始まりからサンプラの始まりまで(モデルの読み込みと文の符号化)
+    "sampling_s",  # サンプラ(ステップ)の時間の合計
+    "sec_per_step",  # 1 ステップの秒数
+    "decode_s",  # サンプラの終わりから実行の終わりまで(VAE の復元と保存)
+    "save_s",  # 保存だけの時間(今は HTTP では分けられないので null)
+    "total_s",  # 送ってから結果が分かるまで(measurement.seconds と同じ)
+    "cold_load",  # 初めての読み込み(true)・同じ ComfyUI で 2 回目(false)・分からない(null)
+}
+DB_KEYS = {"generated_at", "sha256"}  # 一覧の版: 作った日(日付だけ)と db.json の sha256 の先頭 12 桁
+_DB_SHA = re.compile(r"[0-9a-f]{12}")
+# 失敗の記録 1 件の項目(#132)。文は送らない(例外の型名・ComfyUI の種類の名前・ノードの名前だけ)
+FAILURE_KEYS = {
+    "model_id",
+    "settings",
+    "outcome",  # FAILURE_OUTCOMES
+    "seconds",  # 経過時間(測る前に分かったものは null)
+    "timeout_s",  # 時間切れの上限(timeout のとき)
+    "missing_nodes",  # 足りないノードの名前の並び(missing_nodes のとき)
+    "other_nodes",  # 名前の形に合わない(送らない)足りないノードの数(missing_nodes のとき)
+    "error_type",  # 例外の型名(torch.OutOfMemoryError など)か ComfyUI の node_errors の type
+    "node_type",  # 失敗したノードの種類(送ったワークフローにあるものだけ)
+    "peak_vram_gb",
+    "before_run",  # 測る前(ノードの確かめ)に分かった(実行していない)
+    "files_fp",
+}
+# 送る失敗。中断(interrupted。利用者が止めた)・ほかのプログラムのせい(interference)は送らない
+FAILURE_OUTCOMES = ("missing_nodes", "timeout", "error", "oom")
+MAX_FAILURES = 50  # 1 つのファイルの失敗の記録の数の上限
+MAX_MISSING_NODES = 30
+# ノードの名前(ComfyUI の組み込みとカスタムノードの公開の名前)。文字(各国の文字も)・数字・空白と
+# _ . + ( ) | ' : , [ ] - だけ、100 字まで。パス・URL に使う / \ は入れない。形に合わない名前は送らず、数だけ
+# (other_nodes)送る。個人の情報らしい文字(電話番号・ドメインなど)は、形に合っても送る側・受け取る側の
+# 両方で断る
+NODE_NAME = re.compile(r"[^\W_][\w .+()|':,\[\]-]{0,99}")
+# 例外の型名(モジュールを含む)か ComfyUI の node_errors の type
+ERROR_TYPE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
 SETTINGS_KEYS = {"width", "height", "frames", "seconds", "steps", "precision", "batch"}
 
 # --- 個人の情報の検出 ------------------------------------------------------------------------------
@@ -450,7 +521,7 @@ def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
         if len(text) > MAX_NOTE_CHARS:
             return
         for kind, what in _hits(text):
-            if kind in NOTE_ONLY_KINDS and where != "$.measurement.note":
+            if kind in NOTE_ONLY_KINDS and where != "$.measurement.note" and not _strict_place(where):
                 continue  # 決まった形の項目(モデル ID・GPU 名など)は形の検査で縛っている
             if (where, kind) not in seen:
                 seen.add((where, kind))
@@ -470,14 +541,39 @@ def privacy_findings(data: Any, raw: str | None = None) -> list[dict[str, str]]:
         elif isinstance(x, str):
             if where == "$.measurement.files_fp" and _FILES_FP.fullmatch(x):
                 return  # ファイルの sha256 から作った指紋(個人の情報ではない。形は validate が見る)
+            if _FAILURE_FP.fullmatch(where) and _FILES_FP.fullmatch(x):
+                return  # 失敗の記録の files_fp(同じ)
+            if where == "$.db.sha256" and _DB_SHA.fullmatch(x):
+                return  # 一覧の db.json の sha256 の先頭(個人の情報ではない)
             check(where, x)
 
     walk(data, "$")
     return found
 
 
+# 配列を置ける場所(#132。失敗の記録の並びと、足りないノードの名前の並び)と、その長さの上限
+_LIST_PLACES = (
+    (re.compile(r"\$\.failures"), MAX_FAILURES),
+    (re.compile(r"\$\.failures\[\d+\]\.missing_nodes"), MAX_MISSING_NODES),
+)
+_FAILURE_FP = re.compile(r"\$\.failures\[\d+\]\.files_fp")
+
+
+def _list_limit(where: str) -> int | None:
+    return next((n for pat, n in _LIST_PLACES if pat.fullmatch(where)), None)
+
+
+def _strict_place(where: str) -> bool:
+    """すべての検出(電話番号・ドメイン・符号化など)を当てる場所(#132): 失敗の記録の名前(ノード名・
+    エラーの種類)と、見積もり・時間の内訳の中。モデル ID・ファイルの指紋は形と一覧で縛っているので除く。"""
+    if where.endswith((".model_id", ".files_fp")):
+        return False
+    return where.startswith(("$.failures", "$.measurement.estimate", "$.measurement.timing"))
+
+
 def string_problems(data: Any) -> list[str]:
-    """制御文字・改行・見えない文字を含む文字列、長すぎる文字列・キー、配列、深すぎる入れ子(場所の一覧)。"""
+    """制御文字・改行・見えない文字を含む文字列、長すぎる文字列・キー、配列(決まった場所のほか)、
+    深すぎる入れ子(場所の一覧)。"""
     out: list[str] = []
 
     def walk(x: Any, where: str, depth: int = 0) -> None:
@@ -497,7 +593,14 @@ def string_problems(data: Any) -> list[str]:
                     continue
                 walk(v, f"{where}.{ks}", depth + 1)
         elif isinstance(x, list):
-            out.append(tr(f"{where}: 配列は使えません", f"{where}: arrays are not allowed"))
+            limit = _list_limit(where)
+            if limit is None:
+                out.append(tr(f"{where}: 配列は使えません", f"{where}: arrays are not allowed"))
+            elif len(x) > limit:
+                out.append(tr(f"{where}: {limit} 個を超えています", f"{where}: more than {limit} items"))
+            else:
+                for i, v in enumerate(x):
+                    walk(v, f"{where}[{i}]", depth + 1)
         elif isinstance(x, str):
             limit = MAX_NOTE_CHARS if where == "$.measurement.note" else MAX_STR
             if len(x) > limit:
@@ -570,6 +673,35 @@ CHECKLIST: tuple[tuple[str, tuple[str, str], tuple[str, ...]], ...] = (
 )
 
 
+def _unknown_fields(data: dict[str, Any]) -> list[str]:
+    """決まった項目に無いキーの場所(#132 で足した見積もり・時間の内訳・一覧の版・失敗の記録の中も見る)。"""
+    failures = data.get("kind") == FAILURES_KIND
+    unknown = sorted(set(data) - (FAILURES_TOP_KEYS if failures else TOP_KEYS))
+
+    def sub(d: Any, allowed: set[str], where: str) -> None:
+        if isinstance(d, dict):
+            unknown.extend(f"{where}.{k}" for k in sorted(set(d) - allowed))
+
+    sub(data.get("system"), SYSTEM_KEYS, "system")
+    sub(data.get("db"), DB_KEYS, "db")
+    system = data.get("system")
+    sub(system.get("gpu") if isinstance(system, dict) else None, GPU_KEYS, "system.gpu")
+    mm = data.get("measurement")
+    if not failures:
+        sub(mm, MEASUREMENT_KEYS, "measurement")
+        if isinstance(mm, dict):
+            sub(mm.get("settings"), SETTINGS_KEYS, "measurement.settings")
+            sub(mm.get("estimate"), ESTIMATE_KEYS, "measurement.estimate")
+            sub(mm.get("timing"), TIMING_KEYS, "measurement.timing")
+    items = data.get("failures")
+    if failures and isinstance(items, list):
+        for i, f in enumerate(items[:MAX_FAILURES]):
+            sub(f, FAILURE_KEYS, f"failures[{i}]")
+            if isinstance(f, dict):
+                sub(f.get("settings"), SETTINGS_KEYS, f"failures[{i}].settings")
+    return unknown
+
+
 def privacy_checklist(
     data: Any, raw: str | None = None, *, self_identity: bool = True
 ) -> list[dict[str, Any]]:
@@ -580,14 +712,7 @@ def privacy_checklist(
     out: list[dict[str, Any]] = []
     unknown: list[str] = []
     if isinstance(data, dict):
-        unknown = sorted(set(data) - TOP_KEYS)
-        for key, allowed in (("system", SYSTEM_KEYS), ("measurement", MEASUREMENT_KEYS)):
-            sub = data.get(key)
-            if isinstance(sub, dict):
-                unknown += [f"{key}.{k}" for k in sorted(set(sub) - allowed)]
-        gpu = (data.get("system") or {}).get("gpu") if isinstance(data.get("system"), dict) else None
-        if isinstance(gpu, dict):
-            unknown += [f"system.gpu.{k}" for k in sorted(set(gpu) - GPU_KEYS)]
+        unknown = _unknown_fields(data)
     out.append(
         {
             "id": "known_fields",
@@ -638,10 +763,17 @@ def content_hash(data: dict[str, Any]) -> str:
     return hashlib.sha256(canonical(data)).hexdigest()
 
 
+def is_failures(data: Any) -> bool:
+    """失敗の記録のファイル(kind genmodelfit-failures。#132)か。"""
+    return isinstance(data, dict) and data.get("kind") == FAILURES_KIND
+
+
 def suggested_path(data: dict[str, Any]) -> str:
-    """リポジトリの中の置き場所 data/contrib/<GPU>/<日付>-<sha8>.json(区切りは /)。"""
+    """リポジトリの中の置き場所 data/contrib/<GPU>/<日付>-<sha8>.json(区切りは /)。
+    失敗の記録は <日付>-<sha8>-failures.json(#132)。"""
     gpu = ((data.get("system") or {}).get("gpu") or {}).get("name") or "unknown"
-    return f"{CONTRIB_DIR}/{gpu_slug(str(gpu))}/{data.get('date')}-{content_hash(data)[:8]}.json"
+    tail = FAILURES_SUFFIX if is_failures(data) else ""
+    return f"{CONTRIB_DIR}/{gpu_slug(str(gpu))}/{data.get('date')}-{content_hash(data)[:8]}{tail}.json"
 
 
 def _os_family(os_name: str | None) -> str | None:
@@ -664,23 +796,24 @@ def _clean_settings(s: Settings | dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def build_submission(
-    m: Measurement, system: SystemInfo | None = None, *, extra_secrets: list[str] | None = None
+def _system_block(
+    system: SystemInfo | None,
+    gpu_name: str,
+    vram_gb: float,
+    driver: str | None,
+    backend: str | None,
+    pci_id: str | None,
 ) -> dict[str, Any]:
-    """bench の実測 1 件 → 提出用の JSON(contrib_schema 2)。
-
-    system は測った PC(ComfyUI が同じ PC のときだけ渡す)。OS の種類・メインメモリ・GPU の世代を取る。
-    GPU の世代は、測った GPU と同じ名前の GPU が system にあればその値、無ければ GPU 名の表から推す。
-    source(自由に書ける文)は入れない。note は個人の情報らしいところを消して入れる。"""
+    """提出の system(OS の種類・丸めたメインメモリ・GPU)。実測と失敗の記録で同じものを使う(#132)。
+    GPU の世代は、同じ名前の GPU が system にあればその値、無ければ GPU 名の表から推す。"""
     arch = cc = None
-    driver = m.driver
     if system is not None:
-        same = [g for g in system.gpus if g.name == m.gpu_name]
+        same = [g for g in system.gpus if g.name == gpu_name]
         if same:
             g = same[0]
             arch, cc, driver = g.arch, g.compute_capability, driver or g.driver
     if cc is None:
-        guess = cc_from_name(m.gpu_name)
+        guess = cc_from_name(gpu_name)
         if guess:
             cc, arch = f"{guess[0]}.{guess[1]}", arch or arch_of(guess)
     elif arch is None:
@@ -688,7 +821,7 @@ def build_submission(
         arch = arch_of(parsed) if parsed else None
     if arch not in ARCHES:  # NVIDIA 以外の世代(RDNA 3 など)は arch に入れない(ARCHES は NVIDIA の世代だけ)
         arch = None
-    backend = m.gpu_backend if m.gpu_backend in VENDOR_BACKEND.values() else None
+    backend = backend if backend in VENDOR_BACKEND.values() else None
     vendor = next((v for v, b in VENDOR_BACKEND.items() if b == backend), None)
     if vendor not in (None, "nvidia"):
         arch = cc = None  # compute capability は NVIDIA だけ
@@ -698,30 +831,63 @@ def build_submission(
         os_family = _os_family(system.os)
         if "ram" not in system.overrides and system.ram_total_gb:
             ram = round(system.ram_total_gb)
+    return {
+        "os_family": os_family,
+        "ram_total_gb": ram,
+        "gpu": {
+            "name": gpu_name,
+            "vram_gb": vram_gb,
+            "arch": arch,
+            "compute_capability": cc,
+            "driver": driver,
+            # 会社・backend は bench が記録したときだけ入れる(古い結果から作るときは入れない)
+            **({"vendor": vendor, "backend": backend} if backend else {}),
+            # PCI の型番 ID は bench が ComfyUI と同じ PC の検出から書いたときだけ(機種の番号だけ)
+            **({"pci_id": pci_id} if pci_id else {}),
+        },
+    }
+
+
+def spilled_gb(peak_vram_gb: Any, gpu_vram_gb: Any) -> float | None:
+    """ピークの VRAM が GPU の総量を超えた量(GiB。#132)。超えていない・分からなければ None。
+    超えたとみなすのは、検査が総量超えを誤りにする線(総量 × 1.02 + 0.25 GB)を超えたとき。"""
+    if not (_num(peak_vram_gb) and _num(gpu_vram_gb)) or gpu_vram_gb <= 0:
+        return None
+    if peak_vram_gb <= gpu_vram_gb * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB:
+        return None
+    return round(peak_vram_gb - gpu_vram_gb, 2)
+
+
+def build_submission(
+    m: Measurement,
+    system: SystemInfo | None = None,
+    *,
+    extra_secrets: list[str] | None = None,
+    estimate: dict[str, Any] | None = None,
+    timing: dict[str, Any] | None = None,
+    db_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """bench の実測 1 件 → 提出用の JSON(contrib_schema 3)。
+
+    system は測った PC(ComfyUI が同じ PC のときだけ渡す)。OS の種類・メインメモリ・GPU の世代を取る。
+    source(自由に書ける文)は入れない。note は個人の情報らしいところを消して入れる。
+    estimate(measurement_estimate)・timing(bench の BenchResult.timing)・db_info(db_info)は
+    渡したときだけ入れる(#132)。最後まで動いた(ok)のにピークの VRAM が GPU の総量を超えたら
+    spilled と超えた量を付ける(共有メモリへ逃げた。見積もり・段階には使わない)。"""
     note = scrub_text(m.note, extra_secrets)
     if note and len(note) > MAX_NOTE_CHARS:
         note = note[: MAX_NOTE_CHARS - 1] + "…"
+    spill = spilled_gb(m.peak_vram_gb, m.gpu_vram_gb) if m.outcome == "ok" else None
     return {
         "contrib_schema": CONTRIB_SCHEMA,
         "kind": KIND,
         "tool": {"name": "genmodelfit", "version": __version__},
         "date": m.date or datetime.now(timezone.utc).date().isoformat(),
-        "system": {
-            "os_family": os_family,
-            "ram_total_gb": ram,
-            "gpu": {
-                "name": m.gpu_name,
-                "vram_gb": m.gpu_vram_gb,
-                "arch": arch,
-                "compute_capability": cc,
-                "driver": driver,
-                # 会社・backend は bench が記録したときだけ入れる(古い結果から作るときは入れない)
-                **({"vendor": vendor, "backend": backend} if backend else {}),
-                # PCI の型番 ID は bench が ComfyUI と同じ PC の検出から書いたときだけ(機種の番号だけ)
-                **({"pci_id": m.gpu_pci_id} if getattr(m, "gpu_pci_id", None) else {}),
-            },
-        },
+        "system": _system_block(
+            system, m.gpu_name, m.gpu_vram_gb, m.driver, m.gpu_backend, getattr(m, "gpu_pci_id", None)
+        ),
         "comfyui_version": m.comfyui_version,
+        **({"db": dict(db_info)} if db_info else {}),
         "measurement": {
             "model_id": m.model_id,
             "settings": _clean_settings(m.settings),
@@ -737,7 +903,216 @@ def build_submission(
             **({"files_fp": m.files_fp} if getattr(m, "files_fp", None) else {}),
             # テンプレートの設定を変えて測ったときだけ(#116)
             **({"settings_override": True} if getattr(m, "settings_override", None) else {}),
+            **({"estimate": dict(estimate)} if estimate else {}),
+            **({"timing": {k: timing.get(k) for k in TIMING_ORDER}} if timing else {}),
+            **({"spilled": True, "spilled_gb": spill} if spill else {}),
         },
+    }
+
+
+TIMING_ORDER = (
+    "queue_s",
+    "load_s",
+    "sampling_s",
+    "sec_per_step",
+    "decode_s",
+    "save_s",
+    "total_s",
+    "cold_load",
+)
+
+
+def clean_error_type(value: Any) -> str | None:
+    """例外の型名・ComfyUI の node_errors の type(#132)。決まった形(英数字・_・.)のものだけ。
+    本文(パスが入りうる)は受け取らない。形に合わない・個人の情報らしい文字があれば None。"""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    return v if ERROR_TYPE.fullmatch(v) and not _identity_hit(v) else None
+
+
+def clean_node_name(value: Any) -> str | None:
+    """ノードの名前(#132)。決まった形(NODE_NAME)で、個人の情報らしい文字の無いものだけ。"""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    return v if NODE_NAME.fullmatch(v) and not _identity_hit(v) else None
+
+
+def _identity_hit(text: str) -> bool:
+    """個人の情報らしい文字(PRIVACY_PATTERNS)か、この PC の名前・ユーザ名を含むか。"""
+    low = normalize_for_scan(text).lower()
+    return bool(_hits(text)) or any(normalize_for_scan(w).lower() in low for w in _identity_words())
+
+
+def failure_record(
+    model_id: str,
+    outcome: str,
+    *,
+    settings: Settings | dict[str, Any] | None = None,
+    seconds: float | None = None,
+    timeout_s: float | None = None,
+    missing_nodes: list[str] | None = None,
+    error_type: Any = None,
+    node_type: Any = None,
+    peak_vram_gb: float | None = None,
+    before_run: bool = False,
+    files_fp: str | None = None,
+) -> dict[str, Any] | None:
+    """失敗の記録 1 件(#132)。送らない失敗(FAILURE_OUTCOMES の外: interrupted・interference など)は None。
+    文は入れない: 型名・ノードの名前は決まった形のものだけ残す(clean_error_type・clean_node_name)。"""
+    if outcome not in FAILURE_OUTCOMES:
+        return None
+    rec: dict[str, Any] = {"model_id": model_id, "outcome": outcome}
+    if settings:
+        rec["settings"] = _clean_settings(settings)
+    rec["seconds"] = round(float(seconds), 1) if _num(seconds) and seconds > 0 else None
+    if outcome == "timeout" and _num(timeout_s) and timeout_s > 0:
+        rec["timeout_s"] = round(float(timeout_s), 1)
+    if outcome == "missing_nodes":
+        given = [x for x in missing_nodes or [] if x]
+        names = sorted({n for n in (clean_node_name(x) for x in given) if n})[:MAX_MISSING_NODES]
+        other = len({str(x) for x in given}) - len(names)
+        if not names and other <= 0:
+            return None  # 足りないノードが分からない記録は作らない
+        rec["missing_nodes"] = names
+        if other > 0:
+            rec["other_nodes"] = other
+    if outcome in ("error", "oom"):
+        rec["error_type"] = clean_error_type(error_type)
+        rec["node_type"] = clean_node_name(node_type)
+    if _num(peak_vram_gb) and peak_vram_gb > 0 and outcome in ("error", "oom", "timeout"):
+        rec["peak_vram_gb"] = round(float(peak_vram_gb), 2)
+    if before_run:
+        rec["before_run"] = True
+    if isinstance(files_fp, str) and _FILES_FP.fullmatch(files_fp):
+        rec["files_fp"] = files_fp
+    return rec
+
+
+def build_failures(
+    records: list[dict[str, Any] | None],
+    system: SystemInfo | None,
+    *,
+    gpu_name: str,
+    gpu_vram_gb: float,
+    driver: str | None = None,
+    backend: str | None = None,
+    pci_id: str | None = None,
+    comfyui_version: str | None = None,
+    db_info: dict[str, Any] | None = None,
+    date: str | None = None,
+) -> dict[str, Any]:
+    """1 回の share・1 つの GPU の失敗の記録のファイル(kind genmodelfit-failures、contrib_schema 3。#132)。
+    records は failure_record の結果(None は除く)。多すぎれば MAX_FAILURES 件まで。PC の概要(system)は
+    実測の提出と同じ範囲。見積もりの式には使わない(何を勧めるか・要る ComfyUI の版を決める材料)。"""
+    items = [r for r in records if r][:MAX_FAILURES]
+    cv = comfyui_version if isinstance(comfyui_version, str) and _VERSION.fullmatch(comfyui_version) else None
+    doc = {
+        "contrib_schema": CONTRIB_SCHEMA,
+        "kind": FAILURES_KIND,
+        "tool": {"name": "genmodelfit", "version": __version__},
+        "date": date or datetime.now(timezone.utc).date().isoformat(),
+        "system": _system_block(system, gpu_name, gpu_vram_gb, driver, backend, pci_id),
+        "comfyui_version": cv,
+        **({"db": dict(db_info)} if db_info else {}),
+        "failures": items,
+    }
+    # 大きさの上限(MAX_FILE_BYTES)に収まるまで、後ろの記録から外す(1 件は残す)
+    while len(dumps(doc).encode("utf-8")) > MAX_FILE_BYTES - 1024 and len(doc["failures"]) > 1:
+        doc["failures"].pop()
+    return doc
+
+
+_DB_INFO: dict[tuple, dict[str, Any]] = {}
+
+
+def db_info(db: Database | None) -> dict[str, Any] | None:
+    """一覧の版(#132): {generated_at: 作った日(日付だけ), sha256: db.json の sha256 の先頭 12 桁}。
+    sha256 は同梱・キャッシュの一覧のときだけ(ファイルを読めたとき)。分からない項目は入れない。"""
+    if db is None:
+        return None
+    key = (db.origin, db.generated_at)
+    if key not in _DB_INFO:
+        out: dict[str, Any] = {}
+        gen = db.generated_at
+        if isinstance(gen, str) and _DATE.match(gen):
+            out["generated_at"] = gen[:10]
+        raw: bytes | None = None
+        with contextlib.suppress(OSError, ValueError):
+            from .db import bundled_text, cached_db_path
+
+            if db.origin == "bundled":
+                raw = bundled_text("db.json").encode("utf-8")
+            elif db.origin == "cache":
+                raw = cached_db_path().read_bytes()
+        if raw is not None:
+            out["sha256"] = hashlib.sha256(raw).hexdigest()[:12]
+        _DB_INFO[key] = out
+    return dict(_DB_INFO[key]) or None
+
+
+def measurement_estimate(
+    entry: Any,
+    system: SystemInfo | None,
+    settings: Settings | None,
+    measurements: list[Measurement],
+    *,
+    exclude_gpu: str | None = None,
+) -> dict[str, Any] | None:
+    """測ったモデル・設定に対する、その時点の genmodelfit の見積もり(#132。判定の計算は変えない)。
+
+    measurements には、その実測と、同じ PC のほかの実測を入れない(入れると照合にならない。呼び出し側は
+    同梱の実測だけを渡す: db.load_measurements(include_cache=False))。system が無い(ComfyUI が別の PC)・
+    大きさが分からない・計算できないときは None。exclude_gpu(測った GPU の名前)を渡すと、同じ GPU・
+    同じモデルの実測も除く(同梱の実測は作者の PC のものなので、同じ PC の実測かもしれない)。"""
+    from .estimate import (
+        apply_precision,
+        components,
+        estimate,
+        formula_need,
+        load_coefficients,
+        same_gpu_name,
+        settings_for,
+    )
+    from .measure import time_hint
+    from .recommend import _how, vram_need
+
+    if system is None or entry is None:
+        return None
+    if exclude_gpu:
+        mid = getattr(entry, "id", None)
+        measurements = [
+            x for x in measurements if not (x.model_id == mid and same_gpu_name(x.gpu_name, exclude_gpu))
+        ]
+    try:
+        c = load_coefficients()
+        e = estimate(entry, system, settings, measurements, c)
+        if e.unknown_size:
+            return None
+        s = settings_for(entry, settings, sized=not no_size_input(entry))
+        n = formula_need(entry, s, c, apply_precision(components(entry), entry, s))
+        secs, _basis = time_hint(entry, measurements, settings)
+        need = vram_need(e, system)
+        mode = e.run_mode
+        if mode == "gpu" and e.fit_from != "measurement" and system.vram_gb > 0:
+            mode = "sequential" if _how(e, system.vram_gb, system)[1] == "seq" else "gpu"
+    except (TypeError, ValueError, ZeroDivisionError, AttributeError, KeyError):
+        return None
+
+    def r2(x: Any) -> float | None:
+        return round(float(x), 2) if _num(x) else None
+
+    return {
+        "fit_level": e.fit if e.fit in ESTIMATE_LEVELS else None,
+        "run_mode": mode if mode in ESTIMATE_MODES else None,
+        "vram_gb": r2(need),
+        "vram_resident_gb": r2(e.vram_resident_gb),
+        "work_gb": r2(n.act),
+        "ram_required_gb": r2(e.ram_gb),
+        "seconds": float(secs) if _num(secs) else None,
+        "basis": e.basis if e.basis in ESTIMATE_BASES else None,
+        **({"measurements": ESTIMATE_SOURCES[0]} if exclude_gpu else {}),
     }
 
 
@@ -784,9 +1159,12 @@ def share_check(checklist: list[dict[str, Any]], report: Report) -> list[str]:
 
 
 def issue_title(data: dict[str, Any]) -> str:
-    """Issue の題(モデル ID と GPU 名。どちらも検査を通った形の文字)。"""
-    mm = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
+    """Issue の題(モデル ID と GPU 名。どちらも検査を通った形の文字)。失敗の記録は件数と GPU 名(#132)。"""
     gpu = ((data.get("system") or {}).get("gpu") or {}).get("name")
+    if is_failures(data):
+        items = data.get("failures") if isinstance(data.get("failures"), list) else []
+        return f"measurement failures: {len(items)} on {gpu}"
+    mm = data.get("measurement") if isinstance(data.get("measurement"), dict) else {}
     return f"measurement: {mm.get('model_id')} on {gpu}"
 
 
@@ -818,7 +1196,7 @@ def share_urls(data: dict[str, Any], text: str) -> dict[str, Any]:
 _FENCE = re.compile(r"^(?P<fence>`{3,}|~{3,})[^\n`]*\n(?P<body>.*?)^(?P=fence)[ \t]*$", re.M | re.S)
 _USER_ID = re.compile(r"\d{1,20}")  # GitHub のアカウントの数の ID
 _LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
-_REPO_PATH = re.compile(r"data/contrib/[a-z0-9-]+/\d{4}-\d{2}-\d{2}-[0-9a-f]{8}\.json")
+_REPO_PATH = re.compile(r"data/contrib/[a-z0-9-]+/\d{4}-\d{2}-\d{2}-[0-9a-f]{8}(-failures)?\.json")
 
 
 def extract_issue_json(body: str | None) -> str | None:
@@ -1187,6 +1565,9 @@ def number_problems(data: Any) -> list[str]:
         if isinstance(x, dict):
             for k, v in x.items():
                 walk(v, f"{where}.{k}")
+        elif isinstance(x, list):
+            for i, v in enumerate(x[:100]):
+                walk(v, f"{where}[{i}]")
         elif isinstance(x, (int, float)) and not isinstance(x, bool):
             if not math.isfinite(x):
                 out.append(
@@ -1281,7 +1662,7 @@ _PRECISION = re.compile(r"[A-Za-z0-9_-]{1,24}")
 # 見積もりで設定の違う推定へ広げる範囲と同じ
 NOTICE_DEVIATION = COMMUNITY_DEVIATION
 _CC = re.compile(r"\d{1,2}\.\d")
-_FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})\.json")
+_FILENAME = re.compile(r"(\d{4}-\d{2}-\d{2})-([0-9a-f]{8})(-failures)?\.json")
 
 
 def _version_tuple(v: Any) -> tuple[int, ...] | None:
@@ -1375,14 +1756,18 @@ def validate_submission(
                 f"{f['where']}: has what looks like {f['what']}. Remove it before submitting",
             ),
         )
-    _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version"})
+    failures = data.get("kind") == FAILURES_KIND
+    if failures:
+        _check_keys(r, data, FAILURES_TOP_KEYS, "$", FAILURES_TOP_KEYS - {"comfyui_version", "db"})
+    else:
+        _check_keys(r, data, TOP_KEYS, "$", TOP_KEYS - {"comfyui_version", "db"})
     schema = data.get("contrib_schema")
     if isinstance(schema, bool) or schema not in CONTRIB_SCHEMAS:
         r.error(
             "schema",
             tr(
-                f"contrib_schema が 1 か 2 ではありません: {schema!r}",
-                f"contrib_schema is not 1 or 2: {schema!r}",
+                f"contrib_schema が {' / '.join(map(str, CONTRIB_SCHEMAS))} のどれでもありません: {schema!r}",
+                f"contrib_schema is not {' / '.join(map(str, CONTRIB_SCHEMAS))}: {schema!r}",
             ),
         )
         return r
@@ -1406,8 +1791,24 @@ def validate_submission(
                 ),
             )
     _check_versions(r, data, db)
-    if data.get("kind") != KIND:
-        r.error("schema", tr(f"kind は {KIND!r} にしてください", f"kind must be {KIND!r}"))
+    if data.get("kind") not in (KIND, FAILURES_KIND):
+        r.error(
+            "schema",
+            tr(f"kind は {KIND!r} か {FAILURES_KIND!r} です", f"kind must be {KIND!r} or {FAILURES_KIND!r}"),
+        )
+    if schema < 3:
+        # contrib_schema 3 の項目(#132)。古い版の提出には入れない
+        new3 = [f"$.{k}" for k in ("db",) if k in data]
+        new3 += [f"$.measurement.{k}" for k in ("estimate", "timing", "spilled", "spilled_gb") if k in mm0]
+        if failures:
+            new3.append(f"kind {FAILURES_KIND}")
+        for where in new3:
+            r.error(
+                "schema",
+                tr(f"{where} は contrib_schema 3 の項目です", f"{where} is a contrib_schema 3 field"),
+            )
+    if "db" in data:
+        _check_db(r, data.get("db"))
     tool = data.get("tool")
     if _check_keys(r, tool, TOOL_KEYS, "$.tool", TOOL_KEYS) and (
         tool.get("name") != "genmodelfit"
@@ -1459,6 +1860,29 @@ def validate_submission(
     if cv is None:
         r.warn("comfyui_version_missing", tr("comfyui_version がありません", "comfyui_version is missing"))
 
+    vram, ram = _check_system(r, data)
+    if failures:
+        _check_failures(r, data.get("failures"), vram, db)
+    else:
+        mm = data.get("measurement")
+        if _check_keys(
+            r, mm, MEASUREMENT_KEYS, "$.measurement", {"model_id", "settings", "outcome", "peak_vram_gb"}
+        ):
+            _check_new_fields(r, mm, vram, ram)
+            _check_measurement(r, mm, vram, ram, db)
+
+    r.sha256 = content_hash(data)
+    r.suggested_path = suggested_path(data)
+    if r.ok and db is not None and r.model_id and not failures:
+        _check_effect(r, data, db)
+    if path is not None and check_filename:
+        _check_filename(r, Path(path), data)
+    return r
+
+
+def _check_system(r: Report, data: dict[str, Any]) -> tuple[Any, Any]:
+    """system(OS の種類・メインメモリ・GPU)を検査する。(GPU の VRAM, メインメモリ)。
+    実測と失敗の記録で同じ(#132)。"""
     system = data.get("system")
     gpu: dict[str, Any] = {}
     ram = None
@@ -1719,19 +2143,325 @@ def validate_submission(
                     ),
                 )
 
-    mm = data.get("measurement")
-    if _check_keys(
-        r, mm, MEASUREMENT_KEYS, "$.measurement", {"model_id", "settings", "outcome", "peak_vram_gb"}
-    ):
-        _check_measurement(r, mm, vram, ram, db)
+    return vram, ram
 
-    r.sha256 = content_hash(data)
-    r.suggested_path = suggested_path(data)
-    if r.ok and db is not None and r.model_id:
-        _check_effect(r, data, db)
-    if path is not None and check_filename:
-        _check_filename(r, Path(path), data)
-    return r
+
+def _check_db(r: Report, d: Any) -> None:
+    """一覧の版(#132): {generated_at: YYYY-MM-DD, sha256: 16 進の小文字 12 桁}。どちらも任意。"""
+    if not _check_keys(r, d, DB_KEYS, "$.db", set()):
+        return
+    gen = d.get("generated_at")
+    if gen is not None and (not isinstance(gen, str) or not _DATE.fullmatch(gen)):
+        r.error(
+            "value",
+            tr(
+                f"db.generated_at は YYYY-MM-DD(日付だけ)です: {gen!r}",
+                f"db.generated_at must be YYYY-MM-DD (date only): {gen!r}",
+            ),
+        )
+    sha = d.get("sha256")
+    if sha is not None and (not isinstance(sha, str) or not _DB_SHA.fullmatch(sha)):
+        r.error(
+            "value",
+            tr(
+                "db.sha256 は 16 進の小文字 12 桁(db.json の sha256 の先頭)です",
+                "db.sha256 must be 12 lowercase hex digits (the start of the db.json sha256)",
+            ),
+        )
+
+
+def _seconds_ok(x: Any, allow_zero: bool = True) -> bool:
+    return _num(x) and (x >= 0 if allow_zero else x > 0) and x <= 86400
+
+
+def _check_new_fields(r: Report, mm: dict[str, Any], vram: Any, ram: Any) -> None:
+    """contrib_schema 3 の実測の項目(#132): 見積もり・時間の内訳・VRAM を超えた印。"""
+    est = mm.get("estimate")
+    if est is not None and _check_keys(r, est, ESTIMATE_KEYS, "$.measurement.estimate", set()):
+        for key, allowed in (
+            ("fit_level", ESTIMATE_LEVELS),
+            ("run_mode", ESTIMATE_MODES),
+            ("basis", ESTIMATE_BASES),
+        ):
+            v = est.get(key)
+            if v is not None and v not in allowed:
+                r.error(
+                    "value",
+                    tr(
+                        f"measurement.estimate.{key} は {' / '.join(allowed)} か null です: {v!r}",
+                        f"measurement.estimate.{key} must be {' / '.join(allowed)} or null: {v!r}",
+                    ),
+                )
+        for key in ("vram_gb", "vram_resident_gb", "work_gb", "ram_required_gb"):
+            v = est.get(key)
+            if v is not None and (not _num(v) or v < 0 or v > MAX_RAM_GB):
+                r.error(
+                    "value",
+                    tr(
+                        f"measurement.estimate.{key} は 0 以上の GiB か null です: {v!r}",
+                        f"measurement.estimate.{key} must be GiB of 0 or more, or null: {v!r}",
+                    ),
+                )
+        src = est.get("measurements")
+        if src is not None and src not in ESTIMATE_SOURCES:
+            r.error(
+                "value",
+                tr(
+                    f"measurement.estimate.measurements は {' / '.join(ESTIMATE_SOURCES)} です: {src!r}",
+                    f"measurement.estimate.measurements must be {' / '.join(ESTIMATE_SOURCES)}: {src!r}",
+                ),
+            )
+        v = est.get("seconds")
+        if v is not None and not _seconds_ok(v):
+            r.error(
+                "value",
+                tr(
+                    f"measurement.estimate.seconds は秒数か null です: {v!r}",
+                    f"measurement.estimate.seconds must be seconds or null: {v!r}",
+                ),
+            )
+    timing = mm.get("timing")
+    if timing is not None and _check_keys(r, timing, TIMING_KEYS, "$.measurement.timing", set()):
+        for key in sorted(TIMING_KEYS - {"cold_load"}):
+            v = timing.get(key)
+            if v is not None and not _seconds_ok(v):
+                r.error(
+                    "value",
+                    tr(
+                        f"measurement.timing.{key} は 0 以上の秒数か null です: {v!r}",
+                        f"measurement.timing.{key} must be seconds of 0 or more, or null: {v!r}",
+                    ),
+                )
+        cold = timing.get("cold_load")
+        if cold is not None and not isinstance(cold, bool):
+            r.error(
+                "value",
+                tr(
+                    "measurement.timing.cold_load は true / false / null です",
+                    "measurement.timing.cold_load must be true / false / null",
+                ),
+            )
+    if "spilled" not in mm and "spilled_gb" not in mm:
+        return
+    spilled, extra, peak = mm.get("spilled"), mm.get("spilled_gb"), mm.get("peak_vram_gb")
+    if spilled is not True:
+        r.error(
+            "value",
+            tr(
+                "measurement.spilled は true だけです(超えていなければ書かない)",
+                "measurement.spilled must be true (leave it out when nothing spilled)",
+            ),
+        )
+        return
+    if mm.get("outcome") != "ok":
+        r.error(
+            "value",
+            tr(
+                "measurement.spilled は最後まで動いた(ok)実測だけに付けます",
+                "measurement.spilled is only for runs that finished (ok)",
+            ),
+        )
+    if not _num(extra) or extra <= 0:
+        r.error(
+            "value",
+            tr(
+                f"measurement.spilled_gb は総量を超えた量(0 より大きい GiB)です: {extra!r}",
+                f"measurement.spilled_gb must be the amount over the total (GiB above 0): {extra!r}",
+            ),
+        )
+        return
+    if not (_num(peak) and _num(vram)):
+        return
+    if peak <= vram * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB:
+        r.error(
+            "value",
+            tr(
+                f"measurement.spilled なのに、最大 VRAM {peak} GB が GPU の総量 {vram} GB を超えていません",
+                f"measurement.spilled is set, but peak VRAM {peak} GB does not exceed the GPU total"
+                f" of {vram} GB",
+            ),
+        )
+    elif abs(extra - (peak - vram)) > 0.1:
+        r.error(
+            "value",
+            tr(
+                f"measurement.spilled_gb({extra})が最大 VRAM − GPU の総量({peak - vram:.2f})と合いません",
+                f"measurement.spilled_gb ({extra}) does not match peak VRAM minus the GPU total"
+                f" ({peak - vram:.2f})",
+            ),
+        )
+    # 共有メモリに逃げられるのはメインメモリまで(メモリが分からなければ GPU の総量の分まで)
+    limit = vram + (ram if _num(ram) and ram > 0 else vram) * 1.05 + RAM_TOLERANCE_GB
+    if peak > limit:
+        r.error(
+            "value",
+            tr(
+                f"最大 VRAM {peak} GB が、GPU の総量とメインメモリを合わせた量 {limit:.1f} GB を超えています",
+                f"Peak VRAM {peak} GB exceeds the GPU total plus the RAM ({limit:.1f} GB)",
+            ),
+        )
+
+
+def _check_failures(r: Report, items: Any, vram: Any, db: Database | None) -> None:
+    """失敗の記録の並び(#132)。中断(interrupted)・ほかのプログラムのせい(interference)は受け付けない。"""
+    if not isinstance(items, list) or not items or len(items) > MAX_FAILURES:
+        r.error(
+            "schema",
+            tr("failures は 1 件以上の記録の並びです", "failures must be a list of one or more records"),
+        )
+        return
+    for i, f in enumerate(items[:MAX_FAILURES]):
+        where = f"$.failures[{i}]"
+        if _check_keys(r, f, FAILURE_KEYS, where, {"model_id", "outcome"}):
+            _check_failure(r, f, where, vram, db)
+
+
+def _check_failure(r: Report, f: dict[str, Any], where: str, vram: Any, db: Database | None) -> None:
+    mid = f.get("model_id")
+    if not isinstance(mid, str) or not _MODEL_ID.fullmatch(mid):
+        r.error(
+            "value",
+            tr(f"{where}.model_id は一覧の ID にしてください", f"{where}.model_id must be a list id"),
+        )
+    elif db is not None and db.get(mid) is None:
+        r.notice(
+            "unknown_model",
+            tr(
+                f"モデル ID が同梱の一覧にありません: {mid}",
+                f"The model id is not in the bundled list: {mid}",
+            ),
+        )
+    outcome = f.get("outcome")
+    if outcome not in FAILURE_OUTCOMES:
+        r.error(
+            "value",
+            tr(
+                f"{where}.outcome は {' / '.join(FAILURE_OUTCOMES)} です(中断・ほかのプログラムのせいの"
+                f"失敗は送らない): {outcome!r}",
+                f"{where}.outcome must be {' / '.join(FAILURE_OUTCOMES)} (interrupted runs and runs"
+                f" disturbed by other programs are not sent): {outcome!r}",
+            ),
+        )
+    s = f.get("settings")
+    if s is not None:
+        _check_failure_settings(r, s, f"{where}.settings")
+    secs = f.get("seconds")
+    if secs is not None and not _seconds_ok(secs, allow_zero=False):
+        r.error(
+            "value",
+            tr(
+                f"{where}.seconds は 0 より大きい秒数か null です",
+                f"{where}.seconds must be seconds above 0 or null",
+            ),
+        )
+    if "timeout_s" in f and (outcome != "timeout" or not _seconds_ok(f.get("timeout_s"), allow_zero=False)):
+        r.error(
+            "value",
+            tr(
+                f"{where}.timeout_s は timeout の記録だけの秒数です",
+                f"{where}.timeout_s is seconds, only for a timeout record",
+            ),
+        )
+    nodes = f.get("missing_nodes")
+    other = f.get("other_nodes")
+    if other is not None and (
+        outcome != "missing_nodes" or not isinstance(other, int) or isinstance(other, bool) or other < 1
+    ):
+        r.error(
+            "value",
+            tr(
+                f"{where}.other_nodes は missing_nodes の記録だけの 1 以上の数です",
+                f"{where}.other_nodes is a count of 1 or more, only for a missing_nodes record",
+            ),
+        )
+    if (outcome == "missing_nodes" or nodes is not None) and (
+        outcome != "missing_nodes"
+        or not isinstance(nodes, list)
+        or not (nodes or (isinstance(other, int) and other >= 1))
+        or not all(isinstance(n, str) and NODE_NAME.fullmatch(n) for n in nodes)
+    ):
+        r.error(
+            "value",
+            tr(
+                f"{where}.missing_nodes は missing_nodes の記録だけの、ノードの名前"
+                "(文字・数字・空白と _ . + ( ) | ' : , [ ] -、100 字まで)の並びです"
+                "(空なら other_nodes が要る)",
+                f"{where}.missing_nodes is a list of node names (letters, digits, spaces and"
+                " _ . + ( ) | ' : , [ ] -; up to 100 characters), only for a missing_nodes record"
+                " (other_nodes is needed when it is empty)",
+            ),
+        )
+    for key, pat in (("error_type", ERROR_TYPE), ("node_type", NODE_NAME)):
+        v = f.get(key)
+        bad = not isinstance(v, str) or not pat.fullmatch(v)
+        if v is not None and (outcome not in ("error", "oom") or bad):
+            r.error(
+                "value",
+                tr(
+                    f"{where}.{key} は error・oom の記録だけの、決まった形の名前です(文は送らない)",
+                    f"{where}.{key} is a plain name, only for error and oom records (no message text)",
+                ),
+            )
+    peak = f.get("peak_vram_gb")
+    if peak is not None and (
+        not _num(peak) or peak <= 0 or (_num(vram) and peak > 2 * vram + VRAM_TOLERANCE_GB)
+    ):
+        r.error(
+            "value",
+            tr(
+                f"{where}.peak_vram_gb がありえない値です: {peak!r}",
+                f"{where}.peak_vram_gb is implausible: {peak!r}",
+            ),
+        )
+    before = f.get("before_run")
+    if before is not None and (before is not True or outcome != "missing_nodes"):
+        r.error(
+            "value",
+            tr(
+                f"{where}.before_run は missing_nodes の記録だけの true です",
+                f"{where}.before_run is true, only for a missing_nodes record",
+            ),
+        )
+    fp = f.get("files_fp")
+    if fp is not None and (not isinstance(fp, str) or not _FILES_FP.fullmatch(fp)):
+        r.error(
+            "value",
+            tr(
+                f"{where}.files_fp は 16 進の小文字 64 桁(sha256)です",
+                f"{where}.files_fp must be 64 lowercase hex digits (sha256)",
+            ),
+        )
+
+
+def _check_failure_settings(r: Report, s: Any, where: str) -> None:
+    if not isinstance(s, dict):
+        r.error("schema", tr(f"{where} はオブジェクトにしてください", f"{where} must be an object"))
+        return
+    for k in sorted(set(s) - SETTINGS_KEYS):
+        r.error("unknown_field", tr(f"{where}.{k} は知らない項目です", f"{where}.{k} is an unknown field"))
+    for k, (lo, hi) in SETTING_RANGES.items():
+        v = s.get(k)
+        if v is not None and (not _num(v) or not lo <= v <= hi or (k != "seconds" and v != int(v))):
+            r.error(
+                "settings",
+                tr(
+                    f"{where}.{k} が範囲({lo:g}〜{hi:g})の外です: {v!r}",
+                    f"{where}.{k} is out of range ({lo:g} to {hi:g}): {v!r}",
+                ),
+            )
+    prec = s.get("precision")
+    if prec is not None and (
+        not isinstance(prec, str)
+        or not _PRECISION.fullmatch(prec)
+        or norm_precision(prec) not in PRECISION_BYTES
+    ):
+        r.error(
+            "settings",
+            tr(
+                f"{where}.precision は知っている精度にしてください",
+                f"{where}.precision must be a known precision",
+            ),
+        )
 
 
 def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: Database | None) -> None:
@@ -1839,7 +2569,8 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
                     "peak_vram_gb is 0 although the run finished (ok)",
                 ),
             )
-        if _num(vram) and peak > vram * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB:
+        spilled = mm.get("spilled") is True and outcome == "ok"  # 共有メモリへ逃げた印(#132)
+        if _num(vram) and peak > vram * PEAK_VRAM_RATIO + VRAM_TOLERANCE_GB and not spilled:
             r.error(
                 "value",
                 tr(
@@ -1932,7 +2663,7 @@ def _check_measurement(r: Report, mm: dict[str, Any], vram: Any, ram: Any, db: D
                 f"settings.precision must be a known precision ({', '.join(PRECISION_BYTES)})",
             ),
         )
-    if entry is not None and outcome == "ok" and _num(peak) and peak > 0:
+    if entry is not None and outcome == "ok" and _num(peak) and peak > 0 and mm.get("spilled") is not True:
         _check_against_estimate(r, entry, mm, s, peak)
     if entry is not None:
         mod = entry.modality
@@ -2132,7 +2863,7 @@ def _check_effect(r: Report, data: dict[str, Any], db: Database) -> None:
     """この提出だけを足すと、よくある PC で段階がどう変わるか(注意として出す。マージするメンテナが見る)。"""
     mm = data["measurement"]
     entry = db.get(mm["model_id"])
-    if entry is None or mm.get("outcome") != "ok" or mm.get("standard") is False:
+    if entry is None or mm.get("outcome") != "ok" or mm.get("standard") is False or mm.get("spilled") is True:
         return
     m = to_measurement(data)
     m.n_submissions, m.n_used, m.n_oom = 1, 1, 0
@@ -2165,11 +2896,23 @@ def _check_filename(r: Report, p: Path, data: dict[str, Any]) -> None:
         r.error(
             "filename",
             tr(
-                f"ファイル名は <日付>-<sha8>.json にしてください(例 {r.suggested_path})",
-                f"The file name must be <date>-<sha8>.json (e.g. {r.suggested_path})",
+                f"ファイル名は <日付>-<sha8>.json(失敗の記録は <日付>-<sha8>-failures.json)にしてください"
+                f"(例 {r.suggested_path})",
+                f"The file name must be <date>-<sha8>.json (<date>-<sha8>-failures.json for failure records)"
+                f" (e.g. {r.suggested_path})",
             ),
         )
         return
+    if bool(m.group(3)) != is_failures(data):
+        r.error(
+            "filename",
+            tr(
+                f"失敗の記録のファイル名は <日付>-<sha8>-failures.json、実測は <日付>-<sha8>.json です"
+                f"(例 {r.suggested_path})",
+                f"A failure record file is named <date>-<sha8>-failures.json and a measurement"
+                f" <date>-<sha8>.json (e.g. {r.suggested_path})",
+            ),
+        )
     if m.group(1) != data.get("date"):
         r.error(
             "filename",
@@ -2417,6 +3160,8 @@ def load_dir(
     for p, r in zip(files, reports, strict=True):
         if r.ok and r.sha256:
             data, _ = read_submission(p)
+            if is_failures(data):
+                continue  # 失敗の記録は検査するが、まとめ・見積もりには使わない(#132)
             subs.append(Submission(path=p.as_posix(), sha256=r.sha256, data=data))
     return subs, sorted([*reports, *(layout_report(b) for b in bad)], key=lambda r: r.path)
 
@@ -2656,7 +3401,8 @@ def source_id(source: str) -> str:
 
 
 def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出は使わない。
+    """同じモデル・設定・GPU(と測り方・測ったときの一覧のファイル)ごとにまとめる。標準でない提出・
+    VRAM を超えた(spilled)提出・失敗の記録は使わない(#132)。
     sources は提出の内容の sha256 → 出どころ(submission_sources)。無い提出はそれぞれ 1 つの出どころ。
 
     - error で終わった提出は値に使わず、数だけ数える(n_error)。
@@ -2671,6 +3417,8 @@ def aggregate(subs: list[Submission], sources: dict[str, str] | None = None) -> 
 
     groups: dict[tuple, list[Submission]] = {}
     for sub in subs:
+        if is_failures(sub.data) or (sub.data.get("measurement") or {}).get("spilled") is True:
+            continue  # 失敗の記録・共有メモリへ逃げた実測は、まとめにも見積もりにも使わない(#132)
         m = sub.measurement
         if not m.standard:
             continue
@@ -2819,7 +3567,7 @@ def community_document(
             "OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが "
             f"{MIN_CONSISTENT} 以上で、幅が中央値の {CONSISTENT_REL:.0%} 以内で、OOM が無ければ consistent"
             "(係数の合わせ直しに入れる)。GPU 名が汎用の名前・名前の代わりの値の行は gpu_known が false で、"
-            "判定に使わない"
+            "判定に使わない。GPU の総量を超えた(共有メモリへ逃げた。spilled)提出と失敗の記録は使わない"
         ),
         "submissions": [
             {"sha256": h, "source": sources.get(h) or f"file:{h}"}

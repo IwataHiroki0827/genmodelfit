@@ -2060,7 +2060,9 @@ def test_unsendable_result_is_kept_but_not_offered(capsys, monkeypatch, this_pc)
             model_id=opts.model_id,
             gpu_name="NVIDIA GeForce RTX 3070",
             gpu_vram_gb=8.0,
-            peak_vram_gb=9.31,  # GPU より大きい(Windows で共有メモリに逃げた)
+            # GPU とメインメモリを合わせた量より大きい(ありえない値。#132 から、GPU より大きいだけなら
+            # spilled の印を付けて送れる: test_spilled_result_is_sent_with_a_mark)
+            peak_vram_gb=30.0,
             seconds=30.0,
             outcome="ok",
             vram_metric="torch_reserved",
@@ -2810,3 +2812,72 @@ def test_r4_unknown_type_counts_only_with_a_memory_rise(monkeypatch):
     assert w.interfering() == {}  # 種類を読めないまま消え、増えも 1 GiB 以下
     w = _watch(monkeypatch, [set(), {71}, set()], [{}, {}, {}], [700.0, 2500.0, 800.0])
     assert set(w.interfering()) == {71}  # 現れる直前より 1 GiB を超えて増えた
+
+
+# --- #132: 失敗の記録も送る ----------------------------------------------------------------------------
+
+
+def _failing_run(outcomes):
+    """measure の 1 件を、順に outcomes の結果にする偽物(失敗は failure の記録を返す)。"""
+    it = iter(outcomes)
+
+    def run(args, url, entry, settings, free=False, progress=None):
+        kind = next(it)
+        if kind == "ok":
+            p = _write_sub(1)
+            m = SimpleNamespace(outcome="ok", peak_vram_gb=5.0, seconds=12.0)
+            return {"error": None, "result": SimpleNamespace(warnings=[]), "measurement": m, "submission": p}
+        rec = contrib.failure_record(entry.id, kind, seconds=30.0, timeout_s=30.0, error_type="ValueError")
+        return {"error": f"{kind}!", "result": None, "measurement": None, "submission": None, "failure": rec}
+
+    return run
+
+
+def test_share_sends_measurements_and_one_failure_file(capsys, monkeypatch, this_pc, plan, gh):
+    nodes = FakeNodes({"a_installed_short": ["LoadMoGeModel"]})
+    nodes.comfyui_version = lambda: "0.40.0"
+    monkeypatch.setattr(cli, "_node_check", lambda url: nodes)
+    monkeypatch.setattr(cli, "_measure_run", _failing_run(["ok", "timeout"]))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    code = cli.main(["share", "--yes", "--json", "--url", "http://127.0.0.1:8188"])
+    d = json.loads(capsys.readouterr().out)
+    assert code == 1  # 測れなかったものがある(今までどおり)
+    failures = [p for p in gh.put if p.endswith("-failures.json")]
+    assert len(failures) == 1 and len(gh.put) == 2 and d["failures_file"]
+    body = json.loads(base64.b64decode(gh.put[failures[0]]["content"]).decode("utf-8"))
+    assert body["kind"] == "genmodelfit-failures" and body["comfyui_version"] == "0.40.0"
+    assert [(f["model_id"], f["outcome"]) for f in body["failures"]] == [
+        ("e_installed", "timeout"),
+        ("a_installed_short", "missing_nodes"),
+    ]
+    assert contrib.validate_submission(body, raw=json.dumps(body), check_filename=False).ok
+
+
+def test_share_with_only_failures_still_sends_them(capsys, monkeypatch, this_pc, plan, gh):
+    monkeypatch.setattr(cli, "_measure_run", _failing_run(["error", "error", "error"]))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    cli.main(["share", "--yes", "--json", "--url", "http://127.0.0.1:8188"])
+    d = json.loads(capsys.readouterr().out)
+    assert d["sent"] is True and [f["path_in_repo"].endswith("-failures.json") for f in d["files"]] == [True]
+
+
+def test_share_with_nothing_measured_and_no_failures_does_nothing(capsys, monkeypatch, this_pc, plan, gh):
+    def run(args, url, entry, settings, free=False, progress=None):  # 接続できないなど、送らない失敗
+        return {"error": "Cannot connect", "result": None, "measurement": None, "submission": None}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    cli.main(["share", "--yes", "--json", "--url", "http://127.0.0.1:8188"])
+    d = json.loads(capsys.readouterr().out)
+    assert d["sent"] is False and d["files"] == [] and gh.put == {}
+
+
+def test_share_with_only_missing_nodes_sends_the_failure_file(capsys, monkeypatch, this_pc, plan, gh):
+    plan["sugg"] = [sugg("a_installed_short", 60)]
+    nodes = FakeNodes({"a_installed_short": ["LoadMoGeModel"]})
+    monkeypatch.setattr(cli, "_node_check", lambda url: nodes)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    cli.main(["share", "--yes", "--json", "--url", "http://127.0.0.1:8188"])
+    d = json.loads(capsys.readouterr().out)
+    assert plan["ran"] == [] and d["sent"] is True
+    assert [p for p in gh.put] and all(p.endswith("-failures.json") for p in gh.put)

@@ -81,7 +81,7 @@ def test_build_submission_fields_and_hash():
         vram_metric="torch_reserved",
     )
     sub = contrib.build_submission(m)  # PC の情報なし(ComfyUI が別の PC)
-    assert set(sub) == contrib.TOP_KEYS
+    assert set(sub) == contrib.TOP_KEYS - {"db"}  # db は渡したときだけ(#132)
     assert sub["system"]["os_family"] is None and sub["system"]["ram_total_gb"] is None
     assert sub["system"]["gpu"]["arch"] == "ampere" and sub["system"]["gpu"]["compute_capability"] == "8.6"
     assert "source" not in json.dumps(sub)  # 自由に書ける source は入れない
@@ -273,7 +273,7 @@ BAD_CASES = [
     ("measurement.note", "http://example.org/x", "privacy"),
     ("date", "2026-10-20T10:11:12Z", "date"),
     ("date", "2027-01-01", "date"),
-    ("contrib_schema", 3, "schema"),
+    ("contrib_schema", 4, "schema"),
     ("measurement.peak_vram_gb", 9.5, "value"),
     ("measurement.peak_vram_gb", -1, "value"),
     ("measurement.seconds", 0, "value"),

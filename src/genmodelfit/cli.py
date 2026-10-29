@@ -1869,6 +1869,8 @@ def format_submission(data: dict[str, Any], footer: bool = True) -> list[str]:
     mm = data.get("measurement") or {}
     tool = data.get("tool") or {}
     s = mm.get("settings") or {}
+    if isinstance(data.get("failures"), list):
+        return _format_failures(data, footer)
     if i18n.get_language() == "en":
         return _format_submission_en(data, footer)
     gpu_bits = [
@@ -1903,6 +1905,7 @@ def format_submission(data: dict[str, Any], footer: bool = True) -> list[str]:
         f"最大メモリ: {_shown(mm.get('peak_ram_gb'), ' GiB')}",
         f"時間:       {_shown(mm.get('seconds'), ' 秒')}",
         f"載せ方:     {_shown(mm.get('offload'))}",
+        *_new_field_lines(data),
         f"メモ:       {mm.get('note') or '(なし)'}",
         *(
             [
@@ -1956,6 +1959,7 @@ def _format_submission_en(data: dict[str, Any], footer: bool = True) -> list[str
         f"Peak RAM:   {_shown(mm.get('peak_ram_gb'), ' GiB')}",
         f"Time:       {_shown(mm.get('seconds'), ' s')}",
         f"Offload:    {_shown(mm.get('offload'))}",
+        *_new_field_lines(data),
         f"Note:       {mm.get('note') or '(none)'}",
         *(
             [
@@ -1967,6 +1971,154 @@ def _format_submission_en(data: dict[str, Any], footer: bool = True) -> list[str
             else []
         ),
     ]
+
+
+def _num_text(v: Any, unit: str = "") -> str:
+    return tr("不明", "unknown") if not isinstance(v, (int, float)) or isinstance(v, bool) else f"{v:g}{unit}"
+
+
+def _db_line(data: dict[str, Any]) -> list[str]:
+    db = data.get("db")
+    if not isinstance(db, dict):
+        return []
+    sha = f"sha256 {db.get('sha256')}" if db.get("sha256") else tr("sha256 不明", "sha256 unknown")
+    return [
+        tr(
+            f"一覧の版:   {_shown(db.get('generated_at'))}({sha}。測ったときの一覧)",
+            f"List:       {_shown(db.get('generated_at'))} ({sha}; the list when measured)",
+        )
+    ]
+
+
+def _new_field_lines(data: dict[str, Any]) -> list[str]:
+    """contrib_schema 3 の実測の項目(#132): 一覧の版・測ったときの見積もり・時間の内訳・VRAM を超えた印。
+    送る前の画面で、新しく送る項目も見せる(何を送るかが分かるように)。"""
+    mm = data.get("measurement") or {}
+    out = _db_line(data)
+    est = mm.get("estimate")
+    if isinstance(est, dict):
+        gb = {
+            k: _num_text(est.get(k), " GiB")
+            for k in ("vram_gb", "vram_resident_gb", "work_gb", "ram_required_gb")
+        }
+        level, mode, basis = (_shown(est.get(k)) for k in ("fit_level", "run_mode", "basis"))
+        out.append(
+            tr(
+                f"見積もり:   段階 {level}・動かし方 {mode}・VRAM {gb['vram_gb']}(仕上げまで載せたまま"
+                f" {gb['vram_resident_gb']}・作業用メモリ {gb['work_gb']})・メモリ {gb['ram_required_gb']}・"
+                f"時間 {_num_text(est.get('seconds'), ' 秒')}・根拠 {basis}"
+                "(この実測と、同じ GPU・同じモデルの実測を使わずに作った予測)",
+                f"Estimate:   level {level}, run {mode}, VRAM {gb['vram_gb']} (kept loaded to the end"
+                f" {gb['vram_resident_gb']}, working memory {gb['work_gb']}), RAM {gb['ram_required_gb']},"
+                f" time {_num_text(est.get('seconds'), ' s')}, basis {basis}"
+                " (the prediction made without this measurement or other measurements of this model on"
+                " this GPU)",
+            )
+        )
+    t = mm.get("timing")
+    if isinstance(t, dict):
+        keys = ("queue_s", "load_s", "sampling_s", "sec_per_step", "decode_s", "save_s", "total_s")
+        ja = {k: _num_text(t.get(k), " 秒") for k in keys}
+        en = {k: _num_text(t.get(k), " s") for k in keys}
+        cold = t.get("cold_load")
+        cold_ja = "不明" if cold is None else ("はい" if cold else "いいえ(2 回目)")
+        cold_en = "unknown" if cold is None else ("yes" if cold else "no (second time)")
+        out.append(
+            tr(
+                f"時間の内訳: キュー {ja['queue_s']}・読み込み {ja['load_s']}・サンプラ {ja['sampling_s']}"
+                f"(1 ステップ {ja['sec_per_step']})・復元と保存 {ja['decode_s']}・保存 {ja['save_s']}・"
+                f"合計 {ja['total_s']}・初めての読み込み {cold_ja}",
+                f"Timing:     queue {en['queue_s']}, load {en['load_s']}, sampling {en['sampling_s']}"
+                f" ({en['sec_per_step']} per step), decode and save {en['decode_s']}, save {en['save_s']},"
+                f" total {en['total_s']}, first load {cold_en}",
+            )
+        )
+    if mm.get("spilled") is True:
+        over = _num_text(mm.get("spilled_gb"), " GiB")
+        out.append(
+            tr(
+                f"VRAM 超え:  GPU の総量を {over} 超えた(共有メモリに逃げた。見積もり・段階には使わない)",
+                f"Spilled:    {over} over the GPU total (went to shared memory; not used for estimates or"
+                " levels)",
+            )
+        )
+    return out
+
+
+def _format_failures(data: dict[str, Any], footer: bool = True) -> list[str]:
+    """失敗の記録のファイル(#132)を人が読める形に。ファイルの項目はすべて出す。"""
+    from .contrib import suggested_path
+
+    system = data.get("system") or {}
+    gpu = system.get("gpu") or {}
+    tool = data.get("tool") or {}
+    items = data.get("failures") or []
+    lines = [
+        tr("=== 提出する中身(失敗の記録) ===", "=== What will be shared (failure records) ==="),
+        tr(
+            f"置き場所:   {suggested_path(data)}(受け付けたときのリポジトリの中の名前)",
+            f"Path:       {suggested_path(data)} (its name in the repository once accepted)",
+        ),
+        tr("形式:       ", "Format:     ")
+        + f"contrib_schema {data.get('contrib_schema')} ({tool.get('name')} {tool.get('version')},"
+        f" {data.get('kind')})",
+        tr(
+            f"日付:       {data.get('date')}(UTC の日付だけ。時刻は入れない)",
+            f"Date:       {data.get('date')} (UTC date only, no time)",
+        ),
+        tr(
+            f"OS:         {_shown(system.get('os_family'))}(種類だけ。版・ビルドは入れない)",
+            f"OS:         {_shown(system.get('os_family'))} (family only, no version or build)",
+        ),
+        tr(
+            f"メモリ:     {_shown(system.get('ram_total_gb'), ' GiB')}(整数に丸めた量)",
+            f"RAM:        {_shown(system.get('ram_total_gb'), ' GiB')} (rounded to an integer)",
+        ),
+        tr("GPU:        ", "GPU:        ")
+        + f"{_shown(gpu.get('name'))} ({_shown(gpu.get('vram_gb'), ' GiB')},"
+        f" {tr('ドライバ', 'driver')} {_shown(gpu.get('driver'))})",
+        f"ComfyUI:    {_shown(data.get('comfyui_version'))}",
+        *_db_line(data),
+        tr(
+            f"失敗の記録: {len(items)} 件(文は入れない。名前と数だけ。見積もりの式には使わない)",
+            f"Failures:   {len(items)} (no message text, only names and numbers; not used by the estimate"
+            " formula)",
+        ),
+    ]
+    for f in items:
+        if not isinstance(f, dict):
+            continue
+        st = ", ".join(f"{k}={v}" for k, v in (f.get("settings") or {}).items())
+        bits = [f"{f.get('model_id')}: {f.get('outcome')}"]
+        if st:
+            bits.append(st)
+        if f.get("missing_nodes"):
+            bits.append(tr("足りないノード ", "missing nodes ") + ", ".join(map(str, f["missing_nodes"])))
+        if f.get("before_run"):
+            bits.append(tr("測る前に分かった", "found before running"))
+        for key, ja, en in (("error_type", "種類", "type"), ("node_type", "ノード", "node")):
+            if f.get(key):
+                bits.append(tr(f"{ja} {f[key]}", f"{en} {f[key]}"))
+        if f.get("seconds") is not None:
+            bits.append(tr(f"{f['seconds']:g} 秒", f"{f['seconds']:g} s"))
+        if f.get("timeout_s") is not None:
+            bits.append(tr(f"上限 {f['timeout_s']:g} 秒", f"limit {f['timeout_s']:g} s"))
+        if f.get("peak_vram_gb") is not None:
+            bits.append(tr(f"最大 VRAM {f['peak_vram_gb']:g} GiB", f"peak VRAM {f['peak_vram_gb']:g} GiB"))
+        lines.append("  - " + tr("、", "; ").join(bits))
+    if footer:
+        lines += [
+            "",
+            tr(
+                "これがファイルの中身のすべてです。genmodelfit はこのファイルをどこにも送りません。",
+                "This is everything in the file. genmodelfit does not send this file anywhere.",
+            ),
+            tr(
+                "共有するのは、あなたが GitHub のフォームで「Create」を押したときだけです(CONTRIBUTING.md)。",
+                'It is shared only when you press "Create" in the GitHub form (CONTRIBUTING.md).',
+            ),
+        ]
+    return lines
 
 
 def cmd_contrib_make(args: argparse.Namespace) -> int:
@@ -2267,6 +2419,11 @@ def _share(
 
 def _saved_line(i: int, s) -> str:
     d = s.to_dict()
+    if d.get("kind") == "failures":  # 失敗の記録(#132)
+        what = tr(f"失敗の記録 {d['count']} 件", f"failure records: {d['count']}")
+        bits = [str(d["date"]), what, str(d["gpu"])]
+        mark = tr("(送った印あり)", " (marked as sent)") if s.shared else ""
+        return f"  {i:>2}. " + "  ".join(bits) + mark
     secs = d["seconds"]
     peak = d["peak_vram_gb"]
     bits = [
@@ -2439,6 +2596,8 @@ def _saved_measurements() -> list:
 
     out = []
     for sub in saved_submissions(include_shared=True):
+        if not isinstance(sub.data.get("measurement"), dict):
+            continue  # 失敗の記録(#132)は実測でない
         try:
             out.append(to_measurement(sub.data))
         except (KeyError, TypeError, ValueError):
@@ -3633,10 +3792,12 @@ def _share_measure_one(
     progress, view = _run_live(
         args, tr(f"測る {pos[0]}/{pos[1]}: {label}", f"Measure {pos[0]}/{pos[1]}: {label}"), x.seconds
     )
+    _share_cold_load(args, url, x.model_id, started)
     try:
         r = _measure_run(args, url, x.fit.model, x.settings, free=True, progress=progress)
     finally:
         view.done()
+    _share_collect(args, r)
     rest = rest or []
     left = (
         tr(
@@ -3706,6 +3867,118 @@ def _share_measure_one(
             + left,
             flush=True,
         )
+
+
+def _share_cold_load(args: argparse.Namespace, url: str, model_id: str, started) -> None:
+    """これから測るモデルが、この ComfyUI で初めての読み込みか(#132。timing.cold_load)。自分で起動した
+    ComfyUI なら初めて測るモデルは true、同じ ComfyUI で 2 回目(/free のあと)は false。利用者が起動していた
+    ComfyUI で初めて測るモデルは、前に読み込んだか分からないので None。"""
+    key = id(started) if started is not None else url
+    st = getattr(args, "_cold_state", None)
+    if not isinstance(st, dict) or st.get("key") != key:
+        st = {"key": key, "seen": set()}
+        args._cold_state = st
+    seen = model_id in st["seen"]
+    args._cold_load = False if seen else (True if started is not None else None)
+    st["seen"].add(model_id)
+
+
+def _share_collect(args: argparse.Namespace, r: dict[str, Any]) -> None:
+    """1 件を測った結果から、失敗の記録と、測った GPU(失敗の記録の system に使う)を覚える(#132)。"""
+    rec = r.get("failure")
+    if rec:
+        if not isinstance(getattr(args, "_share_failures", None), list):
+            args._share_failures = []
+        args._share_failures.append(rec)
+    m = r.get("measurement")
+    if m is not None and getattr(m, "gpu_name", None) and getattr(m, "gpu_vram_gb", None):
+        args._share_gpu = m
+    if r.get("comfyui_version") and not getattr(args, "_share_comfy_version", None):
+        args._share_comfy_version = r["comfyui_version"]
+
+
+def _share_write_failures(
+    args: argparse.Namespace, s, url: str | None, checker, skipped: list
+) -> Path | None:
+    """1 回の share の失敗の記録を、送る前の提出の置き場所に 1 ファイル書く(#132。<GPU>/<日付>-<sha8>-
+    failures.json)。材料は測れなかったもの(_share_collect)と、ノードの確かめで外したもの(skipped)。前に
+    書いた失敗の記録と同じもの(同じモデル・失敗・ComfyUI の版)は書かない(毎回同じものを送らない)。
+    検査・個人の情報の点検に通らなければ書かない。書いた場所(無ければ None)。"""
+    from .bench import is_local
+    from .contrib import build_failures, db_info, failure_record, write_submission
+    from .measure import saved_failure_keys, submissions_dir
+
+    if getattr(args, "_share_failures_written", False):
+        return None
+    records = list(getattr(args, "_share_failures", None) or [])
+    records += [
+        failure_record(d["model_id"], "missing_nodes", missing_nodes=d.get("missing_nodes"), before_run=True)
+        for d in skipped or []
+    ]
+    records = [r for r in records if r]
+    if not records:
+        return None
+    m = getattr(args, "_share_gpu", None)
+    local = bool(url) and is_local(url)
+    system = s if local else None
+    if m is not None:
+        gpu = {
+            "gpu_name": m.gpu_name,
+            "gpu_vram_gb": m.gpu_vram_gb,
+            "driver": getattr(m, "driver", None),
+            "backend": getattr(m, "gpu_backend", None),
+            "pci_id": getattr(m, "gpu_pci_id", None),
+        }
+        version = getattr(m, "comfyui_version", None)
+    elif system is not None and system.best_gpu is not None:
+        g = system.best_gpu
+        gpu = {
+            "gpu_name": g.name,
+            "gpu_vram_gb": round(g.vram_total_gb, 2),
+            "driver": g.driver,
+            "backend": g.backend,
+            "pci_id": g.pci_id,
+        }
+        version = None
+    else:
+        return None  # どの GPU の記録か分からない(ComfyUI が別の PC で、何も測れなかった)
+    version = version or getattr(args, "_share_comfy_version", None)
+    if not version and checker is not None and hasattr(checker, "comfyui_version"):
+        version = checker.comfyui_version()
+    data = build_failures(records, system, **gpu, comfyui_version=version, db_info=db_info(_measure_db(args)))
+    seen = saved_failure_keys()
+    fresh = [f for f in data["failures"] if _failure_key(f, data.get("comfyui_version")) not in seen]
+    if not fresh:
+        return None
+    data["failures"] = fresh
+    if _submission_refusal(data, args):
+        data["failures"] = [f for f in fresh if not _submission_refusal({**data, "failures": [f]}, args)]
+        if not data["failures"] or _submission_refusal(data, args):
+            return None
+    args._share_failures_written = True
+    try:
+        return write_submission(data, str(submissions_dir()) + os.sep)
+    except OSError:
+        return None
+
+
+def _measure_save_failure(
+    args: argparse.Namespace, s, url: str | None, run_: dict[str, Any], checker=None
+) -> Path | None:
+    """measure で測れなかったときの失敗の記録を、送っていない提出として保存する(#132。share と同じ形。
+    次の share がいっしょに送る。同じ記録は 2 回書かない)。保存した場所(無ければ None)。"""
+    rec = run_.get("failure")
+    if not rec:
+        return None
+    args._share_failures = [rec]
+    _share_collect(args, {**run_, "failure": None})
+    return _share_write_failures(args, s, url, checker, [])
+
+
+def _failure_key(f: dict[str, Any], version: Any) -> str:
+    from .measure import failure_key
+
+    return failure_key(f, version)
 
 
 def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
@@ -4181,6 +4454,11 @@ def cmd_share(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         plan, dl_plan, report["plan"], report["download_plan"] = [], [], [], []
+    if not plan and not dl_plan and skipped and stop is None and not args.dry_run:
+        # 測れるものは無いが、ノードが足りないものはある: 失敗の記録だけを送れる(#132)
+        report["failures_file"] = _str_or_none(_share_write_failures(args, s, url, checker, skipped))
+        pending = saved_submissions(include_shared=args.all)
+        report["pending"] = [p.to_dict() for p in pending]
     if not plan and not dl_plan and not pending:
         why = _share_nothing_reason(args, sugg, skipped, budget)
         if args.json:
@@ -4356,6 +4634,11 @@ def cmd_share(args: argparse.Namespace) -> int:
                     " and measured with --download (genmodelfit share --download)",
                 )
             )
+    if plan or dl_plan or getattr(args, "_share_failures", None):
+        # 失敗の記録(#132): 測れなかったもの(時間切れ・エラー・足りないノード)と、ノードの確かめで外したもの
+        written = _share_write_failures(args, s, url, checker, skipped)
+        if written is not None:
+            report["failures_file"] = str(written)
     # 測れたが送れないだけのもの(オーナーの決まり)は失敗に数えない。Ctrl+C で止めたら 130
     base_code = 130 if interrupted else (1 if any(not f.get("unsendable") for f in failed) else 0)
     pending = saved_submissions(include_shared=args.all)
@@ -4366,6 +4649,10 @@ def cmd_share(args: argparse.Namespace) -> int:
             print(tr("送るものはありません", "Nothing to send"))
         return base_code
     return _share_send(args, [p.path for p in pending], creds, session, report, base_code)
+
+
+def _str_or_none(p) -> str | None:
+    return str(p) if p is not None else None
 
 
 def cmd_contrib_share(args: argparse.Namespace) -> int:
@@ -6662,7 +6949,7 @@ def _measure_run(
     <キャッシュ>/measurements/ に、標準の条件で最後まで測れた(ok か oom)ものは送る用の提出を
     <キャッシュ>/submissions/ に書く。測れなければ error に文を入れて返す(例外にしない)。"""
     from .bench import BenchError, BenchOptions, is_local, run, save, save_decision
-    from .contrib import build_submission, suggested_path, write_submission
+    from .contrib import build_submission, db_info, suggested_path, write_submission
     from .estimate import files_fingerprint
     from .measure import same_variant, settings_dict, submissions_dir
     from .workflow import WorkflowError
@@ -6675,6 +6962,8 @@ def _measure_run(
         "not_saved": None,
         "submission": None,
         "path_in_repo": None,
+        # 送れる失敗の記録 1 件(#132。contrib.failure_record)。share が集めて 1 ファイルにする
+        "failure": None,
     }
     opts = BenchOptions(
         model_id=entry.id,
@@ -6688,11 +6977,15 @@ def _measure_run(
         seconds=settings.seconds if settings else None,
         strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
         free_before=free,
+        cold_load=getattr(args, "_cold_load", None),  # share が決める(#132)
     )
     try:
         result = run(opts, log=_progress(args), progress=progress)
     except (BenchError, WorkflowError) as e:
         out["error"] = _without_workflow_hint(str(e))
+        out["failure"] = _failure_from_error(e, entry, settings, opts.files_fp)
+        if out["failure"]:
+            out["comfyui_version"] = _comfyui_version_of(url)
         return out
     m = result.measurement
     if settings is not None and not same_variant(m.settings, settings):
@@ -6710,14 +7003,36 @@ def _measure_run(
         if out_path is not None:
             save(m, out_path)
         if m.standard and m.outcome in ("ok", "oom"):
-            sub = build_submission(m, detect() if is_local(url) else None)
+            system = detect() if is_local(url) else None
+            sub = build_submission(
+                m,
+                system,
+                # 測ったときの見積もり(この実測とこの PC のほかの実測を使わない)・時間の内訳・一覧の版(#132)
+                estimate=_measure_estimate(entry, system, m),
+                timing=getattr(result, "timing", None),
+                db_info=db_info(_measure_db(args)),
+            )
             # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
             why = _submission_refusal(sub, args)
+            if why and ({"timing", "estimate"} & set(sub["measurement"])):
+                # 見積もり・時間の内訳のおかしな値で実測を送れなくしない(#132): 外してもう一度確かめる
+                bare = {
+                    **sub,
+                    "measurement": {
+                        k: v for k, v in sub["measurement"].items() if k not in ("timing", "estimate")
+                    },
+                }
+                if not _submission_refusal(bare, args):
+                    sub, why = bare, []
             if why:
                 out["unsendable"] = why
+                if m.outcome == "oom":  # 実測としては送れないメモリ不足は、失敗の記録にする(#132)
+                    out["failure"] = _failure_from_result(result, entry)
             else:
                 out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
                 out["path_in_repo"] = suggested_path(sub)
+        elif m.standard and m.outcome == "error":
+            out["failure"] = _failure_from_result(result, entry)
     except OSError as e:
         # 測ったのに保存できない(キャッシュが書けない・ディスクが満杯。L5a): はっきり言う
         out["error"] = tr(
@@ -6730,6 +7045,96 @@ def _measure_run(
         return out
     out.update(result=result, measurement=m, saved_to=out_path, not_saved=not_saved)
     return out
+
+
+def _failure_from_error(e: Exception, entry, settings, files_fp: str | None) -> dict[str, Any] | None:
+    """測れなかったときの失敗の記録(#132): 足りないノード(WorkflowError.missing_nodes)・時間切れ・ComfyUI が
+    受け付けなかった(BenchError.failure)だけ。ほかの理由(接続できない・ほかのプログラム・中断など)は送らない。
+    文は入れない(contrib.failure_record が名前の形だけ残す)。"""
+    from .contrib import failure_record
+
+    missing = getattr(e, "missing_nodes", None)
+    if missing:
+        return failure_record(
+            entry.id, "missing_nodes", settings=settings, missing_nodes=list(missing), files_fp=files_fp
+        )
+    f = getattr(e, "failure", None)
+    if not isinstance(f, dict) or not f.get("outcome"):
+        return None
+    return failure_record(
+        entry.id,
+        f["outcome"],
+        settings=settings,
+        seconds=f.get("seconds"),
+        timeout_s=f.get("timeout_s"),
+        error_type=f.get("error_type"),
+        node_type=f.get("node_type"),
+        files_fp=files_fp,
+    )
+
+
+def _comfyui_version_of(url: str) -> str | None:
+    """ComfyUI の版(/system_stats。失敗の記録に書く。#132)。取れなければ None(通信の誤りでも止めない)。"""
+    try:
+        checker = _node_check(url)
+        get = getattr(checker, "comfyui_version", None)
+        return get() if callable(get) else None
+    except Exception:
+        return None
+
+
+def _failure_from_result(result, entry) -> dict[str, Any] | None:
+    """最後まで動かなかった(error・送れない oom)実測の失敗の記録(#132)。中断(interrupted)は送らない。"""
+    from .contrib import failure_record
+
+    m = result.measurement
+    kind = getattr(result, "error_kind", None) or {}
+    if kind.get("interrupted") or not m.standard:
+        return None
+    return failure_record(
+        entry.id,
+        m.outcome,
+        settings=m.settings,
+        seconds=m.seconds,
+        error_type=kind.get("error_type"),
+        node_type=kind.get("node_type"),
+        peak_vram_gb=m.peak_vram_gb,
+        files_fp=getattr(m, "files_fp", None),
+    )
+
+
+_BUNDLED_MEASUREMENTS: list = []
+
+
+def _measure_estimate(entry, system, m) -> dict[str, Any] | None:
+    """測ったときの見積もり(#132)。同梱の実測(作者の実測とほかの利用者のまとめ)だけを使う: この実測と、
+    この PC のほかの実測(キャッシュの measurements・送る前の提出)は入れない(入れると照合にならない)。
+    同梱の実測からも、同じ GPU・同じモデルのものは除く(作者の PC の実測かもしれない)。"""
+    from .contrib import measurement_estimate
+    from .db import load_measurements
+
+    try:
+        if not _BUNDLED_MEASUREMENTS:
+            _BUNDLED_MEASUREMENTS.extend(load_measurements(include_cache=False))
+        return measurement_estimate(
+            entry, system, m.settings, list(_BUNDLED_MEASUREMENTS), exclude_gpu=m.gpu_name
+        )
+    except Exception:  # 見積もりが作れなくても、測った結果は送れるようにする
+        return None
+
+
+def _measure_db(args: argparse.Namespace) -> Database | None:
+    """測ったときの一覧(一覧の版を提出に書く。#132)。1 回の実行で 1 回だけ読む。読めなければ None。"""
+    cached = getattr(args, "_measure_db_cache", None)
+    if cached is not None:
+        return cached
+    try:
+        db = load_db(getattr(args, "db", None), use_cache=not getattr(args, "no_cache", False))
+    except Exception:
+        return None
+    with contextlib.suppress(AttributeError):
+        args._measure_db_cache = db
+    return db
 
 
 _WORKFLOW_HINTS = (  # measure・share には --workflow が無いので、bench の文の --workflow の案内を言い換える
@@ -6920,8 +7325,16 @@ def cmd_measure(args: argparse.Namespace) -> int:
         # 足りないノードがあれば、落とす・測る前に止める(#124)
         from .workflow import missing_nodes_message
 
-        miss = _node_check(url).missing(entry.id)
+        checker = _node_check(url)
+        miss = checker.missing(entry.id)
         if miss:
+            from .contrib import failure_record
+
+            # 測る前に分かった足りないノードも、失敗の記録として保存する(#132。share と同じ)
+            rec = failure_record(entry.id, "missing_nodes", missing_nodes=list(miss), before_run=True)
+            saved = _measure_save_failure(args, s, url, {"failure": rec}, checker)
+            if saved is not None:
+                plan["failures_file"] = str(saved)
             msg = missing_nodes_message(miss, workflow_hint=False)
             return fail(msg, [_measure_next_step(msg, entry.id)])
     if inst.state == "no" and args.json:
@@ -6981,6 +7394,8 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 return fail(str(e))
             url = started.url
             plan["comfyui"]["started"] = started.to_dict()
+        # 自分で起動した ComfyUI なら初めての読み込み(#132)。起動していた ComfyUI では分からない
+        args._cold_load = True if holder else None
         # 自分で起動した ComfyUI か --free なら、測る前にメモリと前の結果を空ける(#124)
         progress, view = _run_live(args, tr(f"測る: {entry.id}", f"Measure: {entry.id}"), secs)
         try:
@@ -6998,6 +7413,17 @@ def cmd_measure(args: argparse.Namespace) -> int:
         for st in holder:
             _comfyui_stop(args, st)
         _measure_unlock(lock)
+    failures_file = _measure_save_failure(args, s, url, run_)
+    if failures_file is not None:
+        plan["failures_file"] = str(failures_file)
+        if not args.json:
+            print(
+                tr(
+                    f"失敗の記録を保存しました(次の genmodelfit share でいっしょに送れます): {failures_file}",
+                    f"Saved a failure record (the next genmodelfit share can send it): {failures_file}",
+                ),
+                file=sys.stderr,
+            )
     if run_["error"] is not None:
         return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
     m, result = run_["measurement"], run_["result"]

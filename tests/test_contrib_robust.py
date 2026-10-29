@@ -157,7 +157,7 @@ def test_contrib_workflow_requires_add_only_and_the_exact_layout():
     assert pr_checkout["with"]["fetch-depth"] == 2  # マージのコミットとその 1 つ目の親を比べる
     assert (
         "--diff-filter=A" in run
-        and r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$" in run
+        and r"^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}(-failures)?\.json$" in run
     )
     assert step["working-directory"] == "pr" and "$added" not in run.replace('"$added"', "").split("echo")[0]
     # 安全の性質は変えない: pull_request・読むだけのトークン・向き先の道具
@@ -377,7 +377,7 @@ def test_bench_submission_carries_files_fp(db):
         files_fp=opts.files_fp,
     )
     s = contrib.build_submission(m)
-    assert s["contrib_schema"] == 2 and s["measurement"]["files_fp"] == opts.files_fp
+    assert s["contrib_schema"] == 3 and s["measurement"]["files_fp"] == opts.files_fp
 
 
 # --- 5. まとめ(D2・D3・C5・E2・n_sources) ----------------------------------------------------------

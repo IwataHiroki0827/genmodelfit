@@ -482,6 +482,13 @@ GiB に丸めたメモリ・ComfyUI と genmodelfit の版・日付(時刻は入
   ログインのトークンは設定のフォルダに本人だけが読める形で保存し、表示しません。`share --issue`(と `bench --share`・
   `contrib share`)はブラウザでフォームを開くだけで(か URL を出す・中身をクリップボードに写す)、そこで「Create」を
   押したときに送られます。`~/.netrc` の資格情報は付けません。テレメトリもありません。
+- `share` が送るもの(0.13.0、#132): 実測(GPU の名前・VRAM・世代・ドライバ・backend、GiB に丸めたメインメモリ、
+  OS の種類、ComfyUI と genmodelfit の版、モデル、設定、最大 VRAM・メモリ、時間)と、それに対する genmodelfit の
+  見積もり(あなたの実測と、同じ GPU・同じモデルの実測は使わずに作ったもの)・時間の内訳(キュー・読み込み・サンプラ・復元)・最大 VRAM が
+  GPU の総量を超えて共有メモリに逃げた印・一覧の版。ほかに 1 回の share で 1 つ、失敗の記録のファイル(足りない
+  ノードの名前・時間切れ・エラーの種類の名前。エラーの本文は送らない)。送らないもの: 生成した画像や音などの中身、
+  あなたの入力、PC 名・ユーザ名、GPU の UUID、PCI の位置、パス、IP アドレス。
+  詳しくは [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#contrib)(「contrib」)。
 - コマンドごとの表: [docs/schema.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/schema.ja.md#side-effects--通信と書き込み)(「Side effects」)。
 
 ### ライセンス

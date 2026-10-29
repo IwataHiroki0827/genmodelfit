@@ -509,6 +509,19 @@ class SavedSubmission:
     def to_dict(self) -> dict[str, Any]:
         mm = self.data.get("measurement") or {}
         gpu = (self.data.get("system") or {}).get("gpu") or {}
+        if isinstance(self.data.get("failures"), list):  # 失敗の記録(#132)
+            return {
+                "file": str(self.path),
+                "sha256": self.sha256,
+                "shared": self.shared,
+                "kind": "failures",
+                "date": self.data.get("date"),
+                "gpu": gpu.get("name"),
+                "count": len(self.data["failures"]),
+                "outcomes": sorted(
+                    {str(f.get("outcome")) for f in self.data["failures"] if isinstance(f, dict)}
+                ),
+            }
         return {
             "file": str(self.path),
             "sha256": self.sha256,
@@ -523,7 +536,8 @@ class SavedSubmission:
 
 
 def saved_submissions(root: Path | None = None, *, include_shared: bool = False) -> list[SavedSubmission]:
-    """送る前の提出(<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json)。新しいものから。読めないものは飛ばす。
+    """送る前の提出(<キャッシュ>/submissions/<GPU>/<日付>-<sha8>.json と、失敗の記録の
+    <日付>-<sha8>-failures.json。#132)。新しいものから。読めないものは飛ばす。
     include_shared が偽なら送った印のあるものを除く。"""
     from .contrib import content_hash, find_files, read_submission
 
@@ -535,7 +549,9 @@ def saved_submissions(root: Path | None = None, *, include_shared: bool = False)
             data, _raw = read_submission(p)
         except (OSError, ValueError):
             continue
-        if not isinstance(data, dict) or not isinstance(data.get("measurement"), dict):
+        if not isinstance(data, dict) or not (
+            isinstance(data.get("measurement"), dict) or isinstance(data.get("failures"), list)
+        ):
             continue
         sha = content_hash(data)
         s = SavedSubmission(p, data, sha, sha in marks)
@@ -547,3 +563,26 @@ def saved_submissions(root: Path | None = None, *, include_shared: bool = False)
             mtime = 0.0
         out.append(((str(data.get("date") or ""), mtime, p.as_posix()), s))
     return [s for _, s in sorted(out, key=lambda x: x[0], reverse=True)]
+
+
+def failure_key(f: dict[str, Any], comfyui_version: Any) -> str:
+    """失敗の記録 1 件の鍵(#132): 同じモデル・設定・失敗・足りないノード・エラーの種類・ComfyUI の版なら同じ。
+    経過時間・最大 VRAM は入れない(同じ失敗を毎回送らないため)。"""
+    if f.get("outcome") == "missing_nodes":
+        # 足りないノードは設定・ComfyUI の版によらず同じこと(measure と share で二重に送らない)
+        nodes = sorted(str(n) for n in f.get("missing_nodes") or [])
+        return json.dumps({"m": f.get("model_id"), "n": nodes, "o": f.get("other_nodes")}, ensure_ascii=False)
+    keep = ("model_id", "settings", "outcome", "missing_nodes", "error_type", "node_type")
+    return json.dumps(
+        {"v": comfyui_version, **{k: f.get(k) for k in keep}}, sort_keys=True, ensure_ascii=False
+    )
+
+
+def saved_failure_keys(root: Path | None = None) -> set[str]:
+    """この PC に保存した失敗の記録(送ったものも、まだのものも)の鍵の集まり(#132)。"""
+    out: set[str] = set()
+    for sub in saved_submissions(root, include_shared=True):
+        items = sub.data.get("failures")
+        if isinstance(items, list):
+            out.update(failure_key(f, sub.data.get("comfyui_version")) for f in items if isinstance(f, dict))
+    return out

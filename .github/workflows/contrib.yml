@@ -76,7 +76,8 @@ jobs:
           fi
       - name: data/contrib に足すだけか・足したファイルの形(#90)
         # 提出の PR は新しいファイルを足すだけ(消す・書き換える・名前を変えるのはメンテナの PR)。
-        # 足すファイルは data/contrib/<GPU>/<日付>-<sha8>.json だけ(.json は小文字)。1 件も無ければ失敗。
+        # 足すファイルは data/contrib/<GPU>/<日付>-<sha8>.json と、失敗の記録の <日付>-<sha8>-failures.json
+        # (#132)だけ(.json は小文字)。1 件も無ければ失敗。
         # ファイル名は PR から来る文字なので、ログにもまとめにも出さない(件数だけ)。
         # 比べるのは HEAD^1(マージのコミットの 1 つ目の親 = マージを作った時点のマージ先の先頭)と HEAD。
         # 提出を外すメンテナの PR はここで失敗するが、それでよい(メンテナが確かめてマージする。docs/release.md)
@@ -98,10 +99,10 @@ jobs:
             fail "提出のファイルを足していません" "data/contrib/<GPU>/<日付>-<sha8>.json を 1 件以上足してください。"
           fi
           bad=$(printf '%s\n' "$added" \
-            | grep -c -v -E '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}\.json$' || true)
+            | grep -c -v -E '^data/contrib/[a-z0-9-]+/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}(-failures)?\.json$' || true)
           if [ "$bad" -ne 0 ]; then
             fail "置けない名前・場所のファイルを ${bad} 件足しています" \
-              "足せるのは data/contrib/<GPU>/<日付>-<sha8>.json だけです(.json は小文字。フォルダの直下・深いフォルダ・ほかの形のファイルは置けません)。"
+              "足せるのは data/contrib/<GPU>/<日付>-<sha8>.json(失敗の記録は <日付>-<sha8>-failures.json)だけです(.json は小文字。フォルダの直下・深いフォルダ・ほかの形のファイルは置けません)。"
           fi
           # 足すのは普通のファイルだけ(シンボリックリンク 120000・サブモジュール 160000 は置けない)
           odd=$(git diff --diff-filter=A --raw HEAD^1 HEAD -- data/contrib | awk '{print $2}' | grep -c -v '^100' || true)

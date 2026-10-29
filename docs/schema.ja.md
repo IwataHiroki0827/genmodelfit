@@ -979,6 +979,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
+| `timing` | object \| null | (0.13.0、#132)時間の内訳。contrib の提出の `measurement.timing` と同じキー(contrib を参照。分からない値は null) |
 | `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`・`copied`・`marked_shared`。ブラウザは開かない) |
 
 bench が Measurement を埋める方法(測り方):
@@ -1213,9 +1214,9 @@ genmodelfit は、これを**勝手には決して送らない**。利用者が 
 
 動的 VRAM の bench の提出(`vram_metric: torch_reserved`・`offload: dynamic`)は作業用メモリだけを持つ(#100)。まとめて残すが、段ごとの山を測れるようになるまでは照合だけに使う(見積もりのずらしにも段階にも使わない。「Measurement」と [accuracy.ja.md](accuracy.ja.md))。
 
-### Submission file (`contrib_schema` 1・2) / 提出ファイル
+### Submission file (`contrib_schema` 1・2・3) / 提出ファイル
 
-`genmodelfit bench … --submission PATH` または `genmodelfit contrib make --from <bench の結果>` が書く。
+`genmodelfit share`・`measure`、`genmodelfit bench … --submission PATH` または `genmodelfit contrib make --from <bench の結果>` が書く。
 リポジトリでは `data/contrib/<gpu-slug>/<date>-<sha8>.json` に置く。
 - `gpu-slug` は、GPU の名前の `estimate.gpu_key`(小文字。`NVIDIA`、`GeForce`、`(R)`、`(TM)`、`™`、`®` は除く。ほかの記号は `-` に。例: `rtx-3070`)。
 - `sha8` は、正規化した JSON(キーを並べ替え、空白なし、UTF-8)の sha256 の最初の 16 進 8 桁。だから名前はインデントによらず、同一のファイルは衝突する。
@@ -1261,7 +1262,7 @@ genmodelfit は、これを**勝手には決して送らない**。利用者が 
 
 その他の決まり:
 - これらが無い古いファイルも有効のまま。
-- `contrib_schema` は 1 と 2 を受け付ける(#90)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.11.0 から書く。1 に `files_fp` があれば誤り。
+- `contrib_schema` は 1・2・3 を受け付ける(#90・#132)。2 は 1 に `measurement.files_fp`(任意。16 進の小文字 64 桁)を足した形で、0.11.0 から書く。1 に `files_fp` があれば誤り。3(0.13.0 から書く)は下に書く。
 - (0.12.0、#116、任意)`measurement.settings_override`: テンプレートの設定を変えて測ったときだけ `true` を書く(true / false 以外は誤り)。0.9.0 の GPU の任意の項目と同じく、`contrib_schema` は上げない。`contrib aggregate` は、この印の付いた提出を別の行にまとめ、行にも印を付ける。
 - 名前には `(R)`、`(TM)`、`™`、`®` を含んでよい。`vendor` と別のベンダーの名前はエラー。`apple` はチップ名(`Apple M2 Pro`)か `mps` だけ。
 - 256 GiB を超える `vram_gb`、`ram_total_gb` × 1.05 + 1 GiB を超える `peak_ram_gb`、NaN / 無限大 / 負の数はエラー(ファイルの NaN は読むときに断る)。
@@ -1285,15 +1286,69 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 - ほかの文字列: 100 文字
 - `note`: 500 文字(#90 で 2000 から下げた。bench の note は長いと切り詰める)
 - どこでも、制御文字・改行・見えない文字は不可
-- 知らないキー、配列、深さ 8 を超える入れ子は断る
+- 知らないキー、配列(失敗の記録の `failures` と `missing_nodes` は除く)、深さ 8 を超える入れ子は断る
 - 64 KB を超えるファイルとシンボリックリンクは読まない
+
+### contrib_schema 3 で足した項目(#132)
+
+0.13.0 から `genmodelfit share`(と `measure`)は `contrib_schema` 3 を書く。実測のほかに、見積もりを良くするのに役立つものも送る。
+どれも数・決まった語・公開の名前だけで、文(エラーの本文など)・生成した画像や音などの中身・テンプレートのプロンプト以外の入力・ホスト名・ユーザー名・GPU の UUID・PCI の位置・パス・IP アドレスは入れない(個人の情報の点検はすべての新しい項目に効く)。
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `db` | object | 測ったときの一覧: `generated_at`(日付だけ。`YYYY-MM-DD`)と `sha256`(同梱かキャッシュの `db.json` の sha256 の先頭 16 進 12 桁。分からなければ無し)。任意 |
+| `measurement.estimate` | object | 測ったモデル・設定に対する、その時点の genmodelfit の見積もり。その実測と、同じ PC のほかの実測を**使わずに**作る(使うのは同梱の実測だけ: 作者の実測とほかの利用者のまとめ。作者の実測はこの PC のものかもしれないので、同じ GPU・同じモデルの実測も除く。`measurements: bundled-excluding-this-gpu` がその印): `fit_level`(`perfect` / `good` / `marginal` / `too_tight`)、`run_mode`(`gpu` / `sequential` / `offload` / `cpu` / `none`)、`vram_gb`(段階を決めた VRAM)、`vram_resident_gb`、`work_gb`(作業用メモリの式の値。いちばん重い段)、`ram_required_gb`、`seconds`(`measure` の時間の目安)、`basis`(`measured` / `estimated`)。どの値も null がありうる。ComfyUI が別の PC のとき・大きさが分からないときは書かない |
+| `measurement.timing` | object | 時間の内訳(秒。分からなければ null): `queue_s`(送ってから始まるまで)、`load_s`(始まりからサンプラの最初のステップまで。読み込みと文の符号化)、`sampling_s`(サンプラの合計)、`sec_per_step`、`decode_s`(サンプラの最後のステップから終わりまで。VAE の復元と保存)、`save_s`(今はいつも null。HTTP では分けられない)、`total_s`(`seconds` と同じ)、`cold_load`(true = genmodelfit が起動した ComfyUI で初めての読み込み、false = 同じ ComfyUI で `/free` のあとの 2 回目、null = 分からない) |
+| `measurement.spilled` | true | 最後まで動いた(`outcome: ok`)のに、ピークの VRAM が GPU の総量 × 1.02 + 0.25 GB を超えた(Windows で共有メモリに逃げた)ときだけ。true のときだけ書く |
+| `measurement.spilled_gb` | number | ピークの VRAM − GPU の総量(GiB)。`spilled` といっしょ |
+
+時間の内訳の取り方(HTTP だけ。websocket は使わない): `/history` の `status.messages` の `execution_start`・`execution_success`(か `_error`)の時刻と、ComfyUI のログ(`/internal/logs/raw`)の進み具合の行(tqdm。`20/20 [00:05<00:00, 3.80it/s]`)。2 つの時計を比べる値(`queue_s`・`load_s`・`decode_s`)は、ComfyUI が同じ PC のときだけ書く。使う進み具合の行は、前に説明の無い行(`Fetching 3 files: …` などは使わない)で、送ったワークフローのサンプラの `steps` と同じステップ数のものだけ。合う行が無い・実行の時間より長いときは `sampling_s`・`sec_per_step` は null。時間の内訳・見積もりが検査に通らないときは、それを外して実測を送る。
+
+決まり: 1・2 のファイルの `db`・`estimate`・`timing`・`spilled`・`spilled_gb` は誤り。`spilled` は true だけで、`outcome: ok` のときだけ。ピークは総量の線を超え、GPU の総量 + メインメモリ(× 1.05 + 1 GiB。メインメモリが分からなければ GPU の総量)まで。`spilled_gb` はピーク − 総量と 0.1 GiB 以内で合うこと。spilled の提出は受け付けるが、まとめ・見積もり・段階・`calibrate` には**使わない**(「この GPU では共有メモリに逃げる(遅い)」の材料。使い方は別の Issue で決める)。
+
+### 失敗の記録(`kind: genmodelfit-failures`、#132)
+
+1 回の `share`・1 つの GPU で 1 ファイル(`measure` で測れなかったときも 1 ファイル保存し、送っていないものとして次の `share` がいっしょに送る)。実測と同じフォルダの `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`。
+`contrib_schema` 3 だけ。上のキーは `contrib_schema`・`kind`・`tool`・`date`・`system`(実測と同じ PC の概要)・`comfyui_version`・`db`(任意)・`failures`(1〜50 件)。
+
+```json
+{
+ "contrib_schema": 3,
+ "kind": "genmodelfit-failures",
+ "tool": {"name": "genmodelfit", "version": "0.13.0"},
+ "date": "2026-10-29",
+ "system": {"os_family": "windows", "ram_total_gb": 32, "gpu": {"name": "NVIDIA GeForce RTX 3070", "vram_gb": 8.0, "arch": "ampere", "compute_capability": "8.6", "driver": "566.03", "vendor": "nvidia", "backend": "cuda"}},
+ "comfyui_version": "0.40.0",
+ "db": {"generated_at": "2026-10-21", "sha256": "0123456789ab"},
+ "failures": [
+  {"model_id": "image_moge", "outcome": "missing_nodes", "seconds": null, "missing_nodes": ["LoadMoGeModel"], "before_run": true},
+  {"model_id": "video_x", "outcome": "timeout", "seconds": 1800.4, "timeout_s": 1800.0},
+  {"model_id": "image_y", "outcome": "error", "seconds": 3.0, "error_type": "ValueError", "node_type": "KSampler"}
+ ]
+}
+```
+
+| キー | 意味 |
+|---|---|
+| `model_id`・`outcome` | 必須。`outcome` は `missing_nodes` / `timeout` / `error` / `oom`。中断(利用者が止めた)と、ほかのプログラムのせいの失敗は**送らない** |
+| `settings` | 任意。実測と同じキー・範囲 |
+| `seconds` | 経過時間。測る前に分かったものは null |
+| `timeout_s` | 時間切れの上限。`timeout` だけ |
+| `missing_nodes` | ComfyUI に無かったノードの名前(組み込みかカスタムノードの公開の名前): 文字(各国の文字も)・数字・空白と `_ . + ( ) \| ' : , [ ] -`、100 字まで。`/`・`\` は入れない。`missing_nodes` だけ |
+| `other_nodes` | 足りないノードのうち、名前の形に合わない・個人の情報らしい名前の数(名前は送らない)。`missing_nodes` が空でよいのは、これが 1 以上のときだけ |
+| `before_run` | ノードの確かめで測る前に分かったとき true(実行していないので数値は無い) |
+| `error_type` | `error`・`oom` だけ: 例外の型名(`torch.OutOfMemoryError`)か ComfyUI の `node_errors` の type(`value_not_in_list`)。`[A-Za-z_][A-Za-z0-9_.]{0,63}`。本文は送らない(パスが入りうる) |
+| `node_type` | `error`・`oom` だけ: 失敗したノードの種類。genmodelfit が送ったワークフローにあるものだけ |
+| `peak_vram_gb`・`files_fp` | 任意。実測と同じ |
+
+記録にするもの: この ComfyUI に無いノードが要るテンプレート(`share`・`measure` の測る前のノードの確かめ、または bench がそれで止めたとき)、自分の仕事が実行中になってからの時間切れ(キューで待っただけ・ほかの仕事が動いた・PC がスリープしたときは入れない)、ComfyUI がワークフローを受け付けなかったとき(`value_not_in_list` = この PC にモデルのファイルが無い、は除く)、実行中のエラー、実測として送れなかった OOM。`measure` の記録も送っていないファイルとして保存し、次の `share` が送る。この PC に保存した記録と同じもの(同じモデル・設定・失敗・エラーの種類・ComfyUI の版。足りないノードはモデルとノードの名前だけで比べる)は、もう書かない。検査に通らない記録はその記録だけ外し、64 KB に収まるまで後ろの記録から外す。受け取る側は、`failures` の中のすべての文字にすべての検出(電話番号・ドメイン・符号化も)を当てる。名前の形に合う普通の言葉はノードの名前と見分けられないので、PR は人が確かめる。失敗の記録は見積もりの式・まとめ・`calibrate` には使わない。何を勧めるか・要る ComfyUI の版を決める材料にする。
 
 ### 提出の流れの決まり(#90)
 
 どれも 1 文で説明できる決まりにした。分析で作った約 60 種の提出(tests/test_contrib_robust.py)で確かめている。
 
 - **足すだけ**: 提出の PR は `data/contrib` に新しいファイルを足すだけで、既にあるファイルを消す・書き換える・名前を変える PR は CI(contrib.yml)が失敗にする(外すのはメンテナの PR)。
-- **置き場所**: 置けるのは `data/contrib/<GPU>/<日付>-<sha8>.json`(小文字の `.json`)だけで、ほかの形・場所のファイルは CI でも `contrib validate <フォルダ>` でも誤り `layout` になる。
+- **置き場所**: 置けるのは `data/contrib/<GPU>/<日付>-<sha8>.json` と失敗の記録の `<日付>-<sha8>-failures.json`(#132。小文字の `.json`)だけで、ほかの形・場所のファイルは CI でも `contrib validate <フォルダ>` でも誤り `layout` になる。
 - **空の提出**: 提出のファイルが 1 件も無い PR・フォルダは失敗にする(`contrib validate` は終了コード 1)。
 - **読めない形**: UTF-8 の BOM は消さずに理由を出して断り、同じオブジェクトの中に同じキーが 2 回ある JSON も断る(後の値が黙って勝つため)。
 - **個人の情報**: base64 らしい続き(`=` の詰め物があれば 16 字から、無ければ 20 字から)・32 桁以上の 16 進(ちょうど 40 桁の git のコミットと 64 桁の sha256 は除く)・ドメイン名・電話番号・点で区切った MAC・崩したメールアドレス(`[at]`・アット)・「製品番号」などを誤りにする。モデル ID などの決まった形の項目には、base64・16 進・ドメイン・電話番号は当てない(形と一覧で縛っている)。公開の置き場のドメイン(`contrib.PUBLIC_DOMAINS`)は、ホスト名がその名前で終わるときだけ外す(`nvidia.com.taro.jp` は当てる)。
@@ -1351,14 +1406,14 @@ llmfit の `validate_community_benchmarks.py` と同じく、**機械的な確�
 |---|---|
 | `read` | 読めない、JSON でない、64 KB を超える、入れ子が深すぎる、またはシンボリックリンク(シンボリックリンクのフォルダは辿らない) |
 | `string` | 制御文字・改行・見えない文字・双方向の文字を含む文字列、長すぎる文字列やキー、配列、深さ 8 を超える入れ子 |
-| `schema` | `contrib_schema` が 1・2 でない、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
+| `schema` | `contrib_schema` が 1・2・3 でない、古い版に 3 の項目がある、`kind` / `tool` が違う、キーが足りない、オブジェクトでない |
 | `unknown_field` | 決まりに無いキー(`settings` の中を含め、どこでも) |
 | `privacy` | 値かキー(NFKC 正規化し、幅ゼロの文字を除き、`¥` を `\` と読んだあと)に、次のどれかが含まれる(詳細は下) |
 | `date` | `YYYY-MM-DD` でない、または未来 |
 | `value` | 範囲外(詳細は下) |
 | `settings` | width / height は 64–8192、frames は 1–2000、seconds は 0.1–3600、steps は 1–1000、batch は 1–64(seconds 以外は整数) |
 | `gpu_inconsistent` | GPU の名前から分かる compute capability や世代がファイルのものと違う。`vendor` と `backend` が対にならない(または片方だけ)。NVIDIA 以外の `vendor` に `compute_capability` / `arch` がある。`vendor` と別のベンダー(AMD / Intel / Apple)の GPU の名前。`pci_id` のベンダー ID が `vendor` と違う(`vendor` が無ければ `10de`)、または `hardware.PCI_DEVICE_NAMES` にある GPU が名前と違う。`apple` で、チップ名か `mps` 以外の名前 |
-| `filename` | 名前が `<date>-<sha8>.json` でない、date や sha8 が中身と合わない、フォルダが GPU の slug でない |
+| `filename` | 名前が `<date>-<sha8>.json`(失敗の記録は `<date>-<sha8>-failures.json`)でない、date や sha8 が中身と合わない、フォルダが GPU の slug でない |
 | `value`(厳密な形) | `gpu.name` / `comfyui_version` / `precision` / `model_id` / `tool.version` が、上の形の外 |
 | `duplicate` | 同じ実行の前のファイルと中身のハッシュが同じ |
 | `layout` | (#90)フォルダの検査で、`<GPU>/<日付>-<sha8>.json`(小文字の `.json`)でない場所・形のファイル |
