@@ -35,6 +35,10 @@ class CliError(RuntimeError):
     pass
 
 
+class UsageError(CliError):
+    """使い方の誤り(フラグの組み合わせなど)。終了コード 2(argparse と同じ)。"""
+
+
 def _positive_int(text: str) -> int:
     try:
         v = int(text)
@@ -1855,8 +1859,9 @@ def _shown(v: Any, unit: str = "") -> str:
     return tr("不明", "unknown") if v is None else f"{v}{unit}"
 
 
-def format_submission(data: dict[str, Any]) -> list[str]:
-    """提出の中身を人が読める形に(contrib show)。ファイルの項目はすべて出す。"""
+def format_submission(data: dict[str, Any], footer: bool = True) -> list[str]:
+    """提出の中身を人が読める形に(contrib show)。ファイルの項目はすべて出す。
+    footer が偽なら最後の「どこにも送らない」の文を出さない(share が PR で送るとき。#124)。"""
     from .contrib import suggested_path
 
     system = data.get("system") or {}
@@ -1865,7 +1870,7 @@ def format_submission(data: dict[str, Any]) -> list[str]:
     tool = data.get("tool") or {}
     s = mm.get("settings") or {}
     if i18n.get_language() == "en":
-        return _format_submission_en(data)
+        return _format_submission_en(data, footer)
     gpu_bits = [
         f"{_shown(gpu.get('vram_gb'), ' GiB')}",
         f"世代 {_shown(gpu.get('arch'))}",
@@ -1899,13 +1904,19 @@ def format_submission(data: dict[str, Any]) -> list[str]:
         f"時間:       {_shown(mm.get('seconds'), ' 秒')}",
         f"載せ方:     {_shown(mm.get('offload'))}",
         f"メモ:       {mm.get('note') or '(なし)'}",
-        "",
-        "これがファイルの中身のすべてです。genmodelfit はこのファイルをどこにも送りません。",
-        "共有するのは、あなたが GitHub のフォームで「Create」を押したときだけです(CONTRIBUTING.md)。",
+        *(
+            [
+                "",
+                "これがファイルの中身のすべてです。genmodelfit はこのファイルをどこにも送りません。",
+                "共有するのは、あなたが GitHub のフォームで「Create」を押したときだけです(CONTRIBUTING.md)。",
+            ]
+            if footer
+            else []
+        ),
     ]
 
 
-def _format_submission_en(data: dict[str, Any]) -> list[str]:
+def _format_submission_en(data: dict[str, Any], footer: bool = True) -> list[str]:
     """format_submission の英語(#73)。項目は日本語と同じ。"""
     from .contrib import suggested_path
 
@@ -1946,9 +1957,15 @@ def _format_submission_en(data: dict[str, Any]) -> list[str]:
         f"Time:       {_shown(mm.get('seconds'), ' s')}",
         f"Offload:    {_shown(mm.get('offload'))}",
         f"Note:       {mm.get('note') or '(none)'}",
-        "",
-        "This is everything in the file. genmodelfit does not send this file anywhere.",
-        'It is shared only when you press "Create" in the GitHub form (CONTRIBUTING.md).',
+        *(
+            [
+                "",
+                "This is everything in the file. genmodelfit does not send this file anywhere.",
+                'It is shared only when you press "Create" in the GitHub form (CONTRIBUTING.md).',
+            ]
+            if footer
+            else []
+        ),
     ]
 
 
@@ -2010,10 +2027,10 @@ def _contrib_inspect(path: str | Path, args: argparse.Namespace) -> tuple[Any, s
     return data, raw, checks, report, good
 
 
-def _print_inspection(data: Any, checks: list, report: Any, good: bool) -> None:
+def _print_inspection(data: Any, checks: list, report: Any, good: bool, footer: bool = True) -> None:
     """contrib show の表示(中身のすべて・個人の情報の点検・検査の結果)。share も同じものを出す。"""
     if isinstance(data, dict):
-        for line in format_submission(data):
+        for line in format_submission(data, footer):
             print(line)
     print()
     print(tr("=== 個人の情報の点検 ===", "=== Privacy checklist ==="))
@@ -2111,7 +2128,12 @@ def _open_browser(url: str) -> bool:
 
 
 def _share(
-    path: str | Path, args: argparse.Namespace, *, as_json: bool, print_url: bool = False
+    path: str | Path,
+    args: argparse.Namespace,
+    *,
+    as_json: bool,
+    print_url: bool = False,
+    shown: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     """share・contrib share・bench --share: 点検して、GitHub の実測の Issue のフォーム(中身を入れたもの)を
     ブラウザで開く(#113)。通信しない(開くだけ。送るのは利用者がフォームで「Create」を押したとき)。
@@ -2164,8 +2186,9 @@ def _share(
         print(urls["issue_url"] or urls["form_url"])
         info["marked_shared"] = bool(mark_shared(data))
         return 0, info
-    _print_inspection(data, checks, report, True)
-    print()
+    if not shown:  # share がもう見せたときは繰り返さない(#124)
+        _print_inspection(data, checks, report, True)
+        print()
     print(tr("=== GitHub で送る ===", "=== Share on GitHub ==="))
     if urls["issue_url"]:
         url = urls["issue_url"]
@@ -2272,8 +2295,9 @@ def _choose_number(count: int) -> int | None:
         print(tr("番号で選んでください", "Choose by number"), file=sys.stderr)
 
 
-def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
-    """share(#113): 送っていない実測を選ぶ(または share <file>)→ 中身を見せて Issue のフォームを開く。"""
+def _cmd_share_issue(args: argparse.Namespace, command: str = "share") -> int:
+    """share --issue・contrib share(#113): 送っていない実測を選ぶ(または share <file>)→ 中身を見せて
+    Issue のフォームを開く(ログインしない・通信しない)。"""
     from .measure import saved_submissions, submissions_dir
 
     print_url = getattr(args, "print_url", False)
@@ -2290,9 +2314,9 @@ def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
             raise CliError(
                 tr(
                     f"送っていない実測が {len(saved)} 件あります。送るファイルを指定してください:"
-                    " genmodelfit share <ファイル> --print-url",
+                    " genmodelfit share --issue <ファイル> --print-url",
                     f"{len(saved)} unsent measurements. Choose the file to send:"
-                    " genmodelfit share <file> --print-url",
+                    " genmodelfit share --issue <file> --print-url",
                 )
                 if saved
                 else tr(
@@ -2320,10 +2344,10 @@ def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
                 print(f"{_saved_line(i, s)}\n      {s.path}")
             print(
                 tr(
-                    "送るファイルを genmodelfit share <ファイル> で指定してください。"
+                    "送るファイルを genmodelfit share --issue <ファイル> で指定してください。"
                     if saved
                     else "送っていない実測はありません(genmodelfit measure で測れます)。",
-                    "Give the file to send: genmodelfit share <file>."
+                    "Give the file to send: genmodelfit share --issue <file>."
                     if saved
                     else "No unsent measurements (measure one with genmodelfit measure).",
                 ),
@@ -2357,8 +2381,1996 @@ def cmd_share(args: argparse.Namespace, command: str = "share") -> int:
     return code
 
 
+# --- share: 測って PR で送る(#124。llmfit の share にならう) -------------------------------------------
+
+
+DOWNLOAD_EXAMPLE_MBPS = 100  # 落とす時間の例に使う回線の速さ(Mbps)。目安で、約束ではない
+
+
+def _download_text(nbytes: int) -> str:
+    """落とす量と、例の回線での時間(#124): 「落とす量 6.5 GB(100 Mbps で約 9 分。回線しだい)」。"""
+    import math
+
+    mins = max(1, math.ceil(nbytes * 8 / (DOWNLOAD_EXAMPLE_MBPS * 1e6) / 60))
+    return tr(
+        f"落とす量 {nbytes / GIB:.1f} GB({DOWNLOAD_EXAMPLE_MBPS} Mbps で約 {mins} 分。回線しだい)",
+        f"{nbytes / GIB:.1f} GB to download (about {mins} min at {DOWNLOAD_EXAMPLE_MBPS} Mbps; depends on"
+        " your connection)",
+    )
+
+
+def _download_seconds(nbytes: int) -> float:
+    return nbytes * 8 / (DOWNLOAD_EXAMPLE_MBPS * 1e6)
+
+
+def _share_total_line(start, total: int, dl_plan: list, with_download: bool) -> str:
+    """計画の合計の時間の目安(#124): ComfyUI の起動(起動するとき。comfystart.TYPICAL_START_SECONDS)+ 測る
+    (時間の目安の合計)+ 落とす(落とすことになっているとき。例の回線の速さで)。"""
+    from .comfystart import TYPICAL_START_SECONDS
+
+    secs = float(total)
+    ja = [f"測る 約 {total} 秒"]
+    en = [f"measuring about {total} s"]
+    if start is not None:
+        secs += TYPICAL_START_SECONDS
+        ja.insert(0, f"ComfyUI の起動 約 {TYPICAL_START_SECONDS} 秒")
+        en.insert(0, f"starting ComfyUI about {TYPICAL_START_SECONDS} s")
+    if with_download and dl_plan:
+        nbytes = sum(x.installed.missing_bytes for x in dl_plan)
+        dl_secs = sum(x.seconds for x in dl_plan)
+        secs += dl_secs + _download_seconds(nbytes)
+        ja.append(f"落としたものを測る 約 {dl_secs} 秒")
+        en.append(f"measuring the downloaded ones about {dl_secs} s")
+        dl = _download_text(nbytes)  # 表示の言語のもの
+        ja.append(dl)
+        en.append(dl)
+    mins = max(1, round(secs / 60))
+    return tr(
+        f"合計の目安: 約 {mins} 分(" + "、".join(ja) + ")",
+        f"Total (rough): about {mins} min (" + ", ".join(en) + ")",
+    )
+
+
+def _saved_measurements() -> list:
+    """この PC に保存した提出(送ったものも、まだのものも)を実測の形にしたもの(#124)。
+    測ると役に立つものの提案から、もう測ってある(送る前・送ったがまだ取り込まれていない)ものを外すのに使う(測り直さない)。"""
+    from .contrib import to_measurement
+    from .measure import saved_submissions
+
+    out = []
+    for sub in saved_submissions(include_shared=True):
+        try:
+            out.append(to_measurement(sub.data))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def _unsent_hint() -> str:
+    return tr(
+        "測った結果はこの PC に保存してあります。測り直さずに genmodelfit share --no-measure で送れます"
+        "(ログインしないなら genmodelfit share --issue)",
+        "The measurements are saved on this PC. Send them without measuring again with"
+        " genmodelfit share --no-measure (without signing in: genmodelfit share --issue)",
+    )
+
+
+def _share_session():
+    """share の通信の session(fetch.make_session。試験で差し替える)。--dry-run・--issue では作らない。"""
+    from .fetch import make_session
+
+    return make_session()
+
+
+def _ask_yes_no(prompt: str, default: bool) -> bool:
+    """[Y/n]・[y/N] を尋ねる。空なら default、EOF は「いいえ」。Ctrl+C は KeyboardInterrupt のまま。"""
+    try:
+        ans = input(prompt)
+    except EOFError:
+        return False
+    a = ans.strip().lower()
+    if not a:
+        return default
+    return a in ("y", "yes")
+
+
+def _share_login(args: argparse.Namespace):
+    """GitHub の資格情報を決めて確かめる(測る前。#124)。(資格情報, session)。使えなければ CliError。
+    トークンは表示しない。デバイス認証のコードと URL は stderr に出し、端末ならブラウザを開く。"""
+    from . import github
+
+    def on_code(dc) -> None:
+        print(
+            tr(
+                "GitHub にログインします(実測を PR で送るため。権限は public_repo)。",
+                "Signing in to GitHub (to send the measurements as a pull request; scope public_repo).",
+            ),
+            file=sys.stderr,
+        )
+        print(
+            tr(
+                f"  1. ブラウザで {dc.verification_uri} を開く",
+                f"  1. Open {dc.verification_uri} in a browser",
+            ),
+            file=sys.stderr,
+        )
+        print(
+            tr(f"  2. コード {dc.user_code} を入れる", f"  2. Enter the code {dc.user_code}"),
+            file=sys.stderr,
+        )
+        if _open_browser(dc.verification_uri):
+            print(tr("  (ブラウザで開きました)", "  (opened in your browser)"), file=sys.stderr)
+        print(tr("ログインを待っています…", "Waiting for the sign-in..."), file=sys.stderr, flush=True)
+
+    session = _share_session()
+    try:
+        creds = github.login(
+            session,
+            interactive=_interactive() and not args.json,
+            on_code=on_code,
+            log=_progress(args),
+        )
+    except github.GitHubError as e:
+        raise CliError(str(e)) from None
+    if not args.json:
+        print(
+            tr(f"GitHub: {creds.login} としてログイン", f"GitHub: signed in as {creds.login}"),
+            file=sys.stderr,
+        )
+    return creds, session
+
+
+def _share_precheck(args: argparse.Namespace):
+    """測る前の資格情報の確かめ(#124)。Issue で送ると決めてある(--issue)なら何もしない。環境変数のトークンか
+    保存したトークンがあれば確かめ(環境変数のものが使えなければ止める。保存したものが使えなければ消す)、
+    無ければ: 端末なら最後に決める(None)。端末でない・--json で PR で送るなら、ブラウザでログインできないので
+    測る前に止める。(資格情報か None, session か None)。"""
+    from . import github
+
+    if getattr(args, "issue", False):
+        return None, None
+    interactive = _interactive() and not args.json
+    token_status = github.cached_token_status()
+    if github.env_token() is None and token_status in ("expired", "broken"):
+        github.clear_cached_token()
+        if not args.json:
+            print(
+                github.token_status_message(token_status)
+                + tr("(PR を選んだときにログインします)", " (you sign in if you choose a pull request)"),
+                file=sys.stderr,
+            )
+        token_status = "none"
+    has = github.env_token() is not None or token_status == "ok"
+    if not has and interactive:
+        return None, None
+    session = _share_session()
+    try:
+        creds = github.login(session, interactive=False)  # 確かめるだけ(ログインはしない)
+    except github.GitHubError as e:
+        if not interactive:
+            raise CliError(str(e)) from None
+        if e.kind in ("network", "rate_limit", "api"):
+            print(
+                tr(
+                    f"注意: GitHub に繋がりません({e})。"
+                    "PR で送るときに失敗するかもしれません。Issue でも送れます",
+                    f"warning: cannot reach GitHub ({e}). Sending a pull request may fail; issues work too",
+                ),
+                file=sys.stderr,
+            )
+            return None, None
+        if e.kind == "invalid_token":
+            # 環境変数のトークンが使えない: PR は直さないと送れないが、Issue は選べるので続ける
+            print(
+                tr(
+                    f"注意: {e}。このままでは PR で送れません(最後に Issue を選べます)",
+                    f"warning: {e}. Sending a pull request will fail unless it is fixed"
+                    " (you can choose issues at the end)",
+                ),
+                file=sys.stderr,
+            )
+            return None, None
+        if token_status in ("expired", "broken"):
+            msg = github.token_status_message(token_status)
+        elif token_status == "ok" and not github.token_path().exists():
+            msg = tr(
+                "保存した GitHub のログインが使えなくなったので消しました",
+                "The saved GitHub sign-in no longer works and was removed",
+            )
+        else:
+            msg = None
+        if msg:
+            print(
+                msg + tr("(PR を選んだときにログインします)", " (you sign in if you choose a pull request)"),
+                file=sys.stderr,
+            )
+        return None, None
+    if not args.json:
+        print(
+            tr(f"GitHub: {creds.login} としてログイン", f"GitHub: signed in as {creds.login}"),
+            file=sys.stderr,
+        )
+    return creds, session
+
+
+def _share_relogin_if_expired(args: argparse.Namespace, creds, session):
+    """送る直前にトークンを確かめる(測るあいだに切れることがある)。切れていれば保存したものを消し、端末なら
+    ログインし直す。端末でなければ、測った結果は保存してあり --no-measure で送れることを言って止める。"""
+    from . import github
+
+    try:
+        ok = github.whoami(session, creds.token) is not None
+    except github.GitHubError as e:
+        raise CliError(str(e)) from None
+    if ok:
+        return creds, session
+    if not creds.source.startswith("env:"):
+        github.clear_cached_token()
+    if _interactive() and not args.json and not creds.source.startswith("env:"):
+        return _share_login(args)
+    raise CliError(
+        tr(
+            "GitHub のログインの期限が切れました。測った結果は保存してあります。"
+            "ログインし直してから genmodelfit share --no-measure で送ってください",
+            "The GitHub sign-in expired. The measurements are saved; sign in again and send them with"
+            " genmodelfit share --no-measure",
+        )
+    )
+
+
+def _share_items(paths: list, args: argparse.Namespace) -> list[dict[str, Any]]:
+    """送る候補のファイルを点検する(個人の情報の点検と検査。今の share・contrib show と同じ)。"""
+    from .contrib import share_check, suggested_path
+
+    out: list[dict[str, Any]] = []
+    for p in paths:
+        try:
+            data, raw, checks, report, _good = _contrib_inspect(p, args)
+        except CliError as e:
+            out.append({"file": str(p), "ok": False, "refused": [str(e)], "data": None, "path_in_repo": None})
+            continue
+        if isinstance(data, dict):
+            why = share_check(checks, report)
+        else:
+            why = [tr("提出の形ではありません", "not a submission")]
+        out.append(
+            {
+                "file": str(p),
+                "ok": not why,
+                "refused": why,
+                "data": data,
+                "raw": raw,
+                "checks": checks,
+                "report": report,
+                "path_in_repo": suggested_path(data) if isinstance(data, dict) else None,
+            }
+        )
+    return out
+
+
+def _share_files_json(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {"file": it["file"], "path_in_repo": it["path_in_repo"], "ok": it["ok"], "refused": it["refused"]}
+        for it in items
+    ]
+
+
+def _share_submit(args: argparse.Namespace, creds, session, items: list[dict[str, Any]]) -> tuple[list, int]:
+    """点検を通ったファイルを、GPU ごとに 1 本の PR で送る。送った(か、もうあった)ものに送った印を付ける。
+    (PR の結果の一覧, 印を付けた数)。"""
+    import hashlib
+
+    from . import github
+    from .measure import mark_shared
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for it in items:
+        groups.setdefault(it["path_in_repo"].split("/")[2], []).append(it)
+    results = []
+    marked = 0
+
+    def mark(group, done) -> None:
+        nonlocal marked
+        for it in group:
+            if it["path_in_repo"] in done:
+                mark_shared(it["data"])
+                marked += 1
+
+    for slug, group in groups.items():
+        files = [(it["path_in_repo"], it["raw"].replace("\r\n", "\n")) for it in group]
+        key = hashlib.sha256("\n".join(sorted(p for p, _ in files)).encode("utf-8")).hexdigest()[:8]
+        gpu = ((group[0]["data"].get("system") or {}).get("gpu") or {}).get("name") or slug
+        try:
+            res = github.submit(
+                session,
+                creds,
+                files,
+                title=github.pr_title(str(gpu), len(files)),
+                body=github.pr_body([it["data"] for it in group]),
+                # GPU の名前(slug)に / は入らないので、ほかの GPU の PR と紛れない
+                branch=f"{github.BRANCH_PREFIX}{slug}/{key}",
+                match_prefix=f"{github.BRANCH_PREFIX}{slug}/",
+                log=_progress(args),
+            )
+        except KeyboardInterrupt as e:
+            partial = getattr(e, "partial", None)
+            touched = {p for r in results for p in r.touched}
+            if partial is not None:
+                mark(group, set(partial.delivered))
+                touched |= set(partial.touched)
+                if partial.pr_url:
+                    results.append(partial)
+            e.results = results  # type: ignore[attr-defined]
+            e.touched = touched  # type: ignore[attr-defined]
+            raise
+        except github.GitHubError as e:
+            # 途中まで送れたもの(ほかの GPU の PR・開いている PR に置いたもの)は印を付け、送り直さない
+            partial = getattr(e, "partial", None)
+            touched = {p for r in results for p in r.touched}
+            if partial is not None:
+                mark(group, set(partial.delivered))
+                touched |= set(partial.touched)
+                if partial.pr_url:
+                    results.append(partial)
+            err = CliError(str(e))
+            err.results = results  # type: ignore[attr-defined]
+            err.touched = touched  # type: ignore[attr-defined]
+            err.marked = marked  # type: ignore[attr-defined]
+            raise err from None
+        mark(group, set(res.delivered))  # PR がある(か、本家の main にもうある)ものだけに印を付ける
+        results.append(res)
+    return results, marked
+
+
+def _print_share_items(items: list[dict[str, Any]]) -> None:
+    for it in items:
+        print()
+        print(f"--- {it['file']}")
+        if it["data"] is not None:
+            _print_inspection(it["data"], it["checks"], it["report"], it["ok"], footer=False)
+    for it in items:
+        if not it["ok"]:
+            print(tr(f"送れません: {it['file']}", f"Cannot send: {it['file']}"), file=sys.stderr)
+            for w in it["refused"]:
+                print(f"  - {w}", file=sys.stderr)
+
+
+def _share_send(
+    args: argparse.Namespace,
+    paths: list,
+    creds,
+    session,
+    report: dict[str, Any],
+    base_code: int = 0,
+) -> int:
+    """送る中身と点検を見せ、送り方を決めて送る(#124)。端末では「1) PR 2) Issue q) 送らない」を尋ねる
+    (--issue なら Issue、--yes・--json・端末でないなら PR)。PR はここでログインする(creds が None なら)。
+    PR で送れなければ、端末では同じファイルを Issue で送るかを尋ねる。送れなかったものは保存したまま
+    (genmodelfit share --no-measure で測り直さずに送れる)。"""
+    from .contrib import REPO
+
+    items = _share_items(paths, args)
+    good = [it for it in items if it["ok"]]
+
+    def emit(**more: Any) -> None:
+        _out(_envelope("share", None, None, action="send", **report, files=_share_files_json(items), **more))
+
+    if not args.json:
+        print()
+        _step(args, "show")
+        print(tr(f"=== 送る中身({len(items)} 件) ===", f"=== What will be sent ({len(items)}) ==="))
+        _print_share_items(items)
+    # この PC に保存した提出で送れないもの: 理由を 1 回だけ出し、名前を変えて次から出さない(#124。ずっと
+    # 送れないまま毎回失敗しないように)。share <file> で指定したものは今までどおり失敗にする
+    saved_dir = _submissions_root()
+    retired = []
+    for it in items:
+        if not it["ok"] and not getattr(args, "file", None) and _under(it["file"], saved_dir):
+            dst = _retire_submission(it["file"])
+            if dst is not None:
+                retired.append(it["file"])
+                if not args.json:
+                    print(
+                        tr(
+                            f"送れないので、次から出しません: {dst}",
+                            f"It cannot be sent, so it is no longer offered: {dst}",
+                        ),
+                        file=sys.stderr,
+                    )
+    if not good:
+        if args.json:
+            emit(prs=[], marked_shared=0, sent=False, retired=retired)
+        elif retired:
+            print(tr("送れるものはありません", "Nothing that can be sent"))
+        return base_code if retired and len(retired) == len(items) else 1
+    code = base_code if len(good) + len(retired) == len(items) else 1
+    method = "issue" if getattr(args, "issue", False) else "pr"
+    if not getattr(args, "issue", False) and not args.yes and not args.json and _interactive():
+        print()
+        print(
+            tr(
+                f"送り先: https://github.com/{REPO}。送ったものは公開されます。",
+                f"Where: https://github.com/{REPO}. What you send is public.",
+            )
+        )
+        try:
+            method = _ask_method()
+        except KeyboardInterrupt:
+            print(file=sys.stderr)
+            print(_unsent_hint(), file=sys.stderr)
+            return 130
+        if method is None:
+            print(tr("送りませんでした。", "Nothing sent."), file=sys.stderr)
+            print(_unsent_hint(), file=sys.stderr)
+            return base_code
+    _step(args, "send")
+    if method == "issue":
+        return _share_send_issues(args, good, report, items, code)
+    try:
+        if creds is None:
+            creds, session = _share_login(args)
+        else:
+            creds, session = _share_relogin_if_expired(args, creds, session)
+        results, marked = _share_submit(args, creds, session, good)
+    except KeyboardInterrupt as e:
+        # 送る途中の Ctrl+C: どこまで置いたか・何が残ったか・続け方を言う(#124)
+        done_prs = getattr(e, "results", [])
+        touched = getattr(e, "touched", set())
+        sys.stdout.flush()
+        print(file=sys.stderr)
+        print(tr("中断しました。", "Interrupted."), file=sys.stderr)
+        for r in done_prs:
+            if r.pr_url:
+                print(tr(f"送れた PR: {r.pr_url}", f"Sent in pull request: {r.pr_url}"), file=sys.stderr)
+        if touched:
+            print(
+                tr(
+                    f"PR かブランチに置いたもの: {len(touched)} 件"
+                    "(genmodelfit share --no-measure で続けられます)",
+                    f"Placed in a pull request or on its branch: {len(touched)}"
+                    " (genmodelfit share --no-measure"
+                    " continues)",
+                ),
+                file=sys.stderr,
+            )
+        print(_unsent_hint(), file=sys.stderr)
+        return 130
+    except CliError as e:
+        done_prs = getattr(e, "results", [])
+        touched = getattr(e, "touched", set())
+        rest = [it for it in good if it["path_in_repo"] not in touched]
+        if args.json:
+            emit(
+                prs=[r.to_dict() for r in done_prs],
+                marked_shared=getattr(e, "marked", 0),
+                sent=bool(done_prs),
+                error=str(e),
+                hint=_unsent_hint(),
+            )
+            return 1
+        print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+        for r in done_prs:
+            if r.pr_url:
+                print(tr(f"送れた PR: {r.pr_url}", f"Sent in pull request: {r.pr_url}"))
+        if len(rest) < len(good):
+            print(
+                tr(
+                    f"{len(good) - len(rest)} 件はもう PR かブランチに置いたので、Issue では送りません"
+                    "(genmodelfit share --no-measure で PR を続けられます)",
+                    f"{len(good) - len(rest)} file(s) are already in a pull request or on its branch and are"
+                    " not sent as issues (genmodelfit share --no-measure continues the pull request)",
+                ),
+                file=sys.stderr,
+            )
+        if rest and not args.yes and _interactive():
+            try:
+                again = _ask_yes_no(
+                    tr(
+                        "PR で送れませんでした。同じファイルを Issue(ログインなし)で送りますか? [Y/n] ",
+                        "Could not send the pull request. Send the same files as issues (no sign-in)? [Y/n] ",
+                    ),
+                    True,
+                )
+            except KeyboardInterrupt:
+                print(file=sys.stderr)
+                again = False
+            if again:
+                return _share_send_issues(args, rest, report, items, 1)
+        print(_unsent_hint(), file=sys.stderr)
+        return 1
+    if args.json:
+        emit(prs=[r.to_dict() for r in results], marked_shared=marked, sent=True, github=creds.to_dict())
+        return code
+    print()
+    print(tr("=== 送りました ===", "=== Sent ==="))
+    for r in results:
+        if r.pr_url is None:
+            print(
+                tr(
+                    "どのファイルも、もう送ってありました(PR は開いていません)",
+                    "All files were already sent (no PR opened)",
+                )
+            )
+            continue
+        print(
+            tr(
+                f"PR: {r.pr_url}" + ("(開いている PR に足しました)" if r.reused else "(新しく開きました)"),
+                f"PR: {r.pr_url}" + (" (added to your open PR)" if r.reused else " (opened)"),
+            )
+        )
+        print(
+            tr(
+                f"  置いたファイル {len(r.uploaded)} 件、もうあったもの {len(r.skipped)} 件",
+                f"  {len(r.uploaded)} file(s) added, {len(r.skipped)} already there",
+            )
+        )
+    print(
+        tr(
+            "検査のワークフローが数分で確かめます。メンテナがマージすると、次の版から見積もりに使われます。",
+            "A workflow checks it within minutes; once a maintainer merges it, the next version uses it.",
+        )
+    )
+    return code
+
+
+def _ask_method() -> str | None:
+    """送り方を尋ねる: "pr" / "issue" / None(送らない)。既定は 1(PR)。"""
+    while True:
+        try:
+            ans = input(
+                tr(
+                    "送り方: 1) PR(GitHub にログイン) 2) Issue(ログインなし。ブラウザでフォームを開く)"
+                    " q) 送らない [1]: ",
+                    "How to send: 1) pull request (sign in to GitHub) 2) issue (no sign-in; opens the form in"
+                    " your browser) q) do not send [1]: ",
+                )
+            )
+        except EOFError:
+            return None
+        a = ans.strip().lower()
+        if a in ("", "1", "pr", "y", "yes"):
+            return "pr"
+        if a in ("2", "issue"):
+            return "issue"
+        if a in ("q", "quit", "n", "no"):
+            return None
+        print(tr("1・2・q で選んでください", "Choose 1, 2 or q"), file=sys.stderr)
+
+
+def _submissions_root():
+    from .measure import submissions_dir
+
+    return submissions_dir()
+
+
+def _under(path, root) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def _retire_submission(path) -> Path | None:
+    """送れない提出の名前を <名前>.unsendable に変える(消さない。直せば名前を戻して送れる)。"""
+    p = Path(path)
+    dst = p.with_name(p.name + ".unsendable")
+    try:
+        os.replace(p, dst)
+    except OSError:
+        return None
+    return dst
+
+
+def _share_send_issues(
+    args: argparse.Namespace, good: list, report: dict[str, Any], items: list, code: int
+) -> int:
+    """Issue のフォームで送る(share --issue と同じ _share。1 つのファイルに 1 つの Issue)。端末ならブラウザで
+    開き、端末でなければ URL を出す。ログインしない。"""
+    print_url = not args.json and not _interactive()
+    infos = []
+    worst = code
+    for it in good:
+        c, info = _share(it["file"], args, as_json=args.json, print_url=print_url, shown=True)
+        infos.append(info)
+        worst = max(worst, c)
+    if print_url and any(i.get("marked_shared") for i in infos):
+        # URL を出しただけでも送った印を付ける(次の share で PR でも送って二重にしないため)。
+        # 実測は消えない
+        print(
+            tr(
+                "上の URL を開いて「Create」を押すと送られます。送った印を付けたので、次の share では"
+                "出ません。送らなかったときは genmodelfit share --issue --all で、"
+                "測り直さずにもう一度選べます",
+                'Open the URL above and press "Create" to send it. It is marked as sent, so the next'
+                " share does not list it; if you did not send it, genmodelfit share --issue --all lets"
+                " you choose it again without measuring",
+            ),
+            file=sys.stderr,
+        )
+    if args.json:
+        _out(
+            _envelope(
+                "share",
+                None,
+                None,
+                action="send",
+                **report,
+                files=_share_files_json(items),
+                method="issue",
+                issues=infos,
+                prs=[],
+                marked_shared=sum(1 for i in infos if i.get("marked_shared")),
+                sent=False,
+            )
+        )
+    elif not all(i.get("marked_shared") for i in infos):
+        print(_unsent_hint(), file=sys.stderr)
+    return worst
+
+
+def _measure_gpu_stop(s) -> str | None:
+    """測れない GPU の理由(#124)。GPU が無い・NVIDIA でない(今は NVIDIA の GPU だけで測る)。"""
+    g = s.best_gpu
+    if g is None:
+        return tr(
+            "この PC に測りに使える GPU が見つかりません(genmodelfit system で確かめてください)",
+            "No GPU that can be measured was found on this PC (check with genmodelfit system)",
+        )
+    if (getattr(g, "vendor", None) or "nvidia") != "nvidia":
+        return tr(
+            f"今は NVIDIA の GPU だけで測ります(この PC の GPU: {g.name})",
+            f"For now only NVIDIA GPUs are measured (this PC's GPU: {g.name})",
+        )
+    return None
+
+
+def _share_nothing_reason(args: argparse.Namespace, sugg: list, skipped: list, budget: float) -> str:
+    """何もしないときの理由(#124)。"""
+    if args.no_measure:
+        return tr("送っていない実測はありません。", "No unsent measurements.")
+    usable = [x for x in sugg if all(d["model_id"] != x.model_id for d in skipped)]
+    if usable and all(x.seconds > budget for x in usable):
+        return tr(
+            f"時間の上限({budget:g} 秒)に収まるものがありません(--budget で広げられます)。"
+            "送っていない実測もありません。",
+            f"Nothing fits the time limit ({budget:g} s; --budget widens it), and no unsent measurements.",
+        )
+    if skipped and not usable:
+        return tr(
+            "測れるものがありません(この ComfyUI に無いノードが要ります。ComfyUI を更新すると測れます)。"
+            "送っていない実測もありません。",
+            "Nothing can be measured (it needs nodes this ComfyUI does not have; update ComfyUI), and no"
+            " unsent measurements.",
+        )
+    if not sugg:
+        return tr(
+            "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)。"
+            "送っていない実測もありません。",
+            "Nothing worth measuring (the ones that fit this GPU are already measured), and no unsent"
+            " measurements.",
+        )
+    return tr(
+        "測ると役に立つモデルも、送っていない実測もありません。",
+        "Nothing worth measuring and no unsent measurements.",
+    )
+
+
+def _share_steps(args: argparse.Namespace, start, plan: list, dl_plan: list, want_dl) -> _Steps:
+    """この回で使う手順(#124): GitHub の確認(もうあるトークンを確かめるとき)・ComfyUI を起動・ノードを確かめる
+    (起動したとき)・測る・落として測る(落とすと決まっているとき。あとで決まれば足す)・送る中身を見せる・送る。"""
+    from . import github
+
+    items: list[tuple[str, str]] = []
+    measuring = bool(plan or (dl_plan and want_dl))
+    if (
+        measuring
+        and not getattr(args, "issue", False)
+        and (github.env_token() is not None or github.token_path().exists() or args.yes or not _interactive())
+    ):
+        items.append(("check", tr("GitHub の確認", "Check GitHub")))
+    if start is not None and (plan or (dl_plan and want_dl)):
+        items.append(("start", tr("ComfyUI を起動", "Start ComfyUI")))
+        items.append(("nodes", tr("ノードを確かめる", "Check the nodes")))
+    if plan:
+        items.append(("measure", tr(f"測る({len(plan)} 件)", f"Measure ({len(plan)})")))
+    if dl_plan and want_dl:
+        items.append(
+            ("download", tr(f"落として測る({len(dl_plan)} 件)", f"Download and measure ({len(dl_plan)})"))
+        )
+    items.append(("show", tr("送る中身を見せる", "Show what will be sent")))
+    items.append(("send", tr("送る", "Send")))
+    return _Steps(items, enabled=not args.json)
+
+
+def _share_screen(
+    plan: list,
+    dl_plan: list,
+    pending: list,
+    url,
+    found_by,
+    budget: float,
+    total: int,
+    unknown: int,
+    start=None,
+    skipped: list | None = None,
+    asks_download: bool = True,
+    downloads: bool = False,
+) -> list[str]:
+    """share の測る前の画面(measure の「測る前に」と同じ部品: ComfyUI・入っているか・時間の目安)。"""
+    lines = [
+        tr("=== 測って送る(genmodelfit share) ===", "=== Measure and send (genmodelfit share) ==="),
+        tr(
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+        ),
+    ]
+    if plan:
+        lines.append(
+            tr(
+                f"測るもの(入っているもの。目安の合計 約 {total} 秒 / 上限 {budget:g} 秒):",
+                f"To measure (installed; about {total} s in all / limit {budget:g} s):",
+            )
+        )
+        lines += [_suggestion_row(i, x) for i, x in enumerate(plan, 1)]
+    else:
+        lines.append(
+            tr(
+                "測るもの: なし(入っていて、時間の上限に収まる提案がありません)",
+                "To measure: none (no installed suggestion fits the time limit)",
+            )
+        )
+    if unknown:
+        lines.append(
+            tr(
+                f"入っているか分からない提案が {unknown} 件あります(--comfyui-dir で ComfyUI のフォルダを"
+                "指定すると確かめられます)",
+                f"{unknown} suggestion(s) could not be checked for files (give your ComfyUI folder with"
+                " --comfyui-dir)",
+            )
+        )
+    lines += _skipped_lines(skipped or [])
+    if dl_plan:
+        dl_text = _download_text(sum(x.installed.missing_bytes for x in dl_plan))
+        lines.append(
+            tr(
+                f"入っていないもの {len(dl_plan)} 件({dl_text})は、落として測ります(--download)",
+                f"{len(dl_plan)} not installed ({dl_text}) are downloaded and measured (--download)",
+            )
+            if downloads
+            else tr(
+                f"入っていないもの {len(dl_plan)} 件({dl_text})は、測り終えて時間が残れば、"
+                "落としてよいかを尋ねます(--download で尋ねずに落とす)",
+                f"{len(dl_plan)} not installed ({dl_text}): after measuring, if time is left,"
+                " you are asked whether to download them (--download skips the question)",
+            )
+            if asks_download
+            else tr(
+                f"入っていないもの {len(dl_plan)} 件({dl_text})は落としません"
+                "(--download を付けると、落として測ります)",
+                f"{len(dl_plan)} not installed ({dl_text}) are not downloaded (--download"
+                " downloads and measures them)",
+            )
+        )
+    if url is not None and (plan or dl_plan):
+        # 起動中の(利用者の)ComfyUI で続けて測るので、毎回空ける(起動したものは言わずに空ける)
+        lines.append(
+            tr(
+                "測る前に毎回 ComfyUI のメモリを空けます(読み込み済みのモデルは外れます)",
+                "Before each run the ComfyUI's memory is freed (models already loaded are unloaded)",
+            )
+        )
+    if plan or (dl_plan and downloads):
+        lines.append(_share_total_line(start, total, dl_plan, downloads))
+    lines.append(tr(f"送っていない実測: {len(pending)} 件", f"Unsent measurements: {len(pending)}"))
+    lines += [_saved_line(i, x) for i, x in enumerate(pending, 1)]
+    lines.append(
+        tr(
+            "時間は目安です(落とす時間は回線しだい)。測った結果はこの PC に保存し、"
+            "送る前に中身を見せて、送り方を尋ねます。",
+            "Times are rough guides (downloading depends on your connection). Results are saved on this PC;"
+            " before sending, the content is shown and you choose how to send it.",
+        )
+    )
+    return lines
+
+
+def _node_check(url: str):
+    """ComfyUI のノードの確かめ(bench.NodeCheck。試験で差し替える)。"""
+    from .bench import NodeCheck
+
+    return NodeCheck(url)
+
+
+def _share_asks_download(args: argparse.Namespace) -> bool:
+    """入っていない提案を落とすかを尋ねるか(端末で、--yes・--json・--download が無いとき)。"""
+    return not args.download and not args.yes and not args.json and _interactive()
+
+
+def _share_replan(sugg: list, budget: float, checker, skipped: list[dict[str, Any]]):
+    """測る計画(入っているもの → 時間の残りで入っていないもの)。checker があれば、この ComfyUI に無い
+    ノードの要るものを外し(skipped に足す)、その分ほかの提案で埋める。(計画, 目安の合計, 落とす計画)。"""
+    from .measure import share_plan
+
+    def skip(x) -> bool:
+        if checker is None:
+            return False
+        miss = checker.missing(x.model_id)
+        if miss and all(d["model_id"] != x.model_id for d in skipped):
+            skipped.append({"model_id": x.model_id, "name": x.model_name, "missing_nodes": miss})
+        return bool(miss)
+
+    plan, total = share_plan(sugg, budget, skip=skip)
+    dl_plan, _ = share_plan(sugg, budget - total, state="no", skip=skip)
+    return plan, total, dl_plan
+
+
+def _skipped_lines(skipped: list[dict[str, Any]]) -> list[str]:
+    if not skipped:
+        return []
+    out = [
+        tr(
+            f"測らないもの {len(skipped)} 件(この ComfyUI に無いノードが要る。ComfyUI を更新すると測れます):",
+            f"Not measured: {len(skipped)} (they need nodes this ComfyUI does not have; update ComfyUI to"
+            " measure them):",
+        )
+    ]
+    for d in skipped:
+        out.append(f"  - {d['name']} [{d['model_id']}]: {', '.join(d['missing_nodes'])}")
+    return out
+
+
+def _share_replan_lines(plan: list, total: int, budget: float, skipped: list) -> list[str]:
+    lines = ["", tr("=== 測る計画(ComfyUI を確かめたあと) ===", "=== Plan (after checking ComfyUI) ===")]
+    lines += _skipped_lines(skipped)
+    if plan:
+        lines.append(
+            tr(
+                f"測るもの(目安の合計 約 {total} 秒 / 上限 {budget:g} 秒):",
+                f"To measure (about {total} s in all / limit {budget:g} s):",
+            )
+        )
+        lines += [_suggestion_row(i, x) for i, x in enumerate(plan, 1)]
+    else:
+        lines.append(tr("測るもの: なし", "To measure: none"))
+    return lines
+
+
+# --- 途中経過の表示(#124。ライブラリは表示しない。ここで rich で描く) ---------------------------------------
+# 端末(Console.is_terminal)なら rich.progress で書き直し、端末でない・--json なら決まった時に普通の行を出す。
+# 出すのは stderr(stdout は結果・JSON のため)。質問の前には必ず止める(close)。NO_COLOR は rich が守る
+
+
+class _SafeStream:
+    """書けない文字を ? にして書く(cp932 などの古い端末・ファイルで落ちない。L9a)。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def write(self, text):
+        try:
+            return self._inner.write(text)
+        except UnicodeEncodeError:
+            enc = getattr(self._inner, "encoding", None) or "ascii"
+            return self._inner.write(text.encode(enc, errors="replace").decode(enc, errors="replace"))
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _err_console():
+    """途中経過を描く rich の Console(stderr)。試験で差し替える。書けない文字は ? にする(L9a)。
+    NO_COLOR・TERM=dumb は rich が守る(色を付けない・書き換えない。L9c)。"""
+    from rich.console import Console
+
+    return Console(file=_SafeStream(sys.stderr), highlight=False)
+
+
+def _fit_width(text: str, width: int) -> str:
+    """表示の幅(全角は 2 桁。rich の数え方)を width に収める(はみ出すぶんは …)。改行は空白にする。"""
+    from rich.cells import cell_len
+
+    text = " ".join(str(text).split())
+    if width <= 1 or cell_len(text) <= width:
+        return text if width > 1 else ""
+    out = ""
+    for ch in text:
+        if cell_len(out + ch) > width - 1:
+            break
+        out += ch
+    return out + "…"
+
+
+def _text_column(field: str, ratio: int | None = None):
+    from rich.progress import TextColumn
+    from rich.table import Column
+
+    return TextColumn(field, table_column=Column(no_wrap=True, overflow="ellipsis", ratio=ratio))
+
+
+class _View:
+    """途中経過の表示のもと。enabled が偽(--json)なら何も出さない。端末でなければ every 秒ごとに 1 行。"""
+
+    every = 10.0
+
+    def __init__(self, enabled: bool = True, console=None, clock=None):
+        import time as _time
+
+        self.enabled = enabled
+        self.console = console if console is not None else (_err_console() if enabled else None)
+        self.live = bool(
+            enabled
+            and self.console is not None
+            and self.console.is_terminal
+            and not getattr(self.console, "is_dumb_terminal", False)
+        )
+        self.clock = clock or _time.monotonic
+        self._last_line: float | None = None
+        self.progress = None
+
+    def line(self, text: str, *, force: bool = False) -> None:
+        """端末でないときの 1 行(every 秒ごと。force なら必ず)。"""
+        if not self.enabled or self.live:
+            return
+        now = self.clock()
+        if not force and self._last_line is not None and now - self._last_line < self.every:
+            return
+        self._last_line = now
+        print(text, file=sys.stderr, flush=True)
+
+    def close(self) -> None:
+        if self.progress is not None:
+            self.progress.stop()
+            self.progress = None
+
+
+class _StartView(_View):
+    """ComfyUI の起動を待つあいだ:
+    「ComfyUI を起動しています 23 秒 / 目安 約 45 秒(上限 300 秒)| ログの最後の行」。"""
+
+    def __init__(self, est: int, limit: float, **kw):
+        super().__init__(**kw)
+        self.est, self.limit = est, limit
+        if self.live:
+            from rich.progress import Progress, SpinnerColumn
+
+            self.progress = Progress(
+                SpinnerColumn(), _text_column("{task.description}"), console=self.console, transient=False
+            )
+            self.task = self.progress.add_task(self._text(0.0, ""), total=None)
+            self.progress.start()
+
+    def _text(self, waited: float, log_line: str) -> str:
+        slow = waited > SLOW_FACTOR * self.est
+        text = tr(
+            f"ComfyUI を起動しています {waited:.0f} 秒"
+            + ("(目安より長くかかっています)" if slow else "")
+            + f" / 目安 約 {self.est} 秒(上限 {self.limit:g} 秒)",
+            f"Starting ComfyUI {waited:.0f} s"
+            + (" (taking longer than the guide)" if slow else "")
+            + f" / about {self.est} s (limit {self.limit:g} s)",
+        )
+        return text + (f" | {log_line}" if log_line else "")
+
+    def update(self, waited: float, log_line: str = "") -> None:
+        text = self._text(waited, log_line)
+        if self.live:
+            self.progress.update(self.task, description=_fit_width(text, self.console.width - 4))
+            self.progress.refresh()
+        else:
+            self.line(_fit_width(text, 100))
+
+    def done(self, waited: float) -> None:
+        text = tr(f"ComfyUI の準備ができました({waited:.0f} 秒)", f"ComfyUI is ready ({waited:.0f} s)")
+        if self.live:
+            self.progress.update(self.task, description=text, total=1, completed=1)
+        self.close()
+        if self.enabled and not self.live:
+            self.line(text, force=True)
+
+
+SLOW_FACTOR = 3.0  # 目安のこの倍を超えたら「目安より長くかかっています」と添える
+
+
+class _MeasureView(_View):
+    """1 件を測るあいだ: 時間の目安を棒にし(超えたら棒を止めて「目安を超えています」)、
+    段階・最大 VRAM を出す。"""
+
+    def __init__(self, label: str, est: int, **kw):
+        super().__init__(**kw)
+        self.label, self.est = label, max(1, int(est or 0))
+        self.seen_running = False
+        if self.live:
+            from rich.progress import BarColumn, Progress, SpinnerColumn
+
+            self.progress = Progress(
+                SpinnerColumn(),
+                _text_column("{task.description}", ratio=2),
+                BarColumn(bar_width=20),
+                _text_column("{task.fields[info]}", ratio=3),
+                console=self.console,
+                transient=False,
+            )
+            self.task = self.progress.add_task(
+                _fit_width(label, max(10, self.console.width // 3)), total=self.est, info=""
+            )
+            self.progress.start()
+
+    def update(self, info: dict) -> None:
+        el = float(info.get("elapsed") or 0.0)
+        ph = info.get("phase") or "waiting"
+        if ph == "running":
+            self.seen_running = True
+        name = {
+            "queued": tr("キュー待ち", "queued"),
+            "running": tr("実行中", "running"),
+            "waiting": tr("結果を待つ", "waiting for the result")
+            if self.seen_running
+            else tr("送った", "sent"),
+        }.get(ph, str(ph))
+        peak = float(info.get("peak_vram_gb") or 0.0)
+        over = el > self.est
+        text = tr(
+            f"{el:.0f} 秒"
+            + ("(目安を超えています)" if over else "")
+            + f" / 目安 約 {self.est} 秒 | {name} | 最大 VRAM {peak:.2f} GB",
+            f"{el:.0f} s"
+            + (" (over the guide)" if over else "")
+            + f" / about {self.est} s | {name} | peak VRAM {peak:.2f} GB",
+        )
+        if el > SLOW_FACTOR * self.est:
+            text += tr(
+                "。初回はモデルの読み込みで長くなります",
+                "; the first run loads the model, which takes longer",
+            )
+        if self.live:
+            if over:
+                self.progress.update(self.task, total=None, info=text)  # 棒を止めて「動いている」表示に
+            else:
+                self.progress.update(self.task, completed=el, info=text)
+            self.progress.refresh()
+        else:
+            self.line(f"  {self.label}: {text}")
+
+    def done(self) -> None:
+        if self.live and self.progress is not None:
+            self.progress.update(self.task, total=1, completed=1)
+        self.close()
+
+
+def _run_live(args: argparse.Namespace, label: str, est: int):
+    """bench の progress を受ける関数と、その表示(close() で止める)。"""
+    view = _MeasureView(label, est, enabled=not getattr(args, "json", False))
+    return view.update, view
+
+
+class _DownloadView(_View):
+    """download の進み具合(DownloadProgress)。端末なら全体の行とファイルごとの行
+    (名前・棒・量・速さ・残り時間)、
+    sha256 を確かめるあいだは「確かめています」。端末でなければ、ファイルの始めと全体の 10% ごとに 1 行。"""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.tasks: dict[int, Any] = {}
+        self.pct = -1
+        self.cur: tuple[int, str] | None = None
+        if self.live:
+            from rich.progress import (
+                BarColumn,
+                DownloadColumn,
+                Progress,
+                TimeRemainingColumn,
+                TransferSpeedColumn,
+            )
+
+            self.progress = Progress(
+                _text_column("{task.description}", ratio=1),
+                BarColumn(bar_width=None),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                TimeRemainingColumn(),
+                console=self.console,
+                transient=False,
+            )
+            self.overall = None
+            self.progress.start()
+
+    def _name(self, p) -> str:
+        phase = {
+            "check": tr("計っています", "checking"),
+            "verify": tr("確かめています", "verifying"),
+            "restart": tr("最初から", "restarting"),
+            "retry": tr("待っています", "waiting"),
+        }.get(p.phase, "")
+        name = p.name.rsplit("/", 1)[-1]
+        head = f"[{p.file_index}/{p.file_count}] " + (f"{phase} " if phase else "")
+        room = max(10, (self.console.width if self.live else 100) // 3 - len(head))
+        return head + _fit_width(name, room)
+
+    def __call__(self, p) -> None:
+        if not self.enabled:
+            return
+        if self.live:
+            self._live(p)
+        else:
+            self._plain(p)
+
+    def _live(self, p) -> None:
+        pr = self.progress
+        if p.message:
+            pr.console.print(f"  {p.name}: {p.message}")
+        if self.overall is None:
+            self.overall = pr.add_task(tr("全体", "all"), total=p.total_bytes or None)
+        pr.update(self.overall, completed=p.done_bytes)
+        t = self.tasks.get(p.file_index)
+        if t is None:
+            t = self.tasks[p.file_index] = pr.add_task(self._name(p), total=p.file_total or None)
+        if p.phase in ("skip", "done"):
+            total = p.file_total or p.file_bytes or 1
+            pr.update(t, description=self._name(p), total=total, completed=total)
+        else:
+            pr.update(t, description=self._name(p), completed=p.file_bytes, total=p.file_total or None)
+        key = (p.file_index, p.phase)
+        if key != self.cur:  # 段階が変わったら(計る→取る→確かめる)すぐ描く
+            self.cur = key
+            pr.refresh()
+
+    def _plain(self, p) -> None:
+        if p.message:
+            print(f"  {p.name}: {p.message}", file=sys.stderr, flush=True)
+            return
+        if p.phase not in ("download", "check", "verify", "done", "skip"):
+            return
+        pct = int(100 * p.done_bytes / p.total_bytes) if p.total_bytes else 0
+        key = (p.file_index, p.phase)
+        if key != self.cur or pct // 10 != self.pct // 10:
+            self.cur = key
+            word = {
+                "download": tr("取得", "download"),
+                "check": tr("計っています", "checking"),
+                "verify": tr("確かめています", "verifying"),
+                "done": tr("済み", "done"),
+                "skip": tr("もうある", "already there"),
+            }[p.phase]
+            print(
+                f"[{p.file_index}/{p.file_count}] {word} {_fit_width(p.name, 50)}  "
+                f"{p.file_bytes / GIB:.2f}/{(p.file_total or 0) / GIB:.2f} GB  "
+                + tr(f"(全体 {pct}%)", f"(all {pct}%)"),
+                file=sys.stderr,
+                flush=True,
+            )
+        self.pct = pct
+
+
+class _Steps:
+    """share の手順の見出し「== 手順 2/6: ComfyUI を起動 ==」。手順は計画から決め、増えたら言う。"""
+
+    def __init__(self, items: list[tuple[str, str]], *, enabled: bool = True):
+        self.items = list(items)  # (鍵, 見出し)
+        self.enabled = enabled
+        self.done: list[str] = []
+
+    def start(self, key: str, label: str | None = None) -> None:
+        keys = [k for k, _ in self.items]
+        added = key not in keys
+        if added:
+            # 次に来る手順(まだ始めていないもの)の前に入れる
+            pos = next((i for i, (k, _) in enumerate(self.items) if k not in self.done), len(self.items))
+            self.items.insert(pos, (key, label or key))
+        if label is not None:
+            self.items = [(k, label if k == key else lb) for k, lb in self.items]
+        self.done.append(key)
+        if not self.enabled:
+            return
+        i = [k for k, _ in self.items].index(key) + 1
+        name = dict(self.items)[key]
+        sys.stdout.flush()
+        print()
+        print(f"== {tr('手順', 'Step')} {i}/{len(self.items)}: {name} ==", flush=True)
+        if added:
+            print(
+                tr(
+                    f"(手順が 1 つ増えて {len(self.items)} になりました)",
+                    f"(one more step: {len(self.items)} in all)",
+                ),
+                flush=True,
+            )
+
+    def drop(self, key: str) -> None:
+        """使わなくなった手順を外す(まだ始めていないものだけ)。"""
+        if key not in self.done:
+            self.items = [(k, lb) for k, lb in self.items if k != key]
+
+
+def _step(args: argparse.Namespace, key: str, label: str | None = None) -> None:
+    steps = getattr(args, "_steps", None)
+    if steps is not None:
+        steps.start(key, label)
+
+
+def _settings_label(settings) -> str:
+    """設定の短い言い方(768×768・33 コマ・30 秒)。テンプレートのままなら空。"""
+    from .measure import settings_dict
+
+    d = settings_dict(settings) or {}
+    bits = []
+    if d.get("width") and d.get("height"):
+        bits.append(f"{d['width']}×{d['height']}")
+    if d.get("frames"):
+        bits.append(tr(f"{d['frames']} コマ", f"{d['frames']} frames"))
+    if d.get("seconds"):
+        bits.append(tr(f"{d['seconds']:g} 秒", f"{d['seconds']:g} s"))
+    return " ".join(bits)
+
+
+def _share_measure_one(
+    args: argparse.Namespace,
+    url: str,
+    x,
+    measured: list,
+    failed: list,
+    pos: tuple[int, int] = (1, 1),
+    rest: list | None = None,
+    started=None,
+) -> None:
+    """share の 1 件を測る(measure と同じ _measure_run)。結果は measured か failed に足す。
+    pos は (何件目, 全部で何件)、rest はこのあとに測るもの(残りの時間の目安に使う)。"""
+    from .measure import settings_dict
+
+    rec = {"model_id": x.model_id, "settings": settings_dict(x.settings)}
+    label = " ".join(b for b in (x.model_name, _settings_label(x.settings)) if b)
+    what = " ".join([x.model_id, *x.args])
+    if not args.json:
+        print()
+        print(
+            tr(
+                f"測っています {pos[0]}/{pos[1]}: {label}(目安 約 {x.seconds} 秒)[{what}]",
+                f"Measuring {pos[0]}/{pos[1]}: {label} (about {x.seconds} s) [{what}]",
+            ),
+            flush=True,
+        )
+    # share は続けて何件も測るので、毎回メモリと前の結果(キャッシュ)を空けてから測る(#124)
+    progress, view = _run_live(
+        args, tr(f"測る {pos[0]}/{pos[1]}: {label}", f"Measure {pos[0]}/{pos[1]}: {label}"), x.seconds
+    )
+    try:
+        r = _measure_run(args, url, x.fit.model, x.settings, free=True, progress=progress)
+    finally:
+        view.done()
+    rest = rest or []
+    left = (
+        tr(
+            f" — 残り {len(rest)} 件、あと約 {sum(y.seconds for y in rest)} 秒",
+            f" — {len(rest)} left, about {sum(y.seconds for y in rest)} s more",
+        )
+        if rest
+        else ""
+    )
+    if r["error"] is not None:
+        failed.append({**rec, "error": r["error"]})
+        crashed = started is not None and started.process.poll() is not None
+        if (
+            not args.json and not crashed
+        ):  # 起動した ComfyUI が止まったなら、そのことはあとで出す(_share_comfy_check)
+            sys.stdout.flush()
+            print(tr(f"エラー: {r['error']}", f"error: {r['error']}"), file=sys.stderr)
+            print(_measure_next_step(r["error"], x.model_id), file=sys.stderr)
+            if left:
+                print(left.lstrip(" —"), flush=True)
+        return
+    m = r["measurement"]
+    if r["submission"] is None:
+        # 測れたが送れない(標準でない条件・失敗・検査に通らない): 黙って落とさず、理由を付けて
+        # 「測れなかったもの」に入れる
+        res = r["result"]
+        if r.get("unsendable"):
+            why = tr(
+                "測れたが、送れません(この PC の実測としては保存しました): " + " / ".join(r["unsendable"]),
+                "measured, but it cannot be sent (kept as this PC's measurement): "
+                + " / ".join(r["unsendable"]),
+            )
+        elif not m.standard:
+            why = tr(
+                "標準でない条件で測ったので、保存も送りもしません: " + "、".join(res.nonstandard),
+                "measured under non-standard conditions, so it is neither saved nor sent: "
+                + ", ".join(res.nonstandard),
+            )
+        else:
+            why = tr(
+                f"結果が {m.outcome} なので送りません", f"the result is {m.outcome}, so it is not sent"
+            ) + (tr(f"({res.failed})", f" ({res.failed})") if res.failed else "")
+        failed.append({**rec, "error": why, **({"unsendable": True} if r.get("unsendable") else {})})
+        if not args.json:
+            for w in res.warnings:
+                print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
+            print(tr(f"送れません: {why}", f"Not sent: {why}") + left, flush=True)
+        return
+    measured.append(
+        {
+            **rec,
+            "outcome": m.outcome,
+            "peak_vram_gb": m.peak_vram_gb,
+            "seconds": m.seconds,
+            "submission": str(r["submission"]) if r["submission"] else None,
+        }
+    )
+    if not args.json:
+        for w in r["result"].warnings:
+            print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
+        secs = tr(f"、{m.seconds:g} 秒", f", {m.seconds:g} s") if m.seconds is not None else ""
+        print(
+            tr(
+                f"結果: {m.outcome}、最大 VRAM {m.peak_vram_gb:.2f} GB{secs}",
+                f"Result: {m.outcome}, peak VRAM {m.peak_vram_gb:.2f} GB{secs}",
+            )
+            + left,
+            flush=True,
+        )
+
+
+def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
+    """入っていない提案を落として測るかを 1 回だけ尋ねる([y/N]。既定は No)。first は、使える入っている
+    ものが無く、最初に尋ねるとき。"""
+    nbytes = sum(x.installed.missing_bytes for x in dl_plan)
+    secs = sum(x.seconds for x in dl_plan)
+    mins = max(1, round((secs + _download_seconds(nbytes)) / 60))
+    print()
+    print(
+        tr(
+            ("この PC に入っていて測れるモデルはありません。" if first else "時間が残っています。")
+            + f"入っていないモデル {len(dl_plan)} 件を落とせば測れます"
+            f"({_download_text(nbytes)}、測る時間の目安 約 {secs} 秒。合わせて約 {mins} 分):",
+            ("No installed model can be measured on this PC. " if first else "There is time left. ")
+            + f"{len(dl_plan)} model(s) that are not installed can be measured after downloading"
+            f" ({_download_text(nbytes)}; about {secs} s to measure; about {mins} min in all):",
+        )
+    )
+    for i, x in enumerate(dl_plan, 1):
+        print(_suggestion_row(i, x))
+        lic = _model_licenses(x)
+        if lic:
+            print(tr(f"      ライセンス: {lic}", f"      License: {lic}"))
+    print(
+        tr(
+            "y と答えると、この一覧のものだけを落とします"
+            "(download と同じ確かめ。モデルごとには尋ね直しません)",
+            "Answering y downloads only these (with download's checks; it does not ask again per model)",
+        )
+    )
+    sys.stdout.flush()
+    yes = _ask_yes_no(tr("落として測りますか? [y/N] ", "Download and measure them? [y/N] "), False)
+    if not yes:
+        print(tr("落としません", "Not downloading"), file=sys.stderr)
+    return yes
+
+
+def _model_licenses(x) -> str:
+    """提案のモデルのファイルのライセンス(重ならないように並べる)。分からなければ空。"""
+    entry = getattr(getattr(x, "fit", None), "model", None)
+    files = getattr(entry, "files", None) or []
+    names = []
+    for f in files:
+        lic = getattr(f, "license", None)
+        name = (
+            tr("不明", "unknown")
+            if lic is None
+            else (f"other: {f.license_name}" if lic == "other" and getattr(f, "license_name", None) else lic)
+        )
+        if name not in names:
+            names.append(name)
+    return ", ".join(names)
+
+
+def _share_download_and_measure(args: argparse.Namespace, ctx: dict, dl_plan: list, measured, failed) -> None:
+    """入っていない提案を、download と同じ流れ(_measure_download。同じ同意・ライセンス・無検閲の決まり)で
+    落として測る(#124。同意は呼び出し側が取ってある)。"""
+    for i, x in enumerate(dl_plan, 1):
+        if not args.json:
+            print()
+            print(
+                tr(
+                    f"落とす {i}/{len(dl_plan)}: {x.model_name}",
+                    f"Download {i}/{len(dl_plan)}: {x.model_name}",
+                )
+            )
+            sys.stdout.flush()
+        code = _measure_download(args, x.model_id, consented=True)
+        if code == 130:
+            raise KeyboardInterrupt  # 落とす途中の Ctrl+C: 落とすのも測るのも止める(.part は残る)
+        if code != 0:
+            failed.append(
+                {
+                    "model_id": x.model_id,
+                    "settings": x.to_dict()["settings"],
+                    "error": tr("落とすのをやめました", "download declined")
+                    if getattr(args, "_download_declined", False)
+                    else tr("落とせませんでした", "not downloaded"),
+                }
+            )
+            continue
+        _share_measure_one(
+            args,
+            ctx["url"],
+            x,
+            measured,
+            failed,
+            (i, len(dl_plan)),
+            dl_plan[i:],
+            ctx["holder"][-1] if ctx["holder"] else None,
+        )
+        if not _share_comfy_check(args, ctx, x, failed):
+            break
+
+
+LOCK_FILE = "measure.lock"  # 測っているあいだの印(キャッシュの中。中身はプロセスの番号)
+
+
+def _measure_lock():
+    """measure・share が同時に測らないようにする(L1c。同じ ComfyUI・同じキャッシュを取り合わない)。
+    ほかの genmodelfit が測っていれば、はっきり断る。印を作ったプロセスがもう無ければ(古い印)取り直す。"""
+    import psutil
+
+    from .db import cache_dir
+
+    p = cache_dir() / LOCK_FILE
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise CliError(
+            tr(
+                f"キャッシュのフォルダを作れません({type(e).__name__}: {p.parent})。"
+                "測っても保存できないので測りません"
+                "(GENMODELFIT_CACHE_DIR で書ける場所に変えられます)",
+                f"Cannot create the cache folder ({type(e).__name__}: {p.parent}). Nothing is measured, "
+                "since it"
+                " could not be saved (GENMODELFIT_CACHE_DIR changes it to a writable place)",
+            )
+        ) from None
+    for _ in range(3):
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+        except FileExistsError:
+            if p.is_dir():
+                raise CliError(
+                    tr(f"キャッシュの印を作れません({p})", f"Cannot create the lock in the cache ({p})")
+                ) from None
+            try:
+                pid = int(p.read_text(encoding="ascii").strip() or "0")
+            except (OSError, ValueError):
+                pid = 0
+            if pid and pid != os.getpid() and psutil.pid_exists(pid):
+                raise CliError(
+                    tr(
+                        f"ほかの genmodelfit(measure か share。プロセス {pid})が測っています。"
+                        f"終わってから実行してください(止まっているのに残っているなら {p} を消してください)",
+                        f"Another genmodelfit (measure or share, process {pid}) is measuring. Run it after"
+                        f" that one finishes (if it is gone but this stays, delete {p})",
+                    )
+                ) from None
+            with contextlib.suppress(OSError):  # 古い印(そのプロセスはもう無い)
+                p.unlink()
+            continue
+        except OSError as e:
+            raise CliError(
+                tr(
+                    f"キャッシュのフォルダに書けません({type(e).__name__}: {p.parent})。"
+                    "測っても保存できないので"
+                    "測りません(GENMODELFIT_CACHE_DIR で書ける場所に変えられます)",
+                    f"Cannot write to the cache folder ({type(e).__name__}: {p.parent}). Nothing is measured,"
+                    " since it could not be saved (GENMODELFIT_CACHE_DIR changes it to a writable place)",
+                )
+            ) from None
+        with os.fdopen(fd, "w", encoding="ascii") as f:
+            f.write(str(os.getpid()))
+        return p
+    return None
+
+
+def _measure_unlock(p) -> None:
+    if p is not None:
+        with contextlib.suppress(OSError):
+            p.unlink()
+
+
+def _note_unchecked(args: argparse.Namespace, checker) -> None:
+    """ノードを確かめられなかったもの(テンプレートを取れない・回線が無い。L4a)を知らせる(外さずに測る)。"""
+    names = list(getattr(checker, "unchecked", []) or [])
+    if names and not args.json:
+        print(
+            tr(
+                f"注意: ノードを確かめられなかったもの {len(names)} 件(テンプレートを取れない。"
+                f"回線を確かめてください。測るときに分かります): {', '.join(names)}",
+                f"warning: the nodes of {len(names)} could not be checked (the template could not be"
+                f" fetched; check the connection; measuring will tell): {', '.join(names)}",
+            ),
+            file=sys.stderr,
+        )
+
+
+def _vram_busy_before_start(name: str | None = None) -> str | None:
+    """自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を多く使っていないか(#124)。
+    使っていれば理由。"""
+    from .bench import others_vram_limit, vram_in_use
+
+    v = vram_in_use(name)
+    if v is None:
+        return None
+    used, total = v
+    limit = others_vram_limit(total)
+    if used <= limit:
+        return None
+    return tr(
+        f"ほかのプログラムが VRAM を約 {used / GIB:.1f} GB 使っています(上限 {limit / GIB:.1f} GB)。"
+        "閉じてから測ってください(測ると数値が狂います)",
+        f"Other programs use about {used / GIB:.1f} GB of VRAM (limit {limit / GIB:.1f} GB)."
+        " Close them before"
+        " measuring (the numbers would be wrong)",
+    )
+
+
+def _comfy_alive(url: str | None, started) -> bool:
+    """ComfyUI がまだ動いているか(自分で起動したものはプロセス、ほかは /system_stats に答えるか)。"""
+    from .bench import BenchError, ComfyClient
+
+    if started is not None and started.process.poll() is not None:
+        return False
+    if not url:
+        return False
+    try:
+        ComfyClient(url, timeout=5).system_stats()
+    except BenchError:
+        return False
+    return True
+
+
+def _share_comfy_check(args: argparse.Namespace, ctx: dict, x, failed: list) -> bool:
+    """1 件を測ったあとで、ComfyUI が止まっていないかを見る(#124)。止まっていたら理由(ログの場所と最後の行)を
+    出し、自分で起動したものなら 1 回だけ起動し直して続ける(True)。2 回目・利用者の ComfyUI なら測るのを
+    やめる(False。測ったものを送るかに進む)。"""
+    from . import comfystart
+
+    if not failed or failed[-1].get("model_id") != x.model_id:
+        return True  # 測れた: 調べない(余計な通信をしない)
+    started = ctx["holder"][-1] if ctx["holder"] else None
+    err = str(failed[-1].get("error") or "")
+    exited = started is not None and started.process.poll() is not None
+    lost = any(w in err for w in ("接続できません", "Cannot connect", "Cannot talk", "通信できません"))
+    if not exited and not (lost and not _comfy_alive(ctx["url"], started)):
+        return True  # 止まっていない(測るのに失敗しただけ)
+    log = getattr(started, "log", None)
+    tail = comfystart.tail(log, 5) if log else []
+    msg = tr("ComfyUI が止まりました", "ComfyUI stopped") + (
+        tr(f"(ログ: {log})", f" (log: {log})") if log else ""
+    )
+    failed[-1]["error"] = msg
+    if not args.json:
+        sys.stdout.flush()
+        print(tr(f"エラー: {msg}", f"error: {msg}"), file=sys.stderr)
+        for line in tail:
+            print(f"  {line}", file=sys.stderr)
+    if started is not None and ctx["start"] is not None and ctx["restarts"] == 0:
+        ctx["restarts"] += 1
+        if not args.json:
+            print(tr("ComfyUI を起動し直して続けます", "Starting ComfyUI again to go on"), file=sys.stderr)
+        try:
+            new = _comfyui_start(args, ctx["start"], ctx["holder"])
+        except CliError as e:
+            if not args.json:
+                print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+        else:
+            ctx["url"] = new.url
+            return True
+    ctx["dead"] = True
+    if not args.json:
+        print(
+            tr(
+                "測るのをやめて、測ったものを送るかに進みます",
+                "Stopping the measurements; moving on to sending what was measured",
+            ),
+            file=sys.stderr,
+        )
+    return False
+
+
+def _share_dry_run(
+    args: argparse.Namespace, paths: list, report: dict[str, Any], screen: list[str] | None = None
+) -> int:
+    """--dry-run: 計画と送る中身を見せるだけ(測らない・ログインしない・通信しない)。"""
+    items = _share_items(paths, args)
+    if args.json:
+        payload = {"action": "send", **report}
+        _out(_envelope("share", None, None, **payload, dry_run=True, files=_share_files_json(items)))
+        return 0
+    if screen:
+        _emit(screen)
+    _print_share_items(items)
+    print()
+    print(
+        tr(
+            "--dry-run: 測っていません・ログインしていません・何も送っていません。",
+            "--dry-run: nothing was measured, no sign-in, nothing was sent.",
+        )
+    )
+    return 0
+
+
+def _share_issue_old(args: argparse.Namespace) -> bool:
+    """前からの share --issue(送っていない実測を選んで Issue のフォームを開く。測らない)か。
+    --issue --yes は、測ってから Issue で送る(#124)。FILE・--print-url・--json(--yes なし)は前からのまま。"""
+    return bool(args.issue) and (not args.yes or bool(args.file) or bool(args.print_url))
+
+
+def _share_checks(args: argparse.Namespace) -> None:
+    """share のフラグの組み合わせ(#124)。"""
+    if _share_issue_old(args):
+        for on, name in (
+            (args.download, "--download"),
+            (args.dry_run, "--dry-run"),
+            (args.logout, "--logout"),
+            (args.no_measure, "--no-measure"),
+            (args.budget is not None, "--budget"),
+        ):
+            if on:
+                raise UsageError(
+                    tr(f"{name} は --issue といっしょには使えません", f"{name} cannot be used with --issue")
+                )
+        return
+    for on, name in ((args.print_url, "--print-url"), (args.mark_sent, "--mark-sent")):
+        if on and not args.issue:
+            raise UsageError(
+                tr(f"{name} は --issue といっしょのときだけ使えます", f"{name} is only for --issue")
+            )
+    if args.logout and args.issue:
+        raise UsageError(
+            tr("--logout は --issue といっしょには使えません", "--logout cannot be used with --issue")
+        )
+    if args.logout:
+        return
+    if args.json and args.download:
+        raise UsageError(
+            tr(
+                "--json では落としません(先に genmodelfit download <ID> --yes で落としてください)",
+                "--json does not download (download first with genmodelfit download <id> --yes)",
+            )
+        )
+    if not args.yes and not args.dry_run and (args.json or not _interactive()):
+        raise UsageError(
+            tr(
+                "--json・端末でないときは --yes が要ります(測る・送る前に尋ねられないため)",
+                "--json or no terminal needs --yes (the questions before measuring and sending cannot be"
+                " asked)",
+            )
+        )
+
+
+def cmd_share(args: argparse.Namespace) -> int:
+    """share(#124): 入っているモデルを時間の上限まで測り、送っていない実測といっしょに GitHub の PR で送る。
+    ComfyUI の見つけ方・入っているかの確かめ・測り方・落とし方は measure と同じ関数を使う。
+    --issue は今までの Issue のフォームの形(#113。ログインしない)。share <file> はそのファイルだけを送る。"""
+    from . import github
+    from .measure import SHARE_BUDGET_SECONDS, saved_submissions, suggestions
+
+    if args.file and (args.no_measure or args.download):
+        print(
+            tr(
+                "genmodelfit share: エラー: --no-measure・--download はファイルといっしょには使えません",
+                "genmodelfit share: error: --no-measure and --download cannot be used with a file",
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        not args.issue
+        and args.json
+        and not args.yes
+        and not (args.dry_run or args.logout or args.download or args.no_measure or args.budget is not None)
+    ):
+        # 前からの組み込み(アプリ)のため: --yes の無い share --json は、送っていない実測の一覧、
+        # share <file> --json は中身の確かめのまま(測らない・送らない。#113 と同じ)
+        return _cmd_share_issue(args)
+    _share_checks(args)
+    if _share_issue_old(args):
+        return _cmd_share_issue(args)
+    if args.logout:
+        removed = github.clear_cached_token()
+        if args.json:
+            _out(_envelope("share", None, None, action="logout", removed=removed))
+        else:
+            print(
+                tr("ログインの記録を消しました", "Removed the saved GitHub login")
+                if removed
+                else tr("消すログインの記録はありません", "No saved GitHub login")
+            )
+        return 0
+    budget = float(args.budget or SHARE_BUDGET_SECONDS)
+    if args.file:
+        if args.dry_run:
+            return _share_dry_run(args, [args.file], {"no_measure": True})
+        return _share_send(args, [args.file], None, None, {"no_measure": True})
+
+    s = None
+    url = found_by = None
+    plan: list = []
+    dl_plan: list = []
+    total = unknown = 0
+    stop: list[str] | None = None
+    start = None
+    sugg: list = []
+    skipped: list[dict[str, Any]] = []
+    checker = None
+    comfy_stop = False  # 測れない理由が ComfyUI のこと(起動のしかたを案内する)か
+    start_why = None
+    if not args.no_measure:
+        s, db = _system(args), _db(args)
+        url, found_by, running = _measure_comfyui(args)
+        gpu_stop = _measure_gpu_stop(s)
+        if gpu_stop:
+            stop = [gpu_stop]
+        else:
+            roots = _measure_roots(args, running)
+            # もう測って保存したもの(送る前・送ったが取り込まれる前)は、測り直さない(#124)
+            sugg = suggestions(
+                db,
+                s,
+                roots=roots,
+                policy=_policy(args),
+                extra=_saved_measurements(),
+                include_unknown_license=bool(getattr(args, "include_unknown_license", False)),
+            )
+            if url is not None and not args.dry_run:
+                # 起動中の ComfyUI があれば、足りないノードの要るものを先に外す(#124)
+                checker = _node_check(url)
+            plan, total, dl_plan = _share_replan(sugg, budget, checker, skipped)
+            _note_unchecked(args, checker)
+            unknown = sum(1 for x in sugg if x.installed is not None and x.installed.state == "unknown")
+            start, start_why = _comfyui_start_plan(args, url)
+            if url is None and start is None:
+                stop = _not_running_lines("", None, start_why)
+                comfy_stop = True
+    pending = saved_submissions(include_shared=args.all)
+    if start is not None:
+        args._download_dir = str(start.comfyui_dir)  # 落とす場所は起動する ComfyUI(尋ねない)
+    report: dict[str, Any] = {
+        "no_measure": bool(args.no_measure),
+        "comfyui": _comfy_json(url, found_by, start),
+        "budget_seconds": budget,
+        "plan": [x.to_dict() for x in plan],
+        "download_plan": [x.to_dict() for x in dl_plan],
+        "skipped": skipped,
+        "pending": [p.to_dict() for p in pending],
+    }
+    asks_download = _share_asks_download(args)
+    screen = _share_screen(
+        plan,
+        dl_plan,
+        pending,
+        url,
+        found_by,
+        budget,
+        total,
+        unknown,
+        start,
+        skipped,
+        asks_download,
+        downloads=bool(args.download),
+    )
+    if stop is not None and not pending:
+        # 測れず、送っていない実測も無い: 計画を見せ、起動の仕方を出して 1(尋ねない・ログインしない。#123)
+        if args.json:
+            _out(_envelope("share", None, None, action="send", **report, error=stop[0]))
+            return 1
+        # 測る計画があるときだけ見せる(GPU が無い・NVIDIA でない・ほかのサーバーがいるときは出さない)
+        if comfy_stop and plan and not isinstance(start_why, _HeadReason):
+            _emit(screen)
+        sys.stdout.flush()
+        print(tr(f"エラー: {stop[0]}", f"error: {stop[0]}"), file=sys.stderr)
+        for line in stop[1:]:
+            print(line, file=sys.stderr)
+        return 1
+    if stop is not None:
+        # 測れないが、送っていない実測はある: それだけを送るかに進む
+        if not args.json:
+            print(tr(f"注意: {stop[0]}", f"warning: {stop[0]}"), file=sys.stderr)
+            print(
+                tr(
+                    f"測らずに、送っていない実測 {len(pending)} 件だけを送るかに進みます"
+                    + ("(測るときは ComfyUI を起動してから、もう一度実行してください)" if comfy_stop else ""),
+                    f"Not measuring; moving on to sending the {len(pending)} unsent measurement(s)"
+                    + (" (to measure, start ComfyUI and run it again)" if comfy_stop else ""),
+                ),
+                file=sys.stderr,
+            )
+        plan, dl_plan, report["plan"], report["download_plan"] = [], [], [], []
+    if not plan and not dl_plan and not pending:
+        why = _share_nothing_reason(args, sugg, skipped, budget)
+        if args.json:
+            _out(
+                _envelope(
+                    "share", None, None, action="send", **report, files=[], prs=[], sent=False, reason=why
+                )
+            )
+        else:
+            print(why)
+        return 0
+    measuring = bool(plan or dl_plan)
+    if args.dry_run:
+        return _share_dry_run(args, [p.path for p in pending], report, screen if measuring else None)
+    if not args.json and measuring:
+        _emit(screen)
+        sys.stdout.flush()  # 計画を先に(このあとの stderr の途中経過と順が入れ替わらないように)
+    # 入っていないものを落とすか: --download なら落とす。
+    # 尋ねられない(--yes・--json・端末でない)なら落とさない。
+    # 尋ねるのは、使える入っているものが無ければ最初に(ComfyUI を起動する前)、あれば測り終えてから(#124)
+    want_dl: bool | None = True if args.download else (None if _share_asks_download(args) else False)
+    try:
+        if plan and not args.yes:
+            go = _ask_yes_no(
+                tr(f"{len(plan)} 件を測って送りますか? [Y/n] ", f"Measure {len(plan)} and send? [Y/n] "),
+                True,
+            )
+            if not go:
+                print(
+                    tr(
+                        "何もしませんでした(測らずに送るなら genmodelfit share --no-measure)",
+                        "Nothing done (to send without measuring: genmodelfit share --no-measure)",
+                    ),
+                    file=sys.stderr,
+                )
+                return 0
+        if not plan and dl_plan and want_dl is None:
+            want_dl = _share_ask_download(dl_plan, first=True)
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        return 130
+    measured: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    interrupted = downloaded = False
+    creds = session = None
+    args._steps = _share_steps(args, start, plan, dl_plan, want_dl)
+    if plan or (dl_plan and want_dl):
+        # 測る前は、ある資格情報(環境変数・保存したトークン)を確かめるだけ(使えなければすぐ止める)。
+        # ブラウザでのログインは、最後に PR で送ると決めたときだけ(#124)
+        if any(k == "check" for k, _ in args._steps.items):
+            _step(args, "check")
+        creds, session = _share_precheck(args)
+        holder: list = []
+        lock = _measure_lock()  # 同時に測らない(L1c)
+        try:
+            if start is not None:
+                _step(args, "start")
+                try:
+                    busy = _vram_busy_before_start(s.best_gpu.name if s and s.best_gpu else None)
+                    if busy:
+                        raise CliError(busy)
+                    started = _comfyui_start(args, start, holder)
+                except CliError as e:
+                    failed.append({"model_id": None, "settings": None, "error": str(e)})
+                    plan, dl_plan = [], []
+                    if not args.json:
+                        print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+                else:
+                    url = started.url
+                    report["comfyui"]["started"] = started.to_dict()
+                    # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
+                    _step(args, "nodes")
+                    before = [(x.model_id, tuple(x.args)) for x in plan]
+                    approved_dl = list(dl_plan)
+                    before_dl = [x.model_id for x in dl_plan]
+                    checker = _node_check(url)
+                    plan, total, dl_plan = _share_replan(sugg, budget, checker, skipped)
+                    _note_unchecked(args, checker)
+                    # 落とすのは、見せた(同意した)一覧の中だけ。外れたものは理由を言う(足さない)
+                    new_ids = {(x.model_id, tuple(x.args)) for x in dl_plan}
+                    dl_plan = [x for x in approved_dl if (x.model_id, tuple(x.args)) in new_ids]
+                    dropped = [x for x in approved_dl if (x.model_id, tuple(x.args)) not in new_ids]
+                    if dropped and not args.json:
+                        missing = {d["model_id"] for d in skipped}
+                        for x in dropped:
+                            why = (
+                                tr("ComfyUI に無いノードが要る", "needs nodes this ComfyUI does not have")
+                                if x.model_id in missing
+                                else tr("時間の上限に収まらない", "does not fit the time limit")
+                            )
+                            print(
+                                tr(
+                                    f"落とさないもの: {x.model_name} [{x.model_id}]({why})",
+                                    f"Not downloaded: {x.model_name} [{x.model_id}] ({why})",
+                                ),
+                                file=sys.stderr,
+                            )
+                    report.update(
+                        plan=[x.to_dict() for x in plan],
+                        download_plan=[x.to_dict() for x in dl_plan],
+                        skipped=skipped,
+                    )
+                    changed = before != [(x.model_id, tuple(x.args)) for x in plan] or before_dl != [
+                        x.model_id for x in dl_plan
+                    ]
+                    if not args.json and (skipped or changed):
+                        _emit(_share_replan_lines(plan, total, budget, skipped))
+                        sys.stdout.flush()
+                    if not plan and dl_plan and want_dl is None:
+                        # 入っているものがどれも使えなかった: いま尋ねる(ComfyUI は起動したまま)
+                        want_dl = _share_ask_download(dl_plan, first=True)
+            if plan:
+                _step(args, "measure", tr(f"測る({len(plan)} 件)", f"Measure ({len(plan)})"))
+            else:
+                args._steps.drop("measure")
+            ctx = {"url": url, "start": start, "holder": holder, "restarts": 0, "dead": False}
+            for i, x in enumerate(plan, 1):
+                _share_measure_one(
+                    args,
+                    ctx["url"],
+                    x,
+                    measured,
+                    failed,
+                    (i, len(plan)),
+                    plan[i:],
+                    ctx["holder"][-1] if ctx["holder"] else None,
+                )
+                if not _share_comfy_check(args, ctx, x, failed):
+                    break
+            if ctx["dead"]:
+                dl_plan = []
+            url = ctx["url"]
+            if dl_plan and want_dl is None:
+                want_dl = _share_ask_download(dl_plan, first=False)
+            if dl_plan and want_dl:
+                downloaded = True
+                _step(
+                    args,
+                    "download",
+                    tr(f"落として測る({len(dl_plan)} 件)", f"Download and measure ({len(dl_plan)})"),
+                )
+                _share_download_and_measure(args, ctx, dl_plan, measured, failed)
+        except KeyboardInterrupt:
+            interrupted = True
+            print(file=sys.stderr)
+            print(
+                tr(
+                    "止めました。そこまでの実測を送るかに進みます",
+                    "Stopped. Moving on to sending what was measured so far",
+                ),
+                file=sys.stderr,
+            )
+        finally:
+            for st in holder:
+                _comfyui_stop(args, st)
+            _measure_unlock(lock)
+    if failed and not args.json:
+        print()
+        print(tr(f"測れなかったもの: {len(failed)} 件", f"Not measured: {len(failed)}"))
+        for f in failed:
+            print(f"  - {f['model_id'] or 'ComfyUI'}: {f['error'].splitlines()[0]}")
+    report.update(measured=measured, failed=failed, interrupted=interrupted, downloaded=downloaded)
+    if dl_plan and not downloaded and not args.download and not _share_asks_download(args):
+        # 尋ねられない(--yes・--json・端末でない)ので落とさなかった: --download で落として測れることを知らせる
+        size = sum(x.installed.missing_bytes for x in dl_plan)
+        report["download_hint"] = {"count": len(dl_plan), "bytes": size}
+        if not args.json:
+            print(
+                tr(
+                    f"入っていないモデル {len(dl_plan)} 件(落とす量 {size / GIB:.1f} GB)は、"
+                    "--download を付けると落として測ります(genmodelfit share --download)",
+                    f"{len(dl_plan)} model(s) that are not installed ({size / GIB:.1f} GB) can be downloaded"
+                    " and measured with --download (genmodelfit share --download)",
+                )
+            )
+    # 測れたが送れないだけのもの(オーナーの決まり)は失敗に数えない。Ctrl+C で止めたら 130
+    base_code = 130 if interrupted else (1 if any(not f.get("unsendable") for f in failed) else 0)
+    pending = saved_submissions(include_shared=args.all)
+    if not pending:
+        if args.json:
+            _out(_envelope("share", None, None, action="send", **report, files=[], prs=[], sent=False))
+        else:
+            print(tr("送るものはありません", "Nothing to send"))
+        return base_code
+    return _share_send(args, [p.path for p in pending], creds, session, report, base_code)
+
+
 def cmd_contrib_share(args: argparse.Namespace) -> int:
-    return cmd_share(args, command="contrib")
+    # contrib share は前からのスクリプトのため、今までどおり Issue のフォームの形(#124)
+    return _cmd_share_issue(args, command="contrib")
 
 
 def _result_word(r) -> str:
@@ -3186,7 +5198,8 @@ def format_plan(plan, *, consent: bool = False, dest=None, asks: list[str] | Non
         if any(not f.license_url for f in plan.files):
             out.append(
                 tr(
-                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、それぞれのライセンス・利用条件に従って"
+                    f"このモデルは{_asks_phrase(asks)}。上のファイルを、"
+                    "それぞれのライセンス・利用条件に従って"
                     "使うこと(ライセンスの原文の URL が無いファイルは、上の確かめる場所で条件を自分で確かめた"
                     "うえで)に同意して、それでも落としますか?",
                     f"This model {_asks_phrase(asks)}. Do you agree to use the files above under their"
@@ -3809,55 +5822,6 @@ def _emit_next_steps(plan, args: argparse.Namespace, asks: list[str] | None = No
     _emit(tail)
 
 
-class _ProgressLine:
-    """進み具合を stderr の 1 行に出す(端末なら 0.5 秒に 1 回まで書き換え、
-    端末でなければ 10% ごとに 1 行)。"""
-
-    def __init__(self) -> None:
-        import time
-
-        self._time = time.monotonic
-        self._last = 0.0
-        self._pct = -1
-        self._tty = sys.stderr.isatty()
-
-    def __call__(self, p) -> None:
-        if p.message:
-            self._end()
-            print(f"  {p.name}: {p.message}", file=sys.stderr, flush=True)
-            return
-        if p.phase not in ("download", "check", "verify"):
-            return
-        now = self._time()
-        pct = int(100 * p.done_bytes / p.total_bytes) if p.total_bytes else 0
-        phase = {
-            "download": tr("取得", "download"),
-            "check": tr("確認", "check"),
-            "verify": tr("検証", "verify"),
-        }
-        text = (
-            f"[{p.file_index}/{p.file_count}] {phase[p.phase]} {p.name[-40:]}  "
-            f"{p.file_bytes / GIB:.2f}/{(p.file_total or 0) / GIB:.2f} GB  "
-            + tr(f"(全体 {pct}%)", f"(all {pct}%)")
-        )
-        if self._tty:
-            if now - self._last >= 0.5 or p.phase != "download":
-                sys.stderr.write("\r" + text[:99].ljust(99))
-                sys.stderr.flush()
-                self._last = now
-        elif pct // 10 != self._pct // 10:
-            print(text, file=sys.stderr, flush=True)
-        self._pct = pct
-
-    def _end(self) -> None:
-        if self._tty and self._last:
-            sys.stderr.write("\n")
-            self._last = 0.0
-
-    def close(self) -> None:
-        self._end()
-
-
 def _interactive() -> bool:
     """端末で y/N を尋ねられるか(標準入力と標準出力がどちらも端末)。試験で差し替える(#75)。
 
@@ -4073,10 +6037,11 @@ def cmd_download(args: argparse.Namespace) -> int:
             )
             return 130
         if answer != "y":
+            args._declined = True
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
         break
-    show = None if args.json else _ProgressLine()
+    show = None if args.json else _DownloadView()
     try:
         result = download(plan, progress=show, yes=True)
     except KeyboardInterrupt:
@@ -4211,7 +6176,155 @@ def _installed_text(inst) -> str:
     )
 
 
-def _comfyui_text(url: str | None, found_by: str | None) -> str:
+def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any, str | None]:
+    """起動中の ComfyUI が無いとき、自動で起動する仕方(#124。comfystart)。
+    (StartPlan か None, 起動できない理由)。
+    見つけ方は download・measure と同じ(--comfyui-dir → 環境変数 → genmodelfit config → 自動で探す)。
+    --url・--no-start・GENMODELFIT_COMFYUI_START=0 なら起動しない。通信しない。"""
+    from . import comfyfind, comfystart
+    from .downloader import DownloadError
+
+    if url is not None:
+        return None, None
+    found = comfyfind.comfy_port_status()
+    port, status = found if found else (None, None)
+    if port is not None and status in (401, 403):
+        return None, _HeadReason(
+            tr(
+                f"ポート {port} のサーバー(ComfyUI か、その前のプロキシ)が認証(ログイン)"
+                f"を求めています({status})。"
+                "2 台目は起動しません。genmodelfit は認証の付いた ComfyUI では測れないので、認証の無い "
+                "ComfyUI を"
+                " --url http://<ホスト>:<ポート> で指定してください",
+                f"The server on port {port} (ComfyUI or a proxy in front of it) asks for authentication "
+                f"({status})."
+                " A second ComfyUI is not started. genmodelfit cannot measure behind authentication; give a"
+                " ComfyUI without it with --url http://<host>:<port>",
+            )
+        )
+    if port is not None and status != 200:
+        return None, _HeadReason(
+            tr(
+                f"ポート {port} で ComfyUI でないものが答えています(HTTP {status})。2 台目は起動しません。"
+                "測る ComfyUI を --url http://<ホスト>:<ポート> で指定してください",
+                f"Something that is not ComfyUI answers on port {port} (HTTP {status}). No ComfyUI is "
+                "started;"
+                " give the ComfyUI to measure on with --url http://<host>:<port>",
+            )
+        )
+    if port is not None:
+        # フォルダを読めないが、ComfyUI がもう動いている(L3a): 同じフォルダで 2 台目を起動しない
+        return None, _HeadReason(
+            tr(
+                f"ComfyUI がもうポート {port} で動いているようです(フォルダを読めませんでした)。"
+                f"2 台目は起動しません。それで測るなら --url http://127.0.0.1:{port} を付けてください",
+                f"A ComfyUI already seems to run on port {port} (its folders could not be read). A second "
+                "one is"
+                f" not started; to measure on it, add --url http://127.0.0.1:{port}",
+            )
+        )
+    if getattr(args, "no_start", False):
+        return None, tr(
+            "--no-start なので ComfyUI を起動しません(外すと、見つけた ComfyUI を起動して測ります)",
+            "--no-start was given, so ComfyUI is not started (without it, the ComfyUI found is started)",
+        )
+    if comfystart.start_disabled():
+        return None, tr(
+            f"環境変数 {comfystart.START_ENV} が 0 なので ComfyUI を起動しません",
+            f"The environment variable {comfystart.START_ENV} is 0, so ComfyUI is not started",
+        )
+    try:
+        dest = _resolve_destination(args, probe=False)
+    except (CliError, DownloadError, OSError):
+        return None, None
+    d = dest.comfyui_dir
+    if d is None:
+        return None, None
+    places = comfyfind.current_places()
+    desktop = any(comfyfind._key(c.path) == comfyfind._key(d) for c in comfyfind.desktop_candidates(places))
+    try:
+        plan = comfystart.plan_start(
+            d, desktop=desktop, user_data=comfyfind.desktop_user_data(places) if desktop else None
+        )
+    except comfystart.StartError as e:
+        return None, str(e)
+    return plan, None
+
+
+def _comfyui_start(args: argparse.Namespace, plan, holder: list):
+    """ComfyUI を起動して、準備ができるまで待つ(#124)。起動したものはすぐ holder に入れる(何かを表示する
+    より前。呼び出し側の finally が holder のものを止めるので、途中の Ctrl+C でも残らない)。
+    途中は stderr に出す(--json では出さない)。起動できなければ CliError(ログの場所と最後の行を添える)。"""
+    from . import comfystart
+
+    say = _progress(args)
+    try:
+        started = comfystart.launch(plan)
+    except comfystart.StartError as e:
+        raise CliError(str(e)) from None
+    holder.append(started)
+    say(
+        tr(
+            f"ComfyUI を起動しています({plan.comfyui_dir}、ポート {started.port}。ログ: {started.log})",
+            f"Starting ComfyUI ({plan.comfyui_dir}, port {started.port}; log: {started.log})",
+        )
+    )
+    limit = getattr(args, "start_timeout", None) or comfystart.DEFAULT_START_TIMEOUT
+    view = _StartView(comfystart.TYPICAL_START_SECONDS, limit, enabled=not getattr(args, "json", False))
+    waited_box = [0.0]
+
+    def progress(waited: float, line: str = "") -> None:
+        waited_box[0] = waited
+        view.update(waited, line)
+
+    try:
+        comfystart.wait_ready(started, timeout=limit, progress=progress)
+    except comfystart.StartError as e:
+        view.close()
+        lines = [str(e), *("  " + x for x in (e.tail or []))]
+        raise CliError("\n".join(lines)) from None
+    except BaseException:
+        view.close()
+        raise
+    view.done(waited_box[0])
+    say(tr(f"ComfyUI: {started.url}", f"ComfyUI: {started.url}"))
+    return started
+
+
+def _comfyui_stop(args: argparse.Namespace, started) -> None:
+    """自分で起動した ComfyUI だけを止める(前から起動していたものには触らない)。"""
+    from . import comfystart
+
+    if started is None:
+        return
+    ok = comfystart.stop(started)
+    if not getattr(args, "json", False):
+        print(
+            tr("起動した ComfyUI を止めました", "Stopped the ComfyUI that was started")
+            if ok
+            else tr(
+                f"起動した ComfyUI を止められませんでした"
+                f"(プロセス {started.process.pid}。手で止めてください)",
+                f"Could not stop the ComfyUI that was started (process {started.process.pid}; stop it by"
+                " hand)",
+            ),
+            file=sys.stderr,
+        )
+
+
+def _comfy_json(url: str | None, found_by: str | None, start) -> dict[str, Any]:
+    d: dict[str, Any] = {"url": url, "found_by": found_by}
+    if start is not None:
+        d["start"] = start.to_dict()
+    return d
+
+
+def _comfyui_text(url: str | None, found_by: str | None, start=None) -> str:
+    if url is None and start is not None:
+        return tr(
+            f"起動します({start.comfyui_dir}。測り終えたら止めます)",
+            f"will be started ({start.comfyui_dir}; stopped after measuring)",
+        )
     if url is None:
         return tr("見つかりません(起動していない)", "not found (not running)")
     if found_by == "option":
@@ -4219,8 +6332,15 @@ def _comfyui_text(url: str | None, found_by: str | None) -> str:
     return tr(f"{url}(この PC で起動中の ComfyUI を見つけた)", f"{url} (a ComfyUI running on this PC)")
 
 
-def _not_running_lines(model_id: str, inst) -> list[str]:
+class _HeadReason(str):
+    """それだけで足りる「起動しない理由」(ComfyUI がもう動いている など)。起動のしかたの案内を付けない。"""
+
+
+def _not_running_lines(model_id: str, inst, why: str | None = None) -> list[str]:
     from .comfyfind import PROBE_PORTS, search_disabled
+
+    if isinstance(why, _HeadReason):
+        return [str(why)]
 
     ports = "・".join(str(p) for p in PROBE_PORTS)
     ports_en = " and ".join(str(p) for p in PROBE_PORTS)
@@ -4237,6 +6357,7 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
     )
     lines = [
         head,
+        *([why] if why else []),
         tr(
             "ComfyUI を起動してから、同じコマンドをもう一度実行してください:",
             "Start ComfyUI, then run the same command again:",
@@ -4266,6 +6387,19 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
     return lines
 
 
+def _suggestion_row(i: int, x) -> str:
+    """提案の 1 行(measure の一覧と share の計画で同じもの)。"""
+    kind = tr(_MODALITY_JA.get(x.modality, x.modality), x.modality)
+    prec = f"、{x.precision}" if x.precision else ""
+    prec_en = f", {x.precision}" if x.precision else ""
+    what = " ".join([x.model_id, *x.args])  # [ ] の中をそのまま measure に渡せる(#116)
+    return tr(
+        f"  {i:>2}. {x.model_name} [{what}]({kind}{prec})  {_installed_text(x.installed)}  約 {x.seconds} 秒",
+        f"  {i:>2}. {x.model_name} [{what}] ({kind}{prec_en})  {_installed_text(x.installed)}"
+        f"  about {x.seconds} s",
+    )
+
+
 def _suggestion_lines(sugg: list) -> list[str]:
     from .measure import MAX_SUGGEST_SECONDS as max_secs
     from .measure import VARIANTS_PER_MODEL as per_model
@@ -4276,19 +6410,7 @@ def _suggestion_lines(sugg: list) -> list[str]:
             "=== Models worth measuring (no measurement on this GPU yet) ===",
         )
     ]
-    for i, x in enumerate(sugg, 1):
-        kind = tr(_MODALITY_JA.get(x.modality, x.modality), x.modality)
-        prec = f"、{x.precision}" if x.precision else ""
-        prec_en = f", {x.precision}" if x.precision else ""
-        what = " ".join([x.model_id, *x.args])  # [ ] の中をそのまま measure に渡せる(#116)
-        out.append(
-            tr(
-                f"  {i:>2}. {x.model_name} [{what}]({kind}{prec})  {_installed_text(x.installed)}"
-                f"  約 {x.seconds} 秒",
-                f"  {i:>2}. {x.model_name} [{what}] ({kind}{prec_en})  {_installed_text(x.installed)}"
-                f"  about {x.seconds} s",
-            )
-        )
+    out += [_suggestion_row(i, x) for i, x in enumerate(sugg, 1)]
     out.append(
         tr(
             "時間は目安(同じモデルのほかの GPU の実測、無ければ種類ごとのおおよその値。"
@@ -4353,7 +6475,7 @@ def _measure_settings(args: argparse.Namespace):
 
 
 def _measure_screen(
-    fit, url: str | None, found_by: str | None, inst, secs: int, basis: str, settings=None
+    fit, url: str | None, found_by: str | None, inst, secs: int, basis: str, settings=None, start=None
 ) -> list[str]:
     m = fit.model
     kind = tr(_MODALITY_JA.get(m.modality, m.modality), m.modality)
@@ -4365,7 +6487,10 @@ def _measure_screen(
             f"Model:      {fit.model_name or m.name} [{m.id}] ({kind}, precision {prec})",
         ),
         tr(f"設定:       {_settings_text(settings)}", f"Settings:   {_settings_text(settings)}"),
-        tr(f"ComfyUI:    {_comfyui_text(url, found_by)}", f"ComfyUI:    {_comfyui_text(url, found_by)}"),
+        tr(
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+        ),
         tr(f"ファイル:   {_installed_text(inst)}", f"Files:      {_installed_text(inst)}"),
         tr(
             f"時間:       {_seconds_text(secs, basis, settings is not None)}。"
@@ -4385,6 +6510,42 @@ def _measure_screen(
 def _measure_next_step(msg: str, model_id: str) -> str:
     """measure が測れなかったときの「次にすること」。
     bench の文の --force などは measure に無いので、ここで言い換える。"""
+    if "テンプレートを取れません" in msg or "Cannot fetch the template" in msg:
+        return tr(
+            "次にすること: 回線(プロキシの設定も)を確かめてから、もう一度実行してください"
+            "(公式のテンプレートを GitHub から取ります)。",
+            "Next: check the connection (and proxy settings), then run it again (the official template is"
+            " fetched from GitHub).",
+        )
+    if "ワークフローを受け付けませんでした" in msg or "rejected the workflow" in msg:
+        return tr(
+            "次にすること: 上のノードの理由を見てください。ComfyUI "
+            "やカスタムノードを更新すると直ることがあります。"
+            "直らなければ、この文を添えて GitHub の Issue で知らせてください。",
+            "Next: read the node's reason above. Updating ComfyUI or the custom nodes may fix it; if not, "
+            "tell"
+            " us in a GitHub issue with this message.",
+        )
+    if "保存できません" in msg or "cannot be saved" in msg:
+        return tr(
+            "次にすること: キャッシュのフォルダ(GENMODELFIT_CACHE_DIR)が書けて、"
+            "ディスクに空きがあるかを確かめてから、"
+            "もう一度実行してください。",
+            "Next: check that the cache folder (GENMODELFIT_CACHE_DIR) is writable and the disk has room, "
+            "then"
+            " run it again.",
+        )
+    if "秒で終わらなかった" in msg or "not finished in" in msg:
+        return tr(
+            "次にすること: 初めは読み込みで長くかかります。"
+            "もう一度実行するか、待つ時間の上限を --timeout で延ばしてください。",
+            "Next: the first run takes longer to load. Run it again, or allow more time with --timeout.",
+        )
+    if "ComfyUI が止まりました" in msg or "ComfyUI stopped" in msg:
+        return tr(
+            "次にすること: ComfyUI のログを見て、起動し直してから、もう一度実行してください。",
+            "Next: read the ComfyUI log, start it again, then run it again.",
+        )
     if "--force" in msg:
         return tr(
             "次にすること: ほかの生成・ゲーム・動画の書き出しなどを閉じて GPU を空け、"
@@ -4402,6 +6563,13 @@ def _measure_next_step(msg: str, model_id: str) -> str:
             f"Next: download the files with genmodelfit download {model_id} (use --comfyui-dir for the"
             " folder your ComfyUI reads), restart ComfyUI, then run it again.",
         )
+    if "ComfyUI に無いノード" in msg or "nodes that ComfyUI does not have" in msg:
+        return tr(
+            "次にすること: ComfyUI を新しい版に更新してください(カスタムノードが要るものは、"
+            "そのカスタムノードを入れてください)。そのあと、もう一度実行してください。",
+            "Next: update ComfyUI to a newer version (or install the custom nodes it needs), then run it"
+            " again.",
+        )
     if "頼んだ設定" in msg or "requested settings" in msg:
         return tr(
             f"次にすること: このテンプレートでは、その設定を変えられません。設定を付けずに"
@@ -4414,6 +6582,12 @@ def _measure_next_step(msg: str, model_id: str) -> str:
         return tr(
             "次にすること: ComfyUI のキューの仕事が終わるのを待ってから、もう一度実行してください。",
             "Next: wait until the jobs in ComfyUI's queue are done, then run it again.",
+        )
+    if not any(w in msg.lower() for w in ("接続", "通信できません", "connect", "cannot talk")):
+        return tr(
+            "次にすること: もう一度実行してください。直らなければ、この文を添えて GitHub の Issue "
+            "で知らせてください。",
+            "Next: run it again. If it still fails, tell us in a GitHub issue with this message.",
         )
     return tr(
         "次にすること: ComfyUI が起動していて、ブラウザで開けることを確かめてから、もう一度実行してください"
@@ -4455,36 +6629,149 @@ def _share_hint(m) -> str:
     )
 
 
-def _measure_download(args: argparse.Namespace, model_id: str) -> int:
-    """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。"""
+def _measure_download(args: argparse.Namespace, model_id: str, consented: bool = False) -> int:
+    """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。consented は、share の「落として
+    測りますか」に y と答えたとき(名前と量を見せて同意を取ってある): download のモデルごとの質問を省く
+    (--yes。ライセンス不明・無検閲は download の決まりどおり、指定が無ければ落とさない)。
+    利用者が落とすのをやめたら args._download_declined を真にする。"""
     argv = ["--lang", i18n.get_language(), "download", model_id]
-    if args.comfyui_dir:
-        argv += ["--comfyui-dir", args.comfyui_dir]
-    if args.yes:
+    place = args.comfyui_dir or getattr(args, "_download_dir", None)
+    if place:
+        argv += ["--comfyui-dir", place]
+    if args.yes or consented:
         argv.append("--yes")
+    if getattr(args, "include_unknown_license", False):  # share --any-license(#124。download と同じ同意)
+        argv.append("--any-license")
     if args.db:
         argv += ["--db", args.db]
     if args.no_cache:
         argv.append("--no-cache")
     ns = build_parser().parse_args(argv)
-    return cmd_download(ns)
+    # _main を通らないので、内容の区分の既定(sfw)をここで入れる。無検閲の同意は足さない
+    ns.content = getattr(args, "content", None) or DEFAULT_CONTENT
+    code = cmd_download(ns)
+    args._download_declined = bool(getattr(ns, "_declined", False))
+    return code
+
+
+def _measure_run(
+    args: argparse.Namespace, url: str, entry, settings, free: bool = False, progress=None
+) -> dict[str, Any]:
+    """1 つ測って保存する(measure と share で共有する。#124)。free なら測る前に ComfyUI の /free でモデルと
+    前の結果(キャッシュ)を外す(続けて測ると前のモデル・前の結果が混ざるため)。bench.run で測り、結果を
+    <キャッシュ>/measurements/ に、標準の条件で最後まで測れた(ok か oom)ものは送る用の提出を
+    <キャッシュ>/submissions/ に書く。測れなければ error に文を入れて返す(例外にしない)。"""
+    from .bench import BenchError, BenchOptions, is_local, run, save, save_decision
+    from .contrib import build_submission, suggested_path, write_submission
+    from .estimate import files_fingerprint
+    from .measure import same_variant, settings_dict, submissions_dir
+    from .workflow import WorkflowError
+
+    out: dict[str, Any] = {
+        "error": None,
+        "result": None,
+        "measurement": None,
+        "saved_to": None,
+        "not_saved": None,
+        "submission": None,
+        "path_in_repo": None,
+    }
+    opts = BenchOptions(
+        model_id=entry.id,
+        url=url,
+        timeout=getattr(args, "timeout", None) or 1800.0,
+        precision=entry.precision,
+        files_fp=files_fingerprint(entry),
+        width=settings.width if settings else None,
+        height=settings.height if settings else None,
+        frames=settings.frames if settings else None,
+        seconds=settings.seconds if settings else None,
+        strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
+        free_before=free,
+    )
+    try:
+        result = run(opts, log=_progress(args), progress=progress)
+    except (BenchError, WorkflowError) as e:
+        out["error"] = _without_workflow_hint(str(e))
+        return out
+    m = result.measurement
+    if settings is not None and not same_variant(m.settings, settings):
+        result.warnings.append(
+            tr(
+                "測った設定が頼んだ設定と違います(実測には測った設定を書きました): "
+                f"{settings_dict(m.settings)}",
+                f"The measured settings differ from the requested ones (the measured ones were recorded):"
+                f" {settings_dict(m.settings)}",
+            )
+        )
+    out_path, not_saved = save_decision(m, None, False, False)
+    out["unsendable"] = None
+    try:
+        if out_path is not None:
+            save(m, out_path)
+        if m.standard and m.outcome in ("ok", "oom"):
+            sub = build_submission(m, detect() if is_local(url) else None)
+            # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
+            why = _submission_refusal(sub, args)
+            if why:
+                out["unsendable"] = why
+            else:
+                out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
+                out["path_in_repo"] = suggested_path(sub)
+    except OSError as e:
+        # 測ったのに保存できない(キャッシュが書けない・ディスクが満杯。L5a): はっきり言う
+        out["error"] = tr(
+            f"測りましたが、保存できません({type(e).__name__}: {getattr(e, 'filename', '') or ''})。"
+            "キャッシュのフォルダ(GENMODELFIT_CACHE_DIR で変えられる)とディスクの空きを確かめてください",
+            f"Measured, but it cannot be saved ({type(e).__name__}: {getattr(e, 'filename', '') or ''})."
+            " Check the cache folder (GENMODELFIT_CACHE_DIR changes it) and the free disk space",
+        )
+        out.update(result=result, measurement=m)
+        return out
+    out.update(result=result, measurement=m, saved_to=out_path, not_saved=not_saved)
+    return out
+
+
+_WORKFLOW_HINTS = (  # measure・share には --workflow が無いので、bench の文の --workflow の案内を言い換える
+    ("名前を確かめるか、--workflow で API 形式のワークフローを渡してください", "名前を確かめてください"),
+    ("Check the name, or pass an API-format workflow with --workflow", "Check the name"),
+    (
+        "ComfyUI の input フォルダに置くか、--workflow で別の画像を指定してください",
+        "ComfyUI の input フォルダに置いてください",
+    ),
+    (
+        "Put it in ComfyUI's input folder, or give another image with --workflow",
+        "Put it in ComfyUI's input folder",
+    ),
+    ("ComfyUI を更新するか --workflow で API 形式を渡してください", "ComfyUI を更新すると測れます"),
+    ("update ComfyUI or pass the API format via --workflow", "update ComfyUI to measure it"),
+)
+
+
+def _without_workflow_hint(msg: str) -> str:
+    for a, b in _WORKFLOW_HINTS:
+        msg = msg.replace(a, b)
+    return msg
+
+
+def _submission_refusal(sub: dict[str, Any], args: argparse.Namespace) -> list[str]:
+    """提出が送れない理由(share と同じ点検: 個人の情報の点検の NG と検査の誤り)。送れるなら空。"""
+    from .contrib import dumps, privacy_checklist, share_check, validate_submission
+
+    raw = dumps(sub)
+    report = validate_submission(sub, _contrib_db(args), raw=raw, check_filename=False)
+    return share_check(privacy_checklist(sub, raw), report)
 
 
 def cmd_measure(args: argparse.Namespace) -> int:
-    from .bench import BenchError, BenchOptions, is_local, run, save, save_decision
-    from .contrib import build_submission, suggested_path, write_submission
     from .downloader import DownloadError, directory_refs
-    from .estimate import files_fingerprint
     from .measure import (
         installed_state,
         resolve,
-        same_variant,
         settings_dict,
-        submissions_dir,
         suggestions,
         time_hint,
     )
-    from .workflow import WorkflowError
 
     settings = _measure_settings(args)
     if settings is not None and not args.model:
@@ -4510,7 +6797,8 @@ def cmd_measure(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
     url, found_by, running = _measure_comfyui(args)
     roots = _measure_roots(args, running)
-    comfy = {"url": url, "found_by": found_by}
+    start, start_why = _comfyui_start_plan(args, url)
+    comfy = _comfy_json(url, found_by, start)
     if s.best_gpu is None:
         msg = tr(
             "この PC に測りに使える GPU が見つかりません(measure は GPU で測ります)。"
@@ -4522,8 +6810,18 @@ def cmd_measure(args: argparse.Namespace) -> int:
             _out(_envelope("measure", s, db, action="suggest" if not args.model else "measure", error=msg))
             return 1
         raise CliError(msg)
+    gpu_stop = _measure_gpu_stop(s)
+    if gpu_stop:  # 今は NVIDIA の GPU だけで測る(#124)
+        if args.json:
+            _out(
+                _envelope("measure", s, db, action="suggest" if not args.model else "measure", error=gpu_stop)
+            )
+            return 1
+        raise CliError(gpu_stop)
     if not args.model:
-        sugg = suggestions(db, s, roots=roots, policy=_policy(args))[: args.limit or MEASURE_LIMIT]
+        sugg = suggestions(db, s, roots=roots, policy=_policy(args), extra=_saved_measurements())[
+            : args.limit or MEASURE_LIMIT
+        ]
         if args.json:
             _out(
                 _envelope(
@@ -4541,7 +6839,21 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 )
             )
             return 0
-        _emit(_suggestion_lines(sugg))
+        skipped: list[dict[str, Any]] = []
+        if url is not None and _interactive():
+            # 起動中の ComfyUI に無いノードの要るものは、選べないように外す(#124)
+            checker = _node_check(url)
+            keep = []
+            for x in sugg:
+                miss = checker.missing(x.model_id)
+                if miss:
+                    skipped.append({"model_id": x.model_id, "name": x.model_name, "missing_nodes": miss})
+                else:
+                    keep.append(x)
+            sugg = keep
+        _emit(_suggestion_lines(sugg) + _skipped_lines(skipped))
+        if not sugg:
+            return 0
         if not _interactive():
             sys.stdout.flush()
             print(
@@ -4552,10 +6864,10 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 0
-        if url is None:
+        if url is None and start is None:
             # 選ばせてから止めない(#123)。一覧は見せ、起動の仕方を出して終える
             sys.stdout.flush()
-            lines = _not_running_lines("", None)
+            lines = _not_running_lines("", None, start_why)
             print(tr(f"エラー: {lines[0]}", f"error: {lines[0]}"), file=sys.stderr)
             for line in lines[1:]:
                 print(line, file=sys.stderr)
@@ -4599,10 +6911,19 @@ def cmd_measure(args: argparse.Namespace) -> int:
         return 1
 
     if not args.json:
-        _emit(_measure_screen(fit, url, found_by, inst, secs, basis, settings))
-    if url is None:
-        lines = _not_running_lines(entry.id, inst)
+        _emit(_measure_screen(fit, url, found_by, inst, secs, basis, settings, start))
+        sys.stdout.flush()  # 画面を先に(このあとの stderr の途中経過と順が入れ替わらないように)
+    if url is None and start is None:
+        lines = _not_running_lines(entry.id, inst, start_why)
         return fail(lines[0], lines[1:])
+    if url is not None:
+        # 足りないノードがあれば、落とす・測る前に止める(#124)
+        from .workflow import missing_nodes_message
+
+        miss = _node_check(url).missing(entry.id)
+        if miss:
+            msg = missing_nodes_message(miss, workflow_hint=False)
+            return fail(msg, [_measure_next_step(msg, entry.id)])
     if inst.state == "no" and args.json:
         return fail(
             tr(
@@ -4642,42 +6963,47 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if inst.state == "no":
         code = _measure_download(args, entry.id)
         if code != 0:
+            if getattr(args, "_download_declined", False):
+                print(tr("やめました(落とさないので測りません)", "Stopped (not downloaded, so not measured)"))
+                return 0
             return code
         print()
-    opts = BenchOptions(
-        model_id=entry.id,
-        url=url,
-        timeout=args.timeout or 1800.0,
-        precision=entry.precision,
-        files_fp=files_fingerprint(entry),
-        width=settings.width if settings else None,
-        height=settings.height if settings else None,
-        frames=settings.frames if settings else None,
-        seconds=settings.seconds if settings else None,
-        strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
-    )
+    holder: list = []
+    lock = _measure_lock()  # 同時に測らない(L1c)
     try:
-        result = run(opts, log=_progress(args))
-    except (BenchError, WorkflowError) as e:
-        return fail(str(e), [_measure_next_step(str(e), entry.id)])
-    m = result.measurement
-    if settings is not None and not same_variant(m.settings, settings):
-        result.warnings.append(
-            tr(
-                "測った設定が頼んだ設定と違います(実測には測った設定を書きました): "
-                f"{settings_dict(m.settings)}",
-                f"The measured settings differ from the requested ones (the measured ones were recorded):"
-                f" {settings_dict(m.settings)}",
+        if start is not None:
+            busy = _vram_busy_before_start(s.best_gpu.name if s.best_gpu else None)
+            if busy:
+                return fail(busy)
+            try:
+                started = _comfyui_start(args, start, holder)
+            except CliError as e:
+                return fail(str(e))
+            url = started.url
+            plan["comfyui"]["started"] = started.to_dict()
+        # 自分で起動した ComfyUI か --free なら、測る前にメモリと前の結果を空ける(#124)
+        progress, view = _run_live(args, tr(f"測る: {entry.id}", f"Measure: {entry.id}"), secs)
+        try:
+            run_ = _measure_run(
+                args,
+                url,
+                entry,
+                settings,
+                free=bool(holder) or bool(getattr(args, "free", False)),
+                progress=progress,
             )
-        )
-    out_path, not_saved = save_decision(m, None, False, False)
-    if out_path is not None:
-        save(m, out_path)
-    sub_path = sub_repo = None
-    if m.standard and m.outcome in ("ok", "oom"):
-        sub = build_submission(m, detect() if is_local(url) else None)
-        sub_path = write_submission(sub, str(submissions_dir()) + os.sep)
-        sub_repo = suggested_path(sub)
+        finally:
+            view.done()
+    finally:
+        for st in holder:
+            _comfyui_stop(args, st)
+        _measure_unlock(lock)
+    if run_["error"] is not None:
+        return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
+    m, result = run_["measurement"], run_["result"]
+    out_path, not_saved = run_["saved_to"], run_["not_saved"]
+    sub_path, sub_repo = run_["submission"], run_["path_in_repo"]
+    unsendable = run_.get("unsendable")
     hint = _share_hint(m)
     code = 1 if result.failed else 0
     if args.json:
@@ -4720,6 +7046,13 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if sub_path is not None:
         print(tr(f"送る用:    {sub_path}", f"To send:   {sub_path}"))
         print(hint)
+    elif unsendable:
+        print(
+            tr(
+                "送れません(この PC の実測としては保存しました): " + " / ".join(unsendable),
+                "Cannot be sent (kept as this PC's measurement): " + " / ".join(unsendable),
+            )
+        )
     return code
 
 
@@ -5275,15 +7608,21 @@ genmodelfit share, which sends it (it never asks whether to send).
 
 PRECONDITIONS:
   A GPU on this PC and a ComfyUI on it: --url, or one running on this PC (127.0.0.1 port 8188
-  or 8000). When none is running, it says how to start ComfyUI and exits 1. The GPU must be
-  free: when another program uses it, nothing is measured (like bench without --force).
+  or 8000). When none is running but a ComfyUI folder is found (like download), it is started
+  in the background (portable: its python_embeded; manual or comfy-cli: its .venv/venv; Desktop:
+  its .venv and the app's ComfyUI; on 127.0.0.1 and a free port, no browser), used, and stopped
+  after measuring; the [Y/n] question covers it (--no-start or GENMODELFIT_COMFYUI_START=0
+  turns this off; --start-timeout, default 300 s). Otherwise it says how to start ComfyUI and
+  exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench
+  without --force).
 
 SIDE EFFECTS:
   Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without --url), the ComfyUI
   it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and
   the model files when it downloads them. Nothing about this PC is sent anywhere else.
   Writes the result to <cache>/measurements/ (used when this PC is judged) and a submission draft
-  to <cache>/submissions/ (what genmodelfit share lists).
+  to <cache>/submissions/ (what genmodelfit share sends). A started ComfyUI writes its output to
+  <cache>/comfyui-<date>.log.
 
 EXIT CODES:
   0  Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?")
@@ -5301,40 +7640,63 @@ AGENT USAGE:
   comfyui: { url, found_by }, suggestions? [{ ..., settings, args }] | model_id, settings,
   installed, time_hint, measurement, saved_to, submission, hint, error? }
   Details: docs/schema.md""",
-    "share": """Send a measurement: show exactly what will be sent and open the GitHub form for it.
-Without FILE it lists the measurements saved by measure (and bench --share) that are not marked
-as sent, newest first; choose one by number. It shows the whole content (GPU name, VRAM, OS
-family, model, settings and values; no PC or user names) with the privacy checks, then opens
-the measurement issue form on GitHub in your browser with the content filled in: sign in and
-press "Create". A bot checks it within a few minutes and replies on the page; if it is fine,
-it goes into the project once a maintainer accepts it. When the content does not fit in a URL it
-is copied to the clipboard (clip, pbcopy, wl-copy, xclip or xsel) and the empty form is opened;
-paste it there. Once the page is opened, or the URL is printed with --print-url, the measurement
-is marked as sent on this PC and is not listed again (--all lists it); --json marks it only with
---mark-sent. --print-url without FILE uses the only unsent measurement (with several, give FILE).
-You need a GitHub account.
+    "share": """Measure for a few minutes and send the measurements as a GitHub pull request.
+Without FILE it finds ComfyUI like measure (--url, else one running on this PC, else it starts
+the one it finds and stops it afterwards), picks the suggestions of measure whose files are
+installed and that have no result on this GPU yet (also none saved on this PC, sent or not)
+until their rough times add up to --budget (300 s), and shows the plan with the unsent
+measurements and the total time (starting ComfyUI about 45 s, measuring, and downloading as an
+example at 100 Mbps). It asks once [Y/n], then measures one by one (a failure does not stop the
+rest; Ctrl+C goes on to sending what was measured). Models that are not installed are
+downloaded only with --download or y to one [y/N] question (asked first when nothing installed
+can be measured, else after measuring), with download's questions and consent rules; --yes
+alone never downloads. Then it shows every file to send (the whole content and the privacy
+checks) and asks how to send it: 1) a pull request (sign in to GitHub) 2) issues (no sign-in;
+the form opens in your browser, one issue per file) q) not now. --yes, --json or no terminal
+send a pull request; --issue --yes sends issues (the URLs are printed without a terminal).
+Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN, else the
+saved sign-in) and stops at once if it does not work; the device login in your browser (scope
+public_repo; saved for next time; --logout removes it) happens only when you choose a pull
+request. With --yes and no terminal, a missing token stops it before measuring. The pull request
+comes from a fork of the repository: a branch from the merge base of the upstream main and the
+fork's main with the files under
+data/contrib/<GPU>/ (titled "measurements: <GPU> (<count>)"), or your open share pull request
+for that GPU; files already there are skipped. If the pull request cannot be made, a terminal
+offers issues for the same files. Results are saved before sending and are never measured again:
+genmodelfit share --no-measure (or --issue) sends them later. Sent files are marked on this PC
+(--all includes them). Without any ComfyUI it sends only the unsent measurements; with none it
+says how to start ComfyUI and exits 1 without asking. FILE sends that file only. share --issue
+without --yes is the older way: choose an unsent measurement and open its issue form.
 
 PRECONDITIONS:
-  A measurement saved by genmodelfit measure, or a submission JSON.
+  A GitHub account. To measure: a GPU and ComfyUI (as for measure).
 
 SIDE EFFECTS:
-  No network access: it only opens your browser (in a terminal, without --json and
-  --print-url). The content is sent only when you press "Create" on GitHub.
-  Writes the sent marks to <cache>/submissions_shared.json; may put the content on the clipboard.
+  Network: like measure while measuring and downloading; after you agree, github.com and
+  api.github.com (sign-in, fork, branch, files, pull request). --dry-run and --issue use no
+  network. Writes measurements like measure, the sent marks to <cache>/submissions_shared.json
+  and the sign-in token to <config>/github_token (readable only by you).
 
 EXIT CODES:
-  0  Success (also: nothing chosen, nothing to send)
-  1  Error: the file cannot be read, a privacy check is NG or the checks have errors, or
-     --print-url without FILE when several measurements are unsent
+  0  Success (also: answered n, nothing to measure or send)
+  1  Error: cannot sign in, no ComfyUI and nothing to send, a measurement failed, a file was
+     refused (privacy check NG or check errors), GitHub refused the upload (the results stay
+     saved), --json or no terminal without --yes
   2  Usage error
 
 AGENT USAGE:
-  genmodelfit share --json
-  genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
-  genmodelfit share <cache>/submissions/<GPU>/<date>-<sha8>.json --json
+  genmodelfit share --dry-run --json
+  GITHUB_TOKEN=<token> genmodelfit share --yes --json
+  genmodelfit share --no-measure --yes --json
+  genmodelfit share --issue --yes
+  genmodelfit share --issue <cache>/submissions/<GPU>/<date>-<sha8>.json --print-url
 
-  JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
-  report, share, opened, copied, marked_shared }
+  JSON (--json): { genmodelfit, command, action: send | logout, comfyui, budget_seconds,
+  plan, download_plan, pending, measured?, failed?, interrupted?, downloaded?, files, prs
+  [{ url, reused, branch, fork, uploaded, skipped, on_main }], method?, issues?, marked_shared,
+  sent, dry_run?, error? }
+  --issue: { listed, submissions? | file, ok, refused, checklist, report, share, opened, copied,
+  marked_shared }
   Details: docs/schema.md""",
     "bench": """Measure one model on a ComfyUI that is running, and save the result (peak VRAM, RAM, time).
 TEMPLATE is the exact workflow id of a ComfyUI template, such as image_z_image_turbo_int8 (the id
@@ -5344,7 +7706,7 @@ Your saved results are used when this PC is judged.
 bench is for maintainers: genmodelfit measure does the same without the template id (it suggests
 models and finds ComfyUI).
 --share prepares a submission and opens GitHub's measurement form in your browser: sign in to
-GitHub (an account is needed) and press "Create" (like genmodelfit share).
+GitHub (an account is needed) and press "Create" (like genmodelfit share --issue).
 
 PRECONDITIONS:
   A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
@@ -5743,15 +8105,19 @@ MODEL はモデルの名前・ワークフローの ID・その一部で、downl
 
 前提:
   この PC の GPU と、そこで動く ComfyUI: --url か、この PC で起動中のもの(127.0.0.1 の 8188 か
-  8000)。起動していなければ、起動のしかたを出して 1 で終わる。GPU が空いていること: ほかの
-  プログラムが使っていれば測らない(--force の無い bench と同じ)。
+  8000)。起動していなくても ComfyUI のフォルダが見つかれば(download と同じ見つけ方)、裏で起動して
+  使い、測り終えたら止める(ポータブル版は python_embeded、手で入れたもの・comfy-cli は .venv・venv、
+  デスクトップ版は .venv とアプリの ComfyUI で、127.0.0.1 の空いているポートに、ブラウザを開かずに)。
+  [Y/n] の質問がその同意を兼ねる(--no-start か GENMODELFIT_COMFYUI_START=0 で止める。
+  --start-timeout は既定 300 秒)。見つからなければ、起動のしかたを出して 1 で終わる。GPU が
+  空いていること: ほかのプログラムが使っていれば測らない(--force の無い bench と同じ)。
 
 副作用:
   通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(--url が無いとき)、測る
   ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、
   落とすときはモデルのファイル。この PC のことはほかへ送らない。
   結果を <cache>/measurements/(この PC の判定に使う)に、送るための下書きを <cache>/submissions/
-  (genmodelfit share が一覧に出すもの)に書く。
+  (genmodelfit share が送るもの)に書く。起動した ComfyUI の出力は <cache>/comfyui-<日付>.log。
 
 終了コード:
   0  成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも)
@@ -5769,39 +8135,58 @@ MODEL はモデルの名前・ワークフローの ID・その一部で、downl
   comfyui: { url, found_by }, suggestions? [{ ..., settings, args }] | model_id, settings,
   installed, time_hint, measurement, saved_to, submission, hint, error? }
   詳しくは docs/schema.md""",
-    "share": """実測を送る: 送る中身をそのまま見せ、GitHub の提出のフォームを開く。
-FILE を省くと、measure(と bench --share)が保存した実測のうち送った印の無いものを新しい順に
-出し、番号で選ぶ。中身のすべて(GPU の名前・VRAM・OS の種類・モデル・設定・測った値。PC や
-ユーザの名前は入らない)と個人の情報の点検を見せてから、中身を入れた GitHub の実測の Issue の
-フォームをブラウザで開く: ログインして「Create」を押す。数分でボットが確かめてそのページに返事を
-書き、問題が無ければ、メンテナが受け入れるとプロジェクトに入る。中身が URL に入りきらないときは
-クリップボード(clip・pbcopy・wl-copy・xclip・xsel)に写して中身の無いフォームを開くので、
-そこに貼り付ける。ページを開いたか、--print-url で URL を出したら、この PC で送った印を付け、
-次から一覧に出さない(--all で出す)。--json は --mark-sent のときだけ印を付ける。FILE の無い
---print-url は、送っていない実測が 1 つだけならそれを使う(2 つ以上なら FILE を指定する)。
-GitHub のアカウントが要る。
+    "share": """数分測って、実測を GitHub の PR で送る。
+FILE を省くと、measure と同じく ComfyUI を見つけ(--url、無ければこの PC で起動中のもの、無ければ
+見つけたものを起動し、終わったら止める)、measure の提案のうち、ファイルが入っていて、この GPU の
+結果がまだ無いもの(この PC に保存したものも。送ったかどうかによらない)を、時間の目安の合計が
+--budget(300 秒)に収まるまで選び、送っていない実測と合計の時間(ComfyUI の起動 約 45 秒・測る
+時間・落とす時間を 100 Mbps の例で)を添えて計画を見せる。1 回だけ [Y/n] で尋ね、1 つずつ測る(失敗
+しても残りは続け、Ctrl+C ならそこまでのものを送るかに進む)。入っていないモデルを落とすのは、
+--download か、1 回の [y/N] の質問に y のときだけ(入っていて測れるものが無ければ最初に、ほかは
+測り終えてから尋ねる)。download と同じ確かめと同意の決まりで、--yes だけでは落とさない。そのあと
+送るファイルのすべて(中身のすべてと個人の情報の点検)を見せて、送り方を尋ねる: 1) PR(GitHub に
+ログイン) 2) Issue(ログインなし。ブラウザでフォームを開く。1 つのファイルに 1 つ) q) 送らない。
+--yes・--json・端末でないときは PR、--issue --yes は Issue(端末でなければ URL を出す)。測る前は、
+もうあるトークン(GITHUB_TOKEN か GH_TOKEN、無ければ保存したログイン)を確かめるだけで、使えなければ
+すぐ止める。ブラウザでのデバイス認証(権限 public_repo。次のために保存し、--logout で消す)は、PR を
+選んだときだけ。--yes で端末でなく、トークンが無ければ、測る前に止める。PR は、リポジトリの
+フォークで、本家とフォークの main の共通の祖先からブランチを作り、data/contrib/<GPU>/ にファイルを
+置いて開く(題は「measurements: <GPU> (<件数>)」)。その GPU の share の PR が開いていれば、そこに足す。もうある
+ファイルは飛ばす。PR を作れなければ、端末なら同じファイルを Issue で送るかを尋ねる。結果は送る前に
+保存し、測り直さない: あとで genmodelfit share --no-measure(か --issue)で送れる。送ったものは
+この PC で印を付ける(--all で含める)。ComfyUI が無ければ送っていない実測だけを送り、それも無ければ
+尋ねずに ComfyUI の起動の仕方を出して 1 で終える。FILE はそのファイルだけを送る。--yes の無い
+share --issue は前からの送り方で、送っていない実測を選んで Issue のフォームを開く。
 
 前提:
-  genmodelfit measure が保存した実測か、提出の JSON。
+  GitHub のアカウント。測るには GPU と ComfyUI(measure と同じ)。
 
 副作用:
-  通信しない: ブラウザを開くだけ(端末で、--json・--print-url が無いとき)。送られるのは
-  GitHub で「Create」を押したときだけ。
-  送った印を <cache>/submissions_shared.json に書く。中身をクリップボードに写すことがある。
+  通信: 測る・落とすあいだは measure と同じ。同意のあとで github.com と api.github.com
+  (ログイン・フォーク・ブランチ・ファイル・PR)。--dry-run と --issue は通信しない。
+  実測を measure と同じく書き、送った印を <cache>/submissions_shared.json に、ログインの
+  トークンを <config>/github_token(本人だけが読める)に書く。
 
 終了コード:
-  0  成功(選ばなかった・送るものが無いときも)
-  1  失敗: ファイルを読めない、個人の情報の点検に NG がある、検査の誤りがある、送っていない実測が
-     2 つ以上あるのに FILE の無い --print-url
+  0  成功(n と答えた・測るものも送るものも無いときも)
+  1  失敗: ログインできない、ComfyUI が無く送るものも無い、測れなかったものがある、送れない
+     ファイルがある(個人の情報の点検の NG・検査の誤り)、GitHub が受け付けない(結果は保存した
+     まま)、--json・端末でないのに --yes が無い
   2  使い方の誤り
 
 使い方の例(エージェント・アプリ向け):
-  genmodelfit share --json
-  genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --print-url
-  genmodelfit share <cache>/submissions/<GPU>/<日付>-<sha8>.json --json
+  genmodelfit share --dry-run --json
+  GITHUB_TOKEN=<トークン> genmodelfit share --yes --json
+  genmodelfit share --no-measure --yes --json
+  genmodelfit share --issue --yes
+  genmodelfit share --issue <cache>/submissions/<GPU>/<日付>-<sha8>.json --print-url
 
-  JSON (--json): { genmodelfit, command, listed, submissions? | file, ok, refused, checklist,
-  report, share, opened, copied, marked_shared }
+  JSON (--json): { genmodelfit, command, action: send | logout, comfyui, budget_seconds,
+  plan, download_plan, pending, measured?, failed?, interrupted?, downloaded?, files, prs
+  [{ url, reused, branch, fork, uploaded, skipped, on_main }], method?, issues?, marked_shared,
+  sent, dry_run?, error? }
+  --issue: { listed, submissions? | file, ok, refused, checklist, report, share, opened, copied,
+  marked_shared }
   詳しくは docs/schema.md""",
     "bench": """動いている ComfyUI で 1 つのモデルを実測し、結果(VRAM・メモリの最大・時間)を保存する。
 TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのもの(例 image_z_image_turbo_int8。info の
@@ -5811,7 +8196,7 @@ TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのも�
 bench は保守する人向け。genmodelfit measure は、テンプレートの ID を知らなくても同じことをする(モデルを
 提案し、ComfyUI を探す)。
 --share は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが
-要る)、「Create」を押す(genmodelfit share と同じ)。
+要る)、「Create」を押す(genmodelfit share --issue と同じ)。
 
 前提:
   --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
@@ -6062,8 +8447,18 @@ EXAMPLES: dict[str, list[tuple[str, str, str]]] = {
         ),
     ],
     "share": [
-        ("genmodelfit share", "送っていない実測を選んで送る", "pick an unsent measurement and send it"),
-        ("genmodelfit share --all", "送った印のあるものも出す", "also list the ones marked as sent"),
+        ("genmodelfit share", "数分測って、PR で送る", "measure for a few minutes and send a pull request"),
+        (
+            "genmodelfit share --dry-run",
+            "計画と送る中身を見るだけ",
+            "only show the plan and what would be sent",
+        ),
+        ("genmodelfit share --no-measure", "送っていない実測だけを送る", "send only the unsent measurements"),
+        (
+            "genmodelfit share --issue",
+            "ログインせず Issue のフォームで送る",
+            "send with the issue form, no sign-in",
+        ),
     ],
 }
 
@@ -6641,7 +9036,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--inspect-only",
         action="store_true",
         help=tr(
-            "今の一覧はそのままで、本体のファイルの見出し(精度)・テンプレートのサンプラーの組と読み込みノードの精度・"
+            "今の一覧はそのままで、本体のファイルの見出し(精度)"
+            "・テンプレートのサンプラーの組と読み込みノードの精度・"
             "リポジトリの精度(Hub API・config.json)だけを読み直し、401 だったリポジトリを確かめ直す"
             "(Range 要求。重み本体は落とさない。読んだ結果はキャッシュに残る)",
             "keep the current list; re-read only the weight file headers (precision), the templates' sampler"
@@ -6933,6 +9329,25 @@ def build_parser() -> argparse.ArgumentParser:
         "decided like download",
     )
     sp.add_argument(
+        "--no-start",
+        action="store_true",
+        help=tr(
+            "起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない"
+            "(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ)",
+            "do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0)",
+        ),
+    )
+    sp.add_argument(
+        "--start-timeout",
+        type=_positive_float,
+        metavar="SEC",
+        help=tr(
+            "起動した ComfyUI の準備を待つ時間の上限(秒。既定 300)",
+            "the most time to wait for a started ComfyUI to be ready (seconds; default 300)",
+        ),
+    )
+    sp._actions[-1].doc_default = "300"  # type: ignore[attr-defined]
+    sp.add_argument(
         "--yes",
         "-y",
         action="store_true",
@@ -6940,6 +9355,16 @@ def build_parser() -> argparse.ArgumentParser:
             "測る前に尋ねない(入っていないモデルは download --yes と同じ決まりで落とす)",
             "do not ask before measuring (a model that is not installed is downloaded under the same rules as"
             " download --yes)",
+        ),
+    )
+    sp.add_argument(
+        "--free",
+        action="store_true",
+        help=tr(
+            "測る前に ComfyUI の /free でモデルと前の結果を外す(起動中の自分の ComfyUI 向け。"
+            "genmodelfit が起動した ComfyUI ではいつも外す)",
+            "free the ComfyUI's models and cached results with /free before measuring (for your own"
+            " running ComfyUI; a ComfyUI started by genmodelfit is always freed)",
         ),
     )
     sp.add_argument(
@@ -6992,10 +9417,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub_parser(
         "share",
         tr(
-            "送っていない実測を選び、中身を見せて GitHub の提出のフォームをブラウザで開く"
-            "(送るのは「Create」を押したとき)",
-            "pick an unsent measurement, show it, and open the GitHub form to send it in your browser"
-            ' (it is sent when you press "Create")',
+            "入っているモデルを数分測り、送っていない実測といっしょに GitHub の PR で送る"
+            "(--issue は Issue のフォームで送る)",
+            "measure installed models for a few minutes and send them, with your unsent measurements, as a"
+            " GitHub pull request (--issue: send with the issue form)",
         ),
         [lang],
     )
@@ -7003,42 +9428,176 @@ def build_parser() -> argparse.ArgumentParser:
         "file",
         nargs="?",
         help=tr(
-            "送る提出の JSON(省くと、送っていない実測を出して選ぶ)",
-            "the submission JSON to send (omitted: list unsent measurements and choose one)",
+            "送る提出の JSON(省くと、測ってから送っていない実測をすべて送る)",
+            "the submission JSON to send (omitted: measure, then send all unsent measurements)",
         ),
     )
     sp.add_argument("--json", action="store_true", help=json_help)
     sp.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help=tr(
+            "測る・送る前に尋ねない(入っていないモデルを落とすことには同意しない)",
+            "do not ask before measuring and sending (does not agree to downloading models)",
+        ),
+    )
+    sp.add_argument(
+        "--download",
+        action="store_true",
+        help=tr(
+            "時間が残れば、入っていない提案も落として測る(download と同じ決まり。尋ねない)",
+            "if time is left, also download and measure suggestions that are not installed (same rules as"
+            " download; no question)",
+        ),
+    )
+    sp.add_argument(
+        "--any-license",
+        dest="include_unknown_license",
+        action="store_true",
+        help=tr(
+            "--download・端末でないとき、ライセンスの分からないモデルも落とす(download と同じ。略せない)",
+            "with --download or without a terminal, also download models whose license is unknown (as in"
+            " download; cannot be abbreviated)",
+        ),
+    )
+    sp.add_argument(
+        "--no-measure",
+        action="store_true",
+        help=tr("測らずに、送っていない実測だけを送る", "do not measure; send only the unsent measurements"),
+    )
+    _doc(
+        sp.add_argument(
+            "--budget",
+            type=_positive_float,
+            metavar="SEC",
+            help=tr(
+                "測る時間の合計の上限(時間の目安の合計。秒)",
+                "the most time to spend measuring (sum of the rough time guides; seconds)",
+            ),
+        ),
+        "300",
+        "300",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=tr(
+            "計画と送る中身を見せるだけ(測らない・ログインしない・通信しない)",
+            "only show the plan and what would be sent (no measuring, no sign-in, no network)",
+        ),
+    )
+    sp.add_argument(
+        "--issue",
+        action="store_true",
+        help=tr(
+            "ログインせず、GitHub の Issue のフォームで送る(--yes なら測ってから。無ければ前からの送り方)",
+            "send with the GitHub issue form instead, without signing in (with --yes after measuring;"
+            " without it the older way)",
+        ),
+    )
+    sp.add_argument(
         "--print-url",
         action="store_true",
         help=tr(
-            "ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け)",
-            "do not open a browser; print only the URL of the form (for scripts)",
+            "--issue で、ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け)",
+            "with --issue: do not open a browser; print only the URL of the form (for scripts)",
         ),
+    )
+    sp.add_argument(
+        "--logout",
+        action="store_true",
+        help=tr("保存した GitHub のログイン(トークン)を消す", "remove the saved GitHub sign-in (token)"),
     )
     sp.add_argument(
         "--all",
         action="store_true",
-        help=tr("送った印のある実測も一覧に出す", "also list measurements already marked as sent"),
+        help=tr("送った印のある実測も含める", "also include measurements already marked as sent"),
     )
     sp.add_argument(
         "--mark-sent",
         action="store_true",
         help=tr(
-            "--json でも送った印を付ける(アプリがフォームを開くとき。既定の --json は見るだけで印を付けない)",
-            "with --json, also mark it as sent (for apps that open the form themselves; by default --json"
-            " only previews)",
+            "--issue --json でも送った印を付ける(アプリがフォームを開くとき。既定の --json は見るだけ)",
+            "with --issue --json, also mark it as sent (for apps that open the form themselves; by default"
+            " --json only previews)",
+        ),
+    )
+    _doc(
+        sp.add_argument(
+            "--url",
+            help=tr(
+                "測りに使う ComfyUI の URL(measure と同じ)",
+                "URL of the ComfyUI to measure on (like measure)",
+            ),
+        ),
+        "この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す",
+        "a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000)",
+    )
+    _doc(
+        sp.add_argument(
+            "--comfyui-dir",
+            metavar="DIR",
+            help=tr(
+                "ComfyUI のフォルダ(モデルが入っているかを見る・落とす場所。measure と同じ)",
+                "your ComfyUI folder (to see whether models are installed, and where to download; like"
+                " measure)",
+            ),
+        ),
+        "download と同じ決め方",
+        "decided like download",
+    )
+    sp.add_argument(
+        "--no-start",
+        action="store_true",
+        help=tr(
+            "起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない"
+            "(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ)",
+            "do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0)",
         ),
     )
     sp.add_argument(
-        "--db",
-        metavar="PATH",
+        "--start-timeout",
+        type=_positive_float,
+        metavar="SEC",
         help=tr(
-            "モデル ID を確かめる一覧(既定は同梱のもの。キャッシュは使わない)",
-            "the list used to check model ids (default: the bundled list; the cache is not used)",
+            "起動した ComfyUI の準備を待つ時間の上限(秒。既定 300)",
+            "the most time to wait for a started ComfyUI to be ready (seconds; default 300)",
         ),
     )
-    sp.set_defaults(func=cmd_share)
+    sp._actions[-1].doc_default = "300"  # type: ignore[attr-defined]
+    sp.add_argument(
+        "--timeout",
+        type=_positive_float,
+        metavar="SEC",
+        help=tr(
+            "1 件を測るのを待つ時間の上限(秒。既定 1800)",
+            "the most time to wait for one run (seconds; default 1800)",
+        ),
+    )
+    sp._actions[-1].doc_default = "1800"  # type: ignore[attr-defined]
+    _doc(
+        sp.add_argument(
+            "--db",
+            metavar="PATH",
+            help=tr(
+                "この一覧のファイル(db.json)を使う(測るものを選ぶ・送る前の検査)",
+                "use this model list file (db.json) (to choose what to measure and to check before sending)",
+            ),
+        ),
+        "選ぶのは update で取った一覧(無ければ同梱)、検査は同梱の一覧",
+        "choosing: the list fetched by update, else the bundled list; checks: the bundled list",
+    )
+    sp.add_argument(
+        "--no-cache",
+        action="store_true",
+        help=tr(
+            "update で取った一覧を使わず、同梱のデータを使う",
+            "use the bundled list, not the one fetched by update",
+        ),
+    )
+    # ComfyUI・モデルの置き場所の決め方は measure と同じ(この PC で測る。置き換えない)
+    sp.set_defaults(func=cmd_share, output_dir=None, vram=None, ram=None)
 
     # genmodelfit config(#111。docs/download.ja.md「genmodelfit config」)
     sp = sub_parser(
@@ -7391,12 +9950,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
             "中身と点検を見せて、GitHub の実測のフォームを開く"
-            "(genmodelfit share と同じ。端末でなければ URL を出す)。"
+            "(genmodelfit share --issue と同じ。端末でなければ URL を出す)。"
             "送るには GitHub のアカウントが要る。genmodelfit は何も送らない(CONTRIBUTING.md)",
             "write the submission JSON (to the cache's submissions folder without --submission),"
-            " show it with the checks, and open GitHub's measurement form (like genmodelfit share; without a"
-            " terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing"
-            " (CONTRIBUTING.md)",
+            " show it with the checks, and open GitHub's measurement form (like genmodelfit share --issue;"
+            " without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends"
+            " nothing (CONTRIBUTING.md)",
         ),
     )
     sp.set_defaults(func=cmd_bench)
@@ -7468,8 +10027,8 @@ def build_parser() -> argparse.ArgumentParser:
         "share",
         parents=[cj],
         help=tr(
-            "genmodelfit share と同じ(前からのスクリプトのため)",
-            "the same as genmodelfit share (kept for older scripts)",
+            "genmodelfit share --issue と同じ(前からのスクリプトのため)",
+            "the same as genmodelfit share --issue (kept for older scripts)",
         ),
     )
     c.add_argument(
@@ -7709,7 +10268,7 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
 
   make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
   show      <file>                 送る中身と個人の情報の点検(同意のため)
-  share     [file]                 genmodelfit share と同じ(前からのスクリプトのため)
+  share     [file]                 genmodelfit share --issue と同じ(前からのスクリプトのため)
   intake    <event.json> --out DIR GitHub の実測の Issue を検査し、PR に入れるファイルを作る
                                    (measurement-intake.yml が使う)
   validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
@@ -7720,7 +10279,7 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
 
 副作用:
   通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。intake は --out に書く。
-  share は genmodelfit share と同じ(端末ならブラウザを開く。--json・--print-url・端末でないときは
+  share は genmodelfit share --issue と同じ(端末ならブラウザを開く。--json・--print-url・端末でないときは
   URL を出すだけ。送った印を書く)。
 
 終了コード:
@@ -7750,7 +10309,7 @@ Pull Request yourself; CONTRIBUTING.md).
 
   make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
   show      <file>                 what will be shared, and the privacy checklist (for consent)
-  share     [file]                 the same as genmodelfit share (kept for older scripts)
+  share     [file]                 the same as genmodelfit share --issue (kept for older scripts)
   intake    <event.json> --out DIR check a measurement issue on GitHub and write the files for its PR
                                    (used by measurement-intake.yml)
   validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
@@ -7762,8 +10321,8 @@ Pull Request yourself; CONTRIBUTING.md).
 SIDE EFFECTS:
   No network access. make writes the submission files; aggregate writes only with --output; intake writes to
   --out.
-  share is genmodelfit share (opens a browser in a terminal; with --json, --print-url or without a terminal it
-  only prints the URL; writes the sent marks).
+  share is genmodelfit share --issue (opens a browser in a terminal; with --json, --print-url or without a
+  terminal it only prints the URL; writes the sent marks).
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
@@ -7804,6 +10363,60 @@ def main(argv: list[str] | None = None) -> int:
             with contextlib.suppress(AttributeError, ValueError, OSError):
                 stream.reconfigure(encoding="utf-8")
     argv = sys.argv[1:] if argv is None else argv
+    err = sys.stderr
+    if not isinstance(err, _OrderedStderr):
+        sys.stderr = _OrderedStderr(err)
+    old_hup = _catch_hangup()
+    try:
+        return _main_outer(argv)
+    finally:
+        sys.stderr = err
+        _restore_hangup(old_hup)
+
+
+def _hangup(signum, frame):  # pragma: no cover - シグナルで呼ばれる
+    raise KeyboardInterrupt  # 端末を閉じた(SIGHUP): Ctrl+C と同じく、起動した ComfyUI を止めて終える(L1a)
+
+
+def _catch_hangup():
+    """POSIX: 端末を閉じた(SIGHUP)ときも finally を通す(起動した ComfyUI を残さない。L1a)。Windows は
+    Job Object(comfystart.kill_on_close_job)で止める。"""
+    import signal
+    import threading
+
+    if not hasattr(signal, "SIGHUP") or threading.current_thread() is not threading.main_thread():
+        return None
+    try:
+        return signal.signal(signal.SIGHUP, _hangup)
+    except (ValueError, OSError):
+        return None
+
+
+def _restore_hangup(old) -> None:
+    import signal
+
+    if old is not None and hasattr(signal, "SIGHUP"):
+        with contextlib.suppress(ValueError, OSError):
+            signal.signal(signal.SIGHUP, old)
+
+
+class _OrderedStderr:
+    """stderr に書く前に stdout を流す(パイプ・ファイルでも、画面の文と注意・途中経過の順が入れ替わらない。
+    #124)。ほかは元の stderr のまま。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def write(self, text):
+        with contextlib.suppress(Exception):
+            sys.stdout.flush()
+        return self._inner.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _main_outer(argv: list[str]) -> int:
     lang = _lang_in(argv) or _config_lang(argv)  # 説明の文を作る前に言語を決める(#73・#111)
     # ContextVar で固定するので、ほかのスレッドのライブラリの呼び出しには効かず、main を出れば元に戻る
     with i18n.forced(lang) if lang else contextlib.nullcontext(), _argparse_language():
@@ -7912,6 +10525,7 @@ def _main(argv: list[str]) -> int:
             return 0
         raise
     except (CliError, DatabaseError) as e:
+        code = 2 if isinstance(e, UsageError) else 1
         cands = getattr(e, "candidates", None)
         if getattr(args, "json", False):
             err: dict[str, Any] = {"genmodelfit": __version__, "command": args.command, "error": str(e)}
@@ -7928,7 +10542,7 @@ def _main(argv: list[str]) -> int:
                     tr(f"  …ほか {rest} 件(--json で全部)", f"  … {rest} more (--json for all)"),
                     file=sys.stderr,
                 )
-        return 1
+        return code
 
 
 if __name__ == "__main__":

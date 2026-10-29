@@ -177,6 +177,8 @@ def test_folder_paths_answer(tmp_path):
         "vae": str(other / "vae"),
         "loras": str(other / "loras"),
     }
+    assert comfyfind.from_folder_paths(data2, 8188).models_dir is None  # 無いフォルダには書かない(L11a)
+    other.mkdir(parents=True)
     assert comfyfind.from_folder_paths(data2, 8188).models_dir == other
     # デスクトップ版(download_model_base)
     desk = make_desktop_base(tmp_path / "desk")

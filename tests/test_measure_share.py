@@ -370,7 +370,7 @@ def test_measure_offers_download_when_not_installed(capsys, monkeypatch, this_pc
     (comfy / "main.py").write_text("")
     calls: list[str] = []
 
-    def fake_download(args, model_id):
+    def fake_download(args, model_id, **k):
         calls.append(model_id)
         return 1  # 利用者が落とすのを断った
 
@@ -402,7 +402,28 @@ def test_measure_download_uses_the_download_command(monkeypatch):
     ns = seen[0]
     assert ns.model == "image_sdxl_simple" and ns.yes is True and ns.comfyui_dir == "D:/C"
     # 同意の決まりは download のまま: 無検閲・ライセンス不明の同意は足さない
-    assert ns.content is None and ns.include_unknown_license is False
+    assert ns.content == "sfw" and ns.include_unknown_license is False
+
+
+def test_measure_download_reaches_the_plan_without_crashing(db, monkeypatch, tmp_path):
+    # 0.12.0 では content が None のまま plan_download に渡り ValueError で落ちた(#124 の本番で見つかった)
+    from genmodelfit import downloader
+
+    seen = []
+    real = downloader.plan_download
+
+    def spy(*a, **k):
+        seen.append(k.get("content"))
+        return real(*a, **k)
+
+    monkeypatch.setattr(downloader, "plan_download", spy)
+    monkeypatch.setattr(cli, "plan_download", spy, raising=False)
+    (tmp_path / "models").mkdir()
+    (tmp_path / "main.py").write_text("")
+    args = cli.build_parser().parse_args(["measure", "x", "--comfyui-dir", str(tmp_path)])
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    cli._measure_download(args, "image_sdxl_simple")  # 同意しないので落とさずに終わる
+    assert seen == ["sfw"]
 
 
 def test_measure_unknown_model_lists_candidates(capsys, this_pc):
@@ -432,13 +453,13 @@ def _saved(n: int = 2) -> list[Path]:
 
 def test_share_lists_unsent_and_marks_after_opening(capsys, monkeypatch, browser, clipboard):
     paths = _saved(2)
-    assert cli.main(["share", "--json"]) == 0
+    assert cli.main(["share", "--issue", "--json"]) == 0
     d = json.loads(capsys.readouterr().out)
     assert d["command"] == "share" and d["listed"] is True and len(d["submissions"]) == 2
     assert all(s["shared"] is False for s in d["submissions"])
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     answers(monkeypatch, "2")
-    assert cli.main(["--lang", "ja", "share"]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue"]) == 0
     out = capsys.readouterr().out
     assert (
         "=== 送っていない実測 ===" in out
@@ -447,23 +468,23 @@ def test_share_lists_unsent_and_marks_after_opening(capsys, monkeypatch, browser
     )
     marks = json.loads(measure.shared_path().read_text(encoding="utf-8"))["shared"]
     assert len(marks) == 1
-    assert cli.main(["share", "--json"]) == 0
+    assert cli.main(["share", "--issue", "--json"]) == 0
     left = json.loads(capsys.readouterr().out)["submissions"]
     assert len(left) == 1 and Path(left[0]["file"]) in paths
-    assert cli.main(["share", "--json", "--all"]) == 0
+    assert cli.main(["share", "--issue", "--json", "--all"]) == 0
     assert len(json.loads(capsys.readouterr().out)["submissions"]) == 2
 
 
 def test_share_nothing_to_send(capsys, monkeypatch, browser):
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["--lang", "ja", "share"]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue"]) == 0
     assert "送っていない実測はありません" in capsys.readouterr().out and browser == []
 
 
 def test_share_print_url(capsys, monkeypatch, browser):
     p = _saved(1)[0]
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["share", str(p), "--print-url"]) == 0
+    assert cli.main(["share", "--issue", str(p), "--print-url"]) == 0
     out = capsys.readouterr().out.strip().splitlines()
     assert (
         len(out) == 1
@@ -478,7 +499,7 @@ def test_share_not_marked_when_the_browser_fails(capsys, monkeypatch):
 
     monkeypatch.setattr(webbrowser, "open", lambda *a, **k: False)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["--lang", "ja", "share", str(p)]) == 0
+    assert cli.main(["--lang", "ja", "share", "--issue", str(p)]) == 0
     assert "次のページ" in capsys.readouterr().out  # 開けなければ URL を見せる
     assert measure.load_shared() == {}
 
@@ -487,7 +508,7 @@ def test_contrib_share_is_share(capsys):
     p = _saved(1)[0]
     assert cli.main(["contrib", "share", str(p), "--json"]) == 0
     a = json.loads(capsys.readouterr().out)
-    assert cli.main(["share", str(p), "--json"]) == 0
+    assert cli.main(["share", "--issue", str(p), "--json"]) == 0
     b = json.loads(capsys.readouterr().out)
     assert a["command"] == "contrib" and a["action"] == "share" and b["command"] == "share"
     assert a["share"] == b["share"]
@@ -748,31 +769,31 @@ def test_intake_ignores_the_runner_identity(db, monkeypatch):
 
 def test_share_print_url_without_a_file(capsys, monkeypatch, browser):
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    assert cli.main(["share", "--print-url"]) == 1  # 送るものが無い
+    assert cli.main(["share", "--issue", "--print-url"]) == 1  # 送るものが無い
     assert "genmodelfit measure" in capsys.readouterr().err
     p = _saved(1)[0]
-    assert cli.main(["share", "--print-url"]) == 0  # 1 つだけならそれ
+    assert cli.main(["share", "--issue", "--print-url"]) == 0  # 1 つだけならそれ
     out = capsys.readouterr().out.strip().splitlines()
     assert len(out) == 1 and out[0].startswith("https://github.com/") and browser == []
     assert measure.load_shared()  # URL を出したので印を付けた
     _saved(3)
-    assert cli.main(["--lang", "ja", "share", "--print-url"]) == 1  # 2 つ以上なら選ぶように言う
+    assert cli.main(["--lang", "ja", "share", "--issue", "--print-url"]) == 1  # 2 つ以上なら選ぶように言う
     err = capsys.readouterr().err
     assert "送るファイルを指定してください" in err and str(p) not in err  # 送ったものは出さない
 
 
 def test_share_json_preview_does_not_mark(capsys):
     p = _saved(1)[0]
-    assert cli.main(["share", str(p), "--json"]) == 0
+    assert cli.main(["share", "--issue", str(p), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["marked_shared"] is False and measure.load_shared() == {}
-    assert cli.main(["share", str(p), "--json", "--mark-sent"]) == 0
+    assert cli.main(["share", "--issue", str(p), "--json", "--mark-sent"]) == 0
     assert json.loads(capsys.readouterr().out)["marked_shared"] is True and measure.load_shared()
 
 
 def test_share_without_a_terminal_does_not_mark(capsys, monkeypatch, browser):
     p = _saved(1)[0]
     monkeypatch.setattr(cli, "_interactive", lambda: False)
-    assert cli.main(["share", str(p)]) == 0
+    assert cli.main(["share", "--issue", str(p)]) == 0
     assert "issues/new" in capsys.readouterr().out and browser == [] and measure.load_shared() == {}
 
 

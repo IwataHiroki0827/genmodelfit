@@ -61,10 +61,10 @@ CLI の表示の「GB」も GiB。
 | `update --fields-only` | `languages` を決めるカードの `language` を読むための Hugging Face Hub API への GET(主なファイルのリポジトリと、その `license_from`)。手で足したモデルでは、HEAD、ファイルの見出しの範囲指定 GET、上流のカードの API も行う。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
-| `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル |
-| `share` | なし(端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `<cache>/submissions_shared.json`(送った印)。中身をクリップボードに写すことがある |
+| `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない。(0.13.0)起動中のものが無く、入っている ComfyUI が見つかれば、127.0.0.1 の空いているポートで別のプロセスとして起動し、準備ができるまで `GET /system_stats`、そのあとノードを確かめるため `GET /object_info` とテンプレート。終わったらそのプロセスを止める | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル。起動した ComfyUI の出力は `<cache>/comfyui-<date>.log` |
+| `share` | (0.13.0)測る・落とすあいだは `measure` と同じ。GitHub(https で github.com と api.github.com だけ): 測る前に、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`・保存したもの)を確かめる `GET /user`。デバイス認証は PR を選んだときだけ。送ることに同意したあとで、フォーク・ブランチ・ファイル(Contents API)・PR。`--dry-run` と `--issue` は GitHub と通信しない(`--issue` は端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `measure` と同じ。`<cache>/submissions_shared.json`(送った印)。`<config>/github_token`(ログインのトークンと期限。本人だけが読める。`--logout` で消す)。`--issue` は中身をクリップボードに写すことがある |
 | `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
-| `contrib` | なし(genmodelfit は提出を送らない)。`share` は `genmodelfit share` と同じ | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`intake`: `--out` のファイル。`share`: 送った印。`show` / `validate` / `aggregate --check`: なし |
+| `contrib` | なし(genmodelfit は提出を送らない)。`share` は `genmodelfit share --issue` と同じ | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`intake`: `--out` のファイル。`share`: 送った印。`show` / `validate` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
 | `python -m genmodelfit.weekly merge-check` | なし | なし |
 | `python -m genmodelfit.review publish SRC DST` | なし | DST(確認待ちを除いた一覧。data.yml が署名する) |
@@ -999,8 +999,9 @@ bench が Measurement を埋める方法(測り方):
 
 `genmodelfit measure [MODEL] --json`(#113)は、外枠(`system`・`database` を含む)に `action` などを足して出す:
 
-- MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by}`(`found_by` は `--url` なら `option`、127.0.0.1 の
-  8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null)と `suggestions`
+- MODEL を省くと `action: "suggest"`: `comfyui` `{url, found_by, start?}`(`found_by` は `--url` なら `option`、127.0.0.1 の
+  8188・8000 で見つけた ComfyUI なら `running`、見つからなければ null。`start`(0.13.0)は、起動中のものが無く、入って
+  いるものを起動するときの `{kind, comfyui_dir}`。`kind` は `portable`・`venv`・`desktop`)と `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
   seconds_basis, settings, args}]。ここの `installed` は状態の文字列だけ(`yes` / `no` / `unknown`。下の「入っているか」)。
   MODEL を付けたときはオブジェクト。`settings`(0.12.0、#116)はテンプレートのままなら null、設定を変えた測定なら
@@ -1053,13 +1054,130 @@ bench が Measurement を埋める方法(測り方):
   絞る。ID がそのまま合えばそれ、名前なら `recommend` が選ぶワークフロー。
 - 送るための下書きは `<cache>/submissions/<GPU>/<date>-<sha8>.json` に書く(標準の条件で結果が `ok` か `oom` の
   ときだけ)。`share` がこれを一覧に出す。結果は `bench` と同じく `<cache>/measurements/` に書く。
+- **ComfyUI の起動**(0.13.0、#124。`comfystart.py`): 起動中の ComfyUI が無ければ(`--url` も無ければ)、`download` と
+  同じ見つけ方(`--comfyui-dir`・`GENMODELFIT_COMFYUI_DIR`・`genmodelfit config`・よくある場所)で見つけたものを別の
+  プロセスで起動する: ポータブル版は `<root>/python_embeded/python.exe -s <root>/ComfyUI/main.py`、手で入れたもの・
+  comfy-cli は `.venv`・`venv` の python(venv が無ければ起動しない。ほかの python を当て推量で使わない)、ComfyUI
+  デスクトップ版は `<basePath>/.venv` とアプリの `resources/ComfyUI/main.py` とデスクトップ版のフォルダの引数(両方が
+  見つかったときだけ。アプリ自体は起動しない)。いつも `--listen 127.0.0.1 --port <空いているポート> --disable-auto-launch`。
+  環境から `GITHUB_TOKEN`・`GH_TOKEN` を外す。`GET /system_stats` で準備を待ち(`--start-timeout`、既定 300 秒)、
+  終わったら(失敗・Ctrl+C でも)そのプロセスの木だけを止める(Windows は `taskkill /T /F`、POSIX はプロセスグループ)。
+  「測りますか?」の質問が同意を兼ねる。`--no-start` か `GENMODELFIT_COMFYUI_START=0` で止める。JSON は、起動の前は
+  `comfyui.start`、起動したあとは `comfyui.started` `{kind, comfyui_dir, url, log}`。
+- **残さない・2 つ同時にしない**(0.13.0): Windows では起動した ComfyUI を `KILL_ON_JOB_CLOSE` の Job Object に
+  入れるので、端末を閉じても genmodelfit が殺されても止まる。Linux では `PR_SET_PDEATHSIG` も付ける。POSIX では
+  端末を閉じた(SIGHUP)ときも Ctrl+C と同じく止める。制限: macOS で genmodelfit が SIGKILL で殺されると止められない。
+  測るのは同時に 1 つの `measure`・`share` だけ(`<cache>/measure.lock` にプロセスの番号。そのプロセスが無ければ
+  取り直す)。127.0.0.1 の 8188・8000 で ComfyUI が答えるのにフォルダを読めないときは、2 台目を起動しない(`--url` で
+  使う)。起動中のサーバーが答えたフォルダは、あってシステムのフォルダでないときだけ、落とす場所に使う。
+- **足りないノード**(0.13.0): ComfyUI に届いたら `/object_info` を 1 回読み、テンプレートごとに確かめる
+  (`workflow.missing_nodes`。`bench` と同じ確かめ。`bench.NodeCheck`)。一覧からは、その ComfyUI に無いノードを使う
+  提案を外す。名前で指定したものは、落とす・測る前に止め、「次にすること:」で ComfyUI の更新(かカスタムノード)を言う。
 - 終了コード: 0 成功・選ばなかった・出す提案が無い・「測りますか?」に n と答えた / 1 ComfyUI が無い・GPU が無い・
-  GPU が使われている・テンプレートが無い・`--json` で入っていない・端末でなく `--yes` も無い・落とすのを断った・実行の
-  失敗 / 2 使い方の誤り。テキストの出力の失敗は、最後に「次にすること:」の行で何をすればよいかを出す。
+  GPU が使われている・テンプレートが無い・ノードが足りない・`--json` で入っていない・端末でなく `--yes` も無い・
+  落とすのを断った・ComfyUI を起動できない・実行の失敗 / 2 使い方の誤り。テキストの出力の失敗は、最後に
+  「次にすること:」の行で何をすればよいかを出す。
 
 ## share
 
-`genmodelfit share [FILE] --json`(#113。`contrib share` は同じもので、`command: "contrib"`・`action: "share"`):
+`genmodelfit share`(0.13.0、#124)は測って GitHub の PR で送る。`share --issue` は Issue のフォームの前からの送り方
+(#113)。`contrib share` は `share --issue` と同じで、`command: "contrib"`・`action: "share"`。
+
+### 測って送る(`share`・`share --no-measure`・`share FILE`)
+
+`--json` には `--yes` が要る(`--dry-run`・`--logout` を除く)。外枠に `system`・`database` は無く、次を足す:
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `action` | str | `send`(`--logout` は `logout` で、`removed` を付ける) |
+| `no_measure` | bool | `--no-measure` か FILE |
+| `comfyui` | object | `measure` と同じ(`url`・`found_by`・`start?`・`started?`) |
+| `budget_seconds` | float | `--budget`(既定 300。`measure.SHARE_BUDGET_SECONDS`) |
+| `plan` | Suggestion[] | 測る、入っている提案(`measure` の `suggestions` の項目) |
+| `download_plan` | Suggestion[] | 入っていない提案のうち、残りの時間に収まるもの |
+| `skipped` | object[] | `{model_id, name, missing_nodes}`: ComfyUI に無いノードが要るので外したもの |
+| `pending` | object[] | 測る前の、送っていない実測(`share --issue --json` の `submissions` の項目) |
+| `measured` | object[] | `{model_id, settings, outcome, peak_vram_gb, seconds, submission}` |
+| `failed` | object[] | `{model_id, settings, error}`(ComfyUI を起動できなかったときは `model_id` が null) |
+| `interrupted` / `downloaded` | bool | Ctrl+C で止めた / `download_plan` を落とした |
+| `download_hint` | object | 尋ねられない(`--yes`・`--json`・端末でない)ので落とさなかったときの `{count, bytes}` |
+| `files` | object[] | 点検したファイルごとの `{file, path_in_repo, ok, refused}` |
+| `prs` | object[] | GPU ごとの `{url, reused, branch, fork, uploaded, skipped, on_main}` |
+| `marked_shared` | int | 送った印を付けた数 |
+| `sent` | bool | PR を作ったか、足した |
+| `github` | object | `{login, source}`(`source` は `env:GITHUB_TOKEN`・`env:GH_TOKEN`・`cache`・`device`)。トークンは入れない |
+| `method` / `issues` | str / object[] | Issue で送ったときの `issue` と、ファイルごとの `share --issue --json` のオブジェクト |
+| `hint` | str | PR で送れなかったとき: 保存した結果をあとで送る方法(`share --no-measure`) |
+| `dry_run` | bool | `--dry-run` のときだけ |
+| `error` | str | 失敗したとき |
+
+決まり:
+
+- **ComfyUI** は `measure`(上)と同じく見つけ・起動し・確かめる。無ければ(送っていない実測も無ければ)計画と ComfyUI の
+  起動のしかたを出し、尋ねず・ログインせずに 1 で終える。送っていない実測があれば、それを送るかに進む。
+- **計画**: `measure.suggestions` のうち `installed.state == "yes"` のものを、その順に、`seconds` の合計が上限に収まる
+  あいだ取る(`measure.share_plan`。収まらない行は飛ばして次を見る)。ComfyUI に届けば、その ComfyUI に無いノードを
+  使う提案を外し(`skipped`)、次の提案で埋める(`download_plan` も)。起動する ComfyUI なら起動したあとで行い、新しい
+  計画を見せる。
+- **順**: 合計の時間を付けた計画 → 1 回の `[Y/n]`(測ることと ComfyUI の起動を兼ねる。`--yes` で省く)→ もうある
+  トークンを確かめる → ComfyUI の起動 → 1 つずつ測る(`_measure_run`。`measure` と同じ。失敗しても残りは続け、Ctrl+C
+  なら送るかに進む)→ ファイルのすべてと個人の情報の点検を見せる → 送り方を選ぶ(`1) PR 2) Issue q) 送らない`。
+  既定は 1。`--yes`・`--json`・端末でないときは PR、`--issue --yes` は Issue)→ 要ればログイン → PR か、ファイルごとに
+  Issue のフォーム(`_share`。`share --issue` と同じ。端末でなければ URL を出す)。
+- **合計の時間**(計画に出す): 起動するなら ComfyUI の起動(`comfystart.TYPICAL_START_SECONDS`、45 秒)、時間の目安の
+  合計、落とすことになっていれば、それを測る時間と 100 Mbps で落とす時間(`cli.DOWNLOAD_EXAMPLE_MBPS`。例で、
+  「回線しだい」と添える)。落とすかの質問にも同じものを出す。
+- **毎回空ける**: `share` は 1 つの ComfyUI で何件も測るので、毎回測る前に `/free`(`unload_models`・`free_memory`。
+  ComfyUI はモデルを外し、ノードの結果のキャッシュを捨てる)を送る(`bench --free` と同じ)。起動中だった ComfyUI では
+  計画にそう書く(「測る前に毎回 ComfyUI のメモリを空けます」)。`measure` は自分で起動した ComfyUI では空け、利用者の
+  ものは `--free` のときだけ(0.13.0)。それでも前の結果を使ったなど標準でない条件の結果は、保存も送りもせず、理由を
+  付けて `failed` に入れる(黙って落とさない)。
+- **送れないもの**(0.13.0): 提出を書く前に `share` と同じ点検(個人の情報の点検と `validate` の誤り)をする。送れない
+  (GPU の全体より大きい最大 VRAM など)なら、この PC の実測だけを残し、理由を付けて `failed` に入れる。保存してある
+  送れない提出は 1 回だけ出して `<名前>.unsendable` に名前を変える(次から出さない。JSON の `retired`)。ほかを送れた
+  なら、それで `share` を失敗にしない。
+- **GPU と VRAM**: 今は NVIDIA の GPU だけで測る。`measure.suggestions` はライセンスの分からないモデルを出さない
+  (`--any-license` で出す)。ほかのプログラムが VRAM を 1.5 GiB か全体の 20% より多く使っていれば測らない
+  (`bench.others_vram_limit`。ComfyUI を起動する前は nvidia-smi、空けたあとは `/system_stats` で見る)。測っている
+  あいだに GPU を使い始めた計算だけのプロセス(nvidia-smi の表の種類 C。ブラウザなど C+G・G のアプリは数えない)が
+  あれば、標準でない結果にする。
+- **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
+  数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
+  `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に
+  失敗したら、同じファイルを Issue で送るかを尋ねる。
+- **落とす**: `--yes`・`--json` だけでは落とさない。`--download` か、1 回の `[y/N]` の質問(モデル・量の合計・時間を見せる)
+  に y のときだけ。尋ねるのは、使える入っている提案が無ければログインと ComfyUI の起動の前、入っているものがどれも
+  ノードが足りなければ起動のあと、ほかは測り終えたあと。落とすのは `download` で、その確かめと同意の決まりのまま
+  (`--any-license` は渡す。提案に無検閲のものは出ない)。尋ねないときは `download_hint` で `--download` を案内する。
+- **ログイン**: 測る前は、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`、無ければ保存したもの)を確かめるだけ(使えなければ
+  止める。無いときは、`--yes`・`--json`・端末でないなら `--issue` を除いて測る前に止める)。ログインするのは PR を
+  選んだとき: `GITHUB_TOKEN`・`GH_TOKEN`、保存したトークン(`<config>/github_token` の
+  `{access_token, expires_at}`。期限切れか 401 なら消す)、デバイス認証(client id は `github.CLIENT_ID`。
+  `GENMODELFIT_GH_CLIENT_ID` で替え、空にすると使わない。scope は `public_repo`。端末で `--json` の無いときだけ。
+  `slow_down` で間隔を 5 秒増やし、`expired_token`・`access_denied` で止める)。refresh_token は保存しない。送る前にもう一度確かめ、切れて
+  いれば端末ならログインし直し、そうでなければ、測った結果は保存してあり `share --no-measure` で送れることを言って 1 で終える。
+- **PR**: `laxshmate/genmodelfit` をフォークし(無ければ作り、出来るまで待つ)、本家の `main` とフォークの `main` の
+  共通の祖先(`github.fork_base`。compare の API の `merge_base_commit`。比べられなければ本家の先頭。`merge-upstream` は
+  `workflow` の scope が要るので、フォークの `main` は変えない)からブランチ `genmodelfit-share/<GPU の slug>/<パスの sha8>` を作り、ファイルを `data/contrib/<GPU>/<date>-<sha8>.json`(contrib の
+  `suggested_path`)に Contents API で置いて、題が `measurements: <GPU> (<件数>)` の PR を開く(本文はファイルの表・
+  genmodelfit の版・`<!-- genmodelfit:share -->`)。GPU ごとに 1 本。同じアカウントの開いている PR でブランチが
+  `genmodelfit-share/<GPU の slug>/` で始まるものがあれば、そこに足す。本家の `main` にもうあるファイルは先に確かめて
+  置かない(送った印を付ける)。ブランチにもうあるファイルは飛ばす(422)。PR が途中で失敗したときは、もう置いたもの
+  (ほかの GPU の PR・開いている PR やブランチに置いたファイル)はそのままにし、残りのファイルだけを Issue で送るかを尋ねる。
+  ブランチに本家の `main` に無いファイルがあれば、前の失敗のやり直しでも PR を開く。送った印を付けるのは、PR
+  (新しいか、足したもの)のファイルと、本家の `main` にもうあるファイルだけ。
+- **誤り**: 書き込みの 403・404 は、トークンの scope(`public_repo`)が足りない(作ったばかりのフォークは、先に git の
+  データを待つ)。`Retry-After`・`X-RateLimit-Remaining: 0`・「rate limit」の付いた 403・429 は、60 秒以下なら 1 回
+  待ち、ほかは待つ時間を言って 1 で終える。開いている PR はページを追って読み、読めなければ 2 本目を開かずに止める。
+- `--yes` の無い `share --json`(上のフラグも無いとき)と `share FILE --json` は、`--issue` の出力のまま(使っていた
+  アプリのため)。FILE と `--no-measure`・`--download` は使い方の誤り(2)。
+- 終了コード: 0 送った・送るものが無い・n と答えた / 1 ログインできない・ComfyUI が無く送るものも無い・測れなかった
+  ものがある・送れないファイルがある・GitHub が受け付けない・`--json` か端末でないのに `--yes` が無い / 2 使い方の誤り /
+  130 質問で Ctrl+C。
+
+### Issue のフォーム(`share --issue`)
+
+`genmodelfit share --issue [FILE] --json`:
 
 - FILE を省くと: `listed: true`・`folder`・`submissions` [{file, sha256, shared, date, model_id, gpu, outcome,
   peak_vram_gb, seconds}](送っていないものを新しい順。`--all` なら送った印のあるものも)。何も開かない。
@@ -1079,7 +1197,7 @@ bench が Measurement を埋める方法(測り方):
   `wl-copy` / `xclip` / `xsel`。標準入力で渡し、シェルを通さない)。道具が無ければ、テキストの出力で中身を 2 つの
   `---` の行の間に出す(ファイルの場所はその中に入れない)。
 - ブラウザを開くのは端末(標準入力と標準出力がどちらも端末)で、`--json`・`--print-url` が無いときだけ。尋ねない。
-  `--print-url` は URL だけを出す。
+  `--print-url`(`--issue` のときだけ)は URL だけを出す。
 - 送った印(`<cache>/submissions_shared.json`。中身の sha256 → 日付)を付けるのは、ブラウザでフォームを開いたときと、
   `--print-url` で URL を出したときだけ。`--json` は見るだけで、`--mark-sent` があるときだけ印を付ける(フォームを自分で
   開くアプリ向け)。端末でないときのテキストの出力・ブラウザを開けなかったときも付けない。
@@ -1090,7 +1208,7 @@ bench が Measurement を埋める方法(測り方):
 ## contrib
 
 利用者の実測の提出(#34)。
-genmodelfit は、これを**決して送らない**。利用者が `share` の開いた実測の Issue のフォームで「Create」を押す(ボットが Issue を Pull Request にする。`contrib intake`、#113)か、自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。
+genmodelfit は、これを**勝手には決して送らない**。利用者が `share` で同意し、`share` が利用者のアカウントから Pull Request を開く(#124)か、`share --issue` の開いた実測の Issue のフォームで「Create」を押す(ボットが Issue を Pull Request にする。`contrib intake`、#113)か、自分のフォークの `data/contrib/` にファイルを足して、自分で Pull Request を出す([CONTRIBUTING.md](../CONTRIBUTING.ja.md))。
 コードは `src/genmodelfit/contrib.py`。
 
 動的 VRAM の bench の提出(`vram_metric: torch_reserved`・`offload: dynamic`)は作業用メモリだけを持つ(#100)。まとめて残すが、段ごとの山を測れるようになるまでは照合だけに使う(見積もりのずらしにも段階にも使わない。「Measurement」と [accuracy.ja.md](accuracy.ja.md))。
@@ -1205,7 +1323,7 @@ bench の結果を読めないときは終了コード 1。
 
 ### `contrib share [FILE]`
 
-`genmodelfit share` と同じ(「share」を見る。前からのスクリプトのため)。JSON は `command: "contrib"`・`action: "share"`。
+`genmodelfit share --issue` と同じ(「share」を見る。前からのスクリプトのため)。JSON は `command: "contrib"`・`action: "share"`。
 
 ### `contrib intake EVENT_JSON --out DIR [--existing DIR]`
 

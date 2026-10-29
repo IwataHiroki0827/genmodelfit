@@ -313,6 +313,8 @@ def suggestions(
     content: str = "sfw",
     policy: Any = None,
     variants_per_model: int | None = VARIANTS_PER_MODEL,
+    extra: Any = (),
+    include_unknown_license: bool = False,
 ) -> list[Suggestion]:
     """測ると役に立つモデル(#113): テンプレートがあり、この PC の GPU に載り(perfect / good で GPU)、
     この GPU にテンプレートの設定のままの実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
@@ -334,11 +336,16 @@ def suggestions(
     roots = roots or []
     refs = directory_refs(db)
     c = load_coefficients()
-    ms = db.measurements
+    # extra: この PC に保存した、まだ一覧に取り込まれていない実測(送る前の提出など。#124)。
+    # 「この GPU に実測があるか」だけに足す(測り直さない)
+    ms = [*db.measurements, *extra]
     per_key: dict[tuple, list[Suggestion]] = {}
     for f in evaluate(db, system, content=content, policy=policy, coefficients=c):
         m, e = f.model, f.estimate
         if m.source != TEMPLATE_SOURCE:
+            continue
+        # ライセンスの分からないものは、一覧の既定と同じく出さない(--any-license で出す。#124)
+        if not include_unknown_license and m.license_unknown:
             continue
         rows: list[tuple[Settings | None, str]] = []
         if not has_measurement_here(m, ms, gpu):
@@ -397,6 +404,31 @@ def suggestions(
             count[s.group_key] = count.get(s.group_key, 0) + 1
         out.append(s)
     return out
+
+
+# share(#124)が 1 回で測る時間の合計の上限(秒。時間の目安 time_hint の合計)。オーナーの決定(2026-10-29)
+SHARE_BUDGET_SECONDS = 300
+
+
+def share_plan(
+    sugg: list[Suggestion], budget: float, *, state: str = "yes", skip: Any = None
+) -> tuple[list[Suggestion], int]:
+    """share が測るもの(#124): 提案(suggestions の並び)のうち、入っているか(installed.state が state)の
+    ものを、時間の目安の合計が budget 以内になるように並びの順に取る(入りきらないものは飛ばして次を見る)。
+    (取ったもの, 目安の合計)。state="no" で、落として測るものの計画になる。
+    skip(提案 → 真なら外す)は、時間に収まる候補にだけ、並びの順に呼ぶ(ComfyUI のノードの確かめ。#124)。"""
+    picked: list[Suggestion] = []
+    total = 0
+    for s in sugg:
+        if s.installed is None or s.installed.state != state:
+            continue
+        if total + s.seconds > budget:
+            continue
+        if skip is not None and skip(s):
+            continue
+        picked.append(s)
+        total += s.seconds
+    return picked, total
 
 
 def resolve(db: Database, system: SystemInfo, query: str, *, content: str = "sfw", policy: Any = None):

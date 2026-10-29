@@ -28,6 +28,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -57,6 +58,7 @@ from .models import Measurement
 from .workflow import (
     FRAME_KEYS,
     SECONDS_KEYS,
+    WorkflowError,
     apply_settings,
     check_inputs,
     effective_settings,
@@ -101,16 +103,32 @@ class ComfyClient:
         kw.setdefault("timeout", self.timeout)
         try:
             return self.s.request(method, self.url + path, **kw)
+        except requests.ConnectionError as e:
+            raise BenchError(
+                tr(
+                    f"ComfyUI({self.url})に接続できません(止まったか、起動していません)",
+                    f"Cannot connect to ComfyUI ({self.url}; it stopped or is not running)",
+                )
+            ) from e
         except requests.RequestException as e:
             raise BenchError(
                 tr(
-                    f"ComfyUI({self.url})に接続できません: {e}",
-                    f"Cannot connect to ComfyUI ({self.url}): {e}",
+                    f"ComfyUI({self.url})と通信できません({type(e).__name__})",
+                    f"Cannot talk to ComfyUI ({self.url}; {type(e).__name__})",
                 )
             ) from e
 
     def get_json(self, path: str) -> Any:
         r = self._req("GET", path)
+        if r.status_code in (401, 403):
+            raise BenchError(
+                tr(
+                    f"ComfyUI({self.url})がログイン(認証)を求めています({r.status_code})。genmodelfit は"
+                    "認証の付いた ComfyUI では測れません(認証の無い ComfyUI を --url で指定してください)",
+                    f"ComfyUI ({self.url}) asks for a sign-in ({r.status_code}). genmodelfit cannot measure"
+                    " on a ComfyUI behind authentication (give one without it with --url)",
+                )
+            )
         if r.status_code != 200:
             raise BenchError(
                 tr(
@@ -296,6 +314,7 @@ class Monitor:
         # NVIDIA 以外: GPU 全体の使用中のメモリ(MiB)を 1 回読む関数(gpustat.Probe.used_mib)。約 1 秒ごとに呼ぶ
         self.other_used = other_used
         self.peaks = Peaks()
+        self.last_used_mib: float | None = None  # nvidia-smi が読んだ最後の GPU 全体の使用量(MiB)
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._smi: subprocess.Popen[str] | None = None
@@ -349,6 +368,7 @@ class Monitor:
                     with self._lock:
                         self.peaks.gpu_used_mib = max(self.peaks.gpu_used_mib, v)
                         self.peaks.smi_samples += 1
+                        self.last_used_mib = v
                 if self._stop.is_set():
                     break
         finally:
@@ -412,6 +432,39 @@ def gpu_used_now(gpu_id: str | None) -> tuple[float, float] | None:
     return used, util
 
 
+def others_vram_limit(total_bytes: int) -> float:
+    """ComfyUI 以外が使ってよい VRAM(バイト。#124): 1.5 GiB か全体の 20% の大きいほう。"""
+    return max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total_bytes)
+
+
+def vram_in_use(name: str | None = None) -> tuple[int, int] | None:
+    """nvidia-smi の GPU の (使用中のバイト, 全体のバイト)。読めなければ None(nvidia-smi が無い・答えない・
+    変な出力でも例外にしない。L2a)。自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を使っていないかを
+    見るのに使う(#124)。GPU が 2 枚以上なら(L2b)、CUDA_VISIBLE_DEVICES の最初の番号、
+    無ければ name と同じ名前、無ければいちばん大きいもの(ComfyUI が使う GPU と数える GPU をそろえる)。"""
+    from .estimate import gpu_key
+
+    out = _smi_query(["--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"])
+    rows = []
+    for line in (out or "").strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 4:
+            continue
+        try:
+            rows.append((parts[0], parts[1], int(float(parts[2]) * 1024**2), int(float(parts[3]) * 1024**2)))
+        except ValueError:
+            continue
+    if not rows:
+        return None
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0].strip()
+    pick = next((r for r in rows if visible and r[0] == visible), None)
+    if pick is None and name:
+        pick = next((r for r in rows if gpu_key(r[1]) == gpu_key(name)), None)
+    if pick is None:
+        pick = max(rows, key=lambda r: r[3])
+    return pick[2], pick[3]
+
+
 def smi_gpus() -> list[dict[str, Any]]:
     """nvidia-smi の GPU の一覧(index, uuid, name, driver)。"""
     out = _smi_query(["--query-gpu=index,uuid,name,driver_version", "--format=csv,noheader,nounits"])
@@ -421,6 +474,108 @@ def smi_gpus() -> list[dict[str, Any]]:
         if len(parts) >= 4 and parts[0].isdigit():
             gpus.append({"index": int(parts[0]), "uuid": parts[1], "name": parts[2], "driver": parts[3]})
     return gpus
+
+
+def _gpu_app_pids(gpu_uuid: str | None) -> set[int]:
+    """その GPU を使っているプロセスの PID(nvidia-smi の compute apps。uuid が分からなければすべて)。"""
+    return {pid for pid, u in smi_compute_apps() if gpu_uuid is None or u == gpu_uuid}
+
+
+_SMI_PROC = re.compile(r"^\|\s+\S+\s+\S+\s+\S+\s+(\d+)\s+(C\+G|C|G)\s", re.M)
+
+
+def smi_process_types() -> dict[int, str]:
+    """nvidia-smi の表(Processes)の PID → 種類(C・G・C+G)。Windows の WDDM では compute apps に画面の
+    アプリも出るので、種類で見分ける(#124)。読めなければ空。"""
+    out = _smi_query([])
+    return {int(pid): t for pid, t in _SMI_PROC.findall(out or "")}
+
+
+# 種類を読めないうちに消えたプロセスで、GPU 全体がこれより増えたら数値が狂ったとみる(MiB)
+SHORT_LIVED_RISE_MIB = 1024.0
+
+
+class GpuAppWatch:
+    """測っているあいだに現れた GPU のプロセスを、見つけたときにすぐ種類(C・C+G・G)と名前を読んで
+    覚える(#124)。すぐ消える計算のプロセスも取りこぼさない。見えていたあいだの GPU 全体の使用量の最大と、
+    現れる直前の量も覚える(種類を読めないまま消えたものを見分けるため)。"""
+
+    def __init__(
+        self,
+        gpu_uuid: str | None,
+        before: set[int],
+        ours: Any = lambda: set(),
+        used: Any = lambda: None,
+    ):
+        self.gpu_uuid = gpu_uuid
+        self.before = set(before)
+        self.ours = ours  # ComfyUI のプロセスの木の PID を返す関数
+        self.used = used  # GPU 全体の今の使用量(MiB。Monitor が読んだ最後の値。nvidia-smi を増やさない)
+        self.seen: dict[int, dict[str, Any]] = {}
+        self.last_used: float | None = None
+
+    def sample(self) -> None:
+        now = _gpu_app_pids(self.gpu_uuid) - self.before - self.ours()
+        used = self.used()
+        fresh = now - set(self.seen)
+        unknown = {p for p in now if p in self.seen and self.seen[p]["type"] is None}
+        types = smi_process_types() if (fresh or unknown) else {}
+        for p in fresh:
+            self.seen[p] = {
+                "type": types.get(p),
+                "name": _process_names({p}),
+                "before": self.last_used,
+                "peak": used,
+            }
+        for p in now:
+            info = self.seen[p]
+            if info["type"] is None:
+                info["type"] = types.get(p)
+            if used is not None and (info["peak"] is None or used > info["peak"]):
+                info["peak"] = used
+        if used is not None:
+            self.last_used = used
+
+    def interfering(self) -> dict[int, str]:
+        """数値を狂わせたとみるもの(PID → 名前): 計算だけのプロセス(種類 C。torch で CUDA を使う python
+        など)。C+G・G(ブラウザ・画面のアプリ)は数えない。種類を読めないまま消えたものは、見えていたあいだに
+        GPU 全体が現れる直前より SHORT_LIVED_RISE_MIB を超えて増えたときだけ数える。"""
+        out = {}
+        for p, info in self.seen.items():
+            t, before, peak = info["type"], info["before"], info["peak"]
+            if t == "C" or (
+                t is None and before is not None and peak is not None and peak - before > SHORT_LIVED_RISE_MIB
+            ):
+                out[p] = info["name"]
+        return out
+
+
+def _interfering(new_apps: set[int], base_smi=None, peaks=None) -> set[int]:
+    """(前からの形)今見えている新しいプロセスのうち、計算だけのもの(種類 C)。"""
+    if not new_apps:
+        return set()
+    types = smi_process_types()
+    return {p for p in new_apps if types.get(p) == "C"}
+
+
+def _process_tree(proc) -> set[int]:
+    """ComfyUI のプロセスとその子の PID(分からなければ空)。"""
+    if proc is None:
+        return set()
+    out = {proc.pid}
+    with contextlib.suppress(Exception):
+        out |= {c.pid for c in proc.children(recursive=True)}
+    return out
+
+
+def _process_names(pids: set[int]) -> str:
+    names = []
+    for pid in sorted(pids)[:5]:
+        try:
+            names.append(f"{psutil.Process(pid).name()} {pid}")
+        except Exception:
+            names.append(f"PID {pid}")
+    return tr("、", ", ").join(names)
 
 
 def smi_compute_apps() -> list[tuple[int, str]]:
@@ -503,6 +658,12 @@ BACKEND_OF_VENDOR = {"nvidia": "cuda", "amd": "rocm", "intel": "xpu", "apple": "
 # 使用率を読む道具が無いとき、ComfyUI 以外が GPU のメモリをこの割合より多く使っていたら、ほかのアプリが
 # GPU を使っているとみなして断る(統合メモリの Apple では、メインメモリと同じなので見ない)
 OTHER_APPS_VRAM_SHARE = 0.5
+# NVIDIA で、空けたあとに ComfyUI 以外が使ってよい VRAM(#124): 1.5 GiB か全体の 20% の大きいほう
+# (画面の表示・ComfyUI の CUDA の分を含む)。これを超えたら測らない
+OTHERS_VRAM_MIN = int(1.5 * 1024**3)
+OTHERS_VRAM_SHARE = 0.2
+GPU_APPS_EVERY = 2.0  # 測っているあいだ、GPU を使うプロセスを見る間隔(秒)
+SLEEP_GAP = 30.0  # 待つあいだの 1 回の間がこれより長ければ、PC がスリープしていたとみなす(秒)
 
 
 def device_vendor(dev: dict[str, Any], stats: dict[str, Any]) -> str:
@@ -786,6 +947,7 @@ class BenchResult:
     workflow_source: str
     warnings: list[str]
     failed: str | None = None  # 失敗したときの理由(メモリ不足などは測った値を残す)
+    nonstandard: list[str] = field(default_factory=list)  # 標準でない条件(あれば standard は偽。#124)
 
     def to_dict(self) -> dict[str, Any]:
         m = asdict(self.measurement)
@@ -824,31 +986,75 @@ def load_workflow(
             return data, "file:api", []
         conv = ui_to_api(data, object_info)
         return conv.workflow, "file:ui", conv.warnings
-    import requests
-
-    ui = client.template(opts.model_id)
-    source = "server-template"
-    if ui is None:
-        try:
-            r = session.get(template_url(opts.model_id), timeout=30)
-        except requests.RequestException as e:
-            raise BenchError(tr(f"テンプレートを取れません: {e}", f"Cannot fetch the template: {e}")) from e
-        if r.status_code != 200:
-            raise BenchError(
-                tr(
-                    f"テンプレート {opts.model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
-                    "名前を確かめるか、--workflow で API 形式のワークフローを渡してください",
-                    f"Template {opts.model_id} not found (neither in ComfyUI nor on GitHub). "
-                    "Check the name, or pass an API-format workflow with --workflow",
-                )
-            )
-        try:
-            ui = r.json()
-        except ValueError as e:
-            raise BenchError(tr("テンプレートが JSON ではありません", "The template is not JSON")) from e
-        source = "github-template"
+    ui, source = fetch_template(client, opts.model_id, session)
     conv = ui_to_api(ui, object_info)
     return conv.workflow, source, conv.warnings
+
+
+def fetch_template(
+    client: ComfyClient, model_id: str, session: requests.Session
+) -> tuple[dict[str, Any], str]:
+    """公式テンプレート(画面用の形式)と取った場所。
+    ComfyUI が持つもの(版がサーバーと合う)、無ければ GitHub。"""
+    import requests
+
+    ui = client.template(model_id)
+    if ui is not None:
+        return ui, "server-template"
+    try:
+        r = session.get(template_url(model_id), timeout=30)
+    except requests.RequestException as e:
+        raise BenchError(
+            tr(
+                f"テンプレートを取れません(GitHub に繋がりません: {type(e).__name__})",
+                f"Cannot fetch the template (cannot reach GitHub: {type(e).__name__})",
+            )
+        ) from e
+    if r.status_code != 200:
+        raise BenchError(
+            tr(
+                f"テンプレート {model_id} が見つかりません(ComfyUI にも GitHub にも無い)。"
+                "名前を確かめるか、--workflow で API 形式のワークフローを渡してください",
+                f"Template {model_id} not found (neither in ComfyUI nor on GitHub). "
+                "Check the name, or pass an API-format workflow with --workflow",
+            )
+        )
+    try:
+        ui = r.json()
+    except ValueError as e:
+        raise BenchError(tr("テンプレートが JSON ではありません", "The template is not JSON")) from e
+    return ui, "github-template"
+
+
+class NodeCheck:
+    """ComfyUI に、テンプレートが使うノードがそろっているか(#124。share・measure が測る前に見る)。
+    /object_info は最初に 1 回だけ取り、テンプレートはモデルごとに 1 回だけ取る(覚えておく)。
+    確かめられない(テンプレートを取れない・通信の誤り)ときは「足りないものは無い」として測らせる
+    (測るときに bench が同じ理由で止める)。何も表示しない。"""
+
+    def __init__(self, url: str, *, client: ComfyClient | None = None):
+        self.session = make_session() if client is None else client.s
+        self.client = client or ComfyClient(url, session=self.session)
+        self._info: dict[str, Any] | None = None
+        self._seen: dict[str, list[str]] = {}
+        self.unchecked: list[str] = []  # 確かめられなかったもの(テンプレートを取れない・通信の誤り。L4a)
+
+    def missing(self, model_id: str) -> list[str]:
+        """そのテンプレートが使い、この ComfyUI に無いノード(無ければ空)。"""
+        from .workflow import missing_nodes
+
+        if model_id in self._seen:
+            return self._seen[model_id]
+        try:
+            if self._info is None:
+                self._info = self.client.object_info()
+            ui, _src = fetch_template(self.client, model_id, self.session)
+            out = missing_nodes(ui, self._info)
+        except (BenchError, WorkflowError):
+            out = []
+            self.unchecked.append(model_id)
+        self._seen[model_id] = out
+        return out
 
 
 def _ensure_inputs(
@@ -921,8 +1127,10 @@ def _check_queue_empty(client: ComfyClient, when: str) -> None:
         )
 
 
-def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> BenchResult:
-    """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。"""
+def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, progress=None) -> BenchResult:
+    """1 回測る。測れないときは BenchError。進み具合は log(既定は logging の genmodelfit)へ。
+    progress(あれば)には、送ったあと約 0.5 秒ごとに {"phase", "elapsed", "peak_vram_gb"} を渡す(#124。
+    phase は queued(キュー待ち)・running(実行中)・waiting(送った直後・結果を待つ)。表示は呼び出し側)。"""
     log = log or logging.getLogger("genmodelfit").info
     if not opts.timeout or opts.timeout <= 0:
         raise BenchError(_timeout_error())
@@ -953,9 +1161,16 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     warnings += notes
     if opts.strict_settings:
         _check_requested_settings(wf, opts, notes)
-    nonstandard: list[str] = []
+    nonstandard: list[str] = []  # 実測の note に残す(表示の言語によらず日本語)
+    shown: list[str] = []  # 表示する(表示の言語。BenchResult.nonstandard)
+
+    def ns(ja: str, en: str) -> None:
+        if ja not in nonstandard:
+            nonstandard.append(ja)
+            shown.append(tr(ja, en))
+
     if opts.workflow_path:
-        nonstandard.append("自分のワークフロー(--workflow)")
+        ns("自分のワークフロー(--workflow)", "your own workflow (--workflow)")
     for key, value in opts.sets.items():
         hit = [n for n in wf.values() if key in n["inputs"] and not isinstance(n["inputs"][key], list)]
         if not hit:
@@ -965,7 +1180,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         for n in hit:
             n["inputs"][key] = value
         if hit and key not in STANDARD_SET_KEYS:
-            nonstandard.append(f"--set {key}")
+            ns(f"--set {key}", f"--set {key}")
     set_output_prefix(wf, f"genmodelfit_bench/{re.sub(r'[^A-Za-z0-9_.-]', '_', opts.model_id)}")
     problems = check_inputs(wf, object_info)
     if problems:
@@ -1081,6 +1296,22 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     base_stats = (client.system_stats().get("devices") or [dev0])[0]
     base_torch = int(base_stats.get("torch_vram_total") or 0)
     base_dev = int(base_stats.get("vram_total") or 0) - int(base_stats.get("vram_free") or 0)
+    if opts.free_before and gpu_id is not None:
+        # 空けたあとでも ComfyUI 以外が VRAM を多く使っていれば、測ると数値が狂う(#124)。Windows では
+        # プロセスごとの量が出ないので、GPU 全体の使用量から ComfyUI の torch の分を引いて見積もる
+        others = base_dev - base_torch
+        total = int(base_stats.get("vram_total") or 0)
+        limit = max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total)
+        if total and others > limit:
+            msg = tr(
+                f"ほかのプログラムが VRAM を約 {others / GIB:.1f} GB 使っています(ComfyUI 以外。"
+                f"上限 {limit / GIB:.1f} GB)。閉じてから測ってください(測ると数値が狂います)",
+                f"Other programs use about {others / GIB:.1f} GB of VRAM (besides ComfyUI; limit"
+                f" {limit / GIB:.1f} GB). Close them before measuring (the numbers would be wrong)",
+            )
+            if not opts.force:
+                raise BenchError(msg)
+            warnings.append(tr(f"{msg}(--force)", f"{msg} (--force)"))
 
     # 3. 送る直前にもう一度キューを見る
     _check_queue_empty(client, tr("送る直前", "just before sending"))
@@ -1101,16 +1332,52 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     entry: dict[str, Any] | None = None
     prompt_id: str | None = None
     foreign: set[str] = set()  # 待っている間に実行中だった他の仕事
+    # 測っているあいだに GPU を使い始めたほかのプログラム
+    # (#124。nvidia-smi の compute apps。Windows でも PID は出る)
+    gpu_uuid = str(gpu.get("uuid")) if gpu and gpu.get("uuid") else None
+    watch = (
+        GpuAppWatch(gpu_uuid, _gpu_app_pids(gpu_uuid), lambda: _process_tree(proc), lambda: mon.last_used_mib)
+        if gpu_id is not None
+        else None
+    )
+    last_tick = time.monotonic()
+    slept = 0.0
+    next_apps = time.monotonic() + GPU_APPS_EVERY
     try:
         prompt_id = client.submit(wf, client_id)
         while True:
+            if watch is not None and time.monotonic() >= next_apps:
+                next_apps = time.monotonic() + GPU_APPS_EVERY
+                with contextlib.suppress(Exception):  # 見張りの失敗で測るのを止めない
+                    watch.sample()
             entry = client.history(prompt_id)
             if entry and ((entry.get("status") or {}).get("completed") or _history_error(entry)):
                 break
+            phase = "waiting"
             with contextlib.suppress(BenchError):
-                running, _ = client.queue_ids()
+                running, pending = client.queue_ids()
                 foreign.update(r for r in running if r != prompt_id)
-            if time.monotonic() - t0 > opts.timeout:
+                phase = "running" if prompt_id in running else "queued" if prompt_id in pending else "waiting"
+            if progress is not None:
+                with mon._lock:
+                    p = mon.peaks
+                    torch_now = p.torch_vram if p.samples else 0
+                    dev_now = max(0, p.device_used - base_dev)
+                with contextlib.suppress(Exception):  # 表示の失敗で測るのを止めない
+                    progress(
+                        {
+                            "phase": phase,
+                            "elapsed": time.monotonic() - t0,
+                            "peak_vram_gb": (torch_now or dev_now) / GIB,
+                        }
+                    )
+            now = time.monotonic()
+            if now - last_tick > SLEEP_GAP:
+                # PC がスリープ・休止していた(L1b): 止まっていた時間は待つ時間に数えず、結果は標準にしない
+                slept += now - last_tick
+                ns("PC がスリープした", "the PC went to sleep")
+            last_tick = now
+            if now - t0 - slept > opts.timeout:
                 done = cancel_own_prompt(client, prompt_id)
                 raise BenchError(
                     tr(
@@ -1154,8 +1421,24 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
                 "Add --free, or change an input such as the seed (--set seed=…)",
             )
         )
+    interfering = watch.interfering() if watch is not None else {}
+    if interfering:
+        names = tr("、", ", ").join(interfering.values())
+        ns(
+            f"測っている間にほかのプログラムが GPU を使い始めた({names})",
+            f"another program started using the GPU while measuring ({names})",
+        )
+        warnings.append(
+            tr(
+                f"測っている間にほかのプログラムが GPU を使い始めました({names})。数値が狂うので送りません",
+                f"Another program started using the GPU while measuring ({names}); the result is not sent",
+            )
+        )
     if cached:
-        nonstandard.append(f"前の結果を使ったノードが {len(cached)} 個(一部だけ実行)")
+        ns(
+            f"前の結果を使ったノードが {len(cached)} 個(一部だけ実行)",
+            f"{len(cached)} nodes reused the previous result (only partly run)",
+        )
         warnings.append(
             tr(
                 f"{len(cached)} 個のノードが前の結果を使い、実行されませんでした。"
@@ -1165,7 +1448,7 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
             )
         )
     if foreign:
-        nonstandard.append("測っている間に他の仕事が動いた")
+        ns("測っている間に他の仕事が動いた", "other work ran during the measurement")
         warnings.append(
             tr(
                 "測っている間に ComfyUI で他の仕事が動いたので、値に混ざっているおそれがあります",
@@ -1175,7 +1458,10 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
     start_ts = _timestamps(entry or {}).get("execution_start")
     if local and start_ts and start_ts / 1000 - submit_wall > START_DELAY_S:
         delay = start_ts / 1000 - submit_wall
-        nonstandard.append(f"送ってから実行が始まるまで {delay:.0f} 秒(先に他の仕事が動いた)")
+        ns(
+            f"送ってから実行が始まるまで {delay:.0f} 秒(先に他の仕事が動いた)",
+            f"{delay:.0f} s from sending to the start (other work ran first)",
+        )
         warnings.append(
             tr(
                 f"送ってから実行が始まるまで {delay:.0f} 秒かかりました(先に他の仕事が動いたとみられます)",
@@ -1259,7 +1545,9 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         files_fp=opts.files_fp,
         settings_override=True if opts.settings_override else None,
     )
-    return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
+    return BenchResult(
+        measurement=m, workflow_source=source, warnings=warnings, failed=failed, nonstandard=list(shown)
+    )
 
 
 def default_output_path(m: Measurement) -> Path:

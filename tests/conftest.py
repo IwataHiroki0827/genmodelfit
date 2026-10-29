@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,8 @@ def _isolated_cache_session(tmp_path_factory):
         mp.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
         # この PC の ComfyUI を探さない(子のプロセスにも効く。#111)。探す試験は test_download_place.py が外す
         mp.setenv("GENMODELFIT_COMFYUI_SEARCH", "0")
+        # 見つけた ComfyUI を起動しない(#124)。起動の試験は tests/test_comfystart.py が偽の subprocess で外す
+        mp.setenv("GENMODELFIT_COMFYUI_START", "0")
         yield
 
 
@@ -63,6 +66,23 @@ def _no_real_comfyui(monkeypatch, tmp_path):
         comfyfind, "current_places", lambda: comfyfind.Places(platform=sys.platform, home=home)
     )
     monkeypatch.setattr(comfyfind, "running_candidates", lambda *a, **k: [])
+
+
+@pytest.fixture(autouse=True)
+def _no_node_check(monkeypatch):
+    """share・measure の測る前のノードの確かめ(#124)は、既定では「足りないものは無い」にする
+    (--url の偽の宛先に通信しない)。確かめる試験は cli._node_check を差し替える。"""
+    from genmodelfit import cli
+
+    monkeypatch.setattr(cli, "_node_check", lambda url: SimpleNamespace(missing=lambda model_id: []))
+
+
+@pytest.fixture(autouse=True)
+def _no_github_login(monkeypatch):
+    """share の GitHub のログイン(#124)を、この PC・CI の資格情報に左右されないようにする。
+    環境変数のトークン・client id を外す(キャッシュは試験ごとの GENMODELFIT_CONFIG_DIR の下)。"""
+    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GENMODELFIT_GH_CLIENT_ID"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

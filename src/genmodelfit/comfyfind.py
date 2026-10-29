@@ -230,11 +230,28 @@ def _probe_port(port: int, timeout: float) -> dict | None:
             data = r.json()
     except Exception:
         return None
-    if not isinstance(data, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in data.items()
-    ):
+    return normalize_folder_paths(data)
+
+
+def normalize_folder_paths(data) -> dict | None:
+    """/internal/folder_paths の答えを {キー: 最初のパス} にそろえる。ComfyUI の版で形が違う: 文字列
+    (古い版)・パスの並び(folder_names_and_paths[key][0]。0.19 など)・[パスの並び, 拡張子] の並び。
+    読めないキーは飛ばす。何も読めなければ None。"""
+    if not isinstance(data, dict):
         return None
-    return data
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        if not isinstance(k, str):
+            continue
+        first = v
+        for _ in range(3):  # [[paths], exts] → [paths] → path
+            if isinstance(first, (list, tuple)):
+                first = first[0] if first else None
+            else:
+                break
+        if isinstance(first, str) and first:
+            out[k] = first
+    return out or None
 
 
 def from_folder_paths(data: dict, port: int) -> Candidate | None:
@@ -261,9 +278,62 @@ def from_folder_paths(data: dict, port: int) -> Candidate | None:
         base = models.parent
     if base is None or not looks_like_comfyui(base):
         return None
+    if models is not None and not usable_models_dir(models):
+        models = None  # 書いてよい場所に見えない(L11a): 使わない
     if models is not None and _key(models) == _key(base / "models"):
         models = None
     return Candidate(base, "running", f"127.0.0.1:{port}", models_dir=models)
+
+
+def usable_models_dir(p: Path) -> bool:
+    """起動中のサーバーが答えた models のフォルダを、置き場所に使ってよいか(L11a): あるフォルダで、OS の
+    フォルダ(C:\\Windows・Program Files・/usr・/etc など)やドライブの直下でないこと。"""
+    try:
+        r = p.resolve()
+        if not r.is_dir():
+            return False
+    except OSError:
+        return False
+    if r.parent == r or len(r.parts) <= 1:
+        return False
+    low = [x.lower() for x in r.parts]
+    system = {"windows", "program files", "program files (x86)", "programdata", "system32"}
+    if os.name == "nt" and len(low) > 1 and low[1] in system:
+        return False
+    posix_system = {"usr", "etc", "bin", "sbin", "lib", "proc", "sys", "dev", "boot"}
+    return not (os.name != "nt" and len(low) > 1 and low[1] in posix_system)
+
+
+def comfy_port_answering(ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT) -> int | None:
+    """答えたポート(comfy_port_status の 1 つ目)。"""
+    found = comfy_port_status(ports, timeout)
+    return found[0] if found else None
+
+
+def comfy_port_status(
+    ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT
+) -> tuple[int, int] | None:
+    """127.0.0.1 のこのポートで ComfyUI(/system_stats)が答えるか。答えたポート(L3a。フォルダを読めない
+    ComfyUI でも、2 台目を同じフォルダで起動しないように)。GENMODELFIT_COMFYUI_SEARCH=0 なら見ない。"""
+    from .fetch import make_session
+
+    if search_disabled():
+        return None
+    for port in ports:
+        try:
+            with make_session() as s:
+                r = s.get(
+                    f"http://127.0.0.1:{port}/system_stats",
+                    timeout=timeout,
+                    allow_redirects=False,
+                    proxies={"http": None, "https": None, "all": None},  # type: ignore[dict-item]
+                )
+                # 何かが HTTP で答えれば(401・403 なども)、そこにはもう何かがいる(L3d): 2 台目を起動しない
+                if r.status_code:
+                    return port, int(r.status_code)
+        except Exception:
+            continue
+    return None
 
 
 def running_candidates(ports: Iterable[int] = PROBE_PORTS, timeout: float = PROBE_TIMEOUT) -> list[Candidate]:

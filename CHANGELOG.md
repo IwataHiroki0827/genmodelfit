@@ -5,7 +5,90 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [0.12.1] - Unreleased
+## [0.13.0] - Unreleased
+
+### Changed
+
+- **`share` measures and sends a GitHub pull request** (#124; after llmfit's `bench --share`). Without arguments it
+  finds ComfyUI like `measure`, picks the installed suggestions of `measure` until their rough times add up to 300 s
+  (`--budget`), shows the plan with the unsent measurements and asks once, checks a GitHub token you already have,
+  measures one by one, shows every file with the privacy checks and asks how to send it. For a pull request it signs
+  in (`GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device login with scope `public_repo`; the
+  token is saved with its expiry in `<config>/github_token`, readable only by you, and never printed; `--logout`
+  removes it), forks the project, makes a branch from the merge base of the project's `main` and your fork's `main`
+  (your fork's `main` is not changed), puts the files under `data/contrib/<GPU>/` and opens a pull request titled
+  `measurements: <GPU> (<count>)`, or adds them to your open `share` pull request for that GPU. Files already there are
+  skipped; a retry after a failed attempt still opens the pull request, and files are marked as sent only when a pull
+  request has them or they are already on `main`. Models that are not installed are downloaded only with `--download`
+  or `y` to one `[y/N]` question (asked first when nothing installed can be measured, else after measuring), with
+  `download`'s questions and consent rules; `--yes` alone never downloads. New options: `--yes`, `--download`,
+  `--any-license`, `--no-measure`, `--budget`, `--dry-run` (no network to GitHub), `--issue`, `--logout`, `--url`,
+  `--comfyui-dir`, `--timeout`, `--no-start`, `--start-timeout`, `--no-cache`. The issue form is kept as
+  `share --issue` (no sign-in); `contrib share` and `bench --share` keep using it, and `share --json` without `--yes`
+  still lists the unsent measurements (`share FILE --json` still previews) for apps. New module `github.py`.
+  The plan shows the total time (starting ComfyUI about 45 s, measuring, and downloading as an example at 100 Mbps).
+  After showing the files it asks how to send them: 1) pull request, 2) issues (no sign-in; one form per file),
+  q) not now; `--issue --yes` measures and sends issues. Before measuring only an existing token is checked; the device
+  login happens when a pull request is chosen. Results are saved before sending and never measured again: models
+  with a result saved on this PC (sent or not) are not planned, and after q or a failed pull request (a terminal then
+  offers issues) `share --no-measure` sends them.
+
+### Added
+
+- **`measure` and `share` start ComfyUI when none is running** (#124; `comfystart.py`): the install found like
+  `download` is started as a separate process on 127.0.0.1 and a free port without a browser (portable: its
+  `python_embeded`; manual or comfy-cli: its `.venv` / `venv`, never a guessed Python; ComfyUI Desktop: its `.venv`
+  and the app's ComfyUI, only when both are found), waited for with `/system_stats` (`--start-timeout`, default 300 s),
+  and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
+  goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
+- `measure` prints its screen before the progress of a started ComfyUI also when the output is redirected.
+- **Found by testing 50 situations with a real GPU** (#124):
+  - A result that cannot be sent (for example peak VRAM above the GPU's total because Windows spilled into shared
+    memory) is kept as this PC's measurement but no longer saved as an unsent submission, so `share` does not fail
+    on it every time; such files already in the cache are listed once and renamed `*.unsendable`.
+  - A running ComfyUI 0.19 was not found: `/internal/folder_paths` returns lists of paths; both shapes are read now
+    (this also fixes `download`'s automatic destination).
+  - Other programs using VRAM: before starting its own ComfyUI, and after freeing a running one, `share` / `measure`
+    refuse to measure when more than 1.5 GiB (or 20% of the GPU) is used by others; a program that starts using the
+    GPU during a run makes the result non-standard (not sent).
+  - Ctrl+C during a download in `share` stops downloading and measuring (the `.part` files stay) and goes on to
+    sending; Ctrl+C while signing in or sending says what was placed and how to resume (`share --no-measure`), exit 130.
+  - A ComfyUI that stops during a run is reported with its log; one started by genmodelfit is restarted once.
+  - After the share-level "download them?" question (now with the licenses), `download` does not ask again per model.
+  - Suggestions leave out models with an unknown license (as the lists do; `--any-license` includes them), and only
+    NVIDIA GPUs are measured for now (other GPUs can still send saved results).
+  - Clearer reasons when there is nothing to do (`--budget` too small, nothing unsent, everything measured), for
+    `--no-start`, timeouts and missing nodes; flag mistakes exit 2; declining the download in `measure` exits 0;
+    stdout is flushed before every stderr line (pipes keep the order); each file being sent is shown.
+- **Second round of testing** (#124): log lines shown from ComfyUI lose control characters everywhere; anything
+  answering on 8188 / 8000 (also 401 / 403) counts as a running ComfyUI (no second one); a run whose only problem is
+  results that cannot be sent exits 0, and Ctrl+C exits 130; an unusable cache folder is a clear error; bench's
+  reasons follow the display language; next steps are specific (template fetch, rejected workflow, save failure,
+  crash) and `--workflow` is not suggested in `measure` / `share`; on shared PCs only a new compute-only process (nvidia-smi
+  type C; not browsers or other C+G / G apps) counts as interference; an expired and a broken saved sign-in are
+  told apart.
+- **More error cases** (#124): a started ComfyUI is stopped also when the terminal is closed or genmodelfit is
+  killed (Windows Job Object; Linux parent-death signal; POSIX hang-up); only one measuring run at a time
+  (`measure.lock`); no second ComfyUI when one already answers; folders reported by a running server are checked
+  before downloading into them; a sign-in-protected ComfyUI, user jobs in its queue, a sleeping PC, a cache that
+  cannot be written, unreachable templates, an organization that restricts OAuth apps (use `--issue`) and odd
+  nvidia-smi output are explained; several GPUs follow `CUDA_VISIBLE_DEVICES`; log lines lose control characters
+  and the live display does not crash on cp932 or 40-column terminals and stays plain with `TERM=dumb`.
+- **Progress you can follow** (#124): `share` numbers its steps ("== 手順 2/6: ComfyUI を起動 =="); in a terminal
+  the ComfyUI start, each measurement (elapsed against the guide, queued / running / waiting, peak VRAM so far, a
+  note when it takes much longer than the guide) and downloads (one bar per file and one for everything, with size,
+  speed, time left and a "verifying" phase) are drawn with `rich.progress` on stderr; without a terminal plain lines
+  about every 10 s (downloads: when a file starts and every 10%); nothing with `--json`. `measure` uses the same
+  displays. bench and comfystart report through callbacks; the libraries still print nothing.
+- **Each run starts clean** (#124): `share` frees ComfyUI (`/free`: unloads models and drops cached node results)
+  before every run, saying so in the plan when the ComfyUI was already running; `measure` does it for a ComfyUI it
+  started, and for yours with the new `--free`. A result measured under non-standard conditions (for example reused
+  cached nodes) is listed under "not measured" with the reason instead of disappearing.
+- **Missing nodes are checked before measuring** (#124): once ComfyUI is reachable, `share` leaves out suggestions
+  whose template uses nodes that ComfyUI lacks ("update ComfyUI to measure them") and fills the time with the next
+  ones; `measure` hides them from its list and stops a named model before downloading or measuring. The "Next:" line
+  for a missing-node error now says to update ComfyUI (or install the custom nodes) instead of checking that ComfyUI
+  runs.
 
 ### Fixed
 

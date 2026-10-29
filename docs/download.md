@@ -55,6 +55,9 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - A URL that could be read as two different hosts is refused before any connection: `\`, spaces, control characters, `%` or `@` in the host, non-ASCII hosts. The host is read the way requests / urllib3 read it.
   - No `~/.netrc` credentials, no tokens, nothing about this PC (User-Agent and Range only).
   - On HTTP 429 / 500 / 502 / 503 / 504 it waits for `Retry-After` (or backs off) and retries. It stops after 4 failures in a row without progress.
+- **Progress** (on stderr): in a terminal, one line for everything and one per file with a bar, size, speed and time
+  left, redrawn in place; while the sha256 is checked the file says "verifying". Without a terminal it prints a plain
+  line when a file starts and every 10% of the whole. Nothing with `--json`.
 
 ## Choosing the place
 
