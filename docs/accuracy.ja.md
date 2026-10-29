@@ -507,8 +507,10 @@ music・video は張り付いていない実測が 1 件以下のため評価で
 
 利用者が `genmodelfit bench --submission` で作った提出用の JSON を、Pull Request で `data/contrib/<GPU>/<日付>-<sha8>.json` に足してもらいます
 (手順は [CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)、形は [schema.ja.md](schema.ja.md)「contrib」)。
-**2026-10-28 時点で受け付けた提出は 0 件**で、同梱の `src/genmodelfit/data/measurements_community.json` は空です。
-下の決まりは、提出が来たときの扱いです。
+**2026-10-29 時点で受け付けた提出は、1 つの出どころ(メンテナ)の 4 件**です(#126。RTX 3070 の SDXL の 4 つの設定)。
+同梱の `src/genmodelfit/data/measurements_community.json` は 4 行(それぞれ提出 1 件)で、そろった(consistent)行は
+まだありません(出どころが 2 つ以上要る)。だから係数の合わせ直しにはどれも入りません。
+下の決まりは、提出の扱いです。
 
 **測ったファイルの違い(#90)**: ほかの利用者の提出(contrib_schema 2)とこの PC の bench の実測には、測った時点の一覧のファイルの指紋 `files_fp` が入り、毎週の一覧の更新で上流のファイルが変わる(指紋が違う)と使われなくなります。メンテナの実測(`measurements.json`)には指紋が無いので、ファイルが変わっても今までどおり使います(メンテナの実測はメンテナが測り直す。ほかの利用者の行は黙って使われなくなり、メンテナの行は使われ続ける、という違いがある)。使われなくなった同梱の行は `genmodelfit contrib aggregate --check` が出します。
 

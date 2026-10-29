@@ -2633,12 +2633,96 @@ def _ask_yes_no(prompt: str, default: bool) -> bool:
     return a in ("y", "yes")
 
 
+class _UseIssue(CliError):
+    """PR のログインをやめて、同じファイルを Issue(ログインなし)で送る(デバイス認証で q・やり直さない)。"""
+
+
+class _KeySource:
+    """デバイス認証を待つあいだのキー(1 文字。待たずに読む)。with で使い、抜けるときに端末を必ず戻す。
+    Windows は msvcrt(kbhit・getwch)、POSIX は端末を cbreak にして select で読む。標準入力が端末でなければ
+    何も読まない(read は None)。"""
+
+    def __init__(self) -> None:
+        self.enabled = False
+        self._fd: int | None = None
+        self._old: Any = None
+
+    def __enter__(self) -> _KeySource:
+        try:
+            if not sys.stdin.isatty():
+                return self
+        except (AttributeError, ValueError, OSError):
+            return self
+        if sys.platform == "win32":
+            self.enabled = True
+            return self
+        try:
+            import termios
+            import tty
+
+            self._fd = sys.stdin.fileno()
+            self._old = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+            self.enabled = True
+        except (ImportError, OSError, ValueError):
+            self._old = None
+        return self
+
+    def read(self) -> str | None:
+        if not self.enabled:
+            return None
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                return msvcrt.getwch().lower() if msvcrt.kbhit() else None
+            import select
+
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            return sys.stdin.read(1).lower() if ready else None
+        except (OSError, ValueError):
+            return None
+
+    def __exit__(self, *exc: Any) -> None:
+        if self._old is not None and self._fd is not None:
+            import termios
+
+            with contextlib.suppress(OSError, ValueError):
+                termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old)
+            self._old = None
+        self.enabled = False
+
+
+def _login_keys() -> _KeySource:
+    """待つあいだのキーの読み手(試験で差し替える)。"""
+    return _KeySource()
+
+
+def _login_sleep(seconds: float) -> None:
+    """デバイス認証を待つ(試験で差し替える)。"""
+    import time
+
+    time.sleep(seconds)
+
+
+def _login_clock() -> float:
+    import time
+
+    return time.monotonic()
+
+
 def _share_login(args: argparse.Namespace):
     """GitHub の資格情報を決めて確かめる(測る前。#124)。(資格情報, session)。使えなければ CliError。
-    トークンは表示しない。デバイス認証のコードと URL は stderr に出し、端末ならブラウザを開く。"""
+    トークンは表示しない。デバイス認証のコードと URL は stderr に出し、端末ならブラウザを開く。
+    待つあいだはコード・残り時間・キーの 1 行を出し(_LoginView)、キーを待たずに読む(_KeySource): r ブラウザを
+    開き直す、n 新しいコード、q ログインをやめて Issue で送る(_UseIssue)、Ctrl+C 止める。コードの期限切れ・
+    断られたときは、もう一度ログインするかを尋ね、n なら Issue で送る。測った結果は消さない。"""
     from . import github
 
+    interactive = _interactive() and not args.json
+
     def on_code(dc) -> None:
+        view.close()
         print(
             tr(
                 "GitHub にログインします(実測を PR で送るため。権限は public_repo)。",
@@ -2657,20 +2741,87 @@ def _share_login(args: argparse.Namespace):
             tr(f"  2. コード {dc.user_code} を入れる", f"  2. Enter the code {dc.user_code}"),
             file=sys.stderr,
         )
+        print(
+            tr(
+                "  コードを間違えたら、同じページで入れ直せます(コードは 15 分有効)",
+                "  If you mistype the code, enter it again on the same page"
+                " (the code is valid for 15 minutes)",
+            ),
+            file=sys.stderr,
+        )
         if _open_browser(dc.verification_uri):
             print(tr("  (ブラウザで開きました)", "  (opened in your browser)"), file=sys.stderr)
-        print(tr("ログインを待っています…", "Waiting for the sign-in..."), file=sys.stderr, flush=True)
+        print(
+            tr(
+                "  キー: r ブラウザを開き直す / n 新しいコード / q やめて Issue で送る / Ctrl+C 止める",
+                "  Keys: r open the browser again / n new code / q stop and send as issues / Ctrl+C stop",
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def on_wait(dc, left: float) -> str | None:
+        key = keys.read()
+        if key == "r":
+            view.close()
+            opened = _open_browser(dc.verification_uri)
+            print(
+                tr(
+                    f"  ブラウザで開き直しました: {dc.verification_uri}"
+                    if opened
+                    else f"  ブラウザを開けません。{dc.verification_uri} を開いてください",
+                    f"  Opened again in your browser: {dc.verification_uri}"
+                    if opened
+                    else f"  Cannot open a browser; open {dc.verification_uri}",
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+        elif key == "n":
+            view.close()
+            return github.WAIT_NEW
+        elif key == "q":
+            view.close()
+            return github.WAIT_STOP
+        view.update(dc, left)
+        return None
 
     session = _share_session()
-    try:
-        creds = github.login(
-            session,
-            interactive=_interactive() and not args.json,
-            on_code=on_code,
-            log=_progress(args),
-        )
-    except github.GitHubError as e:
-        raise CliError(str(e)) from None
+    while True:
+        view = _LoginView(enabled=not args.json)
+        failed: github.GitHubError | None = None
+        try:
+            with _login_keys() as keys:
+                creds = github.login(
+                    session,
+                    interactive=interactive,
+                    on_code=on_code,
+                    log=_progress(args),
+                    on_wait=on_wait,
+                    sleep=_login_sleep,
+                    clock=_login_clock,
+                )
+        except github.GitHubError as e:
+            failed = e
+        finally:
+            view.close()
+        if failed is None:
+            break
+        if failed.kind == "cancelled":
+            raise _UseIssue(tr("ログインをやめました", "Stopped signing in"))
+        if failed.kind in ("expired", "denied") and interactive:
+            print(tr(f"エラー: {failed}", f"error: {failed}"), file=sys.stderr)
+            again = _ask_yes_no(
+                tr(
+                    "もう一度ログインしますか? [Y/n](n なら Issue で送ります) ",
+                    "Sign in again? [Y/n] (n sends them as issues) ",
+                ),
+                True,
+            )
+            if again:
+                continue
+            raise _UseIssue(tr("ログインしませんでした", "Not signed in"))
+        raise CliError(str(failed)) from None
     if not args.json:
         print(
             tr(f"GitHub: {creds.login} としてログイン", f"GitHub: signed in as {creds.login}"),
@@ -2971,6 +3122,11 @@ def _share_send(
         else:
             creds, session = _share_relogin_if_expired(args, creds, session)
         results, marked = _share_submit(args, creds, session, good)
+    except _UseIssue as e:
+        # ログインをやめた(q)・やり直さなかった: 同じファイルを Issue(ログインなし)で送る。
+        # 測った結果は保存したまま
+        print(tr(f"{e}。Issue で送ります", f"{e}; sending them as issues"), file=sys.stderr)
+        return _share_send_issues(args, good, report, items, code)
     except KeyboardInterrupt as e:
         # 送る途中の Ctrl+C: どこまで置いたか・何が残ったか・続け方を言う(#124)
         done_prs = getattr(e, "results", [])
@@ -3481,6 +3637,34 @@ class _View:
         if self.progress is not None:
             self.progress.stop()
             self.progress = None
+
+
+class _LoginView(_View):
+    """デバイス認証を待つあいだの 1 行(コード・残り時間・キー)。端末でなければ 30 秒ごとに普通の行。"""
+
+    every = 30.0
+
+    def update(self, dc, left: float) -> None:
+        mm, ss = divmod(max(0, int(left)), 60)
+        text = tr(
+            f"ログインを待っています: コード {dc.user_code}・残り {mm:02d}:{ss:02d}"
+            "  r ブラウザを開き直す / n 新しいコード / q やめて Issue で送る / Ctrl+C 止める",
+            f"Waiting for the sign-in: code {dc.user_code}, {mm:02d}:{ss:02d} left"
+            "  r open the browser again / n new code / q stop and send as issues / Ctrl+C stop",
+        )
+        if self.live:
+            if self.progress is None:
+                from rich.progress import Progress, SpinnerColumn
+
+                self.progress = Progress(
+                    SpinnerColumn(), _text_column("{task.description}"), console=self.console, transient=True
+                )
+                self.task = self.progress.add_task("", total=None)
+                self.progress.start()
+            self.progress.update(self.task, description=_fit_width(text, self.console.width - 4))
+            self.progress.refresh()
+        else:
+            self.line(text)
 
 
 class _StartView(_View):

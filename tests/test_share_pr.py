@@ -2881,3 +2881,176 @@ def test_share_with_only_missing_nodes_sends_the_failure_file(capsys, monkeypatc
     d = json.loads(capsys.readouterr().out)
     assert plan["ran"] == [] and d["sent"] is True
     assert [p for p in gh.put] and all(p.endswith("-failures.json") for p in gh.put)
+
+
+# --- デバイス認証を待つあいだの操作(0.13.0。コードを打ち間違えても黙って 15 分待たない) ---------------------
+
+
+class FakeKeys:
+    """待つあいだのキーの偽物。read は keys を順に返し、尽きたら None。抜けたか(端末を戻したか)を残す。"""
+
+    def __init__(self, keys):
+        self.keys = list(keys)
+        self.entered = 0
+        self.exited = 0
+
+    def __enter__(self):
+        self.entered += 1
+        return self
+
+    def __exit__(self, *exc):
+        self.exited += 1
+
+    def read(self):
+        if not self.keys:
+            return None
+        k = self.keys.pop(0)
+        if isinstance(k, BaseException):
+            raise k
+        return k
+
+
+@pytest.fixture
+def login_env(monkeypatch, gh):
+    """デバイス認証で PR を送る場面: 送っていない実測 1 件、端末、偽の時計(待つと進む)、偽のブラウザ。"""
+    import webbrowser
+
+    monkeypatch.setenv(github.CLIENT_ID_ENV, "Iv1.test")
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    now = {"t": 0.0}
+    monkeypatch.setattr(cli, "_login_sleep", lambda s: now.__setitem__("t", now["t"] + s))
+    monkeypatch.setattr(cli, "_login_clock", lambda: now["t"])
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    _write_sub(1)
+
+    def keys(*seq):
+        fk = FakeKeys(seq)
+        monkeypatch.setattr(cli, "_login_keys", lambda: fk)
+        return fk
+
+    return SimpleNamespace(gh=gh, opened=opened, keys=keys, now=now)
+
+
+PENDING = {"error": "authorization_pending"}
+
+
+def _device_codes(gh) -> int:
+    return sum(1 for _m, u, _k in gh.calls if u == github.DEVICE_CODE_URL)
+
+
+def test_mistyped_code_then_n_gets_a_new_code(capsys, monkeypatch, login_env):
+    gh = login_env.gh
+    gh.polls = [PENDING, PENDING, {"access_token": TOKEN, "expires_in": 28800}]
+    # 25 回(5 秒 ÷ 0.2 秒)ごとに 1 回尋ねる。2 回尋ねても入らない(打ち間違えた)ので n を押す
+    fk = login_env.keys(*([None] * 55), "n")
+    answers(monkeypatch, "")  # 送り方 → 1(PR)
+    assert cli.main(["--lang", "ja", "share", "--no-measure"]) == 0
+    err = capsys.readouterr().err
+    assert _device_codes(gh) == 2  # 新しいコードでやり直した
+    assert err.count("コード ABCD-1234 を入れる") == 2
+    assert "コードを間違えたら、同じページで入れ直せます(コードは 15 分有効)" in err
+    assert "r ブラウザを開き直す / n 新しいコード / q やめて Issue で送る" in err
+    assert "GitHub: alice としてログイン" in err and gh.put  # PR を送った
+    assert fk.entered == fk.exited >= 1  # 端末を戻した
+
+
+def test_q_stops_signing_in_and_sends_issues(capsys, monkeypatch, login_env):
+    login_env.gh.polls = [PENDING] * 3
+    fk = login_env.keys(None, None, "q")
+    answers(monkeypatch, "")
+    assert cli.main(["--lang", "ja", "share", "--no-measure"]) == 0
+    err = capsys.readouterr().err
+    assert "ログインをやめました。Issue で送ります" in err
+    assert any("issues/new?template=measurement.yml" in u for u in login_env.opened)
+    assert login_env.gh.put == {} and len(measure.load_shared()) == 1
+    assert fk.entered == fk.exited
+
+
+def test_r_opens_the_browser_again(capsys, monkeypatch, login_env):
+    login_env.gh.polls = [{"access_token": TOKEN, "expires_in": 28800}]
+    login_env.keys(None, "r")
+    answers(monkeypatch, "")
+    assert cli.main(["--lang", "ja", "share", "--no-measure"]) == 0
+    assert login_env.opened.count("https://github.com/login/device") == 2
+    assert "ブラウザで開き直しました" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("answer", "pr"), [("", True), ("n", False)])
+def test_expired_code_asks_to_sign_in_again_or_send_issues(capsys, monkeypatch, login_env, answer, pr):
+    gh = login_env.gh
+    gh.polls = [{"error": "expired_token"}, {"access_token": TOKEN, "expires_in": 28800}]
+    login_env.keys()
+    asked = answers(monkeypatch, "", answer)  # 送り方 → PR、もう一度ログインしますか → answer
+    assert cli.main(["--lang", "ja", "share", "--no-measure"]) == 0
+    assert asked[1] == "もう一度ログインしますか? [Y/n](n なら Issue で送ります) "
+    assert bool(gh.put) is pr and _device_codes(gh) == (2 if pr else 1)
+    if not pr:
+        assert any("issues/new" in u for u in login_env.opened)
+    assert len(measure.saved_submissions(include_shared=True)) == 1  # 実測は消えない
+
+
+def test_ctrl_c_while_waiting_restores_the_terminal(capsys, monkeypatch, login_env):
+    login_env.gh.polls = [PENDING] * 3
+    fk = login_env.keys(None, KeyboardInterrupt())
+    answers(monkeypatch, "")
+    assert cli.main(["--lang", "ja", "share", "--no-measure"]) == 130
+    assert fk.entered == fk.exited == 1
+    assert "genmodelfit share --no-measure" in capsys.readouterr().err
+    assert len(measure.saved_submissions()) == 1  # 送っていないまま残る
+
+
+def test_device_flow_on_wait_new_and_stop():
+    fake = FakeGitHub(polls=[PENDING] * 5)
+    t = {"now": 0.0}
+    sleep = lambda s: t.__setitem__("now", t["now"] + s)  # noqa: E731
+    seen: list[float] = []
+
+    def stop_after_3(dc, left):
+        seen.append(left)
+        return github.WAIT_STOP if len(seen) > 3 else None
+
+    with pytest.raises(github.GitHubError) as e:
+        github.device_flow(
+            fake, "cid", lambda dc: None, sleep=sleep, clock=lambda: t["now"], on_wait=stop_after_3
+        )
+    assert e.value.kind == "cancelled" and seen[0] == 900 and seen[-1] < 900
+    with pytest.raises(github.GitHubError) as e:
+        github.device_flow(
+            fake,
+            "cid",
+            lambda dc: None,
+            sleep=sleep,
+            clock=lambda: t["now"],
+            on_wait=lambda dc, left: github.WAIT_NEW,
+        )
+    assert e.value.kind == "new_code"
+
+
+def test_key_source_reads_nothing_without_a_terminal(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+    with cli._KeySource() as k:
+        assert k.read() is None and not k.enabled
+    assert not k.enabled
+
+
+def test_key_source_puts_the_terminal_back_on_posix(monkeypatch):
+    """POSIX: 待つあいだは cbreak にし、抜けるとき(例外でも)元の設定に戻す(本物の端末は触らない)。"""
+    import types
+
+    calls = []
+    termios = types.SimpleNamespace(
+        TCSADRAIN=1,
+        tcgetattr=lambda fd: calls.append(("get", fd)) or ["old"],
+        tcsetattr=lambda fd, when, attrs: calls.append(("set", fd, attrs)),
+    )
+    tty = types.SimpleNamespace(setcbreak=lambda fd: calls.append(("cbreak", fd)))
+    monkeypatch.setitem(sys.modules, "termios", termios)
+    monkeypatch.setitem(sys.modules, "tty", tty)
+    monkeypatch.setattr(sys, "platform", "linux")
+    fake_in = SimpleNamespace(isatty=lambda: True, fileno=lambda: 7)
+    monkeypatch.setattr(sys, "stdin", fake_in)
+    with pytest.raises(KeyboardInterrupt), cli._KeySource() as k:
+        assert k.enabled
+        raise KeyboardInterrupt
+    assert calls == [("get", 7), ("cbreak", 7), ("set", 7, ["old"])]

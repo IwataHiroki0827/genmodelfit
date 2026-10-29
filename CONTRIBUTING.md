@@ -86,6 +86,10 @@ Step by step, in detail:
    terminal send a pull request; `share --issue --yes` sends issues (it prints the URLs without a terminal). Results
    are saved before this and never measured again: after q, or a failed pull request (a terminal then offers issues),
    `genmodelfit share --no-measure` (or `share --issue`) sends them later.
+   While it waits for the device login, a line shows the code and the time left. If you mistype the code,
+   enter it again on the same page (the code is valid for 15 minutes), or press `r` to open the page again,
+   `n` for a new code, `q` to stop signing in and send the same files as issues, or Ctrl+C to stop. When the
+   code expires it asks whether to sign in again (no: issues).
 8. For a pull request, it forks the project on your account (once), makes a branch from the newest commit your fork
    and the project's `main` share (your fork's `main` is never changed), adds the files under `data/contrib/<GPU>/`
    and opens a pull request titled `measurements: <GPU> (<count>)`. If you already have an open pull request from

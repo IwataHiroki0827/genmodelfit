@@ -192,7 +192,9 @@ def test_suggestions_rules(db):
         assert m.source == "comfyui-template" and not x.model_id.startswith("hf:")
         f = judge(m, s, db, settings=x.settings)  # 設定を変えた測定は、その設定で載るもの(#116)
         assert f.estimate.fit in ("perfect", "good") and f.estimate.run_mode == "gpu"
-        assert not measure.has_measurement_here(m, db.measurements, s.best_gpu, x.settings)
+        # 「測ってある」はこの PC の実測だけ(同梱の作者の実測・ほかの利用者のまとめは提案から外さない)
+        here = measure.measured_by_this_pc(db.measurements)
+        assert not measure.has_measurement_here(m, here, s.best_gpu, x.settings)
         key = (x.group_key, tuple(x.args))
         assert key not in keys  # 同じモデル・同じ設定は 1 件
         keys.add(key)
@@ -866,9 +868,18 @@ def _set(**kw):
     return Settings(**kw)
 
 
+def without_community(db):
+    """同梱のほかの利用者のまとめ(measurements_community.json)を外した一覧(試験を同梱のデータから切り離す)。"""
+    from genmodelfit.estimate import is_community
+
+    db.measurements = [m for m in db.measurements if not is_community(m)]
+    return db
+
+
 def defaults_measured(db=None, **override_seconds):
-    """この GPU(RTX 3070)で、テンプレートのままの実測がある一覧(設定を変えた測定が出る前提)。"""
-    db = db or load_db(use_cache=False)
+    """この GPU(RTX 3070)で、テンプレートのままの実測がある一覧(設定を変えた測定が出る前提)。
+    同梱のほかの利用者のまとめは外す(試験が同梱のデータの増減に左右されないように。実測は下の明示した行だけ)。"""
+    db = without_community(db or load_db(use_cache=False))
     rows = {
         "image_sdxl_simple": (_set(width=1024, height=1024, steps=20), 20.0),
         "text_to_video_wan": (_set(width=832, height=480, frames=33, steps=20), 120.0),
@@ -1077,7 +1088,7 @@ def test_suggestions_cap_the_time():
     # (RTX 4090 24 GB で、テンプレートのまま 49 コマの実測があり、時間はどの実測にも無い)
     big = pc(vram=24.0, name="NVIDIA GeForce RTX 4090")
     wan = "text_to_video_wan"
-    db = load_db(use_cache=False)
+    db = without_community(load_db(use_cache=False))
     db.measurements = [x for x in db.measurements if x.model_id != wan]
     here = {"gpu_name": "NVIDIA GeForce RTX 4090", "gpu_vram_gb": 24.0}
     db.measurements.append(meas(wan, settings=_set(width=832, height=480, frames=49), **here))
@@ -1291,3 +1302,23 @@ def test_measure_saves_missing_nodes_found_before_running(capsys, monkeypatch, t
     ]
     assert cli.main(argv) == 1  # もう一度: 同じ記録は書かない
     assert "failures_file" not in json.loads(capsys.readouterr().out)
+
+
+def test_other_pcs_measurements_do_not_remove_suggestions():
+    """ほかの PC の実測(同梱の作者の実測・ほかの利用者のまとめ)が同じ GPU にあっても、この PC の提案から
+    外さない。外すのはこの PC の実測(キャッシュの実測・送る前の提出)だけ。"""
+    from dataclasses import replace
+
+    s = pc()
+    db = without_community(load_db(use_cache=False))
+    first = [x.settings for x in measure.suggestions(db, s) if x.model_id == "image_sdxl_simple"]
+    assert first == [None]
+    # 同じ GPU・テンプレートのままの、ほかの利用者のまとめの行(origin community)
+    row = replace(meas("image_sdxl_simple", settings=_set(width=1024, height=1024)), origin="community")
+    db.measurements.append(row)
+    again = [x.settings for x in measure.suggestions(db, s) if x.model_id == "image_sdxl_simple"]
+    assert again == [None]
+    # この PC に保存した実測(送る前の提出など)なら外す
+    mine = meas("image_sdxl_simple", settings=_set(width=1024, height=1024))
+    rows = [x for x in measure.suggestions(db, s, extra=[mine]) if x.model_id == "image_sdxl_simple"]
+    assert all(x.settings is not None for x in rows)

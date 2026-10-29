@@ -2,8 +2,221 @@
  "unit": "GiB",
  "source": "community",
  "contrib_schema": 3,
- "date": null,
+ "date": "2026-10-29",
  "method": "data/contrib の提出を、同じモデル・GPU・測り方・設定(ステップ数は除く)・測ったときの一覧のファイル(files_fp)ごとにまとめる。error の提出は数えるだけ(n_error)。最後まで動いた(ok)ものの最大 VRAM を出どころ(送った人。git の履歴から読む。無ければ提出ごと)ごとの中央値にし、|x - 中央値| / (1.4826 × MAD) > 3.5 を外れ値として除き(出どころが 3 つ以上のとき。MAD は中央値の 2% を下限)、残りの中央値を値にする。ok の行は 1 件から見積もりに使う(件数は n_used、出どころは n_sources、同じ構成の OOM は n_oom。OOM の出どころが ok の出どころ以上なら runs_evidence が false)。出どころが 2 以上で、幅が中央値の 15% 以内で、OOM が無ければ consistent(係数の合わせ直しに入れる)。GPU 名が汎用の名前・名前の代わりの値の行は gpu_known が false で、判定に使わない。GPU の総量を超えた(共有メモリへ逃げた。spilled)提出と失敗の記録は使わない",
- "submissions": [],
- "measurements": []
+ "submissions": [
+  {
+   "sha256": "3776482bbd7e88d9c5f75d050e6b121cd6c03c1e681f102973745e0af621c9e5",
+   "source": "4bd446bfbe06929167a792e9bb35fd6703f58e01d13c4c0ef44187456b3afab8"
+  },
+  {
+   "sha256": "896ed018f73d85167fd6a723aae362de174bff275fcca20108e40f7ad1107f42",
+   "source": "4bd446bfbe06929167a792e9bb35fd6703f58e01d13c4c0ef44187456b3afab8"
+  },
+  {
+   "sha256": "c87c38ec4b052f8d2951742612d5d3c7ec86e99f35c64721a0d00153532b7d41",
+   "source": "4bd446bfbe06929167a792e9bb35fd6703f58e01d13c4c0ef44187456b3afab8"
+  },
+  {
+   "sha256": "ead34d42b9838c6022a584473b8a3438fff05abe2a716d2c641388a0a543ea95",
+   "source": "4bd446bfbe06929167a792e9bb35fd6703f58e01d13c4c0ef44187456b3afab8"
+  }
+ ],
+ "measurements": [
+  {
+   "model_id": "image_sdxl_simple",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "gpu_backend": "cuda",
+   "gpu_pci_id": null,
+   "gpu_known": true,
+   "files_fp": "af6acceb87f297232758ab46ccc09c1e816c3ce614f544f4e02aaa92a640d3c1",
+   "peak_vram_gb": 2.28,
+   "settings": {
+    "width": 1024,
+    "height": 1024,
+    "precision": "fp16",
+    "batch": 1,
+    "steps": 25
+   },
+   "peak_ram_gb": 8.69,
+   "seconds": 18.8,
+   "driver": "610.88",
+   "comfyui_version": "0.19.3",
+   "offload": "dynamic",
+   "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
+   "date": "2026-10-29",
+   "note": "ほかの利用者の実測 1 件(使った 1 件・出どころ 1・外れ値 0 件・OOM 0 件)の中央値",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved",
+   "origin": "community",
+   "n_submissions": 1,
+   "consistent": false,
+   "n_used": 1,
+   "n_sources": 1,
+   "source_ids": [
+    "4bd446bfbe06"
+   ],
+   "n_outliers": 0,
+   "n_oom": 0,
+   "n_error": 0,
+   "runs_evidence": true,
+   "spread_mad_gb": 0.0,
+   "spread_rel_pct": 0.0,
+   "peak_vram_min_gb": 2.28,
+   "peak_vram_max_gb": 2.28,
+   "outlier_submissions": [],
+   "submissions": [
+    "3776482b"
+   ]
+  },
+  {
+   "model_id": "image_sdxl_simple",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "gpu_backend": "cuda",
+   "gpu_pci_id": null,
+   "gpu_known": true,
+   "files_fp": "af6acceb87f297232758ab46ccc09c1e816c3ce614f544f4e02aaa92a640d3c1",
+   "settings_override": true,
+   "peak_vram_gb": 4.97,
+   "settings": {
+    "width": 1536,
+    "height": 1536,
+    "precision": "fp16",
+    "batch": 1,
+    "steps": 25
+   },
+   "peak_ram_gb": 9.61,
+   "seconds": 35.7,
+   "driver": "610.88",
+   "comfyui_version": "0.19.3",
+   "offload": "dynamic",
+   "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
+   "date": "2026-10-29",
+   "note": "ほかの利用者の実測 1 件(使った 1 件・出どころ 1・外れ値 0 件・OOM 0 件)の中央値",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved",
+   "origin": "community",
+   "n_submissions": 1,
+   "consistent": false,
+   "n_used": 1,
+   "n_sources": 1,
+   "source_ids": [
+    "4bd446bfbe06"
+   ],
+   "n_outliers": 0,
+   "n_oom": 0,
+   "n_error": 0,
+   "runs_evidence": true,
+   "spread_mad_gb": 0.0,
+   "spread_rel_pct": 0.0,
+   "peak_vram_min_gb": 4.97,
+   "peak_vram_max_gb": 4.97,
+   "outlier_submissions": [],
+   "submissions": [
+    "896ed018"
+   ]
+  },
+  {
+   "model_id": "image_sdxl_simple",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "gpu_backend": "cuda",
+   "gpu_pci_id": null,
+   "gpu_known": true,
+   "files_fp": "af6acceb87f297232758ab46ccc09c1e816c3ce614f544f4e02aaa92a640d3c1",
+   "settings_override": true,
+   "peak_vram_gb": 0.31,
+   "settings": {
+    "width": 512,
+    "height": 512,
+    "precision": "fp16",
+    "batch": 1,
+    "steps": 25
+   },
+   "peak_ram_gb": 8.74,
+   "seconds": 10.2,
+   "driver": "610.88",
+   "comfyui_version": "0.19.3",
+   "offload": "dynamic",
+   "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
+   "date": "2026-10-29",
+   "note": "ほかの利用者の実測 1 件(使った 1 件・出どころ 1・外れ値 0 件・OOM 0 件)の中央値",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved",
+   "origin": "community",
+   "n_submissions": 1,
+   "consistent": false,
+   "n_used": 1,
+   "n_sources": 1,
+   "source_ids": [
+    "4bd446bfbe06"
+   ],
+   "n_outliers": 0,
+   "n_oom": 0,
+   "n_error": 0,
+   "runs_evidence": true,
+   "spread_mad_gb": 0.0,
+   "spread_rel_pct": 0.0,
+   "peak_vram_min_gb": 0.31,
+   "peak_vram_max_gb": 0.31,
+   "outlier_submissions": [],
+   "submissions": [
+    "ead34d42"
+   ]
+  },
+  {
+   "model_id": "image_sdxl_simple",
+   "gpu_name": "NVIDIA GeForce RTX 3070",
+   "gpu_vram_gb": 8.0,
+   "gpu_backend": "cuda",
+   "gpu_pci_id": null,
+   "gpu_known": true,
+   "files_fp": "af6acceb87f297232758ab46ccc09c1e816c3ce614f544f4e02aaa92a640d3c1",
+   "settings_override": true,
+   "peak_vram_gb": 1.34,
+   "settings": {
+    "width": 768,
+    "height": 768,
+    "precision": "fp16",
+    "batch": 1,
+    "steps": 25
+   },
+   "peak_ram_gb": 8.72,
+   "seconds": 12.1,
+   "driver": "610.88",
+   "comfyui_version": "0.19.3",
+   "offload": "dynamic",
+   "source": "community(data/contrib を genmodelfit contrib aggregate でまとめたもの)",
+   "date": "2026-10-29",
+   "note": "ほかの利用者の実測 1 件(使った 1 件・出どころ 1・外れ値 0 件・OOM 0 件)の中央値",
+   "outcome": "ok",
+   "standard": true,
+   "vram_metric": "torch_reserved",
+   "origin": "community",
+   "n_submissions": 1,
+   "consistent": false,
+   "n_used": 1,
+   "n_sources": 1,
+   "source_ids": [
+    "4bd446bfbe06"
+   ],
+   "n_outliers": 0,
+   "n_oom": 0,
+   "n_error": 0,
+   "runs_evidence": true,
+   "spread_mad_gb": 0.0,
+   "spread_rel_pct": 0.0,
+   "peak_vram_min_gb": 1.34,
+   "peak_vram_max_gb": 1.34,
+   "outlier_submissions": [],
+   "submissions": [
+    "c87c38ec"
+   ]
+  }
+ ]
 }

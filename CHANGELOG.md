@@ -113,6 +113,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The device login of `share` no longer waits silently until the code expires** (reported by the owner). While
+  waiting, a live line shows the code and the time left (plain lines every 30 s without a terminal), with the
+  hint that a mistyped code can be entered again on the same page (valid for 15 minutes). Keys, read without
+  waiting (Windows `msvcrt`; POSIX `select` with the terminal in cbreak mode, always restored): `r` opens the
+  page again, `n` gets a new code, `q` stops signing in and sends the same files as issues, Ctrl+C stops. An
+  expired or denied code asks whether to sign in again (no: issues). Measurements are never lost.
+  `github.device_flow` / `login` take an `on_wait` hook (the library still prints nothing).
+- **Other people's measurements no longer remove suggestions** from `measure` and `share`: "measured here" now
+  means this PC's own results only (its cached bench results and saved submissions). The bundled author
+  measurements and the aggregated community rows still feed the time hints and the estimates
+  (`measure.measured_by_this_pc`). The tests no longer depend on the bundled community data.
+- The bundled `measurements_community.json` is aggregated from `data/contrib` (#126: 4 submissions from 1
+  source, the maintainer; RTX 3070, SDXL at four settings; none consistent yet, so the calibration is
+  unchanged). README and docs/accuracy (EN/JA) give the new counts.
 - `measure` without a model no longer asks for a number when no running ComfyUI was found; it shows the list, then
   how to start ComfyUI, and exits with 1 (#123). Before, it stopped only after a model was chosen.
 

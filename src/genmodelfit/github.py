@@ -58,7 +58,8 @@ FORK_WAIT_SECONDS = 2.0
 
 class GitHubError(RuntimeError):
     """ログイン・送るのに失敗した(文はそのまま利用者に見せられる。トークンは入れない)。
-    kind: no_login / invalid_token / expired / denied / scope / network / api。"""
+    kind: no_login / invalid_token / expired / denied / scope / network / api /
+    new_code・cancelled(デバイス認証を待つあいだに利用者が選んだ。device_flow の on_wait)。"""
 
     def __init__(self, message: str, kind: str = "api", status: int | None = None):
         super().__init__(message)
@@ -436,6 +437,11 @@ def poll_device_flow(session: Any, cid: str, device_code: str) -> tuple[str, Any
     )
 
 
+WAIT_TICK = 0.2  # on_wait を呼ぶ間隔(秒。キーを読んで表示を直す)
+WAIT_NEW = "new"  # on_wait の答え: 新しいコードでやり直す
+WAIT_STOP = "stop"  # on_wait の答え: ログインをやめる
+
+
 def device_flow(
     session: Any,
     cid: str,
@@ -443,16 +449,39 @@ def device_flow(
     *,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    on_wait: Callable[[DeviceCode, float], str | None] | None = None,
 ) -> tuple[str, float | None]:
     """デバイス認証で (トークン, 期限の秒か None) を得る。コードと URL は on_code に渡す
     (表示とブラウザは呼び出し側)。
-    間隔どおりに待ち、slow_down なら間隔を 5 秒増やす。期限を過ぎたら止める。"""
+    間隔どおりに待ち、slow_down なら間隔を 5 秒増やす。期限を過ぎたら止める。
+    on_wait(コード, 残りの秒)を渡すと、待つあいだ WAIT_TICK 秒ごとに呼ぶ(表示とキーは呼び出し側。ライブラリは
+    何も表示しない)。答えが WAIT_NEW なら GitHubError(kind="new_code")、WAIT_STOP なら
+    GitHubError(kind="cancelled") で止める(コードを打ち間違えたとき、期限まで黙って待たないため)。"""
     dc = start_device_flow(session, cid)
     on_code(dc)
     interval = dc.interval
     deadline = clock() + dc.expires_in
+
+    def wait(seconds: float) -> None:
+        if on_wait is None:
+            sleep(seconds)
+            return
+        end = clock() + seconds
+        while True:
+            left = end - clock()
+            ans = on_wait(dc, max(0.0, deadline - clock()))
+            if ans == WAIT_NEW:
+                raise GitHubError(
+                    tr("新しいコードでやり直します", "starting again with a new code"), kind="new_code"
+                )
+            if ans == WAIT_STOP:
+                raise GitHubError(tr("ログインをやめました", "stopped signing in"), kind="cancelled")
+            if left <= 0:
+                return
+            sleep(min(WAIT_TICK, left))
+
     while True:
-        sleep(interval)
+        wait(interval)
         kind, value = poll_device_flow(session, cid, dc.device_code)
         if kind == "token":
             return value
@@ -490,6 +519,8 @@ def login(
     on_code: Callable[[DeviceCode], None] | None = None,
     log: Callable[[str], None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    on_wait: Callable[[DeviceCode, float], str | None] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Credentials:
     """資格情報を決めて確かめる: 環境変数 GITHUB_TOKEN / GH_TOKEN → キャッシュ → デバイス認証
     (interactive のときだけ。得たトークンはキャッシュする)。使えなければ GitHubError。"""
@@ -526,7 +557,14 @@ def login(
     cid = client_id()
     if not cid or not interactive or on_code is None:
         raise GitHubError(no_login_message(bool(cid)), kind="no_login")
-    token, expires_in = device_flow(session, cid, on_code, sleep=sleep)
+    while True:
+        try:
+            token, expires_in = device_flow(session, cid, on_code, sleep=sleep, clock=clock, on_wait=on_wait)
+            break
+        except GitHubError as e:
+            if e.kind != "new_code":
+                raise
+            say(tr("新しいコードでやり直します", "Starting again with a new code"))
     user = whoami(session, token)
     if user is None:
         raise GitHubError(tr("ログインしたトークンが使えません", "the new token does not work"), status=401)
