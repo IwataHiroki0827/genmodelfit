@@ -10,7 +10,7 @@
 | したいこと | コマンド | 詳しく |
 |---|---|---|
 | 入れる | `pipx install genmodelfit`(か `uv tool install genmodelfit` / `pip install genmodelfit`)。入れずに試すなら `uvx genmodelfit recommend` | [README「入れ方」](../README.ja.md#入れ方) |
-| 入れたのに `genmodelfit` が「見つからない」 | `python -m genmodelfit recommend`(中身は同じ。PATH に関係なく動く) | [README「入れ方」](../README.ja.md#入れ方) |
+| 入れたのに `genmodelfit` が「見つからない」 | pipx・uv tool なら `pipx ensurepath`・`uv tool update-shell` を 1 回実行して端末を開き直す。pip なら、入れたのと同じ Python で `python -m genmodelfit recommend` | [下](#genmodelfit-が見つからないとき) |
 | この PC で動くモデルを知る | `genmodelfit recommend` | [README「すぐ試す」](../README.ja.md#すぐ試す) |
 | 1 つの種類のモデルを探す(例は音楽) | `genmodelfit recommend -m music`(か `genmodelfit search <語>`) | [`recommend`](#genmodelfit-recommend)・[`types`](#genmodelfit-types) |
 | 動くものを全部 1 つの表で見る | `genmodelfit fit` | [`fit`](#genmodelfit-fit) |
@@ -21,7 +21,7 @@
 | 最新の一覧を取る | `genmodelfit update --from-release` | [`update`](#genmodelfit-update) |
 | ほかの PC として判定する | `genmodelfit recommend --vram 12 --ram 32` | [README「ほかの PC で判定する」](../README.ja.md#ほかの-pc-で判定する) |
 | スクリプト・アプリから使う | `--json` を付ける。落とすときは `--yes` と置き場所(`--comfyui-dir`、か `genmodelfit config`・`GENMODELFIT_COMFYUI_DIR`)も要る。置き場所が決まらないと落とさない(終了コード 1) | [schema.ja.md](schema.ja.md) |
-| 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [README「表示の言語」](../README.ja.md#表示の言語) |
+| 表示の言語を変える | `genmodelfit config set lang ja`(1 回だけなら `--lang ja`) | [表示の言語](#表示の言語) |
 | モデルを実測して送る | `genmodelfit share`(ComfyUI を見つけ、無ければ起動し、数分測って PR を開く) | [CONTRIBUTING.ja.md「かんたんな送り方」](../CONTRIBUTING.ja.md#かんたんな送り方git-は要らない) |
 
 ## 用語
@@ -38,7 +38,7 @@
 | 一覧(`db.json`) | genmodelfit が判定するモデルの一覧。パッケージに 1 つ入っていて、`update --from-release` は署名つきの新しい一覧をキャッシュに置き、それからはそちらを使う(`--no-cache` で同梱、`--db PATH` でファイル)。 |
 | HEAD の確認 | ダウンロードの URL のそれぞれに、名乗らずに HTTP の HEAD を送った結果(一覧に記録してある)。30 日(`--max-head-age-days`)より古い確認は期限切れで、そのモデルは `genmodelfit update --from-release` を実行するまで保留になる。日付は `system` で分かる。 |
 | Verified / auto / 保留 | Verified(JSON では `auto`)は、gate の条件(ライセンスが許可リストにある・公式のワークフロー・HEAD の確認が新しい・sha256 が分かる・`sfw`・確認済み など)をすべて満たしたもので、アプリが人に尋ねずにおすすめに出してよい。満たさないものは保留(`held_reasons`)。[README「Verified」](../README.ja.md#verified自動でおすすめに出す条件)・[gate.ja.md](gate.ja.md) |
-| 内容(`sfw` / `uncensored`) | `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルの印。`--uncensored`(両方)か `--content uncensored`(それだけ)を付けたときだけ出す。[README「内容の印」](../README.ja.md#内容の印) |
+| 内容(`sfw` / `uncensored`) | `uncensored` は、安全フィルタを外したモデルや成人向けの出力を想定したモデルの印。`--uncensored`(両方)か `--content uncensored`(それだけ)を付けたときだけ出す。[README「ライセンス不明・無検閲のモデルは、既定で出しません」](../README.ja.md#ライセンス不明無検閲のモデルは既定で出しません) |
 | GB | いつも GiB(1024³ バイト)。`--vram`・`--ram`・`--budget` も同じ。 |
 
 ## このページの読み方
@@ -110,6 +110,64 @@
 - GPU は NVIDIA なら nvidia-smi、ほかの AMD / Intel / Apple は WMI(Windows)・lspci と sysfs(Linux)・system_profiler(macOS)で調べる。
 - 一覧は同梱のものを使う(`genmodelfit update` で新しい一覧を取ってあればそちら。`--no-cache` で同梱)。
 
+## `genmodelfit` が見つからないとき
+
+- pipx と uv tool は、1 回だけ `pipx ensurepath`・`uv tool update-shell` を実行すると `genmodelfit` を PATH に
+  通します。そのあと端末を開き直します。
+- `pip install` で入れたなら、入れたのと同じ Python で `python -m genmodelfit …` を実行します(Windows では
+  `py -m genmodelfit …` も可)。pipx と uv tool は専用の環境に入れるので、この方法では動きません。
+- pip が *「WARNING: The script genmodelfit.exe is installed in '…\Scripts' which is not on PATH」* と出すことが
+  あります。python.org の Python を「Add python.exe to PATH」なしで入れた、Microsoft Store の Python、ユーザー単位で
+  入れた(`--user`)、仮想環境を有効にしていない、のどれかでよく出ます。その場所を PATH に足すか、
+  `python -m genmodelfit` を使います。
+- PATH を変える前に開いた端末には反映されないので、新しい端末を開きます。
+
+## 表の列
+
+`recommend`・`fit`・`search` の表の列:
+
+| 列 | 意味 |
+|---|---|
+| `Type` | image・video・music・sfx・tts・3d |
+| `Status` | 段階([用語](#用語)) |
+| `Score` | 0〜100。メモリの余裕。`Mem%` が 70% 以下なら 100、超えると下がる。速さ・品質・人気は入れない([scoring.ja.md](scoring.ja.md#score)) |
+| `Censored` | `Y` 検閲あり / `N` 無検閲。`--uncensored`(か `--content all` / `uncensored`)のときだけ出る |
+| `Model` | 同じ重みを 1 行にまとめたモデル。長い名前は真ん中を `…` で詰める |
+| `Use` | `gen`・`edit`・`i2v` など(`genmodelfit types`)。行自身の用途(`--task` で合ったもの)を先頭に、そのモデルのほかのワークフローの用途を重複なく並べる(`gen,edit`。収まらなければ `gen,…`)。ワークフローの一覧は `info`、別々の行は `--all-workflows` |
+| `Prec` | 載る中で一番良い精度(fp16・bf16・fp8・int8 など) |
+| `VRAM` | その動かし方で要る GiB。`m` = 実測(メンテナ・この PC の実測、または同じ GPU のほかの利用者の実測の中央値。出どころの数は `info`・JSON の `sample_count`) |
+| `Mem%` | 一番きついメモリの使用率。GPU なら VRAM、CPU ならメモリ、`GPU+RAM` は大きいほう。`RAM` = PC のメモリが足りない |
+| `Mode` | `GPU` 全部 GPU、`GPU~` 部品を順に載せ替え、`GPU+RAM` メモリへ逃がす(遅い)、`CPU`(遅い)、`-` 動かない(`GPU req` は使える GPU が無いので動かない、`RAM` はメモリ不足) |
+| `Disk` | ダウンロードの大きさ(GiB) |
+| `License` | ファイルのライセンス(`other` = 自分で原文を読む) |
+
+`?` = 分からない(精度・ライセンス・大きさ。判定に使っていない)。`-` = 当てはまらない(動かない・CPU なので VRAM が
+無い など)。端末が狭いときに外す列の順は、[表示の言語](#表示の言語)にあります。
+
+## 表示の言語
+
+出力の既定は英語です。日本語にするには、次のどれかを使います。
+
+- どのコマンドでも `--lang ja` を付ける(例 `genmodelfit recommend --lang ja`)
+- 環境変数 `GENMODELFIT_LANG=ja` を置く
+- `genmodelfit config set lang ja` で保存する(コマンドラインだけ)
+- Python で `gmf.set_language("ja")` を呼ぶ
+
+優先は `--lang`、環境変数、保存した設定(コマンドライン)か `set_language`(Python)の順です。OS の言語は見ません。
+変わるのは文だけです: 理由・注意・エラー・表の見出しと説明・`--help`。JSON のキー・ID・コード・判定は、どちらの
+言語でも同じです。英語の出力には日本語が出ません。日本語の出力には英語だけの文が出ません(1 行に 2 つの言語の文を
+並べない)。
+
+どちらの言語でも英語のまま出すもの: 表の列の名前(`Type`・`Status`・`Score`・`Model`・`Use`・`Prec`・`VRAM`・`Mem%`・
+`Mode`・`Disk`・`License`・`Censored`)、段階の名前(`Perfect`・`Good`・`Marginal`・`Too tight`)、動かし方の印
+(`GPU`・`GPU~`・`GPU+RAM`・`CPU`)、単位、ID・ライセンスの ID・オプションの名前など機械が読む値。表の幅をそろえ、
+`--fit`・`--sort` などに書く名前と同じにするためです。日本語の出力では、表の下の説明がこれらを日本語で説明します。
+種類の見出しは `== 画像 (image): …` のように、`-m` に書く名前も出します。
+
+長い行は、全角を 2 桁で数えて折り返します。ファイル名・URL・オプション・単位つきの数の途中では切りません(1 つで
+幅より長ければ、その行だけはみ出す)。行の頭に「、。)」を、行の終わりに「(「」を置きません。端末が狭いときは、
+表の列を `Disk`・`Mem%`・`License`・`Prec`・`Use` の順に外します(外した列は `info` か `--json` で見る)。
+
 ## 環境変数
 
 | 変数 | 使うところ | 内容 |
@@ -162,7 +220,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 | 1 | 失敗: モデルが無い・断った・聞かれて断った・通信の誤り・読めないファイル・検査に通らなかった、など。何が失敗かは、各コマンドの節に書いてあります。 |
 | 2 | 使い方の誤り: 知らないオプション・正しくない値・足りない引数・略した同意のオプション・同時に使えないオプション。 |
 | 3 | `contrib aggregate --report --fail-on-breach` だけ: 誤差が閾値を超えた。 |
-| 130 | Ctrl-C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl-C を押すと 130 です。 |
+| 130 | Ctrl+C で止めた。`download` はどの OS でも 130 を返し、途中まで落とした `.part` のファイルを残します。同じコマンドをもう一度実行すれば続きから落とします。ほかのコマンドは Python の決まりどおりに止まります: Linux・macOS では 130、Windows では 3221225786(0xC000013A。PowerShell の `$LASTEXITCODE` では -1073741510)。`bench`・`measure` は送った仕事を取り消して(genmodelfit が起動した ComfyUI も止めて)から 1 で終わります。`share` は測るのをやめ、そこまでのものを送るかに進んでから 130 で終わります。`measure`・`share` の質問で Ctrl+C を押すと 130 です。 |
 
 `--json` のときも失敗は 1 で終わり、文は JSON の `error` にあります。
 
@@ -720,7 +778,7 @@ genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db
 
 - 通信: 一覧の URL の GET だけ(https。転送先もすべて Hugging Face / GitHub のホストに限る)。
 - この PC のことは何も送らない(User-Agent: `genmodelfit/<版>`。`~/.netrc` の資格情報もトークンも使わない)。
-- 書くのは置き場所のフォルダの中だけ: 落としている間は `<file>.part`(Ctrl-C や失敗では残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば `<file>` に名前を変える。
+- 書くのは置き場所のフォルダの中だけ: 落としている間は `<file>.part`(Ctrl+C や失敗では残し、次の実行で HTTP Range で続きから落とす)、sha256 が合えば `<file>` に名前を変える。
 - 落としたファイルの sha256 が合わなければ消す。
 - sha256 の合う既にあるファイルは飛ばし、ほかの既にあるファイルは上書きしない。
 - 置き場所の指定(オプション・環境変数・設定)が無いときは、この PC で起動中の ComfyUI にフォルダの場所を尋ねる(GET http://127.0.0.1:8188 と :8000 の /internal/folder_paths。時間切れ 2 秒)。
@@ -734,7 +792,7 @@ genmodelfit download [-h] [--lang {en,ja}] [--json] [--vram GB] [--ram GB] [--db
 | 0 | 成功(`--list` も。計画が止まっていても: "blocked" を見る) |
 | 1 | 失敗: モデルが無い・2 件以上合う、断った(上を見る)、同意が無い、通信、sha256 が合わない(`--json` なら誤りは "error" に入る) |
 | 2 | 使い方の誤り |
-| 130 | 中断(Ctrl-C)。もう一度実行すれば続きから落とす |
+| 130 | 中断(Ctrl+C)。もう一度実行すれば続きから落とす |
 
 **使い方の例(スクリプト・アプリ向け)**
 
@@ -901,7 +959,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | `--any-license` |  |  | `--download`・端末でないとき、ライセンスの分からないモデルも落とす(download と同じ。略せない) |
 | `--no-measure` |  |  | 測らずに、送っていない実測だけを送る |
 | `--budget` | `SEC` | `300` | 測る時間の合計の上限(時間の目安の合計。秒) |
-| `--dry-run` |  |  | 計画と送る中身を見せるだけ(測らない・ログインしない・通信しない) |
+| `--dry-run` |  |  | 計画と送る中身を見せるだけ(測らない・ログインしない・GitHub に通信しない。ComfyUI が起動しているかは 127.0.0.1 に尋ねる) |
 | `--issue` |  |  | ログインせず、GitHub の Issue のフォームで送る(`--yes` なら測ってから。無ければ前からの送り方) |
 | `--print-url` |  |  | `--issue` で、ブラウザを開かず、フォームの URL を 1 行だけ出す(スクリプト向け) |
 | `--logout` |  |  | 保存した GitHub のログイン(トークン)を消す |
@@ -1376,7 +1434,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--force` |  |  | GPU が使われている・GPU の空きを確かめられないときも測る |
 | `--source` | `SOURCE` |  | 誰がどこで測ったか(結果の source に入る) |
 | `--note` | `NOTE` |  | 結果の note に足す文 |
-| `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 2)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+| `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 3)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 | `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub の実測のフォームを開く(`genmodelfit share --issue` と同じ。端末でなければ URL を出す)。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
@@ -1404,7 +1462,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | コード | 意味 |
 |---|---|
 | 0 | 成功 |
-| 1 | 失敗: ComfyUI につながらない、GPU が使われている(`--force` なし)、テンプレートやファイルが無い、実行の失敗(メモリ不足など)、時間切れ、Ctrl-C(送った自分の仕事を先に取り消す) |
+| 1 | 失敗: ComfyUI につながらない、GPU が使われている(`--force` なし)、テンプレートやファイルが無い、実行の失敗(メモリ不足など)、時間切れ、Ctrl+C(送った自分の仕事を先に取り消す) |
 | 2 | 使い方の誤り |
 
 **使い方の例(スクリプト・アプリ向け)**
@@ -1429,7 +1487,7 @@ JSON の出力(`--json`): [schema.ja.md「bench」](schema.ja.md#bench)
 genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggregate} ...
 ```
 
-実測の提出用 JSON(contrib_schema 2)を作る・送る前に見る・検査する・まとめる(保守する人向け。実測を送るのは `genmodelfit measure` と `genmodelfit share`)。genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
+実測の提出用 JSON(contrib_schema 3)を作る・送る前に見る・検査する・まとめる(保守する人向け。実測を送るのは `genmodelfit measure` と `genmodelfit share`)。genmodelfit は何も送らない(共有は、利用者が GitHub のフォームで「Create」を押すときか、自分で Pull Request を出すときだけ。[CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md))。
 
 ```text
 make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json

@@ -1697,7 +1697,7 @@ Exit codes: 0 = nothing pending and ok / 1 = something pending, sources counted 
 
 `genmodelfit download <model> --json` prints the envelope (with `system` and `database`) plus the keys below.
 `--list --json` prints the plan only (`listed: true`, `result: null`; no network access, nothing written, exit 0 even
-when `plan.ok` is false). Downloading with `--json` needs `--yes`. On failure (exit 1, or 130 after Ctrl-C) `error` is
+when `plan.ok` is false). Downloading with `--json` needs `--yes`. On failure (exit 1, or 130 after Ctrl+C) `error` is
 set, `result` is null and `plan` is the plan (when it was made). A model that is not found or matches several
 models gives `error` (and `candidates`) without `plan`. When the place is not decided (nothing or several ComfyUI
 folders found, and no question can be asked), `plan` is null and `destination_candidates` lists what was found
@@ -1798,6 +1798,44 @@ Errors (exit 1: unknown key, invalid value, broken or unwritable file) give `{ g
 **Only the names in `genmodelfit.__all__` are the stable API** (tests/test_judge_model.py fixes the new ones). Functions
 in submodules (`genmodelfit.recommend.judge`, `genmodelfit.hardware.classify_gpu`, …) are internal and may change in
 any release.
+
+A short tour (moved from the README in 0.13.2):
+
+```python
+import genmodelfit as gmf
+
+for f in gmf.recommend(modality="image", task="edit", limit=5):
+    row = f.to_dict()  # the same dict as one item of `recommend --json`
+    # memory_required_gb: what the chosen mode needs (the table's VRAM; RAM on CPU).
+    # f.estimate.vram_gb is the all-on-GPU need, which can be larger than the GPU (GPU~ / GPU+RAM rows).
+    print(f.model.id, f.model.precision, f.score, f.auto, f.estimate.fit, row["memory_required_gb"])
+
+st = gmf.data_status()  # is the list fresh enough for Verified (auto) models?
+if st.expired:
+    print("run: genmodelfit update --from-release", st.expires_at)
+
+# reading the list yourself: skip entries still waiting for review.
+# on a malformed or wrongly typed list, load_db raises a RuntimeError (catch RuntimeError; the subclass
+# genmodelfit.db.DatabaseError is not in gmf.__all__).
+ok = [e for e in gmf.load_db().models if e.reviewed]
+
+# one model, with the GPU your app detected (generation and precision are decided here)
+fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
+print(fit.to_dict()["fit_level"])
+
+# AMD / Intel GPUs go through the same support tables as detection; refusals say why (other_gpus[].reason)
+pc = gmf.system_from(
+    [{"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "vram_gb": 16}],
+    windows=True,
+    windows_build=22631,
+    cpu="AMD Ryzen 7 7700X",
+)
+gmf.gpu_family("Intel(R) Arc(TM) B580 Graphics", "intel")  # {"backend": "xpu", ...} from the name table
+db = gmf.load_db(use_cache=False, user_measurements=False)  # bundled list + bundled measurements only
+
+# fetch the signed list with your own session, e.g. the app's CA bundle (network: only this and gmf.download)
+db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
+```
 
 Judging one model with a GPU the app detected itself (0.6.0, #27). The generation (compute capability) and ComfyUI's
 compute precision are decided by genmodelfit from the GPU name and driver; nothing runs nvidia-smi or PowerShell:

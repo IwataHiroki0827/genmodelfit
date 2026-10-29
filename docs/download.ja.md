@@ -43,7 +43,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - Hugging Face・GitHub 以外の取得先。
 - **安全**:
   - 書きながら sha256 を計り、合わなければ消して失敗にする。
-  - 途中は `<名前>.part` に書く。Ctrl-C や通信の失敗のあとで同じコマンドを実行すると、HTTP Range で続きから落とす。相手が Range に応じなければ最初から(3 回まで)。
+  - 途中は `<名前>.part` に書く。Ctrl+C や通信の失敗のあとで同じコマンドを実行すると、HTTP Range で続きから落とす。相手が Range に応じなければ最初から(3 回まで)。
   - 既にあるファイルは、飛ばす直前に sha256 を計り直す。同じ名前の別のファイルは上書きしない。
   - 同じファイルを 2 つの download が同時に書かないよう `<名前>.lock` を置く。止まったプロセスの残りは片付ける。
   - 空きが「落とす量 + 1 GB」に足りなければ始めない。

@@ -1537,7 +1537,7 @@ CI は genmodelfit の stderr も、同じエスケープを通して要約に�
 
 - `--list --json` は計画だけを出す(`listed: true`、`result: null`。通信しない、書かない。`plan.ok` が false でも終了コード 0)。
 - `--json` でダウンロードするには `--yes` が要る。
-- 失敗したとき(終了コード 1、Ctrl-C の後は 130)は、`error` が入り、`result` は null、`plan` は計画(作れていれば)。
+- 失敗したとき(終了コード 1、Ctrl+C の後は 130)は、`error` が入り、`result` は null、`plan` は計画(作れていれば)。
 - モデルが見つからない、または複数のモデルに合うときは、`plan` 無しで `error`(と `candidates`)を出す。
 - 置き場所が決まらない(ComfyUI のフォルダが見つからない・2 つ以上見つかり、尋ねられない)ときは、`plan` は null で、`destination_candidates` に見つけたものを入れる([download.ja.md](download.ja.md)「置き場所の決め方」)。
 - Python: `gmf.plan_download(...)` は `DownloadPlan` を返し(`.to_dict()` が `plan`)、`gmf.download(...)` は `DownloadResult` を返す(`.to_dict()` が `result`)。
@@ -1634,6 +1634,44 @@ DownloadResult:
 
 **安定した API は `genmodelfit.__all__` に入っている名前だけ**(新しいものは tests/test_judge_model.py で固定する)。
 サブモジュールの関数(`genmodelfit.recommend.judge`、`genmodelfit.hardware.classify_gpu` など)は内部のもので、どのリリースでも変わりうる。
+
+ひととおりの使い方(0.13.2 で README から移した):
+
+```python
+import genmodelfit as gmf
+
+for f in gmf.recommend(modality="image", task="edit", limit=5):
+    row = f.to_dict()  # `recommend --json` の 1 件と同じ dict
+    # memory_required_gb: 選んだ動かし方で要る量(表の VRAM。CPU ならメモリ)。
+    # f.estimate.vram_gb は全部を GPU に載せたときの量で、GPU より大きいことがある(GPU~・GPU+RAM の行)
+    print(f.model.id, f.model.precision, f.score, f.auto, f.estimate.fit, row["memory_required_gb"])
+
+st = gmf.data_status()  # 一覧は Verified(auto)を出せるほど新しいか
+if st.expired:
+    print("run: genmodelfit update --from-release", st.expires_at)
+
+# 一覧を自分で読むときは、確認待ちのものを除く。
+# 形や型の正しくない一覧では、load_db が RuntimeError を出す(RuntimeError で受ける。派生の
+# genmodelfit.db.DatabaseError は gmf.__all__ に無い)
+ok = [e for e in gmf.load_db().models if e.reviewed]
+
+# アプリが調べた GPU で 1 モデルを判定する(世代と精度は genmodelfit が決める)
+fit = gmf.judge_model("image_sdxl_simple", gpu_name="NVIDIA GeForce RTX 3060", vram_gb=12, driver="560.94")
+print(fit.to_dict()["fit_level"])
+
+# AMD・Intel の GPU も検出と同じ対応表で判定する。使えない理由は other_gpus[].reason
+pc = gmf.system_from(
+    [{"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "vram_gb": 16}],
+    windows=True,
+    windows_build=22631,
+    cpu="AMD Ryzen 7 7700X",
+)
+gmf.gpu_family("Intel(R) Arc(TM) B580 Graphics", "intel")  # 名前の表から {"backend": "xpu", ...}
+db = gmf.load_db(use_cache=False, user_measurements=False)  # 同梱の一覧と同梱の実測だけ
+
+# 署名つきの一覧を、自分のセッション(アプリの CA バンドルなど)で取り込む(通信するのはこれと gmf.download だけ)
+db = gmf.update_from_release(session=my_session, dest=data_dir / "db.json", state_dir=data_dir)
+```
 
 アプリが自分で検出した GPU で 1 つのモデルを判定する(0.6.0、#27)。
 世代(compute capability)と ComfyUI の計算精度は、GPU の名前とドライバから genmodelfit が決める。nvidia-smi も PowerShell も実行しない:

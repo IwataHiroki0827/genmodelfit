@@ -43,7 +43,7 @@ genmodelfit download MODEL --uncensored --any-license --yes   # without the ques
   - Hosts other than Hugging Face / GitHub.
 - **Safety**:
   - Every file is checked with the sha256 in the list while it is written. A mismatch deletes it and fails.
-  - A download goes to `<file>.part` first. After Ctrl-C or a network error, run the same command again and it resumes with an HTTP Range request. If the server ignores Range it starts over, at most 3 times.
+  - A download goes to `<file>.part` first. After Ctrl+C or a network error, run the same command again and it resumes with an HTTP Range request. If the server ignores Range it starts over, at most 3 times.
   - Files already there are hashed again right before they are skipped. A different file with the same name is never overwritten.
   - A `<file>.lock` next to the file stops two downloads of the same file at once. A lock left by a process that is gone is cleaned up.
   - It does not start unless the free disk is the download + 1 GB.
