@@ -1,0 +1,41 @@
+{
+ "contrib_schema": 2,
+ "kind": "genmodelfit-measurement",
+ "tool": {
+  "name": "genmodelfit",
+  "version": "0.13.0"
+ },
+ "date": "2026-10-29",
+ "system": {
+  "os_family": "windows",
+  "ram_total_gb": 32,
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 3070",
+   "vram_gb": 8.0,
+   "arch": "ampere",
+   "compute_capability": "8.6",
+   "driver": "610.88",
+   "vendor": "nvidia",
+   "backend": "cuda"
+  }
+ },
+ "comfyui_version": "0.19.3",
+ "measurement": {
+  "model_id": "image_sdxl_simple",
+  "settings": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 25,
+   "precision": "fp16"
+  },
+  "outcome": "ok",
+  "standard": true,
+  "offload": "dynamic",
+  "peak_vram_gb": 2.28,
+  "peak_ram_gb": 8.69,
+  "seconds": 18.8,
+  "vram_metric": "torch_reserved",
+  "note": "GPU 全体(nvidia-smi)の増分 5.88 GB(開始前 1.52 GB 使用、最大 7.40 GB)。/system_stats の GPU 全体の増分 6.53 GB。/free はしていない(開始前に読み込み済み torch 0.00 GB)。ComfyUI の実行時間 18.44 秒。計測 84 回",
+  "files_fp": "af6acceb87f297232758ab46ccc09c1e816c3ce614f544f4e02aaa92a640d3c1"
+ }
+}
