@@ -2773,3 +2773,40 @@ def test_r3_no_plan_screen_when_another_server_is_on_the_port(
     cap = capsys.readouterr()
     assert "ComfyUI:" not in cap.out and "合計の目安" not in cap.out
     assert "--url http://127.0.0.1:8188" in cap.err and "見つかりません" not in cap.err
+
+
+# --- 4 回目の確かめ: すぐ消える計算のプロセスも取りこぼさない(#124) ---------------------------------------
+
+
+def _watch(monkeypatch, frames, types_by_frame, used_by_frame):
+    """frames[i] は i 回目に見える新しい PID、types_by_frame[i] はそのときの表の種類、
+    used_by_frame[i] は GPU 全体の使用量(MiB)。"""
+    from genmodelfit import bench
+
+    i = {"n": 0}
+    monkeypatch.setattr(bench, "_gpu_app_pids", lambda uuid: {1} | frames[i["n"]])
+    monkeypatch.setattr(bench, "smi_process_types", lambda: types_by_frame[i["n"]])
+    w = bench.GpuAppWatch("GPU-a", {1}, lambda: set(), lambda: used_by_frame[i["n"]])
+    w.last_used = 600.0
+    for n in range(len(frames)):
+        i["n"] = n
+        w.sample()
+    return w
+
+
+def test_r4_short_lived_compute_process_is_caught(monkeypatch):
+    # 2 回目の見張りで現れ(種類 C を読めた)、3 回目には消えている
+    w = _watch(monkeypatch, [set(), {50}, set()], [{}, {50: "C"}, {}], [700.0, 900.0, 800.0])
+    assert set(w.interfering()) == {50}
+
+
+def test_r4_short_lived_desktop_app_is_ignored(monkeypatch):
+    w = _watch(monkeypatch, [set(), {60}, set()], [{}, {60: "C+G"}, {}], [700.0, 5000.0, 800.0])
+    assert w.interfering() == {}  # GPU 全体が増えても、画面のアプリ(C+G)は数えない
+
+
+def test_r4_unknown_type_counts_only_with_a_memory_rise(monkeypatch):
+    w = _watch(monkeypatch, [set(), {70}, set()], [{}, {}, {}], [700.0, 900.0, 800.0])
+    assert w.interfering() == {}  # 種類を読めないまま消え、増えも 1 GiB 以下
+    w = _watch(monkeypatch, [set(), {71}, set()], [{}, {}, {}], [700.0, 2500.0, 800.0])
+    assert set(w.interfering()) == {71}  # 現れる直前より 1 GiB を超えて増えた

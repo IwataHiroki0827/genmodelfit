@@ -314,6 +314,7 @@ class Monitor:
         # NVIDIA 以外: GPU 全体の使用中のメモリ(MiB)を 1 回読む関数(gpustat.Probe.used_mib)。約 1 秒ごとに呼ぶ
         self.other_used = other_used
         self.peaks = Peaks()
+        self.last_used_mib: float | None = None  # nvidia-smi が読んだ最後の GPU 全体の使用量(MiB)
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._smi: subprocess.Popen[str] | None = None
@@ -367,6 +368,7 @@ class Monitor:
                     with self._lock:
                         self.peaks.gpu_used_mib = max(self.peaks.gpu_used_mib, v)
                         self.peaks.smi_samples += 1
+                        self.last_used_mib = v
                 if self._stop.is_set():
                     break
         finally:
@@ -489,10 +491,67 @@ def smi_process_types() -> dict[int, str]:
     return {int(pid): t for pid, t in _SMI_PROC.findall(out or "")}
 
 
+# 種類を読めないうちに消えたプロセスで、GPU 全体がこれより増えたら数値が狂ったとみる(MiB)
+SHORT_LIVED_RISE_MIB = 1024.0
+
+
+class GpuAppWatch:
+    """測っているあいだに現れた GPU のプロセスを、見つけたときにすぐ種類(C・C+G・G)と名前を読んで
+    覚える(#124)。すぐ消える計算のプロセスも取りこぼさない。見えていたあいだの GPU 全体の使用量の最大と、
+    現れる直前の量も覚える(種類を読めないまま消えたものを見分けるため)。"""
+
+    def __init__(
+        self,
+        gpu_uuid: str | None,
+        before: set[int],
+        ours: Any = lambda: set(),
+        used: Any = lambda: None,
+    ):
+        self.gpu_uuid = gpu_uuid
+        self.before = set(before)
+        self.ours = ours  # ComfyUI のプロセスの木の PID を返す関数
+        self.used = used  # GPU 全体の今の使用量(MiB。Monitor が読んだ最後の値。nvidia-smi を増やさない)
+        self.seen: dict[int, dict[str, Any]] = {}
+        self.last_used: float | None = None
+
+    def sample(self) -> None:
+        now = _gpu_app_pids(self.gpu_uuid) - self.before - self.ours()
+        used = self.used()
+        fresh = now - set(self.seen)
+        unknown = {p for p in now if p in self.seen and self.seen[p]["type"] is None}
+        types = smi_process_types() if (fresh or unknown) else {}
+        for p in fresh:
+            self.seen[p] = {
+                "type": types.get(p),
+                "name": _process_names({p}),
+                "before": self.last_used,
+                "peak": used,
+            }
+        for p in now:
+            info = self.seen[p]
+            if info["type"] is None:
+                info["type"] = types.get(p)
+            if used is not None and (info["peak"] is None or used > info["peak"]):
+                info["peak"] = used
+        if used is not None:
+            self.last_used = used
+
+    def interfering(self) -> dict[int, str]:
+        """数値を狂わせたとみるもの(PID → 名前): 計算だけのプロセス(種類 C。torch で CUDA を使う python
+        など)。C+G・G(ブラウザ・画面のアプリ)は数えない。種類を読めないまま消えたものは、見えていたあいだに
+        GPU 全体が現れる直前より SHORT_LIVED_RISE_MIB を超えて増えたときだけ数える。"""
+        out = {}
+        for p, info in self.seen.items():
+            t, before, peak = info["type"], info["before"], info["peak"]
+            if t == "C" or (
+                t is None and before is not None and peak is not None and peak - before > SHORT_LIVED_RISE_MIB
+            ):
+                out[p] = info["name"]
+        return out
+
+
 def _interfering(new_apps: set[int], base_smi=None, peaks=None) -> set[int]:
-    """測っているあいだに現れたプロセスのうち、数値を狂わせたとみるもの(#124): 計算だけのプロセス(nvidia-smi
-    の表の種類 C。torch で CUDA を使う python など)だけ。C+G・G(ブラウザ・画面のアプリ)と、種類が分からない
-    ものは数えない(動的 VRAM では GPU 全体の増分が torch の量よりずっと大きいので、量では見分けられない)。"""
+    """(前からの形)今見えている新しいプロセスのうち、計算だけのもの(種類 C)。"""
     if not new_apps:
         return set()
     types = smi_process_types()
@@ -1276,17 +1335,21 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     # 測っているあいだに GPU を使い始めたほかのプログラム
     # (#124。nvidia-smi の compute apps。Windows でも PID は出る)
     gpu_uuid = str(gpu.get("uuid")) if gpu and gpu.get("uuid") else None
-    gpu_apps0 = _gpu_app_pids(gpu_uuid) if gpu_id is not None else None
+    watch = (
+        GpuAppWatch(gpu_uuid, _gpu_app_pids(gpu_uuid), lambda: _process_tree(proc), lambda: mon.last_used_mib)
+        if gpu_id is not None
+        else None
+    )
     last_tick = time.monotonic()
     slept = 0.0
-    new_apps: set[int] = set()
     next_apps = time.monotonic() + GPU_APPS_EVERY
     try:
         prompt_id = client.submit(wf, client_id)
         while True:
-            if gpu_apps0 is not None and time.monotonic() >= next_apps:
+            if watch is not None and time.monotonic() >= next_apps:
                 next_apps = time.monotonic() + GPU_APPS_EVERY
-                new_apps |= _gpu_app_pids(gpu_uuid) - gpu_apps0 - _process_tree(proc)
+                with contextlib.suppress(Exception):  # 見張りの失敗で測るのを止めない
+                    watch.sample()
             entry = client.history(prompt_id)
             if entry and ((entry.get("status") or {}).get("completed") or _history_error(entry)):
                 break
@@ -1358,9 +1421,9 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
                 "Add --free, or change an input such as the seed (--set seed=…)",
             )
         )
-    interfering = _interfering(new_apps, base_smi, peaks)
+    interfering = watch.interfering() if watch is not None else {}
     if interfering:
-        names = _process_names(interfering)
+        names = tr("、", ", ").join(interfering.values())
         ns(
             f"測っている間にほかのプログラムが GPU を使い始めた({names})",
             f"another program started using the GPU while measuring ({names})",
