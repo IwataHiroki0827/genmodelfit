@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [0.13.0] - Unreleased
+## [0.13.0] - 2026-10-29
 
 ### Changed
 
@@ -113,6 +113,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The device login of `share` no longer waits silently until the code expires** (reported by the owner). While
+  waiting, a live line shows the code and the time left (plain lines every 30 s without a terminal), with the
+  hint that a mistyped code can be entered again on the same page (valid for 15 minutes). Keys, read without
+  waiting (Windows `msvcrt`; POSIX `select` with the terminal in cbreak mode, always restored): `r` opens the
+  page again, `n` gets a new code, `q` stops signing in and sends the same files as issues, Ctrl+C stops. An
+  expired or denied code asks whether to sign in again (no: issues). Measurements are never lost.
+  `github.device_flow` / `login` take an `on_wait` hook (the library still prints nothing).
+- **Other people's measurements no longer remove suggestions** from `measure` and `share`: "measured here" now
+  means this PC's own results only (its cached bench results and saved submissions). The bundled author
+  measurements and the aggregated community rows still feed the time hints and the estimates
+  (`measure.measured_by_this_pc`). The tests no longer depend on the bundled community data.
+- The bundled `measurements_community.json` is aggregated from `data/contrib` (#126: 4 submissions from 1
+  source, the maintainer; RTX 3070, SDXL at four settings; none consistent yet, so the calibration is
+  unchanged). README and docs/accuracy (EN/JA) give the new counts.
 - `measure` without a model no longer asks for a number when no running ComfyUI was found; it shows the list, then
   how to start ComfyUI, and exits with 1 (#123). Before, it stopped only after a model was chosen.
 
@@ -1385,7 +1399,8 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
-[0.12.0]: https://github.com/laxshmate/genmodelfit/compare/v0.11.0...HEAD
+[0.13.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.13.0
+[0.12.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.12.0
 [0.11.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.11.0
 [0.10.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.1
 [0.10.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.10.0

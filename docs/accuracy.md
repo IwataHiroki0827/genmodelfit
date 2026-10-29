@@ -509,8 +509,10 @@ How to read it:
 
 Users add the submission JSON made by `genmodelfit bench --submission` through a Pull Request to `data/contrib/<GPU>/<date>-<sha8>.json`
 (steps: [CONTRIBUTING.md](../CONTRIBUTING.md); format: "contrib" in [schema.md](schema.md)).
-**As of 2026-10-28, 0 submissions have been accepted**, and the bundled `src/genmodelfit/data/measurements_community.json` is empty.
-The rules below describe how submissions will be handled once they arrive.
+**As of 2026-10-29, 4 submissions from 1 source (the maintainer) have been accepted** (#126: RTX 3070, SDXL at four
+settings), and the bundled `src/genmodelfit/data/measurements_community.json` has 4 rows, one submission each. None is
+consistent yet (that needs 2 or more sources), so none enters the calibration.
+The rules below describe how submissions are handled.
 
 **Files measured (#90)**: other users' submissions (contrib_schema 2) and this PC's bench measurements carry `files_fp`, the fingerprint of the list's files when measured; when a weekly list update sees upstream files change (the fingerprint differs), they are no longer used. The maintainer's measurements (`measurements.json`) have no fingerprint, so they keep being used when files change (the maintainer re-measures them; the difference is that other users' rows silently stop being used while the maintainer's keep being used). `genmodelfit contrib aggregate --check` lists the bundled rows that are no longer used.
 

@@ -131,6 +131,25 @@ def _finished(m: Measurement, entry: ModelEntry) -> bool:
     )
 
 
+_BUNDLED_KEYS: set[str] = set()
+
+
+def _row_key(m: Measurement) -> str:
+    return json.dumps(asdict(m), sort_keys=True, default=str, ensure_ascii=False)
+
+
+def measured_by_this_pc(measurements: list[Measurement]) -> list[Measurement]:
+    """この PC の実測だけ(0.13.0。キャッシュの bench の実測・送る前の提出など)。同梱の実測
+    (作者の measurements.json と、ほかの利用者のまとめ measurements_community.json)は除く: ほかの PC の
+    実測があっても、この PC で測る意味は無くならない(提案から外さない)。時間の目安・見積もりには使う。"""
+    from .db import load_measurements
+    from .estimate import is_community
+
+    if not _BUNDLED_KEYS:
+        _BUNDLED_KEYS.update(_row_key(m) for m in load_measurements(include_cache=False))
+    return [m for m in measurements if not is_community(m) and _row_key(m) not in _BUNDLED_KEYS]
+
+
 def has_measurement_here(
     entry: ModelEntry, measurements: list[Measurement], gpu: Any, settings: Settings | None = None
 ) -> bool:
@@ -317,7 +336,8 @@ def suggestions(
     include_unknown_license: bool = False,
 ) -> list[Suggestion]:
     """測ると役に立つモデル(#113): テンプレートがあり、この PC の GPU に載り(perfect / good で GPU)、
-    この GPU にテンプレートの設定のままの実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
+    この GPU にテンプレートの設定のままの、この PC の実測(measured_by_this_pc と extra)が無いもの。
+    同じモデル(groups の鍵)は 1 件(入っているもの、
     無ければ recommend と同じ選び方の一番良いワークフロー)。
     設定を変えた測定(#116。variants)も同じ一覧に混ぜる: この GPU にそのワークフローのテンプレートのままの
     実測があり(先にテンプレートのままを測ってもらう)、その設定(judged_settings)で見積もって GPU に載り、
@@ -339,6 +359,9 @@ def suggestions(
     # extra: この PC に保存した、まだ一覧に取り込まれていない実測(送る前の提出など。#124)。
     # 「この GPU に実測があるか」だけに足す(測り直さない)
     ms = [*db.measurements, *extra]
+    # 「測ってある」はこの PC の実測だけで決める(キャッシュ・送る前の提出)。同梱の作者の実測・ほかの利用者の
+    # まとめは時間の目安・見積もりには使うが、提案からは外さない
+    here = measured_by_this_pc(list(db.measurements)) + list(extra)
     per_key: dict[tuple, list[Suggestion]] = {}
     for f in evaluate(db, system, content=content, policy=policy, coefficients=c):
         m, e = f.model, f.estimate
@@ -348,7 +371,7 @@ def suggestions(
         if not include_unknown_license and m.license_unknown:
             continue
         rows: list[tuple[Settings | None, str]] = []
-        if not has_measurement_here(m, ms, gpu):
+        if not has_measurement_here(m, here, gpu):
             if e.fit in SUGGEST_LEVELS and e.run_mode == SUGGEST_MODE:
                 rows.append((None, e.fit))
         else:
@@ -357,7 +380,7 @@ def suggestions(
                 if (
                     ve.fit in SUGGEST_LEVELS
                     and ve.run_mode == SUGGEST_MODE
-                    and not has_measurement_here(m, ms, gpu, v)
+                    and not has_measurement_here(m, here, gpu, v)
                 ):
                     rows.append((v, ve.fit))
         inst = installed_state(m, roots, refs) if rows else None

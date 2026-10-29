@@ -328,7 +328,7 @@ GPU の会社による上限はありません。その種類の GPU で 2 機�
 ### 精度
 
 0.12.0 の時点では、見積もりは 1 種類の NVIDIA の GPU の少数の実測で較正し、別の GPU の 2 件の実測で照合しています。
-ほかの利用者の実測はまだ同梱していません(`measurements_community.json`: 提出 0 件)。`m` の無い値は目安として見てください。
+送られた実測のまとめ(`measurements_community.json`)は、1 つの出どころ(メンテナ。RTX 3070 の SDXL の 4 つの設定)の提出 4 件で、そろった(consistent)行はまだありません。`m` の無い値は目安として見てください。
 ComfyUI は空きがあるほど VRAM を多く使うので、大きい GPU で測ったピークは最低限の必要量ではありません。
 今の件数と詳しい誤差は [docs/accuracy.ja.md](https://github.com/laxshmate/genmodelfit/blob/main/docs/accuracy.ja.md)。
 
