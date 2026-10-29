@@ -5,7 +5,20 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [0.13.1] - Unreleased
+## [0.13.1] - 2026-10-29
+
+### Fixed
+
+- **`measure` and `share` measure on AMD, Intel and Apple GPUs again** (0.13.0 wrongly stopped them with "For now
+  only NVIDIA GPUs are measured"; measurements from these GPUs are the ones most needed, since none has a ✓ yet).
+  Only "no usable GPU" stops now. The 0.13.0 checks degrade on these GPUs instead of refusing: the nvidia-smi check
+  before starting ComfyUI is skipped; after freeing, other programs' VRAM is checked from ComfyUI's `/system_stats`
+  on AMD (ROCm), and on Intel (XPU) and Apple (MPS), where `/system_stats` cannot show it, the measurement's `note`
+  says it was not checked; the watcher for new GPU processes during a run (nvidia-smi only) is not used and the
+  `note` says so. The busy check before measuring stays bench's per-vendor one (0.9.0). Starting ComfyUI is the same
+  for every vendor (the portable `run_amd_gpu.bat` / `run_intel_gpu.bat` pass the same arguments as
+  `run_nvidia_gpu.bat`).
+  (measure/share が NVIDIA 以外の GPU(AMD・Intel・Apple)でまた測れるようにした(0.13.0 で誤って止めていた))
 
 ### Changed
 
@@ -1415,6 +1428,7 @@ First public release. / 最初の公開版。
 - License: MPL-2.0 for the code and the bundled data (was MIT before the first release).
   Attribution for the upstream data is in `THIRD_PARTY_NOTICES`.
 
+[0.13.1]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.13.1
 [0.13.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.13.0
 [0.12.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.12.0
 [0.11.0]: https://github.com/laxshmate/genmodelfit/releases/tag/v0.11.0
