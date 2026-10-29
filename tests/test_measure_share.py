@@ -402,7 +402,28 @@ def test_measure_download_uses_the_download_command(monkeypatch):
     ns = seen[0]
     assert ns.model == "image_sdxl_simple" and ns.yes is True and ns.comfyui_dir == "D:/C"
     # 同意の決まりは download のまま: 無検閲・ライセンス不明の同意は足さない
-    assert ns.content is None and ns.include_unknown_license is False
+    assert ns.content == "sfw" and ns.include_unknown_license is False
+
+
+def test_measure_download_reaches_the_plan_without_crashing(db, monkeypatch, tmp_path):
+    # 0.12.0 では content が None のまま plan_download に渡り ValueError で落ちた(#124 の本番で見つかった)
+    from genmodelfit import downloader
+
+    seen = []
+    real = downloader.plan_download
+
+    def spy(*a, **k):
+        seen.append(k.get("content"))
+        return real(*a, **k)
+
+    monkeypatch.setattr(downloader, "plan_download", spy)
+    monkeypatch.setattr(cli, "plan_download", spy, raising=False)
+    (tmp_path / "models").mkdir()
+    (tmp_path / "main.py").write_text("")
+    args = cli.build_parser().parse_args(["measure", "x", "--comfyui-dir", str(tmp_path)])
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    cli._measure_download(args, "image_sdxl_simple")  # 同意しないので落とさずに終わる
+    assert seen == ["sfw"]
 
 
 def test_measure_unknown_model_lists_candidates(capsys, this_pc):

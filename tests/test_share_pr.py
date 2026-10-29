@@ -363,7 +363,7 @@ def test_share_download_forwards_consent_to_download(monkeypatch):
     args = cli.build_parser().parse_args(["share", "--yes", "--any-license", "--comfyui-dir", "D:/C"])
     assert cli._measure_download(args, "image_sdxl_simple") == 0
     ns = got[0]
-    assert ns.yes and ns.include_unknown_license and ns.comfyui_dir == "D:/C" and ns.content is None
+    assert ns.yes and ns.include_unknown_license and ns.comfyui_dir == "D:/C" and ns.content == "sfw"
 
 
 def test_share_json_refuses_to_download():

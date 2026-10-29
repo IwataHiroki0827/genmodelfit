@@ -2653,6 +2653,7 @@ def _share_screen(
     start=None,
     skipped: list | None = None,
     asks_download: bool = True,
+    downloads: bool = False,
 ) -> list[str]:
     """share の測る前の画面(measure の「測る前に」と同じ部品: ComfyUI・入っているか・時間の目安)。"""
     lines = [
@@ -2691,6 +2692,12 @@ def _share_screen(
         size = sum(x.installed.missing_bytes for x in dl_plan) / GIB
         lines.append(
             tr(
+                f"入っていないもの {len(dl_plan)} 件(落とす量 {size:.1f} GB)は、落として測ります(--download)",
+                f"{len(dl_plan)} not installed ({size:.1f} GB to download) are downloaded and measured"
+                " (--download)",
+            )
+            if downloads
+            else tr(
                 f"入っていないもの {len(dl_plan)} 件(落とす量 {size:.1f} GB)は、測り終えて時間が残れば、"
                 "落としてよいかを尋ねます(--download で尋ねずに落とす)",
                 f"{len(dl_plan)} not installed ({size:.1f} GB to download): after measuring, if time is left,"
@@ -3013,7 +3020,18 @@ def cmd_share(args: argparse.Namespace) -> int:
     }
     asks_download = _share_asks_download(args)
     screen = _share_screen(
-        plan, dl_plan, pending, url, found_by, budget, total, unknown, start, skipped, asks_download
+        plan,
+        dl_plan,
+        pending,
+        url,
+        found_by,
+        budget,
+        total,
+        unknown,
+        start,
+        skipped,
+        asks_download,
+        downloads=bool(args.download),
     )
     if stop is not None and not pending:
         # 測れず、送っていない実測も無い: 計画を見せ、起動の仕方を出して 1(尋ねない・ログインしない。#123)
@@ -5397,6 +5415,8 @@ def _measure_download(args: argparse.Namespace, model_id: str) -> int:
     if args.no_cache:
         argv.append("--no-cache")
     ns = build_parser().parse_args(argv)
+    # _main を通らないので、内容の区分の既定(sfw)をここで入れる。無検閲の同意は足さない
+    ns.content = getattr(args, "content", None) or DEFAULT_CONTENT
     return cmd_download(ns)
 
 
