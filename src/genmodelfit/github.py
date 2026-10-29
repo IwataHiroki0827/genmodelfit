@@ -90,12 +90,17 @@ EXPIRY_MARGIN = 60.0  # 期限の少し前から切れたものとみなす(秒)
 def read_cached_token(now: Callable[[], float] = time.time) -> str | None:
     """キャッシュしたトークン({"access_token", "expires_at"} の JSON)。無い・読めない・期限が切れた
     (expires_at の EXPIRY_MARGIN 秒前を過ぎた)なら None。切れた・壊れたキャッシュは消す。"""
+    return cached_token_info(now)[0]
+
+
+def cached_token_info(now: Callable[[], float] = time.time) -> tuple[str | None, float | None]:
+    """(キャッシュしたトークン, 期限の時刻(エポック秒)か None)。read_cached_token と同じ決まり。"""
     import json
 
     try:
         text = token_path().read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return None
+        return None, None
     try:
         data = json.loads(text)
     except ValueError:
@@ -104,11 +109,11 @@ def read_cached_token(now: Callable[[], float] = time.time) -> str | None:
     expires = data.get("expires_at") if isinstance(data, dict) else None
     if not isinstance(token, str) or not token.strip():
         clear_cached_token()
-        return None
+        return None, None
     if isinstance(expires, (int, float)) and now() >= float(expires) - EXPIRY_MARGIN:
         clear_cached_token()
-        return None
-    return token.strip()
+        return None, None
+    return token.strip(), float(expires) if isinstance(expires, (int, float)) else None
 
 
 def write_cached_token(
@@ -156,10 +161,15 @@ class Credentials:
     token: str = field(repr=False)
     login: str
     source: str  # env:<名前> / cache / device
+    expires_at: float | None = None  # 期限の時刻(エポック秒)。分からなければ None(環境変数のトークンなど)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON に入れる中身(トークンは入れない)。"""
         return {"login": self.login, "source": self.source}
+
+    def remaining(self, now: Callable[[], float] = time.time) -> float | None:
+        """期限までの秒数(分からなければ None)。"""
+        return None if self.expires_at is None else self.expires_at - now()
 
 
 # --- 通信 -----------------------------------------------------------------------------------------
@@ -171,7 +181,57 @@ def _check_url(url: str) -> None:
         raise GitHubError(f"refused to contact {u.scheme}://{u.hostname}", kind="api")
 
 
+RATE_WAIT_MAX = 60.0  # 上限に当たったとき、これ以下なら 1 回だけ待ってやり直す(秒)
+_sleep = time.sleep  # 試験で差し替える
+
+
+def _rate_limited(status: int, body: Any, headers: Any) -> float | None:
+    """GitHub の上限(主・副)に当たったか。当たったなら待つ秒数(分からなければ 0)、当たっていなければ None。
+    主の上限は X-RateLimit-Remaining が 0(待つのは X-RateLimit-Reset まで)、副の上限は Retry-After か
+    本文の "secondary rate limit"。ほかの 403 は上限ではない(権限・scope)。"""
+    if status not in (403, 429):
+        return None
+    h = {str(k).lower(): str(v) for k, v in dict(headers or {}).items()}
+    msg = str(body.get("message", "")).lower() if isinstance(body, dict) else ""
+    if "retry-after" in h:
+        try:
+            return max(0.0, float(h["retry-after"]))
+        except ValueError:
+            return 0.0
+    if h.get("x-ratelimit-remaining") == "0":
+        try:
+            return max(0.0, float(h.get("x-ratelimit-reset", "0")) - time.time())
+        except ValueError:
+            return 0.0
+    if "rate limit" in msg or status == 429:
+        return 0.0
+    return None
+
+
 def _request(session: Any, method: str, url: str, **kw: Any) -> tuple[int, Any]:
+    status, body, wait = _request_once(session, method, url, **kw)
+    if wait is not None and wait <= RATE_WAIT_MAX:
+        _sleep(max(wait, 1.0))
+        status, body, wait = _request_once(session, method, url, **kw)
+    if wait is not None:
+        mins = max(1, round(wait / 60)) if wait else None
+        raise GitHubError(
+            tr(
+                "GitHub の API の回数の上限に当たりました"
+                + (f"。約 {mins} 分待ってから" if mins else "。少し待ってから")
+                + "、もう一度実行してください"
+                "(測った結果は保存してあり、genmodelfit share --no-measure で送れます)",
+                "Hit GitHub's API rate limit"
+                + (f"; wait about {mins} min" if mins else "; wait a little")
+                + " and run it again (the measurements are saved; genmodelfit share --no-measure sends them)",
+            ),
+            kind="rate_limit",
+            status=status,
+        )
+    return status, body
+
+
+def _request_once(session: Any, method: str, url: str, **kw: Any) -> tuple[int, Any, float | None]:
     import requests
 
     _check_url(url)
@@ -189,7 +249,7 @@ def _request(session: Any, method: str, url: str, **kw: Any) -> tuple[int, Any]:
         body = r.json()
     except ValueError:
         body = None
-    return r.status_code, body
+    return r.status_code, body, _rate_limited(r.status_code, body, getattr(r, "headers", None))
 
 
 def _api(
@@ -368,6 +428,7 @@ def login(
     on_code: Callable[[DeviceCode], None] | None = None,
     log: Callable[[str], None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    min_remaining: float | None = None,
 ) -> Credentials:
     """資格情報を決めて確かめる: 環境変数 GITHUB_TOKEN / GH_TOKEN → キャッシュ → デバイス認証
     (interactive のときだけ。得たトークンはキャッシュする)。使えなければ GitHubError。"""
@@ -387,7 +448,7 @@ def login(
             )
         return Credentials(token, user, f"env:{name}")
     had_cache = token_path().exists()
-    cached = read_cached_token()
+    cached, expires_at = cached_token_info()
     if had_cache and cached is None:
         say(
             tr(
@@ -396,12 +457,25 @@ def login(
             )
         )
     if cached:
-        user = whoami(session, cached)
+        short = (
+            min_remaining is not None
+            and expires_at is not None
+            and expires_at - time.time() < min_remaining
+            and interactive
+            and client_id()
+            and on_code is not None
+        )
+        user = None if short else whoami(session, cached)
         if user is not None:
-            return Credentials(cached, user, "cache")
+            return Credentials(cached, user, "cache", expires_at)
         clear_cached_token()
         say(
             tr(
+                "前にログインしたトークンは、測り終える前に期限が切れるので、ログインし直します",
+                "the saved login would expire before measuring is done; signing in again",
+            )
+            if short
+            else tr(
                 "前にログインしたトークンが使えなくなりました。ログインし直します",
                 "the saved login no longer works; signing in again",
             )
@@ -414,7 +488,7 @@ def login(
     if user is None:
         raise GitHubError(tr("ログインしたトークンが使えません", "the new token does not work"), status=401)
     write_cached_token(token, expires_in)
-    return Credentials(token, user, "device")
+    return Credentials(token, user, "device", time.time() + expires_in if expires_in else None)
 
 
 # --- 送る -----------------------------------------------------------------------------------------
@@ -428,6 +502,15 @@ class SubmitResult:
     fork: str
     uploaded: list[str]
     skipped: list[str]
+    on_main: list[str] = field(default_factory=list)  # 本家の main にもうある(マージ済み)もの
+
+    @property
+    def delivered(self) -> list[str]:
+        """送れたと言えるもの(送った印を付けてよいもの): PR があればそのブランチのもの全部、
+        無ければ本家の main にもうあるものだけ。"""
+        if self.pr_url:
+            return [*self.uploaded, *self.skipped]
+        return list(self.on_main)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -437,6 +520,7 @@ class SubmitResult:
             "fork": self.fork,
             "uploaded": self.uploaded,
             "skipped": self.skipped,
+            "on_main": self.on_main,
         }
 
 
@@ -454,11 +538,13 @@ def _is_upstream_fork(body: Any) -> bool:
     return False
 
 
-def ensure_fork(session: Any, token: str, login: str, *, sleep: Callable[[float], None] = time.sleep) -> str:
-    """利用者のフォーク(owner/name)。無ければ作り、読めるようになるまで待つ。"""
+def ensure_fork(
+    session: Any, token: str, login: str, *, sleep: Callable[[float], None] = time.sleep
+) -> tuple[str, bool]:
+    """利用者のフォーク(owner/name, 今作ったか)。無ければ作り、読めるようになるまで待つ。"""
     status, body = _api(session, token, "GET", f"/repos/{quote(login)}/{_repo_name()}")
     if status == 200 and _is_upstream_fork(body):
-        return str(body["full_name"])
+        return str(body["full_name"]), False
     status, body = _api(session, token, "POST", f"/repos/{UPSTREAM}/forks")
     if status not in (200, 201, 202) or not isinstance(body, dict) or "full_name" not in body:
         raise _write_denied(status, body, login)
@@ -466,7 +552,7 @@ def ensure_fork(session: Any, token: str, login: str, *, sleep: Callable[[float]
     for _ in range(FORK_WAIT_TRIES):
         st, _b = _api(session, token, "GET", f"/repos/{fork}")
         if st == 200:
-            return fork
+            return fork, True
         sleep(FORK_WAIT_SECONDS)
     raise GitHubError(
         tr(
@@ -476,13 +562,36 @@ def ensure_fork(session: Any, token: str, login: str, *, sleep: Callable[[float]
     )
 
 
+PR_PAGES_MAX = 10  # 開いている PR を見るページの数の上限(100 件ずつ)
+
+
 def find_open_pr(session: Any, token: str, login: str, fork: str, prefix: str) -> tuple[str, str] | None:
-    """利用者の開いている share の PR(ブランチの名前が prefix で始まるもの)の (ブランチ, URL)。"""
-    status, body = _api(
-        session, token, "GET", f"/repos/{UPSTREAM}/pulls", params={"state": "open", "per_page": "100"}
-    )
-    if status != 200 or not isinstance(body, list):
-        return None  # 見つけられないだけなら新しい PR にする(実測を失わない)
+    """利用者の開いている share の PR(ブランチの名前が prefix で始まるもの)の (ブランチ, URL)。
+    prefix は `genmodelfit-share/<GPU>/` の形(GPU の名前に / は入らないので、ほかの GPU と紛れない)。
+    一覧を読めなければ GitHubError(同じ PR を 2 本開かないように、推して進まない)。"""
+    for page in range(1, PR_PAGES_MAX + 1):
+        status, body = _api(
+            session,
+            token,
+            "GET",
+            f"/repos/{UPSTREAM}/pulls",
+            params={"state": "open", "per_page": "100", "page": str(page)},
+        )
+        if status != 200 or not isinstance(body, list):
+            raise GitHubError(
+                tr("開いている PR の一覧を読めません: ", "cannot list the open pull requests: ")
+                + _message(status, body),
+                status=status,
+            )
+        hit = _match_pr(body, login, fork, prefix)
+        if hit is not None:
+            return hit
+        if len(body) < 100:
+            return None
+    return None
+
+
+def _match_pr(body: list, login: str, fork: str, prefix: str) -> tuple[str, str] | None:
     for pr in body:
         head = pr.get("head") if isinstance(pr, dict) else None
         if not isinstance(head, dict):
@@ -509,31 +618,84 @@ def upstream_head(session: Any, token: str) -> str:
     return sha
 
 
-def create_branch(session: Any, token: str, login: str, fork: str, branch: str, sha: str) -> None:
-    status, body = _api(
-        session, token, "POST", f"/repos/{fork}/git/refs", {"ref": f"refs/heads/{branch}", "sha": sha}
-    )
-    if status in (201, 422):  # 422 はたいてい、もうある(前のやり直し)
-        return
+BRANCH_WAIT_SECONDS = (2.0, 4.0, 8.0, 16.0, 30.0)  # 作ったばかりのフォークの git が整うのを待つ間隔
+
+
+def branch_exists(session: Any, token: str, fork: str, branch: str) -> bool:
+    status, _b = _api(session, token, "GET", f"/repos/{fork}/git/ref/heads/{quote(branch, safe='/')}")
+    return status == 200
+
+
+def create_branch(
+    session: Any,
+    token: str,
+    login: str,
+    fork: str,
+    branch: str,
+    sha: str,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """フォークにブランチを作る。もうあれば(422 で、GET で確かめて)そのまま。作ったばかりのフォークは
+    git のデータが整うまで 404・409・422 を返すことがあるので、間隔を空けて何度か試す。"""
+    for wait in (*BRANCH_WAIT_SECONDS, None):
+        status, body = _api(
+            session, token, "POST", f"/repos/{fork}/git/refs", {"ref": f"refs/heads/{branch}", "sha": sha}
+        )
+        if status == 201:
+            return
+        if status == 422 and branch_exists(session, token, fork, branch):
+            return  # 前のやり直しで作ってある
+        if status == 403 or wait is None:
+            break
+        if status not in (404, 409, 422):
+            break
+        sleep(wait)
     raise _write_denied(status, body, login)
 
 
 def put_file(
-    session: Any, token: str, login: str, fork: str, branch: str, path: str, text: str, message: str
+    session: Any,
+    token: str,
+    login: str,
+    fork: str,
+    branch: str,
+    path: str,
+    text: str,
+    message: str,
+    *,
+    fresh: bool = False,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> bool:
-    """ファイルを置く。置いたら True、もうある(同じ名前)なら False。"""
+    """ファイルを置く。置いたら True、もうある(同じ名前)なら False。fresh(作ったばかりのフォーク)なら、
+    404 を scope の不足と言う前に、間隔を空けて何度か試す。"""
     url_path = "/".join(quote(p) for p in path.split("/"))
     payload = {
         "message": message,
         "content": base64.b64encode(text.encode("utf-8")).decode("ascii"),
         "branch": branch,
     }
-    status, body = _api(session, token, "PUT", f"/repos/{fork}/contents/{url_path}", payload)
+    waits = list(BRANCH_WAIT_SECONDS) if fresh else []
+    while True:
+        status, body = _api(session, token, "PUT", f"/repos/{fork}/contents/{url_path}", payload)
+        if status == 404 and waits:
+            sleep(waits.pop(0))
+            continue
+        break
     if status == 422 and "sha" in str((body or {}).get("message", "") if isinstance(body, dict) else ""):
         return False
     if status not in (200, 201):
         raise _write_denied(status, body, login)
     return True
+
+
+def on_upstream(session: Any, token: str, path: str) -> bool:
+    """そのファイルが本家の main にもうあるか(マージ済み)。"""
+    url_path = "/".join(quote(p) for p in path.split("/"))
+    status, _b = _api(
+        session, token, "GET", f"/repos/{UPSTREAM}/contents/{url_path}", params={"ref": BASE_BRANCH}
+    )
+    return status == 200
 
 
 def open_pr(session: Any, token: str, fork: str, branch: str, title: str, body: str) -> str:
@@ -564,12 +726,14 @@ def submit(
     sleep: Callable[[float], None] = time.sleep,
 ) -> SubmitResult:
     """files((リポジトリの中のパス, 中身))を PR で送る。開いている share の PR(ブランチが match_prefix で
-    始まる)があればそのブランチに足す。無ければ本家の main の先頭から branch を作って PR を開く。
-    同じ名前のファイルは飛ばす。新しく置くものが無ければ PR を開かない(pr_url は None)。"""
+    始まる)があればそのブランチに足す。無ければ本家の main の先頭から branch を作って(前のやり直しで
+    あればそれを使って)PR を開く。同じ名前のファイルは飛ばす。
+    やり直しでも PR を失わない: 新しく置いたものが無くても、ブランチに本家の main に無いファイルがあれば
+    PR を開く。PR を開かないのは、どれも本家の main にもうあるときだけ。"""
     say = log or (lambda msg: None)
     token, login_name = creds.token, creds.login
     say(tr("フォークを確かめています", "checking your fork"))
-    fork = ensure_fork(session, token, login_name, sleep=sleep)
+    fork, fresh = ensure_fork(session, token, login_name, sleep=sleep)
     found = find_open_pr(session, token, login_name, fork, match_prefix)
     reused = found is not None
     if found is not None:
@@ -577,17 +741,27 @@ def submit(
         say(tr(f"開いている PR に足します: {pr_url}", f"adding to your open PR: {pr_url}"))
     else:
         pr_url = None
-        create_branch(session, token, login_name, fork, branch, upstream_head(session, token))
+        create_branch(session, token, login_name, fork, branch, upstream_head(session, token), sleep=sleep)
     uploaded: list[str] = []
     skipped: list[str] = []
     for path, text in files:
-        if put_file(session, token, login_name, fork, branch, path, text, f"measurements: add {path}"):
-            uploaded.append(path)
-        else:
-            skipped.append(path)
-    if not reused and uploaded:
+        put = put_file(
+            session,
+            token,
+            login_name,
+            fork,
+            branch,
+            path,
+            text,
+            f"measurements: add {path}",
+            fresh=fresh,
+            sleep=sleep,
+        )
+        (uploaded if put else skipped).append(path)
+    on_main = [p for p in skipped if on_upstream(session, token, p)] if skipped else []
+    if not reused and (uploaded or len(on_main) < len(skipped)):
         pr_url = open_pr(session, token, fork, branch, title, body)
-    return SubmitResult(pr_url, reused, branch, fork, uploaded, skipped)
+    return SubmitResult(pr_url, reused, branch, fork, uploaded, skipped, on_main)
 
 
 # --- PR の題と本文 --------------------------------------------------------------------------------

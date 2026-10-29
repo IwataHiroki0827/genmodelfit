@@ -2393,7 +2393,7 @@ def _ask_yes_no(prompt: str, default: bool) -> bool:
     return a in ("y", "yes")
 
 
-def _share_login(args: argparse.Namespace):
+def _share_login(args: argparse.Namespace, need_seconds: float | None = None):
     """GitHub の資格情報を決めて確かめる(測る前。#124)。(資格情報, session)。使えなければ CliError。
     トークンは表示しない。デバイス認証のコードと URL は stderr に出し、端末ならブラウザを開く。"""
     from . import github
@@ -2424,7 +2424,11 @@ def _share_login(args: argparse.Namespace):
     session = _share_session()
     try:
         creds = github.login(
-            session, interactive=_interactive() and not args.json, on_code=on_code, log=_progress(args)
+            session,
+            interactive=_interactive() and not args.json,
+            on_code=on_code,
+            log=_progress(args),
+            min_remaining=need_seconds,
         )
     except github.GitHubError as e:
         raise CliError(str(e)) from None
@@ -2434,6 +2438,31 @@ def _share_login(args: argparse.Namespace):
             file=sys.stderr,
         )
     return creds, session
+
+
+def _share_relogin_if_expired(args: argparse.Namespace, creds, session):
+    """送る直前にトークンを確かめる(測るあいだに切れることがある)。切れていれば保存したものを消し、端末なら
+    ログインし直す。端末でなければ、測った結果は保存してあり --no-measure で送れることを言って止める。"""
+    from . import github
+
+    try:
+        ok = github.whoami(session, creds.token) is not None
+    except github.GitHubError as e:
+        raise CliError(str(e)) from None
+    if ok:
+        return creds, session
+    if not creds.source.startswith("env:"):
+        github.clear_cached_token()
+    if _interactive() and not args.json and not creds.source.startswith("env:"):
+        return _share_login(args)
+    raise CliError(
+        tr(
+            "GitHub のログインの期限が切れました。測った結果は保存してあります。"
+            "ログインし直してから genmodelfit share --no-measure で送ってください",
+            "The GitHub sign-in expired. The measurements are saved; sign in again and send them with"
+            " genmodelfit share --no-measure",
+        )
+    )
 
 
 def _share_items(paths: list, args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -2497,13 +2526,14 @@ def _share_submit(args: argparse.Namespace, creds, session, items: list[dict[str
                 files,
                 title=github.pr_title(str(gpu), len(files)),
                 body=github.pr_body([it["data"] for it in group]),
-                branch=f"{github.BRANCH_PREFIX}{slug}-{key}",
-                match_prefix=f"{github.BRANCH_PREFIX}{slug}-",
+                # GPU の名前(slug)に / は入らないので、ほかの GPU の PR と紛れない
+                branch=f"{github.BRANCH_PREFIX}{slug}/{key}",
+                match_prefix=f"{github.BRANCH_PREFIX}{slug}/",
                 log=_progress(args),
             )
         except github.GitHubError as e:
             raise CliError(str(e)) from None
-        done = set(res.uploaded) | set(res.skipped)
+        done = set(res.delivered)  # PR がある(か、本家の main にもうある)ものだけに印を付ける
         for it in group:
             if it["path_in_repo"] in done:
                 mark_shared(it["data"])
@@ -2572,6 +2602,8 @@ def _share_send(
             return base_code
     if creds is None:
         creds, session = _share_login(args)
+    else:
+        creds, session = _share_relogin_if_expired(args, creds, session)
     results, marked = _share_submit(args, creds, session, good)
     code = base_code if len(good) == len(items) else 1
     if args.json:
@@ -2791,27 +2823,34 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
         )
 
 
-def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: list, measured, failed) -> bool:
-    """時間が残り、入っていない提案があるとき(#124): --download か、[y/N] に y のときだけ、download と同じ流れ
-    (_measure_download。同じ同意・ライセンス・無検閲の決まり)で落として測る。落としたか。"""
-    want = bool(args.download)
-    if not want and _share_asks_download(args):
-        size = sum(x.installed.missing_bytes for x in dl_plan) / GIB
-        secs = sum(x.seconds for x in dl_plan)
-        print()
-        print(
-            tr(
-                f"時間が残っています。入っていないモデル {len(dl_plan)} 件を落とせば測れます"
-                f"(落とす量 {size:.1f} GB、測る時間の目安 約 {secs} 秒):",
-                f"There is time left. {len(dl_plan)} model(s) that are not installed can be measured after"
-                f" downloading ({size:.1f} GB; about {secs} s to measure):",
-            )
+def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
+    """入っていない提案を落として測るかを 1 回だけ尋ねる([y/N]。既定は No)。first は、使える入っている
+    ものが無く、最初に尋ねるとき。"""
+    size = sum(x.installed.missing_bytes for x in dl_plan) / GIB
+    secs = sum(x.seconds for x in dl_plan)
+    print()
+    print(
+        tr(
+            ("この PC に入っていて測れるモデルはありません。" if first else "時間が残っています。")
+            + f"入っていないモデル {len(dl_plan)} 件を落とせば測れます"
+            f"(落とす量 {size:.1f} GB、測る時間の目安 約 {secs} 秒):",
+            ("No installed model can be measured on this PC. " if first else "There is time left. ")
+            + f"{len(dl_plan)} model(s) that are not installed can be measured after downloading"
+            f" ({size:.1f} GB; about {secs} s to measure):",
         )
-        for i, x in enumerate(dl_plan, 1):
-            print(_suggestion_row(i, x))
-        want = _ask_yes_no(tr("落として測りますか? [y/N] ", "Download and measure them? [y/N] "), False)
-    if not want:
-        return False
+    )
+    for i, x in enumerate(dl_plan, 1):
+        print(_suggestion_row(i, x))
+    sys.stdout.flush()
+    yes = _ask_yes_no(tr("落として測りますか? [y/N] ", "Download and measure them? [y/N] "), False)
+    if not yes:
+        print(tr("落としません", "Not downloading"), file=sys.stderr)
+    return yes
+
+
+def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: list, measured, failed) -> None:
+    """入っていない提案を、download と同じ流れ(_measure_download。同じ同意・ライセンス・無検閲の決まり)で
+    落として測る(#124。同意は呼び出し側が取ってある)。"""
     for x in dl_plan:
         if _measure_download(args, x.model_id) != 0:
             failed.append(
@@ -2823,7 +2862,6 @@ def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: lis
             )
             continue
         _share_measure_one(args, url, x, measured, failed)
-    return True
 
 
 def _share_dry_run(
@@ -2894,6 +2932,24 @@ def cmd_share(args: argparse.Namespace) -> int:
     from . import github
     from .measure import SHARE_BUDGET_SECONDS, saved_submissions, suggestions
 
+    if args.file and (args.no_measure or args.download):
+        print(
+            tr(
+                "genmodelfit share: エラー: --no-measure・--download はファイルといっしょには使えません",
+                "genmodelfit share: error: --no-measure and --download cannot be used with a file",
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        not args.issue
+        and args.json
+        and not args.yes
+        and not (args.dry_run or args.logout or args.download or args.no_measure or args.budget is not None)
+    ):
+        # 前からの組み込み(アプリ)のため: --yes の無い share --json は、送っていない実測の一覧、
+        # share <file> --json は中身の確かめのまま(測らない・送らない。#113 と同じ)
+        return _cmd_share_issue(args)
     _share_checks(args)
     if args.issue:
         return _cmd_share_issue(args)
@@ -3002,77 +3058,98 @@ def cmd_share(args: argparse.Namespace) -> int:
     if not args.json and measuring:
         _emit(screen)
         sys.stdout.flush()  # 計画を先に(このあとの stderr の途中経過と順が入れ替わらないように)
-    if plan and not args.yes:
-        try:
+    # 入っていないものを落とすか: --download なら落とす。
+    # 尋ねられない(--yes・--json・端末でない)なら落とさない。
+    # 尋ねるのは、使える入っているものが無ければ最初に(ComfyUI を起動する前)、あれば測り終えてから(#124)
+    want_dl: bool | None = True if args.download else (None if _share_asks_download(args) else False)
+    try:
+        if plan and not args.yes:
             go = _ask_yes_no(
                 tr(f"{len(plan)} 件を測って送りますか? [Y/n] ", f"Measure {len(plan)} and send? [Y/n] "),
                 True,
             )
-        except KeyboardInterrupt:
-            print(file=sys.stderr)
-            return 130
-        if not go:
-            print(
-                tr(
-                    "何もしませんでした(測らずに送るなら genmodelfit share --no-measure)",
-                    "Nothing done (to send without measuring: genmodelfit share --no-measure)",
-                ),
-                file=sys.stderr,
-            )
-            return 0
-    # ログインは測る前(長く測ったあとで失敗しないように。llmfit と同じ)。計画と確認のあと
-    creds, session = _share_login(args)
+            if not go:
+                print(
+                    tr(
+                        "何もしませんでした(測らずに送るなら genmodelfit share --no-measure)",
+                        "Nothing done (to send without measuring: genmodelfit share --no-measure)",
+                    ),
+                    file=sys.stderr,
+                )
+                return 0
+        if not plan and dl_plan and want_dl is None:
+            want_dl = _share_ask_download(dl_plan, first=True)
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        return 130
     measured: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     interrupted = downloaded = False
-    started = None
-    try:
-        if start is not None and (plan or dl_plan):
-            try:
-                started = _comfyui_start(args, start)
-            except CliError as e:
-                failed.append({"model_id": None, "settings": None, "error": str(e)})
-                plan, dl_plan = [], []
-                if not args.json:
-                    print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
-            else:
-                url = started.url
-                report["comfyui"]["started"] = started.to_dict()
-                # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
-                before = [(x.model_id, tuple(x.args)) for x in plan]
-                plan, total, dl_plan = _share_replan(sugg, budget, _node_check(url), skipped)
-                report.update(
-                    plan=[x.to_dict() for x in plan],
-                    download_plan=[x.to_dict() for x in dl_plan],
-                    skipped=skipped,
-                )
-                if not args.json and (skipped or before != [(x.model_id, tuple(x.args)) for x in plan]):
-                    _emit(_share_replan_lines(plan, total, budget, skipped))
-                    sys.stdout.flush()
-        for x in plan:
-            _share_measure_one(args, url, x, measured, failed)
-        if dl_plan:
-            downloaded = _share_download_and_measure(args, url, dl_plan, measured, failed)
-    except KeyboardInterrupt:
-        interrupted = True
-        print(file=sys.stderr)
-        print(
-            tr(
-                "止めました。そこまでの実測を送るかに進みます",
-                "Stopped. Moving on to sending what was measured so far",
-            ),
-            file=sys.stderr,
-        )
-    finally:
-        _comfyui_stop(args, started)
+    creds = session = None
+    if plan or (dl_plan and want_dl):
+        # ログインは測る前(長く測ったあとで失敗しないように。llmfit と同じ)。計画と確認のあと。
+        # 測るあいだにトークンが切れないよう、残りが短ければ先にログインし直す
+        need = budget + (getattr(args, "start_timeout", None) or 300.0) + 600.0
+        creds, session = _share_login(args, need_seconds=need)
+        holder: list = []
+        try:
+            if start is not None:
+                try:
+                    started = _comfyui_start(args, start, holder)
+                except CliError as e:
+                    failed.append({"model_id": None, "settings": None, "error": str(e)})
+                    plan, dl_plan = [], []
+                    if not args.json:
+                        print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+                else:
+                    url = started.url
+                    report["comfyui"]["started"] = started.to_dict()
+                    # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
+                    before = [(x.model_id, tuple(x.args)) for x in plan]
+                    before_dl = [x.model_id for x in dl_plan]
+                    plan, total, dl_plan = _share_replan(sugg, budget, _node_check(url), skipped)
+                    report.update(
+                        plan=[x.to_dict() for x in plan],
+                        download_plan=[x.to_dict() for x in dl_plan],
+                        skipped=skipped,
+                    )
+                    changed = before != [(x.model_id, tuple(x.args)) for x in plan] or before_dl != [
+                        x.model_id for x in dl_plan
+                    ]
+                    if not args.json and (skipped or changed):
+                        _emit(_share_replan_lines(plan, total, budget, skipped))
+                        sys.stdout.flush()
+                    if not plan and dl_plan and want_dl is None:
+                        # 入っているものがどれも使えなかった: いま尋ねる(ComfyUI は起動したまま)
+                        want_dl = _share_ask_download(dl_plan, first=True)
+            for x in plan:
+                _share_measure_one(args, url, x, measured, failed)
+            if dl_plan and want_dl is None:
+                want_dl = _share_ask_download(dl_plan, first=False)
+            if dl_plan and want_dl:
+                downloaded = True
+                _share_download_and_measure(args, url, dl_plan, measured, failed)
+        except KeyboardInterrupt:
+            interrupted = True
+            print(file=sys.stderr)
+            print(
+                tr(
+                    "止めました。そこまでの実測を送るかに進みます",
+                    "Stopped. Moving on to sending what was measured so far",
+                ),
+                file=sys.stderr,
+            )
+        finally:
+            for st in holder:
+                _comfyui_stop(args, st)
     if failed and not args.json:
         print()
         print(tr(f"測れなかったもの: {len(failed)} 件", f"Not measured: {len(failed)}"))
         for f in failed:
             print(f"  - {f['model_id'] or 'ComfyUI'}: {f['error'].splitlines()[0]}")
     report.update(measured=measured, failed=failed, interrupted=interrupted, downloaded=downloaded)
-    if not measured and dl_plan and not downloaded and not interrupted:
-        # 測れたものが無く、入っていない提案はある: --download で落として測れることを知らせる
+    if dl_plan and not downloaded and not args.download and not _share_asks_download(args):
+        # 尋ねられない(--yes・--json・端末でない)ので落とさなかった: --download で落として測れることを知らせる
         size = sum(x.installed.missing_bytes for x in dl_plan)
         report["download_hint"] = {"count": len(dl_plan), "bytes": size}
         if not args.json:
@@ -4978,9 +5055,10 @@ def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any,
     return plan, None
 
 
-def _comfyui_start(args: argparse.Namespace, plan):
-    """ComfyUI を起動して、準備ができるまで待つ(#124)。途中は stderr に出す(--json では出さない)。
-    起動できなければ CliError(ログの場所と最後の行を添える)。"""
+def _comfyui_start(args: argparse.Namespace, plan, holder: list):
+    """ComfyUI を起動して、準備ができるまで待つ(#124)。起動したものはすぐ holder に入れる(何かを表示する
+    より前。呼び出し側の finally が holder のものを止めるので、途中の Ctrl+C でも残らない)。
+    途中は stderr に出す(--json では出さない)。起動できなければ CliError(ログの場所と最後の行を添える)。"""
     from . import comfystart
 
     say = _progress(args)
@@ -4988,6 +5066,7 @@ def _comfyui_start(args: argparse.Namespace, plan):
         started = comfystart.launch(plan)
     except comfystart.StartError as e:
         raise CliError(str(e)) from None
+    holder.append(started)
     say(
         tr(
             f"ComfyUI を起動しています({plan.comfyui_dir}、ポート {started.port}。ログ: {started.log})",
@@ -5011,9 +5090,6 @@ def _comfyui_start(args: argparse.Namespace, plan):
     except comfystart.StartError as e:
         lines = [str(e), *(["  " + x for x in e.tail] if e.tail else [])]
         raise CliError("\n".join(lines)) from None
-    except BaseException:
-        comfystart.stop(started)
-        raise
     say(tr(f"ComfyUI の準備ができました: {started.url}", f"ComfyUI is ready: {started.url}"))
     return started
 
@@ -5572,18 +5648,19 @@ def cmd_measure(args: argparse.Namespace) -> int:
         if code != 0:
             return code
         print()
-    started = None
+    holder: list = []
     try:
         if start is not None:
             try:
-                started = _comfyui_start(args, start)
+                started = _comfyui_start(args, start, holder)
             except CliError as e:
                 return fail(str(e))
             url = started.url
             plan["comfyui"]["started"] = started.to_dict()
         run_ = _measure_run(args, url, entry, settings)
     finally:
-        _comfyui_stop(args, started)
+        for st in holder:
+            _comfyui_stop(args, st)
     if run_["error"] is not None:
         return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
     m, result = run_["measurement"], run_["result"]

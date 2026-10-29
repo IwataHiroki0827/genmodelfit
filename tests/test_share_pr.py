@@ -32,9 +32,10 @@ FORK = "https://api.github.com/repos/alice/genmodelfit"
 
 
 class Resp:
-    def __init__(self, status: int, body=None):
+    def __init__(self, status: int, body=None, headers=None):
         self.status_code = status
         self._body = body
+        self.headers = headers or {}
 
     def json(self):
         if self._body is None:
@@ -45,7 +46,19 @@ class Resp:
 class FakeGitHub:
     """GitHub の API の偽物。呼ばれた順と中身を calls に残す。"""
 
-    def __init__(self, *, fork_exists=False, open_prs=None, existing=(), user_ok=True, polls=None):
+    def __init__(
+        self,
+        *,
+        fork_exists=False,
+        open_prs=None,
+        existing=(),
+        user_ok=True,
+        polls=None,
+        on_main=(),
+        branches=(),
+    ):
+        self.on_main = set(on_main)
+        self.branches = set(branches)
         self.calls: list[tuple[str, str, dict]] = []
         self.fork_exists = fork_exists
         self.open_prs = open_prs or []
@@ -93,7 +106,17 @@ class FakeGitHub:
         if method == "GET" and path == f"{UP}/git/ref/heads/main":
             return Resp(200, {"object": {"sha": "abc123"}})
         if method == "POST" and path == f"{FORK}/git/refs":
+            name = kw["json"]["ref"][len("refs/heads/") :]
+            if name in self.branches:
+                return Resp(422, {"message": "Reference already exists"})
+            self.branches.add(name)
             return Resp(201, {"ref": kw["json"]["ref"]})
+        if method == "GET" and path.startswith(f"{FORK}/git/ref/heads/"):
+            name = path[len(f"{FORK}/git/ref/heads/") :]
+            return Resp(200 if name in self.branches else 404, {})
+        if method == "GET" and path.startswith(f"{UP}/contents/"):
+            rel = path[len(f"{UP}/contents/") :]
+            return Resp(200 if rel in self.on_main else 404, {"message": "Not Found"})
         if method == "PUT" and path.startswith(f"{FORK}/contents/"):
             rel = path[len(f"{FORK}/contents/") :]
             if rel in self.existing:
@@ -121,6 +144,10 @@ class FakeGitHub:
                 out.append("head")
             elif path.endswith("/git/refs"):
                 out.append("branch")
+            elif "/git/ref/heads/" in path:
+                out.append("branch?")
+            elif path.startswith(f"{UP}/contents/"):
+                out.append("on-main?")
             elif "/contents/" in path:
                 out.append("put")
             else:
@@ -498,8 +525,8 @@ def test_submit_new_pr_order_and_content():
         files,
         title="measurements: NVIDIA GeForce RTX 3070 (1)",
         body="b",
-        branch="genmodelfit-share/rtx-3070-12345678",
-        match_prefix="genmodelfit-share/rtx-3070-",
+        branch="genmodelfit-share/rtx-3070/12345678",
+        match_prefix="genmodelfit-share/rtx-3070/",
         sleep=lambda s: None,
     )
     assert fake.steps() == ["get-fork", "fork", "get-fork", "list-prs", "head", "branch", "put", "open-pr"]
@@ -507,14 +534,14 @@ def test_submit_new_pr_order_and_content():
         assert kw["headers"]["Authorization"] == f"Bearer {TOKEN}"
         assert kw["allow_redirects"] is False
     branch = next(kw for m, u, kw in fake.calls if u.endswith("/git/refs"))["json"]
-    assert branch == {"ref": "refs/heads/genmodelfit-share/rtx-3070-12345678", "sha": "abc123"}
+    assert branch == {"ref": "refs/heads/genmodelfit-share/rtx-3070/12345678", "sha": "abc123"}
     put = fake.put["data/contrib/rtx-3070/2026-10-29-aaaaaaaa.json"]
     assert base64.b64decode(put["content"]).decode() == '{"a": 1}\n'
-    assert put["branch"] == "genmodelfit-share/rtx-3070-12345678"
+    assert put["branch"] == "genmodelfit-share/rtx-3070/12345678"
     pr = next(kw for m, u, kw in fake.calls if m == "POST" and u == f"{UP}/pulls")["json"]
     assert pr == {
         "title": "measurements: NVIDIA GeForce RTX 3070 (1)",
-        "head": "alice:genmodelfit-share/rtx-3070-12345678",
+        "head": "alice:genmodelfit-share/rtx-3070/12345678",
         "base": "main",
         "body": "b",
     }
@@ -525,7 +552,7 @@ def test_submit_adds_to_the_open_pr_and_skips_existing_files():
     open_pr = {
         "html_url": "https://github.com/laxshmate/genmodelfit/pull/150",
         "head": {
-            "ref": "genmodelfit-share/rtx-3070-old00000",
+            "ref": "genmodelfit-share/rtx-3070/old00000",
             "user": {"login": "alice"},
             "repo": {"full_name": "alice/genmodelfit"},
         },
@@ -533,7 +560,7 @@ def test_submit_adds_to_the_open_pr_and_skips_existing_files():
     other = {  # ほかの人の PR・share でないブランチには足さない
         "html_url": "https://github.com/laxshmate/genmodelfit/pull/151",
         "head": {
-            "ref": "genmodelfit-share/rtx-3070-x",
+            "ref": "genmodelfit-share/rtx-3070/x",
             "user": {"login": "bob"},
             "repo": {"full_name": "bob/genmodelfit"},
         },
@@ -547,13 +574,13 @@ def test_submit_adds_to_the_open_pr_and_skips_existing_files():
         [(a, "{}\n"), (b, "{}\n")],
         title="t",
         body="b",
-        branch="genmodelfit-share/rtx-3070-new11111",
-        match_prefix="genmodelfit-share/rtx-3070-",
+        branch="genmodelfit-share/rtx-3070/new11111",
+        match_prefix="genmodelfit-share/rtx-3070/",
     )
-    assert fake.steps() == ["get-fork", "list-prs", "put", "put"]  # 新しいブランチ・PR は作らない
+    assert fake.steps() == ["get-fork", "list-prs", "put", "put", "on-main?"]  # 新しいブランチ・PR は作らない
     assert res.reused and res.pr_url.endswith("/pull/150")
     assert res.uploaded == [b] and res.skipped == [a]
-    assert fake.put[b]["branch"] == "genmodelfit-share/rtx-3070-old00000"
+    assert fake.put[b]["branch"] == "genmodelfit-share/rtx-3070/old00000"
 
 
 def test_submit_explains_a_missing_scope():
@@ -647,7 +674,7 @@ def test_issue_flag_rules(capsys):
 
 
 def test_json_and_no_terminal_need_yes(capsys, monkeypatch, no_session):
-    assert cli.main(["share", "--json"]) == 1
+    assert cli.main(["share", "--json", "--no-measure"]) == 1
     monkeypatch.setattr(cli, "_interactive", lambda: False)
     assert cli.main(["share", "--no-measure"]) == 1
 
@@ -750,7 +777,9 @@ def test_share_asks_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     real_login = cli._share_login
-    monkeypatch.setattr(cli, "_share_login", lambda args: events.append("login") or real_login(args))
+    monkeypatch.setattr(
+        cli, "_share_login", lambda args, **k: events.append("login") or real_login(args, **k)
+    )
     monkeypatch.setattr("builtins.input", lambda p="": events.append("ask:" + p[:6]) or "")
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
     assert events[:2] == ["ask:3 件を測っ", "login"]  # 計画 → 確認 → ログイン → 測る
@@ -843,3 +872,283 @@ def test_missing_nodes_and_node_check():
     assert (
         bench.NodeCheck("http://127.0.0.1:1", client=Down()).missing("t") == []
     )  # 確かめられなければ外さない
+
+
+# --- 落とすかを尋ねる時(#124 のオーナーの決定) --------------------------------------------------------
+
+
+def test_no_usable_installed_asks_download_first_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
+    plan["sugg"] = [sugg("b_not_installed", 60, "no", 2 * 1024**3)]
+    events = []
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: events.append("download:" + mid) or 0)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    real_login = cli._share_login
+    monkeypatch.setattr(
+        cli, "_share_login", lambda args, **k: events.append("login") or real_login(args, **k)
+    )
+    monkeypatch.setattr("builtins.input", lambda p="": events.append("ask:" + p) or "y")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    assert events[:3] == ["ask:落として測りますか? [y/N] ", "login", "download:b_not_installed"]
+    assert "この PC に入っていて測れるモデルはありません" in capsys.readouterr().out
+    assert plan["ran"] == ["b_not_installed"]
+
+
+def test_declining_the_download_with_nothing_else_ends_quietly(capsys, monkeypatch, this_pc, plan, gh):
+    plan["sugg"] = [sugg("b_not_installed", 60, "no", 2 * 1024**3)]
+    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("落とさない"))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "")  # 既定は No
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    cap = capsys.readouterr()
+    assert "送るものはありません" in cap.out and gh.calls == []  # ログインもしない
+
+
+def test_usable_installed_are_measured_before_the_download_question(
+    capsys, monkeypatch, this_pc, dl_plan, gh
+):
+    events = []
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: events.append("download") or 0)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    real_run = cli._measure_run
+    monkeypatch.setattr(cli, "_measure_run", lambda *a: events.append("run:" + a[2].id) or real_run(*a))
+
+    def ask(p=""):
+        events.append("ask:" + p[:6])
+        return "n" if "落とし" in p else ""
+
+    monkeypatch.setattr("builtins.input", ask)
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    assert events[:3] == ["ask:1 件を測っ", "run:a_installed_short", "ask:落として測り"]
+    assert "download" not in events
+
+
+def test_yes_without_download_never_starts_comfyui_for_downloads(
+    capsys, monkeypatch, this_pc, plan, gh, tmp_path
+):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    plan["sugg"] = [sugg("b_not_installed", 60, "no", 2 * 1024**3)]
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(comfystart, "launch", lambda *a, **k: pytest.fail("起動しない"))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    d = venv_install(tmp_path)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--comfyui-dir", str(d)]) == 0
+    out = capsys.readouterr().out
+    assert "--download を付けると落として測ります" in out and gh.calls == []
+
+
+# --- やり直し・印・PR の見分け・上限(Checker #1・4・6・7) ----------------------------------------------
+
+
+class FlakyPR(FakeGitHub):
+    fail_pr = True
+
+    def request(self, method, url, **kw):
+        if method == "POST" and url == f"{UP}/pulls" and self.fail_pr:
+            self.calls.append((method, url, kw))
+            return Resp(502, {"message": "Bad Gateway"})
+        r = super().request(method, url, **kw)
+        if method == "PUT" and r.status_code == 201:
+            self.existing.add(url.split("/contents/")[1])
+        return r
+
+
+def test_retry_after_open_pr_failure_opens_the_pr():
+    fake = FlakyPR(fork_exists=True)
+    files = [("data/contrib/rtx-3070/2026-10-29-aaaaaaaa.json", "{}\n")]
+    kw = dict(
+        title="t",
+        body="b",
+        branch="genmodelfit-share/rtx-3070/12345678",
+        match_prefix="genmodelfit-share/rtx-3070/",
+        sleep=lambda s: None,
+    )
+    with pytest.raises(github.GitHubError):
+        github.submit(fake, _creds(), files, **kw)
+    fake.fail_pr = False
+    res = github.submit(fake, _creds(), files, **kw)
+    assert res.uploaded == [] and res.skipped == [files[0][0]] and res.on_main == []
+    assert res.pr_url and res.pr_url.endswith("/pull/200")  # ブランチにだけあるので PR を開く
+    assert res.delivered == [files[0][0]]
+
+
+def test_files_already_merged_are_marked_without_a_pr():
+    path = "data/contrib/rtx-3070/2026-10-29-aaaaaaaa.json"
+    fake = FakeGitHub(fork_exists=True, existing={path}, on_main={path})
+    res = github.submit(
+        fake,
+        _creds(),
+        [(path, "{}")],
+        title="t",
+        body="b",
+        branch="genmodelfit-share/rtx-3070/1",
+        match_prefix="genmodelfit-share/rtx-3070/",
+    )
+    assert res.pr_url is None and res.delivered == [path]
+    assert "open-pr" not in fake.steps()
+
+
+def test_cli_marks_nothing_when_the_pr_could_not_be_opened(capsys, monkeypatch):
+    _write_sub(1)
+    fake = FlakyPR()
+    monkeypatch.setattr(cli, "_share_session", lambda: fake)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["share", "--no-measure", "--yes", "--json"]) == 1
+    capsys.readouterr()
+    assert measure.load_shared() == {}  # PR が無いので印を付けない
+    fake.fail_pr = False
+    assert cli.main(["share", "--no-measure", "--yes", "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["prs"][0]["url"].endswith("/pull/200") and len(measure.load_shared()) == 1
+
+
+def test_open_pr_match_is_exact_and_paginated():
+    def pr(n, ref, owner="alice"):
+        return {
+            "html_url": f"https://github.com/laxshmate/genmodelfit/pull/{n}",
+            "head": {"ref": ref, "user": {"login": owner}, "repo": {"full_name": f"{owner}/genmodelfit"}},
+        }
+
+    class Paged(FakeGitHub):
+        def request(self, method, url, **kw):
+            if method == "GET" and url == f"{UP}/pulls":
+                self.calls.append((method, url, kw))
+                if kw["params"]["page"] == "1":
+                    return Resp(200, [pr(i, f"other/{i}", "bob") for i in range(100)])
+                return Resp(
+                    200,
+                    [
+                        pr(300, "genmodelfit-share/rtx-4060-ti/aaaa"),
+                        pr(301, "genmodelfit-share/rtx-4060/bbbb"),
+                    ],
+                )
+            return super().request(method, url, **kw)
+
+    hit = github.find_open_pr(Paged(), TOKEN, "alice", "alice/genmodelfit", "genmodelfit-share/rtx-4060/")
+    assert hit == ("genmodelfit-share/rtx-4060/bbbb", "https://github.com/laxshmate/genmodelfit/pull/301")
+
+    class Broken(FakeGitHub):
+        def request(self, method, url, **kw):
+            if url == f"{UP}/pulls":
+                return Resp(500, {"message": "oops"})
+            return super().request(method, url, **kw)
+
+    with pytest.raises(github.GitHubError):  # 一覧を読めなければ、2 本目を開かずに止める
+        github.find_open_pr(Broken(), TOKEN, "alice", "alice/genmodelfit", "genmodelfit-share/x/")
+
+
+def test_new_fork_waits_for_git_data():
+    class Slow(FakeGitHub):
+        refs_tries = 0
+        put_tries = 0
+
+        def request(self, method, url, **kw):
+            if method == "POST" and url.endswith("/git/refs") and self.refs_tries < 2:
+                self.refs_tries += 1
+                self.calls.append((method, url, kw))
+                return Resp(409, {"message": "Git Repository is empty."})
+            if method == "PUT" and self.put_tries < 1:
+                self.put_tries += 1
+                self.calls.append((method, url, kw))
+                return Resp(404, {"message": "Not Found"})
+            return super().request(method, url, **kw)
+
+    slept = []
+    res = github.submit(
+        Slow(),
+        _creds(),
+        [("data/contrib/x/2026-10-29-aaaaaaaa.json", "{}")],
+        title="t",
+        body="b",
+        branch="genmodelfit-share/x/1",
+        match_prefix="genmodelfit-share/x/",
+        sleep=slept.append,
+    )
+    # フォークを作ったあと: ブランチで 2 回、置くので 1 回待った(404 を scope の不足と言わない)
+    assert res.pr_url and slept[-3:] == [2.0, 4.0, 2.0]
+
+
+def test_rate_limits(monkeypatch):
+    waits = []
+    monkeypatch.setattr(github, "_sleep", waits.append)
+
+    class Limited(FakeGitHub):
+        def __init__(self, headers, times):
+            super().__init__()
+            self.h, self.times = headers, times
+
+        def request(self, method, url, **kw):
+            if url.endswith("/user") and self.times:
+                self.times -= 1
+                return Resp(403, {"message": "You have exceeded a secondary rate limit"}, self.h)
+            return super().request(method, url, **kw)
+
+    assert github.whoami(Limited({"Retry-After": "3"}, 1), TOKEN) == "alice" and waits == [3.0]
+    with pytest.raises(github.GitHubError) as e:
+        github.whoami(Limited({"Retry-After": "600"}, 5), TOKEN)
+    assert e.value.kind == "rate_limit" and "約 10 分" in str(e.value)
+    with pytest.raises(github.GitHubError) as e:
+        github.whoami(Limited({"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "9999999999"}, 5), TOKEN)
+    assert e.value.kind == "rate_limit"
+    assert github._rate_limited(403, {"message": "Resource not accessible by integration"}, {}) is None
+
+
+# --- トークンの期限(Checker #5) ----------------------------------------------------------------------
+
+
+def test_short_lived_cached_token_is_renewed_before_measuring(monkeypatch):
+    import time
+
+    github.write_cached_token("gho_SHORT", 120)  # 2 分で切れる
+    fake = FakeGitHub(polls=[{"access_token": TOKEN, "expires_in": 28800}])
+    c = github.login(
+        fake, interactive=True, on_code=lambda dc: None, sleep=lambda s: None, min_remaining=1200
+    )
+    assert c.source == "device" and c.token == TOKEN and c.expires_at > time.time() + 20000
+    # 端末でなければ、短くてもそのまま使う(送るときに確かめる)
+    github.write_cached_token("gho_SHORT", 120)
+    c = github.login(FakeGitHub(), interactive=False, min_remaining=1200)
+    assert c.source == "cache"
+
+
+def test_token_expired_while_measuring(capsys, monkeypatch, this_pc, plan, gh):
+    github.write_cached_token(TOKEN, 28800)
+    calls = {"n": 0}
+    real = gh.request
+
+    def request(method, url, **kw):
+        if url.endswith("/user"):
+            calls["n"] += 1
+            if calls["n"] > 1:  # 測り終えたら切れていた
+                return Resp(401, {"message": "Bad credentials"})
+        return real(method, url, **kw)
+
+    gh.request = request
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    err = capsys.readouterr().err
+    assert "期限が切れました。測った結果は保存してあります" in err and "--no-measure" in err
+    assert not github.token_path().exists() and measure.load_shared() == {}
+    assert len(measure.saved_submissions()) == 3
+
+
+# --- 前からの組み込みの形(Checker #10) ----------------------------------------------------------------
+
+
+def test_json_without_yes_keeps_the_old_listing_and_preview(capsys, no_session):
+    p = _write_sub(1)
+    assert cli.main(["share", "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["listed"] is True and len(d["submissions"]) == 1
+    assert cli.main(["share", str(p), "--json"]) == 0
+    d = json.loads(capsys.readouterr().out)
+    assert d["listed"] is False and d["ok"] is True and d["share"]["issue_url"]
+
+
+def test_file_with_measure_flags_is_a_usage_error(capsys):
+    p = _write_sub(1)
+    assert cli.main(["share", str(p), "--no-measure"]) == 2
+    assert cli.main(["share", str(p), "--download"]) == 2

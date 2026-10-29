@@ -201,6 +201,9 @@ def test_stop_kills_only_our_process_tree(tmp_path, monkeypatch):
     assert comfystart.stop(st, run=lambda argv, **k: calls.append(argv) or SimpleNamespace(returncode=0))
     assert calls == [["taskkill", "/T", "/F", "/PID", "4321"]]
     assert comfystart.stop(st, run=lambda *a, **k: pytest.fail("2 回は止めない"))
+    other = _started(tmp_path / "other", FakeProc())
+    other.process.pid = 9999  # 前から起動していた ComfyUI(止めない)
+    assert all("9999" not in c for c in calls) and other.process.code is None
     killed = []
     st2 = _started(tmp_path / "b", FakeProc())
     monkeypatch.setattr(sys, "platform", "linux")
@@ -382,3 +385,51 @@ def test_share_asks_then_starts_then_drops_missing_nodes(capsys, monkeypatch, th
     assert checked == ["http://127.0.0.1:40100"]  # 起動したあとで確かめる
     out = capsys.readouterr().out
     assert "=== 測る計画(ComfyUI を確かめたあと) ===" in out and "needs_new_nodes" in out
+
+
+def test_launch_hides_github_tokens_and_checks_the_port(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "gho_x")
+    monkeypatch.setenv("GH_TOKEN", "gho_y")
+    plan = comfystart.plan_start(venv_install(tmp_path))
+    seen = {}
+    busy = iter([True, False])
+    monkeypatch.setattr(comfystart, "port_in_use", lambda port: next(busy))
+    ports = iter([1111, 2222])
+    monkeypatch.setattr(comfystart, "free_port", lambda: next(ports))
+    st = comfystart.launch(
+        plan, log=tmp_path / "l.log", popen=lambda argv, **kw: seen.update(kw) or FakeProc()
+    )
+    assert "GITHUB_TOKEN" not in seen["env"] and "GH_TOKEN" not in seen["env"]
+    assert st.port == 2222  # 使われていたポートは避けた
+    comfystart.stop(st, run=lambda *a, **k: SimpleNamespace(returncode=0))
+
+
+def test_share_asks_download_after_start_when_installed_ones_cannot_run(
+    capsys, monkeypatch, this_pc, starter, tmp_path
+):
+    from test_share_pr import TOKEN, FakeGitHub, sugg
+
+    d = venv_install(tmp_path)
+    monkeypatch.setattr(
+        measure,
+        "suggestions",
+        lambda *a, **k: [sugg("old_nodes", 60), sugg("dl_me", 60, "no", 1024**3)],
+    )
+    _fake_run(monkeypatch, starter)
+    monkeypatch.setattr(
+        cli,
+        "_node_check",
+        lambda url: SimpleNamespace(missing=lambda mid: ["X"] if mid == "old_nodes" else []),
+    )
+    monkeypatch.setattr(cli, "_share_session", lambda: FakeGitHub())
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(
+        "builtins.input", lambda p="": starter.append(("ask", p[:6])) or ("y" if "落とし" in p else "")
+    )
+    assert cli.main(["--lang", "ja", "share", "--comfyui-dir", str(d)]) == 0
+    kinds = [e[0] if e[0] != "ask" else "ask:" + e[1] for e in starter]
+    # 入っているものを測るかを尋ね → 起動 → どれも使えない → (起動したまま)落とすかを尋ねる → 落として測る
+    assert kinds[:5] == ["ask:1 件を測っ", "launch", "ready", "ask:落として測り", "download"]
+    assert ("run", "http://127.0.0.1:40100") in starter and starter[-1][0] in ("stop", "ask")
+    assert ("stop", "http://127.0.0.1:40100") in starter

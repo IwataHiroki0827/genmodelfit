@@ -222,11 +222,23 @@ class Started:
         return {**self.plan.to_dict(), "url": self.url, "log": str(self.log)}
 
 
+def port_in_use(port: int) -> bool:
+    """127.0.0.1 のそのポートで、もう何かが待っているか(つながるか)。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def launch(
     plan: StartPlan, *, port: int | None = None, log: Path | None = None, popen: Any = None
 ) -> Started:
-    """別のプロセスで起動する(待たない)。出力はログのファイルへ。"""
-    port = port or free_port()
+    """別のプロセスで起動する(待たない)。出力はログのファイルへ。ポートは起動の直前に空いていることを
+    確かめる(/system_stats に答えるのが、ほかのプロセスでなく自分で起動したものになるように)。"""
+    if port is None:
+        for _ in range(5):
+            port = free_port()
+            if not port_in_use(port):
+                break
     log = log or log_path()
     log.parent.mkdir(parents=True, exist_ok=True)
     kw: dict[str, Any] = {
@@ -241,6 +253,8 @@ def launch(
     else:
         kw["start_new_session"] = True
     env = dict(os.environ)
+    for name in ("GITHUB_TOKEN", "GH_TOKEN"):  # share のトークンを ComfyUI(とカスタムノード)に渡さない
+        env.pop(name, None)
     env.setdefault("PYTHONIOENCODING", "utf-8")
     kw["env"] = env
     out = open(log, "ab")  # noqa: SIM115 子のプロセスに渡す(閉じるのは止めるとき)
@@ -305,6 +319,8 @@ def wait_ready(
                     tail(started.log),
                 )
             if _ready(s, started.url):
+                if started.process.poll() is not None:  # 答えたのが自分で起動したものでない
+                    continue
                 return
             waited = clock() - t0
             if waited >= timeout:
