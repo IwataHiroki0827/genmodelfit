@@ -3956,6 +3956,19 @@ def _share_write_failures(
         return None
 
 
+def _measure_save_failure(args: argparse.Namespace, s, url: str | None, run_: dict[str, Any]) -> Path | None:
+    """measure で測れなかったときの失敗の記録を、送っていない提出として保存する(#132。share と同じ形。
+    次の share がいっしょに送る。同じ記録は 2 回書かない)。保存した場所(無ければ None)。"""
+    rec = run_.get("failure")
+    if not rec:
+        return None
+    args._share_failures = [rec]
+    m = run_.get("measurement")
+    if m is not None and getattr(m, "gpu_name", None) and getattr(m, "gpu_vram_gb", None):
+        args._share_gpu = m
+    return _share_write_failures(args, s, url, None, [])
+
+
 def _failure_key(f: dict[str, Any], version: Any) -> str:
     from .measure import failure_key
 
@@ -7359,6 +7372,17 @@ def cmd_measure(args: argparse.Namespace) -> int:
         for st in holder:
             _comfyui_stop(args, st)
         _measure_unlock(lock)
+    failures_file = _measure_save_failure(args, s, url, run_)
+    if failures_file is not None:
+        plan["failures_file"] = str(failures_file)
+        if not args.json:
+            print(
+                tr(
+                    f"失敗の記録を保存しました(次の genmodelfit share でいっしょに送れます): {failures_file}",
+                    f"Saved a failure record (the next genmodelfit share can send it): {failures_file}",
+                ),
+                file=sys.stderr,
+            )
     if run_["error"] is not None:
         return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
     m, result = run_["measurement"], run_["result"]

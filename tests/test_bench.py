@@ -1280,3 +1280,21 @@ def test_bench_records_timing_with_fake_comfyui():
     assert t["queue_s"] == pytest.approx(0.1, abs=0.05)
     assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.05
     assert t["load_s"] == pytest.approx(0.4, abs=0.05) and t["decode_s"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_cli_bench_json_has_timing(capsys):
+    """bench --json に時間の内訳(#132)。"""
+    with FakeComfy() as fake:
+        assert cli.main(["bench", "image_sdxl_simple", "--url", fake.url, "--json"]) == 0
+    t = json.loads(capsys.readouterr().out)["timing"]
+    assert set(t) == {
+        "queue_s",
+        "load_s",
+        "sampling_s",
+        "sec_per_step",
+        "decode_s",
+        "save_s",
+        "total_s",
+        "cold_load",
+    }
+    assert t["sampling_s"] == 1.0 and t["sec_per_step"] == 0.05

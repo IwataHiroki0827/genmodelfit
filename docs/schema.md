@@ -1019,6 +1019,7 @@ as `ok` / `true` (`schema_version` stays 1). Estimates use only measurements wit
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | settings that could not be applied, uploaded inputs, … (in the display language, `en` / `ja`) |
 | `failed` | str | only when the run failed in ComfyUI (OOM or another execution error; exit code 1). `measurement.outcome` is `oom` / `error` |
+| `timing` | object \| null | (0.13.0, #132) the time breakdown, the same keys as `measurement.timing` of a contrib submission (see contrib; unknown values are null) |
 | `submission` | object | only with `--submission` or `--share`: `{saved_to, path_in_repo}` (the submission JSON, see contrib); with `--share` also `share` (the `file`, `ok`, `refused`, `checklist`, `report`, `share`, `opened`, `copied`, `marked_shared` of `share --json`; no browser is opened) |
 
 How bench fills Measurement:
@@ -1374,7 +1375,7 @@ for "this GPU spills to shared memory (slow)"; how to use it is a later issue).
 
 ### Failure records (`kind: genmodelfit-failures`, #132)
 
-One file per `share` run and GPU, next to the measurements: `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`.
+One file per `share` run and GPU (and one per failed `measure`, saved as unsent and sent by the next `share`), next to the measurements: `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`.
 `contrib_schema` 3 only. Top keys: `contrib_schema`, `kind`, `tool`, `date`, `system` (the same summary as a
 measurement), `comfyui_version`, `db` (optional), `failures` (1–50 records).
 

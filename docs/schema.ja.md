@@ -979,6 +979,7 @@ OOM の行もデータとして歓迎するが、`outcome: "oom"` を保たな�
 | `workflow_source` | str | `server-template` / `github-template` / `file:api` / `file:ui` |
 | `warnings` | str[] | 適用できなかった設定、アップロードした入力など(表示の言語 `en` / `ja`) |
 | `failed` | str | ComfyUI で実行に失敗したときだけ(OOM またはほかの実行エラー。終了コード 1)。`measurement.outcome` は `oom` / `error` |
+| `timing` | object \| null | (0.13.0、#132)時間の内訳。contrib の提出の `measurement.timing` と同じキー(contrib を参照。分からない値は null) |
 | `submission` | object | `--submission` か `--share` を付けたときだけ: `{saved_to, path_in_repo}`(提出用の JSON。contrib を参照)。`--share` では `share` も入る(`share --json` の `file`・`ok`・`refused`・`checklist`・`report`・`share`・`opened`・`copied`・`marked_shared`。ブラウザは開かない) |
 
 bench が Measurement を埋める方法(測り方):
@@ -1307,7 +1308,7 @@ genmodelfit が書かないもの: ホスト名、ユーザー名、パス、GPU
 
 ### 失敗の記録(`kind: genmodelfit-failures`、#132)
 
-1 回の `share`・1 つの GPU で 1 ファイル。実測と同じフォルダの `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`。
+1 回の `share`・1 つの GPU で 1 ファイル(`measure` で測れなかったときも 1 ファイル保存し、送っていないものとして次の `share` がいっしょに送る)。実測と同じフォルダの `data/contrib/<gpu-slug>/<date>-<sha8>-failures.json`。
 `contrib_schema` 3 だけ。上のキーは `contrib_schema`・`kind`・`tool`・`date`・`system`(実測と同じ PC の概要)・`comfyui_version`・`db`(任意)・`failures`(1〜50 件)。
 
 ```json

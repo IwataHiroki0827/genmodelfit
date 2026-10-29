@@ -1103,8 +1103,11 @@ class BenchResult:
 
     def to_dict(self) -> dict[str, Any]:
         m = asdict(self.measurement)
-        return {"measurement": m, "workflow_source": self.workflow_source, "warnings": self.warnings} | (
-            {"failed": self.failed} if self.failed else {}
+        return (
+            {"measurement": m, "workflow_source": self.workflow_source, "warnings": self.warnings}
+            | ({"failed": self.failed} if self.failed else {})
+            # 時間の内訳(#132。contrib の measurement.timing と同じ項目。取れなければ null)
+            | {"timing": self.timing}
         )
 
 

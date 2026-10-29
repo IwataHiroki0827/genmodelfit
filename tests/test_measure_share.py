@@ -1239,3 +1239,30 @@ def test_settings_override_in_submissions_and_aggregate(db):
     plain = contrib.build_submission(meas("image_sdxl_simple", settings=_set(width=1024, height=1024)), pc())
     assert "settings_override" not in plain["measurement"]
     assert contrib.to_measurement(plain).settings_override is None
+
+
+def test_measure_saves_a_failure_record_for_the_next_share(capsys, monkeypatch, this_pc, fake_gpu):
+    """#132: measure で測れなかったら、失敗の記録を送っていない提出として保存する(次の share が送る)。"""
+    from test_bench import FakeComfy
+
+    with FakeComfy("error") as fake:
+        assert cli.main(["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url]) == 1
+    d = json.loads(capsys.readouterr().out)
+    assert d["timing"]["total_s"] is not None  # bench と同じ時間の内訳
+    p = Path(d["failures_file"])
+    assert p.name.endswith("-failures.json") and p.parent.name == "rtx-3070"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    (f,) = data["failures"]
+    assert (f["model_id"], f["outcome"], f["error_type"], f["node_type"]) == (
+        "image_sdxl_simple",
+        "error",
+        "ValueError",
+        "KSampler",
+    )
+    assert "boom" not in p.read_text(encoding="utf-8")  # 例外の本文は入れない
+    assert [s.to_dict().get("kind") for s in measure.saved_submissions()] == ["failures"]
+    # 同じ失敗をもう一度: 書かない(share で二重に送らない)
+    with FakeComfy("error") as fake:
+        cli.main(["measure", "image_sdxl_simple", "--json", "--yes", "--url", fake.url])
+    assert "failures_file" not in json.loads(capsys.readouterr().out)
+    assert len(measure.saved_submissions()) == 1
