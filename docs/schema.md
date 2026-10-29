@@ -61,10 +61,10 @@ The same as the SIDE EFFECTS of each command's `--help` and [README, "Privacy"](
 | `update --fields-only` | GET of the Hugging Face Hub API for the cards whose `language` decides `languages` (the main files' repos and their `license_from`); for the hand-added models also HEAD, ranged GET of the file header and the upstream cards' API; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --inspect-only` | ranged GET of the headers of the main weight files on Hugging Face, GET of the ComfyUI template JSONs; nothing with `--offline` | the cache `db.json` (or `--output`), `file_headers.json` in the cache |
 | `update --from-release` | GET `db.json` and `db.json.sig` from this project's `data-latest` release | the cache `db.json` (or `--output`), `release_state.json` |
-| `measure` | without `--url`, `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (2 s timeout, no redirects, no proxy); then like `bench` on that ComfyUI; when you agree to download a missing model, like `download`. Nothing with only the suggestions list and no ComfyUI running | like `bench`: the result in `<cache>/measurements/`, the submission draft in `<cache>/submissions/<GPU>/<date>-<sha8>.json`; the model files when downloaded |
-| `share` | none (opens the browser at the GitHub form in a terminal; the content is sent only when you press "Create") | `<cache>/submissions_shared.json` (the sent marks); may put the content on the clipboard |
+| `measure` | without `--url`, `GET http://127.0.0.1:8188/internal/folder_paths` and the same on port 8000 (2 s timeout, no redirects, no proxy); then like `bench` on that ComfyUI; when you agree to download a missing model, like `download`. Nothing with only the suggestions list and no ComfyUI running. (0.13.0) When none runs and an install is found, it starts ComfyUI as a separate process on 127.0.0.1 and a free port and asks it `GET /system_stats` until ready, then `GET /object_info` and the template to check the nodes; it stops that process afterwards | like `bench`: the result in `<cache>/measurements/`, the submission draft in `<cache>/submissions/<GPU>/<date>-<sha8>.json`; the model files when downloaded; a started ComfyUI's output in `<cache>/comfyui-<date>.log` |
+| `share` | (0.13.0) like `measure` while measuring and downloading; after you agree to send, only https to github.com and api.github.com: the sign-in (`GET /user`, the device login), the fork, a branch, the files (Contents API) and the pull request. `--dry-run` and `--issue` make no network access to GitHub (`--issue` opens the browser at the GitHub form in a terminal; the content is sent only when you press "Create") | like `measure`; `<cache>/submissions_shared.json` (the sent marks); `<config>/github_token` (the sign-in token and its expiry; readable only by you; `--logout` removes it); `--issue` may put the content on the clipboard |
 | `bench` | only the ComfyUI `--url` (+ official template files on GitHub if ComfyUI lacks them); `--share` adds no network access (see `share` below) | a measurement JSON in the cache (or `--output`); with `--submission` also the submission JSON; with `--share` and no `--submission`, `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
-| `contrib` | none (genmodelfit never sends a submission); `share` is `genmodelfit share` | `make`: the submission JSON; `aggregate --output`: the community file; `intake`: the files in `--out`; `share`: the sent marks; `show` / `validate` / `aggregate --check`: none |
+| `contrib` | none (genmodelfit never sends a submission); `share` is `genmodelfit share --issue` | `make`: the submission JSON; `aggregate --output`: the community file; `intake`: the files in `--out`; `share`: the sent marks; `show` / `validate` / `aggregate --check`: none |
 | `review` | none | `list`: none; `approve` / `reject`: the `--db` file in place; `reject` also appends to `review_rejected.txt` (next to `--db` unless `--rejected`) |
 | `python -m genmodelfit.weekly merge-check` | none | none |
 | `python -m genmodelfit.review publish SRC DST` | none | DST (the list without pending entries; data.yml signs it) |
@@ -1043,8 +1043,9 @@ How bench fills Measurement:
 
 `genmodelfit measure [MODEL] --json` (#113) prints the envelope (with `system` and `database`) plus `action`:
 
-- Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by}` (`found_by` is `option` for `--url`, `running` for
-  a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found) and `suggestions`
+- Without MODEL, `action: "suggest"`: `comfyui` `{url, found_by, start?}` (`found_by` is `option` for `--url`, `running` for
+  a ComfyUI found on 127.0.0.1 ports 8188 / 8000, null when none was found; `start` (0.13.0) `{kind, comfyui_dir}` when
+  none runs and an install would be started: `kind` is `portable`, `venv` or `desktop`) and `suggestions`
   [{model_id, model_name, name, modality, precision, fit_level, installed, download_bytes, total_bytes, seconds,
   seconds_basis, settings, args}]. Here `installed` is only the state string (`yes` / `no` / `unknown`, see
   "Installed" below); with MODEL it is an object. `settings` (0.12.0, #116) is null for a run as in the template, else the changed
@@ -1101,14 +1102,101 @@ Rules:
   exact id is used as is, a name picks the workflow `recommend` would pick.
 - The submission draft goes to `<cache>/submissions/<GPU>/<date>-<sha8>.json` (only for standard results with outcome
   `ok` or `oom`), where `share` lists it. The result goes to `<cache>/measurements/` like `bench`.
+- **Starting ComfyUI** (0.13.0, #124; `comfystart.py`): when no ComfyUI runs (and no `--url`), the install found
+  like `download` (`--comfyui-dir`, `GENMODELFIT_COMFYUI_DIR`, `genmodelfit config`, the usual places) is started as a
+  separate process: portable `<root>/python_embeded/python.exe -s <root>/ComfyUI/main.py`, a manual or comfy-cli
+  install with its `.venv` / `venv` python (no venv: not started; another python is never guessed), ComfyUI Desktop
+  with `<basePath>/.venv` and the app's `resources/ComfyUI/main.py` and the Desktop's directory arguments (only when
+  both are found; the app itself is never launched). Always `--listen 127.0.0.1 --port <free port> --disable-auto-launch`;
+  `GITHUB_TOKEN` / `GH_TOKEN` are removed from its environment. It waits for `GET /system_stats` (`--start-timeout`,
+  default 300 s) and stops only that process tree afterwards (also on a failure or Ctrl+C; Windows `taskkill /T /F`,
+  POSIX the process group). The "Measure it?" question covers it. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns
+  it off. JSON: `comfyui.start` before, `comfyui.started` `{kind, comfyui_dir, url, log}` once started.
+- **Missing nodes** (0.13.0): once a ComfyUI is reachable, `/object_info` is read once and each template is checked
+  (`workflow.missing_nodes`, the same check as `bench`; `bench.NodeCheck`). The list hides suggestions whose template
+  uses nodes that ComfyUI lacks; a named model stops before downloading or measuring, with "Next:" saying to update
+  ComfyUI (or install the custom nodes).
 - Exit codes: 0 success, nothing chosen, nothing to suggest or answered n to "Measure it?" / 1 no ComfyUI, no GPU,
-  busy GPU, no template, not installed with `--json`, no terminal without `--yes`, the download was declined, a failed
-  run / 2 usage error. A failure in text output ends with a "Next:" line saying what to do.
+  busy GPU, no template, missing nodes, not installed with `--json`, no terminal without `--yes`, the download was
+  declined, ComfyUI could not be started, a failed run / 2 usage error. A failure in text output ends with a "Next:"
+  line saying what to do.
 
 ## share
 
-`genmodelfit share [FILE] --json` (#113; `contrib share` is the same with `command: "contrib"` and
-`action: "share"`):
+`genmodelfit share` (0.13.0, #124) measures and sends a GitHub pull request; `share --issue` is the older way with
+the issue form (#113). `contrib share` is `share --issue` with `command: "contrib"` and `action: "share"`.
+
+### Measure and send (`share`, `share --no-measure`, `share FILE`)
+
+`--json` needs `--yes` (except with `--dry-run` and `--logout`). The envelope has no `system` / `database` and:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `action` | str | `send` (`logout` for `--logout`, with `removed`) |
+| `no_measure` | bool | `--no-measure` or FILE |
+| `comfyui` | object | as in `measure` (`url`, `found_by`, `start?`, `started?`) |
+| `budget_seconds` | float | `--budget` (default 300, `measure.SHARE_BUDGET_SECONDS`) |
+| `plan` | Suggestion[] | the installed suggestions to measure (the items of `measure`'s `suggestions`) |
+| `download_plan` | Suggestion[] | the suggestions that are not installed and fit the time left |
+| `skipped` | object[] | `{model_id, name, missing_nodes}`: left out because the ComfyUI lacks nodes |
+| `pending` | object[] | the unsent measurements before measuring (the items of `share --issue --json`'s `submissions`) |
+| `measured` | object[] | `{model_id, settings, outcome, peak_vram_gb, seconds, submission}` |
+| `failed` | object[] | `{model_id, settings, error}` (`model_id` null when ComfyUI could not be started) |
+| `interrupted` / `downloaded` | bool | stopped with Ctrl+C / downloaded the `download_plan` |
+| `download_hint` | object | `{count, bytes}` when models were not downloaded because nothing could ask (`--yes`, `--json`, no terminal) |
+| `files` | object[] | `{file, path_in_repo, ok, refused}` for every file checked |
+| `prs` | object[] | `{url, reused, branch, fork, uploaded, skipped, on_main}` per GPU |
+| `marked_shared` | int | files marked as sent |
+| `sent` | bool | a pull request was made or updated |
+| `github` | object | `{login, source}` (`source`: `env:GITHUB_TOKEN`, `env:GH_TOKEN`, `cache` or `device`); never the token |
+| `dry_run` | bool | only with `--dry-run` |
+| `error` | str | on a failure |
+
+Rules:
+
+- **ComfyUI** is found, started and checked like `measure` (above). Without one (and no unsent measurement) it shows
+  the plan and how to start ComfyUI and exits 1 without asking or signing in; with unsent measurements it goes on to
+  send those.
+- **Plan**: `measure.suggestions` with `installed.state == "yes"`, in order, while the sum of `seconds` fits the budget
+  (`measure.share_plan`; a row that does not fit is skipped and the next is tried). When a ComfyUI is reachable,
+  suggestions whose template uses nodes it lacks are left out (`skipped`) and the next ones fill the budget
+  (`download_plan` too). With a ComfyUI to start, this happens after it starts, and the new plan is shown.
+- **Order**: plan → one `[Y/n]` (covers measuring and starting ComfyUI; `--yes` skips it) → sign-in → start ComfyUI →
+  measure one by one (`_measure_run`, the same as `measure`; a failure does not stop the rest; Ctrl+C goes on to
+  sending) → show every file with the privacy checks → `[Y/n]` → pull request.
+- **Downloads**: never with `--yes` or `--json` alone. With `--download`, or `y` to one `[y/N]` question (the models,
+  total size and time): asked before signing in and before starting ComfyUI when no installed suggestion can be used,
+  after starting when the installed ones all lacked nodes, else after measuring. Downloading is `download` with its
+  own questions and consent rules (`--any-license` is passed on; suggestions are never uncensored). Without a
+  question, `download_hint` says that `--download` would download them.
+- **Sign-in** before measuring: `GITHUB_TOKEN`, `GH_TOKEN`, the saved token (`<config>/github_token`
+  `{access_token, expires_at}`; expired or answering 401: deleted), then the device login (client id
+  `github.CLIENT_ID`, `GENMODELFIT_GH_CLIENT_ID` overrides it and empty turns it off; scope `public_repo`; only in a
+  terminal without `--json`; `slow_down` adds 5 s to the interval; `expired_token` / `access_denied` stop). The
+  refresh token is never stored. A saved token that would expire before measuring is done (budget + start timeout +
+  10 min) is renewed first in a terminal. Before sending, the token is checked again: if it expired, a terminal signs
+  in again; otherwise it exits 1 saying the measurements are saved and `share --no-measure` sends them.
+- **Pull request**: fork `laxshmate/genmodelfit` (created and waited for when missing), branch
+  `genmodelfit-share/<GPU slug>/<sha8 of the paths>` from the upstream `main`, the files at `data/contrib/<GPU>/<date>-<sha8>.json`
+  (contrib's `suggested_path`) through the Contents API, then a pull request titled `measurements: <GPU> (<count>)`
+  with a table of the files, the genmodelfit version and `<!-- genmodelfit:share -->`. One per GPU. An open pull
+  request of the same account whose branch starts with `genmodelfit-share/<GPU slug>/` gets the files instead. A file
+  already on the branch is skipped (422). A pull request is opened whenever the branch has files not on the upstream
+  `main`, also when retrying after a failed attempt. Marked as sent: only the files of a pull request (new or
+  reused) and files already on the upstream `main`.
+- **Errors**: 403 / 404 on a write: the token lacks the `public_repo` scope (after a fresh fork, the git data is waited
+  for first). 403 / 429 with `Retry-After`, `X-RateLimit-Remaining: 0` or "rate limit": waited once when 60 s or
+  less, else exit 1 with the time to wait. The open pull requests are read page by page; when they cannot be read
+  it stops instead of opening a second pull request.
+- `share --json` without `--yes` (and without the flags above) and `share FILE --json` keep the `--issue` output
+  (for apps that used it). FILE with `--no-measure` or `--download` is a usage error (2).
+- Exit codes: 0 sent, nothing to send, or answered n / 1 cannot sign in, no ComfyUI and nothing to send, a measurement
+  failed, a file was refused, GitHub refused, `--json` or no terminal without `--yes` / 2 usage error / 130 Ctrl+C at
+  a question.
+
+### Issue form (`share --issue`)
+
+`genmodelfit share --issue [FILE] --json`:
 
 - Without FILE: `listed: true`, `folder` and `submissions` [{file, sha256, shared, date, model_id, gpu, outcome,
   peak_vram_gb, seconds}] (unsent ones, newest first; with `--all` also those marked as sent). Nothing is opened.
@@ -1128,7 +1216,7 @@ Rules:
   macOS `pbcopy`, Linux `wl-copy` / `xclip` / `xsel`; through stdin, no shell). Without one, the text output prints the
   content between two `---` lines (the file's location is never inside them).
 - The browser is opened only in a terminal (stdin and stdout are terminals) and without `--json` / `--print-url`; it
-  never asks. `--print-url` prints only the URL.
+  never asks. `--print-url` (only with `--issue`) prints only the URL.
 - The measurement is marked as sent (`<cache>/submissions_shared.json`, content sha256 → date) only when the form
   was opened in the browser or its URL was printed with `--print-url`. `--json` only previews and marks nothing
   unless `--mark-sent` is given (for apps that open the form themselves); the text output without a terminal and a
@@ -1139,8 +1227,9 @@ Rules:
 
 ## contrib
 
-Measurement submissions from users (#34). genmodelfit **never sends** them: users press "Create" in the measurement issue
-form that `share` opens (a bot turns the issue into a pull request; `contrib intake`, #113), or add the file to
+Measurement submissions from users (#34). genmodelfit **never sends** them on its own: users agree in `share`, which opens a
+pull request from their account (#124), press "Create" in the measurement issue form that `share --issue` opens (a
+bot turns the issue into a pull request; `contrib intake`, #113), or add the file to
 `data/contrib/` of their fork and open a pull request themselves ([CONTRIBUTING.md](../CONTRIBUTING.md)). Code: `src/genmodelfit/contrib.py`.
 
 Submissions measured by bench with dynamic VRAM (`vram_metric: torch_reserved`, `offload: dynamic`) hold only the working memory (#100). They are aggregated and kept, but until the per-stage peaks can be measured they are used only for the cross-check (not for the estimate's shift or the level; see "Measurement" and [accuracy.md](accuracy.md)).
@@ -1290,7 +1379,7 @@ to check), detail}], `report` (below). Exit code 1 when something must be fixed.
 
 ### `contrib share [FILE]`
 
-The same as `genmodelfit share` (see "share"; kept for older scripts). The JSON has `command: "contrib"` and
+The same as `genmodelfit share --issue` (see "share"; kept for older scripts). The JSON has `command: "contrib"` and
 `action: "share"`.
 
 ### `contrib intake EVENT_JSON --out DIR [--existing DIR]`

@@ -192,7 +192,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 - [`genmodelfit contrib`](#genmodelfit-contrib) — 保守する人向け: 実測の提出を作る・検査する・まとめる(送るのは measure と share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — bench が保存した結果から提出用の JSON を作る
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — 送る中身と個人の情報の点検を見せる
-  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — `genmodelfit share` と同じ(前からのスクリプトのため)
+  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — `genmodelfit share --issue` と同じ(前からのスクリプトのため)
   - [`genmodelfit contrib validate`](#genmodelfit-contrib-validate) — 形・値・個人の情報・重複を検査する(CI でも使う)
   - [`genmodelfit contrib intake`](#genmodelfit-contrib-intake) — GitHub の実測の Issue を検査し、PR に入れるファイルを作る(measurement-intake.yml が使う)
   - [`genmodelfit contrib aggregate`](#genmodelfit-contrib-aggregate) — 同じモデル・設定・GPU ごとにまとめ、精度を点検する
@@ -1329,7 +1329,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - 保存した結果はこの PC の判定に使う。
 - bench は保守する人向け。
 - `genmodelfit measure` は、テンプレートの ID を知らなくても同じことをする(モデルを提案し、ComfyUI を探す)。
-- `--share` は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが要る)、「Create」を押す(`genmodelfit share` と同じ)。
+- `--share` は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが要る)、「Create」を押す(`genmodelfit share --issue` と同じ)。
 
 **オプションと引数**
 
@@ -1354,7 +1354,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--source` | `SOURCE` |  | 誰がどこで測ったか(結果の source に入る) |
 | `--note` | `NOTE` |  | 結果の note に足す文 |
 | `--submission` | `PATH` |  | 提出用の JSON(contrib_schema 2)も書く。フォルダなら `<フォルダ>/<GPU>/<日付>-<sha8>.json`(フォークの data/contrib を渡すとそのまま PR にできる)。何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
-| `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub の実測のフォームを開く(`genmodelfit share` と同じ。端末でなければ URL を出す)。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
+| `--share` |  |  | 提出用の JSON を書き(`--submission` が無ければキャッシュの submissions に)、中身と点検を見せて、GitHub の実測のフォームを開く(`genmodelfit share --issue` と同じ。端末でなければ URL を出す)。送るには GitHub のアカウントが要る。genmodelfit は何も送らない([CONTRIBUTING.ja.md](../CONTRIBUTING.ja.md)) |
 
 - [共通のオプション](#共通のオプション)も使えます: `--json`・`--db`・`--no-cache`
 
@@ -1411,7 +1411,7 @@ genmodelfit contrib [-h] [--lang {en,ja}] {make,show,share,validate,intake,aggre
 ```text
 make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
 show      <file>                 送る中身と個人の情報の点検(同意のため)
-share     [file]                 genmodelfit share と同じ(前からのスクリプトのため)
+share     [file]                 genmodelfit share --issue と同じ(前からのスクリプトのため)
 intake    <event.json> --out DIR GitHub の実測の Issue を検査し、PR に入れるファイルを作る
                                  (measurement-intake.yml が使う)
 validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
@@ -1427,7 +1427,7 @@ aggregate [dir] --check
 - make は提出のファイルを書く。
 - aggregate は `--output` のときだけ書く。
 - intake は `--out` に書く。
-- share は `genmodelfit share` と同じ(端末ならブラウザを開く。`--json`・`--print-url`・端末でないときは URL を出すだけ。送った印を書く)。
+- share は `genmodelfit share --issue` と同じ(端末ならブラウザを開く。`--json`・`--print-url`・端末でないときは URL を出すだけ。送った印を書く)。
 
 **終了コード**
 
@@ -1500,7 +1500,7 @@ genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
 
 ### `genmodelfit contrib share`
 
-`genmodelfit share` と同じ(前からのスクリプトのため)
+`genmodelfit share --issue` と同じ(前からのスクリプトのため)
 
 **使い方**
 

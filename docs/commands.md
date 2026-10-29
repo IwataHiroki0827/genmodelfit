@@ -197,7 +197,7 @@ With `--json`, a failure still exits 1 and the message is in the `error` field o
 - [`genmodelfit contrib`](#genmodelfit-contrib) — for maintainers: make, validate and aggregate measurement submissions (to send one: measure and share)
   - [`genmodelfit contrib make`](#genmodelfit-contrib-make) — make a submission JSON from a result saved by bench
   - [`genmodelfit contrib show`](#genmodelfit-contrib-show) — show what will be shared and the privacy checklist
-  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — the same as `genmodelfit share` (kept for older scripts)
+  - [`genmodelfit contrib share`](#genmodelfit-contrib-share) — the same as `genmodelfit share --issue` (kept for older scripts)
   - [`genmodelfit contrib validate`](#genmodelfit-contrib-validate) — check shape, values, personal information and duplicates (also used in CI)
   - [`genmodelfit contrib intake`](#genmodelfit-contrib-intake) — check a measurement issue on GitHub and write the files for its PR (used by measurement-intake.yml)
   - [`genmodelfit contrib aggregate`](#genmodelfit-contrib-aggregate) — aggregate by model, settings and GPU, and check the accuracy
@@ -1321,7 +1321,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 - Model names and parts of ids are not accepted, and hf: models have no template (pass an API-format workflow with `--workflow` instead).
 - Your saved results are used when this PC is judged.
 - bench is for maintainers: `genmodelfit measure` does the same without the template id (it suggests models and finds ComfyUI).
-- `--share` prepares a submission and opens GitHub's measurement form in your browser: sign in to GitHub (an account is needed) and press "Create" (like `genmodelfit share`).
+- `--share` prepares a submission and opens GitHub's measurement form in your browser: sign in to GitHub (an account is needed) and press "Create" (like `genmodelfit share --issue`).
 
 **Options and arguments**
 
@@ -1346,7 +1346,7 @@ genmodelfit bench [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] --url 
 | `--source` | `SOURCE` |  | who measured it where (goes into source) |
 | `--note` | `NOTE` |  | text to add to the result's note |
 | `--submission` | `PATH` |  | also write a submission JSON (contrib_schema 2). For a folder: `<folder>/<GPU>/<date>-<sha8>.json` (pass your fork's data/contrib to open a PR as is). Nothing is sent ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
-| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and open GitHub's measurement form (like `genmodelfit share`; without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
+| `--share` |  |  | write the submission JSON (to the cache's submissions folder without `--submission`), show it with the checks, and open GitHub's measurement form (like `genmodelfit share --issue`; without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing ([CONTRIBUTING.md](../CONTRIBUTING.md)) |
 
 - Also takes the [shared options](#options-shared-by-commands): `--json`, `--db`, `--no-cache`
 
@@ -1400,7 +1400,7 @@ Make, preview, validate and aggregate measurement submissions (contrib_schema 2;
 ```text
 make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
 show      <file>                 what will be shared, and the privacy checklist (for consent)
-share     [file]                 the same as genmodelfit share (kept for older scripts)
+share     [file]                 the same as genmodelfit share --issue (kept for older scripts)
 intake    <event.json> --out DIR check a measurement issue on GitHub and write the files for its PR
                                  (used by measurement-intake.yml)
 validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
@@ -1414,7 +1414,7 @@ aggregate [dir] --check
 
 - No network access.
 - make writes the submission files; aggregate writes only with `--output`; intake writes to `--out`.
-- share is `genmodelfit share` (opens a browser in a terminal; with `--json`, `--print-url` or without a terminal it only prints the URL; writes the sent marks).
+- share is `genmodelfit share --issue` (opens a browser in a terminal; with `--json`, `--print-url` or without a terminal it only prints the URL; writes the sent marks).
 
 **Exit codes**
 
@@ -1487,7 +1487,7 @@ genmodelfit contrib show [-h] [--lang {en,ja}] [--json] [--db PATH] file
 
 ### `genmodelfit contrib share`
 
-the same as `genmodelfit share` (kept for older scripts)
+the same as `genmodelfit share --issue` (kept for older scripts)
 
 **Usage**
 

@@ -3,7 +3,7 @@
 **English** · [日本語](CONTRIBUTING.ja.md)
 
 genmodelfit prefers a value measured on a real PC (a measurement) over its estimate. The more GPUs are measured, the more accurate the estimates get.
-This page is for anyone who wants to send a measurement (with `genmodelfit measure` and `genmodelfit share`, or as a pull request). It also lists the rules for other changes.
+This page is for anyone who wants to send a measurement (with `genmodelfit share`, or as a pull request). It also lists the rules for other changes.
 For terms, see [README.md](README.md).
 
 ## Contents
@@ -17,57 +17,92 @@ For terms, see [README.md](README.md).
 - [Other changes](#other-changes)
 - [License](#license)
 
-In short: the easiest way is **two commands and one button**: `genmodelfit measure` measures, `genmodelfit share` opens a GitHub form with the result filled in, and you press "Create" ("[The easy way](#the-easy-way-no-git-needed)" below; no git and no fork needed).
+In short: the easiest way is **one command**: `genmodelfit share` measures your GPU for a few minutes and, after showing you everything and asking, sends the results as a pull request from your GitHub account ("[The easy way](#the-easy-way-no-git-needed)" below; no git needed).
 If you know git, you can also run `genmodelfit bench … --submission data/contrib/` in a clone of your fork, check the file with `genmodelfit contrib show`, and open a pull request that adds only that file (from "[2. Create the submission JSON](#2-create-the-submission-json)").
-**genmodelfit itself never sends anything**; sharing happens only when you press "Create" in the form, or through the pull request you open.
+**genmodelfit sends nothing on its own**; sharing happens only when you agree in `share` (or press "Create" in the form `share --issue` opens), or through the pull request you open.
 Today's NVIDIA bench submissions (ComfyUI's dynamic VRAM, `vram_metric: torch_reserved`) hold only the working memory, so until per-stage peaks can be measured they are used for validation only, not for estimates or levels (#100; [accuracy.md](docs/accuracy.md#how-measurements-are-used)).
 
 ## The easy way (no git needed)
 
-`measure` and `share` are available from 0.11.0. With [uv](https://docs.astral.sh/uv/) you can run them without installing (`uvx genmodelfit measure`; otherwise `pip install -U genmodelfit`).
+`share` measures and sends a pull request from 0.13.0 (`measure` and `share --issue` from 0.11.0). With [uv](https://docs.astral.sh/uv/) you can run it without installing (`uvx genmodelfit share`; otherwise `pip install -U genmodelfit`).
 
 ```powershell
-genmodelfit measure
 genmodelfit share
 ```
 
-**What you need:** a GitHub account (free), ComfyUI running on this PC with an NVIDIA, AMD, Intel or Apple GPU,
-and about 1–5 minutes per model (plus the download when the model is not in your ComfyUI yet). No git, no fork and
-no programming.
+**What you need:** a GitHub account (free), ComfyUI on this PC (running, or installed where genmodelfit can find
+and start it) with an NVIDIA, AMD, Intel or Apple GPU, and about 5 minutes (plus downloads, only if you agree). No
+git and no programming.
 
-1. **`genmodelfit measure`**: choose a model from the list by its number and press Enter to measure it.
-2. **`genmodelfit share`**: choose the measurement; the GitHub form opens in your browser, already filled in.
-3. **Press "Create".** A bot checks it within a few minutes and replies on the page.
+1. **`genmodelfit share`** shows the plan: the installed models worth measuring on your GPU (about 5 minutes in all)
+   and your measurements not sent yet. Press Enter to go on.
+2. **Sign in to GitHub** the first time: it shows a code and opens github.com/login/device in your browser; enter
+   the code there. The sign-in is saved for next time (it expires after about 8 hours; `share --logout` removes it).
+3. It measures, shows every file to send, and asks again. Press Enter: it opens a pull request on your account.
 
-One run measures one generation. If you have a few more minutes, run `genmodelfit measure` again a few times: each time
-it offers the next model or setting that has no measurement on your GPU yet, and every one of them helps.
+If you have more time, run `genmodelfit share` again later: each time it measures the next models or settings that
+have no measurement on your GPU yet.
 
 Step by step, in detail:
 
-1. Start ComfyUI (the one you normally use is fine) and close other generation jobs. For the cautions before measuring, see "[1. Measure](#1-measure)".
-2. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have no measurement on this GPU yet. Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
-   - Once a model is measured on this GPU at the template's settings, the list also has runs at other settings, which help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px, text-to-image), video frames (17 / 33 / 49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s). They are shown with `--resolution`, `--frames` or `--length`, only when they fit this GPU at that setting and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are not listed. If the template cannot take a setting, measure stops before generating.
-   - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`). Add `--resolution 1536x1536`, `--frames 81` or `--length 120` to change the settings, like `bench`.
-   - It finds a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000); for another one, add `--url http://<host>:<port>`. When none runs, it says how to start ComfyUI.
-3. Before measuring, one screen shows the model and precision, the settings (as in the official template), which ComfyUI and how it was found, whether the model files are installed, a rough time and that nothing is sent. Answer `Y` (Enter) to measure.
-   - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed. Downloading is not included.
-   - A model that is not installed is downloaded first, with the same questions and consent rules as `genmodelfit download`.
-   - When another program uses the GPU, it does not measure (the same as `bench`).
-4. It shows the result and where it saved it (`<cache>/submissions/<GPU>/<date>-<sha8>.json`), and one line pointing to `genmodelfit share`. It never asks whether to send.
-5. `genmodelfit share` lists the measurements you have not sent; choose one by number. It shows everything that will be sent and the privacy checklist (GPU name, VRAM, OS family, model, settings and values; no PC or user names). **Read it yourself, including the note.**
-6. The measurement form on GitHub opens in your browser with the content filled in. Sign in to GitHub (you need an account) and press **"Create"**.
-7. A bot checks it and replies on the page within a few minutes. If it is fine, it goes into the project once a maintainer accepts it (the issue then closes). If something is wrong, the bot says what to fix; edit the issue with the fixed content and it is checked again. (Technically: the same checks as `genmodelfit contrib validate`; the bot opens a pull request that adds the file to `data/contrib/`.)
+1. Close other generation jobs. ComfyUI does not have to be running: when none runs on this PC (127.0.0.1 ports 8188
+   and 8000), `share` starts the one it finds (like `download`: `--comfyui-dir`, `GENMODELFIT_COMFYUI_DIR`,
+   `genmodelfit config`, or the usual places) in the background on 127.0.0.1 and stops it afterwards. It starts a
+   portable ComfyUI with its `python_embeded`, a manual or comfy-cli install with its `.venv` / `venv` (it never
+   guesses another Python), and ComfyUI Desktop with its `.venv` and the app's ComfyUI; otherwise it says how to start
+   ComfyUI. Its output goes to `<cache>/comfyui-<date>.log`. `--no-start` turns this off; `--url http://<host>:<port>`
+   uses another ComfyUI. For the cautions before measuring, see "[1. Measure](#1-measure)".
+2. The plan uses the suggestions of `genmodelfit measure` (below) whose files are installed, in its order, until the
+   rough times add up to `--budget` (300 s). Models that need nodes your ComfyUI does not have are left out ("update
+   ComfyUI to measure them") and the next suggestions take their place. One question (`[Y/n]`) covers measuring and
+   starting ComfyUI.
+3. If no installed model can be measured, or time is left after measuring, it asks once whether to download the
+   others (`[y/N]`, with the models, the total size and the time; `--download` skips the question). Downloading uses
+   the same questions and consent rules as `genmodelfit download`. With `--yes` or without a terminal it never
+   downloads and says that `--download` would.
+4. It signs in before measuring (so a long run does not end in a failed sign-in): `GITHUB_TOKEN` or `GH_TOKEN` if set
+   (it needs the `public_repo` scope), else the saved sign-in, else GitHub's device login.
+5. It measures one by one; a failure does not stop the rest, and Ctrl+C goes on to sending what was measured.
+6. It shows every file to send and the privacy checklist (GPU name, VRAM, OS family, model, settings and values; no
+   PC or user names). **Read it yourself, including the note.** Files with an `[NG]` or a check error are not sent.
+7. After you agree, it forks the project on your account (once), makes a branch from the project's `main`, adds the
+   files under `data/contrib/<GPU>/` and opens a pull request titled `measurements: <GPU> (<count>)`. If you already
+   have an open pull request from `share` for that GPU, it adds the files there; files already there are skipped, so
+   running it again never sends a file twice. The `Contrib` workflow checks it within minutes; once a maintainer
+   merges it, the next version of genmodelfit uses it.
+
+`share --dry-run` shows the plan and the files without measuring, signing in or any network access to GitHub.
+`share --no-measure` sends only the measurements you have not sent; `share <file>` sends one submission file.
+Sent files are marked on this PC (`<cache>/submissions_shared.json`) and not sent again (`--all` includes them).
+
+**Without signing in: `share --issue`.** It lists the measurements you have not sent; choose one by number. It shows
+everything that will be sent and the privacy checklist, then opens the measurement form on GitHub in your browser
+with the content filled in. Sign in to GitHub and press **"Create"**. A bot checks it and replies on the page within
+a few minutes; if it is fine, it opens a pull request that adds the file to `data/contrib/` and a maintainer accepts
+it (the issue then closes). If something is wrong, the bot says what to fix; edit the issue with the fixed content and
+it is checked again.
 
 **Changes after the bot made its pull request:** edit the issue body. The new content is checked again; if it passes, the pull request is updated, and if it does not, the pull request is closed until you fix it. Both the issue and the pull request say what happened. Editing only the title changes nothing.
 
+**Measuring one model yourself: `genmodelfit measure`.**
+
+1. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have no measurement on this GPU yet. Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
+   - Once a model is measured on this GPU at the template's settings, the list also has runs at other settings, which help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px, text-to-image), video frames (17 / 33 / 49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s). They are shown with `--resolution`, `--frames` or `--length`, only when they fit this GPU at that setting and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are not listed. If the template cannot take a setting, measure stops before generating.
+   - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`). Add `--resolution 1536x1536`, `--frames 81` or `--length 120` to change the settings, like `bench`.
+   - It finds and, if needed, starts ComfyUI like `share` (above); for another one, add `--url http://<host>:<port>`.
+2. Before measuring, one screen shows the model and precision, the settings (as in the official template), which ComfyUI and how it was found, whether the model files are installed, a rough time and that nothing is sent. Answer `Y` (Enter) to measure.
+   - The time is a rough guide: the median of measurements of the same model on other GPUs, else a rough value per type, scaled by the ratio of pixels, frames or length when the settings are changed. Downloading is not included.
+   - A model that is not installed is downloaded first, with the same questions and consent rules as `genmodelfit download`.
+   - When another program uses the GPU, it does not measure (the same as `bench`).
+3. It shows the result and where it saved it (`<cache>/submissions/<GPU>/<date>-<sha8>.json`), and one line pointing to `genmodelfit share`. It never asks whether to send.
+
 **What your measurement is used for:** it is used for people with the same GPU. On NVIDIA with ComfyUI's dynamic VRAM (the default today) only the working memory can be measured, so it is used to cross-check the estimates and does not set levels yet ([accuracy.md](docs/accuracy.md#how-measurements-are-used)). Other measurements adjust the estimate for that GPU, and when two different people's measurements agree they also set the level. One GitHub account counts once, however many measurements it sends (an issue counts as its author's GitHub account, a pull request as the account it came from; see "[After it is accepted](#after-it-is-accepted)"). Out-of-memory results are kept as "not enough on this GPU" records, which stop measurements from setting the level for that setup. A measurement takes effect after a maintainer accepts it and the next version of genmodelfit is released.
 
-- With an `[NG]` in the checklist or an error in the checks, `share` stops without opening anything. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
-- When the content is too long for a URL, `share` copies it to the clipboard (with the OS tool: clip, pbcopy, wl-copy, xclip or xsel) and opens the empty form; paste it into the "Measurement (JSON)" box and press "Create". Without a clipboard tool it prints the content between two `---` lines to copy.
-- After the page is opened, the measurement is marked as sent on this PC and is not listed again (`genmodelfit share --all` lists it too). `genmodelfit share <file>` sends a given submission file (also one made by `bench --share` or `contrib make`).
-- Without a terminal, or with `--json` or `--print-url`, `share` does not open a browser and only prints the URL.
-- genmodelfit makes no network access for sending. It only opens the page in your browser; the content is sent only when you press "Create".
-- The bot writes your GitHub account in its pull request and commit, so all your measurements from that account count once (by its numeric id, so renaming the account does not change it), however many you send ("[After it is accepted](#after-it-is-accepted)").
+- With an `[NG]` in the checklist or an error in the checks, `share` does not send that file. How to fix it is in "[3. Check the contents](#3-check-the-contents)".
+- `share --issue`: when the content is too long for a URL, it copies it to the clipboard (with the OS tool: clip, pbcopy, wl-copy, xclip or xsel) and opens the empty form; paste it into the "Measurement (JSON)" box and press "Create". Without a clipboard tool it prints the content between two `---` lines to copy. Without a terminal, or with `--json` or `--print-url`, it does not open a browser and only prints the URL.
+- `share --json` without `--yes` still only lists the unsent measurements, and `share <file> --json` only shows the check (for apps).
+- `share` talks to github.com and api.github.com only after you agree to send, and only to sign in and to make the pull request; the token is never printed. `share --issue` makes no network access: it opens the page in your browser, and the content is sent when you press "Create".
+- A pull request from `share` counts as the account it came from; the bot's pull request for an issue writes your GitHub account in its commit. Either way, all your measurements from that account count once (by its numeric id for issues, so renaming the account does not change it), however many you send ("[After it is accepted](#after-it-is-accepted)").
 
 ## Advanced: bench and pull requests
 
@@ -232,7 +267,7 @@ This prints everything in the file in readable form, and prints the result of a 
    - The check runs with genmodelfit from the PR's target (main).
    - The merge is the maintainer's review (there is no separate mechanism where a person approves each submission).
 
-**genmodelfit does not send measurements.** The only thing shared is what you send yourself: the measurement issue you create with "Create" (a bot turns it into a pull request) or the pull request you open on your own GitHub. Once merged, the submission is published under MPL-2.0 (see [License](#license) below).
+**genmodelfit does not send measurements on its own.** The only thing shared is what you send yourself: the pull request `genmodelfit share` opens from your account after you agree, the measurement issue you create with "Create" (a bot turns it into a pull request), or the pull request you open on your own GitHub. Once merged, the submission is published under MPL-2.0 (see [License](#license) below).
 
 #### After it is accepted
 

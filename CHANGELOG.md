@@ -5,7 +5,40 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 変更の記録。書き方は Keep a Changelog にならう。
 
-## [0.12.1] - Unreleased
+## [0.13.0] - Unreleased
+
+### Changed
+
+- **`share` measures and sends a GitHub pull request** (#124; after llmfit's `bench --share`). Without arguments it
+  finds ComfyUI like `measure`, picks the installed suggestions of `measure` until their rough times add up to 300 s
+  (`--budget`), shows the plan with the unsent measurements and asks once, signs in to GitHub before measuring
+  (`GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device login with scope `public_repo`; the token
+  is saved with its expiry in `<config>/github_token`, readable only by you, and never printed; `--logout` removes it),
+  measures one by one, shows every file with the privacy checks and asks again, then forks the project, makes a branch
+  from `main`, puts the files under `data/contrib/<GPU>/` and opens a pull request titled
+  `measurements: <GPU> (<count>)`, or adds them to your open `share` pull request for that GPU. Files already there are
+  skipped; a retry after a failed attempt still opens the pull request, and files are marked as sent only when a pull
+  request has them or they are already on `main`. Models that are not installed are downloaded only with `--download`
+  or `y` to one `[y/N]` question (asked first when nothing installed can be measured, else after measuring), with
+  `download`'s questions and consent rules; `--yes` alone never downloads. New options: `--yes`, `--download`,
+  `--any-license`, `--no-measure`, `--budget`, `--dry-run` (no network to GitHub), `--issue`, `--logout`, `--url`,
+  `--comfyui-dir`, `--timeout`, `--no-start`, `--start-timeout`, `--no-cache`. The issue form is kept as
+  `share --issue` (no sign-in); `contrib share` and `bench --share` keep using it, and `share --json` without `--yes`
+  still lists the unsent measurements (`share FILE --json` still previews) for apps. New module `github.py`.
+
+### Added
+
+- **`measure` and `share` start ComfyUI when none is running** (#124; `comfystart.py`): the install found like
+  `download` is started as a separate process on 127.0.0.1 and a free port without a browser (portable: its
+  `python_embeded`; manual or comfy-cli: its `.venv` / `venv`, never a guessed Python; ComfyUI Desktop: its `.venv`
+  and the app's ComfyUI, only when both are found), waited for with `/system_stats` (`--start-timeout`, default 300 s),
+  and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
+  goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
+- **Missing nodes are checked before measuring** (#124): once ComfyUI is reachable, `share` leaves out suggestions
+  whose template uses nodes that ComfyUI lacks ("update ComfyUI to measure them") and fills the time with the next
+  ones; `measure` hides them from its list and stops a named model before downloading or measuring. The "Next:" line
+  for a missing-node error now says to update ComfyUI (or install the custom nodes) instead of checking that ComfyUI
+  runs.
 
 ### Fixed
 

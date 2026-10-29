@@ -6351,7 +6351,7 @@ Your saved results are used when this PC is judged.
 bench is for maintainers: genmodelfit measure does the same without the template id (it suggests
 models and finds ComfyUI).
 --share prepares a submission and opens GitHub's measurement form in your browser: sign in to
-GitHub (an account is needed) and press "Create" (like genmodelfit share).
+GitHub (an account is needed) and press "Create" (like genmodelfit share --issue).
 
 PRECONDITIONS:
   A ComfyUI running at --url with all the model files of TEMPLATE in its models folder (use
@@ -6834,7 +6834,7 @@ TEMPLATE は ComfyUI のテンプレートのワークフローの ID そのも�
 bench は保守する人向け。genmodelfit measure は、テンプレートの ID を知らなくても同じことをする(モデルを
 提案し、ComfyUI を探す)。
 --share は提出の用意をし、ブラウザで GitHub の実測のフォームを開く: GitHub にログインし(アカウントが
-要る)、「Create」を押す(genmodelfit share と同じ)。
+要る)、「Create」を押す(genmodelfit share --issue と同じ)。
 
 前提:
   --url で ComfyUI が動いていて、TEMPLATE のモデルのファイルがすべてその models のフォルダにあること
@@ -8576,12 +8576,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=tr(
             "提出用の JSON を書き(--submission が無ければキャッシュの submissions に)、"
             "中身と点検を見せて、GitHub の実測のフォームを開く"
-            "(genmodelfit share と同じ。端末でなければ URL を出す)。"
+            "(genmodelfit share --issue と同じ。端末でなければ URL を出す)。"
             "送るには GitHub のアカウントが要る。genmodelfit は何も送らない(CONTRIBUTING.md)",
             "write the submission JSON (to the cache's submissions folder without --submission),"
-            " show it with the checks, and open GitHub's measurement form (like genmodelfit share; without a"
-            " terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends nothing"
-            " (CONTRIBUTING.md)",
+            " show it with the checks, and open GitHub's measurement form (like genmodelfit share --issue;"
+            " without a terminal it prints the URL). Sending needs a GitHub account; genmodelfit itself sends"
+            " nothing (CONTRIBUTING.md)",
         ),
     )
     sp.set_defaults(func=cmd_bench)
@@ -8653,8 +8653,8 @@ def build_parser() -> argparse.ArgumentParser:
         "share",
         parents=[cj],
         help=tr(
-            "genmodelfit share と同じ(前からのスクリプトのため)",
-            "the same as genmodelfit share (kept for older scripts)",
+            "genmodelfit share --issue と同じ(前からのスクリプトのため)",
+            "the same as genmodelfit share --issue (kept for older scripts)",
         ),
     )
     c.add_argument(
@@ -8894,7 +8894,7 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
 
   make      --from <bench の結果>  → data/contrib/<GPU>/<日付>-<sha8>.json
   show      <file>                 送る中身と個人の情報の点検(同意のため)
-  share     [file]                 genmodelfit share と同じ(前からのスクリプトのため)
+  share     [file]                 genmodelfit share --issue と同じ(前からのスクリプトのため)
   intake    <event.json> --out DIR GitHub の実測の Issue を検査し、PR に入れるファイルを作る
                                    (measurement-intake.yml が使う)
   validate  <files|dirs>...        形・値の範囲・個人の情報・重複・ファイル名を検査
@@ -8905,7 +8905,7 @@ Pull Request を出すときだけ。CONTRIBUTING.md)。
 
 副作用:
   通信しない。make は提出のファイルを書く。aggregate は --output のときだけ書く。intake は --out に書く。
-  share は genmodelfit share と同じ(端末ならブラウザを開く。--json・--print-url・端末でないときは
+  share は genmodelfit share --issue と同じ(端末ならブラウザを開く。--json・--print-url・端末でないときは
   URL を出すだけ。送った印を書く)。
 
 終了コード:
@@ -8935,7 +8935,7 @@ Pull Request yourself; CONTRIBUTING.md).
 
   make      --from <bench result>  → data/contrib/<GPU>/<date>-<sha8>.json
   show      <file>                 what will be shared, and the privacy checklist (for consent)
-  share     [file]                 the same as genmodelfit share (kept for older scripts)
+  share     [file]                 the same as genmodelfit share --issue (kept for older scripts)
   intake    <event.json> --out DIR check a measurement issue on GitHub and write the files for its PR
                                    (used by measurement-intake.yml)
   validate  <files|dirs>...        check shape, value ranges, personal information, duplicates, file names
@@ -8947,8 +8947,8 @@ Pull Request yourself; CONTRIBUTING.md).
 SIDE EFFECTS:
   No network access. make writes the submission files; aggregate writes only with --output; intake writes to
   --out.
-  share is genmodelfit share (opens a browser in a terminal; with --json, --print-url or without a terminal it
-  only prints the URL; writes the sent marks).
+  share is genmodelfit share --issue (opens a browser in a terminal; with --json, --print-url or without a
+  terminal it only prints the URL; writes the sent marks).
 
 EXIT CODES:
   0  Success (validate: every file passed; show: nothing to fix)
