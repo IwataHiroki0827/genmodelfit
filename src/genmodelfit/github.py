@@ -760,7 +760,8 @@ def submit(
             create_branch(
                 session, token, login_name, fork, result.branch, fork_base(session, token, fork), sleep=sleep
             )
-        for path, text in todo:
+        for i, (path, text) in enumerate(todo, 1):
+            say(tr(f"送っています {i}/{len(todo)}: {path}", f"Sending {i}/{len(todo)}: {path}"))
             put = put_file(
                 session,
                 token,
@@ -775,8 +776,9 @@ def submit(
             )
             (result.uploaded if put else result.skipped).append(path)
         if not result.reused and (result.uploaded or result.skipped):
+            say(tr("PR を開いています", "opening the pull request"))
             result.pr_url = open_pr(session, token, fork, result.branch, title, body)
-    except GitHubError as e:
+    except (GitHubError, KeyboardInterrupt) as e:
         e.partial = result  # type: ignore[attr-defined]  # 途中まで(どこに置いたか)。送り直しで重ねない
         raise
     return result

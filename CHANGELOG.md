@@ -42,6 +42,24 @@ All notable changes to this project are documented here. The format is based on
   and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
   goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
 - `measure` prints its screen before the progress of a started ComfyUI also when the output is redirected.
+- **Found by testing 50 situations with a real GPU** (#124):
+  - A result that cannot be sent (for example peak VRAM above the GPU's total because Windows spilled into shared
+    memory) is kept as this PC's measurement but no longer saved as an unsent submission, so `share` does not fail
+    on it every time; such files already in the cache are listed once and renamed `*.unsendable`.
+  - A running ComfyUI 0.19 was not found: `/internal/folder_paths` returns lists of paths; both shapes are read now
+    (this also fixes `download`'s automatic destination).
+  - Other programs using VRAM: before starting its own ComfyUI, and after freeing a running one, `share` / `measure`
+    refuse to measure when more than 1.5 GiB (or 20% of the GPU) is used by others; a program that starts using the
+    GPU during a run makes the result non-standard (not sent).
+  - Ctrl+C during a download in `share` stops downloading and measuring (the `.part` files stay) and goes on to
+    sending; Ctrl+C while signing in or sending says what was placed and how to resume (`share --no-measure`), exit 130.
+  - A ComfyUI that stops during a run is reported with its log; one started by genmodelfit is restarted once.
+  - After the share-level "download them?" question (now with the licenses), `download` does not ask again per model.
+  - Suggestions leave out models with an unknown license (as the lists do; `--any-license` includes them), and only
+    NVIDIA GPUs are measured for now (other GPUs can still send saved results).
+  - Clearer reasons when there is nothing to do (`--budget` too small, nothing unsent, everything measured), for
+    `--no-start`, timeouts and missing nodes; flag mistakes exit 2; declining the download in `measure` exits 0;
+    stdout is flushed before every stderr line (pipes keep the order); each file being sent is shown.
 - **Progress you can follow** (#124): `share` numbers its steps ("== 手順 2/6: ComfyUI を起動 =="); in a terminal
   the ComfyUI start, each measurement (elapsed against the guide, queued / running / waiting, peak VRAM so far, a
   note when it takes much longer than the guide) and downloads (one bar per file and one for everything, with size,

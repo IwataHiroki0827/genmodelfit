@@ -102,11 +102,18 @@ class ComfyClient:
         kw.setdefault("timeout", self.timeout)
         try:
             return self.s.request(method, self.url + path, **kw)
+        except requests.ConnectionError as e:
+            raise BenchError(
+                tr(
+                    f"ComfyUI({self.url})に接続できません(止まったか、起動していません)",
+                    f"Cannot connect to ComfyUI ({self.url}; it stopped or is not running)",
+                )
+            ) from e
         except requests.RequestException as e:
             raise BenchError(
                 tr(
-                    f"ComfyUI({self.url})に接続できません: {e}",
-                    f"Cannot connect to ComfyUI ({self.url}): {e}",
+                    f"ComfyUI({self.url})と通信できません({type(e).__name__})",
+                    f"Cannot talk to ComfyUI ({self.url}; {type(e).__name__})",
                 )
             ) from e
 
@@ -413,6 +420,26 @@ def gpu_used_now(gpu_id: str | None) -> tuple[float, float] | None:
     return used, util
 
 
+def others_vram_limit(total_bytes: int) -> float:
+    """ComfyUI 以外が使ってよい VRAM(バイト。#124): 1.5 GiB か全体の 20% の大きいほう。"""
+    return max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total_bytes)
+
+
+def vram_in_use() -> tuple[int, int] | None:
+    """nvidia-smi の、いちばん大きい GPU の (使用中のバイト, 全体のバイト)。読めなければ None。
+    自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を使っていないかを見るのに使う(#124)。"""
+    out = _smi_query(["--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"])
+    best = None
+    for line in (out or "").strip().splitlines():
+        try:
+            used, total = (float(x) for x in line.split(",")[:2])
+        except ValueError:
+            continue
+        if best is None or total > best[1]:
+            best = (int(used * 1024**2), int(total * 1024**2))
+    return best
+
+
 def smi_gpus() -> list[dict[str, Any]]:
     """nvidia-smi の GPU の一覧(index, uuid, name, driver)。"""
     out = _smi_query(["--query-gpu=index,uuid,name,driver_version", "--format=csv,noheader,nounits"])
@@ -422,6 +449,31 @@ def smi_gpus() -> list[dict[str, Any]]:
         if len(parts) >= 4 and parts[0].isdigit():
             gpus.append({"index": int(parts[0]), "uuid": parts[1], "name": parts[2], "driver": parts[3]})
     return gpus
+
+
+def _gpu_app_pids(gpu_uuid: str | None) -> set[int]:
+    """その GPU を使っているプロセスの PID(nvidia-smi の compute apps。uuid が分からなければすべて)。"""
+    return {pid for pid, u in smi_compute_apps() if gpu_uuid is None or u == gpu_uuid}
+
+
+def _process_tree(proc) -> set[int]:
+    """ComfyUI のプロセスとその子の PID(分からなければ空)。"""
+    if proc is None:
+        return set()
+    out = {proc.pid}
+    with contextlib.suppress(Exception):
+        out |= {c.pid for c in proc.children(recursive=True)}
+    return out
+
+
+def _process_names(pids: set[int]) -> str:
+    names = []
+    for pid in sorted(pids)[:5]:
+        try:
+            names.append(f"{psutil.Process(pid).name()} {pid}")
+        except Exception:
+            names.append(f"PID {pid}")
+    return "、".join(names)
 
 
 def smi_compute_apps() -> list[tuple[int, str]]:
@@ -504,6 +556,11 @@ BACKEND_OF_VENDOR = {"nvidia": "cuda", "amd": "rocm", "intel": "xpu", "apple": "
 # 使用率を読む道具が無いとき、ComfyUI 以外が GPU のメモリをこの割合より多く使っていたら、ほかのアプリが
 # GPU を使っているとみなして断る(統合メモリの Apple では、メインメモリと同じなので見ない)
 OTHER_APPS_VRAM_SHARE = 0.5
+# NVIDIA で、空けたあとに ComfyUI 以外が使ってよい VRAM(#124): 1.5 GiB か全体の 20% の大きいほう
+# (画面の表示・ComfyUI の CUDA の分を含む)。これを超えたら測らない
+OTHERS_VRAM_MIN = int(1.5 * 1024**3)
+OTHERS_VRAM_SHARE = 0.2
+GPU_APPS_EVERY = 2.0  # 測っているあいだ、GPU を使うプロセスを見る間隔(秒)
 
 
 def device_vendor(dev: dict[str, Any], stats: dict[str, Any]) -> str:
@@ -1122,6 +1179,22 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     base_stats = (client.system_stats().get("devices") or [dev0])[0]
     base_torch = int(base_stats.get("torch_vram_total") or 0)
     base_dev = int(base_stats.get("vram_total") or 0) - int(base_stats.get("vram_free") or 0)
+    if opts.free_before and gpu_id is not None:
+        # 空けたあとでも ComfyUI 以外が VRAM を多く使っていれば、測ると数値が狂う(#124)。Windows では
+        # プロセスごとの量が出ないので、GPU 全体の使用量から ComfyUI の torch の分を引いて見積もる
+        others = base_dev - base_torch
+        total = int(base_stats.get("vram_total") or 0)
+        limit = max(OTHERS_VRAM_MIN, OTHERS_VRAM_SHARE * total)
+        if total and others > limit:
+            msg = tr(
+                f"ほかのプログラムが VRAM を約 {others / GIB:.1f} GB 使っています(ComfyUI 以外。"
+                f"上限 {limit / GIB:.1f} GB)。閉じてから測ってください(測ると数値が狂います)",
+                f"Other programs use about {others / GIB:.1f} GB of VRAM (besides ComfyUI; limit"
+                f" {limit / GIB:.1f} GB). Close them before measuring (the numbers would be wrong)",
+            )
+            if not opts.force:
+                raise BenchError(msg)
+            warnings.append(tr(f"{msg}(--force)", f"{msg} (--force)"))
 
     # 3. 送る直前にもう一度キューを見る
     _check_queue_empty(client, tr("送る直前", "just before sending"))
@@ -1142,9 +1215,18 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
     entry: dict[str, Any] | None = None
     prompt_id: str | None = None
     foreign: set[str] = set()  # 待っている間に実行中だった他の仕事
+    # 測っているあいだに GPU を使い始めたほかのプログラム
+    # (#124。nvidia-smi の compute apps。Windows でも PID は出る)
+    gpu_uuid = str(gpu.get("uuid")) if gpu and gpu.get("uuid") else None
+    gpu_apps0 = _gpu_app_pids(gpu_uuid) if gpu_id is not None else None
+    new_apps: set[int] = set()
+    next_apps = time.monotonic() + GPU_APPS_EVERY
     try:
         prompt_id = client.submit(wf, client_id)
         while True:
+            if gpu_apps0 is not None and time.monotonic() >= next_apps:
+                next_apps = time.monotonic() + GPU_APPS_EVERY
+                new_apps |= _gpu_app_pids(gpu_uuid) - gpu_apps0 - _process_tree(proc)
             entry = client.history(prompt_id)
             if entry and ((entry.get("status") or {}).get("completed") or _history_error(entry)):
                 break
@@ -1208,6 +1290,15 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None, prog
                 "--free を付けるか、シードなどの入力を変えてください(--set seed=…)",
                 "The job was the same as before, so ComfyUI returned the previous result and ran nothing. "
                 "Add --free, or change an input such as the seed (--set seed=…)",
+            )
+        )
+    if new_apps:
+        names = _process_names(new_apps)
+        nonstandard.append(f"測っている間にほかのプログラムが GPU を使い始めた({names})")
+        warnings.append(
+            tr(
+                f"測っている間にほかのプログラムが GPU を使い始めました({names})。数値が狂うので送りません",
+                f"Another program started using the GPU while measuring ({names}); the result is not sent",
             )
         )
     if cached:

@@ -35,6 +35,10 @@ class CliError(RuntimeError):
     pass
 
 
+class UsageError(CliError):
+    """使い方の誤り(フラグの組み合わせなど)。終了コード 2(argparse と同じ)。"""
+
+
 def _positive_int(text: str) -> int:
     try:
         v = int(text)
@@ -2536,6 +2540,16 @@ def _share_precheck(args: argparse.Namespace):
     except github.GitHubError as e:
         if not interactive:
             raise CliError(str(e)) from None
+        if e.kind in ("network", "rate_limit", "api"):
+            print(
+                tr(
+                    f"注意: GitHub に繋がりません({e})。"
+                    "PR で送るときに失敗するかもしれません。Issue でも送れます",
+                    f"warning: cannot reach GitHub ({e}). Sending a pull request may fail; issues work too",
+                ),
+                file=sys.stderr,
+            )
+            return None, None
         if e.kind == "invalid_token":
             # 環境変数のトークンが使えない: PR は直さないと送れないが、Issue は選べるので続ける
             print(
@@ -2665,6 +2679,17 @@ def _share_submit(args: argparse.Namespace, creds, session, items: list[dict[str
                 match_prefix=f"{github.BRANCH_PREFIX}{slug}/",
                 log=_progress(args),
             )
+        except KeyboardInterrupt as e:
+            partial = getattr(e, "partial", None)
+            touched = {p for r in results for p in r.touched}
+            if partial is not None:
+                mark(group, set(partial.delivered))
+                touched |= set(partial.touched)
+                if partial.pr_url:
+                    results.append(partial)
+            e.results = results  # type: ignore[attr-defined]
+            e.touched = touched  # type: ignore[attr-defined]
+            raise
         except github.GitHubError as e:
             # 途中まで送れたもの(ほかの GPU の PR・開いている PR に置いたもの)は印を付け、送り直さない
             partial = getattr(e, "partial", None)
@@ -2722,11 +2747,30 @@ def _share_send(
         _step(args, "show")
         print(tr(f"=== 送る中身({len(items)} 件) ===", f"=== What will be sent ({len(items)}) ==="))
         _print_share_items(items)
+    # この PC に保存した提出で送れないもの: 理由を 1 回だけ出し、名前を変えて次から出さない(#124。ずっと
+    # 送れないまま毎回失敗しないように)。share <file> で指定したものは今までどおり失敗にする
+    saved_dir = _submissions_root()
+    retired = []
+    for it in items:
+        if not it["ok"] and not getattr(args, "file", None) and _under(it["file"], saved_dir):
+            dst = _retire_submission(it["file"])
+            if dst is not None:
+                retired.append(it["file"])
+                if not args.json:
+                    print(
+                        tr(
+                            f"送れないので、次から出しません: {dst}",
+                            f"It cannot be sent, so it is no longer offered: {dst}",
+                        ),
+                        file=sys.stderr,
+                    )
     if not good:
         if args.json:
-            emit(prs=[], marked_shared=0, sent=False)
-        return 1
-    code = base_code if len(good) == len(items) else 1
+            emit(prs=[], marked_shared=0, sent=False, retired=retired)
+        elif retired:
+            print(tr("送れるものはありません", "Nothing that can be sent"))
+        return base_code if retired and len(retired) == len(items) else 1
+    code = base_code if len(good) + len(retired) == len(items) else 1
     method = "issue" if getattr(args, "issue", False) else "pr"
     if not getattr(args, "issue", False) and not args.yes and not args.json and _interactive():
         print()
@@ -2740,6 +2784,7 @@ def _share_send(
             method = _ask_method()
         except KeyboardInterrupt:
             print(file=sys.stderr)
+            print(_unsent_hint(), file=sys.stderr)
             return 130
         if method is None:
             print(tr("送りませんでした。", "Nothing sent."), file=sys.stderr)
@@ -2754,6 +2799,29 @@ def _share_send(
         else:
             creds, session = _share_relogin_if_expired(args, creds, session)
         results, marked = _share_submit(args, creds, session, good)
+    except KeyboardInterrupt as e:
+        # 送る途中の Ctrl+C: どこまで置いたか・何が残ったか・続け方を言う(#124)
+        done_prs = getattr(e, "results", [])
+        touched = getattr(e, "touched", set())
+        sys.stdout.flush()
+        print(file=sys.stderr)
+        print(tr("中断しました。", "Interrupted."), file=sys.stderr)
+        for r in done_prs:
+            if r.pr_url:
+                print(tr(f"送れた PR: {r.pr_url}", f"Sent in pull request: {r.pr_url}"), file=sys.stderr)
+        if touched:
+            print(
+                tr(
+                    f"PR かブランチに置いたもの: {len(touched)} 件"
+                    "(genmodelfit share --no-measure で続けられます)",
+                    f"Placed in a pull request or on its branch: {len(touched)}"
+                    " (genmodelfit share --no-measure"
+                    " continues)",
+                ),
+                file=sys.stderr,
+            )
+        print(_unsent_hint(), file=sys.stderr)
+        return 130
     except CliError as e:
         done_prs = getattr(e, "results", [])
         touched = getattr(e, "touched", set())
@@ -2856,6 +2924,31 @@ def _ask_method() -> str | None:
         print(tr("1・2・q で選んでください", "Choose 1, 2 or q"), file=sys.stderr)
 
 
+def _submissions_root():
+    from .measure import submissions_dir
+
+    return submissions_dir()
+
+
+def _under(path, root) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def _retire_submission(path) -> Path | None:
+    """送れない提出の名前を <名前>.unsendable に変える(消さない。直せば名前を戻して送れる)。"""
+    p = Path(path)
+    dst = p.with_name(p.name + ".unsendable")
+    try:
+        os.replace(p, dst)
+    except OSError:
+        return None
+    return dst
+
+
 def _share_send_issues(
     args: argparse.Namespace, good: list, report: dict[str, Any], items: list, code: int
 ) -> int:
@@ -2903,14 +2996,64 @@ def _share_send_issues(
     return worst
 
 
+def _measure_gpu_stop(s) -> str | None:
+    """測れない GPU の理由(#124)。GPU が無い・NVIDIA でない(今は NVIDIA の GPU だけで測る)。"""
+    g = s.best_gpu
+    if g is None:
+        return tr(
+            "この PC に測りに使える GPU が見つかりません(genmodelfit system で確かめてください)",
+            "No GPU that can be measured was found on this PC (check with genmodelfit system)",
+        )
+    if (getattr(g, "vendor", None) or "nvidia") != "nvidia":
+        return tr(
+            f"今は NVIDIA の GPU だけで測ります(この PC の GPU: {g.name})",
+            f"For now only NVIDIA GPUs are measured (this PC's GPU: {g.name})",
+        )
+    return None
+
+
+def _share_nothing_reason(args: argparse.Namespace, sugg: list, skipped: list, budget: float) -> str:
+    """何もしないときの理由(#124)。"""
+    if args.no_measure:
+        return tr("送っていない実測はありません。", "No unsent measurements.")
+    usable = [x for x in sugg if all(d["model_id"] != x.model_id for d in skipped)]
+    if usable and all(x.seconds > budget for x in usable):
+        return tr(
+            f"時間の上限({budget:g} 秒)に収まるものがありません(--budget で広げられます)。"
+            "送っていない実測もありません。",
+            f"Nothing fits the time limit ({budget:g} s; --budget widens it), and no unsent measurements.",
+        )
+    if skipped and not usable:
+        return tr(
+            "測れるものがありません(この ComfyUI に無いノードが要ります。ComfyUI を更新すると測れます)。"
+            "送っていない実測もありません。",
+            "Nothing can be measured (it needs nodes this ComfyUI does not have; update ComfyUI), and no"
+            " unsent measurements.",
+        )
+    if not sugg:
+        return tr(
+            "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)。"
+            "送っていない実測もありません。",
+            "Nothing worth measuring (the ones that fit this GPU are already measured), and no unsent"
+            " measurements.",
+        )
+    return tr(
+        "測ると役に立つモデルも、送っていない実測もありません。",
+        "Nothing worth measuring and no unsent measurements.",
+    )
+
+
 def _share_steps(args: argparse.Namespace, start, plan: list, dl_plan: list, want_dl) -> _Steps:
     """この回で使う手順(#124): GitHub の確認(もうあるトークンを確かめるとき)・ComfyUI を起動・ノードを確かめる
     (起動したとき)・測る・落として測る(落とすと決まっているとき。あとで決まれば足す)・送る中身を見せる・送る。"""
     from . import github
 
     items: list[tuple[str, str]] = []
-    if not getattr(args, "issue", False) and (
-        github.env_token() is not None or github.token_path().exists() or args.yes or not _interactive()
+    measuring = bool(plan or (dl_plan and want_dl))
+    if (
+        measuring
+        and not getattr(args, "issue", False)
+        and (github.env_token() is not None or github.token_path().exists() or args.yes or not _interactive())
     ):
         items.append(("check", tr("GitHub の確認", "Check GitHub")))
     if start is not None and (plan or (dl_plan and want_dl)):
@@ -3477,9 +3620,16 @@ def _share_measure_one(
         return
     m = r["measurement"]
     if r["submission"] is None:
-        # 測れたが送れない(標準でない条件・失敗): 黙って落とさず、理由を付けて「測れなかったもの」に入れる
+        # 測れたが送れない(標準でない条件・失敗・検査に通らない): 黙って落とさず、理由を付けて
+        # 「測れなかったもの」に入れる
         res = r["result"]
-        if not m.standard:
+        if r.get("unsendable"):
+            why = tr(
+                "測れたが、送れません(この PC の実測としては保存しました): " + " / ".join(r["unsendable"]),
+                "measured, but it cannot be sent (kept as this PC's measurement): "
+                + " / ".join(r["unsendable"]),
+            )
+        elif not m.standard:
             why = tr(
                 "標準でない条件で測ったので、保存も送りもしません: " + "、".join(res.nonstandard),
                 "measured under non-standard conditions, so it is neither saved nor sent: "
@@ -3537,6 +3687,16 @@ def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
     )
     for i, x in enumerate(dl_plan, 1):
         print(_suggestion_row(i, x))
+        lic = _model_licenses(x)
+        if lic:
+            print(tr(f"      ライセンス: {lic}", f"      License: {lic}"))
+    print(
+        tr(
+            "y と答えると、この一覧のものだけを落とします"
+            "(download と同じ確かめ。モデルごとには尋ね直しません)",
+            "Answering y downloads only these (with download's checks; it does not ask again per model)",
+        )
+    )
     sys.stdout.flush()
     yes = _ask_yes_no(tr("落として測りますか? [y/N] ", "Download and measure them? [y/N] "), False)
     if not yes:
@@ -3544,7 +3704,24 @@ def _share_ask_download(dl_plan: list, *, first: bool) -> bool:
     return yes
 
 
-def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: list, measured, failed) -> None:
+def _model_licenses(x) -> str:
+    """提案のモデルのファイルのライセンス(重ならないように並べる)。分からなければ空。"""
+    entry = getattr(getattr(x, "fit", None), "model", None)
+    files = getattr(entry, "files", None) or []
+    names = []
+    for f in files:
+        lic = getattr(f, "license", None)
+        name = (
+            tr("不明", "unknown")
+            if lic is None
+            else (f"other: {f.license_name}" if lic == "other" and getattr(f, "license_name", None) else lic)
+        )
+        if name not in names:
+            names.append(name)
+    return ", ".join(names)
+
+
+def _share_download_and_measure(args: argparse.Namespace, ctx: dict, dl_plan: list, measured, failed) -> None:
     """入っていない提案を、download と同じ流れ(_measure_download。同じ同意・ライセンス・無検閲の決まり)で
     落として測る(#124。同意は呼び出し側が取ってある)。"""
     for i, x in enumerate(dl_plan, 1):
@@ -3557,16 +3734,108 @@ def _share_download_and_measure(args: argparse.Namespace, url: str, dl_plan: lis
                 )
             )
             sys.stdout.flush()
-        if _measure_download(args, x.model_id) != 0:
+        code = _measure_download(args, x.model_id, consented=True)
+        if code == 130:
+            raise KeyboardInterrupt  # 落とす途中の Ctrl+C: 落とすのも測るのも止める(.part は残る)
+        if code != 0:
             failed.append(
                 {
                     "model_id": x.model_id,
                     "settings": x.to_dict()["settings"],
-                    "error": tr("落とせませんでした", "not downloaded"),
+                    "error": tr("落とすのをやめました", "download declined")
+                    if getattr(args, "_download_declined", False)
+                    else tr("落とせませんでした", "not downloaded"),
                 }
             )
             continue
-        _share_measure_one(args, url, x, measured, failed, (i, len(dl_plan)), dl_plan[i:])
+        _share_measure_one(args, ctx["url"], x, measured, failed, (i, len(dl_plan)), dl_plan[i:])
+        if not _share_comfy_check(args, ctx, x, failed):
+            break
+
+
+def _vram_busy_before_start() -> str | None:
+    """自分で ComfyUI を起動する前に、ほかのプログラムが VRAM を多く使っていないか(#124)。
+    使っていれば理由。"""
+    from .bench import others_vram_limit, vram_in_use
+
+    v = vram_in_use()
+    if v is None:
+        return None
+    used, total = v
+    limit = others_vram_limit(total)
+    if used <= limit:
+        return None
+    return tr(
+        f"ほかのプログラムが VRAM を約 {used / GIB:.1f} GB 使っています(上限 {limit / GIB:.1f} GB)。"
+        "閉じてから測ってください(測ると数値が狂います)",
+        f"Other programs use about {used / GIB:.1f} GB of VRAM (limit {limit / GIB:.1f} GB)."
+        " Close them before"
+        " measuring (the numbers would be wrong)",
+    )
+
+
+def _comfy_alive(url: str | None, started) -> bool:
+    """ComfyUI がまだ動いているか(自分で起動したものはプロセス、ほかは /system_stats に答えるか)。"""
+    from .bench import BenchError, ComfyClient
+
+    if started is not None and started.process.poll() is not None:
+        return False
+    if not url:
+        return False
+    try:
+        ComfyClient(url, timeout=5).system_stats()
+    except BenchError:
+        return False
+    return True
+
+
+def _share_comfy_check(args: argparse.Namespace, ctx: dict, x, failed: list) -> bool:
+    """1 件を測ったあとで、ComfyUI が止まっていないかを見る(#124)。止まっていたら理由(ログの場所と最後の行)を
+    出し、自分で起動したものなら 1 回だけ起動し直して続ける(True)。2 回目・利用者の ComfyUI なら測るのを
+    やめる(False。測ったものを送るかに進む)。"""
+    from . import comfystart
+
+    if not failed or failed[-1].get("model_id") != x.model_id:
+        return True  # 測れた: 調べない(余計な通信をしない)
+    started = ctx["holder"][-1] if ctx["holder"] else None
+    err = str(failed[-1].get("error") or "")
+    exited = started is not None and started.process.poll() is not None
+    lost = any(w in err for w in ("接続できません", "Cannot connect", "Cannot talk", "通信できません"))
+    if not exited and not (lost and not _comfy_alive(ctx["url"], started)):
+        return True  # 止まっていない(測るのに失敗しただけ)
+    log = getattr(started, "log", None)
+    tail = comfystart.tail(log, 5) if log else []
+    msg = tr("ComfyUI が止まりました", "ComfyUI stopped") + (
+        tr(f"(ログ: {log})", f" (log: {log})") if log else ""
+    )
+    failed[-1]["error"] = msg
+    if not args.json:
+        sys.stdout.flush()
+        print(tr(f"エラー: {msg}", f"error: {msg}"), file=sys.stderr)
+        for line in tail:
+            print(f"  {line}", file=sys.stderr)
+    if started is not None and ctx["start"] is not None and ctx["restarts"] == 0:
+        ctx["restarts"] += 1
+        if not args.json:
+            print(tr("ComfyUI を起動し直して続けます", "Starting ComfyUI again to go on"), file=sys.stderr)
+        try:
+            new = _comfyui_start(args, ctx["start"], ctx["holder"])
+        except CliError as e:
+            if not args.json:
+                print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+        else:
+            ctx["url"] = new.url
+            return True
+    ctx["dead"] = True
+    if not args.json:
+        print(
+            tr(
+                "測るのをやめて、測ったものを送るかに進みます",
+                "Stopping the measurements; moving on to sending what was measured",
+            ),
+            file=sys.stderr,
+        )
+    return False
 
 
 def _share_dry_run(
@@ -3608,30 +3877,30 @@ def _share_checks(args: argparse.Namespace) -> None:
             (args.budget is not None, "--budget"),
         ):
             if on:
-                raise CliError(
+                raise UsageError(
                     tr(f"{name} は --issue といっしょには使えません", f"{name} cannot be used with --issue")
                 )
         return
     for on, name in ((args.print_url, "--print-url"), (args.mark_sent, "--mark-sent")):
         if on and not args.issue:
-            raise CliError(
+            raise UsageError(
                 tr(f"{name} は --issue といっしょのときだけ使えます", f"{name} is only for --issue")
             )
     if args.logout and args.issue:
-        raise CliError(
+        raise UsageError(
             tr("--logout は --issue といっしょには使えません", "--logout cannot be used with --issue")
         )
     if args.logout:
         return
     if args.json and args.download:
-        raise CliError(
+        raise UsageError(
             tr(
                 "--json では落としません(先に genmodelfit download <ID> --yes で落としてください)",
                 "--json does not download (download first with genmodelfit download <id> --yes)",
             )
         )
     if not args.yes and not args.dry_run and (args.json or not _interactive()):
-        raise CliError(
+        raise UsageError(
             tr(
                 "--json・端末でないときは --yes が要ります(測る・送る前に尋ねられないため)",
                 "--json or no terminal needs --yes (the questions before measuring and sending cannot be"
@@ -3695,20 +3964,24 @@ def cmd_share(args: argparse.Namespace) -> int:
     sugg: list = []
     skipped: list[dict[str, Any]] = []
     checker = None
+    comfy_stop = False  # 測れない理由が ComfyUI のこと(起動のしかたを案内する)か
     if not args.no_measure:
         s, db = _system(args), _db(args)
         url, found_by, running = _measure_comfyui(args)
-        if s.best_gpu is None:
-            stop = [
-                tr(
-                    "この PC に測りに使える GPU が見つかりません(genmodelfit system で確かめてください)",
-                    "No GPU that can be measured was found on this PC (check with genmodelfit system)",
-                )
-            ]
+        gpu_stop = _measure_gpu_stop(s)
+        if gpu_stop:
+            stop = [gpu_stop]
         else:
             roots = _measure_roots(args, running)
             # もう測って保存したもの(送る前・送ったが取り込まれる前)は、測り直さない(#124)
-            sugg = suggestions(db, s, roots=roots, policy=_policy(args), extra=_saved_measurements())
+            sugg = suggestions(
+                db,
+                s,
+                roots=roots,
+                policy=_policy(args),
+                extra=_saved_measurements(),
+                include_unknown_license=bool(getattr(args, "include_unknown_license", False)),
+            )
             if url is not None and not args.dry_run:
                 # 起動中の ComfyUI があれば、足りないノードの要るものを先に外す(#124)
                 checker = _node_check(url)
@@ -3717,7 +3990,10 @@ def cmd_share(args: argparse.Namespace) -> int:
             start, start_why = _comfyui_start_plan(args, url)
             if url is None and start is None:
                 stop = _not_running_lines("", None, start_why)
+                comfy_stop = True
     pending = saved_submissions(include_shared=args.all)
+    if start is not None:
+        args._download_dir = str(start.comfyui_dir)  # 落とす場所は起動する ComfyUI(尋ねない)
     report: dict[str, Any] = {
         "no_measure": bool(args.no_measure),
         "comfyui": _comfy_json(url, found_by, start),
@@ -3761,23 +4037,23 @@ def cmd_share(args: argparse.Namespace) -> int:
             print(
                 tr(
                     f"測らずに、送っていない実測 {len(pending)} 件だけを送るかに進みます"
-                    "(測るときは ComfyUI を起動してから、もう一度実行してください)",
+                    + ("(測るときは ComfyUI を起動してから、もう一度実行してください)" if comfy_stop else ""),
                     f"Not measuring; moving on to sending the {len(pending)} unsent measurement(s)"
-                    " (to measure, start ComfyUI and run it again)",
+                    + (" (to measure, start ComfyUI and run it again)" if comfy_stop else ""),
                 ),
                 file=sys.stderr,
             )
         plan, dl_plan, report["plan"], report["download_plan"] = [], [], [], []
     if not plan and not dl_plan and not pending:
+        why = _share_nothing_reason(args, sugg, skipped, budget)
         if args.json:
-            _out(_envelope("share", None, None, action="send", **report, files=[], prs=[], sent=False))
-        else:
-            print(
-                tr(
-                    "測ると役に立つモデルも、送っていない実測もありません。",
-                    "Nothing worth measuring and no unsent measurements.",
+            _out(
+                _envelope(
+                    "share", None, None, action="send", **report, files=[], prs=[], sent=False, reason=why
                 )
             )
+        else:
+            print(why)
         return 0
     measuring = bool(plan or dl_plan)
     if args.dry_run:
@@ -3825,6 +4101,9 @@ def cmd_share(args: argparse.Namespace) -> int:
             if start is not None:
                 _step(args, "start")
                 try:
+                    busy = _vram_busy_before_start()
+                    if busy:
+                        raise CliError(busy)
                     started = _comfyui_start(args, start, holder)
                 except CliError as e:
                     failed.append({"model_id": None, "settings": None, "error": str(e)})
@@ -3877,8 +4156,14 @@ def cmd_share(args: argparse.Namespace) -> int:
                 _step(args, "measure", tr(f"測る({len(plan)} 件)", f"Measure ({len(plan)})"))
             else:
                 args._steps.drop("measure")
+            ctx = {"url": url, "start": start, "holder": holder, "restarts": 0, "dead": False}
             for i, x in enumerate(plan, 1):
-                _share_measure_one(args, url, x, measured, failed, (i, len(plan)), plan[i:])
+                _share_measure_one(args, ctx["url"], x, measured, failed, (i, len(plan)), plan[i:])
+                if not _share_comfy_check(args, ctx, x, failed):
+                    break
+            if ctx["dead"]:
+                dl_plan = []
+            url = ctx["url"]
             if dl_plan and want_dl is None:
                 want_dl = _share_ask_download(dl_plan, first=False)
             if dl_plan and want_dl:
@@ -3888,7 +4173,7 @@ def cmd_share(args: argparse.Namespace) -> int:
                     "download",
                     tr(f"落として測る({len(dl_plan)} 件)", f"Download and measure ({len(dl_plan)})"),
                 )
-                _share_download_and_measure(args, url, dl_plan, measured, failed)
+                _share_download_and_measure(args, ctx, dl_plan, measured, failed)
         except KeyboardInterrupt:
             interrupted = True
             print(file=sys.stderr)
@@ -5600,6 +5885,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             )
             return 130
         if answer != "y":
+            args._declined = True
             print(tr("落としませんでした(同意がありません)", "Not downloaded (no consent)"), file=sys.stderr)
             return 1
         break
@@ -5746,8 +6032,18 @@ def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any,
     from . import comfyfind, comfystart
     from .downloader import DownloadError
 
-    if url is not None or getattr(args, "no_start", False) or comfystart.start_disabled():
+    if url is not None:
         return None, None
+    if getattr(args, "no_start", False):
+        return None, tr(
+            "--no-start なので ComfyUI を起動しません(外すと、見つけた ComfyUI を起動して測ります)",
+            "--no-start was given, so ComfyUI is not started (without it, the ComfyUI found is started)",
+        )
+    if comfystart.start_disabled():
+        return None, tr(
+            f"環境変数 {comfystart.START_ENV} が 0 なので ComfyUI を起動しません",
+            f"The environment variable {comfystart.START_ENV} is 0, so ComfyUI is not started",
+        )
     try:
         dest = _resolve_destination(args, probe=False)
     except (CliError, DownloadError, OSError):
@@ -6018,6 +6314,17 @@ def _measure_screen(
 def _measure_next_step(msg: str, model_id: str) -> str:
     """measure が測れなかったときの「次にすること」。
     bench の文の --force などは measure に無いので、ここで言い換える。"""
+    if "秒で終わらなかった" in msg or "not finished in" in msg:
+        return tr(
+            "次にすること: 初めは読み込みで長くかかります。"
+            "もう一度実行するか、待つ時間の上限を --timeout で延ばしてください。",
+            "Next: the first run takes longer to load. Run it again, or allow more time with --timeout.",
+        )
+    if "ComfyUI が止まりました" in msg or "ComfyUI stopped" in msg:
+        return tr(
+            "次にすること: ComfyUI のログを見て、起動し直してから、もう一度実行してください。",
+            "Next: read the ComfyUI log, start it again, then run it again.",
+        )
     if "--force" in msg:
         return tr(
             "次にすること: ほかの生成・ゲーム・動画の書き出しなどを閉じて GPU を空け、"
@@ -6095,12 +6402,16 @@ def _share_hint(m) -> str:
     )
 
 
-def _measure_download(args: argparse.Namespace, model_id: str) -> int:
-    """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。"""
+def _measure_download(args: argparse.Namespace, model_id: str, consented: bool = False) -> int:
+    """入っていないモデルを download と同じ流れ(同じ同意の決まり)で落とす。consented は、share の「落として
+    測りますか」に y と答えたとき(名前と量を見せて同意を取ってある): download のモデルごとの質問を省く
+    (--yes。ライセンス不明・無検閲は download の決まりどおり、指定が無ければ落とさない)。
+    利用者が落とすのをやめたら args._download_declined を真にする。"""
     argv = ["--lang", i18n.get_language(), "download", model_id]
-    if args.comfyui_dir:
-        argv += ["--comfyui-dir", args.comfyui_dir]
-    if args.yes:
+    place = args.comfyui_dir or getattr(args, "_download_dir", None)
+    if place:
+        argv += ["--comfyui-dir", place]
+    if args.yes or consented:
         argv.append("--yes")
     if getattr(args, "include_unknown_license", False):  # share --any-license(#124。download と同じ同意)
         argv.append("--any-license")
@@ -6111,7 +6422,9 @@ def _measure_download(args: argparse.Namespace, model_id: str) -> int:
     ns = build_parser().parse_args(argv)
     # _main を通らないので、内容の区分の既定(sfw)をここで入れる。無検閲の同意は足さない
     ns.content = getattr(args, "content", None) or DEFAULT_CONTENT
-    return cmd_download(ns)
+    code = cmd_download(ns)
+    args._download_declined = bool(getattr(ns, "_declined", False))
+    return code
 
 
 def _measure_run(
@@ -6167,12 +6480,27 @@ def _measure_run(
     out_path, not_saved = save_decision(m, None, False, False)
     if out_path is not None:
         save(m, out_path)
+    out["unsendable"] = None
     if m.standard and m.outcome in ("ok", "oom"):
         sub = build_submission(m, detect() if is_local(url) else None)
-        out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
-        out["path_in_repo"] = suggested_path(sub)
+        # 送れない(検査・個人の情報の点検に通らない)なら送る用の提出を作らない(#124)。手元の実測は残す
+        why = _submission_refusal(sub, args)
+        if why:
+            out["unsendable"] = why
+        else:
+            out["submission"] = write_submission(sub, str(submissions_dir()) + os.sep)
+            out["path_in_repo"] = suggested_path(sub)
     out.update(result=result, measurement=m, saved_to=out_path, not_saved=not_saved)
     return out
+
+
+def _submission_refusal(sub: dict[str, Any], args: argparse.Namespace) -> list[str]:
+    """提出が送れない理由(share と同じ点検: 個人の情報の点検の NG と検査の誤り)。送れるなら空。"""
+    from .contrib import dumps, privacy_checklist, share_check, validate_submission
+
+    raw = dumps(sub)
+    report = validate_submission(sub, _contrib_db(args), raw=raw, check_filename=False)
+    return share_check(privacy_checklist(sub, raw), report)
 
 
 def cmd_measure(args: argparse.Namespace) -> int:
@@ -6222,6 +6550,14 @@ def cmd_measure(args: argparse.Namespace) -> int:
             _out(_envelope("measure", s, db, action="suggest" if not args.model else "measure", error=msg))
             return 1
         raise CliError(msg)
+    gpu_stop = _measure_gpu_stop(s)
+    if gpu_stop:  # 今は NVIDIA の GPU だけで測る(#124)
+        if args.json:
+            _out(
+                _envelope("measure", s, db, action="suggest" if not args.model else "measure", error=gpu_stop)
+            )
+            return 1
+        raise CliError(gpu_stop)
     if not args.model:
         sugg = suggestions(db, s, roots=roots, policy=_policy(args), extra=_saved_measurements())[
             : args.limit or MEASURE_LIMIT
@@ -6326,7 +6662,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
 
         miss = _node_check(url).missing(entry.id)
         if miss:
-            msg = missing_nodes_message(miss)
+            msg = missing_nodes_message(miss, workflow_hint=False)
             return fail(msg, [_measure_next_step(msg, entry.id)])
     if inst.state == "no" and args.json:
         return fail(
@@ -6367,11 +6703,17 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if inst.state == "no":
         code = _measure_download(args, entry.id)
         if code != 0:
+            if getattr(args, "_download_declined", False):
+                print(tr("やめました(落とさないので測りません)", "Stopped (not downloaded, so not measured)"))
+                return 0
             return code
         print()
     holder: list = []
     try:
         if start is not None:
+            busy = _vram_busy_before_start()
+            if busy:
+                return fail(busy)
             try:
                 started = _comfyui_start(args, start, holder)
             except CliError as e:
@@ -6399,6 +6741,7 @@ def cmd_measure(args: argparse.Namespace) -> int:
     m, result = run_["measurement"], run_["result"]
     out_path, not_saved = run_["saved_to"], run_["not_saved"]
     sub_path, sub_repo = run_["submission"], run_["path_in_repo"]
+    unsendable = run_.get("unsendable")
     hint = _share_hint(m)
     code = 1 if result.failed else 0
     if args.json:
@@ -6441,6 +6784,13 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if sub_path is not None:
         print(tr(f"送る用:    {sub_path}", f"To send:   {sub_path}"))
         print(hint)
+    elif unsendable:
+        print(
+            tr(
+                "送れません(この PC の実測としては保存しました): " + " / ".join(unsendable),
+                "Cannot be sent (kept as this PC's measurement): " + " / ".join(unsendable),
+            )
+        )
     return code
 
 
@@ -9750,6 +10100,32 @@ def main(argv: list[str] | None = None) -> int:
             with contextlib.suppress(AttributeError, ValueError, OSError):
                 stream.reconfigure(encoding="utf-8")
     argv = sys.argv[1:] if argv is None else argv
+    err = sys.stderr
+    if not isinstance(err, _OrderedStderr):
+        sys.stderr = _OrderedStderr(err)
+    try:
+        return _main_outer(argv)
+    finally:
+        sys.stderr = err
+
+
+class _OrderedStderr:
+    """stderr に書く前に stdout を流す(パイプ・ファイルでも、画面の文と注意・途中経過の順が入れ替わらない。
+    #124)。ほかは元の stderr のまま。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def write(self, text):
+        with contextlib.suppress(Exception):
+            sys.stdout.flush()
+        return self._inner.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _main_outer(argv: list[str]) -> int:
     lang = _lang_in(argv) or _config_lang(argv)  # 説明の文を作る前に言語を決める(#73・#111)
     # ContextVar で固定するので、ほかのスレッドのライブラリの呼び出しには効かず、main を出れば元に戻る
     with i18n.forced(lang) if lang else contextlib.nullcontext(), _argparse_language():
@@ -9858,6 +10234,7 @@ def _main(argv: list[str]) -> int:
             return 0
         raise
     except (CliError, DatabaseError) as e:
+        code = 2 if isinstance(e, UsageError) else 1
         cands = getattr(e, "candidates", None)
         if getattr(args, "json", False):
             err: dict[str, Any] = {"genmodelfit": __version__, "command": args.command, "error": str(e)}
@@ -9874,7 +10251,7 @@ def _main(argv: list[str]) -> int:
                     tr(f"  …ほか {rest} 件(--json で全部)", f"  … {rest} more (--json for all)"),
                     file=sys.stderr,
                 )
-        return 1
+        return code
 
 
 if __name__ == "__main__":

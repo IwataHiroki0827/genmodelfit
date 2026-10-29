@@ -271,7 +271,9 @@ def _fake_run(monkeypatch, events, error=None):
     monkeypatch.setattr(cli, "_measure_run", run)
     monkeypatch.setattr(cli, "_share_hint", lambda m: "hint")
     # 入っていないファイルは measure が先に落とす(落としたことにする)
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: events.append(("download", mid)) or 0)
+    monkeypatch.setattr(
+        cli, "_measure_download", lambda args, mid, **k: events.append(("download", mid)) or 0
+    )
 
 
 def test_measure_starts_comfyui_and_stops_it(capsys, monkeypatch, this_pc, starter, tmp_path):
@@ -338,7 +340,7 @@ def test_measure_reports_a_start_failure(capsys, monkeypatch, this_pc, tmp_path)
     monkeypatch.setattr(comfystart, "wait_ready", not_ready)
     monkeypatch.setattr(comfystart, "stop", lambda st, **k: stopped.append(st) or True)
     monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: pytest.fail("測らない"))
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: 0)
     assert cli.main(["measure", "image_sdxl_simple", "--comfyui-dir", str(d), "--yes"]) == 1
     err = capsys.readouterr().err
     assert "c.log" in err and "boom" in err

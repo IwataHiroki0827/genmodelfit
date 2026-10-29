@@ -1126,6 +1126,14 @@ bench が Measurement を埋める方法(測り方):
   計画にそう書く(「測る前に毎回 ComfyUI のメモリを空けます」)。`measure` は自分で起動した ComfyUI では空け、利用者の
   ものは `--free` のときだけ(0.13.0)。それでも前の結果を使ったなど標準でない条件の結果は、保存も送りもせず、理由を
   付けて `failed` に入れる(黙って落とさない)。
+- **送れないもの**(0.13.0): 提出を書く前に `share` と同じ点検(個人の情報の点検と `validate` の誤り)をする。送れない
+  (GPU の全体より大きい最大 VRAM など)なら、この PC の実測だけを残し、理由を付けて `failed` に入れる。保存してある
+  送れない提出は 1 回だけ出して `<名前>.unsendable` に名前を変える(次から出さない。JSON の `retired`)。ほかを送れた
+  なら、それで `share` を失敗にしない。
+- **GPU と VRAM**: 今は NVIDIA の GPU だけで測る。`measure.suggestions` はライセンスの分からないモデルを出さない
+  (`--any-license` で出す)。ほかのプログラムが VRAM を 1.5 GiB か全体の 20% より多く使っていれば測らない
+  (`bench.others_vram_limit`。ComfyUI を起動する前は nvidia-smi、空けたあとは `/system_stats` で見る)。測っている
+  あいだに GPU を使い始めたプロセス(nvidia-smi の compute apps)があれば、標準でない結果にする。
 - **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
   数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
   `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に

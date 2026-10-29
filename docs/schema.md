@@ -1179,6 +1179,15 @@ Rules:
   `measure` does it for a ComfyUI it started, and for yours only with `--free` (0.13.0). A run that still reused
   cached results, or any other non-standard condition, is not saved or sent: it is listed under `failed` with the
   reason (nothing is dropped silently).
+- **Not sendable** (0.13.0): before a submission is written, the checks of `share` (privacy checklist and
+  `validate` errors) run; when it cannot be sent (for example peak VRAM above the GPU's total), only this PC's
+  measurement is kept and the run is listed under `failed` with the reason. A saved submission that cannot be sent
+  is listed once and renamed `<name>.unsendable` (not offered again; `retired` in the JSON); `share` does not fail
+  for it when everything else was sent.
+- **GPUs and VRAM**: only NVIDIA GPUs are measured for now. `measure.suggestions` leaves out models with an unknown
+  license unless `--any-license`. Measuring is refused when other programs use more than 1.5 GiB or 20% of the VRAM
+  (`bench.others_vram_limit`): checked with nvidia-smi before starting ComfyUI and from `/system_stats` after
+  freeing; a new GPU process during a run (nvidia-smi compute apps) makes the result non-standard.
 - **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
   measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
   measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay

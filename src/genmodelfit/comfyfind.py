@@ -230,11 +230,28 @@ def _probe_port(port: int, timeout: float) -> dict | None:
             data = r.json()
     except Exception:
         return None
-    if not isinstance(data, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in data.items()
-    ):
+    return normalize_folder_paths(data)
+
+
+def normalize_folder_paths(data) -> dict | None:
+    """/internal/folder_paths の答えを {キー: 最初のパス} にそろえる。ComfyUI の版で形が違う: 文字列
+    (古い版)・パスの並び(folder_names_and_paths[key][0]。0.19 など)・[パスの並び, 拡張子] の並び。
+    読めないキーは飛ばす。何も読めなければ None。"""
+    if not isinstance(data, dict):
         return None
-    return data
+    out: dict[str, str] = {}
+    for k, v in data.items():
+        if not isinstance(k, str):
+            continue
+        first = v
+        for _ in range(3):  # [[paths], exts] → [paths] → path
+            if isinstance(first, (list, tuple)):
+                first = first[0] if first else None
+            else:
+                break
+        if isinstance(first, str) and first:
+            out[k] = first
+    return out or None
 
 
 def from_folder_paths(data: dict, port: int) -> Candidate | None:

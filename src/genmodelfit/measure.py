@@ -314,6 +314,7 @@ def suggestions(
     policy: Any = None,
     variants_per_model: int | None = VARIANTS_PER_MODEL,
     extra: Any = (),
+    include_unknown_license: bool = False,
 ) -> list[Suggestion]:
     """測ると役に立つモデル(#113): テンプレートがあり、この PC の GPU に載り(perfect / good で GPU)、
     この GPU にテンプレートの設定のままの実測が無いもの。同じモデル(groups の鍵)は 1 件(入っているもの、
@@ -342,6 +343,9 @@ def suggestions(
     for f in evaluate(db, system, content=content, policy=policy, coefficients=c):
         m, e = f.model, f.estimate
         if m.source != TEMPLATE_SOURCE:
+            continue
+        # ライセンスの分からないものは、一覧の既定と同じく出さない(--any-license で出す。#124)
+        if not include_unknown_license and m.license_unknown:
             continue
         rows: list[tuple[Settings | None, str]] = []
         if not has_measurement_here(m, ms, gpu):

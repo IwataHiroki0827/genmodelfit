@@ -370,7 +370,7 @@ def test_measure_offers_download_when_not_installed(capsys, monkeypatch, this_pc
     (comfy / "main.py").write_text("")
     calls: list[str] = []
 
-    def fake_download(args, model_id):
+    def fake_download(args, model_id, **k):
         calls.append(model_id)
         return 1  # 利用者が落とすのを断った
 

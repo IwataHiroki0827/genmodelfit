@@ -339,7 +339,7 @@ def dl_plan(plan):
 
 def test_share_does_not_download_when_answered_no(capsys, monkeypatch, this_pc, dl_plan, gh):
     calls: list[str] = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: calls.append(mid) or 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: calls.append(mid) or 0)
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     asked = answers(monkeypatch, "", "", "")  # 測る → はい、落とす → Enter(既定は No)、送る → はい
@@ -351,19 +351,21 @@ def test_share_does_not_download_when_answered_no(capsys, monkeypatch, this_pc, 
 
 def test_share_downloads_when_answered_yes(capsys, monkeypatch, this_pc, dl_plan, gh):
     calls: list[tuple] = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: calls.append((mid, args.yes)) or 0)
+    monkeypatch.setattr(
+        cli, "_measure_download", lambda args, mid, **k: calls.append((mid, k.get("consented"))) or 0
+    )
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     answers(monkeypatch, "", "y", "")
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
     # 落とすのは measure と同じ _measure_download(--yes を付けないので download が自分で同意を尋ねる)
-    assert calls == [("b_not_installed", False)]
+    assert calls == [("b_not_installed", True)]  # 名前と量を見せて同意を取ったので、download で尋ね直さない
     assert dl_plan["ran"] == ["a_installed_short", "b_not_installed"]
 
 
 def test_share_yes_alone_never_downloads(capsys, monkeypatch, this_pc, dl_plan, gh):
     calls: list[str] = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: calls.append(mid) or 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: calls.append(mid) or 0)
     monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("--yes では尋ねない"))
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     assert cli.main(["share", "--yes", "--json", "--url", "http://x:1"]) == 0
@@ -372,7 +374,7 @@ def test_share_yes_alone_never_downloads(capsys, monkeypatch, this_pc, dl_plan, 
     assert d["downloaded"] is False and [m["model_id"] for m in d["measured"]] == ["a_installed_short"]
     # --download で落とす(尋ねない)。download の同意の決まりは download のまま(--yes・--any-license を渡す)
     seen = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: seen.append(args) or 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: seen.append(args) or 0)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     assert cli.main(["share", "--yes", "--download", "--any-license", "--url", "http://x:1"]) == 0
     assert len(seen) == 1 and seen[0].yes and seen[0].include_unknown_license
@@ -388,7 +390,7 @@ def test_share_download_forwards_consent_to_download(monkeypatch):
 
 
 def test_share_json_refuses_to_download():
-    assert cli.main(["share", "--json", "--yes", "--download"]) == 1
+    assert cli.main(["share", "--json", "--yes", "--download"]) == 2  # 使い方の誤り
 
 
 # --- 3. ComfyUI が無く、送っていない実測も無い ------------------------------------------------------
@@ -710,15 +712,15 @@ def test_dry_run_makes_no_session(capsys, monkeypatch, this_pc, plan, no_session
 
 
 def test_issue_flag_rules(capsys):
-    assert cli.main(["share", "--print-url"]) == 1  # --print-url は --issue のときだけ
-    assert cli.main(["share", "--issue", "--dry-run"]) == 1
-    assert cli.main(["share", "--issue", "--download"]) == 1
+    assert cli.main(["share", "--print-url"]) == 2  # --print-url は --issue のときだけ(使い方の誤り)
+    assert cli.main(["share", "--issue", "--dry-run"]) == 2
+    assert cli.main(["share", "--issue", "--download"]) == 2
 
 
 def test_json_and_no_terminal_need_yes(capsys, monkeypatch, no_session):
-    assert cli.main(["share", "--json", "--no-measure"]) == 1
+    assert cli.main(["share", "--json", "--no-measure"]) == 2
     monkeypatch.setattr(cli, "_interactive", lambda: False)
-    assert cli.main(["share", "--no-measure"]) == 1
+    assert cli.main(["share", "--no-measure"]) == 2
 
 
 # --- 9. トークンはどこにも出ない ------------------------------------------------------------------
@@ -830,7 +832,7 @@ def test_share_suggests_download_when_nothing_was_measured(capsys, monkeypatch, 
         return {"error": "boom"}
 
     monkeypatch.setattr(cli, "_measure_run", fail_run)
-    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("--yes だけでは落とさない"))
+    monkeypatch.setattr(cli, "_measure_download", lambda *a, **k: pytest.fail("--yes だけでは落とさない"))
     monkeypatch.setattr("builtins.input", lambda p="": pytest.fail("--yes では尋ねない"))
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
@@ -845,7 +847,7 @@ def test_share_suggests_download_when_nothing_was_measured(capsys, monkeypatch, 
 def test_measure_stops_early_when_nodes_are_missing(capsys, monkeypatch, this_pc):
     monkeypatch.setattr(cli, "_node_check", lambda url: FakeNodes({"image_sdxl_simple": ["NewNode"]}))
     monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: pytest.fail("測らない"))
-    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("落とさない"))
+    monkeypatch.setattr(cli, "_measure_download", lambda *a, **k: pytest.fail("落とさない"))
     assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
     err = capsys.readouterr().err
     assert "ComfyUI に無いノードを使っています: NewNode" in err
@@ -920,7 +922,9 @@ def test_missing_nodes_and_node_check():
 def test_no_usable_installed_asks_download_first_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
     plan["sugg"] = [sugg("b_not_installed", 60, "no", 2 * 1024**3)]
     events = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: events.append("download:" + mid) or 0)
+    monkeypatch.setattr(
+        cli, "_measure_download", lambda args, mid, **k: events.append("download:" + mid) or 0
+    )
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     real_check = cli._share_precheck  # 測る前の資格情報の確かめ
@@ -934,7 +938,7 @@ def test_no_usable_installed_asks_download_first_before_logging_in(capsys, monke
 
 def test_declining_the_download_with_nothing_else_ends_quietly(capsys, monkeypatch, this_pc, plan, gh):
     plan["sugg"] = [sugg("b_not_installed", 60, "no", 2 * 1024**3)]
-    monkeypatch.setattr(cli, "_measure_download", lambda *a: pytest.fail("落とさない"))
+    monkeypatch.setattr(cli, "_measure_download", lambda *a, **k: pytest.fail("落とさない"))
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     answers(monkeypatch, "")  # 既定は No
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
@@ -946,7 +950,7 @@ def test_usable_installed_are_measured_before_the_download_question(
     capsys, monkeypatch, this_pc, dl_plan, gh
 ):
     events = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: events.append("download") or 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: events.append("download") or 0)
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     real_run = cli._measure_run
@@ -1368,7 +1372,7 @@ def test_measure_flushes_the_screen_before_starting(capsys, monkeypatch, this_pc
         raise cli.CliError("stop here")
 
     monkeypatch.setattr(cli, "_comfyui_start", start)
-    monkeypatch.setattr(cli, "_measure_download", lambda *a: 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda *a, **k: 0)
     assert cli.main(["measure", "image_sdxl_simple", "--comfyui-dir", str(d), "--yes"]) == 1
 
 
@@ -1450,7 +1454,7 @@ def test_downloads_stay_within_the_approved_list(capsys, monkeypatch, this_pc, s
         cli, "_node_check", lambda url: SimpleNamespace(missing=lambda mid: ["X"] if mid == "dl_a" else [])
     )
     got = []
-    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: got.append(mid) or 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: got.append(mid) or 0)
     monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: {"error": "x"})
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_share_session", lambda: FakeGitHub())
@@ -1535,7 +1539,7 @@ def test_measure_frees_a_started_comfyui_or_with_free(capsys, monkeypatch, this_
         return {"error": "stop"}
 
     monkeypatch.setattr(cli, "_measure_run", run)
-    monkeypatch.setattr(cli, "_measure_download", lambda *a: 0)
+    monkeypatch.setattr(cli, "_measure_download", lambda *a, **k: 0)
     assert cli.main(["measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
     assert cli.main(["measure", "image_sdxl_simple", "--yes", "--free", "--url", "http://x:1"]) == 1
     monkeypatch.delenv(comfystart.START_ENV, raising=False)
@@ -1723,3 +1727,443 @@ def test_bench_reports_progress(monkeypatch):
         bench.run(opts, progress=seen.append)
     assert seen and all({"phase", "elapsed", "peak_vram_gb"} <= set(x) for x in seen)
     assert {x["phase"] for x in seen} <= {"queued", "running", "waiting"}
+
+
+# --- 50 の場面の確かめ(#124 の Tester)で見つかったことと、足りなかった試験 ----------------------------------
+
+
+def _bench_gpu(monkeypatch, apps=None):
+    from genmodelfit import bench
+
+    gpu = {"index": 0, "uuid": "GPU-a", "name": "NVIDIA GeForce RTX 3070", "driver": "1"}
+    monkeypatch.setattr(bench, "_nvidia_smi", lambda: None)
+    monkeypatch.setattr(bench, "smi_gpus", lambda: [gpu])
+    monkeypatch.setattr(bench, "smi_compute_apps", apps or (lambda: []))
+    monkeypatch.setattr(bench, "gpu_used_now", lambda gpu_id: (1024.0, 0.0))
+    monkeypatch.setattr(bench, "sample_gpu", lambda gpu_id, **k: [(1024.0, 0.0)])
+    monkeypatch.setattr(bench, "find_server_process", lambda url: None)
+    monkeypatch.setattr(bench.time, "sleep", lambda s: None)
+    return bench
+
+
+def test_A5_method_question_asks_again_on_other_input(capsys, monkeypatch, this_pc, plan, gh):
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    asked = answers(monkeypatch, "", "x", "")  # 測る → はい、送り方 → x(聞き直す)→ Enter(既定 1)
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    assert [a.startswith("送り方:") for a in asked] == [False, True, True] and len(gh.put) == 3
+    assert "1・2・q で選んでください" in capsys.readouterr().err
+
+
+def test_A6_ctrl_c_at_the_first_question_does_nothing(
+    capsys, monkeypatch, this_pc, plan, gh, starter_env, tmp_path
+):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    monkeypatch.setattr(comfystart, "launch", lambda *a, **k: pytest.fail("起動しない"))
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+
+    def ctrl_c(p=""):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", ctrl_c)
+    assert cli.main(["share", "--comfyui-dir", str(venv_install(tmp_path))]) == 130
+    assert plan["ran"] == [] and gh.calls == []
+
+
+def test_B5_partly_failed_sends_the_rest(capsys, monkeypatch, this_pc, plan, gh):
+    real = cli._measure_run
+
+    def run(args, url, entry, settings, **k):
+        if entry.id == "c_installed":
+            return {"error": "ValueError: boom"}
+        return real(args, url, entry, settings, **k)
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    out = capsys.readouterr().out
+    assert len(gh.put) == 2 and "測れなかったもの: 1 件" in out and "c_installed: ValueError: boom" in out
+
+
+@pytest.mark.parametrize(
+    ("argv", "setup", "want"),
+    [
+        (["--budget", "5"], None, "時間の上限(5 秒)に収まるものがありません(--budget で広げられます)"),
+        (["--no-measure"], None, "送っていない実測はありません。"),
+        ([], "empty", "測ると役に立つモデルはありません(この GPU に載るものは、もう測ってあります)"),
+    ],
+)
+def test_B6_B7_B8_nothing_to_do_says_why(capsys, monkeypatch, this_pc, plan, gh, argv, setup, want):
+    if setup == "empty":
+        plan["sugg"] = []
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1", *argv]) == 0
+    assert want in capsys.readouterr().out and gh.calls == [] and plan["ran"] == []
+
+
+def test_C1_another_program_starting_on_the_gpu_makes_it_nonstandard(monkeypatch):
+    from test_bench import FakeComfy
+
+    n = {"calls": 0}
+
+    def apps():
+        n["calls"] += 1
+        return [(1, "GPU-a")] if n["calls"] == 1 else [(1, "GPU-a"), (4242, "GPU-a"), (7, "GPU-other")]
+
+    bench = _bench_gpu(monkeypatch, apps)
+    monkeypatch.setattr(bench, "GPU_APPS_EVERY", 0.0)
+    with FakeComfy() as fake:
+        opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, free_before=True)
+        res = bench.run(opts)
+    assert res.measurement.standard is False
+    assert any("ほかのプログラムが GPU を使い始めた" in x and "4242" in x for x in res.nonstandard)
+    assert not any("PID 7" in x for x in res.nonstandard)
+
+
+def test_C3_other_programs_using_vram_stop_the_run(monkeypatch):
+    from test_bench import FakeComfy
+
+    bench = _bench_gpu(monkeypatch)
+    with FakeComfy() as fake:
+        fake.other_apps = 6 * 1024**3
+        opts = bench.BenchOptions(model_id="image_sdxl_simple", url=fake.url, timeout=60, free_before=True)
+        with pytest.raises(bench.BenchError) as e:
+            bench.run(opts)
+        assert not fake.submitted
+    assert "ほかのプログラムが VRAM を約" in str(e.value)
+
+
+def test_C3_before_starting_comfyui(capsys, monkeypatch, this_pc, plan, gh, starter_env, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import bench, comfystart
+
+    monkeypatch.setattr(bench, "vram_in_use", lambda: (int(5.8 * 1024**3), 8 * 1024**3))
+    monkeypatch.setattr(comfystart, "launch", lambda *a, **k: pytest.fail("起動しない"))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--comfyui-dir", str(venv_install(tmp_path))]) == 1
+    err = capsys.readouterr().err
+    assert "ほかのプログラムが VRAM を約 5.8 GB 使っています" in err and plan["ran"] == []
+
+
+def test_C5_timeout_hint():
+    hint = cli._measure_next_step("1800 秒で終わらなかったので中止しました", "x")
+    assert "--timeout" in hint and "起動していて" not in hint
+
+
+def test_D1_running_comfyui_is_not_stopped(capsys, monkeypatch, this_pc, plan, gh):
+    from genmodelfit import comfystart
+
+    monkeypatch.setattr(comfystart, "stop", lambda *a, **k: pytest.fail("もとから動いていたものは止めない"))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    assert "測る前に毎回 ComfyUI のメモリを空けます" in capsys.readouterr().out
+
+
+def test_D8_comfyui_dying_is_restarted_once(capsys, monkeypatch, this_pc, plan, gh, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    launched = []
+
+    class Proc:
+        def __init__(self):
+            self.pid, self.code = 1, None
+
+        def poll(self):
+            return self.code
+
+    def launch(p, **k):
+        launched.append(Proc())
+        return comfystart.Started(p, launched[-1], 40400 + len(launched), tmp_path / "c.log")
+
+    (tmp_path / "c.log").write_text("Traceback\nCUDA error\n", encoding="utf-8")
+    monkeypatch.setattr(comfystart, "launch", launch)
+    monkeypatch.setattr(comfystart, "wait_ready", lambda st, **k: None)
+    monkeypatch.setattr(comfystart, "stop", lambda st, **k: True)
+    urls = []
+
+    def run(args, url, entry, settings, **k):
+        urls.append(url)
+        launched[-1].code = 1  # 測っている途中で ComfyUI が落ちる(毎回)
+        return {"error": "ComfyUI(...)に接続できません(止まったか、起動していません)"}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--comfyui-dir", str(venv_install(tmp_path))]) == 1
+    err = capsys.readouterr().err
+    # 1 回目で落ちる → 起動し直して 2 件目 → また落ちる → やめて送るかに進む(3 件目は測らない)
+    assert len(launched) == 2 and urls == ["http://127.0.0.1:40401", "http://127.0.0.1:40402"]
+    assert err.count("ComfyUI が止まりました") == 2 and "CUDA error" in err
+    assert "ComfyUI を起動し直して続けます" in err and "HTTPConnectionPool" not in err
+
+
+def test_E2_ctrl_c_while_downloading_in_share_stops(capsys, monkeypatch, this_pc, dl_plan, gh):
+    calls = []
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid, **k: calls.append(mid) or 130)
+    dl_plan["sugg"].append(sugg("z_not_installed", 30, "no", 1024**3))
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--download", "--url", "http://x:1"]) == 0
+    err = capsys.readouterr().err
+    assert calls == ["b_not_installed"] and "止めました。そこまでの実測を送るかに進みます" in err
+    assert dl_plan["ran"] == ["a_installed_short"] and len(gh.put) == 1  # 測った分は送る
+
+
+def test_F7_network_down_before_measuring_warns_in_a_terminal(capsys, monkeypatch, this_pc, plan):
+    import requests
+
+    github.write_cached_token(TOKEN, 28800)
+
+    class Down(FakeGitHub):
+        def request(self, method, url, **kw):
+            raise requests.ConnectionError("no route")
+
+    monkeypatch.setattr(cli, "_share_session", lambda: Down())
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "", "q")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    err = capsys.readouterr().err
+    assert "GitHub に繋がりません" in err and "Issue でも送れます" in err and len(plan["ran"]) == 3
+
+
+@pytest.mark.parametrize("stage", ["start", "measure", "method", "send", "login"])
+def test_I1_ctrl_c_at_every_stage(capsys, monkeypatch, this_pc, plan, gh, tmp_path, stage):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    stopped = []
+    monkeypatch.setattr(
+        comfystart,
+        "launch",
+        lambda p, **k: comfystart.Started(
+            p, SimpleNamespace(pid=1, poll=lambda: None), 40500, tmp_path / "c.log"
+        ),
+    )
+
+    def ready(st, **k):
+        if stage == "start":
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(comfystart, "wait_ready", ready)
+    monkeypatch.setattr(comfystart, "stop", lambda st, **k: stopped.append(st) or True)
+    real_run = cli._measure_run
+
+    def run(*a, **k):
+        if stage == "measure" and plan["ran"]:
+            raise KeyboardInterrupt
+        return real_run(*a, **k)
+
+    def boom(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    if stage == "send":
+        monkeypatch.setattr(cli, "_share_submit", boom)
+    if stage == "login":
+        monkeypatch.setattr(cli, "_share_login", boom)
+    else:
+        monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+
+    def ask(p=""):
+        if stage == "method" and p.startswith("送り方"):
+            raise KeyboardInterrupt
+        return ""
+
+    monkeypatch.setattr("builtins.input", ask)
+    code = cli.main(["--lang", "ja", "share", "--comfyui-dir", str(venv_install(tmp_path))])
+    err = capsys.readouterr().err
+    assert stopped, "起動した ComfyUI は止める"
+    assert "Traceback" not in err
+    if stage in ("start", "measure"):
+        assert "止めました。そこまでの実測を送るかに進みます" in err
+    if stage in ("method", "send", "login"):
+        assert code == 130 and "genmodelfit share --no-measure" in err
+    assert len(measure.saved_submissions(include_shared=True)) == len(plan["ran"])  # 測った分は残る
+
+
+def test_K1_no_measure_numbers_only_the_steps_that_run(capsys, monkeypatch, gh):
+    _write_sub(1)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--no-measure"]) == 0
+    heads = re.findall(r"== 手順 (\d+)/(\d+): (.+?) ==", capsys.readouterr().out)
+    assert heads == [("1", "2", "送る中身を見せる"), ("2", "2", "送る")]
+
+
+def test_J2_declining_the_download_in_measure_is_not_an_error(capsys, monkeypatch, this_pc, tmp_path):
+    from test_comfystart import _comfy
+
+    def declined(ns):
+        ns._declined = True
+        return 1
+
+    monkeypatch.setattr(cli, "cmd_download", declined)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "")
+    d = _comfy(tmp_path / "ComfyUI")
+    argv = ["--lang", "ja", "measure", "image_sdxl_simple", "--url", "http://x:1", "--comfyui-dir", str(d)]
+    assert cli.main(argv) == 0
+    assert "やめました(落とさないので測りません)" in capsys.readouterr().out
+
+
+def test_folder_paths_shapes_of_comfyui_versions(tmp_path):
+    from genmodelfit import comfyfind
+
+    base = tmp_path / "ComfyUI"
+    for d in ("main.py", "nodes.py"):
+        (base / d).parent.mkdir(parents=True, exist_ok=True)
+        (base / d).write_text("")
+    for d in ("comfy", "comfy_extras", "comfy_api", "models/checkpoints", "models/vae", "custom_nodes"):
+        (base / d).mkdir(parents=True, exist_ok=True)
+    ck, vae, cn = (
+        str(base / "models" / "checkpoints"),
+        str(base / "models" / "vae"),
+        str(base / "custom_nodes"),
+    )
+    shapes = [
+        {"checkpoints": ck, "vae": vae, "custom_nodes": cn},  # 古い版: 文字列
+        {"checkpoints": [ck, "D:/other"], "vae": [vae], "custom_nodes": [cn]},  # 0.19: パスの並び
+        {"checkpoints": [[ck], [".safetensors"]], "vae": [[vae], []], "custom_nodes": [[cn], []]},
+    ]
+    for data in shapes:
+        norm = comfyfind.normalize_folder_paths(data)
+        assert norm == {"checkpoints": ck, "vae": vae, "custom_nodes": cn}
+        c = comfyfind.from_folder_paths(norm, 8188)
+        assert c is not None and c.path == base
+    assert comfyfind.normalize_folder_paths({"x": [], "y": 3}) is None
+
+
+def test_unsendable_result_is_kept_but_not_offered(capsys, monkeypatch, this_pc):
+    from genmodelfit import bench
+    from genmodelfit.models import Measurement
+
+    def run(opts, log=None, progress=None):
+        m = Measurement(
+            model_id=opts.model_id,
+            gpu_name="NVIDIA GeForce RTX 3070",
+            gpu_vram_gb=8.0,
+            peak_vram_gb=9.31,  # GPU より大きい(Windows で共有メモリに逃げた)
+            seconds=30.0,
+            outcome="ok",
+            vram_metric="torch_reserved",
+            offload="dynamic",
+        )
+        return bench.BenchResult(measurement=m, workflow_source="t", warnings=[])
+
+    monkeypatch.setattr(bench, "run", run)
+    db = cli._db(cli.build_parser().parse_args(["measure"]))
+    e = next(m for m in db.models if m.id == "image_sdxl_simple")
+    out = cli._measure_run(cli.build_parser().parse_args(["share"]), "http://x:1", e, None)
+    assert out["submission"] is None and out["unsendable"] and out["saved_to"] is not None
+    assert measure.saved_submissions() == []  # 送れないものは「送っていない実測」にしない(毎回失敗しない)
+
+
+def test_existing_unsendable_submission_is_retired_once(capsys, monkeypatch, gh):
+    d = json.loads(GOOD[0].read_text(encoding="utf-8"))
+    d["measurement"]["note"] = "C:" + chr(92) + "Users" + chr(92) + "bob" + chr(92) + "ComfyUI"
+    bad = contrib.write_submission(d, str(measure.submissions_dir()) + "/")
+    good = _write_sub(1)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--no-measure"]) == 0  # 送れるものは送り、失敗にしない
+    err = capsys.readouterr().err
+    assert "送れないので、次から出しません" in err and Path(str(bad) + ".unsendable").exists()
+    assert len(gh.put) == 1 and good.exists()
+    assert cli.main(["--lang", "ja", "share", "--yes", "--no-measure"]) == 0
+    assert "送っていない実測はありません" in capsys.readouterr().out
+
+
+def test_license_unknown_models_are_not_suggested_by_default():
+    from genmodelfit.db import load as load_db
+    from genmodelfit.models import Gpu, SystemInfo
+
+    db = load_db(use_cache=False)
+    g = Gpu(name="NVIDIA GeForce RTX 4090", vendor="nvidia", vram_total_gb=24.0, backend="cuda")
+    pc = SystemInfo(os="Windows 11", cpu="t", cpu_cores=8, ram_total_gb=64, ram_available_gb=64, gpus=[g])
+    by_id = {m.id: m for m in db.models}
+    default = measure.suggestions(db, pc, variants_per_model=None)
+    assert not any(by_id[x.model_id].license_unknown for x in default)
+    with_unknown = measure.suggestions(db, pc, variants_per_model=None, include_unknown_license=True)
+    assert len(with_unknown) >= len(default)
+
+
+def test_non_nvidia_gpu_does_not_measure(capsys, monkeypatch, plan, gh):
+    from genmodelfit.models import Gpu, SystemInfo
+
+    g = Gpu(name="AMD Radeon RX 7800 XT", vendor="amd", vram_total_gb=16.0, backend="rocm")
+    s = SystemInfo(os="Windows 11", cpu="t", cpu_cores=8, ram_total_gb=32, ram_available_gb=32, gpus=[g])
+    monkeypatch.setattr(cli, "_system", lambda args: s)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    assert "今は NVIDIA の GPU だけで測ります" in capsys.readouterr().err and plan["ran"] == []
+    _write_sub(1)  # 送っていない実測は送れる
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    err = capsys.readouterr().err
+    assert len(gh.put) == 1 and "ComfyUI を起動してから" not in err
+    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
+
+
+def test_J3_and_D5_hints(capsys, monkeypatch, this_pc, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    monkeypatch.setattr(cli, "_node_check", lambda url: SimpleNamespace(missing=lambda m: ["NewNode"]))
+    assert cli.main(["--lang", "ja", "measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
+    err = capsys.readouterr().err
+    assert "NewNode" in err and "--workflow" not in err
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    d = venv_install(tmp_path)
+    argv = ["--lang", "ja", "measure", "image_sdxl_simple", "--no-start", "--comfyui-dir", str(d)]
+    assert cli.main(argv) == 1
+    assert "--no-start なので ComfyUI を起動しません" in capsys.readouterr().err
+
+
+def test_stderr_comes_after_what_was_printed(monkeypatch):
+    order = []
+
+    class Out:
+        def write(self, t):
+            order.append(("out", t))
+
+        def flush(self):
+            order.append(("flush", ""))
+
+    class Err:
+        def write(self, t):
+            order.append(("err", t))
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(sys, "stdout", Out())
+    monkeypatch.setattr(sys, "stderr", Err())
+    assert cli.main(["share", "--print-url"]) == 2
+    first_err = next(i for i, (k, _t) in enumerate(order) if k == "err")
+    assert order[first_err - 1][0] == "flush"
+
+
+def test_sending_reports_each_file():
+    logs = []
+    github.submit(
+        FakeGitHub(),
+        _creds(),
+        [
+            ("data/contrib/x/2026-10-29-aaaaaaaa.json", "{}"),
+            ("data/contrib/x/2026-10-29-bbbbbbbb.json", "{}"),
+        ],
+        title="t",
+        body="b",
+        branch="genmodelfit-share/x/1",
+        match_prefix="genmodelfit-share/x/",
+        log=logs.append,
+        sleep=lambda s: None,
+    )
+    assert "送っています 1/2: data/contrib/x/2026-10-29-aaaaaaaa.json" in logs and "PR を開いています" in logs

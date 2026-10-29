@@ -400,8 +400,16 @@ def missing_nodes(ui: dict[str, Any], object_info: dict[str, Any]) -> list[str]:
     return sorted({n.type for n in flat if _runs(n) and n.type not in object_info})
 
 
-def missing_nodes_message(names: list[str]) -> str:
+def missing_nodes_message(names: list[str], *, workflow_hint: bool = True) -> str:
+    """足りないノードの文。workflow_hint が偽なら --workflow の案内を付けない(measure・share には無い)。"""
     joined = ", ".join(names)
+    if not workflow_hint:
+        return tr(
+            f"ComfyUI に無いノードを使っています: {joined}"
+            "(ComfyUI が古いか、カスタムノードが要ります。ComfyUI を更新すると測れます)",
+            f"uses nodes that ComfyUI does not have: {joined}"
+            " (ComfyUI is old or custom nodes are needed; update ComfyUI to measure it)",
+        )
     return tr(
         f"ComfyUI に無いノードを使っています: {joined}"
         "(ComfyUI が古いか、カスタムノードが要ります。"
