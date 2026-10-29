@@ -121,6 +121,7 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 | `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
 | `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure`, `share` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_COMFYUI_START` | `measure`, `share` | `0`, `off`, `no` or `false`: do not start the ComfyUI that was found when none is running (like `--no-start`). |
 | `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_CACHE_DIR` | `update`, `measure`, `share`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
@@ -765,8 +766,9 @@ pick a model worth measuring and measure it on your running ComfyUI (nothing is 
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--yes] [--resolution WxH] [--frames N] [--length SEC]
-                    [--limit N] [--timeout SEC] [model]
+                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes]
+                    [--resolution WxH] [--frames N] [--length SEC] [--limit N] [--timeout SEC]
+                    [model]
 ```
 
 - Measure a model on your running ComfyUI and save the result on this PC (nothing is sent).
@@ -788,6 +790,8 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `model` |  |  | model name (the Model column), workflow id, or a part of either (omitted: list models worth measuring and choose one) |
 | `--url` | `URL` | a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000) | URL of the ComfyUI to measure on (e.g. http://127.0.0.1:8188) |
 | `--comfyui-dir` | `DIR` | decided like download | your ComfyUI folder (to see whether the model is installed, and where to download it) |
+| `--no-start` |  |  | do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0) |
+| `--start-timeout` | `SEC` | `300` | the most time to wait for a started ComfyUI to be ready (seconds; default 300) |
 | `--yes`, `-y` |  |  | do not ask before measuring (a model that is not installed is downloaded under the same rules as download `--yes`) |
 | `--resolution` | `WxH` |  | measure at this width and height (e.g. 1536x1536; like bench; omitted: as in the template) |
 | `--frames` | `N` |  | measure at this number of video frames (like bench; omitted: as in the template) |
@@ -800,13 +804,15 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 **Preconditions**
 
 - A GPU on this PC and a ComfyUI on it: `--url`, or one running on this PC (127.0.0.1 port 8188 or 8000).
-- When none is running, it says how to start ComfyUI and exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench without `--force`).
+- When none is running but a ComfyUI folder is found (like download), it is started in the background (portable: its python_embeded; manual or comfy-cli: its .venv/venv; Desktop: its .venv and the app's ComfyUI; on 127.0.0.1 and a free port, no browser), used, and stopped after measuring; the [Y/n] question covers it (`--no-start` or GENMODELFIT_COMFYUI_START=0 turns this off; `--start-timeout`, default 300 s).
+- Otherwise it says how to start ComfyUI and exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench without `--force`).
 
 **Side effects**
 
 - Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without `--url`), the ComfyUI it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and the model files when it downloads them.
 - Nothing about this PC is sent anywhere else.
-- Writes the result to `<cache>/measurements/` (used when this PC is judged) and a submission draft to `<cache>/submissions/` (what `genmodelfit share` lists).
+- Writes the result to `<cache>/measurements/` (used when this PC is judged) and a submission draft to `<cache>/submissions/` (what `genmodelfit share` sends).
+- A started ComfyUI writes its output to `<cache>/comfyui-<date>.log`.
 
 **Exit codes**
 
@@ -844,8 +850,8 @@ measure installed models for a few minutes and send them, with your unsent measu
 ```text
 genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-license] [--no-measure]
                   [--budget SEC] [--dry-run] [--issue] [--print-url] [--logout] [--all]
-                  [--mark-sent] [--url URL] [--comfyui-dir DIR] [--timeout SEC] [--db PATH]
-                  [--no-cache] [file]
+                  [--mark-sent] [--url URL] [--comfyui-dir DIR] [--no-start] [--start-timeout SEC]
+                  [--timeout SEC] [--db PATH] [--no-cache] [file]
 ```
 
 - Measure for a few minutes and send the measurements as a GitHub pull request.
@@ -855,7 +861,8 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 - It signs in to GitHub before measuring: GITHUB_TOKEN or GH_TOKEN, else the saved sign-in, else the GitHub device login in your browser (scope public_repo; saved for next time; `--logout` removes it).
 - It forks the repository if needed, makes a branch from the upstream main, adds the files under `data/contrib/<GPU>/` and opens a pull request (titled "measurements: `<GPU>` (`<count>`)"), or adds them to your open share pull request; files already there are skipped.
 - Sent files are marked on this PC and not sent again (`--all` includes them).
-- Without ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking or signing in.
+- When no ComfyUI runs, it starts the one it finds and stops it afterwards, as measure does.
+- Without any ComfyUI it sends only the unsent measurements; with none it says how to start ComfyUI and exits 1 without asking or signing in.
 - `--no-measure` sends the unsent measurements only; FILE sends that file only.
 - `--issue` is the older way without signing in: it opens the measurement issue form in your browser.
 
@@ -877,6 +884,8 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | `--mark-sent` |  |  | with `--issue` `--json`, also mark it as sent (for apps that open the form themselves; by default `--json` only previews) |
 | `--url` | `URL` | a ComfyUI running on this PC (127.0.0.1 ports 8188 and 8000) | URL of the ComfyUI to measure on (like measure) |
 | `--comfyui-dir` | `DIR` | decided like download | your ComfyUI folder (to see whether models are installed, and where to download; like measure) |
+| `--no-start` |  |  | do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0) |
+| `--start-timeout` | `SEC` | `300` | the most time to wait for a started ComfyUI to be ready (seconds; default 300) |
 | `--timeout` | `SEC` | `1800` | the most time to wait for one run (seconds; default 1800) |
 | `--db` | `PATH` | choosing: the list fetched by update, else the bundled list; checks: the bundled list | use this model list file (db.json) (to choose what to measure and to check before sending) |
 
@@ -1578,6 +1587,6 @@ The command sections are generated from the program's argument parser by `tools/
 match the program. Do not edit them by hand; change the help texts in `src/genmodelfit/cli.py` and run
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
 
-The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
+The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `comfystart.py` (`GENMODELFIT_COMFYUI_START`), `config.py`
 (`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`), `signing.py` (`GENMODELFIT_SIGNING_KEY`) and `github.py`
 (`GITHUB_TOKEN`, `GH_TOKEN`, `GENMODELFIT_GH_CLIENT_ID`).

@@ -117,6 +117,7 @@
 | `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
 | `GENMODELFIT_COMFYUI_SEARCH` | `download`・`measure`・`share` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_COMFYUI_START` | `measure`・`share` | `0`・`off`・`no`・`false` で、起動中の ComfyUI が無いときに見つけた ComfyUI を起動しない(`--no-start` と同じ)。 |
 | `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_CACHE_DIR` | `update`・`measure`・`share`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
@@ -760,8 +761,9 @@ genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--yes] [--resolution WxH] [--frames N] [--length SEC]
-                    [--limit N] [--timeout SEC] [model]
+                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes]
+                    [--resolution WxH] [--frames N] [--length SEC] [--limit N] [--timeout SEC]
+                    [model]
 ```
 
 - 起動中の ComfyUI でモデルを実測し、結果をこの PC に保存する(何も送らない)。
@@ -788,6 +790,8 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `model` |  |  | 測るモデルの名前(表の Model)・ワークフローの ID・その一部(省くと、測ると役に立つモデルを出して選ぶ) |
 | `--url` | `URL` | この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す | 測りに使う ComfyUI の URL(例 http://127.0.0.1:8188) |
 | `--comfyui-dir` | `DIR` | download と同じ決め方 | ComfyUI のフォルダ(モデルが入っているかを見る・入っていないとき落とす場所) |
+| `--no-start` |  |  | 起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ) |
+| `--start-timeout` | `SEC` | `300` | 起動した ComfyUI の準備を待つ時間の上限(秒。既定 300) |
 | `--yes`, `-y` |  |  | 測る前に尋ねない(入っていないモデルは download `--yes` と同じ決まりで落とす) |
 | `--resolution` | `WxH` |  | 幅と高さ(例: 1536x1536)を変えて測る(bench と同じ。省くとテンプレートのまま) |
 | `--frames` | `N` |  | 動画のコマ数を変えて測る(bench と同じ。省くとテンプレートのまま) |
@@ -800,14 +804,17 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 **前提**
 
 - この PC の GPU と、そこで動く ComfyUI: `--url` か、この PC で起動中のもの(127.0.0.1 の 8188 か 8000)。
-- 起動していなければ、起動のしかたを出して 1 で終わる。
+- 起動していなくても ComfyUI のフォルダが見つかれば(download と同じ見つけ方)、裏で起動して使い、測り終えたら止める(ポータブル版は python_embeded、手で入れたもの・comfy-cli は .venv・venv、デスクトップ版は .venv とアプリの ComfyUI で、127.0.0.1 の空いているポートに、ブラウザを開かずに)。
+- [Y/n] の質問がその同意を兼ねる(`--no-start` か GENMODELFIT_COMFYUI_START=0 で止める。`--start-timeout` は既定 300 秒)。
+- 見つからなければ、起動のしかたを出して 1 で終わる。
 - GPU が空いていること: ほかのプログラムが使っていれば測らない(`--force` の無い bench と同じ)。
 
 **副作用**
 
 - 通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(`--url` が無いとき)、測る ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、落とすときはモデルのファイル。
 - この PC のことはほかへ送らない。
-- 結果を `<cache>/measurements/`(この PC の判定に使う)に、送るための下書きを `<cache>/submissions/`(`genmodelfit share` が一覧に出すもの)に書く。
+- 結果を `<cache>/measurements/`(この PC の判定に使う)に、送るための下書きを `<cache>/submissions/`(`genmodelfit share` が送るもの)に書く。
+- 起動した ComfyUI の出力は `<cache>/comfyui-<日付>.log`。
 
 **終了コード**
 
@@ -845,8 +852,8 @@ genmodelfit measure --url http://127.0.0.1:8000  # この ComfyUI で測る(探�
 ```text
 genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-license] [--no-measure]
                   [--budget SEC] [--dry-run] [--issue] [--print-url] [--logout] [--all]
-                  [--mark-sent] [--url URL] [--comfyui-dir DIR] [--timeout SEC] [--db PATH]
-                  [--no-cache] [file]
+                  [--mark-sent] [--url URL] [--comfyui-dir DIR] [--no-start] [--start-timeout SEC]
+                  [--timeout SEC] [--db PATH] [--no-cache] [file]
 ```
 
 - 数分測って、実測を GitHub の PR で送る。
@@ -858,6 +865,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 - 開いている share の PR があれば、そこに足す。
 - もうあるファイルは飛ばす。
 - 送ったものはこの PC で印を付け、次から送らない(`--all` で含める)。
+- 起動中の ComfyUI が無ければ、measure と同じく見つけたものを起動し、終わったら止める。
 - ComfyUI が無ければ送っていない実測だけを送り、それも無ければ尋ねず・ログインせずに ComfyUI の起動の仕方を出して 1 で終える。
 - `--no-measure` は送っていない実測だけを送る。
 - FILE はそのファイルだけを送る。
@@ -881,6 +889,8 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 | `--mark-sent` |  |  | `--issue` `--json` でも送った印を付ける(アプリがフォームを開くとき。既定の `--json` は見るだけ) |
 | `--url` | `URL` | この PC で起動中の ComfyUI(127.0.0.1 の 8188・8000)を探す | 測りに使う ComfyUI の URL(measure と同じ) |
 | `--comfyui-dir` | `DIR` | download と同じ決め方 | ComfyUI のフォルダ(モデルが入っているかを見る・落とす場所。measure と同じ) |
+| `--no-start` |  |  | 起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ) |
+| `--start-timeout` | `SEC` | `300` | 起動した ComfyUI の準備を待つ時間の上限(秒。既定 300) |
 | `--timeout` | `SEC` | `1800` | 1 件を測るのを待つ時間の上限(秒。既定 1800) |
 | `--db` | `PATH` | 選ぶのは update で取った一覧(無ければ同梱)、検査は同梱の一覧 | この一覧のファイル(db.json)を使う(測るものを選ぶ・送る前の検査) |
 
@@ -1591,5 +1601,5 @@ genmodelfit contrib aggregate [-h] [--lang {en,ja}] [--json] [--db PATH] [--outp
 (このページが古いと `tests/test_commands_doc.py` が落ちます)。
 
 環境変数を読むのは `src/genmodelfit/` の `i18n.py`(`GENMODELFIT_LANG`)・`cli.py`(`GENMODELFIT_COMFYUI_DIR`)・
-`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
+`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`comfystart.py`(`GENMODELFIT_COMFYUI_START`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
 `signing.py`(`GENMODELFIT_SIGNING_KEY`)・`github.py`(`GITHUB_TOKEN`・`GH_TOKEN`・`GENMODELFIT_GH_CLIENT_ID`)です。

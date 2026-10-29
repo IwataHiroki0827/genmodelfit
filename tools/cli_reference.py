@@ -128,6 +128,7 @@ The preconditions of `system`, `recommend`, `fit`, `search` and `info`:
 | `GENMODELFIT_LANG` | every command | Display language, `en` or `ja`. Beaten only by `--lang`. Values like `ja_JP.UTF-8` are accepted. |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | The ComfyUI folder to put files in. Beaten by `--comfyui-dir` / `--output-dir`; beats `genmodelfit config` and the automatic search. |
 | `GENMODELFIT_COMFYUI_SEARCH` | `download`, `measure`, `share` | `0`, `off`, `no` or `false` turns the automatic search for ComfyUI off (for apps, scripts and tests). |
+| `GENMODELFIT_COMFYUI_START` | `measure`, `share` | `0`, `off`, `no` or `false`: do not start the ComfyUI that was found when none is running (like `--no-start`). |
 | `GENMODELFIT_CONFIG_DIR` | `config`, and every command that reads the saved settings | The folder of the config file `config.json` (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_CACHE_DIR` | `update`, `measure`, `share`, `bench`, `contrib`, and every command that reads the cached list | The cache folder (default: see [Where files are kept](#where-files-are-kept)). |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` only, not the `genmodelfit` command | The private key (PEM) that signs a data release. For the maintainer ([release.md](release.md)). |
@@ -188,7 +189,7 @@ The command sections are generated from the program's argument parser by `tools/
 match the program. Do not edit them by hand; change the help texts in `src/genmodelfit/cli.py` and run
 `python tools/cli_reference.py` (`tests/test_commands_doc.py` fails when this page is out of date).
 
-The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `config.py`
+The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LANG`), `cli.py` (`GENMODELFIT_COMFYUI_DIR`), `comfyfind.py` (`GENMODELFIT_COMFYUI_SEARCH`), `comfystart.py` (`GENMODELFIT_COMFYUI_START`), `config.py`
 (`GENMODELFIT_CONFIG_DIR`), `db.py` (`GENMODELFIT_CACHE_DIR`), `signing.py` (`GENMODELFIT_SIGNING_KEY`) and `github.py`
 (`GITHUB_TOKEN`, `GH_TOKEN`, `GENMODELFIT_GH_CLIENT_ID`).
 """,
@@ -286,6 +287,7 @@ The environment variables are read in `src/genmodelfit/i18n.py` (`GENMODELFIT_LA
 | `GENMODELFIT_LANG` | すべてのコマンド | 表示の言語。`en` か `ja`。`ja_JP.UTF-8` のような書き方も受ける。これに勝つのは `--lang` だけ。 |
 | `GENMODELFIT_COMFYUI_DIR` | `download` | ファイルを置く ComfyUI のフォルダ。`--comfyui-dir` / `--output-dir` には負け、`genmodelfit config` と自動で探すのには勝つ。 |
 | `GENMODELFIT_COMFYUI_SEARCH` | `download`・`measure`・`share` | `0`・`off`・`no`・`false` で、ComfyUI を自動で探すのを止める(アプリ・スクリプト・試験用)。 |
+| `GENMODELFIT_COMFYUI_START` | `measure`・`share` | `0`・`off`・`no`・`false` で、起動中の ComfyUI が無いときに見つけた ComfyUI を起動しない(`--no-start` と同じ)。 |
 | `GENMODELFIT_CONFIG_DIR` | `config` と、保存した設定を読むすべてのコマンド | 設定ファイル `config.json` のフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_CACHE_DIR` | `update`・`measure`・`share`・`bench`・`contrib` と、キャッシュした一覧を読むすべてのコマンド | キャッシュのフォルダ(既定は[ファイルの置き場所](#ファイルの置き場所))。 |
 | `GENMODELFIT_SIGNING_KEY` | `python -m genmodelfit.signing sign` だけ(`genmodelfit` コマンドでは使わない) | データのリリースに署名する秘密鍵(PEM)。保守する人向け([release.ja.md](release.ja.md))。 |
@@ -346,7 +348,7 @@ Python の関数は読みません。キーは `comfyui-dir`(フォルダのパ�
 (このページが古いと `tests/test_commands_doc.py` が落ちます)。
 
 環境変数を読むのは `src/genmodelfit/` の `i18n.py`(`GENMODELFIT_LANG`)・`cli.py`(`GENMODELFIT_COMFYUI_DIR`)・
-`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
+`comfyfind.py`(`GENMODELFIT_COMFYUI_SEARCH`)・`comfystart.py`(`GENMODELFIT_COMFYUI_START`)・`config.py`(`GENMODELFIT_CONFIG_DIR`)・`db.py`(`GENMODELFIT_CACHE_DIR`)・
 `signing.py`(`GENMODELFIT_SIGNING_KEY`)・`github.py`(`GITHUB_TOKEN`・`GH_TOKEN`・`GENMODELFIT_GH_CLIENT_ID`)です。
 """,
 }

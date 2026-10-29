@@ -2610,12 +2610,23 @@ def _share_send(
 
 
 def _share_screen(
-    plan: list, dl_plan: list, pending: list, url, found_by, budget: float, total: int, unknown: int
+    plan: list,
+    dl_plan: list,
+    pending: list,
+    url,
+    found_by,
+    budget: float,
+    total: int,
+    unknown: int,
+    start=None,
 ) -> list[str]:
     """share の測る前の画面(measure の「測る前に」と同じ部品: ComfyUI・入っているか・時間の目安)。"""
     lines = [
         tr("=== 測って送る(genmodelfit share) ===", "=== Measure and send (genmodelfit share) ==="),
-        tr(f"ComfyUI:    {_comfyui_text(url, found_by)}", f"ComfyUI:    {_comfyui_text(url, found_by)}"),
+        tr(
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+        ),
     ]
     if plan:
         lines.append(
@@ -2838,6 +2849,7 @@ def cmd_share(args: argparse.Namespace) -> int:
     dl_plan: list = []
     total = unknown = 0
     stop: list[str] | None = None
+    start = None
     if not args.no_measure:
         s, db = _system(args), _db(args)
         url, found_by, running = _measure_comfyui(args)
@@ -2854,18 +2866,19 @@ def cmd_share(args: argparse.Namespace) -> int:
             plan, total = share_plan(sugg, budget)
             dl_plan, _ = share_plan(sugg, budget - total, state="no")
             unknown = sum(1 for x in sugg if x.installed is not None and x.installed.state == "unknown")
-            if url is None:
-                stop = _not_running_lines("", None)
+            start, start_why = _comfyui_start_plan(args, url)
+            if url is None and start is None:
+                stop = _not_running_lines("", None, start_why)
     pending = saved_submissions(include_shared=args.all)
     report: dict[str, Any] = {
         "no_measure": bool(args.no_measure),
-        "comfyui": {"url": url, "found_by": found_by},
+        "comfyui": _comfy_json(url, found_by, start),
         "budget_seconds": budget,
         "plan": [x.to_dict() for x in plan],
         "download_plan": [x.to_dict() for x in dl_plan],
         "pending": [p.to_dict() for p in pending],
     }
-    screen = _share_screen(plan, dl_plan, pending, url, found_by, budget, total, unknown)
+    screen = _share_screen(plan, dl_plan, pending, url, found_by, budget, total, unknown, start)
     if stop is not None and not pending:
         # 測れず、送っていない実測も無い: 計画を見せ、起動の仕方を出して 1(尋ねない・ログインしない。#123)
         if args.json:
@@ -2931,7 +2944,19 @@ def cmd_share(args: argparse.Namespace) -> int:
     measured: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     interrupted = downloaded = False
+    started = None
     try:
+        if start is not None and (plan or dl_plan):
+            try:
+                started = _comfyui_start(args, start)
+            except CliError as e:
+                failed.append({"model_id": None, "settings": None, "error": str(e)})
+                plan, dl_plan = [], []
+                if not args.json:
+                    print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
+            else:
+                url = started.url
+                report["comfyui"]["started"] = started.to_dict()
         for x in plan:
             _share_measure_one(args, url, x, measured, failed)
         if dl_plan:
@@ -2946,11 +2971,13 @@ def cmd_share(args: argparse.Namespace) -> int:
             ),
             file=sys.stderr,
         )
+    finally:
+        _comfyui_stop(args, started)
     if failed and not args.json:
         print()
         print(tr(f"測れなかったもの: {len(failed)} 件", f"Not measured: {len(failed)}"))
         for f in failed:
-            print(f"  - {f['model_id']}: {f['error']}")
+            print(f"  - {f['model_id'] or 'ComfyUI'}: {f['error'].splitlines()[0]}")
     report.update(measured=measured, failed=failed, interrupted=interrupted, downloaded=downloaded)
     base_code = 1 if failed else 0
     pending = saved_submissions(include_shared=args.all)
@@ -4818,7 +4845,108 @@ def _installed_text(inst) -> str:
     )
 
 
-def _comfyui_text(url: str | None, found_by: str | None) -> str:
+def _comfyui_start_plan(args: argparse.Namespace, url: str | None) -> tuple[Any, str | None]:
+    """起動中の ComfyUI が無いとき、自動で起動する仕方(#124。comfystart)。
+    (StartPlan か None, 起動できない理由)。
+    見つけ方は download・measure と同じ(--comfyui-dir → 環境変数 → genmodelfit config → 自動で探す)。
+    --url・--no-start・GENMODELFIT_COMFYUI_START=0 なら起動しない。通信しない。"""
+    from . import comfyfind, comfystart
+    from .downloader import DownloadError
+
+    if url is not None or getattr(args, "no_start", False) or comfystart.start_disabled():
+        return None, None
+    try:
+        dest = _resolve_destination(args, probe=False)
+    except (CliError, DownloadError, OSError):
+        return None, None
+    d = dest.comfyui_dir
+    if d is None:
+        return None, None
+    places = comfyfind.current_places()
+    desktop = any(comfyfind._key(c.path) == comfyfind._key(d) for c in comfyfind.desktop_candidates(places))
+    try:
+        plan = comfystart.plan_start(
+            d, desktop=desktop, user_data=comfyfind.desktop_user_data(places) if desktop else None
+        )
+    except comfystart.StartError as e:
+        return None, str(e)
+    return plan, None
+
+
+def _comfyui_start(args: argparse.Namespace, plan):
+    """ComfyUI を起動して、準備ができるまで待つ(#124)。途中は stderr に出す(--json では出さない)。
+    起動できなければ CliError(ログの場所と最後の行を添える)。"""
+    from . import comfystart
+
+    say = _progress(args)
+    try:
+        started = comfystart.launch(plan)
+    except comfystart.StartError as e:
+        raise CliError(str(e)) from None
+    say(
+        tr(
+            f"ComfyUI を起動しています({plan.comfyui_dir}、ポート {started.port}。ログ: {started.log})",
+            f"Starting ComfyUI ({plan.comfyui_dir}, port {started.port}; log: {started.log})",
+        )
+    )
+    last = [-1]
+
+    def progress(waited: float) -> None:
+        n = int(waited // 15)
+        if n != last[0]:
+            last[0] = n
+            say(tr(f"  起動を待っています({waited:.0f} 秒)", f"  waiting for it to start ({waited:.0f} s)"))
+
+    try:
+        comfystart.wait_ready(
+            started,
+            timeout=getattr(args, "start_timeout", None) or comfystart.DEFAULT_START_TIMEOUT,
+            progress=progress,
+        )
+    except comfystart.StartError as e:
+        lines = [str(e), *(["  " + x for x in e.tail] if e.tail else [])]
+        raise CliError("\n".join(lines)) from None
+    except BaseException:
+        comfystart.stop(started)
+        raise
+    say(tr(f"ComfyUI の準備ができました: {started.url}", f"ComfyUI is ready: {started.url}"))
+    return started
+
+
+def _comfyui_stop(args: argparse.Namespace, started) -> None:
+    """自分で起動した ComfyUI だけを止める(前から起動していたものには触らない)。"""
+    from . import comfystart
+
+    if started is None:
+        return
+    ok = comfystart.stop(started)
+    if not getattr(args, "json", False):
+        print(
+            tr("起動した ComfyUI を止めました", "Stopped the ComfyUI that was started")
+            if ok
+            else tr(
+                f"起動した ComfyUI を止められませんでした"
+                f"(プロセス {started.process.pid}。手で止めてください)",
+                f"Could not stop the ComfyUI that was started (process {started.process.pid}; stop it by"
+                " hand)",
+            ),
+            file=sys.stderr,
+        )
+
+
+def _comfy_json(url: str | None, found_by: str | None, start) -> dict[str, Any]:
+    d: dict[str, Any] = {"url": url, "found_by": found_by}
+    if start is not None:
+        d["start"] = start.to_dict()
+    return d
+
+
+def _comfyui_text(url: str | None, found_by: str | None, start=None) -> str:
+    if url is None and start is not None:
+        return tr(
+            f"起動します({start.comfyui_dir}。測り終えたら止めます)",
+            f"will be started ({start.comfyui_dir}; stopped after measuring)",
+        )
     if url is None:
         return tr("見つかりません(起動していない)", "not found (not running)")
     if found_by == "option":
@@ -4826,7 +4954,7 @@ def _comfyui_text(url: str | None, found_by: str | None) -> str:
     return tr(f"{url}(この PC で起動中の ComfyUI を見つけた)", f"{url} (a ComfyUI running on this PC)")
 
 
-def _not_running_lines(model_id: str, inst) -> list[str]:
+def _not_running_lines(model_id: str, inst, why: str | None = None) -> list[str]:
     from .comfyfind import PROBE_PORTS, search_disabled
 
     ports = "・".join(str(p) for p in PROBE_PORTS)
@@ -4844,6 +4972,7 @@ def _not_running_lines(model_id: str, inst) -> list[str]:
     )
     lines = [
         head,
+        *([why] if why else []),
         tr(
             "ComfyUI を起動してから、同じコマンドをもう一度実行してください:",
             "Start ComfyUI, then run the same command again:",
@@ -4961,7 +5090,7 @@ def _measure_settings(args: argparse.Namespace):
 
 
 def _measure_screen(
-    fit, url: str | None, found_by: str | None, inst, secs: int, basis: str, settings=None
+    fit, url: str | None, found_by: str | None, inst, secs: int, basis: str, settings=None, start=None
 ) -> list[str]:
     m = fit.model
     kind = tr(_MODALITY_JA.get(m.modality, m.modality), m.modality)
@@ -4973,7 +5102,10 @@ def _measure_screen(
             f"Model:      {fit.model_name or m.name} [{m.id}] ({kind}, precision {prec})",
         ),
         tr(f"設定:       {_settings_text(settings)}", f"Settings:   {_settings_text(settings)}"),
-        tr(f"ComfyUI:    {_comfyui_text(url, found_by)}", f"ComfyUI:    {_comfyui_text(url, found_by)}"),
+        tr(
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+            f"ComfyUI:    {_comfyui_text(url, found_by, start)}",
+        ),
         tr(f"ファイル:   {_installed_text(inst)}", f"Files:      {_installed_text(inst)}"),
         tr(
             f"時間:       {_seconds_text(secs, basis, settings is not None)}。"
@@ -5171,7 +5303,8 @@ def cmd_measure(args: argparse.Namespace) -> int:
     s, db = _system(args), _db(args)
     url, found_by, running = _measure_comfyui(args)
     roots = _measure_roots(args, running)
-    comfy = {"url": url, "found_by": found_by}
+    start, start_why = _comfyui_start_plan(args, url)
+    comfy = _comfy_json(url, found_by, start)
     if s.best_gpu is None:
         msg = tr(
             "この PC に測りに使える GPU が見つかりません(measure は GPU で測ります)。"
@@ -5213,10 +5346,10 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 0
-        if url is None:
+        if url is None and start is None:
             # 選ばせてから止めない(#123)。一覧は見せ、起動の仕方を出して終える
             sys.stdout.flush()
-            lines = _not_running_lines("", None)
+            lines = _not_running_lines("", None, start_why)
             print(tr(f"エラー: {lines[0]}", f"error: {lines[0]}"), file=sys.stderr)
             for line in lines[1:]:
                 print(line, file=sys.stderr)
@@ -5260,9 +5393,9 @@ def cmd_measure(args: argparse.Namespace) -> int:
         return 1
 
     if not args.json:
-        _emit(_measure_screen(fit, url, found_by, inst, secs, basis, settings))
-    if url is None:
-        lines = _not_running_lines(entry.id, inst)
+        _emit(_measure_screen(fit, url, found_by, inst, secs, basis, settings, start))
+    if url is None and start is None:
+        lines = _not_running_lines(entry.id, inst, start_why)
         return fail(lines[0], lines[1:])
     if inst.state == "no" and args.json:
         return fail(
@@ -5305,7 +5438,18 @@ def cmd_measure(args: argparse.Namespace) -> int:
         if code != 0:
             return code
         print()
-    run_ = _measure_run(args, url, entry, settings)
+    started = None
+    try:
+        if start is not None:
+            try:
+                started = _comfyui_start(args, start)
+            except CliError as e:
+                return fail(str(e))
+            url = started.url
+            plan["comfyui"]["started"] = started.to_dict()
+        run_ = _measure_run(args, url, entry, settings)
+    finally:
+        _comfyui_stop(args, started)
     if run_["error"] is not None:
         return fail(run_["error"], [_measure_next_step(run_["error"], entry.id)])
     m, result = run_["measurement"], run_["result"]
@@ -5908,15 +6052,21 @@ genmodelfit share, which sends it (it never asks whether to send).
 
 PRECONDITIONS:
   A GPU on this PC and a ComfyUI on it: --url, or one running on this PC (127.0.0.1 port 8188
-  or 8000). When none is running, it says how to start ComfyUI and exits 1. The GPU must be
-  free: when another program uses it, nothing is measured (like bench without --force).
+  or 8000). When none is running but a ComfyUI folder is found (like download), it is started
+  in the background (portable: its python_embeded; manual or comfy-cli: its .venv/venv; Desktop:
+  its .venv and the app's ComfyUI; on 127.0.0.1 and a free port, no browser), used, and stopped
+  after measuring; the [Y/n] question covers it (--no-start or GENMODELFIT_COMFYUI_START=0
+  turns this off; --start-timeout, default 300 s). Otherwise it says how to start ComfyUI and
+  exits 1. The GPU must be free: when another program uses it, nothing is measured (like bench
+  without --force).
 
 SIDE EFFECTS:
   Network: asks 127.0.0.1 ports 8188 and 8000 whether ComfyUI runs (without --url), the ComfyUI
   it measures on (one job), the official template from GitHub when that ComfyUI lacks it, and
   the model files when it downloads them. Nothing about this PC is sent anywhere else.
   Writes the result to <cache>/measurements/ (used when this PC is judged) and a submission draft
-  to <cache>/submissions/ (what genmodelfit share lists).
+  to <cache>/submissions/ (what genmodelfit share sends). A started ComfyUI writes its output to
+  <cache>/comfyui-<date>.log.
 
 EXIT CODES:
   0  Success (also: nothing chosen, nothing to suggest, answered n to "Measure it?")
@@ -5948,7 +6098,8 @@ login in your browser (scope public_repo; saved for next time; --logout removes 
 the repository if needed, makes a branch from the upstream main, adds the files under
 data/contrib/<GPU>/ and opens a pull request (titled "measurements: <GPU> (<count>)"), or adds
 them to your open share pull request; files already there are skipped. Sent files are marked
-on this PC and not sent again (--all includes them). Without ComfyUI it sends only the unsent
+on this PC and not sent again (--all includes them). When no ComfyUI runs, it starts the one it
+finds and stops it afterwards, as measure does. Without any ComfyUI it sends only the unsent
 measurements; with none it says how to start ComfyUI and exits 1 without asking or signing in.
 --no-measure sends the unsent measurements only; FILE sends that file only. --issue is the
 older way without signing in: it opens the measurement issue form in your browser.
@@ -6388,15 +6539,19 @@ MODEL はモデルの名前・ワークフローの ID・その一部で、downl
 
 前提:
   この PC の GPU と、そこで動く ComfyUI: --url か、この PC で起動中のもの(127.0.0.1 の 8188 か
-  8000)。起動していなければ、起動のしかたを出して 1 で終わる。GPU が空いていること: ほかの
-  プログラムが使っていれば測らない(--force の無い bench と同じ)。
+  8000)。起動していなくても ComfyUI のフォルダが見つかれば(download と同じ見つけ方)、裏で起動して
+  使い、測り終えたら止める(ポータブル版は python_embeded、手で入れたもの・comfy-cli は .venv・venv、
+  デスクトップ版は .venv とアプリの ComfyUI で、127.0.0.1 の空いているポートに、ブラウザを開かずに)。
+  [Y/n] の質問がその同意を兼ねる(--no-start か GENMODELFIT_COMFYUI_START=0 で止める。
+  --start-timeout は既定 300 秒)。見つからなければ、起動のしかたを出して 1 で終わる。GPU が
+  空いていること: ほかのプログラムが使っていれば測らない(--force の無い bench と同じ)。
 
 副作用:
   通信: ComfyUI が起動しているかを 127.0.0.1 の 8188・8000 に尋ねる(--url が無いとき)、測る
   ComfyUI(仕事を 1 つ)、その ComfyUI にテンプレートが無ければ GitHub の公式のテンプレート、
   落とすときはモデルのファイル。この PC のことはほかへ送らない。
   結果を <cache>/measurements/(この PC の判定に使う)に、送るための下書きを <cache>/submissions/
-  (genmodelfit share が一覧に出すもの)に書く。
+  (genmodelfit share が送るもの)に書く。起動した ComfyUI の出力は <cache>/comfyui-<日付>.log。
 
 終了コード:
   0  成功(選ばなかった・出す提案が無い・「測りますか?」に n と答えたときも)
@@ -6426,8 +6581,9 @@ GH_TOKEN、無ければ保存したログイン、無ければブラウザで Gi
 次のために保存し、--logout で消す)。要ればリポジトリをフォークし、本家の main からブランチを
 作り、data/contrib/<GPU>/ にファイルを置いて PR(題は「measurements: <GPU> (<件数>)」)を開く。
 開いている share の PR があれば、そこに足す。もうあるファイルは飛ばす。送ったものはこの PC で
-印を付け、次から送らない(--all で含める)。ComfyUI が無ければ送っていない実測だけを送り、それも
-無ければ尋ねず・ログインせずに ComfyUI の起動の仕方を出して 1 で終える。--no-measure は送って
+印を付け、次から送らない(--all で含める)。起動中の ComfyUI が無ければ、measure と同じく見つけた
+ものを起動し、終わったら止める。ComfyUI が無ければ送っていない実測だけを送り、それも無ければ
+尋ねず・ログインせずに ComfyUI の起動の仕方を出して 1 で終える。--no-measure は送って
 いない実測だけを送る。FILE はそのファイルだけを送る。--issue はログインしない前からの送り方で、
 ブラウザで実測の Issue のフォームを開く。
 
@@ -7599,6 +7755,25 @@ def build_parser() -> argparse.ArgumentParser:
         "decided like download",
     )
     sp.add_argument(
+        "--no-start",
+        action="store_true",
+        help=tr(
+            "起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない"
+            "(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ)",
+            "do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0)",
+        ),
+    )
+    sp.add_argument(
+        "--start-timeout",
+        type=_positive_float,
+        metavar="SEC",
+        help=tr(
+            "起動した ComfyUI の準備を待つ時間の上限(秒。既定 300)",
+            "the most time to wait for a started ComfyUI to be ready (seconds; default 300)",
+        ),
+    )
+    sp._actions[-1].doc_default = "300"  # type: ignore[attr-defined]
+    sp.add_argument(
         "--yes",
         "-y",
         action="store_true",
@@ -7787,6 +7962,25 @@ def build_parser() -> argparse.ArgumentParser:
         "download と同じ決め方",
         "decided like download",
     )
+    sp.add_argument(
+        "--no-start",
+        action="store_true",
+        help=tr(
+            "起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない"
+            "(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ)",
+            "do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0)",
+        ),
+    )
+    sp.add_argument(
+        "--start-timeout",
+        type=_positive_float,
+        metavar="SEC",
+        help=tr(
+            "起動した ComfyUI の準備を待つ時間の上限(秒。既定 300)",
+            "the most time to wait for a started ComfyUI to be ready (seconds; default 300)",
+        ),
+    )
+    sp._actions[-1].doc_default = "300"  # type: ignore[attr-defined]
     sp.add_argument(
         "--timeout",
         type=_positive_float,

@@ -17,6 +17,8 @@ def _isolated_cache_session(tmp_path_factory):
         mp.setenv("GENMODELFIT_CACHE_DIR", str(tmp_path_factory.mktemp("cache")))
         # この PC の ComfyUI を探さない(子のプロセスにも効く。#111)。探す試験は test_download_place.py が外す
         mp.setenv("GENMODELFIT_COMFYUI_SEARCH", "0")
+        # 見つけた ComfyUI を起動しない(#124)。起動の試験は tests/test_comfystart.py が偽の subprocess で外す
+        mp.setenv("GENMODELFIT_COMFYUI_START", "0")
         yield
 
 
