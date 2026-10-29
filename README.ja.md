@@ -9,9 +9,9 @@
 LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit) に着想を得ています。状態: アルファ版
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md))。
 
-![VRAM 8 GiB・メモリ 32 GiB の PC での uvx genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/demo.ja.gif)
+![VRAM 8 GiB・メモリ 32 GiB の PC での uvx genmodelfit search flux と recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/demo.ja.gif)
 
-genmodelfit 0.12.0 で `uvx genmodelfit recommend --lang ja` を動かしたところ(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+genmodelfit 0.12.0 で `uvx genmodelfit search flux --lang ja` と `uvx genmodelfit recommend --lang ja` を動かしたところ(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
 動画の GPU は VRAM 8 GiB の架空の Ada 世代(bf16・fp8 とも使える)に差し替えていて、記録した PC のものではありません。
 `--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のままです。
 RTX 30 系以降(30・40・50 系)なら世代で見積もりは変わらないので、GPU を買う前に試すのにも使えます(メインメモリは `--ram`)。

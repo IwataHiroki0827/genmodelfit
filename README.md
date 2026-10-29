@@ -9,9 +9,9 @@ genmodelfit tells you which image, video, music, sound-effect, speech (TTS) and 
 It is inspired by [llmfit](https://github.com/AlexsJones/llmfit), which does this for LLMs. Status: alpha
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md)).
 
-![uvx genmodelfit recommend on a PC with 8 GiB VRAM and 32 GiB RAM](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/demo.gif)
+![uvx genmodelfit search flux and recommend on a PC with 8 GiB VRAM and 32 GiB RAM](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/demo.gif)
 
-`uvx genmodelfit recommend` with genmodelfit 0.12.0 (model list as of 2026-10-21). The list is updated weekly, so the models and counts change.
+`uvx genmodelfit search flux` and `uvx genmodelfit recommend` with genmodelfit 0.12.0 (model list as of 2026-10-21). The list is updated weekly, so the models and counts change.
 In the animation the GPU is a simulated Ada-generation one with 8 GiB VRAM (bf16 and fp8 usable), not the PC that recorded it.
 `--vram` changes only the amount of VRAM, and the GPU generation stays that of the PC it runs on.
 From the RTX 30 series on (30, 40, 50), the generation does not change the estimate, so this is also how to check a GPU before
