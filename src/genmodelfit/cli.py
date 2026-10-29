@@ -2970,6 +2970,14 @@ def _share_screen(
                 " downloads and measures them)",
             )
         )
+    if url is not None and (plan or dl_plan):
+        # 起動中の(利用者の)ComfyUI で続けて測るので、毎回空ける(起動したものは言わずに空ける)
+        lines.append(
+            tr(
+                "測る前に毎回 ComfyUI のメモリを空けます(読み込み済みのモデルは外れます)",
+                "Before each run the ComfyUI's memory is freed (models already loaded are unloaded)",
+            )
+        )
     if plan or (dl_plan and downloads):
         lines.append(_share_total_line(start, total, dl_plan, downloads))
     lines.append(tr(f"送っていない実測: {len(pending)} 件", f"Unsent measurements: {len(pending)}"))
@@ -3061,7 +3069,8 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
             ),
             flush=True,
         )
-    r = _measure_run(args, url, x.fit.model, x.settings)
+    # share は続けて何件も測るので、毎回メモリと前の結果(キャッシュ)を空けてから測る(#124)
+    r = _measure_run(args, url, x.fit.model, x.settings, free=True)
     if r["error"] is not None:
         failed.append({**rec, "error": r["error"]})
         if not args.json:
@@ -3070,6 +3079,25 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
             print(_measure_next_step(r["error"], x.model_id), file=sys.stderr)
         return
     m = r["measurement"]
+    if r["submission"] is None:
+        # 測れたが送れない(標準でない条件・失敗): 黙って落とさず、理由を付けて「測れなかったもの」に入れる
+        res = r["result"]
+        if not m.standard:
+            why = tr(
+                "標準でない条件で測ったので、保存も送りもしません: " + "、".join(res.nonstandard),
+                "measured under non-standard conditions, so it is neither saved nor sent: "
+                + ", ".join(res.nonstandard),
+            )
+        else:
+            why = tr(
+                f"結果が {m.outcome} なので送りません", f"the result is {m.outcome}, so it is not sent"
+            ) + (f"({res.failed})" if res.failed else "")
+        failed.append({**rec, "error": why})
+        if not args.json:
+            for w in res.warnings:
+                print(tr(f"注意: {w}", f"warning: {w}"), file=sys.stderr)
+            print(tr(f"送れません: {why}", f"Not sent: {why}"), flush=True)
+        return
     measured.append(
         {
             **rec,
@@ -3087,7 +3115,8 @@ def _share_measure_one(args: argparse.Namespace, url: str, x, measured: list, fa
             tr(
                 f"結果: {m.outcome}、最大 VRAM {m.peak_vram_gb:.2f} GB{secs}",
                 f"Result: {m.outcome}, peak VRAM {m.peak_vram_gb:.2f} GB{secs}",
-            )
+            ),
+            flush=True,
         )
 
 
@@ -5712,8 +5741,9 @@ def _measure_download(args: argparse.Namespace, model_id: str) -> int:
     return cmd_download(ns)
 
 
-def _measure_run(args: argparse.Namespace, url: str, entry, settings) -> dict[str, Any]:
-    """1 つ測って保存する(measure と share で共有する。#124)。bench.run で測り、結果を
+def _measure_run(args: argparse.Namespace, url: str, entry, settings, free: bool = False) -> dict[str, Any]:
+    """1 つ測って保存する(measure と share で共有する。#124)。free なら測る前に ComfyUI の /free でモデルと
+    前の結果(キャッシュ)を外す(続けて測ると前のモデル・前の結果が混ざるため)。bench.run で測り、結果を
     <キャッシュ>/measurements/ に、標準の条件で最後まで測れた(ok か oom)ものは送る用の提出を
     <キャッシュ>/submissions/ に書く。測れなければ error に文を入れて返す(例外にしない)。"""
     from .bench import BenchError, BenchOptions, is_local, run, save, save_decision
@@ -5742,6 +5772,7 @@ def _measure_run(args: argparse.Namespace, url: str, entry, settings) -> dict[st
         frames=settings.frames if settings else None,
         seconds=settings.seconds if settings else None,
         strict_settings=settings is not None,  # 書けない設定なら生成の前に止める(#116)
+        free_before=free,
     )
     try:
         result = run(opts, log=_progress(args))
@@ -5972,7 +6003,10 @@ def cmd_measure(args: argparse.Namespace) -> int:
                 return fail(str(e))
             url = started.url
             plan["comfyui"]["started"] = started.to_dict()
-        run_ = _measure_run(args, url, entry, settings)
+        # 自分で起動した ComfyUI か --free なら、測る前にメモリと前の結果を空ける(#124)
+        run_ = _measure_run(
+            args, url, entry, settings, free=bool(holder) or bool(getattr(args, "free", False))
+        )
     finally:
         for st in holder:
             _comfyui_stop(args, st)
@@ -8324,6 +8358,16 @@ def build_parser() -> argparse.ArgumentParser:
             "測る前に尋ねない(入っていないモデルは download --yes と同じ決まりで落とす)",
             "do not ask before measuring (a model that is not installed is downloaded under the same rules as"
             " download --yes)",
+        ),
+    )
+    sp.add_argument(
+        "--free",
+        action="store_true",
+        help=tr(
+            "測る前に ComfyUI の /free でモデルと前の結果を外す(起動中の自分の ComfyUI 向け。"
+            "genmodelfit が起動した ComfyUI ではいつも外す)",
+            "free the ComfyUI's models and cached results with /free before measuring (for your own"
+            " running ComfyUI; a ComfyUI started by genmodelfit is always freed)",
         ),
     )
     sp.add_argument(

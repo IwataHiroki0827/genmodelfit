@@ -1173,6 +1173,12 @@ Rules:
   sum of the time hints, and when downloads are planned their measuring time plus the download at 100 Mbps
   (`cli.DOWNLOAD_EXAMPLE_MBPS`; shown as an example, "depends on your connection"). The download question shows the
   same.
+- **Freed before each run**: `share` measures several items in one ComfyUI, so before each one it calls `/free`
+  (`unload_models`, `free_memory`; ComfyUI unloads the models and clears its cache of node results) like `bench
+  --free`; for a ComfyUI that was already running the plan says so ("Before each run the ComfyUI's memory is freed").
+  `measure` does it for a ComfyUI it started, and for yours only with `--free` (0.13.0). A run that still reused
+  cached results, or any other non-standard condition, is not saved or sent: it is listed under `failed` with the
+  reason (nothing is dropped silently).
 - **Never measured twice**: the saved submissions on this PC (`<cache>/submissions/`, sent or not) count as
   measurements for the suggestions (`measure.suggestions(extra=...)`), so a later `share` sends them instead of
   measuring again. Results are saved before sending; after `q`, a failed sign-in or a failed pull request they stay

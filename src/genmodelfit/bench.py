@@ -787,6 +787,7 @@ class BenchResult:
     workflow_source: str
     warnings: list[str]
     failed: str | None = None  # 失敗したときの理由(メモリ不足などは測った値を残す)
+    nonstandard: list[str] = field(default_factory=list)  # 標準でない条件(あれば standard は偽。#124)
 
     def to_dict(self) -> dict[str, Any]:
         m = asdict(self.measurement)
@@ -1297,7 +1298,9 @@ def run(opts: BenchOptions, *, client: ComfyClient | None = None, log=None) -> B
         files_fp=opts.files_fp,
         settings_override=True if opts.settings_override else None,
     )
-    return BenchResult(measurement=m, workflow_source=source, warnings=warnings, failed=failed)
+    return BenchResult(
+        measurement=m, workflow_source=source, warnings=warnings, failed=failed, nonstandard=list(nonstandard)
+    )
 
 
 def default_output_path(m: Measurement) -> Path:

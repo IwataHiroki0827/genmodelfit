@@ -42,6 +42,10 @@ All notable changes to this project are documented here. The format is based on
   and stopped afterwards, also on a failure or Ctrl+C; a ComfyUI that was already running is never touched. Its output
   goes to `<cache>/comfyui-<date>.log`. `--no-start` or `GENMODELFIT_COMFYUI_START=0` turns it off.
 - `measure` prints its screen before the progress of a started ComfyUI also when the output is redirected.
+- **Each run starts clean** (#124): `share` frees ComfyUI (`/free`: unloads models and drops cached node results)
+  before every run, saying so in the plan when the ComfyUI was already running; `measure` does it for a ComfyUI it
+  started, and for yours with the new `--free`. A result measured under non-standard conditions (for example reused
+  cached nodes) is listed under "not measured" with the reason instead of disappearing.
 - **Missing nodes are checked before measuring** (#124): once ComfyUI is reachable, `share` leaves out suggestions
   whose template uses nodes that ComfyUI lacks ("update ComfyUI to measure them") and fills the time with the next
   ones; `measure` hides them from its list and stops a named model before downloading or measuring. The "Next:" line

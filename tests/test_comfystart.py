@@ -241,18 +241,26 @@ def starter(monkeypatch):
 
 
 def _fake_run(monkeypatch, events, error=None):
-    def run(args, url, entry, settings):
+    def run(args, url, entry, settings, free=False):
         events.append(("run", url))
         if error:
             return {"error": error}
+        from test_share_pr import _write_sub
+
         m = SimpleNamespace(
-            outcome="ok", peak_vram_gb=5.0, seconds=3.0, model_id=entry.id, gpu_name="g", gpu_vram_gb=8.0
+            outcome="ok",
+            peak_vram_gb=5.0,
+            seconds=3.0,
+            model_id=entry.id,
+            gpu_name="g",
+            gpu_vram_gb=8.0,
+            standard=True,
         )
         return {
             "error": None,
-            "result": SimpleNamespace(warnings=[], failed=None, to_dict=lambda: {}),
+            "result": SimpleNamespace(warnings=[], failed=None, nonstandard=[], to_dict=lambda: {}),
             "measurement": m,
-            "submission": None,
+            "submission": _write_sub(len(events)),  # 送る用の提出を書く(measure と同じ置き場所)
             "path_in_repo": None,
             "saved_to": None,
             "not_saved": "x",

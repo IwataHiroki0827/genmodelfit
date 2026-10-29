@@ -766,7 +766,7 @@ pick a model worth measuring and measure it on your running ComfyUI (nothing is 
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes]
+                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes] [--free]
                     [--resolution WxH] [--frames N] [--length SEC] [--limit N] [--timeout SEC]
                     [model]
 ```
@@ -793,6 +793,7 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `--no-start` |  |  | do not start the ComfyUI that was found when none is running (like GENMODELFIT_COMFYUI_START=0) |
 | `--start-timeout` | `SEC` | `300` | the most time to wait for a started ComfyUI to be ready (seconds; default 300) |
 | `--yes`, `-y` |  |  | do not ask before measuring (a model that is not installed is downloaded under the same rules as download `--yes`) |
+| `--free` |  |  | free the ComfyUI's models and cached results with /free before measuring (for your own running ComfyUI; a ComfyUI started by genmodelfit is always freed) |
 | `--resolution` | `WxH` |  | measure at this width and height (e.g. 1536x1536; like bench; omitted: as in the template) |
 | `--frames` | `N` |  | measure at this number of video frames (like bench; omitted: as in the template) |
 | `--length` | `SEC` |  | measure at this audio length in seconds (like bench; omitted: as in the template) |

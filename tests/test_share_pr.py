@@ -259,9 +259,10 @@ def plan(monkeypatch):
         state["roots"] = roots
         return state["sugg"]
 
-    def fake_run(args, url, entry, settings):
+    def fake_run(args, url, entry, settings, free=False):
         state["ran"].append(entry.id)
         state["urls"].append(url)
+        state.setdefault("free", []).append(free)
         state["events"].append(f"run:{entry.id}")
         p = _write_sub(len(state["ran"]))
         m = SimpleNamespace(outcome="ok", peak_vram_gb=5.0, seconds=12.0)
@@ -825,7 +826,7 @@ def test_share_asks_before_logging_in(capsys, monkeypatch, this_pc, plan, gh):
 
 
 def test_share_suggests_download_when_nothing_was_measured(capsys, monkeypatch, this_pc, dl_plan, gh):
-    def fail_run(args, url, entry, settings):
+    def fail_run(args, url, entry, settings, free=False):
         return {"error": "boom"}
 
     monkeypatch.setattr(cli, "_measure_run", fail_run)
@@ -949,7 +950,9 @@ def test_usable_installed_are_measured_before_the_download_question(
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
     real_run = cli._measure_run
-    monkeypatch.setattr(cli, "_measure_run", lambda *a: events.append("run:" + a[2].id) or real_run(*a))
+    monkeypatch.setattr(
+        cli, "_measure_run", lambda *a, **k: events.append("run:" + a[2].id) or real_run(*a, **k)
+    )
 
     def ask(p=""):
         events.append("ask:" + p[:6])
@@ -1318,7 +1321,7 @@ def test_existing_credentials_are_checked_before_measuring(capsys, monkeypatch, 
     real = gh.request
     gh.request = lambda method, url, **kw: events.append(url.rsplit("/", 1)[-1]) or real(method, url, **kw)
     real_run = cli._measure_run
-    monkeypatch.setattr(cli, "_measure_run", lambda *a: events.append("run") or real_run(*a))
+    monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: events.append("run") or real_run(*a, **k))
     assert cli.main(["share", "--yes", "--url", "http://x:1"]) == 0
     assert events[0] == "user" and events.index("run") < events.index("forks")
 
@@ -1448,7 +1451,7 @@ def test_downloads_stay_within_the_approved_list(capsys, monkeypatch, this_pc, s
     )
     got = []
     monkeypatch.setattr(cli, "_measure_download", lambda args, mid: got.append(mid) or 0)
-    monkeypatch.setattr(cli, "_measure_run", lambda *a: {"error": "x"})
+    monkeypatch.setattr(cli, "_measure_run", lambda *a, **k: {"error": "x"})
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_share_session", lambda: FakeGitHub())
     assert (
@@ -1483,3 +1486,105 @@ def test_issue_hints_point_to_share_issue(capsys, monkeypatch):
     assert "genmodelfit share --issue <ファイル>" in capsys.readouterr().err
     assert cli.main(["--lang", "ja", "share", "--issue", "--print-url"]) == 1
     assert "genmodelfit share --issue <ファイル> --print-url" in capsys.readouterr().err
+
+
+# --- 実機の 2 回目(#124): 続けて測るときは毎回空ける・測れたが送れないものも黙って落とさない --------------
+
+
+def test_share_frees_before_every_run_and_says_so(capsys, monkeypatch, this_pc, plan, gh):
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 0
+    assert plan["free"] == [True, True, True]
+    out = capsys.readouterr().out
+    assert "測る前に毎回 ComfyUI のメモリを空けます(読み込み済みのモデルは外れます)" in out
+
+
+def test_nonstandard_result_is_listed_not_dropped(capsys, monkeypatch, this_pc, plan, gh):
+    def run(args, url, entry, settings, free=False):
+        m = SimpleNamespace(outcome="ok", peak_vram_gb=0.7, seconds=7.7, standard=False)
+        res = SimpleNamespace(
+            warnings=["3 個のノードが前の結果を使い、実行されませんでした"],
+            nonstandard=["前の結果を使ったノードが 3 個(一部だけ実行)"],
+            failed=None,
+        )
+        return {"error": None, "result": res, "measurement": m, "submission": None}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--json", "--url", "http://x:1"]) == 1
+    d = json.loads(capsys.readouterr().out)
+    assert d["measured"] == [] and len(d["failed"]) == 3
+    assert (
+        "標準でない条件で測ったので、保存も送りもしません: 前の結果を使ったノードが 3 個"
+        in d["failed"][0]["error"]
+    )
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
+    out = capsys.readouterr().out
+    assert "測れなかったもの: 3 件" in out and "送れません: 標準でない条件" in out
+
+
+def test_measure_frees_a_started_comfyui_or_with_free(capsys, monkeypatch, this_pc, tmp_path):
+    from test_comfystart import venv_install
+
+    from genmodelfit import comfystart
+
+    seen = []
+
+    def run(args, url, entry, settings, free=False):
+        seen.append(free)
+        return {"error": "stop"}
+
+    monkeypatch.setattr(cli, "_measure_run", run)
+    monkeypatch.setattr(cli, "_measure_download", lambda *a: 0)
+    assert cli.main(["measure", "image_sdxl_simple", "--yes", "--url", "http://x:1"]) == 1
+    assert cli.main(["measure", "image_sdxl_simple", "--yes", "--free", "--url", "http://x:1"]) == 1
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(
+        comfystart,
+        "launch",
+        lambda plan, **k: comfystart.Started(
+            plan, SimpleNamespace(pid=1, poll=lambda: None), 40300, Path("c.log")
+        ),
+    )
+    monkeypatch.setattr(comfystart, "wait_ready", lambda st, **k: None)
+    monkeypatch.setattr(comfystart, "stop", lambda st, **k: True)
+    assert (
+        cli.main(["measure", "image_sdxl_simple", "--yes", "--comfyui-dir", str(venv_install(tmp_path))]) == 1
+    )
+    assert seen == [False, True, True]  # 利用者の ComfyUI は --free のときだけ、起動したものはいつも
+
+
+def test_measure_run_passes_free_to_bench(monkeypatch):
+    from genmodelfit import bench
+
+    got = []
+
+    def run(opts, log=None):
+        got.append(opts.free_before)
+        raise bench.BenchError("x")
+
+    monkeypatch.setattr(bench, "run", run)
+    e = SimpleNamespace(id="image_sdxl_simple", precision="fp16", files=[])
+    args = cli.build_parser().parse_args(["share"])
+    assert cli._measure_run(args, "http://x:1", e, None, free=True)["error"] == "x"
+    assert cli._measure_run(args, "http://x:1", e, None)["error"] == "x"
+    assert got == [True, False]
+
+
+def test_deviation_uses_the_measured_settings(monkeypatch):
+    from genmodelfit.db import load as load_db
+
+    estimate = sys.modules["genmodelfit.estimate"]  # gmf.estimate は関数なのでモジュールを直に取る
+
+    seen = []
+    real = estimate.formula_need
+
+    def spy(entry, settings, *a, **k):
+        seen.append((settings.width, settings.height))
+        return real(entry, settings, *a, **k)
+
+    monkeypatch.setattr(estimate, "formula_need", spy)
+    d = json.loads(GOOD[0].read_text(encoding="utf-8"))
+    d["measurement"].update(settings={"width": 512, "height": 512, "steps": 25}, settings_override=True)
+    contrib.validate_submission(d, load_db(use_cache=False), check_filename=False)
+    assert (512, 512) in seen and (1024, 1024) not in seen

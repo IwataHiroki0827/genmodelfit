@@ -761,7 +761,7 @@ genmodelfit download MODEL --uncensored --any-license --yes    # 尋ねずに落
 
 ```text
 genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--url URL]
-                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes]
+                    [--comfyui-dir DIR] [--no-start] [--start-timeout SEC] [--yes] [--free]
                     [--resolution WxH] [--frames N] [--length SEC] [--limit N] [--timeout SEC]
                     [model]
 ```
@@ -793,6 +793,7 @@ genmodelfit measure [-h] [--lang {en,ja}] [--json] [--db PATH] [--no-cache] [--u
 | `--no-start` |  |  | 起動中の ComfyUI が無くても、見つけた ComfyUI を起動しない(環境変数 GENMODELFIT_COMFYUI_START=0 と同じ) |
 | `--start-timeout` | `SEC` | `300` | 起動した ComfyUI の準備を待つ時間の上限(秒。既定 300) |
 | `--yes`, `-y` |  |  | 測る前に尋ねない(入っていないモデルは download `--yes` と同じ決まりで落とす) |
+| `--free` |  |  | 測る前に ComfyUI の /free でモデルと前の結果を外す(起動中の自分の ComfyUI 向け。genmodelfit が起動した ComfyUI ではいつも外す) |
 | `--resolution` | `WxH` |  | 幅と高さ(例: 1536x1536)を変えて測る(bench と同じ。省くとテンプレートのまま) |
 | `--frames` | `N` |  | 動画のコマ数を変えて測る(bench と同じ。省くとテンプレートのまま) |
 | `--length` | `SEC` |  | 音声の長さ(秒)を変えて測る(bench と同じ。省くとテンプレートのまま) |

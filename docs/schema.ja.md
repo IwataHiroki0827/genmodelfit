@@ -1121,6 +1121,11 @@ bench が Measurement を埋める方法(測り方):
 - **合計の時間**(計画に出す): 起動するなら ComfyUI の起動(`comfystart.TYPICAL_START_SECONDS`、45 秒)、時間の目安の
   合計、落とすことになっていれば、それを測る時間と 100 Mbps で落とす時間(`cli.DOWNLOAD_EXAMPLE_MBPS`。例で、
   「回線しだい」と添える)。落とすかの質問にも同じものを出す。
+- **毎回空ける**: `share` は 1 つの ComfyUI で何件も測るので、毎回測る前に `/free`(`unload_models`・`free_memory`。
+  ComfyUI はモデルを外し、ノードの結果のキャッシュを捨てる)を送る(`bench --free` と同じ)。起動中だった ComfyUI では
+  計画にそう書く(「測る前に毎回 ComfyUI のメモリを空けます」)。`measure` は自分で起動した ComfyUI では空け、利用者の
+  ものは `--free` のときだけ(0.13.0)。それでも前の結果を使ったなど標準でない条件の結果は、保存も送りもせず、理由を
+  付けて `failed` に入れる(黙って落とさない)。
 - **測り直さない**: この PC に保存した提出(`<cache>/submissions/`。送ったかどうかによらない)を、提案では実測として
   数える(`measure.suggestions(extra=...)`)ので、あとの `share` は測り直さずにそれを送る。結果は送る前に保存する。
   `q`・ログインの失敗・PR の失敗のあとも送っていないまま残り、`share --no-measure`(か `--issue`)で送れる。端末で PR に
