@@ -113,7 +113,7 @@ it is checked again.
 
 **Measuring one model yourself: `genmodelfit measure`.**
 
-1. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have no measurement on this GPU yet. Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
+1. `genmodelfit measure` lists models worth measuring: they fit this PC's GPU (good or better on the GPU) and have not been measured on this PC yet (they are listed even if someone else measured the same GPU: two agreeing people let the measurement decide the level). Models already in your ComfyUI come first, then the shorter time, then the smaller download. Choose one by number (`q` quits).
    - Once a model is measured on this GPU at the template's settings, the list also has runs at other settings, which help check the estimate's formula: image resolution (512 / 768 / 1024 / 1536 px, text-to-image), video frames (17 / 33 / 49 / 81 at the template's size) and music / sound length (10 / 30 / 60 / 120 s). They are shown with `--resolution`, `--frames` or `--length`, only when they fit this GPU at that setting and this GPU has no measurement at that setting, at most 2 per model. Runs over about 300 s are not listed. If the template cannot take a setting, measure stops before generating.
    - To pick the model yourself: `genmodelfit measure "Z-Image-Turbo"` (a name, a workflow id or a part of either, chosen like `download`). Add `--resolution 1536x1536`, `--frames 81` or `--length 120` to change the settings, like `bench`.
    - It finds and, if needed, starts ComfyUI like `share` (above); for another one, add `--url http://<host>:<port>`.

@@ -6877,8 +6877,8 @@ def _suggestion_lines(sugg: list) -> list[str]:
 
     out = [
         tr(
-            "=== 測ると役に立つモデル(この GPU の実測がまだ無いもの) ===",
-            "=== Models worth measuring (no measurement on this GPU yet) ===",
+            "=== 測ると役に立つモデル(この PC でまだ測っていないもの) ===",
+            "=== Models worth measuring (not yet measured on this PC) ===",
         )
     ]
     out += [_suggestion_row(i, x) for i, x in enumerate(sugg, 1)]
