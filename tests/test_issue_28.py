@@ -1,7 +1,5 @@
 """0.1.1(Issue #28): Wan 2.2 14B の載せ替え・精度の選び方・ライセンス不明の扱い・判定できないものの表示・
 利用者のテンプレートの並び・ファイルの見出しからの精度・OS の表示。
-
-24 GB / 128 GB は利用者がレビューした PC(RTX 4500 Ada 24 GB・メモリ 128 GB)。
 """
 
 from __future__ import annotations
@@ -57,7 +55,7 @@ def db():
     return load_db(use_cache=False)
 
 
-def pc(vram: float, ram: float = 128) -> SystemInfo:
+def pc(vram: float, ram: float = 96) -> SystemInfo:
     gpus = [Gpu(name="Test GPU", vendor="nvidia", vram_total_gb=vram, backend="cuda")] if vram else []
     return SystemInfo(os="t", cpu="t", cpu_cores=8, ram_total_gb=ram, ram_available_gb=ram, gpus=gpus)
 
@@ -198,7 +196,7 @@ def test_rows_never_leave_the_clean_tier(db):
     Score は下がることがある(#95: GPU+RAM → GPU~ に替わると使用率が上がる。docs/scoring.md「Score」)。"""
     from genmodelfit.groups import precision_rank
 
-    for ram in (32, 128):
+    for ram in (32, 96):
         prev: dict[str, tuple] = {}
         for v in (0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64, 80):
             rows = {
@@ -250,7 +248,7 @@ def test_unknown_license_api_and_cli(db, capsys):
     hits = gmf.search(mid, system_info=sys, db=db, all_workflows=True)
     assert hits == []
     assert gmf.search(mid, system_info=sys, db=db, all_workflows=True, include_unknown_license=True)
-    hw = ["--vram", "24", "--ram", "128", "--no-cache", "--json"]
+    hw = ["--vram", "24", "--ram", "96", "--no-cache", "--json"]
     assert cli.main(["fit", *hw]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["filters"]["include_unknown_license"] is False and out["hidden"]["license_unknown"] >= 1
@@ -263,9 +261,7 @@ def test_unknown_license_api_and_cli(db, capsys):
 
 
 def test_text_mode_says_how_to_show_unknown_licenses(tmp_path):
-    out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache"], tmp_path / "c").stdout.decode(
-        "utf-8"
-    )
+    out = run_cli(["fit", "--vram", "24", "--ram", "96", "--no-cache"], tmp_path / "c").stdout.decode("utf-8")
     assert "ライセンス不明" in out and "--any-license" in out
 
 
@@ -521,7 +517,7 @@ def test_os_name(system, release, version, want):
 
 # --- 8. fit の一覧(利用者の指定: 1 つの表・Type が左端・既定は動くものだけ) --------------------------
 
-HW24 = ["--vram", "24", "--ram", "128", "--no-cache", "--json"]
+HW24 = ["--vram", "24", "--ram", "96", "--no-cache", "--json"]
 LEVEL_ORDER = ["perfect", "good", "marginal", "unknown", "too_tight"]
 TYPES = ["image", "video", "music", "sfx", "tts", "3d"]
 
@@ -594,7 +590,7 @@ def test_fit_level_filter(capsys):
 
 
 def test_fit_table_columns(tmp_path):
-    out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache"], tmp_path / "c", COLUMNS="100")
+    out = run_cli(["fit", "--vram", "24", "--ram", "96", "--no-cache"], tmp_path / "c", COLUMNS="100")
     lines = out.stdout.decode("utf-8").splitlines()
     header = next(x for x in lines if x.startswith("Type"))
     assert header.split()[:5] == ["Type", "Status", "Score", "Model", "Use"]
@@ -635,11 +631,11 @@ def test_level_cap_in_json_and_legend(capsys):
     assert caps.get("GPU") is None and caps.get("GPU~") == "sequential"
     every = _fit_json(capsys, "--all", "-m", "video")
     assert {m["level_cap"] for m in every["models"] if m["run_mode_label"] == "GPU+RAM"} == {"offload"}
-    assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
+    assert cli.main(["fit", "--vram", "24", "--ram", "96", "--no-cache"]) == 0
     out = capsys.readouterr().out
     assert "GPU~ と GPU+RAM は Good まで、CPU は Marginal まで" in out
     assert all(len(x) <= 100 for x in out.splitlines())
-    assert cli.main(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--lang", "en"]) == 0
+    assert cli.main(["fit", "--vram", "24", "--ram", "96", "--no-cache", "--lang", "en"]) == 0
     assert "GPU~ and GPU+RAM at most Good; CPU at most Marginal" in capsys.readouterr().out
 
 
@@ -650,18 +646,18 @@ def test_fit_and_min_fit_together_is_a_usage_error(tmp_path):
 
 
 def test_other_fit_label_is_humanized(tmp_path):
-    out = run_cli(["fit", "--vram", "24", "--ram", "128", "--no-cache", "--fit", "good"], tmp_path / "c")
+    out = run_cli(["fit", "--vram", "24", "--ram", "96", "--no-cache", "--fit", "good"], tmp_path / "c")
     text = re.sub(r"\s+", "", out.stdout.decode("utf-8"))
     assert "ほかの段階(--fit)" in text and "other_fit" not in text
     out = run_cli(
-        ["fit", "--vram", "24", "--ram", "128", "--no-cache", "--fit", "good", "--lang", "en"], tmp_path / "c"
+        ["fit", "--vram", "24", "--ram", "96", "--no-cache", "--fit", "good", "--lang", "en"], tmp_path / "c"
     )
     text = re.sub(r"\s+", " ", out.stdout.decode("utf-8"))
     assert "other levels (--fit)" in text and "other_fit" not in text
 
 
 def test_info_and_table_use_the_same_percentage(db, capsys):
-    assert cli.main(["info", "video_wan2_2_14B_i2v", "--vram", "24", "--ram", "128", "--no-cache"]) == 0
+    assert cli.main(["info", "video_wan2_2_14B_i2v", "--vram", "24", "--ram", "96", "--no-cache"]) == 0
     info = capsys.readouterr().out
     d = _fit_json(capsys, "--all-workflows", "-m", "video")
     row = next(m for m in d["models"] if m["id"] == "video_wan2_2_14B_i2v")

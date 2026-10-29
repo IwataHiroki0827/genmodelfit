@@ -1169,8 +1169,8 @@ Migration / 移行:
 
 ## [0.1.1] - 2026-10-20
 
-Fixes from the owner's review on an RTX 4500 Ada 24 GB / 128 GB RAM PC (Issue #28).
-RTX 4500 Ada 24 GB・メモリ 128 GB の PC でのレビューの指摘を直した版。
+Fixes from the owner's review (Issue #28).
+オーナーのレビューの指摘を直した版。
 
 ### Changed
 

@@ -77,7 +77,7 @@ def test_fit_table_uses_question_mark_for_unknown_precision(capsys):
     db = load_db(use_cache=False)
     unknown = [m for m in db.models if m.precision is None and m.content == "sfw"]
     assert unknown, "精度の分からない項目が無くなったら、この試験は別の項目で見る"
-    code = cli.main(["fit", "--vram", "24", "--ram", "128", "--all", "--all-workflows", "--sort", "name"])
+    code = cli.main(["fit", "--vram", "24", "--ram", "64", "--all", "--all-workflows", "--sort", "name"])
     out = capsys.readouterr().out
     assert code == 0
     assert "? = 分からない(精度・ライセンス・大きさ。判定していない)、- = 当てはまらない" in out
@@ -100,7 +100,7 @@ def test_json_unknown_size_run_mode(capsys):
         files_complete=False,
         license="mit",
     )
-    d = judge(m, pc(24, 128), db).to_dict()
+    d = judge(m, pc(24, 64), db).to_dict()
     assert d["fit_level"] == "unknown" and d["run_mode"] == "unknown" and d["run_mode_label"] == "?"
     assert d["memory_required_gb"] is None and d["ram_required_gb"] is None
     assert d["memory_available_gb"] == 24.0 and d["memory_kind"] == "vram"  # ある量は分かる
