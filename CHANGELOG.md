@@ -22,6 +22,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README: a short section says that models with an unknown license and uncensored models are hidden by default, and
+  that `--any-license` / `--uncensored` show them (README「ライセンス不明・無検閲のモデルは、既定で出しません」).
 - **Docs: README, CONTRIBUTING, docs and the `--help` texts match the 0.13.0 behaviour** (documentation only; no
   change in what the commands do). `measure` / `share` now say: "not yet measured on this PC" (other people's
   measurements of the same GPU do not remove suggestions; two agreeing sources let measurements set the level);

@@ -309,6 +309,16 @@ Score 0-100 = memory headroom (Mem% <= 70% is 100; not speed). VRAM: GiB needed,
 | Disk | download size (GiB); dropped first when the width is short (then see `info` or `--json`) |
 | License | license of the files (`other` = read it yourself) |
 
+### Unknown-license and uncensored models are hidden by default
+
+Models whose license is unknown and uncensored models are not listed by default. Used without options, genmodelfit
+keeps you from picking such a model without knowing it. The number hidden is shown as a "Note" at the end of the
+results.
+To show them, add these options:
+
+- `--any-license`: also show models whose license is unknown
+- `--uncensored`: also show uncensored models
+
 ### Fit levels
 
 The level comes from how much of the memory the mode uses (VRAM on the GPU, RAM on CPU), as in llmfit:
