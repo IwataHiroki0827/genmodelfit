@@ -429,7 +429,6 @@ def login(
     on_code: Callable[[DeviceCode], None] | None = None,
     log: Callable[[str], None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
-    min_remaining: float | None = None,
 ) -> Credentials:
     """資格情報を決めて確かめる: 環境変数 GITHUB_TOKEN / GH_TOKEN → キャッシュ → デバイス認証
     (interactive のときだけ。得たトークンはキャッシュする)。使えなければ GitHubError。"""
@@ -458,25 +457,12 @@ def login(
             )
         )
     if cached:
-        short = (
-            min_remaining is not None
-            and expires_at is not None
-            and expires_at - time.time() < min_remaining
-            and interactive
-            and client_id()
-            and on_code is not None
-        )
-        user = None if short else whoami(session, cached)
+        user = whoami(session, cached)
         if user is not None:
             return Credentials(cached, user, "cache", expires_at)
         clear_cached_token()
         say(
             tr(
-                "前にログインしたトークンは、測り終える前に期限が切れるので、ログインし直します",
-                "the saved login would expire before measuring is done; signing in again",
-            )
-            if short
-            else tr(
                 "前にログインしたトークンが使えなくなりました。ログインし直します",
                 "the saved login no longer works; signing in again",
             )
@@ -504,6 +490,11 @@ class SubmitResult:
     uploaded: list[str]
     skipped: list[str]
     on_main: list[str] = field(default_factory=list)  # 本家の main にもうある(マージ済み)もの
+
+    @property
+    def touched(self) -> list[str]:
+        """どこかに置いた(か、もうあった)もの。PR に失敗しても、これは Issue で送り直さない。"""
+        return [*self.uploaded, *self.skipped, *self.on_main]
 
     @property
     def delivered(self) -> list[str]:
@@ -748,37 +739,47 @@ def submit(
     PR を開く。PR を開かないのは、どれも本家の main にもうあるときだけ。"""
     say = log or (lambda msg: None)
     token, login_name = creds.token, creds.login
-    say(tr("フォークを確かめています", "checking your fork"))
-    fork, fresh = ensure_fork(session, token, login_name, sleep=sleep)
-    found = find_open_pr(session, token, login_name, fork, match_prefix)
-    reused = found is not None
-    if found is not None:
-        branch, pr_url = found
-        say(tr(f"開いている PR に足します: {pr_url}", f"adding to your open PR: {pr_url}"))
-    else:
-        pr_url = None
-        base = upstream_head(session, token) if fresh else fork_base(session, token, fork)
-        create_branch(session, token, login_name, fork, branch, base, sleep=sleep)
-    uploaded: list[str] = []
-    skipped: list[str] = []
-    for path, text in files:
-        put = put_file(
-            session,
-            token,
-            login_name,
-            fork,
-            branch,
-            path,
-            text,
-            f"measurements: add {path}",
-            fresh=fresh,
-            sleep=sleep,
-        )
-        (uploaded if put else skipped).append(path)
-    on_main = [p for p in skipped if on_upstream(session, token, p)] if skipped else []
-    if not reused and (uploaded or len(on_main) < len(skipped)):
-        pr_url = open_pr(session, token, fork, branch, title, body)
-    return SubmitResult(pr_url, reused, branch, fork, uploaded, skipped, on_main)
+    # 本家の main にもうあるもの(マージ済み)は置かない(--all でも無駄な PR を作らない)
+    on_main = [p for p, _t in files if on_upstream(session, token, p)]
+    todo = [(p, t) for p, t in files if p not in on_main]
+    result = SubmitResult(None, False, branch, "", [], [], on_main)
+    if not todo:
+        return result
+    try:
+        say(tr("フォークを確かめています", "checking your fork"))
+        fork, fresh = ensure_fork(session, token, login_name, sleep=sleep)
+        result.fork = fork
+        found = find_open_pr(session, token, login_name, fork, match_prefix)
+        if found is not None:
+            result.branch, result.pr_url = found
+            result.reused = True
+            say(tr(f"開いている PR に足します: {result.pr_url}", f"adding to your open PR: {result.pr_url}"))
+        else:
+            # 作ったばかりのフォークでも前からのフォークでも、本家とフォークの共通の祖先から(fork_base。
+            # 比べられなければ本家の main の先頭)
+            create_branch(
+                session, token, login_name, fork, result.branch, fork_base(session, token, fork), sleep=sleep
+            )
+        for path, text in todo:
+            put = put_file(
+                session,
+                token,
+                login_name,
+                fork,
+                result.branch,
+                path,
+                text,
+                f"measurements: add {path}",
+                fresh=fresh,
+                sleep=sleep,
+            )
+            (result.uploaded if put else result.skipped).append(path)
+        if not result.reused and (result.uploaded or result.skipped):
+            result.pr_url = open_pr(session, token, fork, result.branch, title, body)
+    except GitHubError as e:
+        e.partial = result  # type: ignore[attr-defined]  # 途中まで(どこに置いたか)。送り直しで重ねない
+        raise
+    return result
 
 
 # --- PR の題と本文 --------------------------------------------------------------------------------

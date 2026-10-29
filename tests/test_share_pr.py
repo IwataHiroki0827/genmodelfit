@@ -44,6 +44,7 @@ class Resp:
         return self._body
 
 
+HEAD_SHA = "a" * 40  # 本家の main の先頭
 OLD_BASE = "4" * 40  # 古いフォークの main の先頭(本家との共通の祖先)
 
 
@@ -113,9 +114,13 @@ class FakeGitHub:
         if method == "GET" and path == f"{UP}/pulls":
             return Resp(200, self.open_prs)
         if method == "GET" and path == f"{UP}/git/ref/heads/main":
-            return Resp(200, {"object": {"sha": "abc123"}})
+            return Resp(200, {"object": {"sha": HEAD_SHA}})
         if method == "GET" and path == f"{UP}/compare/main...alice:main":
-            return Resp(200, {"status": "behind", "merge_base_commit": {"sha": OLD_BASE}})
+            # 古いフォークは古い共通の祖先、作ったばかり・合っているフォークは本家の先頭
+            base = OLD_BASE if self.stale else HEAD_SHA
+            return Resp(
+                200, {"status": "behind" if self.stale else "identical", "merge_base_commit": {"sha": base}}
+            )
         if method == "POST" and path == f"{FORK}/git/refs":
             if self.stale and kw["json"]["sha"] != OLD_BASE:
                 return Resp(404, {"message": "Not Found"})  # 古いフォークに無いコミット
@@ -417,9 +422,16 @@ def test_share_login_happens_before_measuring(capsys, monkeypatch, this_pc, plan
     gh.user_ok = False
     monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
     monkeypatch.setattr(cli, "_interactive", lambda: True)
-    asked = answers(monkeypatch, "")  # 計画を見せて尋ねたあとでログインを確かめ、測る前に止まる
+    # 端末: 使えない環境変数のトークンは知らせて続ける(最後に Issue を選べる)
+    asked = answers(monkeypatch, "", "1", "n")
     assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 1
-    assert asked == ["3 件を測って送りますか? [Y/n] "]
+    err = capsys.readouterr().err
+    assert asked[0] == "3 件を測って送りますか? [Y/n] " and "このままでは PR で送れません" in err
+    assert len(plan["ran"]) == 3 and asked[2].startswith("PR で送れませんでした")
+    # 端末でない --yes(PR): 測る前に止まる
+    plan["ran"].clear()
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "ja", "share", "--yes", "--url", "http://x:1"]) == 1
     assert plan["ran"] == [] and "GITHUB_TOKEN のトークンが使えません" in capsys.readouterr().err
 
 
@@ -547,12 +559,22 @@ def test_submit_new_pr_order_and_content():
         match_prefix="genmodelfit-share/rtx-3070/",
         sleep=lambda s: None,
     )
-    assert fake.steps() == ["get-fork", "fork", "get-fork", "list-prs", "head", "branch", "put", "open-pr"]
+    assert fake.steps() == [
+        "on-main?",
+        "get-fork",
+        "fork",
+        "get-fork",
+        "list-prs",
+        "base",
+        "branch",
+        "put",
+        "open-pr",
+    ]
     for _m, _u, kw in fake.calls:
         assert kw["headers"]["Authorization"] == f"Bearer {TOKEN}"
         assert kw["allow_redirects"] is False
     branch = next(kw for m, u, kw in fake.calls if u.endswith("/git/refs"))["json"]
-    assert branch == {"ref": "refs/heads/genmodelfit-share/rtx-3070/12345678", "sha": "abc123"}
+    assert branch == {"ref": "refs/heads/genmodelfit-share/rtx-3070/12345678", "sha": HEAD_SHA}
     put = fake.put["data/contrib/rtx-3070/2026-10-29-aaaaaaaa.json"]
     assert base64.b64decode(put["content"]).decode() == '{"a": 1}\n'
     assert put["branch"] == "genmodelfit-share/rtx-3070/12345678"
@@ -595,7 +617,8 @@ def test_submit_adds_to_the_open_pr_and_skips_existing_files():
         branch="genmodelfit-share/rtx-3070/new11111",
         match_prefix="genmodelfit-share/rtx-3070/",
     )
-    assert fake.steps() == ["get-fork", "list-prs", "put", "put", "on-main?"]  # 新しいブランチ・PR は作らない
+    # 新しいブランチ・PR は作らない。本家の main にあるかは、置く前にすべて確かめる
+    assert fake.steps() == ["on-main?", "on-main?", "get-fork", "list-prs", "put", "put"]
     assert res.reused and res.pr_url.endswith("/pull/150")
     assert res.uploaded == [b] and res.skipped == [a]
     assert fake.put[b]["branch"] == "genmodelfit-share/rtx-3070/old00000"
@@ -1114,21 +1137,6 @@ def test_rate_limits(monkeypatch):
 # --- トークンの期限(Checker #5) ----------------------------------------------------------------------
 
 
-def test_short_lived_cached_token_is_renewed_before_measuring(monkeypatch):
-    import time
-
-    github.write_cached_token("gho_SHORT", 120)  # 2 分で切れる
-    fake = FakeGitHub(polls=[{"access_token": TOKEN, "expires_in": 28800}])
-    c = github.login(
-        fake, interactive=True, on_code=lambda dc: None, sleep=lambda s: None, min_remaining=1200
-    )
-    assert c.source == "device" and c.token == TOKEN and c.expires_at > time.time() + 20000
-    # 端末でなければ、短くてもそのまま使う(送るときに確かめる)
-    github.write_cached_token("gho_SHORT", 120)
-    c = github.login(FakeGitHub(), interactive=False, min_remaining=1200)
-    assert c.source == "cache"
-
-
 def test_token_expired_while_measuring(capsys, monkeypatch, this_pc, plan, gh):
     github.write_cached_token(TOKEN, 28800)
     calls = {"n": 0}
@@ -1200,7 +1208,10 @@ def test_old_fork_branches_from_the_common_base(monkeypatch):
         match_prefix="genmodelfit-share/rtx-3070/",
         sleep=lambda s: None,
     )
-    assert "base" not in fresh.steps()
+    # 作ったばかりのフォークも同じ決め方(共通の祖先 = 本家の先頭)。POST /forks が別の名前の前からの
+    # フォークを返しても、本家の先頭を当て推量しない
+    ref = next(kw for m, u, kw in fresh.calls if u.endswith("/git/refs"))["json"]
+    assert "base" in fresh.steps() and ref["sha"] == HEAD_SHA
 
 
 # --- 合計の時間・送り方を選ぶ・測り直さない(#124 のオーナーの決定 2) ------------------------------------
@@ -1356,3 +1367,119 @@ def test_measure_flushes_the_screen_before_starting(capsys, monkeypatch, this_pc
     monkeypatch.setattr(cli, "_comfyui_start", start)
     monkeypatch.setattr(cli, "_measure_download", lambda *a: 0)
     assert cli.main(["measure", "image_sdxl_simple", "--comfyui-dir", str(d), "--yes"]) == 1
+
+
+# --- 2 回目の確かめ(#124): 重ねて送らない・同意した一覧の外を落とさない・保存したログイン ------------------
+
+
+def test_pr_failure_offers_issues_only_for_files_not_placed(capsys, monkeypatch, this_pc, plan):
+    import webbrowser
+
+    open_pr = {
+        "html_url": "https://github.com/laxshmate/genmodelfit/pull/150",
+        "head": {
+            "ref": "genmodelfit-share/rtx-3070/old00000",
+            "user": {"login": "alice"},
+            "repo": {"full_name": "alice/genmodelfit"},
+        },
+    }
+
+    class Mid(FakeGitHub):
+        puts = 0
+
+        def request(self, method, url, **kw):
+            if method == "PUT":
+                self.puts += 1
+                if self.puts == 2:  # 2 つ目を置くところで落ちる
+                    return Resp(500, {"message": "boom"})
+            return super().request(method, url, **kw)
+
+    fake = Mid(fork_exists=True, open_prs=[open_pr])
+    monkeypatch.setattr(cli, "_share_session", lambda: fake)
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "", "1", "")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 1
+    cap = capsys.readouterr()
+    # 開いている PR に 1 つ置けた: それは送った印を付け、Issue では残りの 2 つだけ
+    assert "送れた PR: https://github.com/laxshmate/genmodelfit/pull/150" in cap.out
+    assert len(opened) == 2 and len(measure.load_shared()) == 3
+    assert "1 件はもう PR かブランチに置いたので" in cap.err
+
+
+def test_cached_token_that_no_longer_works_is_removed_and_issue_still_works(
+    capsys, monkeypatch, this_pc, plan
+):
+    import webbrowser
+
+    github.write_cached_token(TOKEN, 28800)
+    fake = FakeGitHub(user_ok=False)
+    monkeypatch.setattr(cli, "_share_session", lambda: fake)
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: True)
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    answers(monkeypatch, "", "2")
+    assert cli.main(["--lang", "ja", "share", "--url", "http://x:1"]) == 0
+    err = capsys.readouterr().err
+    assert (
+        "使えなくなったので消しました(PR を選んだときにログインします)" in err
+        and "ログインし直します" not in err
+    )
+    assert not github.token_path().exists() and len(plan["ran"]) == 3
+
+
+def test_downloads_stay_within_the_approved_list(capsys, monkeypatch, this_pc, starter_env, tmp_path):
+    from test_comfystart import venv_install
+
+    d = venv_install(tmp_path)
+    shown = [sugg("dl_a", 60, "no", 1024**3), sugg("dl_b", 60, "no", 1024**3)]
+    later = [sugg("dl_c", 30, "no", 1024**3)]
+    calls = {"n": 0}
+
+    def suggestions(*a, **k):
+        calls["n"] += 1
+        return shown + later
+
+    monkeypatch.setattr(measure, "suggestions", suggestions)
+    # 起動したあと、dl_a は足りないノードで外れ、空いた時間に dl_c が入りうる
+    monkeypatch.setattr(
+        cli, "_node_check", lambda url: SimpleNamespace(missing=lambda mid: ["X"] if mid == "dl_a" else [])
+    )
+    got = []
+    monkeypatch.setattr(cli, "_measure_download", lambda args, mid: got.append(mid) or 0)
+    monkeypatch.setattr(cli, "_measure_run", lambda *a: {"error": "x"})
+    monkeypatch.setenv("GITHUB_TOKEN", TOKEN)
+    monkeypatch.setattr(cli, "_share_session", lambda: FakeGitHub())
+    assert (
+        cli.main(["--lang", "ja", "share", "--yes", "--download", "--budget", "120", "--comfyui-dir", str(d)])
+        == 1
+    )
+    assert got == ["dl_b"]  # dl_c は見せていないので落とさない
+    assert "落とさないもの: dl_a [dl_a](ComfyUI に無いノードが要る)" in capsys.readouterr().err
+
+
+@pytest.fixture
+def starter_env(monkeypatch):
+    from genmodelfit import comfystart
+
+    monkeypatch.delenv(comfystart.START_ENV, raising=False)
+    monkeypatch.setattr(
+        comfystart,
+        "launch",
+        lambda plan, **k: comfystart.Started(
+            plan, SimpleNamespace(pid=1, poll=lambda: None), 40200, Path("c.log")
+        ),
+    )
+    monkeypatch.setattr(comfystart, "wait_ready", lambda st, **k: None)
+    monkeypatch.setattr(comfystart, "stop", lambda st, **k: True)
+
+
+def test_issue_hints_point_to_share_issue(capsys, monkeypatch):
+    _write_sub(1)
+    _write_sub(2)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    assert cli.main(["--lang", "ja", "share", "--issue"]) == 0
+    assert "genmodelfit share --issue <ファイル>" in capsys.readouterr().err
+    assert cli.main(["--lang", "ja", "share", "--issue", "--print-url"]) == 1
+    assert "genmodelfit share --issue <ファイル> --print-url" in capsys.readouterr().err

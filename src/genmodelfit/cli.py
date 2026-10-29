@@ -2310,9 +2310,9 @@ def _cmd_share_issue(args: argparse.Namespace, command: str = "share") -> int:
             raise CliError(
                 tr(
                     f"送っていない実測が {len(saved)} 件あります。送るファイルを指定してください:"
-                    " genmodelfit share <ファイル> --print-url",
+                    " genmodelfit share --issue <ファイル> --print-url",
                     f"{len(saved)} unsent measurements. Choose the file to send:"
-                    " genmodelfit share <file> --print-url",
+                    " genmodelfit share --issue <file> --print-url",
                 )
                 if saved
                 else tr(
@@ -2340,10 +2340,10 @@ def _cmd_share_issue(args: argparse.Namespace, command: str = "share") -> int:
                 print(f"{_saved_line(i, s)}\n      {s.path}")
             print(
                 tr(
-                    "送るファイルを genmodelfit share <ファイル> で指定してください。"
+                    "送るファイルを genmodelfit share --issue <ファイル> で指定してください。"
                     if saved
                     else "送っていない実測はありません(genmodelfit measure で測れます)。",
-                    "Give the file to send: genmodelfit share <file>."
+                    "Give the file to send: genmodelfit share --issue <file>."
                     if saved
                     else "No unsent measurements (measure one with genmodelfit measure).",
                 ),
@@ -2470,7 +2470,7 @@ def _ask_yes_no(prompt: str, default: bool) -> bool:
     return a in ("y", "yes")
 
 
-def _share_login(args: argparse.Namespace, need_seconds: float | None = None):
+def _share_login(args: argparse.Namespace):
     """GitHub の資格情報を決めて確かめる(測る前。#124)。(資格情報, session)。使えなければ CliError。
     トークンは表示しない。デバイス認証のコードと URL は stderr に出し、端末ならブラウザを開く。"""
     from . import github
@@ -2505,7 +2505,6 @@ def _share_login(args: argparse.Namespace, need_seconds: float | None = None):
             interactive=_interactive() and not args.json,
             on_code=on_code,
             log=_progress(args),
-            min_remaining=need_seconds,
         )
     except github.GitHubError as e:
         raise CliError(str(e)) from None
@@ -2531,12 +2530,34 @@ def _share_precheck(args: argparse.Namespace):
     if not has and interactive:
         return None, None
     session = _share_session()
+    had_cache = github.token_path().exists()
     try:
-        creds = github.login(session, interactive=False, log=_progress(args))
+        creds = github.login(session, interactive=False)  # 確かめるだけ(ログインはしない)
     except github.GitHubError as e:
-        if e.kind == "no_login" and interactive:
-            return None, None  # 保存したものが使えなかった: 最後にログインし直す
-        raise CliError(str(e)) from None
+        if not interactive:
+            raise CliError(str(e)) from None
+        if e.kind == "invalid_token":
+            # 環境変数のトークンが使えない: PR は直さないと送れないが、Issue は選べるので続ける
+            print(
+                tr(
+                    f"注意: {e}。このままでは PR で送れません(最後に Issue を選べます)",
+                    f"warning: {e}. Sending a pull request will fail unless it is fixed"
+                    " (you can choose issues at the end)",
+                ),
+                file=sys.stderr,
+            )
+            return None, None
+        if had_cache and not github.token_path().exists():
+            print(
+                tr(
+                    "保存した GitHub のログインが使えなくなったので消しました"
+                    "(PR を選んだときにログインします)",
+                    "The saved GitHub sign-in no longer works and was removed (you sign in if you choose"
+                    " a pull request)",
+                ),
+                file=sys.stderr,
+            )
+        return None, None
     if not args.json:
         print(
             tr(f"GitHub: {creds.login} としてログイン", f"GitHub: signed in as {creds.login}"),
@@ -2620,6 +2641,14 @@ def _share_submit(args: argparse.Namespace, creds, session, items: list[dict[str
         groups.setdefault(it["path_in_repo"].split("/")[2], []).append(it)
     results = []
     marked = 0
+
+    def mark(group, done) -> None:
+        nonlocal marked
+        for it in group:
+            if it["path_in_repo"] in done:
+                mark_shared(it["data"])
+                marked += 1
+
     for slug, group in groups.items():
         files = [(it["path_in_repo"], it["raw"].replace("\r\n", "\n")) for it in group]
         key = hashlib.sha256("\n".join(sorted(p for p, _ in files)).encode("utf-8")).hexdigest()[:8]
@@ -2637,12 +2666,20 @@ def _share_submit(args: argparse.Namespace, creds, session, items: list[dict[str
                 log=_progress(args),
             )
         except github.GitHubError as e:
-            raise CliError(str(e)) from None
-        done = set(res.delivered)  # PR がある(か、本家の main にもうある)ものだけに印を付ける
-        for it in group:
-            if it["path_in_repo"] in done:
-                mark_shared(it["data"])
-                marked += 1
+            # 途中まで送れたもの(ほかの GPU の PR・開いている PR に置いたもの)は印を付け、送り直さない
+            partial = getattr(e, "partial", None)
+            touched = {p for r in results for p in r.touched}
+            if partial is not None:
+                mark(group, set(partial.delivered))
+                touched |= set(partial.touched)
+                if partial.pr_url:
+                    results.append(partial)
+            err = CliError(str(e))
+            err.results = results  # type: ignore[attr-defined]
+            err.touched = touched  # type: ignore[attr-defined]
+            err.marked = marked  # type: ignore[attr-defined]
+            raise err from None
+        mark(group, set(res.delivered))  # PR がある(か、本家の main にもうある)ものだけに印を付ける
         results.append(res)
     return results, marked
 
@@ -2716,11 +2753,33 @@ def _share_send(
             creds, session = _share_relogin_if_expired(args, creds, session)
         results, marked = _share_submit(args, creds, session, good)
     except CliError as e:
+        done_prs = getattr(e, "results", [])
+        touched = getattr(e, "touched", set())
+        rest = [it for it in good if it["path_in_repo"] not in touched]
         if args.json:
-            emit(prs=[], marked_shared=0, sent=False, error=str(e), hint=_unsent_hint())
+            emit(
+                prs=[r.to_dict() for r in done_prs],
+                marked_shared=getattr(e, "marked", 0),
+                sent=bool(done_prs),
+                error=str(e),
+                hint=_unsent_hint(),
+            )
             return 1
         print(tr(f"エラー: {e}", f"error: {e}"), file=sys.stderr)
-        if not args.yes and _interactive():
+        for r in done_prs:
+            if r.pr_url:
+                print(tr(f"送れた PR: {r.pr_url}", f"Sent in pull request: {r.pr_url}"))
+        if len(rest) < len(good):
+            print(
+                tr(
+                    f"{len(good) - len(rest)} 件はもう PR かブランチに置いたので、Issue では送りません"
+                    "(genmodelfit share --no-measure で PR を続けられます)",
+                    f"{len(good) - len(rest)} file(s) are already in a pull request or on its branch and are"
+                    " not sent as issues (genmodelfit share --no-measure continues the pull request)",
+                ),
+                file=sys.stderr,
+            )
+        if rest and not args.yes and _interactive():
             try:
                 again = _ask_yes_no(
                     tr(
@@ -2733,7 +2792,7 @@ def _share_send(
                 print(file=sys.stderr)
                 again = False
             if again:
-                return _share_send_issues(args, good, report, items, 1)
+                return _share_send_issues(args, rest, report, items, 1)
         print(_unsent_hint(), file=sys.stderr)
         return 1
     if args.json:
@@ -3337,8 +3396,28 @@ def cmd_share(args: argparse.Namespace) -> int:
                     report["comfyui"]["started"] = started.to_dict()
                     # 起動したので、足りないノードの要るものを外し、時間の残りでほかの提案を足す(#124)
                     before = [(x.model_id, tuple(x.args)) for x in plan]
+                    approved_dl = list(dl_plan)
                     before_dl = [x.model_id for x in dl_plan]
                     plan, total, dl_plan = _share_replan(sugg, budget, _node_check(url), skipped)
+                    # 落とすのは、見せた(同意した)一覧の中だけ。外れたものは理由を言う(足さない)
+                    new_ids = {(x.model_id, tuple(x.args)) for x in dl_plan}
+                    dl_plan = [x for x in approved_dl if (x.model_id, tuple(x.args)) in new_ids]
+                    dropped = [x for x in approved_dl if (x.model_id, tuple(x.args)) not in new_ids]
+                    if dropped and not args.json:
+                        missing = {d["model_id"] for d in skipped}
+                        for x in dropped:
+                            why = (
+                                tr("ComfyUI に無いノードが要る", "needs nodes this ComfyUI does not have")
+                                if x.model_id in missing
+                                else tr("時間の上限に収まらない", "does not fit the time limit")
+                            )
+                            print(
+                                tr(
+                                    f"落とさないもの: {x.model_name} [{x.model_id}]({why})",
+                                    f"Not downloaded: {x.model_name} [{x.model_id}] ({why})",
+                                ),
+                                file=sys.stderr,
+                            )
                     report.update(
                         plan=[x.to_dict() for x in plan],
                         download_plan=[x.to_dict() for x in dl_plan],
@@ -6549,7 +6628,8 @@ Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN
 saved sign-in) and stops at once if it does not work; the device login in your browser (scope
 public_repo; saved for next time; --logout removes it) happens only when you choose a pull
 request. With --yes and no terminal, a missing token stops it before measuring. The pull request
-comes from a fork of the repository: a branch from the upstream main with the files under
+comes from a fork of the repository: a branch from the merge base of the upstream main and the
+fork's main with the files under
 data/contrib/<GPU>/ (titled "measurements: <GPU> (<count>)"), or your open share pull request
 for that GPU; files already there are skipped. If the pull request cannot be made, a terminal
 offers issues for the same files. Results are saved before sending and are never measured again:
@@ -7040,8 +7120,8 @@ FILE を省くと、measure と同じく ComfyUI を見つけ(--url、無けれ�
 もうあるトークン(GITHUB_TOKEN か GH_TOKEN、無ければ保存したログイン)を確かめるだけで、使えなければ
 すぐ止める。ブラウザでのデバイス認証(権限 public_repo。次のために保存し、--logout で消す)は、PR を
 選んだときだけ。--yes で端末でなく、トークンが無ければ、測る前に止める。PR は、リポジトリの
-フォークで本家の main からブランチを作り、data/contrib/<GPU>/ にファイルを置いて開く(題は
-「measurements: <GPU> (<件数>)」)。その GPU の share の PR が開いていれば、そこに足す。もうある
+フォークで、本家とフォークの main の共通の祖先からブランチを作り、data/contrib/<GPU>/ にファイルを
+置いて開く(題は「measurements: <GPU> (<件数>)」)。その GPU の share の PR が開いていれば、そこに足す。もうある
 ファイルは飛ばす。PR を作れなければ、端末なら同じファイルを Issue で送るかを尋ねる。結果は送る前に
 保存し、測り直さない: あとで genmodelfit share --no-measure(か --issue)で送れる。送ったものは
 この PC で印を付ける(--all で含める)。ComfyUI が無ければ送っていない実測だけを送り、それも無ければ

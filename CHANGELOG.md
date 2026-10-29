@@ -11,11 +11,12 @@ All notable changes to this project are documented here. The format is based on
 
 - **`share` measures and sends a GitHub pull request** (#124; after llmfit's `bench --share`). Without arguments it
   finds ComfyUI like `measure`, picks the installed suggestions of `measure` until their rough times add up to 300 s
-  (`--budget`), shows the plan with the unsent measurements and asks once, signs in to GitHub before measuring
-  (`GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device login with scope `public_repo`; the token
-  is saved with its expiry in `<config>/github_token`, readable only by you, and never printed; `--logout` removes it),
-  measures one by one, shows every file with the privacy checks and asks again, then forks the project, makes a branch
-  from `main`, puts the files under `data/contrib/<GPU>/` and opens a pull request titled
+  (`--budget`), shows the plan with the unsent measurements and asks once, checks a GitHub token you already have,
+  measures one by one, shows every file with the privacy checks and asks how to send it. For a pull request it signs
+  in (`GITHUB_TOKEN` / `GH_TOKEN`, else the saved sign-in, else GitHub's device login with scope `public_repo`; the
+  token is saved with its expiry in `<config>/github_token`, readable only by you, and never printed; `--logout`
+  removes it), forks the project, makes a branch from the merge base of the project's `main` and your fork's `main`
+  (your fork's `main` is not changed), puts the files under `data/contrib/<GPU>/` and opens a pull request titled
   `measurements: <GPU> (<count>)`, or adds them to your open `share` pull request for that GPU. Files already there are
   skipped; a retry after a failed attempt still opens the pull request, and files are marked as sent only when a pull
   request has them or they are already on `main`. Models that are not installed are downloaded only with `--download`

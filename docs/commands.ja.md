@@ -866,7 +866,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 - 測る前は、もうあるトークン(GITHUB_TOKEN か GH_TOKEN、無ければ保存したログイン)を確かめるだけで、使えなければすぐ止める。
 - ブラウザでのデバイス認証(権限 public_repo。次のために保存し、`--logout` で消す)は、PR を選んだときだけ。
 - `--yes` で端末でなく、トークンが無ければ、測る前に止める。
-- PR は、リポジトリのフォークで本家の main からブランチを作り、`data/contrib/<GPU>/` にファイルを置いて開く(題は「measurements: `<GPU>` (`<件数>`)」)。
+- PR は、リポジトリのフォークで、本家とフォークの main の共通の祖先からブランチを作り、`data/contrib/<GPU>/` にファイルを置いて開く(題は「measurements: `<GPU>` (`<件数>`)」)。
 - その GPU の share の PR が開いていれば、そこに足す。
 - もうあるファイルは飛ばす。
 - PR を作れなければ、端末なら同じファイルを Issue で送るかを尋ねる。

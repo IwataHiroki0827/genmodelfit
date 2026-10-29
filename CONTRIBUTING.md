@@ -75,10 +75,12 @@ Step by step, in detail:
    terminal send a pull request; `share --issue --yes` sends issues (it prints the URLs without a terminal). Results
    are saved before this and never measured again: after q, or a failed pull request (a terminal then offers issues),
    `genmodelfit share --no-measure` (or `share --issue`) sends them later.
-8. For a pull request, it forks the project on your account (once), makes a branch from the project's `main`, adds the
-   files under `data/contrib/<GPU>/` and opens a pull request titled `measurements: <GPU> (<count>)`. If you already
-   have an open pull request from `share` for that GPU, it adds the files there; files already there are skipped, so
-   running it again never sends a file twice. The `Contrib` workflow checks it within minutes; once a maintainer
+8. For a pull request, it forks the project on your account (once), makes a branch from the newest commit your fork
+   and the project's `main` share (your fork's `main` is never changed), adds the files under `data/contrib/<GPU>/`
+   and opens a pull request titled `measurements: <GPU> (<count>)`. If you already have an open pull request from
+   `share` for that GPU, it adds the files there. Files already on the branch or already merged are skipped, and if
+   the pull request fails partway, only the files not placed anywhere are offered as issues, so a file is not sent
+   twice. The `Contrib` workflow checks it within minutes; once a maintainer
    merges it, the next version of genmodelfit uses it.
 
 `share --dry-run` shows the plan and the files without measuring, signing in or any network access to GitHub.

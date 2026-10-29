@@ -73,10 +73,11 @@ genmodelfit share
    `share --issue --yes` は Issue(端末でなければ URL を出す)。結果はこの前に保存してあり、測り直しません: q のとき、
    PR で送れなかったとき(端末なら Issue で送るかを尋ねます)は、`genmodelfit share --no-measure`(か `share --issue`)で
    あとで送れます。
-8. PR なら、あなたのアカウントにプロジェクトをフォークし(初めだけ)、プロジェクトの `main` からブランチを作り、
-   `data/contrib/<GPU>/` にファイルを置いて、題が `measurements: <GPU> (<件数>)` の Pull Request を開きます。その GPU の
-   `share` の Pull Request が開いていれば、そこに足します。もうあるファイルは飛ばすので、やり直しても同じファイルを
-   2 回送りません。数分で `Contrib` のワークフローが確かめ、メンテナがマージすると、genmodelfit の次の版から使われます。
+8. PR なら、あなたのアカウントにプロジェクトをフォークし(初めだけ)、フォークとプロジェクトの `main` の共通の
+   いちばん新しいコミットからブランチを作り(フォークの `main` は変えません)、`data/contrib/<GPU>/` にファイルを置いて、
+   題が `measurements: <GPU> (<件数>)` の Pull Request を開きます。その GPU の `share` の Pull Request が開いていれば、
+   そこに足します。ブランチにもうあるファイル・マージ済みのファイルは飛ばし、PR が途中で失敗したときも、どこにも
+   置いていないファイルだけを Issue で送るかを尋ねるので、同じファイルを 2 回送りません。数分で `Contrib` のワークフローが確かめ、メンテナがマージすると、genmodelfit の次の版から使われます。
 
 `share --dry-run` は、測らず・ログインせず・GitHub と通信せずに、計画とファイルを見せます。`share --no-measure` は
 まだ送っていない実測だけを送り、`share <ファイル>` は 1 つの提出のファイルを送ります。送ったものはこの PC で印を付け

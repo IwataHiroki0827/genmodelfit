@@ -62,7 +62,7 @@ CLI の表示の「GB」も GiB。
 | `update --inspect-only` | Hugging Face の主な重みのファイルの見出しの範囲指定 GET、ComfyUI のテンプレート JSON の GET。`--offline` では何も送らない | キャッシュの `db.json`(または `--output`)、キャッシュの `file_headers.json` |
 | `update --from-release` | このプロジェクトの `data-latest` リリースから `db.json` と `db.json.sig` を GET | キャッシュの `db.json`(または `--output`)、`release_state.json` |
 | `measure` | `--url` が無ければ `GET http://127.0.0.1:8188/internal/folder_paths` とポート 8000 の同じもの(2 秒で打ち切り、転送は追わない、プロキシは使わない)。そのあとはその ComfyUI に `bench` と同じ。入っていないモデルを落とすことに同意したときは `download` と同じ。提案の一覧だけで ComfyUI が動いていなければ通信しない。(0.13.0)起動中のものが無く、入っている ComfyUI が見つかれば、127.0.0.1 の空いているポートで別のプロセスとして起動し、準備ができるまで `GET /system_stats`、そのあとノードを確かめるため `GET /object_info` とテンプレート。終わったらそのプロセスを止める | `bench` と同じ: 結果を `<cache>/measurements/` に、送るための下書きを `<cache>/submissions/<GPU>/<date>-<sha8>.json` に。落としたときはモデルのファイル。起動した ComfyUI の出力は `<cache>/comfyui-<date>.log` |
-| `share` | (0.13.0)測る・落とすあいだは `measure` と同じ。送ることに同意したあとは、https で github.com と api.github.com だけ: ログイン(`GET /user`・デバイス認証)・フォーク・ブランチ・ファイル(Contents API)・PR。`--dry-run` と `--issue` は GitHub と通信しない(`--issue` は端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `measure` と同じ。`<cache>/submissions_shared.json`(送った印)。`<config>/github_token`(ログインのトークンと期限。本人だけが読める。`--logout` で消す)。`--issue` は中身をクリップボードに写すことがある |
+| `share` | (0.13.0)測る・落とすあいだは `measure` と同じ。GitHub(https で github.com と api.github.com だけ): 測る前に、もうあるトークン(`GITHUB_TOKEN`・`GH_TOKEN`・保存したもの)を確かめる `GET /user`。デバイス認証は PR を選んだときだけ。送ることに同意したあとで、フォーク・ブランチ・ファイル(Contents API)・PR。`--dry-run` と `--issue` は GitHub と通信しない(`--issue` は端末ではブラウザで GitHub のフォームを開く。中身が送られるのは「Create」を押したときだけ) | `measure` と同じ。`<cache>/submissions_shared.json`(送った印)。`<config>/github_token`(ログインのトークンと期限。本人だけが読める。`--logout` で消す)。`--issue` は中身をクリップボードに写すことがある |
 | `bench` | ComfyUI の `--url` だけ(ComfyUI に無ければ GitHub の公式テンプレートのファイルも)。`--share` はほかに通信しない(下の `share`) | キャッシュの実測 JSON(または `--output`)。`--submission` を付けると提出用の JSON も。`--share` で `--submission` が無ければ `<cache>/submissions/<GPU>/<date>-<sha8>.json` |
 | `contrib` | なし(genmodelfit は提出を送らない)。`share` は `genmodelfit share --issue` と同じ | `make`: 提出用の JSON。`aggregate --output`: community のファイル。`intake`: `--out` のファイル。`share`: 送った印。`show` / `validate` / `aggregate --check`: なし |
 | `review` | なし | `list`: なし。`approve` / `reject`: `--db` のファイルをその場で書き換える。`reject` は `review_rejected.txt` にも追記する(`--rejected` が無ければ `--db` の隣) |
@@ -1136,11 +1136,14 @@ bench が Measurement を埋める方法(測り方):
   `GENMODELFIT_GH_CLIENT_ID` で替え、空にすると使わない。scope は `public_repo`。端末で `--json` の無いときだけ。
   `slow_down` で間隔を 5 秒増やし、`expired_token`・`access_denied` で止める)。refresh_token は保存しない。送る前にもう一度確かめ、切れて
   いれば端末ならログインし直し、そうでなければ、測った結果は保存してあり `share --no-measure` で送れることを言って 1 で終える。
-- **PR**: `laxshmate/genmodelfit` をフォークし(無ければ作り、出来るまで待つ)、本家の `main` からブランチ
-  `genmodelfit-share/<GPU の slug>/<パスの sha8>` を作り、ファイルを `data/contrib/<GPU>/<date>-<sha8>.json`(contrib の
+- **PR**: `laxshmate/genmodelfit` をフォークし(無ければ作り、出来るまで待つ)、本家の `main` とフォークの `main` の
+  共通の祖先(`github.fork_base`。compare の API の `merge_base_commit`。比べられなければ本家の先頭。`merge-upstream` は
+  `workflow` の scope が要るので、フォークの `main` は変えない)からブランチ `genmodelfit-share/<GPU の slug>/<パスの sha8>` を作り、ファイルを `data/contrib/<GPU>/<date>-<sha8>.json`(contrib の
   `suggested_path`)に Contents API で置いて、題が `measurements: <GPU> (<件数>)` の PR を開く(本文はファイルの表・
   genmodelfit の版・`<!-- genmodelfit:share -->`)。GPU ごとに 1 本。同じアカウントの開いている PR でブランチが
-  `genmodelfit-share/<GPU の slug>/` で始まるものがあれば、そこに足す。ブランチにもうあるファイルは飛ばす(422)。
+  `genmodelfit-share/<GPU の slug>/` で始まるものがあれば、そこに足す。本家の `main` にもうあるファイルは先に確かめて
+  置かない(送った印を付ける)。ブランチにもうあるファイルは飛ばす(422)。PR が途中で失敗したときは、もう置いたもの
+  (ほかの GPU の PR・開いている PR やブランチに置いたファイル)はそのままにし、残りのファイルだけを Issue で送るかを尋ねる。
   ブランチに本家の `main` に無いファイルがあれば、前の失敗のやり直しでも PR を開く。送った印を付けるのは、PR
   (新しいか、足したもの)のファイルと、本家の `main` にもうあるファイルだけ。
 - **誤り**: 書き込みの 403・404 は、トークンの scope(`public_repo`)が足りない(作ったばかりのフォークは、先に git の

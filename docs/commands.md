@@ -862,7 +862,7 @@ genmodelfit share [-h] [--lang {en,ja}] [--json] [--yes] [--download] [--any-lic
 - `--yes`, `--json` or no terminal send a pull request; `--issue` `--yes` sends issues (the URLs are printed without a terminal).
 - Before measuring it only checks a token it already has (GITHUB_TOKEN or GH_TOKEN, else the saved sign-in) and stops at once if it does not work; the device login in your browser (scope public_repo; saved for next time; `--logout` removes it) happens only when you choose a pull request.
 - With `--yes` and no terminal, a missing token stops it before measuring.
-- The pull request comes from a fork of the repository: a branch from the upstream main with the files under `data/contrib/<GPU>/` (titled "measurements: `<GPU>` (`<count>`)"), or your open share pull request for that GPU; files already there are skipped.
+- The pull request comes from a fork of the repository: a branch from the merge base of the upstream main and the fork's main with the files under `data/contrib/<GPU>/` (titled "measurements: `<GPU>` (`<count>`)"), or your open share pull request for that GPU; files already there are skipped.
 - If the pull request cannot be made, a terminal offers issues for the same files.
 - Results are saved before sending and are never measured again: `genmodelfit share --no-measure` (or `--issue`) sends them later.
 - Sent files are marked on this PC (`--all` includes them).

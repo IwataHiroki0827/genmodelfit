@@ -98,8 +98,8 @@ add that folder to PATH or use one of the above. A terminal opened before PATH c
 
 Nothing, for judging: the hardware is read locally. Only `update`, `download`, `measure` and `bench` connect, and only to
 public data or the ComfyUI you name (when you give no folder or URL, `download` and `measure` also ask a ComfyUI running on
-this PC, at 127.0.0.1). `share` connects to GitHub only after you agree to send (sign-in, then a pull request
-with the files it showed you). No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
+this PC, at 127.0.0.1). `share` only checks a GitHub token you already have before measuring and sends nothing
+until you agree (then it signs in and opens a pull request with the files it showed you, or opens the issue form). No telemetry. Details: [Privacy](https://github.com/laxshmate/genmodelfit#privacy).
 
 ## 2. Procedure
 
