@@ -2807,6 +2807,20 @@ def _share_send_issues(
         c, info = _share(it["file"], args, as_json=args.json, print_url=print_url, shown=True)
         infos.append(info)
         worst = max(worst, c)
+    if print_url and any(i.get("marked_shared") for i in infos):
+        # URL を出しただけでも送った印を付ける(次の share で PR でも送って二重にしないため)。
+        # 実測は消えない
+        print(
+            tr(
+                "上の URL を開いて「Create」を押すと送られます。送った印を付けたので、次の share では"
+                "出ません。送らなかったときは genmodelfit share --issue --all で、"
+                "測り直さずにもう一度選べます",
+                'Open the URL above and press "Create" to send it. It is marked as sent, so the next'
+                " share does not list it; if you did not send it, genmodelfit share --issue --all lets"
+                " you choose it again without measuring",
+            ),
+            file=sys.stderr,
+        )
     if args.json:
         _out(
             _envelope(

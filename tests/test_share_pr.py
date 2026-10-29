@@ -1270,9 +1270,11 @@ def test_choosing_q_keeps_the_results(capsys, monkeypatch, this_pc, plan, gh):
 def test_issue_yes_measures_then_prints_issue_urls(capsys, monkeypatch, this_pc, plan, gh):
     monkeypatch.setattr(cli, "_interactive", lambda: False)
     assert cli.main(["share", "--issue", "--yes", "--url", "http://x:1"]) == 0
-    out = capsys.readouterr().out
+    cap = capsys.readouterr()
     assert plan["ran"] == ["a_installed_short", "c_installed", "e_installed"]
-    assert out.count("https://github.com/laxshmate/genmodelfit/issues/new?") == 3 and gh.calls == []
+    assert cap.out.count("https://github.com/laxshmate/genmodelfit/issues/new?") == 3 and gh.calls == []
+    # URL を出しただけでも印を付ける(二重に送らない)。送らなかったときに測り直さずに選び直せることを知らせる
+    assert len(measure.load_shared()) == 3 and "genmodelfit share --issue --all" in cap.err
 
 
 def test_pr_failure_offers_the_issue_form(capsys, monkeypatch, this_pc, plan):
