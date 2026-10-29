@@ -6,17 +6,15 @@
 
 [![PyPI](https://img.shields.io/pypi/v/genmodelfit)](https://pypi.org/project/genmodelfit/)
 
-LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit) に着想を得ています。
-llmfit の公式のプロジェクトでも派生(フォーク)でもありません。状態: アルファ版
+LLM 向けに同じことをする [llmfit](https://github.com/AlexsJones/llmfit) に着想を得ています。状態: アルファ版
 ([CHANGELOG.md](https://github.com/laxshmate/genmodelfit/blob/main/CHANGELOG.md))。
 
-![VRAM 8 GiB・メモリ 32 GiB の PC での genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/recommend.ja.png)
+![VRAM 8 GiB・メモリ 32 GiB の PC での uvx genmodelfit recommend](https://raw.githubusercontent.com/laxshmate/genmodelfit/main/docs/images/demo.ja.gif)
 
-`genmodelfit recommend --vram 8 --ram 32 -n 2` の先頭(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
-`--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のままです。画像では GPU を架空の Ada 世代
-(bf16・fp8 とも使える)に差し替えていて、撮った PC のものではありません。
+genmodelfit 0.12.0 で `uvx genmodelfit recommend --lang ja` を動かしたところ(2026-10-21 時点の一覧)。一覧は毎週更新するので、並ぶモデルと件数は変わります。
+動画の GPU は VRAM 8 GiB の架空の Ada 世代(bf16・fp8 とも使える)に差し替えていて、記録した PC のものではありません。
+`--vram` が変えるのは VRAM の量だけで、GPU の世代は動かした PC のままです。
 RTX 30 系以降(30・40・50 系)なら世代で見積もりは変わらないので、GPU を買う前に試すのにも使えます(メインメモリは `--ram`)。
-画像は [tools/screenshots.py](https://github.com/laxshmate/genmodelfit/blob/main/tools/screenshots.py) で作っています。
 
 ## すぐ試す
 
